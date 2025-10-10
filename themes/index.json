@@ -1,0 +1,550 @@
+{
+  "themes": [
+    {
+      "id": "one-dark-pro",
+      "name": "One Dark Pro",
+      "publisher": "zhuangtongfa",
+      "description": "Atom's iconic One Dark theme for Visual Studio Code",
+      "variants": [
+        {
+          "label": "One Dark Pro",
+          "uiTheme": "vs-dark",
+          "path": "one-dark-pro/OneDark-Pro.json"
+        },
+        {
+          "label": "One Dark Pro Flat",
+          "uiTheme": "vs-dark",
+          "path": "one-dark-pro/OneDark-Pro-flat.json"
+        },
+        {
+          "label": "One Dark Pro Darker",
+          "uiTheme": "vs-dark",
+          "path": "one-dark-pro/OneDark-Pro-darker.json"
+        },
+        {
+          "label": "One Dark Pro Mix",
+          "uiTheme": "vs-dark",
+          "path": "one-dark-pro/OneDark-Pro-mix.json"
+        },
+        {
+          "label": "One Dark Pro Night Flat",
+          "uiTheme": "vs-dark",
+          "path": "one-dark-pro/OneDark-Pro-night-flat.json"
+        }
+      ]
+    },
+    {
+      "id": "theme-default",
+      "name": "Theme Default",
+      "publisher": "Note Studio",
+      "description": "Note Studio 默认主题",
+      "variants": [
+        {
+          "label": "默认浅色主题",
+          "uiTheme": "vs",
+          "path": "theme-default/light.json"
+        },
+        {
+          "label": "默认深色主题",
+          "uiTheme": "vs-dark",
+          "path": "theme-default/dark.json"
+        }
+      ]
+    },
+    {
+      "id": "solarized",
+      "name": "Solarized",
+      "publisher": "ryanolsonx",
+      "description": "Optimized Solarized theme for VS Code",
+      "variants": [
+        {
+          "label": "Solarized Dark+",
+          "uiTheme": "vs-dark",
+          "path": "solarized/solarized-dark-color-theme.json"
+        },
+        {
+          "label": "Solarized Dark+ (High Contrast)",
+          "uiTheme": "vs-dark",
+          "path": "solarized/solarized-dark-high-contrast-color-theme.json"
+        },
+        {
+          "label": "Solarized Light+",
+          "uiTheme": "vs",
+          "path": "solarized/solarized-light-color-theme.json"
+        },
+        {
+          "label": "Solarized Dark+ (Original)",
+          "uiTheme": "vs-dark",
+          "path": "solarized/legacy-solarized-dark-color-theme.json"
+        },
+        {
+          "label": "Solarized Light+ (Original)",
+          "uiTheme": "vs",
+          "path": "solarized/legacy-solarized-light-color-theme.json"
+        }
+      ]
+    },
+    {
+      "id": "one-monokai",
+      "name": "One Monokai",
+      "publisher": "azemoh",
+      "description": "A cross between Monokai and One Dark theme",
+      "variants": [
+        {
+          "label": "One Monokai",
+          "uiTheme": "vs-dark",
+          "path": "one-monokai/OneMonokai-color-theme.json"
+        }
+      ]
+    },
+    {
+      "id": "ayu",
+      "name": "Ayu",
+      "publisher": "teabyii",
+      "description": "A simple theme with bright colors and comes in three versions — dark, light and mirage for all day long comfortable work.",
+      "variants": [
+        {
+          "label": "Ayu Dark",
+          "uiTheme": "vs-dark",
+          "path": "ayu/ayu-dark.json"
+        },
+        {
+          "label": "Ayu Dark Bordered",
+          "uiTheme": "vs-dark",
+          "path": "ayu/ayu-dark-bordered.json"
+        },
+        {
+          "label": "Ayu Light",
+          "uiTheme": "vs",
+          "path": "ayu/ayu-light.json"
+        },
+        {
+          "label": "Ayu Light Bordered",
+          "uiTheme": "vs",
+          "path": "ayu/ayu-light-bordered.json"
+        },
+        {
+          "label": "Ayu Mirage",
+          "uiTheme": "vs-dark",
+          "path": "ayu/ayu-mirage.json"
+        },
+        {
+          "label": "Ayu Mirage Bordered",
+          "uiTheme": "vs-dark",
+          "path": "ayu/ayu-mirage-bordered.json"
+        }
+      ]
+    },
+    {
+      "id": "monokai-pro",
+      "name": "Monokai Pro",
+      "publisher": "monokai",
+      "description": "Professional dark & light theme + icon pack, from the author of the original Monokai color scheme.",
+      "variants": [
+        {
+          "label": "Monokai Pro",
+          "uiTheme": "vs-dark",
+          "path": "monokai-pro/Monokai Pro.json"
+        },
+        {
+          "label": "Monokai Pro (Filter Octagon)",
+          "uiTheme": "vs-dark",
+          "path": "monokai-pro/Monokai Pro (Filter Octagon).json"
+        },
+        {
+          "label": "Monokai Pro (Filter Ristretto)",
+          "uiTheme": "vs-dark",
+          "path": "monokai-pro/Monokai Pro (Filter Ristretto).json"
+        },
+        {
+          "label": "Monokai Pro (Filter Spectrum)",
+          "uiTheme": "vs-dark",
+          "path": "monokai-pro/Monokai Pro (Filter Spectrum).json"
+        },
+        {
+          "label": "Monokai Pro (Filter Machine)",
+          "uiTheme": "vs-dark",
+          "path": "monokai-pro/Monokai Pro (Filter Machine).json"
+        },
+        {
+          "label": "Monokai Pro Light",
+          "uiTheme": "vs",
+          "path": "monokai-pro/Monokai Pro Light.json"
+        },
+        {
+          "label": "Monokai Pro Light (Filter Sun)",
+          "uiTheme": "vs",
+          "path": "monokai-pro/Monokai Pro Light (Filter Sun).json"
+        },
+        {
+          "label": "Monokai Classic",
+          "uiTheme": "vs-dark",
+          "path": "monokai-pro/Monokai Classic.json"
+        }
+      ]
+    },
+    {
+      "id": "github-theme",
+      "name": "GitHub Theme",
+      "publisher": "GitHub",
+      "description": "GitHub theme for VS Code",
+      "variants": [
+        {
+          "label": "GitHub Light Default",
+          "uiTheme": "vs",
+          "path": "github-theme/light-default.json"
+        },
+        {
+          "label": "GitHub Light High Contrast",
+          "uiTheme": "hc-light",
+          "path": "github-theme/light-high-contrast.json"
+        },
+        {
+          "label": "GitHub Light Colorblind (Beta)",
+          "uiTheme": "vs",
+          "path": "github-theme/light-colorblind.json"
+        },
+        {
+          "label": "GitHub Dark Default",
+          "uiTheme": "vs-dark",
+          "path": "github-theme/dark-default.json"
+        },
+        {
+          "label": "GitHub Dark High Contrast",
+          "uiTheme": "hc-black",
+          "path": "github-theme/dark-high-contrast.json"
+        },
+        {
+          "label": "GitHub Dark Colorblind (Beta)",
+          "uiTheme": "vs-dark",
+          "path": "github-theme/dark-colorblind.json"
+        },
+        {
+          "label": "GitHub Dark Dimmed",
+          "uiTheme": "vs-dark",
+          "path": "github-theme/dark-dimmed.json"
+        },
+        {
+          "label": "GitHub Light",
+          "uiTheme": "vs",
+          "path": "github-theme/light.json"
+        },
+        {
+          "label": "GitHub Dark",
+          "uiTheme": "vs-dark",
+          "path": "github-theme/dark.json"
+        }
+      ]
+    },
+    {
+      "id": "night-owl",
+      "name": "Night Owl",
+      "publisher": "sdras",
+      "description": "A VS Code theme for the night owls out there. Now introducing Light Owl theme for daytime usage.",
+      "variants": [
+        {
+          "label": "Night Owl",
+          "uiTheme": "vs-dark",
+          "path": "night-owl/Night Owl-color-theme.json"
+        },
+        {
+          "label": "Night Owl (No Italics)",
+          "uiTheme": "vs-dark",
+          "path": "night-owl/Night Owl-color-theme-noitalic.json"
+        },
+        {
+          "label": "Night Owl Light",
+          "uiTheme": "vs",
+          "path": "night-owl/Night Owl-Light-color-theme.json"
+        },
+        {
+          "label": "Night Owl Light (No Italics)",
+          "uiTheme": "vs",
+          "path": "night-owl/Night Owl-Light-color-theme-noitalic.json"
+        }
+      ]
+    },
+    {
+      "id": "tokyo-night",
+      "name": "Tokyo Night",
+      "publisher": "enkia",
+      "description": "A clean Visual Studio Code theme that celebrates the lights of Downtown Tokyo at night.",
+      "variants": [
+        {
+          "label": "Tokyo Night",
+          "uiTheme": "vs-dark",
+          "path": "tokyo-night/tokyo-night-color-theme.json"
+        },
+        {
+          "label": "Tokyo Night Storm",
+          "uiTheme": "vs-dark",
+          "path": "tokyo-night/tokyo-night-storm-color-theme.json"
+        },
+        {
+          "label": "Tokyo Night Light",
+          "uiTheme": "vs",
+          "path": "tokyo-night/tokyo-night-light-color-theme.json"
+        }
+      ]
+    },
+    {
+      "id": "winter-is-coming",
+      "name": "Winter is Coming",
+      "publisher": "johnpapa",
+      "description": "Preferred dark/light themes by John Papa",
+      "variants": [
+        {
+          "label": "Winter is Coming (Dark Blue)",
+          "uiTheme": "vs-dark",
+          "path": "winter-is-coming/WinterIsComing-dark-blue-color-theme.json"
+        },
+        {
+          "label": "Winter is Coming (Dark Blue - No Italics)",
+          "uiTheme": "vs-dark",
+          "path": "winter-is-coming/WinterIsComing-dark-blue-color-no-italics-theme.json"
+        },
+        {
+          "label": "Winter is Coming (Light)",
+          "uiTheme": "vs",
+          "path": "winter-is-coming/WinterIsComing-light-color-theme.json"
+        },
+        {
+          "label": "Winter is Coming (Light - No Italics)",
+          "uiTheme": "vs",
+          "path": "winter-is-coming/WinterIsComing-light-color-no-italics-theme.json"
+        },
+        {
+          "label": "Winter is Coming (Dark Black)",
+          "uiTheme": "vs-dark",
+          "path": "winter-is-coming/WinterIsComing-dark-color-theme.json"
+        },
+        {
+          "label": "Winter is Coming (Dark Black - No Italics)",
+          "uiTheme": "vs-dark",
+          "path": "winter-is-coming/WinterIsComing-dark-color-no-italics-theme.json"
+        }
+      ]
+    },
+    {
+      "id": "dracula",
+      "name": "Dracula",
+      "publisher": "dracula-theme",
+      "description": "Official Dracula Theme. A dark theme for many editors, shells, and more.",
+      "variants": [
+        {
+          "label": "Dracula",
+          "uiTheme": "vs-dark",
+          "path": "dracula/dracula.json"
+        },
+        {
+          "label": "Dracula Soft",
+          "uiTheme": "vs-dark",
+          "path": "dracula/dracula-soft.json"
+        }
+      ]
+    },
+    {
+      "id": "material-theme",
+      "name": "Material Theme",
+      "publisher": "Equinusocio",
+      "description": "The most epic theme now for Visual Studio Code",
+      "variants": [
+        {
+          "label": "Material Theme",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Default.json"
+        },
+        {
+          "label": "Material Theme High Contrast",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Default-High-Contrast.json"
+        },
+        {
+          "label": "Material Theme Darker",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Darker.json"
+        },
+        {
+          "label": "Material Theme Darker High Contrast",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Darker-High-Contrast.json"
+        },
+        {
+          "label": "Material Theme Palenight",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Palenight.json"
+        },
+        {
+          "label": "Material Theme Palenight High Contrast",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Palenight-High-Contrast.json"
+        },
+        {
+          "label": "Material Theme Ocean",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Ocean.json"
+        },
+        {
+          "label": "Material Theme Ocean High Contrast",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Ocean-High-Contrast.json"
+        },
+        {
+          "label": "Material Theme Deepforest",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Deepforest.json"
+        },
+        {
+          "label": "Material Theme DeepForest High Contrast",
+          "uiTheme": "vs-dark",
+          "path": "material-theme/Material-Theme-Deepforest-High-Contrast.json"
+        },
+        {
+          "label": "Material Theme Lighter",
+          "uiTheme": "vs",
+          "path": "material-theme/Material-Theme-Lighter.json"
+        },
+        {
+          "label": "Material Theme Lighter High Contrast",
+          "uiTheme": "vs",
+          "path": "material-theme/Material-Theme-Lighter-High-Contrast.json"
+        }
+      ]
+    },
+    {
+      "id": "palenight",
+      "name": "Palenight",
+      "publisher": "whizkydee",
+      "description": "An elegant and juicy material-inspired theme for Visual Studio Code.",
+      "variants": [
+        {
+          "label": "Palenight Theme",
+          "uiTheme": "vs-dark",
+          "path": "palenight/palenight.json"
+        },
+        {
+          "label": "Palenight Italic",
+          "uiTheme": "vs-dark",
+          "path": "palenight/palenight-italic.json"
+        },
+        {
+          "label": "Palenight Operator",
+          "uiTheme": "vs-dark",
+          "path": "palenight/palenight-operator.json"
+        },
+        {
+          "label": "Palenight (Mild Contrast)",
+          "uiTheme": "vs-dark",
+          "path": "palenight/palenight-mild-contrast.json"
+        }
+      ]
+    },
+    {
+      "id": "atom-one-dark",
+      "name": "Atom One Dark",
+      "publisher": "akamud",
+      "description": "One Dark Theme based on Atom",
+      "variants": [
+        {
+          "label": "Atom One Dark",
+          "uiTheme": "vs-dark",
+          "path": "atom-one-dark/OneDark.json"
+        }
+      ]
+    },
+    {
+      "id": "gerry-themes",
+      "name": "Gerry Themes",
+      "publisher": "GerryThemes",
+      "description": "Gerry Themes for VSCode",
+      "variants": [
+        {
+          "label": "Gerry Dark",
+          "uiTheme": "vs-dark",
+          "path": "gerry-themes/gerryDark.json"
+        },
+        {
+          "label": "Gerry Darcula",
+          "uiTheme": "vs-dark",
+          "path": "gerry-themes/gerryDarcula.json"
+        },
+        {
+          "label": "Gerry Oceanic",
+          "uiTheme": "vs-dark",
+          "path": "gerry-themes/gerryOceanic.json"
+        },
+        {
+          "label": "Gerry Violet",
+          "uiTheme": "vs-dark",
+          "path": "gerry-themes/gerryViolet.json"
+        },
+        {
+          "label": "Gerry Storm",
+          "uiTheme": "vs-dark",
+          "path": "gerry-themes/gerryStorm.json"
+        },
+        {
+          "label": "Gerry* Light",
+          "uiTheme": "vs",
+          "path": "gerry-themes/gerryLight.json"
+        },
+        {
+          "label": "Legacy Gerry* Light",
+          "uiTheme": "vs",
+          "path": "gerry-themes/legacyGerryLight.json"
+        },
+        {
+          "label": "Legacy Gerry Dark",
+          "uiTheme": "vs-dark",
+          "path": "gerry-themes/legacyGerryDark.json"
+        },
+        {
+          "label": "Legacy Gerry Darcula",
+          "uiTheme": "vs-dark",
+          "path": "gerry-themes/legacyGerryDarcula.json"
+        },
+        {
+          "label": "Legacy Gerry Violet",
+          "uiTheme": "vs-dark",
+          "path": "gerry-themes/legacyGerryViolet.json"
+        }
+      ]
+    },
+    {
+      "id": "cpptools-themes",
+      "name": "C/C++ Themes",
+      "publisher": "ms-vscode",
+      "description": "UI Themes for C/C++ extension.",
+      "variants": [
+        {
+          "label": "Dark (Visual Studio - C/C++)",
+          "uiTheme": "vs-dark",
+          "path": "cpptools-themes/cpptools_dark_vs_new.json"
+        },
+        {
+          "label": "2017 Dark (Visual Studio - C/C++)",
+          "uiTheme": "vs-dark",
+          "path": "cpptools-themes/cpptools_dark_vs.json"
+        },
+        {
+          "label": "Light (Visual Studio - C/C++)",
+          "uiTheme": "vs",
+          "path": "cpptools-themes/cpptools_light_vs_new.json"
+        },
+        {
+          "label": "2017 Light (Visual Studio - C/C++)",
+          "uiTheme": "vs",
+          "path": "cpptools-themes/cpptools_light_vs.json"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalThemePacks": 16,
+    "totalVariants": 81,
+    "darkThemes": 65,
+    "lightThemes": 16,
+    "highContrastThemes": 6
+  }
+}
+

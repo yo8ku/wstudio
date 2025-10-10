@@ -1,0 +1,70 @@
+{
+  "name": "GerryThemes",
+  "displayName": "Gerry Themes for VSCode",
+  "description": "Gerry Themes for VSCode",
+  "version": "1.1.4",
+  "publisher": "GerryThemes",
+  "icon": "pluginIcon.png",
+  "engines": {
+    "vscode": "^1.0.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Gerry Dark",
+        "uiTheme": "vs-dark",
+        "path": "./gerryDark.json"
+      },
+      {
+        "label": "Gerry Darcula",
+        "uiTheme": "vs-dark",
+        "path": "./gerryDarcula.json"
+      },
+      {
+        "label": "Gerry Oceanic",
+        "uiTheme": "vs-dark",
+        "path": "./gerryOceanic.json"
+      },
+      {
+        "label": "Gerry Violet",
+        "uiTheme": "vs-dark",
+        "path": "./gerryViolet.json"
+      },
+      {
+        "label": "Gerry Storm",
+        "uiTheme": "vs-dark",
+        "path": "./gerryStorm.json"
+      },
+      {
+        "label": "Gerry* Light",
+        "uiTheme": "vs",
+        "path": "./gerryLight.json"
+      },
+      {
+        "label": "Legacy Gerry* Light",
+        "uiTheme": "vs",
+        "path": "./legacyGerryLight.json"
+      },      {
+        "label": "Legacy Gerry Dark",
+        "uiTheme": "vs-dark",
+        "path": "./legacyGerryDark.json"
+      },      {
+        "label": "Legacy Gerry Darcula",
+        "uiTheme": "vs-dark",
+        "path": "./legacyGerryDarcula.json"
+      },      {
+        "label": "Legacy Gerry Violet",
+        "uiTheme": "vs-dark",
+        "path": "./legacyGerryViolet.json"
+      }
+    ]
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gerryhjs/gerry-themes-vscode"
+  }
+}

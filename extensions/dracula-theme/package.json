@@ -1,0 +1,30 @@
+{
+  "name": "theme-dracula",
+  "displayName": "Dracula Official",
+  "description": "Official Dracula Theme. A dark theme for many editors, shells, and more.",
+  "version": "2.24.2",
+  "publisher": "dracula-theme",
+  "engines": {
+    "vscode": "^1.51.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Dracula",
+        "uiTheme": "vs-dark",
+        "path": "./themes/dracula.json"
+      },
+      {
+        "label": "Dracula Soft",
+        "uiTheme": "vs-dark",
+        "path": "./themes/dracula-soft.json"
+      }
+    ]
+  }
+}
+
+
+

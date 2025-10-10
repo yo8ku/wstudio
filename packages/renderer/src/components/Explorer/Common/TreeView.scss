@@ -1,0 +1,24 @@
+/**
+ * 通用树视图样式
+ * 完全模仿 VSCode 的树形结构基础样式
+ */
+
+.tree-view {
+  width: 100%;
+  user-select: none;
+  
+  // 关键：让树视图占据父容器空间
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  
+  &[role="tree"] {
+    outline: none;
+  }
+
+  // 全局禁用文本选择
+  * {
+    user-select: none;
+  }
+}

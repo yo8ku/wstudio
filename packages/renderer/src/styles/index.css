@@ -1,0 +1,722 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * 全局样式
+ * 
+ * 设计原则：所有颜色通过 CSS 变量管理，变量值由主题插件控制
+ * - 不使用硬编码颜色值
+ * - 默认颜色值仅作为初始占位符，会被 ThemeContext 覆盖
+ */
+
+:root {
+  /* ==================== 基础颜色 ==================== */
+  --app-bg: #1e1e1e;
+  --app-fg: #cccccc;
+  
+  /* ==================== 侧边栏 ==================== */
+  --sidebar-bg: #252526;
+  --sidebar-fg: #cccccc;
+  --sidebar-border: transparent;
+  
+  /* ==================== 活动栏 ==================== */
+  --activitybar-bg: #333333;
+  --activitybar-fg: #ffffff;
+  --activitybar-border: transparent;
+  
+  /* ==================== 状态栏 ==================== */
+  --statusbar-bg: #007acc;
+  --statusbar-fg: #ffffff;
+  --statusbar-border: transparent;
+  
+  /* ==================== 标题栏 ==================== */
+  --titlebar-bg: #323233;
+  --titlebar-fg: #cccccc;
+  --titlebar-border: transparent;
+  --titlebar-hover: #404040;
+  --titlebar-close-hover: #e81123;
+  
+  /* ==================== 编辑器 ==================== */
+  --editor-bg: #1e1e1e;
+  --editor-fg: #d4d4d4;
+  --editor-group-border: transparent;
+  --editor-line-highlight: #2a2d2e;
+  --editor-selection: #264f78;
+  --editor-cursor: #aeafad;
+  --editor-line-number: #858585;
+  
+  /* ==================== 面板 ==================== */
+  --panel-bg: #1e1e1e;
+  --panel-fg: #cccccc;
+  --panel-border: transparent;
+  
+  /* ==================== 边框 ==================== */
+  --border-color: transparent;
+  --contrast-border: transparent;
+  --tab-border: transparent;
+  
+  /* ==================== 标签页 ==================== */
+  --tab-active-bg: #1e1e1e;
+  --tab-inactive-bg: #2d2d2d;
+  --tab-unfocused-active-bg: #1e1e1e;
+  --tab-unfocused-inactive-bg: #2d2d2d;
+  --tab-active-fg: #ffffff;
+  --tab-inactive-fg: #969696;
+  --tab-unfocused-active-fg: #cccccc;
+  --tab-unfocused-inactive-fg: #808080;
+  --tab-active-border: transparent;
+  --tab-active-border-top: #007acc;
+  --tab-unfocused-active-border: transparent;
+  --tab-unfocused-active-border-top: transparent;
+  --editor-group-header-tabs-bg: #252526;
+  
+  /* ==================== 输入控件 ==================== */
+  --input-bg: #3c3c3c;
+  --input-fg: #cccccc;
+  --input-border: #3c3c3c;
+  --input-placeholder: #a6a6a6;
+  
+  /* ==================== 按钮 ==================== */
+  --button-bg: #0e639c;
+  --button-fg: #ffffff;
+  --button-hover-bg: #1177bb;
+  --button-border: transparent;
+  
+  /* ==================== 工具栏 ==================== */
+  --toolbar-hover-bg: #2a2d2e;
+  --toolbar-active-bg: #094771;
+  
+  /* ==================== 滚动条 ==================== */
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #79797966;
+  --scrollbar-thumb-hover: #646464b3;
+  
+  /* ==================== 菜单 ==================== */
+  --menu-bg: #252526;
+  --menu-fg: #cccccc;
+  --menu-border: #454545;
+  --menu-selection-bg: #094771;
+  --menu-selection-fg: #ffffff;
+  --menu-separator: #454545;
+  
+  /* ==================== 列表/树 ==================== */
+  --list-active-bg: #094771;
+  --list-active-fg: #ffffff;
+  --list-hover-bg: #2a2d2e;
+  --list-hover-fg: #cccccc;
+  --list-focus-bg: #062f4a;
+  --list-focus-fg: #ffffff;
+  
+  /* ==================== Git 装饰 ==================== */
+  --git-modified: #e2c08d;
+  --git-added: #81b88b;
+  --git-deleted: #c74e39;
+  --git-untracked: #73c991;
+  --git-conflict: #e4676b;
+  --git-ignored: #8c8c8c;
+  
+  /* ==================== 终端 ==================== */
+  --terminal-bg: #1e1e1e;
+  --terminal-fg: #cccccc;
+  --terminal-cursor: #ffffff;
+  --terminal-selection: #264f78;
+  
+  /* ANSI 颜色 */
+  --terminal-ansi-black: #000000;
+  --terminal-ansi-red: #cd3131;
+  --terminal-ansi-green: #0dbc79;
+  --terminal-ansi-yellow: #e5e510;
+  --terminal-ansi-blue: #2472c8;
+  --terminal-ansi-magenta: #bc3fbc;
+  --terminal-ansi-cyan: #11a8cd;
+  --terminal-ansi-white: #e5e5e5;
+  --terminal-ansi-bright-black: #666666;
+  --terminal-ansi-bright-red: #f14c4c;
+  --terminal-ansi-bright-green: #23d18b;
+  --terminal-ansi-bright-yellow: #f5f543;
+  --terminal-ansi-bright-blue: #3b8eea;
+  --terminal-ansi-bright-magenta: #d670d6;
+  --terminal-ansi-bright-cyan: #29b8db;
+  --terminal-ansi-bright-white: #e5e5e5;
+  
+  /* ==================== 焦点边框 ==================== */
+  --focus-border: #007fd4;
+  
+  /* ==================== 徽章 ==================== */
+  --badge-bg: #007acc;
+  --badge-fg: #ffffff;
+  
+  /* ==================== 通知 ==================== */
+  --notification-bg: #252526;
+  --notification-fg: #cccccc;
+  --notification-border: #454545;
+  
+  /* ==================== Diff 编辑器 ==================== */
+  --diff-inserted: #9bb95533;
+  --diff-removed: #ff000033;
+  --diff-modified: #948b3033;
+}
+
+/* ==================== 全局重置 ==================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border-radius: 0 !important;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Segoe WPC', 'Segoe UI', 'Ubuntu', 'Droid Sans', sans-serif, 'Droid Sans Fallback';
+  font-size: 13px;
+  background-color: var(--app-bg);
+  color: var(--app-fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ==================== 滚动条样式 ==================== */
+/* 自定义滚动条（WebKit） */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+/* Firefox 滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* ==================== 侧边栏滚动条：默认隐藏，悬停显示 ==================== */
+.sidebar-content {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.sidebar-content::-webkit-scrollbar {
+  width: 10px;
+}
+
+/* ==================== 移除表单控件圆角 ==================== */
+select,
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+textarea,
+button {
+  border-radius: 0 !important;
+  -webkit-border-radius: 0 !important;
+  -moz-border-radius: 0 !important;
+}
+
+/* 移除下拉框选项菜单的圆角 */
+select option {
+  border-radius: 0 !important;
+  -webkit-border-radius: 0 !important;
+  -moz-border-radius: 0 !important;
+}
+
+/* 移除下拉框在不同状态下的圆角 */
+select:focus,
+select:hover,
+select:active {
+  border-radius: 0 !important;
+  -webkit-border-radius: 0 !important;
+  -moz-border-radius: 0 !important;
+}
+
+/* 强制移除所有可能的圆角 - 针对浏览器原生下拉菜单 */
+select::-webkit-scrollbar {
+  border-radius: 0 !important;
+}
+
+select::-webkit-scrollbar-thumb {
+  border-radius: 0 !important;
+}
+
+select::-webkit-scrollbar-track {
+  border-radius: 0 !important;
+}
+
+/* 移除下拉菜单弹出框的圆角 */
+select::-ms-expand {
+  border-radius: 0 !important;
+}
+
+/* 针对 Chromium 内核的下拉菜单 */
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  border-radius: 0 !important;
+  -webkit-border-radius: 0 !important;
+}
+
+.sidebar-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb {
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.sidebar-content:hover {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.sidebar-content:hover::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-content:hover::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+
+/* ==================== Monaco Editor 命令面板样式调整 ==================== */
+/* 
+ * 调整 F1 命令面板位置，紧贴窗口标题栏下方
+ * Monaco Editor 的命令面板默认使用 absolute 定位相对于编辑器容器
+ * 需要改为 fixed 定位才能相对于整个窗口
+ * 类名: quick-input-widget, widgetId: editor.contrib.quickInputWidget
+ */
+div[widgetid="editor.contrib.quickInputWidget"] {
+  position: fixed !important;
+  top: 32px !important; /* 标题栏高度 */
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  margin-top: 0 !important;
+  z-index: 10000 !important;
+}
+
+/* 命令面板内部容器也需要调整 */
+.quick-input-widget.show-file-icons,
+.quick-input-widget {
+  position: relative !important;
+  top: 0 !important;
+  left: 0 !important;
+  transform: none !important;
+}
+
+/* ==================== 焦点样式 ==================== */
+*:focus-visible {
+  outline: none;
+}
+
+/* ==================== 选择文本样式 ==================== */
+::selection {
+  background-color: var(--editor-selection);
+}
+
+::-moz-selection {
+  background-color: var(--editor-selection);
+}
+
+/* ==================== 禁用元素样式 ==================== */
+:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ==================== 工具提示 ==================== */
+[title] {
+  position: relative;
+}
+
+/* ==================== 拖拽样式 ==================== */
+.dragging {
+  opacity: 0.5;
+}
+
+.drag-over {
+  background-color: var(--list-hover-bg);
+}
+
+/* ==================== 加载动画 ==================== */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* ==================== 淡入淡出动画 ==================== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.fade-out {
+  animation: fadeOut 0.2s ease-in-out;
+}
+
+/* ==================== 滑动动画 ==================== */
+@keyframes slideIn {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.slide-in {
+  animation: slideIn 0.2s ease-out;
+}
+
+/* ==================== 手风琴组件样式 ==================== */
+.accordion-section {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--sidebar-bg);
+  color: var(--sidebar-fg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.accordion-section.expanded {
+  flex: 1;
+}
+
+.accordion-section.collapsed {
+  flex: 0 0 auto;
+}
+
+.accordion-section.flex-grow {
+  flex-grow: 1;
+}
+
+.accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  background-color: var(--sidebar-bg);
+  color: var(--sidebar-fg);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+.accordion-header:hover {
+  background-color: var(--list-hover-bg);
+}
+
+.accordion-header-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.accordion-chevron {
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.accordion-icon {
+  font-size: 12px;
+}
+
+.accordion-title {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.accordion-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.accordion-header:hover .accordion-actions {
+  opacity: 1;
+}
+
+.accordion-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  color: var(--sidebar-fg);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.accordion-action-button:hover {
+  background-color: var(--list-hover-bg);
+}
+
+.accordion-content-wrapper {
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+}
+
+.accordion-content-wrapper.expanded {
+  max-height: none;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.accordion-content-wrapper.collapsed {
+  max-height: 0;
+  flex: 0 0 0;
+}
+
+.accordion-content {
+  background-color: var(--sidebar-bg);
+  color: var(--sidebar-fg);
+  overflow: auto;
+}
+
+.accordion-content.flex-grow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.accordion-resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: ns-resize;
+  z-index: 10;
+}
+
+.accordion-resize-handle:hover .accordion-resize-line,
+.accordion-resize-handle.resizing .accordion-resize-line {
+  background-color: var(--focus-border);
+}
+
+.accordion-resize-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: transparent;
+  transition: background-color 0.2s ease;
+}
+
+/* ==================== 文件树样式 ==================== */
+.file-tree-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--sidebar-bg);
+  color: var(--sidebar-fg);
+}
+
+.file-tree-node {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.file-tree-node-content {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  line-height: 22px;
+  min-height: 22px;
+  color: var(--sidebar-fg);
+}
+
+.file-tree-node-content:hover {
+  background-color: var(--list-hover-bg);
+}
+
+.file-tree-node-content.selected {
+  background-color: var(--list-active-bg);
+  color: var(--list-active-fg);
+}
+
+.file-tree-node-content.focused {
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+}
+
+.file-tree-node-content.editing {
+  background-color: var(--input-bg);
+}
+
+.file-tree-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 2px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--sidebar-fg);
+}
+
+.file-tree-chevron:hover {
+  background-color: var(--list-hover-bg);
+}
+
+.file-tree-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  font-size: 16px;
+  color: var(--sidebar-fg);
+}
+
+.file-tree-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+}
+
+.file-tree-children {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==================== 文件树操作按钮 ==================== */
+.file-tree-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background-color: var(--sidebar-bg);
+}
+
+.file-tree-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  color: var(--sidebar-fg);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.file-tree-action-button:hover {
+  background-color: var(--list-hover-bg);
+}
+
+.file-tree-action-button:active {
+  background-color: var(--list-active-bg);
+}
+
+/* ==================== Monaco 编辑器样式修复 ==================== */
+/* 确保 Monaco 编辑器正确显示 */
+.monaco-editor-wrapper {
+  position: relative !important;
+  z-index: 1;
+}
+
+.monaco-editor {
+  position: relative !important;
+}
+
+.monaco-editor .overflow-guard {
+  position: relative !important;
+}
+
+/* 确保编辑器内容可见 */
+.monaco-editor .view-lines,
+.monaco-editor .view-line {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* 确保行号可见 */
+.monaco-editor .line-numbers,
+.monaco-editor .margin {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* 确保光标可见 */
+.monaco-editor .cursor {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* ==================== 右键菜单样式修复 ==================== */
+/* 确保右键菜单在所有元素之上 */
+.monaco-context-menu {
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+}

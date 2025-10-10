@@ -1,0 +1,35 @@
+{
+  "name": "night-owl",
+  "displayName": "Night Owl",
+  "description": "A VS Code theme for the night owls out there",
+  "version": "2.0.1",
+  "publisher": "sdras",
+  "engines": {
+    "vscode": "^1.51.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Night Owl",
+        "uiTheme": "vs-dark",
+        "path": "./themes/Night Owl-color-theme.json"
+      },
+      {
+        "label": "Night Owl (No Italics)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/Night Owl-color-theme-noitalic.json"
+      },
+      {
+        "label": "Night Owl Light",
+        "uiTheme": "vs",
+        "path": "./themes/Night Owl-Light-color-theme.json"
+      }
+    ]
+  }
+}
+
+
+

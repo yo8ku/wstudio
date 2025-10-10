@@ -1,0 +1,43 @@
+{
+  "name": "json",
+  "displayName": "JSON Tools",
+  "description": "Tools for manipulating JSON",
+  "version": "1.0.2",
+  "publisher": "ZainChen",
+  "engines": {
+    "vscode": "^1.51.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters"
+  ],
+  "activationEvents": [
+    "onLanguage:json",
+    "onLanguage:jsonc"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "json",
+        "extensions": [".json"]
+      },
+      {
+        "id": "jsonc",
+        "extensions": [".jsonc"]
+      }
+    ],
+    "commands": [
+      {
+        "command": "json.format",
+        "title": "Format JSON"
+      },
+      {
+        "command": "json.minify",
+        "title": "Minify JSON"
+      }
+    ]
+  }
+}
+
+
+

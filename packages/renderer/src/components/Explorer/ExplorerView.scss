@@ -1,0 +1,41 @@
+/**
+ * 资源管理器主视图样式
+ * 完全模仿 VSCode 的 Sidebar 设计
+ * 所有可折叠面板（打开的编辑器、文件树、大纲、时间线）在同一层级平铺
+ */
+
+.explorer-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: var(--vscode-sideBar-background, #252526);
+  color: var(--vscode-sideBar-foreground, #cccccc);
+  overflow: hidden; /* 外层不滚动，让每个 section 独立滚动 */
+
+  /* VSCode 风格的滚动条 */
+  &::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+    border-radius: 0;
+
+    &:hover {
+      background: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+    }
+
+    &:active {
+      background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+    }
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}

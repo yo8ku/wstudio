@@ -1,0 +1,712 @@
+/**
+ * 知识库样式文件
+ * 功能：定义知识库组件的样式
+ * 描述：使用VSCode主题变量，支持主题切换
+ */
+
+.knowledge-base {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+
+  /* 搜索栏 */
+  &__search {
+    padding: 8px;
+    border-bottom: 1px solid;
+    flex-shrink: 0;
+  }
+
+  &__search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  &__search-icon {
+    position: absolute;
+    left: 8px;
+    width: 16px;
+    height: 16px;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  &__search-input {
+    width: 100%;
+    padding-left: 28px !important;
+    font-size: 13px !important;
+    height: 32px !important;
+  }
+
+  /* 内容区 */
+  &__content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* 底部工具栏 */
+  &__footer {
+    padding: 8px;
+    border-top: 1px solid;
+    flex-shrink: 0;
+  }
+
+  &__footer-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: opacity 0.1s ease;
+
+    .icon-refresh {
+      width: 14px;
+      height: 14px;
+    }
+
+    &:hover {
+      opacity: 0.9;
+    }
+
+    &:active {
+      opacity: 0.8;
+    }
+  }
+}
+
+/* 知识库分组 */
+.knowledge-base-group {
+  /* 分组标题 */
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    user-select: none;
+    font-size: 12px;
+    font-weight: 600;
+    gap: 4px;
+  }
+
+  &__header-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    cursor: pointer;
+    padding: 2px 0;
+  }
+
+  &__header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  &__action-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.1s ease;
+    flex-shrink: 0;
+
+    .icon-add,
+    .icon-sort,
+    .icon-add-document {
+      width: 16px;
+      height: 16px;
+    }
+
+    &:hover {
+      background-color: var(--list-hover-bg);
+    }
+  }
+
+  &__add-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.1s ease;
+    flex-shrink: 0;
+
+    .icon-add {
+      width: 16px;
+      height: 16px;
+    }
+
+    &:hover {
+      background-color: var(--list-hover-bg);
+    }
+  }
+
+  &__icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    .icon-chevron {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  &__title {
+    flex: 1;
+  }
+
+  &__count {
+    font-size: 11px;
+    opacity: 0.6;
+  }
+
+  /* 分组内容 */
+  &__content {
+    padding: 4px 0;
+  }
+
+  &__empty {
+    padding: 16px 8px;
+    text-align: center;
+    font-size: 12px;
+    opacity: 0.5;
+  }
+}
+
+/* 知识库项 */
+.knowledge-base-item {
+  &__content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin: 2px 6px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    border-radius: 4px;
+    transition: background-color 0.15s ease;
+    background-color: transparent;
+    color: var(--sidebar-fg);
+
+    &:hover:not(.selected) {
+      background-color: var(--list-hover-bg);
+    }
+
+    &.selected {
+      background-color: var(--list-active-bg);
+      color: var(--list-active-fg);
+      font-weight: 500;
+
+      &:hover {
+        background-color: var(--list-active-bg);
+        filter: brightness(0.95);
+      }
+    }
+  }
+
+  &__icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    .icon-chevron {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  &__type-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    .icon-folder,
+    .icon-file {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  &__cover {
+    width: 16px;
+    height: 16px;
+    object-fit: cover;
+    border-radius: 2px;
+  }
+
+  &__title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__metadata {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    opacity: 0.6;
+    flex-shrink: 0;
+
+    .metadata-text {
+      white-space: nowrap;
+    }
+  }
+
+  &__children {
+    /* 子项容器 */
+  }
+}
+
+/* 文件导入对话框 */
+.file-import-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.file-import-dialog {
+  width: 480px;
+  max-width: 90vw;
+  max-height: 80vh;
+  border: 1px solid;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* 对话框标题 */
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid;
+
+    h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.1s ease;
+
+    &:hover {
+      background-color: var(--list-hover-bg);
+    }
+  }
+
+  /* 对话框内容 */
+  &__body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  &__section {
+    margin-bottom: 16px;
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+  }
+
+  &__group-selector {
+    display: flex;
+    gap: 16px;
+
+    .group-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: normal;
+
+      input[type='radio'] {
+        cursor: pointer;
+      }
+    }
+  }
+
+  &__buttons {
+    display: flex;
+    gap: 8px;
+  }
+
+  &__browse-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex: 1;
+    padding: 10px 16px;
+    border: 1px solid;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: opacity 0.1s ease;
+
+    .icon-add {
+      width: 16px;
+      height: 16px;
+    }
+
+    &:hover {
+      opacity: 0.9;
+    }
+  }
+
+  &__hint {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+
+  &__file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  /* 对话框底部 */
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid;
+  }
+
+  &__button {
+    padding: 6px 16px;
+    border: 1px solid;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: opacity 0.1s ease;
+
+    &:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+    }
+
+    &--cancel {
+      &:hover {
+        background-color: var(--list-hover-bg);
+      }
+    }
+  }
+}
+
+/* 文件预览项 */
+.file-preview-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: 12px;
+
+  &__name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__size {
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+}
+
+/* 创建知识库对话框 */
+.create-knowledge-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.create-knowledge-dialog {
+  width: 540px;
+  max-width: 90vw;
+  max-height: 80vh;
+  border: 1px solid;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* 对话框标题 */
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid;
+
+    h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.1s ease;
+
+    &:hover {
+      background-color: var(--list-hover-bg);
+    }
+  }
+
+  /* 对话框内容 */
+  &__body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  &__section {
+    margin-bottom: 16px;
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+  }
+
+  &__input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid;
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+    box-sizing: border-box;
+
+    &:focus {
+      border-color: var(--button-bg);
+    }
+
+    &::placeholder {
+      color: var(--descriptionForeground);
+    }
+  }
+
+  &__textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid;
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+    resize: none;
+    box-sizing: border-box;
+
+    &:focus {
+      border-color: var(--button-bg);
+    }
+
+    &::placeholder {
+      color: var(--descriptionForeground);
+    }
+  }
+
+  &__cover-upload {
+    width: 100%;
+    height: 160px;
+    border: 2px dashed;
+    border-radius: 4px;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+    transition: border-color 0.1s ease;
+
+    &:hover {
+      border-color: var(--button-bg);
+    }
+
+    .cover-preview {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center;
+    }
+
+    .cover-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 8px;
+
+      .icon-add {
+        width: 32px;
+        height: 32px;
+      }
+
+      span {
+        font-size: 13px;
+      }
+    }
+  }
+
+  /* 对话框底部 */
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid;
+  }
+
+  &__button {
+    padding: 6px 16px;
+    border: 1px solid;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: opacity 0.1s ease;
+
+    &:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+    }
+
+    &--cancel {
+      &:hover {
+        background-color: var(--list-hover-bg);
+      }
+    }
+  }
+}
+
+// 右键菜单
+.knowledge-base-context-menu {
+  background-color: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  min-width: 160px;
+  padding: 4px 0;
+  color: var(--menu-fg);
+
+  .context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--menu-fg);
+
+    svg {
+      flex-shrink: 0;
+      opacity: 0.8;
+    }
+
+    span {
+      flex: 1;
+    }
+
+    &:hover {
+      background-color: var(--menu-selection-bg);
+      color: var(--menu-selection-fg);
+    }
+
+    &--danger {
+      color: var(--errorForeground, #f48771);
+
+      &:hover {
+        background-color: var(--menu-selection-bg);
+      }
+    }
+  }
+
+  .context-menu-divider {
+    height: 1px;
+    background-color: var(--menu-border);
+    margin: 4px 0;
+  }
+}

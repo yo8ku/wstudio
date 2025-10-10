@@ -1,0 +1,49 @@
+{
+  "name": "hello-world-extension",
+  "displayName": "Hello World",
+  "description": "A simple hello world extension for Note Studio",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:helloWorld.sayHello"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "helloWorld.sayHello",
+        "title": "Hello World: Say Hello"
+      }
+    ],
+    "configuration": {
+      "title": "Hello World",
+      "properties": {
+        "helloWorld.greeting": {
+          "type": "string",
+          "default": "Hello",
+          "description": "The greeting message to display"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.18",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@note-studio/extension-api": "workspace:*"
+  }
+}
+
+
+

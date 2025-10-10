@@ -1,0 +1,147 @@
+// packages/renderer/src/components/Layout/MenuBar.scss
+
+.menu-bar {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  background-color: var(--vscode-menu-background, #2d2d30);
+  color: var(--vscode-menu-foreground, #cccccc);
+  font-size: 13px;
+  user-select: none;
+  position: relative;
+  z-index: 1000;
+  border-bottom: 1px solid var(--vscode-menu-border, #454545);
+
+  .menu-bar-item {
+    position: relative;
+    height: 100%;
+
+    .menu-label {
+      height: 100%;
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      transition: background-color 0.1s ease;
+
+      &:hover,
+      &.active {
+        background-color: var(--vscode-menu-selectionBackground, #094771);
+        color: var(--vscode-menu-selectionForeground, #ffffff);
+      }
+    }
+  }
+
+  .submenu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 220px;
+    background-color: var(--vscode-menu-background, #252526);
+    border: 1px solid var(--vscode-menu-border, #454545);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    padding: 4px 0;
+    z-index: 10000;
+
+    &.level-0 {
+      top: 100%;
+    }
+
+    &.level-1,
+    &.level-2,
+    &.level-3 {
+      top: -5px;
+      left: 100%;
+    }
+  }
+
+  .menu-item {
+    position: relative;
+    padding: 4px 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    min-height: 28px;
+    transition: background-color 0.1s ease;
+
+    &:hover:not(.disabled) {
+      background-color: var(--vscode-menu-selectionBackground, #094771);
+      color: var(--vscode-menu-selectionForeground, #ffffff);
+
+      .menu-item-shortcut {
+        color: var(--vscode-menu-selectionForeground, #ffffff);
+      }
+    }
+
+    &.disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    &.has-submenu {
+      padding-right: 30px;
+    }
+
+    .menu-item-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      gap: 32px;
+    }
+
+    .menu-item-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      white-space: nowrap;
+    }
+
+    .menu-item-check {
+      width: 16px;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .menu-item-shortcut {
+      color: var(--vscode-menu-foreground, #888888);
+      font-size: 12px;
+      opacity: 0.7;
+      white-space: nowrap;
+    }
+
+    .menu-item-arrow {
+      position: absolute;
+      right: 8px;
+      font-size: 10px;
+      opacity: 0.7;
+    }
+  }
+
+  .menu-separator {
+    height: 1px;
+    background-color: var(--vscode-menu-separatorBackground, #454545);
+    margin: 4px 0;
+  }
+}
+
+// 暗色主题变量
+:root {
+  --vscode-menu-background: #2d2d30;
+  --vscode-menu-foreground: #cccccc;
+  --vscode-menu-selectionBackground: #094771;
+  --vscode-menu-selectionForeground: #ffffff;
+  --vscode-menu-border: #454545;
+  --vscode-menu-separatorBackground: #454545;
+}
+
+// 浅色主题
+.light-theme {
+  --vscode-menu-background: #f3f3f3;
+  --vscode-menu-foreground: #616161;
+  --vscode-menu-selectionBackground: #0060c0;
+  --vscode-menu-selectionForeground: #ffffff;
+  --vscode-menu-border: #cccccc;
+  --vscode-menu-separatorBackground: #d4d4d4;
+}

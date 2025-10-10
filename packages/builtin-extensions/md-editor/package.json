@@ -1,0 +1,223 @@
+{
+  "name": "md-editor",
+  "displayName": "Markdown 编辑器",
+  "version": "1.0.0",
+  "description": "功能完整的 Markdown 编辑器，提供格式化、预览、快捷键等功能",
+  "main": "./extension.js",
+  "engines": {
+    "noteStudio": "^1.0.0"
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "markdown",
+        "extensions": [".md", ".markdown", ".mdown", ".mkd"],
+        "aliases": ["Markdown", "markdown"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "mdEditor.toggleBold",
+        "title": "Markdown: 加粗",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleItalic",
+        "title": "Markdown: 斜体",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleStrikethrough",
+        "title": "Markdown: 删除线",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleCode",
+        "title": "Markdown: 行内代码",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleCodeBlock",
+        "title": "Markdown: 代码块",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.insertLink",
+        "title": "Markdown: 插入链接",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.insertImage",
+        "title": "Markdown: 插入图片",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.insertTable",
+        "title": "Markdown: 插入表格",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleHeading1",
+        "title": "Markdown: 一级标题",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleHeading2",
+        "title": "Markdown: 二级标题",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleHeading3",
+        "title": "Markdown: 三级标题",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleUnorderedList",
+        "title": "Markdown: 无序列表",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleOrderedList",
+        "title": "Markdown: 有序列表",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleTaskList",
+        "title": "Markdown: 任务列表",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.toggleQuote",
+        "title": "Markdown: 引用",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.insertHorizontalRule",
+        "title": "Markdown: 插入分割线",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.showPreview",
+        "title": "Markdown: 打开预览",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.showPreviewToSide",
+        "title": "Markdown: 在侧边打开预览",
+        "category": "Markdown"
+      },
+      {
+        "command": "mdEditor.formatDocument",
+        "title": "Markdown: 格式化文档",
+        "category": "Markdown"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "mdEditor.toggleBold",
+        "key": "ctrl+b",
+        "mac": "cmd+b",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "mdEditor.toggleItalic",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "mdEditor.toggleCode",
+        "key": "ctrl+`",
+        "mac": "cmd+`",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "mdEditor.insertLink",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "mdEditor.showPreviewToSide",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "editorLangId == markdown"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "editorLangId == markdown",
+          "command": "mdEditor.toggleBold",
+          "group": "markdown@1"
+        },
+        {
+          "when": "editorLangId == markdown",
+          "command": "mdEditor.toggleItalic",
+          "group": "markdown@2"
+        },
+        {
+          "when": "editorLangId == markdown",
+          "command": "mdEditor.insertLink",
+          "group": "markdown@3"
+        },
+        {
+          "when": "editorLangId == markdown",
+          "command": "mdEditor.insertImage",
+          "group": "markdown@4"
+        },
+        {
+          "when": "editorLangId == markdown",
+          "command": "mdEditor.showPreviewToSide",
+          "group": "markdown@5"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Markdown 编辑器",
+      "properties": {
+        "mdEditor.preview.fontFamily": {
+          "type": "string",
+          "default":"\"Cascadia Mono\", 微软雅黑, MonoLisa, Consolas, Consolas, \"Courier New\", monospace",
+          "description": "预览窗口的字体"
+        },
+        "mdEditor.preview.fontSize": {
+          "type": "number",
+          "default": 14,
+          "description": "预览窗口的字体大小"
+        },
+        "mdEditor.preview.lineHeight": {
+          "type": "number",
+          "default": 1.6,
+          "description": "预览窗口的行高"
+        },
+        "mdEditor.autoCloseBrackets": {
+          "type": "boolean",
+          "default": true,
+          "description": "自动闭合括号和引号"
+        },
+        "mdEditor.formatOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "保存时自动格式化文档"
+        },
+        "mdEditor.boldStyle": {
+          "type": "string",
+          "enum": ["**", "__"],
+          "default": "**",
+          "description": "加粗的标记样式"
+        },
+        "mdEditor.italicStyle": {
+          "type": "string",
+          "enum": ["*", "_"],
+          "default": "*",
+          "description": "斜体的标记样式"
+        }
+      }
+    }
+  }
+}

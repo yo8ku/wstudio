@@ -1,0 +1,80 @@
+.outline-section {
+  padding: 4px 0;
+
+  .outline-empty {
+    padding: 12px 20px;
+    color: var(--foreground-muted, #888888);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  .outline-node {
+    user-select: none;
+
+    .outline-node-content {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+
+      &:hover {
+        background-color: var(--hover-bg, rgba(255, 255, 255, 0.05));
+      }
+
+      &.selected {
+        background-color: var(--active-bg, rgba(255, 255, 255, 0.1));
+      }
+
+      .outline-chevron {
+        font-size: 10px;
+        width: 12px;
+        display: inline-block;
+        transition: transform 0.2s ease;
+        flex-shrink: 0;
+      }
+
+      .outline-icon {
+        font-size: 12px;
+        line-height: 1;
+        flex-shrink: 0;
+      }
+
+      .outline-name {
+        flex: 1;
+        font-size: 13px;
+        color: var(--foreground-color, #cccccc);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+  }
+
+  .outline-actions {
+    display: flex;
+    gap: 4px;
+
+    .outline-action-button {
+      background: none;
+      border: none;
+      color: var(--foreground-color, #cccccc);
+      cursor: pointer;
+      padding: 4px;
+      font-size: 16px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+      transition: background-color 0.15s ease;
+
+      &:hover {
+        background-color: var(--hover-bg, rgba(255, 255, 255, 0.1));
+      }
+    }
+  }
+}
+
+

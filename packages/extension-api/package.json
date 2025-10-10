@@ -1,0 +1,23 @@
+{
+  "name": "@note-studio/extension-api",
+  "version": "1.0.0",
+  "description": "VSCode API compatibility layer for Note Studio",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npx tsc",
+    "dev": "npx tsc --watch"
+  },
+  "keywords": [
+    "vscode",
+    "api",
+    "extensions"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.19.18",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.6.3"
+  }
+}

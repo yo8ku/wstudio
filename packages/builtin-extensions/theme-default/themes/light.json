@@ -1,0 +1,44 @@
+{
+  "name": "默认浅色主题",
+  "type": "light",
+  "colors": {
+    "editor.background": "#ffffff",
+    "editor.foreground": "#333333",
+    
+    "quickInput.background": "#f3f3f3",
+    "quickInput.foreground": "#333333",
+    "quickInput.border": "#e5e5e5",
+    "quickInputTitle.background": "#ffffff",
+    
+    "input.background": "#ffffff",
+    "input.foreground": "#333333",
+    "input.border": "#cecece",
+    "input.placeholderForeground": "#999999",
+    
+    "list.hoverBackground": "#e8e8e8",
+    "list.focusBackground": "#0060c0",
+    "list.focusForeground": "#ffffff",
+    
+    "keybindingLabel.foreground": "#555555",
+    "keybindingLabel.background": "#dddddd",
+    "keybindingLabel.border": "#cccccc",
+    "keybindingLabel.bottomBorder": "#bbbbbb",
+    
+    "descriptionForeground": "#717171",
+    
+    "focusBorder": "#0090f1",
+    
+    "widget.shadow": "#00000033",
+    
+    "scrollbarSlider.background": "#79797966",
+    "scrollbarSlider.hoverBackground": "#64646499",
+    "scrollbarSlider.activeBackground": "#646464cc",
+    
+    "panel.border": "#e5e5e5",
+    "sideBar.border": "#e5e5e5",
+    "contrastBorder": "#e5e5e5"
+  }
+}
+
+
+

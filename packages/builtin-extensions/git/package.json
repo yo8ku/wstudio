@@ -1,0 +1,28 @@
+{
+  "name": "git-integration",
+  "displayName": "Git 集成",
+  "version": "1.0.0",
+  "description": "Git 源代码管理集成",
+  "main": "./extension.js",
+  "engines": {
+    "noteStudio": "^1.0.0"
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "git.init",
+        "title": "Git: 初始化仓库"
+      },
+      {
+        "command": "git.commit",
+        "title": "Git: 提交"
+      }
+    ]
+  }
+}
+
+
+

@@ -1,0 +1,40 @@
+{
+  "name": "markdown-all-in-one",
+  "displayName": "Markdown All in One",
+  "description": "All you need to write Markdown (keyboard shortcuts, table of contents, auto preview and more)",
+  "version": "3.6.2",
+  "publisher": "yzhang",
+  "engines": {
+    "vscode": "^1.67.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "markdown",
+    "preview",
+    "toc",
+    "table of contents"
+  ],
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "markdown",
+        "extensions": [".md", ".markdown", ".mdown", ".mkd", ".mkdn"]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "markdown",
+        "scopeName": "text.html.markdown",
+        "path": "./syntaxes/markdown.tmLanguage.json"
+      }
+    ]
+  }
+}
+
+
+

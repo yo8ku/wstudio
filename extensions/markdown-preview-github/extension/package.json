@@ -1,0 +1,144 @@
+{
+  "name": "markdown-preview-github-styles",
+  "version": "2.2.0",
+  "displayName": "Markdown Preview Github Styling",
+  "description": "Changes VS Code's built-in markdown preview to match Github's style",
+  "keywords": [
+    "markdown",
+    "markdown style",
+    "github",
+    "github markdown",
+    "style"
+  ],
+  "icon": "logo/logox128.png",
+  "publisher": "bierner",
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/mjbvz/vscode-github-markdown-preview-style.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mjbvz/vscode-github-markdown-preview-style/issues"
+  },
+  "engines": {
+    "vscode": "^1.41.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "dist/extension.js",
+  "browser": "dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "markdown.markdownItPlugins": true,
+    "markdown.previewStyles": [
+      "./dist/base.css",
+      "./dist/github-markdown-theme-base.css",
+      "./dist/github-markdown-light.css",
+      "./dist/github-markdown-light-colorblind.css",
+      "./dist/github-markdown-light-tritanopia.css",
+      "./dist/github-markdown-light-high-contrast.css",
+      "./dist/github-markdown-dark.css",
+      "./dist/github-markdown-dark-dimmed.css",
+      "./dist/github-markdown-dark-colorblind.css",
+      "./dist/github-markdown-dark-tritanopia.css",
+      "./dist/github-markdown-dark-high-contrast.css",
+      "./dist/highlight-js.css"
+    ],
+    "configuration": [
+      {
+        "title": "Markdown Preview Github Styling",
+        "properties": {
+          "markdown-preview-github-styles.colorTheme": {
+            "type": "string",
+            "order": 0,
+            "description": "Color theme mode for the styling of the Markdown preview.",
+            "enum": [
+              "auto",
+              "system",
+              "light",
+              "dark"
+            ],
+            "enumItemLabels": [
+              "Auto (match editor)",
+              "System",
+              "Single theme: Light",
+              "Single theme: Dark"
+            ],
+            "enumDescriptions": [
+              "Automatically match the editor color theme.",
+              "Sync to the system/OS color theme.",
+              "Always use the selected Light theme",
+              "Always use the selected Dark theme"
+            ],
+            "default": "auto"
+          },
+          "markdown-preview-github-styles.lightTheme": {
+            "type": "string",
+            "order": 1,
+            "markdownDescription": "Theme to use when displaying in Light mode. Ignored if `#markdown-preview-github-styles.colorTheme#` is set to `Single theme: Dark`",
+            "enum": [
+              "light",
+              "light_high_contrast",
+              "light_colorblind",
+              "light_tritanopia",
+              "dark",
+              "dark_high_contrast",
+              "dark_colorblind",
+              "dark_tritanopia",
+              "dark_dimmed"
+            ],
+            "enumItemLabels": [
+              "Light",
+              "Light high contrast",
+              "Light Protanopia & Deuteranopia",
+              "Light Tritanopia",
+              "Dark",
+              "Dark high contrast",
+              "Dark Protanopia & Deuteranopia",
+              "Dark Tritanopia",
+              "Dark dimmed"
+            ],
+            "default": "light"
+          },
+          "markdown-preview-github-styles.darkTheme": {
+            "type": "string",
+            "order": 2,
+            "markdownDescription": "Theme to use when displaying in Dark mode. Ignored if `#markdown-preview-github-styles.colorTheme#` is set to `Single theme: Light`.",
+            "enum": [
+              "light",
+              "light_high_contrast",
+              "light_colorblind",
+              "light_tritanopia",
+              "dark",
+              "dark_high_contrast",
+              "dark_colorblind",
+              "dark_tritanopia",
+              "dark_dimmed"
+            ],
+            "enumItemLabels": [
+              "Light",
+              "Light high contrast",
+              "Light Protanopia & Deuteranopia",
+              "Light Tritanopia",
+              "Dark",
+              "Dark high contrast",
+              "Dark Protanopia & Deuteranopia",
+              "Dark Tritanopia",
+              "Dark dimmed"
+            ],
+            "default": "dark"
+          }
+        }
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^13.0.7",
+    "@types/node": "^22.5.5",
+    "generate-github-markdown-css": "^6.5.1"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node ./build/generate-github-css.mjs"
+  }
+}
