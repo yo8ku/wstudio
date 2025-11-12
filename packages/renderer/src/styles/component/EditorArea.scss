@@ -1,0 +1,25 @@
+/**
+ * EditorArea 编辑器区域颜色样式
+ * 功能：定义编辑器区域的颜色主题
+ */
+
+.editor-area {
+  background-color: var(--ws-editor-background);
+}
+
+.editor-group {
+  background-color: var(--ws-editor-background);
+  border-color: var(--ws-editorGroup-border);
+}
+
+.editor-group-drop-overlay {
+  background-color: var(--ws-editorGroup-dropBackground);
+}
+
+
+
+
+
+
+
+

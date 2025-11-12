@@ -1,6 +1,6 @@
 /**
- * 设置上下文
- * 提供全局的设置状态管理
+ * 设置上下载
+ * 提供全局的设置状态管
  */
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';

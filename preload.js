@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on(channel, subscription);
       return () => ipcRenderer.removeListener(channel, subscription);
     },
+    once: (channel, callback) => {
+      const subscription = (event, ...args) => callback(event, ...args);
+      ipcRenderer.once(channel, subscription);
+    },
     removeListener: (channel, callback) => {
       ipcRenderer.removeListener(channel, callback);
     }
@@ -55,6 +59,7 @@ contextBridge.exposeInMainWorld('electron', {
     getDir: () => ipcRenderer.invoke('workspace:get-dir'),
     getRecentFiles: () => ipcRenderer.invoke('workspace:get-recent-files'),
     getLastOpened: () => ipcRenderer.invoke('workspace:get-last-opened'),
+    addRecentFile: (filePath) => ipcRenderer.invoke('workspace:add-recent-file', filePath),
     clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files')
   },
   
@@ -79,6 +84,51 @@ contextBridge.exposeInMainWorld('electron', {
     getModels: () => ipcRenderer.invoke('builtin-ai:get-models'),
     updateModels: (models) => ipcRenderer.invoke('builtin-ai:update-models', models),
     chat: (model, messages) => ipcRenderer.invoke('builtin-ai:chat', { model, messages })
+  },
+  
+  // 片段数据库 API
+  snippet: {
+    initialize: () => ipcRenderer.invoke('snippet:initialize'),
+    add: (snippet) => ipcRenderer.invoke('snippet:add', snippet),
+    update: (id, snippet) => ipcRenderer.invoke('snippet:update', id, snippet),
+    delete: (id) => ipcRenderer.invoke('snippet:delete', id),
+    get: (id) => ipcRenderer.invoke('snippet:get', id),
+    query: (query) => ipcRenderer.invoke('snippet:query', query),
+    getAll: (limit) => ipcRenderer.invoke('snippet:getAll', limit),
+    import: (snippets) => ipcRenderer.invoke('snippet:import', snippets),
+    clearAll: () => ipcRenderer.invoke('snippet:clearAll')
+  },
+  
+  // 终端 API
+  terminal: {
+    create: (cols, rows, cwd) => ipcRenderer.invoke('terminal:create', { cols, rows, cwd }),
+    write: (id, data) => ipcRenderer.invoke('terminal:write', id, data),
+    resize: (id, cols, rows) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
+    destroy: (id) => ipcRenderer.invoke('terminal:destroy', id),
+    onData: (callback) => {
+      const subscription = (event, ...args) => callback(...args);
+      ipcRenderer.on('terminal:data', subscription);
+      return () => ipcRenderer.removeListener('terminal:data', subscription);
+    },
+    onExit: (callback) => {
+      const subscription = (event, ...args) => callback(...args);
+      ipcRenderer.on('terminal:exit', subscription);
+      return () => ipcRenderer.removeListener('terminal:exit', subscription);
+    }
+  },
+  
+  // 文件引用 API
+  fileReference: {
+    add: (filePath, content, storeType, sessionId, options) => 
+      ipcRenderer.invoke('file-reference:add', filePath, content, storeType, sessionId, options),
+    search: (query, sessionId, options) => 
+      ipcRenderer.invoke('file-reference:search', query, sessionId, options),
+    searchBoth: (query, sessionId, options) => 
+      ipcRenderer.invoke('file-reference:search-both', query, sessionId, options),
+    clearTemporary: (sessionId) => 
+      ipcRenderer.invoke('file-reference:clear-temporary', sessionId),
+    setSession: (sessionId) => 
+      ipcRenderer.invoke('file-reference:set-session', sessionId)
   }
 });
 
@@ -118,13 +168,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // VSIX 安装 API
   vsix: {
     install: (vsixPath) => ipcRenderer.invoke('vsix:install', vsixPath)
-  },
-  
-  // 主题相关 API
-  theme: {
-    list: () => ipcRenderer.invoke('theme:list'),
-    apply: (themeId) => ipcRenderer.invoke('theme:apply', themeId),
-    getCurrent: () => ipcRenderer.invoke('theme:current')
   },
   
   // AI 相关 API
@@ -168,8 +211,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 内置AI服务 API（独立于用户AI配置）
   builtinAI: {
     getModels: () => ipcRenderer.invoke('builtin-ai:get-models'),
-    refreshModels: () => ipcRenderer.invoke('builtin-ai:refresh-models')
+    refreshModels: () => ipcRenderer.invoke('builtin-ai:refresh-models'),
+    updateUserModels: (models) => ipcRenderer.invoke('builtin-ai:update-user-models', models)
   },
+  
+  // 聊天历史 API（SQLite）
+  chatHistory: {
+    init: () => ipcRenderer.invoke('chat-history:init'),
+    createSession: (session) => ipcRenderer.invoke('chat-history:create-session', session),
+    updateSession: (id, title) => ipcRenderer.invoke('chat-history:update-session', id, title),
+    deleteSession: (id) => ipcRenderer.invoke('chat-history:delete-session', id),
+    getSessions: () => ipcRenderer.invoke('chat-history:get-sessions'),
+    addMessage: (message) => ipcRenderer.invoke('chat-history:add-message', message),
+    getMessages: (sessionId) => ipcRenderer.invoke('chat-history:get-messages', sessionId),
+    clearAll: () => ipcRenderer.invoke('chat-history:clear-all')
+  },
+  
+  // 常用片段配置 API
+  readSnippetsConfig: () => ipcRenderer.invoke('snippets:read-config'),
+  saveSnippetsConfig: (content) => ipcRenderer.invoke('snippets:save-config', content),
   
   // 系统信息
   platform: process.platform,
@@ -178,5 +238,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 窗口控制 API
   minimizeWindow: () => ipcRenderer.send('minimize-window'),
   maximizeWindow: () => ipcRenderer.send('maximize-window'),
-  closeWindow: () => ipcRenderer.send('close-window')
+  closeWindow: () => ipcRenderer.send('close-window'),
+  
+  // 窗口焦点状态监听
+  onWindowFocus: (callback) => {
+    ipcRenderer.on('window-focus', () => callback(true));
+  },
+  onWindowBlur: (callback) => {
+    ipcRenderer.on('window-blur', () => callback(false));
+  }
 });

@@ -1,11 +1,10 @@
 /**
- * Material Design 图标集
- * 使用 @ricons/material
+ * Material Design 图标 * 使用 @ricons/material
  */
 
 import type { IconSet } from '../IconRegistry';
 
-// 按需导入常用的 Material Design 图标
+// 按需导入常用Material Design 图标
 import {
   FolderOutlined as Folder,
   FolderOpenOutlined as FolderOpen,
@@ -43,16 +42,16 @@ import {
   InfoOutlined as Info,
   ChevronRightOutlined as ChevronRight,
   ExpandMoreOutlined as ExpandMore,
-  VerticalSplitOutlined as VerticalSplit,
   MoreVertOutlined as MoreVert,
   CloseOutlined as Close,
 } from '@ricons/material';
 
+// 注意：SplitVertical 图标已迁移到 ui 图标集
+
 export const materialIconSet: IconSet = {
   name: 'material',
   icons: {
-    // 文件夹
-    'folder': Folder,
+    // 文件    'folder': Folder,
     'folder-open': FolderOpen,
     
     // 基础文件
@@ -60,8 +59,7 @@ export const materialIconSet: IconSet = {
     'file-document': Description,
     'file-code': Code,
     
-    // 带 file- 前缀的文件类型图标（用于 FileIcons.tsx）
-    'file-ts': Code,
+    // file- 前缀的文件类型图标（用于 FileIcons.tsx    'file-ts': Code,
     'file-tsx': Code,
     'file-js': Javascript,
     'file-jsx': Javascript,
@@ -133,9 +131,9 @@ export const materialIconSet: IconSet = {
     // UI 控制
     'chevron-right': ChevronRight,
     'expand-more': ExpandMore,
-    'split-vertical': VerticalSplit,
     'more-vert': MoreVert,
     'close': Close,
+    // 注意：split-vertical 图标已迁移到 ui 图标集，使用 Icon name="split-vertical" 即可
   },
 };
 

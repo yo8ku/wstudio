@@ -1,8 +1,6 @@
 /**
- * 知识库图标组件模块
- * 功能：提供知识库所需的所有SVG图标
- * 描述：集中管理知识库使用的图标，便于维护和复用
- */
+ * 知识库图标组件模块 * 功能：提供知识库所需的所有SVG图标
+ * 描述：集中管理知识库使用的图标，便于维护和复制 */
 
 import React from 'react';
 
@@ -12,8 +10,7 @@ interface IconProps {
 }
 
 /**
- * 折叠箭头图标（右箭头）
- */
+ * 折叠箭头图标（右箭头 */
 export const ChevronRightIcon: React.FC<IconProps> = ({ className, style }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 
@@ -26,8 +23,7 @@ export const ChevronRightIcon: React.FC<IconProps> = ({ className, style }) => (
 );
 
 /**
- * 展开箭头图标（下箭头）
- */
+ * 展开箭头图标（下箭头 */
 export const ChevronDownIcon: React.FC<IconProps> = ({ className, style }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 
@@ -75,8 +71,7 @@ export const TextFileIcon: React.FC<IconProps> = ({ className, style }) => (
 );
 
 /**
- * 文件夹图标
- */
+ * 文件夹图标 */
 export const FolderIcon: React.FC<IconProps> = ({ className, style }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 
@@ -158,8 +153,7 @@ export const AddIcon: React.FC<IconProps> = ({ className, style }) => (
 );
 
 /**
- * 搜索过滤图标（简洁的搜索图标）
- */
+ * 搜索过滤图标（简洁的搜索图标 */
 export const SearchFilterIcon: React.FC<IconProps> = ({ className, style }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 
@@ -215,8 +209,7 @@ export const AddDocumentIcon: React.FC<IconProps> = ({ className, style }) => (
 );
 
 /**
- * 清除图标（X符号）
- */
+ * 清除图标（X符号 */
 export const ClearIcon: React.FC<IconProps> = ({ className, style }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 
@@ -232,8 +225,7 @@ export const ClearIcon: React.FC<IconProps> = ({ className, style }) => (
 );
 
 /**
- * 获取文件类型对应的图标
- */
+ * 获取文件类型对应的图标 */
 export const getFileIcon = (fileType?: string): React.FC<IconProps> => {
   if (fileType === 'markdown' || fileType === 'md') {
     return MarkdownIcon;

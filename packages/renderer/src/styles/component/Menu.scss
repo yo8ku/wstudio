@@ -1,0 +1,27 @@
+// 全局菜单的颜色配置
+
+.menu {
+    background-color: var(--ws-menu-background);
+
+    .menu-item {
+        &:hover {
+            background-color: var(--ws-button-hoverBackground);
+            color: var(--ws-button-activeForeground);
+        }
+    }
+}
+
+
+[data-theme-mode='dark'] .menu {
+    border: 1px solid #7e7e7e50;
+    box-shadow: 0 0 30px #000000ad;
+}
+
+[data-theme-mode='light'] .menu {
+    border: 1px solid #7e7e7e52;
+    box-shadow: 0 0 30px #0000009d;
+}
+
+.agent-button{
+    color: var(--ws-foreground);
+}

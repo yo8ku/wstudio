@@ -2,16 +2,13 @@
  * 搜索引擎
  */
 
-import { VectorSearch } from './VectorSearch';
 import { HybridSearch } from './HybridSearch';
 import { SearchQuery, SearchResponse } from './types';
 
 export class SearchEngine {
-  private vectorSearch: VectorSearch;
   private hybridSearch: HybridSearch;
 
-  constructor(vectorSearch: VectorSearch, hybridSearch: HybridSearch) {
-    this.vectorSearch = vectorSearch;
+  constructor(hybridSearch: HybridSearch) {
     this.hybridSearch = hybridSearch;
   }
 
@@ -23,14 +20,8 @@ export class SearchEngine {
     let hits;
 
     switch (query.searchType) {
-      case 'vector':
-        hits = await this.vectorSearch.search(query);
-        break;
       case 'hybrid':
         hits = await this.hybridSearch.search(query);
-        break;
-      case 'semantic':
-        hits = await this.vectorSearch.semanticSearch(query);
         break;
       default:
         hits = await this.hybridSearch.search(query);
@@ -47,6 +38,14 @@ export class SearchEngine {
     };
   }
 }
+
+
+
+
+
+
+
+
 
 
 

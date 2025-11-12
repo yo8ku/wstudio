@@ -1,0 +1,30 @@
+/**
+ * Outline 大纲颜色样式
+ * 功能：定义大纲的颜色主题
+ */
+
+.outline-section {
+  background-color: var(--ws-sidebar-background);
+  color: var(--ws-sidebar-foreground);
+}
+
+.outline-item {
+  color: var(--ws-sidebar-foreground);
+}
+
+.outline-item:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.outline-item.active {
+  background-color: var(--ws-list-active-selection-background);
+  color: var(--ws-list-active-selection-foreground);
+}
+
+
+
+
+
+
+
+

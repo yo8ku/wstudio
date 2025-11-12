@@ -1,0 +1,78 @@
+/**
+ * 可拖动分隔条样式
+ */
+
+.resizer {
+  position: relative;
+  flex-shrink: 0;
+  background: transparent;
+  z-index: 10;
+
+  &-vertical {
+    width: 6px;
+    cursor: col-resize;
+
+    .resizer-handle {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1px;
+      height: 100%;
+      background: var(--ws-panel-border);
+      transition: background 0.15s ease, width 0.15s ease;
+    }
+
+    &:hover .resizer-handle {
+      background: var(--ws-focusBorder);
+      width: 2px;
+    }
+  }
+
+  &-horizontal {
+    height: 6px;
+    cursor: row-resize;
+
+    .resizer-handle {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 1px;
+      width: 100%;
+      background: var(--ws-panel-border);
+      transition: background 0.15s ease, height 0.15s ease;
+    }
+
+    &:hover .resizer-handle {
+      background: var(--ws-focusBorder);
+      height: 2px;
+    }
+  }
+
+  &-dragging {
+    &.resizer-vertical .resizer-handle {
+      background: var(--ws-focusBorder);
+      width: 2px;
+    }
+
+    &.resizer-horizontal .resizer-handle {
+      background: var(--ws-focusBorder);
+      height: 2px;
+    }
+  }
+}
+
+// 拖动时改变全局光标
+body {
+  &:has(.resizer-vertical.resizer-dragging) {
+    cursor: col-resize;
+    user-select: none;
+  }
+
+  &:has(.resizer-horizontal.resizer-dragging) {
+    cursor: row-resize;
+    user-select: none;
+  }
+}
+

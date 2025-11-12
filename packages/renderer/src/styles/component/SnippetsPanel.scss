@@ -1,0 +1,32 @@
+/**
+ * SnippetsPanel 代码片段面板颜色样式
+ * 功能：定义代码片段面板的颜色主题
+ */
+
+.snippets-panel {
+  background-color: var(--ws-panel-background);
+  color: var(--ws-editor-foreground);
+}
+
+.snippet-item {
+  background-color: var(--ws-sidebar-background);
+  border-color: var(--ws-sidebar-border);
+}
+
+.snippet-item:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.snippet-code {
+  background-color: var(--ws-textCodeBlock-background);
+  color: var(--ws-editor-foreground);
+  border-color: var(--ws-sidebar-border);
+}
+
+
+
+
+
+
+
+

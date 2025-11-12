@@ -2,7 +2,7 @@
  * 知识库主类
  */
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from '@note-studio/core';
 import {
   KnowledgeBaseConfig,
   Document,
@@ -30,9 +30,6 @@ export class KnowledgeBase extends EventEmitter {
     try {
       this.status = KnowledgeBaseStatus.INITIALIZING;
       this.emit('status-change', this.status);
-
-      // 初始化向量存储
-      await this.initializeVectorStore();
 
       // 初始化索引
       await this.initializeIndexes();
@@ -168,10 +165,6 @@ export class KnowledgeBase extends EventEmitter {
   }
 
   // Private methods
-  private async initializeVectorStore(): Promise<void> {
-    // 实现将在向量存储模块中完成
-  }
-
   private async initializeIndexes(): Promise<void> {
     // 实现将在索引模块中完成
   }

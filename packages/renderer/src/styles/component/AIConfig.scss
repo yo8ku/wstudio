@@ -1,0 +1,40 @@
+/**
+ * AIConfig AI配置颜色样式
+ * 功能：定义AI配置的颜色主题
+ */
+
+.ai-config-view {
+  background-color: var(--ws-editor-background);
+  color: var(--ws-editor-foreground);
+}
+
+.ai-config-item {
+  background-color: var(--ws-sidebar-background);
+  border-color: var(--ws-sidebar-border);
+}
+
+.ai-config-item:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.ai-config-label {
+  color: var(--ws-editor-foreground);
+}
+
+.ai-config-input {
+  background-color: var(--ws-input-background);
+  color: var(--ws-input-foreground);
+  border-color: var(--ws-input-border);
+}
+
+.ai-config-input:focus {
+  border-color: var(--ws-focus-border);
+}
+
+
+
+
+
+
+
+

@@ -1,0 +1,81 @@
+/**
+ * Sidebar 标题栏下拉菜单样式
+ * 主题配色
+ */
+
+.sidebar-header-menu {
+  position: fixed;
+  z-index: 9999;
+  border-radius: 3px;
+  min-width: 200px;
+  padding: 4px 2px;
+
+  &-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.1s ease;
+    border-radius: 4px !important;
+    &.disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+
+  &-check {
+    width: 16px;
+    min-width: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-right: 8px;
+  }
+
+  &-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+  }
+
+  &-label {
+    flex: 1;
+    white-space: nowrap;
+  }
+
+  &-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    margin-left: 8px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.15s ease, background-color 0.1s ease;
+  }
+
+  &-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    margin-left: 8px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.15s ease, background-color 0.1s ease;
+  }
+
+  &-item:hover &-action,
+  &-item:hover &-action-icon {
+    opacity: 1;
+  }
+
+  &-separator {
+    height: 1px;
+    margin: 4px 0;
+  }
+}
+

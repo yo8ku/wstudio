@@ -1,0 +1,53 @@
+/**
+ * FileTree 文件树颜色样式
+ * 功能：定义文件树的颜色主题
+ */
+
+.file-tree {
+  background-color: var(--ws-sidebar-background);
+  color: var(--ws-sidebar-foreground);
+}
+
+.file-tree-item {
+  color: var(--ws-sidebar-foreground);
+}
+
+.file-tree-item:hover {
+  background-color: var(--ws-list-hover-background);
+  color: var(--ws-list-hoverForeground);
+}
+
+.file-tree-item.active {
+  background-color: var(--ws-list-active-selection-background);
+  color: var(--ws-list-active-selection-foreground);
+}
+
+.file-tree-item.selected {
+  background-color: var(--ws-list-inactiveSelectionBackground);
+  color: var(--ws-list-inactiveSelectionForeground);
+}
+
+.file-tree-item.modified {
+  color: var(--ws-gitDecoration-modifiedResourceForeground);
+}
+
+.file-tree-item.deleted {
+  color: var(--ws-gitDecoration-deletedResourceForeground);
+}
+
+.file-tree-item.untracked {
+  color: var(--ws-gitDecoration-untrackedResourceForeground);
+}
+
+.file-tree-item.ignored {
+  color: var(--ws-gitDecoration-ignoredResourceForeground);
+  opacity: 0.5;
+}
+
+
+
+
+
+
+
+

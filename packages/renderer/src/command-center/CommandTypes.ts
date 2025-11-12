@@ -9,7 +9,7 @@
 export interface Command {
   id: string;
   label: string;
-  displayId?: string; // 用于显示的友好 ID，如 "Preferences: Color Theme"
+  displayId?: string; // 用于显示的友好ID，如 "Preferences: Color Theme"
   description?: string;
   detail?: string;
   icon?: string;
@@ -24,6 +24,7 @@ export interface CommandMode {
   name: string;
   placeholder: string;
   icon?: string;
+  hidePrefix?: boolean; // 是否在输入框中隐藏前缀显示
   provider: (query: string) => Promise<CommandItem[]> | CommandItem[];
   onCancel?: () => void | Promise<void>; // 取消时的回调（ESC 或点击外部时触发）
 }
@@ -31,7 +32,7 @@ export interface CommandMode {
 export interface CommandItem {
   id: string;
   label: string;
-  displayId?: string; // 用于显示的友好 ID，如 "Preferences: Color Theme"
+  displayId?: string; // 用于显示的友好ID，如 "Preferences: Color Theme"
   description?: string;
   detail?: string;
   icon?: string;

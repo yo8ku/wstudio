@@ -32,7 +32,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     <div
       className="settings-modal fixed inset-0 z-50 flex items-center justify-center"
       style={{
-        backgroundColor: 'var(--vscode-editor-background, var(--editor-bg, #1e1e1e))',
+        backgroundColor: 'var(--ws-editor-background, var(--ws-editor-background, #1e1e1e))',
         opacity: 0.85,
       }}
       onClick={(e) => {
@@ -44,8 +44,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       <div
         className="settings-modal-content w-full h-full max-w-screen-xl max-h-screen-90 rounded-lg shadow-2xl overflow-hidden"
         style={{
-          backgroundColor: 'var(--editor-bg)',
-          border: '1px solid var(--border-color)',
+          backgroundColor: 'var(--ws-editor-background)',
+          border: '1px solid var(--ws-contrast-border)',
           maxWidth: '90vw',
           maxHeight: '90vh',
         }}

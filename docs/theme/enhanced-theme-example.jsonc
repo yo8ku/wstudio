@@ -1,0 +1,477 @@
+// 增强版主题示例（JSONC 格式，支持注释）
+// 🎨 此主题为 JSON、JavaScript、TypeScript 等语言提供了丰富的语法高亮
+{
+  "name": "我的增强主题",
+  "type": "dark",
+  "author": "User",
+  "description": "支持丰富语法高亮的自定义主题",
+  "version": "1.0.0",
+
+  // 💡 编辑器颜色配置
+  "colors": {
+    // 编辑器基础色
+    "editor.background": "#1e1e1e",
+    "editor.foreground": "#d4d4d4",
+    "editorLineNumber.foreground": "#858585",
+    "editorLineNumber.activeForeground": "#c6c6c6",
+    "editorCursor.foreground": "#ffffff",
+    
+    // 选中文本
+    "editor.selectionBackground": "#264f78",
+    "editor.inactiveSelectionBackground": "#3a3d41",
+    
+    // 侧边栏
+    "sideBar.background": "#252526",
+    "sideBar.foreground": "#cccccc",
+    "sideBar.border": "#1e1e1e",
+    
+    // 状态栏
+    "statusBar.background": "#007acc",
+    "statusBar.foreground": "#ffffff",
+    
+    // 活动栏
+    "activityBar.background": "#333333",
+    "activityBar.foreground": "#ffffff",
+    
+    // 面板（终端、输出等）
+    "panel.background": "#1e1e1e",
+    "panel.border": "#808080"
+  },
+
+  // 🎯 Token 颜色规则（语法高亮）
+  "tokenColors": [
+    // ==================== 通用规则 ====================
+    
+    // 📦 注释
+    {
+      "name": "注释",
+      "scope": [
+        "comment",
+        "comment.line",
+        "comment.block",
+        "punctuation.definition.comment"
+      ],
+      "settings": {
+        "foreground": "#6a9955",
+        "fontStyle": "italic"
+      }
+    },
+
+    // 🔑 关键字（if, return, function, const, let, var...）
+    {
+      "name": "关键字",
+      "scope": [
+        "keyword",
+        "keyword.control",
+        "keyword.control.flow",
+        "keyword.control.import",
+        "keyword.operator.new",
+        "storage.type",
+        "storage.modifier"
+      ],
+      "settings": {
+        "foreground": "#569cd6"
+      }
+    },
+
+    // 🔧 运算符（+, -, *, /, =, ...）
+    {
+      "name": "运算符",
+      "scope": [
+        "keyword.operator",
+        "keyword.operator.assignment",
+        "keyword.operator.arithmetic",
+        "keyword.operator.logical"
+      ],
+      "settings": {
+        "foreground": "#d4d4d4"
+      }
+    },
+
+    // ==================== 字符串和数字 ====================
+    
+    // 📝 字符串（适用于所有语言）
+    {
+      "name": "字符串",
+      "scope": [
+        "string",
+        "string.quoted",
+        "string.quoted.single",
+        "string.quoted.double",
+        "string.quoted.double.json",
+        "string.template"
+      ],
+      "settings": {
+        "foreground": "#ce9178"
+      }
+    },
+
+    // 🔢 数字（适用于所有语言）
+    {
+      "name": "数字",
+      "scope": [
+        "constant.numeric",
+        "constant.numeric.json",
+        "constant.numeric.integer",
+        "constant.numeric.float",
+        "constant.numeric.hex"
+      ],
+      "settings": {
+        "foreground": "#b5cea8"
+      }
+    },
+
+    // ✅ 布尔值和特殊常量
+    {
+      "name": "布尔值和常量",
+      "scope": [
+        "constant.language",
+        "constant.language.boolean",
+        "constant.language.null",
+        "constant.language.undefined",
+        "constant.language.nan",
+        "constant.language.infinity"
+      ],
+      "settings": {
+        "foreground": "#569cd6"
+      }
+    },
+
+    // ==================== JSON 专属规则 ====================
+    
+    // 🔑 JSON 键名（对象属性）
+    {
+      "name": "JSON 键名",
+      "scope": [
+        "support.type.property-name.json",
+        "support.type.property-name",
+        "meta.structure.dictionary.key.json"
+      ],
+      "settings": {
+        "foreground": "#9cdcfe"
+      }
+    },
+
+    // 🎯 JSON 结构符号（大括号、方括号、冒号、逗号）
+    {
+      "name": "JSON 标点符号",
+      "scope": [
+        "punctuation.definition.dictionary.begin.json",
+        "punctuation.definition.dictionary.end.json",
+        "punctuation.definition.array.begin.json",
+        "punctuation.definition.array.end.json",
+        "punctuation.separator.dictionary.key-value.json",
+        "punctuation.separator.dictionary.pair.json",
+        "punctuation.separator.array.json"
+      ],
+      "settings": {
+        "foreground": "#d4d4d4"
+      }
+    },
+
+    // ==================== JavaScript/TypeScript ====================
+    
+    // 🏷️ 函数名
+    {
+      "name": "函数名",
+      "scope": [
+        "entity.name.function",
+        "meta.function-call",
+        "support.function",
+        "meta.function.expression"
+      ],
+      "settings": {
+        "foreground": "#dcdcaa"
+      }
+    },
+
+    // 🎨 变量名
+    {
+      "name": "变量名",
+      "scope": [
+        "variable",
+        "variable.other",
+        "variable.other.readwrite",
+        "variable.language.this",
+        "variable.language.super"
+      ],
+      "settings": {
+        "foreground": "#9cdcfe"
+      }
+    },
+
+    // 🔑 对象属性（JavaScript）
+    {
+      "name": "对象属性",
+      "scope": [
+        "meta.object-literal.key",
+        "meta.object-literal.key.js",
+        "meta.object.member",
+        "variable.object.property"
+      ],
+      "settings": {
+        "foreground": "#9cdcfe"
+      }
+    },
+
+    // 🏗️ 类名和类型名
+    {
+      "name": "类名和类型",
+      "scope": [
+        "entity.name.type",
+        "entity.name.class",
+        "support.class",
+        "entity.other.inherited-class"
+      ],
+      "settings": {
+        "foreground": "#4ec9b0"
+      }
+    },
+
+    // 🎯 接口名（TypeScript）
+    {
+      "name": "接口名",
+      "scope": [
+        "entity.name.type.interface"
+      ],
+      "settings": {
+        "foreground": "#4ec9b0"
+      }
+    },
+
+    // 🏷️ 参数名
+    {
+      "name": "函数参数",
+      "scope": [
+        "variable.parameter",
+        "meta.parameters"
+      ],
+      "settings": {
+        "foreground": "#9cdcfe"
+      }
+    },
+
+    // ==================== HTML/CSS ====================
+    
+    // 🏷️ HTML 标签名
+    {
+      "name": "HTML 标签名",
+      "scope": [
+        "entity.name.tag",
+        "meta.tag.structure",
+        "meta.tag.inline"
+      ],
+      "settings": {
+        "foreground": "#569cd6"
+      }
+    },
+
+    // 🎨 HTML 属性名
+    {
+      "name": "HTML 属性",
+      "scope": [
+        "entity.other.attribute-name",
+        "entity.other.attribute-name.html"
+      ],
+      "settings": {
+        "foreground": "#9cdcfe"
+      }
+    },
+
+    // 🎨 CSS 选择器
+    {
+      "name": "CSS 选择器",
+      "scope": [
+        "entity.name.tag.css",
+        "entity.other.attribute-name.class.css",
+        "entity.other.attribute-name.id.css"
+      ],
+      "settings": {
+        "foreground": "#d7ba7d"
+      }
+    },
+
+    // 🎨 CSS 属性名
+    {
+      "name": "CSS 属性名",
+      "scope": [
+        "support.type.property-name.css",
+        "meta.property-name.css"
+      ],
+      "settings": {
+        "foreground": "#9cdcfe"
+      }
+    },
+
+    // ==================== Python ====================
+    
+    // 🏷️ Python 函数名
+    {
+      "name": "Python 函数",
+      "scope": [
+        "entity.name.function.python",
+        "meta.function.python"
+      ],
+      "settings": {
+        "foreground": "#dcdcaa"
+      }
+    },
+
+    // 🏗️ Python 类名
+    {
+      "name": "Python 类",
+      "scope": [
+        "entity.name.type.class.python",
+        "support.type.python"
+      ],
+      "settings": {
+        "foreground": "#4ec9b0"
+      }
+    },
+
+    // 🎯 Python 装饰器
+    {
+      "name": "Python 装饰器",
+      "scope": [
+        "entity.name.function.decorator.python",
+        "meta.function.decorator.python"
+      ],
+      "settings": {
+        "foreground": "#dcdcaa"
+      }
+    },
+
+    // ==================== Markdown ====================
+    
+    // 📖 Markdown 标题
+    {
+      "name": "Markdown 标题",
+      "scope": [
+        "markup.heading",
+        "entity.name.section.markdown"
+      ],
+      "settings": {
+        "foreground": "#569cd6",
+        "fontStyle": "bold"
+      }
+    },
+
+    // 📝 Markdown 粗体
+    {
+      "name": "Markdown 粗体",
+      "scope": [
+        "markup.bold"
+      ],
+      "settings": {
+        "foreground": "#d4d4d4",
+        "fontStyle": "bold"
+      }
+    },
+
+    // 📝 Markdown 斜体
+    {
+      "name": "Markdown 斜体",
+      "scope": [
+        "markup.italic"
+      ],
+      "settings": {
+        "foreground": "#d4d4d4",
+        "fontStyle": "italic"
+      }
+    },
+
+    // 🔗 Markdown 链接
+    {
+      "name": "Markdown 链接",
+      "scope": [
+        "markup.underline.link",
+        "string.other.link.title.markdown"
+      ],
+      "settings": {
+        "foreground": "#569cd6",
+        "fontStyle": "underline"
+      }
+    },
+
+    // 📦 Markdown 代码块
+    {
+      "name": "Markdown 代码块",
+      "scope": [
+        "markup.inline.raw",
+        "markup.fenced_code.block.markdown"
+      ],
+      "settings": {
+        "foreground": "#ce9178"
+      }
+    },
+
+    // ==================== 通用标点符号 ====================
+    
+    // 🔧 标点符号
+    {
+      "name": "标点符号",
+      "scope": [
+        "punctuation",
+        "punctuation.separator",
+        "punctuation.terminator",
+        "punctuation.definition.string.begin",
+        "punctuation.definition.string.end"
+      ],
+      "settings": {
+        "foreground": "#d4d4d4"
+      }
+    },
+
+    // 🎯 括号（大括号、方括号、圆括号）
+    {
+      "name": "括号",
+      "scope": [
+        "meta.brace",
+        "meta.brace.round",
+        "meta.brace.square",
+        "meta.brace.curly",
+        "punctuation.section.embedded"
+      ],
+      "settings": {
+        "foreground": "#ffd700"  // 金色，让括号更突出
+      }
+    }
+  ],
+  
+  // ⭐ 语义高亮（可选，提供更精确的高亮）
+  // 这些规则会被 injectJSONTokenColors() 函数读取并应用
+  "semanticTokenColors": {
+    // 通用
+    "property": "#9cdcfe",
+    "variable": "#9cdcfe",
+    "parameter": "#9cdcfe",
+    "function": "#dcdcaa",
+    "method": "#dcdcaa",
+    "class": "#4ec9b0",
+    "interface": "#4ec9b0",
+    "type": "#4ec9b0",
+    "enum": "#4ec9b0",
+    
+    // 字面量
+    "string": "#ce9178",
+    "number": "#b5cea8",
+    "boolean": "#569cd6",
+    "keyword": "#569cd6",
+    
+    // 注释
+    "comment": "#6a9955",
+    
+    // 命名空间
+    "namespace": "#4ec9b0",
+    
+    // 宏和常量
+    "macro": "#dcdcaa",
+    "enumMember": "#4fc1ff",
+    
+    // 修饰符
+    "*.readonly": "#4fc1ff",
+    "*.static": "#d7ba7d",
+    "*.declaration": "#4ec9b0"
+  }
+}
+

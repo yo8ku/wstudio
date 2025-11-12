@@ -1,14 +1,13 @@
 /**
- * Markdown 命令提供者
- * 
+ * Markdown 命令提供器
  * 功能：
- * - 为命令中心提供 Markdown 相关命令
- * - 注册内置 Markdown 插件的所有功能
+ * - 为命令中心提供Markdown相关命令
+ * - 注册内置Markdown插件的所有功能
  * - 支持文本格式化、插入元素、预览等
  * 
  * 注意：
- * - 命令执行依赖于全局 Monaco Editor 实例
- * - 编辑器实例通过 window.__monacoEditor 访问
+ * - 命令执行依赖于全局Monaco Editor实例
+ * - 编辑器实例通过window.__monacoEditor访问
  */
 
 import type { VSCodeCommandCenter } from './VSCodeCommandCenter';
@@ -34,7 +33,7 @@ export class MarkdownCommandProvider {
   private registerMarkdownCommands(): void {
     const commands: Command[] = [];
 
-    // ============ 文本格式化命令 ============
+    // ============ 文本格式化命============
 
     // 加粗
     commands.push({
@@ -118,7 +117,7 @@ export class MarkdownCommandProvider {
       displayId: 'Markdown: Insert Link',
       description: '插入超链接',
       category: 'Markdown',
-      icon: '🔗',
+      icon: 'link',
       keybinding: 'Ctrl+K',
       execute: async () => {
         await this.executeVSCodeCommand('mdEditor.insertLink');
@@ -133,7 +132,7 @@ export class MarkdownCommandProvider {
       displayId: 'Markdown: Insert Image',
       description: '插入图片引用',
       category: 'Markdown',
-      icon: '🖼️',
+      icon: 'image',
       execute: async () => {
         await this.executeVSCodeCommand('mdEditor.insertImage');
       },
@@ -145,9 +144,9 @@ export class MarkdownCommandProvider {
       id: 'mdEditor.insertTable',
       label: 'Markdown: 插入表格',
       displayId: 'Markdown: Insert Table',
-      description: '快速插入表格模板',
+      description: '快速插入表格模块,',
       category: 'Markdown',
-      icon: '📊',
+      icon: 'table',
       execute: async () => {
         await this.executeVSCodeCommand('mdEditor.insertTable');
       },
@@ -175,7 +174,7 @@ export class MarkdownCommandProvider {
       id: 'mdEditor.toggleHeading1',
       label: 'Markdown: 一级标题',
       displayId: 'Markdown: Toggle Heading 1',
-      description: '将当前行转换为 H1',
+      description: '将当前行转换为H1',
       category: 'Markdown',
       icon: 'H1',
       execute: async () => {
@@ -189,7 +188,7 @@ export class MarkdownCommandProvider {
       id: 'mdEditor.toggleHeading2',
       label: 'Markdown: 二级标题',
       displayId: 'Markdown: Toggle Heading 2',
-      description: '将当前行转换为 H2',
+      description: '将当前行转换为H2',
       category: 'Markdown',
       icon: 'H2',
       execute: async () => {
@@ -203,7 +202,7 @@ export class MarkdownCommandProvider {
       id: 'mdEditor.toggleHeading3',
       label: 'Markdown: 三级标题',
       displayId: 'Markdown: Toggle Heading 3',
-      description: '将当前行转换为 H3',
+      description: '将当前行转换为H3',
       category: 'Markdown',
       icon: 'H3',
       execute: async () => {
@@ -221,7 +220,7 @@ export class MarkdownCommandProvider {
       displayId: 'Markdown: Toggle Unordered List',
       description: '创建无序列表',
       category: 'Markdown',
-      icon: '•',
+      icon: '□',
       execute: async () => {
         await this.executeVSCodeCommand('mdEditor.toggleUnorderedList');
       },
@@ -249,7 +248,7 @@ export class MarkdownCommandProvider {
       displayId: 'Markdown: Toggle Task List',
       description: '创建可勾选的任务列表',
       category: 'Markdown',
-      icon: '☑',
+      icon: '□',
       execute: async () => {
         await this.executeVSCodeCommand('mdEditor.toggleTaskList');
       },
@@ -263,7 +262,7 @@ export class MarkdownCommandProvider {
       displayId: 'Markdown: Toggle Quote',
       description: '添加引用块',
       category: 'Markdown',
-      icon: '❝',
+      icon: '□',
       execute: async () => {
         await this.executeVSCodeCommand('mdEditor.toggleQuote');
       },
@@ -279,7 +278,7 @@ export class MarkdownCommandProvider {
       displayId: 'Markdown: Open Preview',
       description: '在新标签页中预览',
       category: 'Markdown',
-      icon: '👁',
+      icon: 'eye',
       execute: async () => {
         await this.executeVSCodeCommand('mdEditor.showPreview');
       },
@@ -293,7 +292,7 @@ export class MarkdownCommandProvider {
       displayId: 'Markdown: Open Preview to the Side',
       description: '分屏预览',
       category: 'Markdown',
-      icon: '⚡',
+      icon: '□',
       keybinding: 'Ctrl+Shift+V',
       execute: async () => {
         await this.executeVSCodeCommand('mdEditor.showPreviewToSide');
@@ -308,9 +307,9 @@ export class MarkdownCommandProvider {
       id: 'mdEditor.formatDocument',
       label: 'Markdown: 格式化文档',
       displayId: 'Markdown: Format Document',
-      description: '自动格式化整个 Markdown 文档',
+      description: '自动格式化整个Markdown文档',
       category: 'Markdown',
-      icon: '✨',
+      icon: '□',
       execute: async () => {
         await this.executeVSCodeCommand('mdEditor.formatDocument');
       },
@@ -320,18 +319,16 @@ export class MarkdownCommandProvider {
     // 批量注册所有命令
     this.commandCenter.registerCommands(commands);
 
-    console.log(`[MarkdownCommandProvider] 已注册 ${commands.length} 个 Markdown 命令`);
+    console.log(`[MarkdownCommandProvider] 已注册${commands.length}个Markdown命令`);
   }
 
   /**
-   * 检查当前是否是 Markdown 编辑器
-   */
+   * 检查当前是否是 Markdown 编辑器   */
   private isMarkdownEditor(): boolean {
     try {
       const editor = this.getMonacoEditor();
       if (!editor) return false; // 如果没有编辑器，不显示命令
-      
-      const model = editor.getModel();
+    const model = editor.getModel();
       if (!model) return false;
       
       const language = model.getLanguageId();
@@ -343,7 +340,7 @@ export class MarkdownCommandProvider {
   }
 
   /**
-   * 获取当前的 Monaco Editor 实例
+   * 获取当前的Monaco Editor实例
    */
   private getMonacoEditor(): monaco.editor.IStandaloneCodeEditor | null {
     return (window as any).__monacoEditor || null;
@@ -361,26 +358,26 @@ export class MarkdownCommandProvider {
   /**
    * 执行 Monaco 编辑器命令
    * 
-   * 注意：这里不是执行 VSCode API 命令，而是直接操作 Monaco Editor
-   * 因为在浏览器环境中，我们需要手动实现这些 Markdown 编辑功能
+   * 注意：这里不是执行VSCode API命令，而是直接操作Monaco Editor
+   * 因为在浏览器环境中，我们需要手动实现这些Markdown编辑功能
    */
   private async executeVSCodeCommand(commandId: string): Promise<void> {
     console.log('[MarkdownCommandProvider] 执行命令:', commandId);
     const editor = this.getMonacoEditor();
-    console.log('[MarkdownCommandProvider] 编辑器实例:', editor);
+    console.log('[MarkdownCommandProvider] 编辑器实例', editor);
     
     if (!editor) {
-      console.warn('[MarkdownCommandProvider] Monaco Editor 实例不可用，请先打开一个 Markdown 文件');
-      this.showNotification('请先打开一个 Markdown 编辑器');
+      console.warn('[MarkdownCommandProvider] Monaco Editor 实例不可用，请先打开一个Markdown文件');
+      this.showNotification('请先打开一个Markdown编辑器');
       return;
     }
 
     // 检查编辑器状态
     const model = editor.getModel();
     const monacoInstance = (window as any).monaco;
-    console.log('[MarkdownCommandProvider] 编辑器模型:', model);
+    console.log('[MarkdownCommandProvider] 编辑器模块', model);
     if (monacoInstance) {
-      console.log('[MarkdownCommandProvider] 编辑器只读状态:', editor.getOption(monacoInstance.editor.EditorOption.readOnly));
+      console.log('[MarkdownCommandProvider] 编辑器只读状态', editor.getOption(monacoInstance.editor.EditorOption.readOnly));
     }
     console.log('[MarkdownCommandProvider] 当前选区:', editor.getSelection());
 
@@ -390,7 +387,7 @@ export class MarkdownCommandProvider {
       console.log('[MarkdownCommandProvider] MonacoMarkdownActions 实例创建成功');
 
       // 映射命令 ID 到对应的方法
-      const commandMap: Record<string, () => void> = {
+    const commandMap: Record<string, () => void> = {
         'mdEditor.toggleBold': () => actions.toggleBold(),
         'mdEditor.toggleItalic': () => actions.toggleItalic(),
         'mdEditor.toggleStrikethrough': () => actions.toggleStrikethrough(),
@@ -414,7 +411,7 @@ export class MarkdownCommandProvider {
 
       const handler = commandMap[commandId];
       if (handler) {
-        console.log('[MarkdownCommandProvider] 执行命令处理器...');
+        console.log('[MarkdownCommandProvider] 执行命令处理..');
         handler();
         console.log('[MarkdownCommandProvider] 命令执行完成');
       } else {

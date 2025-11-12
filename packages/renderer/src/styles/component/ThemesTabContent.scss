@@ -1,0 +1,27 @@
+/**
+ * ThemesTabContent 主题标签内容颜色样式
+ * 功能：定义主题标签内容的颜色主题
+ */
+
+.theme-item {
+  background-color: var(--ws-sidebar-background);
+  border-color: var(--ws-sidebar-border);
+}
+
+.theme-item:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.theme-item.active {
+  background-color: var(--ws-list-active-selection-background);
+  color: var(--ws-list-active-selection-foreground);
+  border-color: var(--ws-focus-border);
+}
+
+
+
+
+
+
+
+

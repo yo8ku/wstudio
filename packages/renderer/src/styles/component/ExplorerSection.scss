@@ -1,0 +1,13 @@
+.explorer-section-trigger {
+    color: var(--ws-list-headerGroup-foreground);
+    background-color: var(--ws-list-headerGroup-background);
+  &:hover {
+    text-decoration: none !important;
+  }
+
+  .explorer-section-chevron {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+}

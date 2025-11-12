@@ -1,0 +1,27 @@
+/**
+ * AddFileMenu 添加文件菜单颜色样式
+ * 功能：定义添加文件菜单的颜色主题
+ */
+
+.add-file-menu {
+  background-color: var(--ws-menu-background);
+  border-color: var(--ws-menu-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.add-file-menu-item {
+  color: var(--ws-menu-foreground);
+}
+
+.add-file-menu-item:hover {
+  background-color: var(--ws-menu-selectionBackground);
+  color: var(--ws-menu-selectionForeground);
+}
+
+
+
+
+
+
+
+

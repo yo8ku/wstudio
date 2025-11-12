@@ -1,0 +1,85 @@
+// .file-tree-section {
+//     background-color: var(--ws-sidebar-background);
+//     color: var(--ws-sidebar-foreground);
+// }
+
+// 侧边栏 文件数颜色配置。
+
+.file-tree-node-content {
+    color: var(--ws-list-foreground);
+
+    &.selected {
+        background-color: var(--ws-list-activeSelectionBackground);
+        color: var(--ws-list-activeSelectionForeground);
+    }
+
+
+    &:hover {
+        background-color: var(--ws-list-hoverBackground);
+        color: var(--ws-list-hoverForeground);
+    }
+
+}
+
+
+.file-tree-node-content.selected {}
+
+// .file-tree-chevron {
+
+//     color: var(--ws-sidebar-foreground);
+// }
+
+// .file-tree-chevron:hover {
+//     background-color: var(--ws-list-hover-background);
+// }
+
+// .file-tree-icon {
+//     color: var(--ws-sidebar-foreground);
+// }
+
+
+/**
+ * FileTree 文件树颜色样式
+ * 功能：定义文件树的颜色主题
+ */
+
+// .file-tree {
+//     background-color: var(--ws-sidebar-background);
+//     color: var(--ws-sidebar-foreground);
+// }
+
+// .file-tree-item {
+//     color: var(--ws-sidebar-foreground);
+// }
+
+// .file-tree-item:hover {
+//     background-color: var(--ws-list-hover-background);
+//     color: var(--ws-list-hoverForeground);
+// }
+
+// .file-tree-item.active {
+//     background-color: var(--ws-list-active-selection-background);
+//     color: var(--ws-list-active-selection-foreground);
+// }
+
+// .file-tree-item.selected {
+//     background-color: var(--ws-list-inactiveSelectionBackground);
+//     color: var(--ws-list-inactiveSelectionForeground);
+// }
+
+// .file-tree-item.modified {
+//     color: var(--ws-gitDecoration-modifiedResourceForeground);
+// }
+
+// .file-tree-item.deleted {
+//     color: var(--ws-gitDecoration-deletedResourceForeground);
+// }
+
+// .file-tree-item.untracked {
+//     color: var(--ws-gitDecoration-untrackedResourceForeground);
+// }
+
+// .file-tree-item.ignored {
+//     color: var(--ws-gitDecoration-ignoredResourceForeground);
+//     opacity: 0.5;
+// }

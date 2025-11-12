@@ -1,0 +1,17 @@
+/**
+ * Tooltip 样式
+ * 使用主题变量
+ */
+
+.custom-tooltip {
+  border-radius: 3px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 320px;
+  word-wrap: break-word;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  pointer-events: none;
+}
+

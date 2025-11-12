@@ -1,0 +1,231 @@
+/**
+ * AIChatPanel AI聊天面板颜色样式
+ * 功能：定义AI聊天面板的颜色主题
+ */
+
+//颜色-AI聊天面板
+.ai-chat-panel {
+  background-color: var(--ws-panel-background);
+  color: var(--ws-editor-foreground);
+
+  .ai-chat-panel-input-container {
+    border-top: 1px solid var(--ws-panel-border);
+    background-color: var(--ws-editor-background);
+    margin-top: 20px;
+
+    //颜色-AI 面板输入框背景色
+    &-inner {
+      background-color: var(--ws-input-background);
+
+    }
+
+    //颜色-聊天面板 工具按钮颜色
+    button {
+      color: rgba(170, 170, 170, 0.897);
+
+      &:hover {
+        color: rgba(182, 90, 90, 0.897);
+      }
+
+      &.active {
+        color: rgba(224, 109, 109, 0.897);
+      }
+    }
+  }
+
+
+  &-messages {
+    &.centered {
+      background-color: var(--ws-editor-background);
+    }
+  }
+
+
+  //颜色-AI聊天最大化头部颜色
+  &-header {
+    background-color: var(--ws-editor-background);
+
+    //颜色-聊天下划线颜色
+    &-left {
+      border-bottom: 1px solid #ffffff54;
+    }
+  }
+}
+
+.message {
+
+  //颜色-用户消息
+  &.user {
+    background-color: rgba(64, 71, 84, 0.1411764706);
+
+    &:hover {
+      border-color: #5e5e5e41;
+
+    }
+  }
+}
+
+
+//颜色-AI模型（Gemini）结果颜色配置
+.message.assistant {
+  background: rgb(69 69 69 / 14%);
+
+  &:hover {
+    border-color: #5e5e5e41;
+  }
+}
+
+
+
+//颜色-深度思考
+.thinking-container {
+  &-collapsed-view {
+    background-color: #ffffff0a;
+  }
+
+  .model-thinking {
+    &-content {
+      background-color: #4e4e4e52;
+    }
+
+    &:hover {
+      border-color: #076077;
+    }
+  }
+
+}
+
+
+//颜色-聊天模型返回结果
+.ai-response {
+
+  // 行内代码样式
+  &-inline-code {
+    background-color: #5858587d;
+    color: var(--ws-editor-foreground);
+  }
+
+  // 代码块头部
+  &-code-block-header {
+    background-color: #58585836;
+  }
+
+  // 语言标签
+  &-code-block-language {
+    background-color: var(--ws-input-background);
+    color: var(--ws-foreground);
+  }
+
+  // 表格样式
+  &-table {
+    border: 1px solid #6d6d6d59;
+
+    &-header {
+      background-color: #5555552a;
+    }
+  }
+
+}
+
+
+
+.ai-chat-messages {
+  background-color: var(--ws-editor-background);
+
+}
+
+.ai-chat-message {
+  background-color: var(--ws-sidebar-background);
+  color: var(--ws-editor-foreground);
+}
+
+.ai-chat-message .user {
+  background-color: var(--ws-list-inactiveSelectionBackground);
+}
+
+.ai-chat-message.assistant {
+  background-color: var(--ws-sidebar-background);
+}
+
+.ai-chat-input-container {
+  background-color: var(--ws-sidebar-background);
+  border-top-color: var(--ws-panel-border);
+}
+
+.ai-chat-input {
+  background-color: var(--ws-chat-input-bg);
+  color: var(--ws-input-foreground);
+  border-color: var(--ws-chat-input-border);
+}
+
+
+
+//颜色- AI 面板 模型选择
+// 分组
+.dropdown-menu-group {
+  &-title {
+    border-bottom: 1px solid transparent;
+  }
+
+  .dropdown-menu-item {
+    color:#969696;
+
+    &:hover {
+      background-color: #4d4d4d8a;
+    }
+  }
+
+
+}
+
+
+
+
+// 输入框顶部工具栏按钮
+.input-top-toolbar {
+
+  .context-button,
+  .deep-thinking-button,
+  .web-search-button,
+  .clear-context-button {
+    background-color: transparent;
+    color: var(--ws-foreground);
+
+    &:hover {
+      background-color: var(--ws-toolbar-hover-background);
+    }
+
+    &:active {
+      background-color: var(--ws-toolbar-active-background);
+    }
+  }
+
+  .deep-thinking-button.active,
+  .web-search-button.active {
+    color: var(--ws-button-activeForeground);
+
+    &:hover {
+      background-color: var(--ws-button-hover-background);
+    }
+  }
+
+  // 上下文菜单
+  .context-menu {
+    background-color: var(--ws-menu-background);
+    border-color: var(--ws-menu-border);
+  }
+
+  .context-menu-search-input {
+    background-color: var(--ws-input-background);
+    color: var(--ws-input-foreground);
+    border-color: var(--ws-input-border);
+  }
+
+  .context-menu-item {
+    color: var(--ws-menu-foreground);
+
+    &:hover {
+      background-color: var(--ws-list-hover-background);
+    }
+  }
+}

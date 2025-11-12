@@ -4,15 +4,29 @@ import path from 'path';
 
 export default defineConfig({
   root: __dirname,
-  plugins: [react()],
+  plugins: [
+    react()
+  ],
   server: {
     port: 5173,
-    strictPort: true
+    strictPort: true,
+    fs: {
+      // 允许访问整个项目根目录及 node_modules
+      allow: [
+        path.resolve(__dirname, '../..'), // 项目根目录
+        path.resolve(__dirname, '../../node_modules') // 根目录的 node_modules
+      ]
+    }
   },
   resolve: {
     alias: {
-      '@note-studio/extension-api': path.resolve(__dirname, '../extension-api/src/index.ts'),
+      '@': path.resolve(__dirname, './src'),
+      '@note-studio/core': path.resolve(__dirname, '../core/dist/esm')
     }
+  },
+  optimizeDeps: {
+    include: ['@note-studio/knowledge-base'],
+    exclude: ['jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events']
   },
   css: {
     preprocessorOptions: {
@@ -26,7 +40,10 @@ export default defineConfig({
     // 为 Electron 环境构建
     target: 'esnext',
     rollupOptions: {
-      external: ['electron']
+      external: ['electron', 'jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events'],
+      input: {
+        main: path.resolve(__dirname, 'index.html')
+      }
     }
   },
   // 支持 Electron 环境

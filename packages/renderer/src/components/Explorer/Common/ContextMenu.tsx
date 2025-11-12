@@ -63,7 +63,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClo
       >
         {item.icon && <span className="context-menu-icon">{item.icon}</span>}
         <span className="context-menu-label">{item.label}</span>
-        {item.submenu && <span className="context-menu-arrow">▶</span>}
+        {item.submenu && <span className="context-menu-arrow">›</span>}
       </div>
     );
   };

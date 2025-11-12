@@ -1,0 +1,88 @@
+/**
+ * CreateAgentDialog 创建智能体对话框颜色样式
+ * 功能：定义创建智能体对话框的颜色主题
+ */
+
+.create-agent-dialog-overlay {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.create-agent-dialog {
+  background-color: var(--ws-editor-background);
+  border-color: var(--ws-panel-border);
+  color: var(--ws-editor-foreground);
+}
+
+.create-agent-dialog__header {
+  background-color: var(--ws-editor-background);
+  border-bottom-color: var(--ws-panel-border);
+  color: var(--ws-editor-foreground);
+}
+
+.create-agent-dialog__close {
+  &:hover {
+    background-color: var(--ws-toolbar-hover-background);
+  }
+}
+
+.create-agent-dialog__body {
+  &::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+
+    &:hover {
+      background: var(--scrollbar-thumb-hover);
+    }
+  }
+}
+
+.create-agent-dialog__input,
+.create-agent-dialog__textarea {
+  background-color: var(--ws-input-background);
+  color: var(--ws-input-foreground);
+  border: 1px solid var(--ws-input-border);
+
+  &::placeholder {
+    color: var(--ws-input-placeholder-foreground);
+  }
+
+  &:focus {
+    border-color: var(--ws-focus-border);
+  }
+}
+
+.create-agent-dialog__button {
+  &--cancel {
+    background-color: transparent;
+    color: var(--ws-button-foreground);
+
+    &:hover:not(:disabled) {
+      background-color: var(--ws-button-secondaryBackground);
+    }
+  }
+
+  &--create {
+    background-color: var(--ws-button-background);
+    color: var(--ws-button-foreground);
+
+    &:hover:not(:disabled) {
+      background-color: var(--ws-button-hoverBackground);
+    }
+  }
+}
+
+.dropdown {
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
+}
+
+
+
+
+
+
+
+

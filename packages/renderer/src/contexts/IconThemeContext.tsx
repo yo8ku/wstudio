@@ -1,13 +1,11 @@
 /**
- * 文件图标主题上下文
- * 管理当前的文件图标主题并提供给整个应用使用
- */
+ * 文件图标主题上下载 * 管理当前的文件图标主题并提供给整个应用使 */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { iconThemeLoader, IconThemeConfiguration } from '../services/IconThemeLoader';
 
 export interface IconThemeContextValue {
-  /** 当前图标主题ID，null表示不使用图标主题 */
+  /** 当前图标主题ID，null表示不使用图标主题*/
   currentIconTheme: string | null;
   /** 当前图标主题配置 */
   currentIconThemeConfig: IconThemeConfiguration | null;
@@ -24,25 +22,17 @@ export interface IconThemeProviderProps {
 }
 
 /**
- * 文件图标主题提供者
- */
+ * 文件图标主题提供 */
 export const IconThemeProvider: React.FC<IconThemeProviderProps> = ({ children }) => {
-  const [currentIconTheme, setCurrentIconTheme] = useState<string | null>('material-icon-theme');
+  const [currentIconTheme, setCurrentIconTheme] = useState<string | null>(null);
   const [currentIconThemeConfig, setCurrentIconThemeConfig] = useState<IconThemeConfiguration | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // 初始化时加载默认图标主题
   useEffect(() => {
     const loadDefaultTheme = async () => {
-      if (currentIconTheme) {
-        const config = await iconThemeLoader.loadIconTheme(
-          'extensions/material-icon-theme/extension/dist/material-icons.json'
-        );
-        if (config) {
-          setCurrentIconThemeConfig(config);
-          console.log('[IconThemeContext] 默认图标主题已加载');
-        }
-      }
+      // TODO: 从扩展系统动态加载图标主题      // 暂时禁用默认图标主题
+      console.log('[IconThemeContext] 图标主题功能暂时禁用');
     };
     loadDefaultTheme();
 
@@ -77,10 +67,10 @@ export const IconThemeProvider: React.FC<IconThemeProviderProps> = ({ children }
       } else {
         // 清除图标主题
         setCurrentIconThemeConfig(null);
-        console.log('[IconThemeContext] 图标主题已清除');
+        console.log('[IconThemeContext] 图标主题已清空');
       }
       
-      // 触发自定义事件，通知其他组件图标主题已更改
+      // 触发自定义事件，通知其他组件图标主题已更新
       window.dispatchEvent(new CustomEvent('iconThemeChanged', {
         detail: { 
           themeId, 

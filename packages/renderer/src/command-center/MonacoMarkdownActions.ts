@@ -2,9 +2,9 @@
  * Monaco Editor Markdown 操作
  * 
  * 功能：
- * - 提供直接操作 Monaco Editor 的 Markdown 编辑功能
+ * - 提供直接操作Monaco Editor的Markdown编辑功能
  * - 实现文本格式化、插入元素等操作
- * - 不依赖 VSCode API，直接使用 Monaco Editor API
+ * - 不依赖VSCode API，直接使用Monaco Editor API
  */
 
 import type * as monaco from 'monaco-editor';
@@ -45,7 +45,7 @@ export class MonacoMarkdownActions {
    * 包装选中文本
    */
   private wrapSelection(prefix: string, suffix: string = prefix): void {
-    console.log('[MonacoMarkdownActions] wrapSelection 开始, prefix:', prefix, 'suffix:', suffix);
+    console.log('[MonacoMarkdownActions] wrapSelection 开始 prefix:', prefix, 'suffix:', suffix);
     const model = this.editor.getModel();
     if (!model) {
       console.error('[MonacoMarkdownActions] 无法获取编辑器模型');
@@ -243,7 +243,7 @@ export class MonacoMarkdownActions {
    * 插入表格
    */
   insertTable(): void {
-    const table = `| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n| 内容 | 内容 | 内容 |`;
+    const table = `|  |  |  |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n| 内容 | 内容 | 内容 |`;
     
     const selection = this.getSelection();
     this.editor.executeEdits('markdown', [{
@@ -270,7 +270,6 @@ export class MonacoMarkdownActions {
 
     // 检查当前行是否已经是标题
     const headingMatch = lineContent.match(/^(#{1,6})\s/);
-
     let newText: string;
     if (headingMatch && headingMatch[1].length === level) {
       // 移除标题
@@ -456,7 +455,7 @@ export class MonacoMarkdownActions {
     // 获取当前编辑器内容
     const content = model.getValue();
     
-    // 从全局获取当前标签页 ID 和标题
+    // 从全局获取当前标签页ID和标题
     const sourceTabId = (window as any).__currentTabId;
     const tabTitle = (window as any).__currentTabTitle;
     

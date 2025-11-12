@@ -53,7 +53,6 @@ Thumbs.db
 Desktop.ini
 
 # IDE (编辑器配置 - 个人偏好)
-.vscode/
 .idea/
 *.swp
 *.swo

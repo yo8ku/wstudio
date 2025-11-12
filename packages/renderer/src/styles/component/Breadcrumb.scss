@@ -1,0 +1,24 @@
+/**
+ * Breadcrumb 面包屑颜色样式
+ * 功能：定义面包屑导航的颜色主题
+ */
+
+.breadcrumb {
+  background-color: var(--ws-breadcrumb-background);
+  color: var(--ws-breadcrumb-foreground);
+
+  button {
+    // color: var(--ws-breadcrumb-foreground);
+    &:hover {
+      opacity: 1;
+      color: var(--ws-breadcrumb-foreground) !important;
+
+    }
+
+  }
+}
+
+.breadcrumb-separator {
+  color: var(--ws-breadcrumb-foreground);
+  opacity: 0.6;
+}

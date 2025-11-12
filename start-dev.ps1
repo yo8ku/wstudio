@@ -30,7 +30,7 @@ try {
 
 # 启动 Electron
 Write-Host "[2/2] 启动 Electron 应用..." -ForegroundColor Yellow
-pnpm exec electron .
+pnpm exec electron --loader ./esm-loader.cjs electron-main.js
 
 # 清理：关闭 Vite 服务器
 Write-Host ""

@@ -1,0 +1,56 @@
+/**
+ * Sidebar 侧边栏样式 - 只负责布局
+ * 颜色样式在 colors.css 中统一管理
+ */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  height: 100%;
+
+  &-header {
+    height: 35px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    border-bottom: 1px solid;
+
+    button {
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      svg {
+        width: 16px;
+        height: 16px;
+      }
+    }
+  }
+
+  &-content {
+    flex: 1;
+    overflow: hidden; // 防止整个侧边栏滚动，让子组件自己控制滚动
+    min-height: 0; // 允许子组件内容滚动的关键设置
+    display: flex; // 使用 flex 布局
+    flex-direction: column; // 垂直排列
+  }
+
+  &-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -2px;
+    width: 4px;
+    z-index: 10;
+    cursor: col-resize;
+  }
+}

@@ -79,18 +79,18 @@ export class WorkspaceManager {
    */
   private async createWelcomeDocument(): Promise<void> {
     const welcomeFilePath = path.join(this.workspaceDir, '欢迎使用 Note Studio.md');
-    const welcomeContent = `# 欢迎使用 Note Studio 📝
+    const welcomeContent = `# 欢迎使用 Note Studio 
 
 ## 简介
 
 Note Studio 是一个现代化的笔记应用，支持以下功能：
 
-- ✅ **Markdown 编辑**：完整的 Markdown 语法支持
-- ✅ **JSON 编辑**：语法高亮和格式化
-- ✅ **文本编辑**：纯文本文件编辑
-- ✅ **VSCode 扩展**：支持运行 VSCode 扩展
-- ✅ **主题系统**：丰富的主题选择
-- ✅ **AI 集成**：智能助手功能
+-  **Markdown 编辑**：完整的 Markdown 语法支持
+-  **JSON 编辑**：语法高亮和格式化
+-  **文本编辑**：纯文本文件编辑
+-  **VSCode 扩展**：支持运行 VSCode 扩展
+-  **主题系统**：丰富的主题选择
+-  **AI 集成**：智能助手功能
 
 ## 快速开始
 
@@ -127,13 +127,13 @@ Note Studio 是一个现代化的笔记应用，支持以下功能：
 
 在左侧活动栏可以访问：
 
-- 🧩 **扩展市场**：安装更多功能
-- 🎨 **主题**：自定义编辑器外观
-- ⚙️ **设置**：个性化配置
+-  **扩展市场**：安装更多功能
+-  **主题**：自定义编辑器外观
+-  **设置**：个性化配置
 
 ### AI 助手
 
-点击左侧的 💡 图标打开 AI 助手面板，获得智能写作帮助。
+点击左侧的  图标打开 AI 助手面板，获得智能写作帮助。
 
 ## 工作区目录
 
@@ -147,7 +147,7 @@ Note Studio 是一个现代化的笔记应用，支持以下功能：
 
 ---
 
-**开始你的创作之旅吧！** 🚀
+**开始你的创作之旅吧！** 
 `;
 
     try {
@@ -189,6 +189,7 @@ Note Studio 是一个现代化的笔记应用，支持以下功能：
 
   /**
    * 添加最近打开的文件
+   * 只保留最新的3条记录
    */
   addRecentFile(filePath: string): void {
     const recentFiles = this.getRecentFiles();
@@ -196,8 +197,8 @@ Note Studio 是一个现代化的笔记应用，支持以下功能：
     // 移除重复项
     const filtered = recentFiles.filter(f => f !== filePath);
 
-    // 添加到开头，最多保留 10 个
-    const updated = [filePath, ...filtered].slice(0, 10);
+    // 添加到开头，最多保留 3 个
+    const updated = [filePath, ...filtered].slice(0, 3);
 
     this.store.set('recentFiles', updated);
   }
@@ -237,15 +238,26 @@ Note Studio 是一个现代化的笔记应用，支持以下功能：
    */
   getFileLanguage(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
+    const filename = path.basename(filePath);
 
     switch (ext) {
       case '.md':
       case '.markdown':
         return 'markdown';
       case '.json':
+        // settings.json 使用 jsonc 支持注释
+        if (filename === 'settings.json') {
+          return 'jsonc';
+        }
+        // 主题文件使用 jsonc 支持注释
+        if (filePath.includes('/themes/') || filePath.includes('\\themes\\')) {
+          return 'jsonc';
+        }
         return 'json';
       case '.txt':
         return 'plaintext';
+      case '.css':
+        return 'css';
       default:
         return 'plaintext';
     }

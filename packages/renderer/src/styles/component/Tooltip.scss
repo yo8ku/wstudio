@@ -1,0 +1,23 @@
+/**
+ * Tooltip 工具提示颜色样式
+ * 功能：定义工具提示的颜色主题
+ */
+
+.tooltip {
+  background-color: var(--ws-editorHoverWidget-background);
+  color: var(--ws-editorHoverWidget-foreground);
+  border-color: var(--ws-editorHoverWidget-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tooltip-arrow {
+  border-color: var(--ws-editorHoverWidget-background);
+}
+
+
+
+
+
+
+
+

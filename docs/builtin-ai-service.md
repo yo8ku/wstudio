@@ -1,6 +1,6 @@
 # 内置AI服务 (Builtin AI Service)
 
-## 🎯 核心概念
+##  核心概念
 
 **内置AI服务**是应用提供的独立AI功能，与用户的AI配置**完全分离**：
 
@@ -12,7 +12,7 @@
 | **配置位置** | 代码/环境变量 | settings.json / localStorage |
 | **使用场景** | 内联聊天（Ctrl+K） | 侧边栏聊天、其他功能 |
 | **模型来源** | 从真实API自动获取 | 用户手动配置 |
-| **依赖用户配置** | ❌ 完全独立 | ✅ 需要用户配置 |
+| **依赖用户配置** |  完全独立 |  需要用户配置 |
 
 ## 📁 架构设计
 
@@ -89,10 +89,10 @@ export class BuiltinAI {
 ```
 
 **特点：**
-- ✅ 使用固定的开发者API Key
-- ✅ 启动时自动从真实API获取模型
-- ✅ 不依赖settings.json或localStorage
-- ✅ 与用户配置完全隔离
+-  使用固定的开发者API Key
+-  启动时自动从真实API获取模型
+-  不依赖settings.json或localStorage
+-  与用户配置完全隔离
 
 ### 2. IPC通信 (`preload.js`)
 
@@ -142,7 +142,7 @@ OpenAI
   └─ gpt-4-turbo
 ```
 
-## 🚀 使用流程
+##  使用流程
 
 ### 开发者设置API Key
 
@@ -180,22 +180,22 @@ OpenAI
    - 发送消息
    - 使用开发者提供的API Key调用OpenAI
 
-## 🔍 调试日志
+##  调试日志
 
 启动应用后，在控制台查看：
 
 ```
-[BuiltinAI] 🚀 初始化内置AI服务...
+[BuiltinAI]  初始化内置AI服务...
 [BuiltinAI] 📡 开始从 1 个提供商获取模型...
-[BuiltinAI] 🔍 正在从 OpenAI 获取模型列表...
-[BuiltinAI] ✅ 从 OpenAI 获取到 3 个模型: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo']
+[BuiltinAI]  正在从 OpenAI 获取模型列表...
+[BuiltinAI]  从 OpenAI 获取到 3 个模型: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo']
 [BuiltinAI] 📊 所有可用模型: ['OpenAI:gpt-4o', 'OpenAI:gpt-4o-mini', 'OpenAI:gpt-4-turbo']
-[BuiltinAI] ✅ 初始化完成，共获取 3 个模型
+[BuiltinAI]  初始化完成，共获取 3 个模型
 [Main] 内置AI服务已初始化
 
 // 用户打开内联聊天
-[MonacoEditor] 🔍 开始从内置AI服务加载模型列表...
-[MonacoEditor] ✅ 从内置AI服务获取到 3 个模型
+[MonacoEditor]  开始从内置AI服务加载模型列表...
+[MonacoEditor]  从内置AI服务获取到 3 个模型
 [AIZoneWidget] 初始化模型下拉框，可用模型: 3
 ```
 
@@ -221,7 +221,7 @@ private readonly builtinProviders: AIProviderConfig[] = [
 ];
 ```
 
-## ⚠️ 注意事项
+##  注意事项
 
 1. **API Key安全性**
    - 使用环境变量存储
@@ -246,7 +246,7 @@ private readonly builtinProviders: AIProviderConfig[] = [
 
 ## 📊 数据流对比
 
-### ❌ 错误的方式（旧实现）
+###  错误的方式（旧实现）
 ```
 localStorage (ai-model-configs)
     ↓
@@ -258,7 +258,7 @@ MonacoEditor 读取用户配置
 ```
 **问题**: 依赖用户配置，没有配置就无法使用
 
-### ✅ 正确的方式（新实现）
+###  正确的方式（新实现）
 ```
 开发者API Key (环境变量/代码)
     ↓

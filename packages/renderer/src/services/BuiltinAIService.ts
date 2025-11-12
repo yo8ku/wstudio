@@ -1,5 +1,5 @@
 /**
- * 文件功能: 内置AI服务 - 渲染进程端
+ * 文件功能: 内置AI服务 - 渲染进程侧
  * 描述: 通过IPC与主进程通信，调用内置AI模型
  */
 
@@ -21,7 +21,7 @@ export interface StreamCallbacks {
 }
 
 /**
- * 内置AI服务类（渲染进程）
+ * 内置AI服务类（渲染进程侧）
  */
 class BuiltinAIService {
   private static instance: BuiltinAIService;
@@ -73,7 +73,7 @@ class BuiltinAIService {
 
   /**
    * 聊天接口（非流式）
-   * @param modelId 完整的模型ID（格式：提供商:模型名）
+   * @param modelId 完整的模型ID（格式：提供商/模型名）
    * @param messages 聊天消息列表
    * @returns AI响应内容
    */
@@ -104,7 +104,7 @@ class BuiltinAIService {
 
   /**
    * 流式聊天接口
-   * @param modelId 完整的模型ID（格式：提供商:模型名）
+   * @param modelId 完整的模型ID（格式：提供商/模型名）
    * @param messages 聊天消息列表
    * @param callbacks 流式回调函数
    */

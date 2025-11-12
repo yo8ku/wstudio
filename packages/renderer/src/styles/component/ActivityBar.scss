@@ -1,0 +1,39 @@
+/**
+ * ActivityBar 活动栏颜色样式
+ * 功能：定义活动栏的颜色主题
+ */
+
+.activity-bar {
+  background-color: var(--ws-activityBar-background);
+  border-right-color: var(--ws-panel-border);
+  .activity-bar-item{
+    background-color: transparent;
+  }
+}
+
+.activity-bar-item.active {
+  color: var(--ws-activitybar-foreground);
+  opacity: 1;
+}
+
+.activity-bar-item:not(.active) {
+  color: var(--ws-activitybar-inactive-foreground);
+  opacity: 0.6;
+}
+
+.activity-bar-item:not(.active):hover {
+  color: var(--ws-activitybar-foreground);
+  opacity: 1;
+}
+
+.activity-bar-indicator {
+  background-color: var(--ws-activitybar-foreground);
+}
+
+
+
+
+
+
+
+

@@ -1,6 +1,6 @@
 /**
  * 创建知识库对话框组件
- * 功能：提供创建/编辑知识库的UI和交互
+ * 功能：提供创建编辑知识库的UI和交互
  * 描述：支持输入知识库名称、上传封面、添加描述
  */
 
@@ -15,7 +15,7 @@ interface CreateKnowledgeDialogProps {
   onClose: () => void;
   /** 创建知识库回调 */
   onCreate: (data: KnowledgeBaseData) => void;
-  /** 编辑模式：要编辑的知识库项 */
+  /** 编辑模式：要编辑的知识库 */
   editItem?: KnowledgeItem;
   /** 编辑回调 */
   onEdit?: (id: string, data: KnowledgeBaseData) => void;
@@ -122,23 +122,23 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
       <div 
         className="create-knowledge-dialog" 
         style={{
-          backgroundColor: 'var(--editor-bg)',
-          borderColor: 'var(--border-color)',
-          color: 'var(--editor-fg)',
+          backgroundColor: 'var(--ws-editor-background)',
+          borderColor: 'var(--ws-contrast-border)',
+          color: 'var(--ws-editor-foreground)',
         }}
       >
         {/* 对话框标题 */}
         <div 
           className="create-knowledge-dialog__header"
-          style={{ borderColor: 'var(--border-color)' }}
+          style={{ borderColor: 'var(--ws-contrast-border)' }}
         >
-          <h3 style={{ color: 'var(--editor-fg)' }}>
+          <h3 style={{ color: 'var(--ws-editor-foreground)' }}>
             {isEditMode ? '编辑知识库' : '创建知识库'}
           </h3>
           <button
             className="create-knowledge-dialog__close"
             onClick={onClose}
-            style={{ color: 'var(--editor-fg)' }}
+            style={{ color: 'var(--ws-editor-foreground)' }}
           >
             ×
           </button>
@@ -148,7 +148,7 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
         <div className="create-knowledge-dialog__body">
           {/* 知识库名称 */}
           <div className="create-knowledge-dialog__section">
-            <label style={{ color: 'var(--editor-fg)' }}>知识库名称 *</label>
+            <label style={{ color: 'var(--ws-editor-foreground)' }}>知识库名称*</label>
             <input
               type="text"
               className="create-knowledge-dialog__input"
@@ -156,16 +156,16 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
               value={name}
               onChange={(e) => setName(e.target.value)}
               style={{
-                backgroundColor: 'var(--input-bg)',
-                color: 'var(--input-fg)',
-                borderColor: 'var(--border-color)',
+                backgroundColor: 'var(--ws-input-background)',
+                color: 'var(--ws-input-foreground)',
+                borderColor: 'var(--ws-contrast-border)',
               }}
             />
           </div>
 
           {/* 封面上传 */}
           <div className="create-knowledge-dialog__section">
-            <label style={{ color: 'var(--editor-fg)' }}>封面</label>
+            <label style={{ color: 'var(--ws-editor-foreground)' }}>封面</label>
             <input
               ref={coverInputRef}
               type="file"
@@ -177,8 +177,8 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
               className="create-knowledge-dialog__cover-upload"
               onClick={handleBrowseCover}
               style={{
-                backgroundColor: 'var(--input-bg)',
-                borderColor: 'var(--border-color)',
+                backgroundColor: 'var(--ws-input-background)',
+                borderColor: 'var(--ws-contrast-border)',
               }}
             >
               {coverPreview ? (
@@ -197,7 +197,7 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
 
           {/* 描述 */}
           <div className="create-knowledge-dialog__section">
-            <label style={{ color: 'var(--editor-fg)' }}>描述</label>
+            <label style={{ color: 'var(--ws-editor-foreground)' }}>描述</label>
             <textarea
               className="create-knowledge-dialog__textarea"
               placeholder="请输入知识库描述"
@@ -205,9 +205,9 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
               style={{
-                backgroundColor: 'var(--input-bg)',
-                color: 'var(--input-fg)',
-                borderColor: 'var(--border-color)',
+                backgroundColor: 'var(--ws-input-background)',
+                color: 'var(--ws-input-foreground)',
+                borderColor: 'var(--ws-contrast-border)',
                 resize: 'none',
               }}
             />
@@ -217,15 +217,15 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
         {/* 对话框底部 */}
         <div 
           className="create-knowledge-dialog__footer"
-          style={{ borderColor: 'var(--border-color)' }}
+          style={{ borderColor: 'var(--ws-contrast-border)' }}
         >
           <button
             className="create-knowledge-dialog__button create-knowledge-dialog__button--cancel"
             onClick={onClose}
             style={{
               backgroundColor: 'transparent',
-              color: 'var(--editor-fg)',
-              borderColor: 'var(--border-color)',
+              color: 'var(--ws-editor-foreground)',
+              borderColor: 'var(--ws-contrast-border)',
             }}
           >
             取消
@@ -235,9 +235,9 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
             onClick={handleCreate}
             disabled={!name.trim()}
             style={{
-              backgroundColor: 'var(--button-bg)',
-              color: 'var(--button-fg)',
-              borderColor: 'var(--border-color)',
+              backgroundColor: 'var(--ws-button-background)',
+              color: 'var(--ws-button-foreground)',
+              borderColor: 'var(--ws-contrast-border)',
               opacity: !name.trim() ? 0.5 : 1,
             }}
           >

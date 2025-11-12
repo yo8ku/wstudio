@@ -1,0 +1,85 @@
+/**
+ * TabBar 标签栏颜色样式
+ * 功能：定义标签栏的颜色主题
+ */
+
+.tab-bar {
+  background-color: var(--ws-editorGroupHeader-tabsBackground);
+  border-bottom-color: var(--ws-editorGroupHeader-tabsBorder);
+}
+
+.titlebar-button{
+  &:hover{
+    
+  }
+}
+
+.tab-bar-scroll-container {
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+
+    &:hover {
+      background: var(--scrollbar-thumb-hover);
+    }
+
+    &:active {
+      background: var(--scrollbar-thumb-active);
+    }
+  }
+}
+
+.tab-item {
+  background-color: var(--ws-tab-inactiveBackground);
+  color: var(--ws-tab-inactiveForeground);
+  border-color: var(--ws-tab-border);
+
+  &.active {
+    background-color: var(--ws-tab-activeBackground);
+    color: var(--ws-tab-activeForeground);
+    border-bottom-color: var(--ws-tab-activeBorder);
+    border-top-color: var(--ws-tab-activeBorderTop);
+  }
+
+  &.hovered:not(.active) {
+    background-color: var(--ws-tab-hoverBackground);
+    border-bottom-color: var(--ws-tab-hoverBorder);
+  }
+
+  &.modified::after {
+    background-color: var(--ws-tab-activeForeground);
+  }
+
+  &-border-top {
+    background-color: var(--ws-tab-activeBorderTop);
+  }
+
+  &-close {
+    &:hover {
+      background-color: red;
+    }
+
+    &:active {
+    }
+  }
+}
+
+.tab-bar-action-btn {
+  &:hover {
+  }
+
+  &:active {
+    background-color: var(--ws-toolbar-active-background);
+  }
+}
+
+
+
+
+
+
+
+

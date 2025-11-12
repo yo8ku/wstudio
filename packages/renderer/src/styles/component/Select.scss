@@ -1,0 +1,22 @@
+/**
+ * Select 选择框颜色样式
+ * 功能：定义选择框的颜色主题
+ */
+
+select {
+  background-color: var(--ws-dropdown-background);
+  color: var(--ws-dropdown-foreground);
+  border-color: var(--ws-dropdown-border);
+}
+
+select:focus {
+  border-color: var(--ws-focus-border);
+}
+
+
+
+
+
+
+
+

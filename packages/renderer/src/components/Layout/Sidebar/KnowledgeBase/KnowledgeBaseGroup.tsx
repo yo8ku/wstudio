@@ -1,7 +1,7 @@
 /**
  * 知识库分组组件
- * 功能：渲染知识库分组（我创建的/我加入的）
- * 描述：支持分组展开/折叠、显示分组标题和项数量
+ * 功能：渲染知识库分组（我创建的、我加入的）
+ * 描述：支持分组展开/折叠、显示分组标题和项数据
  */
 
 import React from 'react';
@@ -59,7 +59,7 @@ export const KnowledgeBaseGroup: React.FC<KnowledgeBaseGroupProps> = ({
       <div
         className="knowledge-base-group__header"
         style={{
-          color: 'var(--sidebar-fg)',
+          color: 'var(--ws-sidebar-foreground)',
         }}
       >
         <div 
@@ -83,7 +83,7 @@ export const KnowledgeBaseGroup: React.FC<KnowledgeBaseGroupProps> = ({
           )}
         </div>
         
-        {/* 添加知识库按钮 */}
+        {/* 添加知识库按钮*/}
         {onAddClick && (
           <button
             className="knowledge-base-group__action-button"
@@ -93,7 +93,7 @@ export const KnowledgeBaseGroup: React.FC<KnowledgeBaseGroupProps> = ({
             }}
             title="创建知识库"
             style={{
-              color: 'var(--sidebar-fg)',
+              color: 'var(--ws-sidebar-foreground)',
             }}
           >
             <AddIcon className="icon-add" />
@@ -107,7 +107,7 @@ export const KnowledgeBaseGroup: React.FC<KnowledgeBaseGroupProps> = ({
           {group.items.length === 0 ? (
             <div 
               className="knowledge-base-group__empty"
-              style={{ color: 'var(--sidebar-fg)' }}
+              style={{ color: 'var(--ws-sidebar-foreground)' }}
             >
               暂无内容
             </div>

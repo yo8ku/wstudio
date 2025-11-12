@@ -1,0 +1,32 @@
+//只负责颜色配置，不涉及任何布局。
+
+.accordion-section {
+  background-color: var(--ws-sidebar-background);
+  color: var(--ws-sidebar-foreground);
+  border-bottom: 1px solid var(--ws-contrast-border);
+}
+
+
+.accordion-header {
+  background-color: var(--ws-sidebar-background);
+  color: var(--ws-sidebar-foreground);
+}
+
+.accordion-header:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.accordion-action-button:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.accordion-content {
+  background-color: var(--ws-sidebar-background);
+  color: var(--ws-sidebar-foreground);
+  overflow: auto;
+}
+
+.accordion-resize-handle:hover .accordion-resize-line,
+.accordion-resize-handle.resizing .accordion-resize-line {
+  background-color: var(--ws-focus-border);
+}

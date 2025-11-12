@@ -1,0 +1,23 @@
+/**
+ * ImportNoteDialog 导入笔记对话框颜色样式
+ * 功能：定义导入笔记对话框的颜色主题
+ */
+
+.import-note-dialog {
+  background-color: var(--ws-quick-input-background);
+  border-color: var(--ws-dropdown-border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.import-note-dialog-header {
+  background-color: var(--ws-sidebar-background);
+  border-bottom-color: var(--ws-sidebar-border);
+}
+
+
+
+
+
+
+
+

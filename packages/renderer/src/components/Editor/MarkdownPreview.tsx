@@ -1,11 +1,12 @@
 /**
  * Markdown 预览组件
- * 用于在标签页中显示 Markdown 的渲染结果
+ * 功能：在标签页中显示 Markdown 的渲染结果
+ * 描述：使用 markdown-it 进行渲染，支持语法高亮和完整的美化样式
  */
 
 import React, { useEffect, useRef, useMemo } from 'react';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
+import { formatAIResponse } from '../../utils/aiResponseFormatter';
+import '../../styles/aiResponseFormatter.scss';
 
 interface MarkdownPreviewProps {
   content: string;
@@ -18,35 +19,16 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, title
   const isSyncingScrollRef = useRef<boolean>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 调试日志
-  console.log('[MarkdownPreview] 组件初始化/更新:', { title, sourceTabId });
-
-  // 配置 marked 选项
-  useEffect(() => {
-    marked.setOptions({
-      breaks: true,
-      gfm: true,
-    });
-  }, []);
-
-  // 渲染 Markdown 为 HTML
+  // 使用 markdown-it 渲染 Markdown HTML（与 AI 响应使用相同的渲染器和样式）
   const htmlContent = useMemo(() => {
     try {
-      const rawHtml = marked(content || '# 空白文档\n\n开始编写您的 Markdown...') as string;
-      // 使用 DOMPurify 清理 HTML 防止 XSS
-      return DOMPurify.sanitize(rawHtml, {
-        ALLOWED_TAGS: [
-          'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-          'p', 'br', 'hr',
-          'strong', 'em', 'del', 'code', 'pre',
-          'a', 'img',
-          'ul', 'ol', 'li',
-          'blockquote',
-          'table', 'thead', 'tbody', 'tr', 'th', 'td',
-          'input',
-          'div', 'span'
-        ],
-        ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'type', 'checked', 'disabled', 'class', 'id']
+      const defaultContent = '# 空白文档\n\n开始编写您的 Markdown...';
+      return formatAIResponse(content || defaultContent, {
+        enableSyntaxHighlight: true,
+        allowHtml: true,  // ✅ 启用 HTML 标签渲染
+        enableGFM: true,
+        breaks: true,
+        // 使用默认的 'ai-response' 类名前缀，复用已有的样式
       });
     } catch (error) {
       console.error('[MarkdownPreview] 渲染失败:', error);
@@ -105,11 +87,11 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, title
   // 监听来自编辑器的滚动同步请求
   useEffect(() => {
     if (!sourceTabId) {
-      console.log('[MarkdownPreview] 无法设置编辑器滚动监听:', { sourceTabId });
+      console.log('[MarkdownPreview] 无法设置编辑器滚动监听', { sourceTabId });
       return;
     }
 
-    console.log('[MarkdownPreview] 设置编辑器滚动监听:', { sourceTabId });
+    console.log('[MarkdownPreview] 设置编辑器滚动监听', { sourceTabId });
 
     const handleEditorScroll = (event: Event) => {
       const customEvent = event as CustomEvent<{ 
@@ -118,10 +100,9 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, title
       }>;
       const { sourceTabId: eventSourceTabId, scrollPercentage } = customEvent.detail;
 
-      console.log('[MarkdownPreview] 收到编辑器滚动事件:', { eventSourceTabId, currentSourceTabId: sourceTabId, match: eventSourceTabId === sourceTabId });
+      console.log('[MarkdownPreview] 收到编辑器滚动事', { eventSourceTabId, currentSourceTabId: sourceTabId, match: eventSourceTabId === sourceTabId });
 
-      // 只处理与当前预览对应的滚动同步
-      if (eventSourceTabId !== sourceTabId) return;
+      // 只处理与当前预览对应的滚动同步      if (eventSourceTabId !== sourceTabId) return;
 
       const container = containerRef.current;
       if (!container) return;
@@ -129,13 +110,11 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, title
       const scrollHeight = container.scrollHeight - container.clientHeight;
       const targetScrollTop = scrollHeight * scrollPercentage;
 
-      console.log('[MarkdownPreview] 接收编辑器滚动同步:', { sourceTabId, scrollPercentage, targetScrollTop, scrollHeight });
+      console.log('[MarkdownPreview] 接收编辑器滚动同步', { sourceTabId, scrollPercentage, targetScrollTop, scrollHeight });
 
-      // 设置同步标志，防止循环触发
-      isSyncingScrollRef.current = true;
+      // 设置同步标志，防止循环触      isSyncingScrollRef.current = true;
 
-      // 滚动到目标位置
-      container.scrollTop = targetScrollTop;
+      // 滚动到目标位      container.scrollTop = targetScrollTop;
 
       // 重置同步标志
       setTimeout(() => {
@@ -150,6 +129,74 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, title
     };
   }, [sourceTabId]);
 
+  // 图片点击放大功能
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleImageClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // 检查是否点击了图片
+      if (target.tagName === 'IMG') {
+        const img = target as HTMLImageElement;
+        
+        // 创建遮罩层
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgb(0 0 0 / 31%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10000;
+          cursor: zoom-out;
+        `;
+
+        // 创建放大的图片
+        const enlargedImg = document.createElement('img');
+        enlargedImg.src = img.src;
+        enlargedImg.alt = img.alt;
+        enlargedImg.style.cssText = `
+          max-width: 90vw;
+          max-height: 90vh;
+          object-fit: contain;
+          border-radius: 8px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        `;
+
+        overlay.appendChild(enlargedImg);
+        document.body.appendChild(overlay);
+
+        // 点击遮罩层关闭
+        overlay.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+        });
+
+        // ESC 键关闭
+        const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.key === 'Escape') {
+            if (document.body.contains(overlay)) {
+              document.body.removeChild(overlay);
+            }
+            document.removeEventListener('keydown', handleKeyDown);
+          }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+      }
+    };
+
+    container.addEventListener('click', handleImageClick);
+
+    return () => {
+      container.removeEventListener('click', handleImageClick);
+    };
+  }, []);
+
   return (
     <div 
       ref={containerRef}
@@ -158,161 +205,17 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, title
         height: '100%',
         overflow: 'auto',
         padding: '20px 40px',
-        backgroundColor: 'var(--editor-bg)',
-        color: 'var(--editor-fg)',
+        backgroundColor: 'var(--ws-editor-background)',
+        color: 'var(--ws-editor-foreground)',
       }}
     >
-      <style>{`
-        .markdown-preview-container {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
-          font-size: 16px;
-          line-height: 1.6;
-        }
-
-        .markdown-preview-container h1,
-        .markdown-preview-container h2,
-        .markdown-preview-container h3,
-        .markdown-preview-container h4,
-        .markdown-preview-container h5,
-        .markdown-preview-container h6 {
-          margin-top: 24px;
-          margin-bottom: 16px;
-          font-weight: 600;
-          line-height: 1.25;
-          border-bottom: 1px solid var(--border-color);
-          padding-bottom: 0.3em;
-        }
-
-        .markdown-preview-container h1 { font-size: 2em; }
-        .markdown-preview-container h2 { font-size: 1.5em; }
-        .markdown-preview-container h3 { font-size: 1.25em; }
-        .markdown-preview-container h4 { font-size: 1em; }
-        .markdown-preview-container h5 { font-size: 0.875em; }
-        .markdown-preview-container h6 { font-size: 0.85em; }
-
-        .markdown-preview-container p {
-          margin-top: 0;
-          margin-bottom: 16px;
-        }
-
-        .markdown-preview-container code {
-          background-color: var(--input-bg, rgba(110, 118, 129, 0.4));
-          padding: 0.2em 0.4em;
-          margin: 0;
-          font-size: 85%;
-          border-radius: 6px;
-          font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
-        }
-
-        .markdown-preview-container pre {
-          background-color: var(--input-bg, rgba(110, 118, 129, 0.4));
-          padding: 16px;
-          overflow: visible;
-          font-size: 85%;
-          line-height: 1.45;
-          border-radius: 6px;
-          margin-bottom: 16px;
-          white-space: pre-wrap;
-          word-wrap: break-word;
-          word-break: break-word;
-        }
-
-        .markdown-preview-container pre code {
-          background-color: transparent;
-          padding: 0;
-          margin: 0;
-          font-size: 100%;
-          border-radius: 0;
-          white-space: pre-wrap;
-          word-wrap: break-word;
-          word-break: break-word;
-        }
-
-        .markdown-preview-container blockquote {
-          margin: 0;
-          padding: 0 1em;
-          color: var(--sidebar-fg, #8b949e);
-          border-left: 0.25em solid var(--border-color, #30363d);
-          margin-bottom: 16px;
-        }
-
-        .markdown-preview-container ul,
-        .markdown-preview-container ol {
-          margin-top: 0;
-          margin-bottom: 16px;
-          padding-left: 2em;
-        }
-
-        .markdown-preview-container li {
-          margin-top: 0.25em;
-        }
-
-        .markdown-preview-container table {
-          border-spacing: 0;
-          border-collapse: collapse;
-          margin-bottom: 16px;
-          width: 100%;
-          overflow: auto;
-        }
-
-        .markdown-preview-container table th,
-        .markdown-preview-container table td {
-          padding: 6px 13px;
-          border: 1px solid var(--border-color, #30363d);
-        }
-
-        .markdown-preview-container table th {
-          font-weight: 600;
-          background-color: var(--input-bg, rgba(110, 118, 129, 0.2));
-        }
-
-        .markdown-preview-container table tr:nth-child(2n) {
-          background-color: var(--input-bg, rgba(110, 118, 129, 0.1));
-        }
-
-        .markdown-preview-container img {
-          max-width: 100%;
-          box-sizing: content-box;
-          background-color: var(--editor-bg);
-        }
-
-        .markdown-preview-container a {
-          color: var(--link-fg, #58a6ff);
-          text-decoration: none;
-        }
-
-        .markdown-preview-container a:hover {
-          text-decoration: underline;
-        }
-
-        .markdown-preview-container hr {
-          height: 0.25em;
-          padding: 0;
-          margin: 24px 0;
-          background-color: var(--border-color, #30363d);
-          border: 0;
-        }
-
-        .markdown-preview-container strong {
-          font-weight: 600;
-        }
-
-        .markdown-preview-container em {
-          font-style: italic;
-        }
-
-        .markdown-preview-container del {
-          text-decoration: line-through;
-        }
-
-        /* 任务列表样式 */
-        .markdown-preview-container input[type="checkbox"] {
-          margin-right: 0.5em;
-          cursor: pointer;
-        }
-      `}</style>
-      
-      <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+      {/* 
+        使用 ai-response 类名，复用 aiResponseFormatter.scss 中的所有美化样式
+      */}
+      <div 
+        className="ai-response"
+        dangerouslySetInnerHTML={{ __html: htmlContent }} 
+      />
     </div>
   );
 };

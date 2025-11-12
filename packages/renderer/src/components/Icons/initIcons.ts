@@ -72,7 +72,7 @@ function registerCommonAliases(): void {
     
     // 工具别名
     'settings': 'material:settings',
-    'terminal': 'material:terminal',
+    'terminal': 'ui:terminal',
     'archive': 'material:archive',
     'lock': 'material:lock',
     'build': 'material:build',
@@ -88,9 +88,117 @@ function registerCommonAliases(): void {
     'database': 'material:database',
     'font': 'material:font',
     
-    // UI 控制别名
+    // UI 控制别名（优先使用 material 图标集）
     'chevron-right': 'material:chevron-right',
     'expand-more': 'material:expand-more',
+    
+    // UI 图标别名（活动栏、标题栏等）
+    'explorer': 'ui:explorer',
+    'search': 'ui:search',
+    'source-control': 'ui:source-control',
+    'extensions': 'ui:extensions',
+    'knowledge-base': 'ui:knowledge-base',
+    'ai-model': 'ui:ai-model',
+    'ai-agent': 'ui:ai-agent',
+    'settings-activity': 'ui:settings-activity',
+    'user': 'ui:user',
+    'menu': 'ui:menu',
+    'ai-assistant': 'ui:ai-assistant',
+    'theme': 'ui:theme',
+    'minimize': 'ui:minimize',
+    'maximize': 'ui:maximize',
+    'close-window': 'ui:close-window',
+    'app-icon': 'ui:app-icon',
+    'submenu-arrow': 'ui:submenu-arrow',
+    'plus': 'ui:plus',
+    'close': 'ui:close',
+    'chevron-down': 'ui:chevron-down',
+    'chevron-up': 'ui:chevron-up',
+    'chevron-left': 'ui:chevron-left',
+    'eye': 'ui:eye',
+    'eye-off': 'ui:eye-off',
+    'refresh': 'ui:refresh',
+    'check': 'ui:check',
+    'error': 'ui:error',
+    'warning': 'ui:warning',
+    'info': 'ui:info',
+    'gear': 'ui:gear',
+    'more-vertical': 'ui:more-vertical',
+    'more-horizontal': 'ui:more-horizontal',
+    'new-file': 'ui:new-file',
+    'new-folder': 'ui:new-folder',
+    'collapse-all': 'ui:collapse-all',
+    'more-tools': 'ui:more-tools',
+    'extensions-manager': 'ui:extensions-manager',
+    
+    // 扩展管理窗口图标别名
+    'download': 'ui:chevron-down', // 临时使用，后续可替换为真实下载图标
+    'palette': 'ui:gear', // 临时使用gear图标代表主题
+    'puzzle': 'ui:extensions', // 使用现有扩展图标
+    'image': 'material:file-image',
+    'file-text': 'ui:new-file',
+    'box': 'ui:new-folder',
+    'loading': 'ui:refresh',
+    'inbox': 'ui:explorer',
+    'list': 'ui:menu',
+    
+    // 右侧活动栏图标别名
+    'important-files': 'ui:important-files',
+    'tags': 'ui:tags',
+    'backlinks': 'ui:backlinks',
+    'outline': 'ui:outline',
+    'annotations': 'ui:annotations',
+    'links': 'ui:links',
+    'templates': 'ui:templates',
+    'daily-note': 'ui:daily-note',
+    'tag': 'ui:tag',
+    
+    // AI 助手相关图标别名
+    'delete': 'ui:delete',
+    'history': 'ui:history',
+    'code-snippet': 'ui:code-snippet',
+    'file-upload': 'ui:file-upload',
+    'streaming': 'ui:streaming',
+    'context': 'ui:context',
+    'clear-context': 'ui:clear-context',
+    'code-execution': 'ui:code-execution',
+    'deep-thinking': 'ui:deep-thinking',
+    'reasoning': 'ui:reasoning',
+    'empty-state': 'ui:empty-state',
+    'split-vertical': 'ui:split-vertical',
+    'wrench': 'ui:wrench',
+    'network': 'ui:network',
+    'files-folder': 'ui:files-folder',
+    'ai-panel-maximize': 'ui:ai-panel-maximize',
+    'import': 'ui:import',
+    'tool': 'ui:tool',
+    'knowledge-base-book': 'ui:knowledge-base-book',
+    
+    // 主题设置窗口侧边栏图标别名
+    'window': 'ui:close-window',
+    'menubar': 'ui:menu',
+    'statusbar': 'material:expand-more',
+    'editor': 'ui:new-file',
+    'activity-bar': 'ui:explorer',
+    'component': 'material:components',
+    
+    // 搜索引擎图标别名
+    'google': 'ui:google',
+    'baidu': 'ui:baidu',
+    'bing': 'ui:bing',
+    'yandex': 'ui:yandex',
+    'yahoo': 'ui:yahoo',
+    'aol': 'ui:aol',
+    
+    // AI聊天工具栏图标别名
+    'copy': 'ui:copy',
+    'thumb-up': 'ui:thumb-up',
+    'thumb-down': 'ui:thumb-down',
+    'regenerate': 'ui:regenerate',
+    'add-to-chat': 'ui:add-to-chat',
+    
+    // 编辑图标别名
+    'edit': 'ui:edit',
   });
 }
 

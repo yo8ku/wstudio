@@ -1,71 +1,65 @@
 # API 参考文档
 
-## VSCode 兼容 API
+## 插件 API
 
-### commands
+详细的插件开发文档请参考：[插件系统快速开始](../packages/plugin-system/QUICK_START.md)
+
+### 命令系统
 
 ```typescript
 // 注册命令
-vscode.commands.registerCommand(
-  command: string,
-  callback: (...args: any[]) => any
-): Disposable
+api.commands.register(
+  id: string,
+  handler: (...args: any[]) => any
+): void
 
 // 执行命令
-vscode.commands.executeCommand<T>(
-  command: string,
+api.commands.execute(
+  id: string,
   ...args: any[]
-): Thenable<T>
+): Promise<any>
 
 // 获取所有命令
-vscode.commands.getCommands(): Thenable<string[]>
+api.commands.getAll(): string[]
 ```
 
-### window
+### UI 交互
 
 ```typescript
-// 显示信息消息
-vscode.window.showInformationMessage(
+// 显示消息
+api.ui.showMessage(
   message: string,
-  ...items: string[]
-): Thenable<string | undefined>
+  type: 'info' | 'warning' | 'error'
+): void
 
-// 显示警告消息
-vscode.window.showWarningMessage(
+// 显示通知
+api.ui.showNotification(
+  title: string,
   message: string,
-  ...items: string[]
-): Thenable<string | undefined>
-
-// 显示错误消息
-vscode.window.showErrorMessage(
-  message: string,
-  ...items: string[]
-): Thenable<string | undefined>
-
-// 显示快速选择
-vscode.window.showQuickPick(
-  items: string[]
-): Thenable<string | undefined>
-
-// 显示输入框
-vscode.window.showInputBox(
-  options?: InputBoxOptions
-): Thenable<string | undefined>
+  type: 'info' | 'warning' | 'error'
+): void
 ```
 
-### workspace
+### 事件系统
 
 ```typescript
-// 获取工作区文件夹
-vscode.workspace.getWorkspaceFolders(): WorkspaceFolder[] | undefined
+// 监听事件
+api.events.on(
+  event: string,
+  handler: (...args: any[]) => void
+): void
 
-// 获取配置
-vscode.workspace.getConfiguration(
-  section?: string
-): WorkspaceConfiguration
+// 触发事件
+api.events.emit(
+  event: string,
+  ...args: any[]
+): void
 
-// 工作区变化事件
-vscode.workspace.onDidChangeWorkspaceFolders: Event<WorkspaceFoldersChangeEvent>
+// 取消监听
+api.events.off(
+  event: string,
+  handler: Function
+): void
 ```
 
 ## 原生 API

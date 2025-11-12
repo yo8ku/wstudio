@@ -5,38 +5,38 @@
 
 type EventHandler = (...args: any[]) => void;
 
-export class EventEmitter {
+export class EventEmitter<EventMap extends Record<string, (...args: any[]) => void> = Record<string, (...args: any[]) => void>> {
   private events: Map<string, EventHandler[]> = new Map();
 
   /**
    * 监听事件
    */
-  public on(event: string, handler: EventHandler): this {
+  public on<K extends keyof EventMap>(event: K & string, handler: EventMap[K]): this {
     if (!this.events.has(event)) {
       this.events.set(event, []);
     }
-    this.events.get(event)!.push(handler);
+    this.events.get(event)!.push(handler as EventHandler);
     return this;
   }
 
   /**
    * 监听一次事件
    */
-  public once(event: string, handler: EventHandler): this {
+  public once<K extends keyof EventMap>(event: K & string, handler: EventMap[K]): this {
     const onceHandler = (...args: any[]) => {
       handler(...args);
-      this.off(event, onceHandler);
+      this.off(event, onceHandler as EventMap[K]);
     };
-    return this.on(event, onceHandler);
+    return this.on(event, onceHandler as EventMap[K]);
   }
 
   /**
    * 移除事件监听器
    */
-  public off(event: string, handler: EventHandler): this {
+  public off<K extends keyof EventMap>(event: K & string, handler: EventMap[K]): this {
     const handlers = this.events.get(event);
     if (handlers) {
-      const index = handlers.indexOf(handler);
+      const index = handlers.indexOf(handler as EventHandler);
       if (index !== -1) {
         handlers.splice(index, 1);
       }
@@ -50,7 +50,7 @@ export class EventEmitter {
   /**
    * 发射事件
    */
-  public emit(event: string, ...args: any[]): boolean {
+  public emit<K extends keyof EventMap>(event: K & string, ...args: Parameters<EventMap[K]>): boolean {
     const handlers = this.events.get(event);
     if (handlers && handlers.length > 0) {
       handlers.forEach(handler => {

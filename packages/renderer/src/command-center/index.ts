@@ -3,10 +3,11 @@
  */
 
 export { VSCodeCommandCenter } from './VSCodeCommandCenter';
-export { ThemeCommandProvider } from './ThemeCommandProvider';
 export { IconThemeCommandProvider } from './IconThemeCommandProvider';
+export { ThemeCommandProvider } from './ThemeCommandProvider';
 export { MarkdownCommandProvider } from './MarkdownCommandProvider';
 export { MonacoMarkdownActions } from './MonacoMarkdownActions';
 export { FileCommandProvider } from './FileCommandProvider';
+export { AIConfigCommandProvider } from './AIConfigCommandProvider';
 export type { Command, CommandMode, CommandItem, CommandHistory } from './CommandTypes';
 

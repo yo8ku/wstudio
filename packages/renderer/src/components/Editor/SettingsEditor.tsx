@@ -1,12 +1,15 @@
 /**
  * 设置编辑器组件
- * 类似 VS Code 的设置界面，支持 UI 和 JSON 两种模式
+ * 支持 UI 和 JSON 两种模式
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-import { useTheme } from '../../contexts/ThemeContext';
-import { CustomSelect } from '../common/CustomSelect';
+import type { Monaco } from '@monaco-editor/react';
+import * as jsonc from 'jsonc-parser';
+import { DropdownMenu } from '../common/DropdownMenu';
+import { useThemeStore } from '../../stores/themeStore';
+import { initializeMonaco } from '../../hooks/useMonacoInit';
 
 interface SettingDefinition {
   key: string;
@@ -25,7 +28,7 @@ interface SettingsEditorProps {
 }
 
 export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
-  const { theme } = useTheme();
+  const currentTheme = useThemeStore(state => state.currentTheme);
   const [mode, setMode] = useState<'ui' | 'json'>('ui');
   const [settings, setSettings] = useState<Record<string, any>>({});
   const [jsonContent, setJsonContent] = useState<string>('');
@@ -78,7 +81,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
     {
       key: 'editor.insertSpaces',
       title: 'Insert Spaces',
-      description: '按 Tab 键时插入空格',
+      description: 'Tab 键时插入空格',
       type: 'boolean',
       category: '编辑器',
       default: true,
@@ -86,7 +89,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
     {
       key: 'editor.wordWrap',
       title: 'Word Wrap',
-      description: '控制换行的方式',
+      description: '控制换行的方法',
       type: 'select',
       category: '编辑器',
       options: ['off', 'on', 'wordWrapColumn', 'bounded'],
@@ -112,7 +115,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
     {
       key: 'editor.renderWhitespace',
       title: 'Render Whitespace',
-      description: '控制空白字符的显示方式',
+      description: '控制空白字符的显示方法',
       type: 'select',
       category: '编辑器',
       options: ['none', 'boundary', 'selection', 'all'],
@@ -181,7 +184,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       title: 'Color Theme',
       description: '指定工作区颜色主题',
       type: 'string',
-      category: '工作区',
+      category: '工作台',
       default: 'One Dark Pro',
     },
     {
@@ -189,7 +192,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       title: 'Icon Theme',
       description: '指定工作区图标主题',
       type: 'string',
-      category: '工作区',
+      category: '工作台',
       default: 'vs-seti',
     },
     {
@@ -197,7 +200,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       title: 'Side Bar Location',
       description: '控制侧边栏的位置',
       type: 'select',
-      category: '工作区',
+      category: '工作台',
       options: ['left', 'right'],
       default: 'left',
     },
@@ -206,7 +209,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       title: 'Activity Bar Visible',
       description: '控制活动栏是否可见',
       type: 'boolean',
-      category: '工作区',
+      category: '工作台',
       default: true,
     },
     {
@@ -214,7 +217,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       title: 'Status Bar Visible',
       description: '控制状态栏是否可见',
       type: 'boolean',
-      category: '工作区',
+      category: '工作台',
       default: true,
     },
 
@@ -301,13 +304,33 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
     }
   };
 
-  // 从 JSON 保存设置
+  // JSON 保存设置
   const saveFromJson = async () => {
     try {
       setSaving(true);
       setError('');
       
-      const parsed = JSON.parse(jsonContent);
+      // 使用 jsonc-parser 解析 JSONC（支持注释的 JSON）
+      const parseErrors: jsonc.ParseError[] = [];
+      const parsed = jsonc.parse(jsonContent, parseErrors, {
+        allowTrailingComma: true,
+        allowEmptyContent: false
+      });
+      
+      // 检查解析错误
+      if (parseErrors.length > 0) {
+        const errorMsg = `JSON 解析错误: ${jsonc.printParseErrorCode(parseErrors[0].error)}`;
+        setError(errorMsg);
+        setSaving(false);
+        return;
+      }
+      
+      if (!parsed) {
+        setError('JSON 内容为空');
+        setSaving(false);
+        return;
+      }
+      
       const result = await window.electronAPI?.settings?.updateMany(parsed);
       
       if (result?.success) {
@@ -353,7 +376,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
     );
   };
 
-  // 渲染设置项
+  // 渲染设置控件
   const renderSettingControl = (def: SettingDefinition) => {
     const value = settings[def.key] ?? def.default;
     const isModified = modifiedKeys.has(def.key);
@@ -368,7 +391,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
               onChange={(e) => updateSetting(def.key, e.target.checked)}
               className="mr-2"
             />
-            <span className="text-sm" style={{ color: 'var(--editor-fg)' }}>
+            <span className="text-sm" style={{ color: 'var(--ws-editor-foreground)' }}>
               {def.title}
             </span>
           </label>
@@ -377,7 +400,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       case 'number':
         return (
           <div>
-            <label className="text-sm block mb-1" style={{ color: 'var(--editor-fg)' }}>
+            <label className="text-sm block mb-1" style={{ color: 'var(--ws-editor-foreground)' }}>
               {def.title}
             </label>
             <input
@@ -388,9 +411,9 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
               onChange={(e) => updateSetting(def.key, parseFloat(e.target.value))}
               className="w-full px-3 py-1.5 rounded text-sm"
               style={{
-                backgroundColor: 'var(--input-bg)',
-                color: 'var(--input-fg)',
-                border: '1px solid var(--input-border)',
+                backgroundColor: 'var(--ws-input-background)',
+                color: 'var(--ws-input-foreground)',
+                border: '1px solid var(--ws-input-border)',
               }}
             />
           </div>
@@ -399,7 +422,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       case 'string':
         return (
           <div>
-            <label className="text-sm block mb-1" style={{ color: 'var(--editor-fg)' }}>
+            <label className="text-sm block mb-1" style={{ color: 'var(--ws-editor-foreground)' }}>
               {def.title}
             </label>
             <input
@@ -408,9 +431,9 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
               onChange={(e) => updateSetting(def.key, e.target.value)}
               className="w-full px-3 py-1.5 rounded text-sm"
               style={{
-                backgroundColor: 'var(--input-bg)',
-                color: 'var(--input-fg)',
-                border: '1px solid var(--input-border)',
+                backgroundColor: 'var(--ws-input-background)',
+                color: 'var(--ws-input-foreground)',
+                border: '1px solid var(--ws-input-border)',
               }}
             />
           </div>
@@ -419,10 +442,10 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       case 'select':
         return (
           <div>
-            <label className="text-sm block mb-1" style={{ color: 'var(--editor-fg)' }}>
+            <label className="text-sm block mb-1" style={{ color: 'var(--ws-editor-foreground)' }}>
               {def.title}
             </label>
-            <CustomSelect
+            <DropdownMenu
               value={value}
               onChange={(newValue) => updateSetting(def.key, newValue)}
               items={def.options?.map(option => ({ value: option, label: option })) || []}
@@ -437,25 +460,25 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="settings-editor h-full flex flex-col" style={{ backgroundColor: 'var(--editor-bg)' }}>
-      {/* 头部工具栏 */}
+    <div className="settings-editor h-full flex flex-col" style={{ backgroundColor: 'var(--ws-editor-background)' }}>
+      {/* 头部工具栏*/}
       <div
         className="settings-header flex items-center justify-between px-4 py-2 border-b"
-        style={{ borderColor: 'var(--border-color)' }}
+        style={{ borderColor: 'var(--ws-contrast-border)' }}
       >
         <div className="flex items-center space-x-4">
-          <h2 className="text-lg font-semibold" style={{ color: 'var(--editor-fg)' }}>
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--ws-editor-foreground)' }}>
             设置
           </h2>
           
           {/* 模式切换 */}
-          <div className="flex border-b" style={{ borderColor: 'var(--border-color)' }}>
+          <div className="flex border-b" style={{ borderColor: 'var(--ws-contrast-border)' }}>
             <button
               onClick={() => setMode('ui')}
               className="px-4 py-1.5 text-sm"
               style={{
                 backgroundColor: 'transparent',
-                color: mode === 'ui' ? 'var(--tab-active-fg)' : 'var(--editor-fg)',
+                color: mode === 'ui' ? 'var(--tab-active-fg)' : 'var(--ws-editor-foreground)',
                 opacity: mode === 'ui' ? 1 : 0.7,
                 borderBottom: mode === 'ui' ? '2px solid var(--tab-active-border-top)' : '2px solid transparent',
                 border: 'none',
@@ -465,7 +488,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
               }}
               onMouseEnter={(e) => {
                 if (mode !== 'ui') {
-                  e.currentTarget.style.backgroundColor = 'var(--list-hover-bg)';
+                  e.currentTarget.style.backgroundColor = 'var(--ws-list-hover-background)';
                   e.currentTarget.style.opacity = '1';
                 }
               }}
@@ -483,7 +506,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
               className="px-4 py-1.5 text-sm"
               style={{
                 backgroundColor: 'transparent',
-                color: mode === 'json' ? 'var(--tab-active-fg)' : 'var(--editor-fg)',
+                color: mode === 'json' ? 'var(--tab-active-fg)' : 'var(--ws-editor-foreground)',
                 opacity: mode === 'json' ? 1 : 0.7,
                 borderBottom: mode === 'json' ? '2px solid var(--tab-active-border-top)' : '2px solid transparent',
                 border: 'none',
@@ -493,7 +516,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
               }}
               onMouseEnter={(e) => {
                 if (mode !== 'json') {
-                  e.currentTarget.style.backgroundColor = 'var(--list-hover-bg)';
+                  e.currentTarget.style.backgroundColor = 'var(--ws-list-hover-background)';
                   e.currentTarget.style.opacity = '1';
                 }
               }}
@@ -517,8 +540,8 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
               disabled={saving}
               className="px-3 py-1 text-sm rounded"
               style={{
-                backgroundColor: 'var(--button-bg)',
-                color: 'var(--button-fg)',
+                backgroundColor: 'var(--ws-button-background)',
+                color: 'var(--ws-button-foreground)',
               }}
             >
               {saving ? '保存中...' : '保存 JSON'}
@@ -529,7 +552,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
             <button
               onClick={onClose}
               className="text-sm"
-              style={{ color: 'var(--editor-fg)', opacity: 0.6 }}
+              style={{ color: 'var(--ws-editor-foreground)', opacity: 0.6 }}
               title="关闭"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -551,7 +574,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       {mode === 'ui' ? (
         <div className="flex-1 overflow-auto">
           {/* 搜索框 */}
-          <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--ws-contrast-border)' }}>
             <input
               type="text"
               placeholder="搜索设置..."
@@ -559,9 +582,9 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full px-3 py-2 rounded text-sm"
               style={{
-                backgroundColor: 'var(--input-bg)',
-                color: 'var(--input-fg)',
-                border: '1px solid var(--input-border)',
+                backgroundColor: 'var(--ws-input-background)',
+                color: 'var(--ws-input-foreground)',
+                border: '1px solid var(--ws-input-border)',
               }}
             />
           </div>
@@ -576,7 +599,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
                 <div key={category} className="setting-category">
                   <h3
                     className="text-xs font-semibold uppercase mb-3"
-                    style={{ color: 'var(--editor-fg)', opacity: 0.6 }}
+                    style={{ color: 'var(--ws-editor-foreground)', opacity: 0.6 }}
                   >
                     {category}
                   </h3>
@@ -588,7 +611,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
                           key={def.key}
                           className="setting-item p-3 rounded"
                           style={{
-                            backgroundColor: isModified ? 'var(--list-hover-bg)' : 'transparent',
+                            backgroundColor: isModified ? 'var(--ws-list-hover-background)' : 'transparent',
                             border: '1px solid',
                             borderColor: isModified ? 'var(--accent-color)' : 'transparent',
                           }}
@@ -596,7 +619,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex-1">
                               <div className="flex items-center space-x-2">
-                                <span className="text-xs font-mono" style={{ color: 'var(--editor-fg)', opacity: 0.6 }}>
+                                <span className="text-xs font-mono" style={{ color: 'var(--ws-editor-foreground)', opacity: 0.6 }}>
                                   {def.key}
                                 </span>
                                 {isModified && (
@@ -605,7 +628,7 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-sm mt-1" style={{ color: 'var(--editor-fg)', opacity: 0.8 }}>
+                              <p className="text-sm mt-1" style={{ color: 'var(--ws-editor-foreground)', opacity: 0.8 }}>
                                 {def.description}
                               </p>
                             </div>
@@ -613,8 +636,8 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
                               onClick={() => resetSetting(def.key)}
                               className="ml-2 text-xs px-2 py-1 rounded"
                               style={{
-                                backgroundColor: 'var(--input-bg)',
-                                color: 'var(--input-fg)',
+                                backgroundColor: 'var(--ws-input-background)',
+                                color: 'var(--ws-input-foreground)',
                               }}
                               title="重置为默认值"
                             >
@@ -634,14 +657,52 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
           </div>
         </div>
       ) : (
-        // JSON 编辑模式
+        // JSON 编辑模式（使用 JSONC 支持注释）
         <div className="flex-1 overflow-hidden">
           <MonacoEditor
             height="100%"
-            language="json"
+            language="jsonc"
             value={jsonContent}
             onChange={(value) => setJsonContent(value || '')}
-            theme={theme?.type === 'dark' ? 'vs-dark' : 'vs'}
+            theme={currentTheme?.type === 'light' ? 'vs' : 'vs-dark'}
+            onMount={(editor, monaco) => {
+              // 全局初始化 Monaco（只在第一次调用时执行）
+              initializeMonaco(monaco);
+              
+              // 应用主题
+              if (currentTheme) {
+                try {
+                  const themeId = `note-studio-settings-${currentTheme.id}`;
+                  
+                  // 从主题数据中提取颜色
+                  const colors: Record<string, string> = {};
+                  
+                  if (currentTheme.colors['editor.background']) {
+                    colors['editor.background'] = currentTheme.colors['editor.background'];
+                  }
+                  if (currentTheme.colors['editor.foreground']) {
+                    colors['editor.foreground'] = currentTheme.colors['editor.foreground'];
+                  }
+                  if (currentTheme.colors['editorLineNumber.foreground']) {
+                    colors['editorLineNumber.foreground'] = currentTheme.colors['editorLineNumber.foreground'];
+                  }
+                  
+                  const monacoTheme = {
+                    base: currentTheme.type === 'light' ? 'vs' as const : 'vs-dark' as const,
+                    inherit: true,
+                    rules: [],
+                    colors
+                  };
+                  
+                  monaco.editor.defineTheme(themeId, monacoTheme);
+                  monaco.editor.setTheme(themeId);
+                  
+                  console.log('[SettingsEditor] 主题已应用:', themeId);
+                } catch (error) {
+                  console.error('[SettingsEditor] 主题应用失败:', error);
+                }
+              }
+            }}
             options={{
               minimap: { enabled: false },
               scrollBeyondLastLine: false,
@@ -649,6 +710,8 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
               lineNumbers: 'on',
               renderWhitespace: 'selection',
               tabSize: 2,
+              glyphMargin: false,
+              colorDecorators: true, // 启用颜色装饰器
             }}
           />
         </div>

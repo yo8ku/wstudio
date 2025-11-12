@@ -18,46 +18,25 @@ export const OutlineActions: React.FC<OutlineActionsProps> = ({
   return (
     <div className="outline-actions">
       {onCollapse && (
-        <button
+        <div
           className="outline-action-button"
           title="折叠所有"
           onClick={onCollapse}
         >
-          ⊟
-        </button>
+          <i className="codicon codicon-collapse-all" />
+        </div>
       )}
       {onFilter && (
-        <button
+        <div
           className="outline-action-button"
           title="筛选"
           onClick={onFilter}
         >
-          ⋯
-        </button>
+          <i className="codicon codicon-filter" />
+        </div>
       )}
     </div>
   );
 };
 
 export default OutlineActions;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

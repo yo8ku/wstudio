@@ -1,0 +1,128 @@
+/**
+ * 聊天历史记录样式 - 菜单版本
+ */
+
+.chat-history-menu {
+  width: 300px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: var(--ws-menu-background);
+  border: 1px solid var(--ws-menu-border);
+  z-index: 1000; /* 确保在普通内容之上，但低于模态窗口 */
+}
+
+.chat-history-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ws-menu-border);
+
+  span {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ws-foreground-muted);
+  }
+}
+
+.chat-history-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.loading-state,
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  color: var(--ws-foreground-muted);
+  font-size: 13px;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  gap: 8px;
+
+  &:hover {
+    background: var(--ws-dropdown-hoverBackground);
+    color: var(--ws-dropdown-hoverForeground);
+
+    .delete-button {
+      opacity: 1;
+    }
+  }
+
+  &:active {
+    background: var(--ws-menu-item-active-background);
+    opacity: 0.9;
+  }
+}
+
+.session-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-title {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ws-foreground-muted);
+}
+
+.session-time {
+  flex-shrink: 0;
+}
+
+.session-count {
+  flex-shrink: 0;
+}
+
+.delete-button {
+  padding: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background-color 0.15s;
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--ws-button-hover-background);
+  }
+
+  &:active {
+    opacity: 0.7;
+  }
+}
+

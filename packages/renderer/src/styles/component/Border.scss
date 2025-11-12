@@ -1,0 +1,39 @@
+// 全局 boder 边框颜色配置
+[data-theme-mode=light] .dropdown-menu-content {
+    border: 1px solid rgba(63, 62, 62, 0.185);
+}
+
+[data-theme-mode=light] .dropdown-menu-group-title {
+    border-bottom: 1px solid #2b2b2b1f;
+}
+
+[data-theme-mode=dark] .menu .assistant-text-context-menu-separator {
+    border-bottom: 1px solid rgba(102, 102, 102, 0.397);
+}
+
+
+[data-theme-mode=dark] .ai-response-hr {
+    background-color: #7d7d7d69;
+}
+
+
+[data-theme-mode=dark] .command-center,
+// 菜单栏 菜单边框
+[data-theme-mode=dark] .titlebar-dropdown {
+    border: 1px solid rgb(129 129 129 / 28%)
+}
+
+[data-theme-mode=dark] .dropdown-menu-group-title {
+    border-bottom:1px solid rgb(141 130 130 / 34%)
+}
+
+[data-theme-mode=dark] .titlebar-dropdown-separator {
+
+    background-color: rgb(87 87 87 / 52%);
+}
+
+
+
+[data-theme-mode=dark] .command-center{
+  
+}

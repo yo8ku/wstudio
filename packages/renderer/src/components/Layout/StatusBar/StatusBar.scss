@@ -1,0 +1,90 @@
+/**
+ * StatusBar 状态栏样式 - 只负责布局
+ * 颜色样式在 colors.css 中统一管理
+ */
+
+.status-bar {
+  width: 100%;
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  font-size: 12px;
+  gap: 16px;
+  border: 1px solid;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+
+  &-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 100%;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  &-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 100%;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  button {
+    border: none;
+    cursor: pointer;
+    border-radius: 3px;
+    height: 22px;
+    line-height: 22px;
+  }
+
+  &-extension-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
+
+    .extension-icon {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+    }
+
+    .extension-text {
+      line-height: 1;
+      white-space: nowrap;
+    }
+  }
+
+  &-text {
+    line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  &-info-btn {
+    padding: 0 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  &-icon-btn {
+    padding: 0 4px;
+    flex-shrink: 0;
+
+    .status-bar-icon {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+    }
+  }
+}

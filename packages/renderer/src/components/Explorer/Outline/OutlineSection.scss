@@ -1,9 +1,50 @@
+// 大纲部分的外层容器
 .outline-section {
-  padding: 4px 0;
+  // 固定在底部，不占据额外空间
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto; // 不伸缩，保持固定高度
+  overflow: hidden;
+
+  // 展开状态：使用 CSS 变量设置高度
+  &.outline-section--expanded {
+    height: var(--outline-height, 300px);
+  }
+
+  // 折叠状态：自动高度
+  &.outline-section--collapsed {
+    height: auto;
+  }
+
+  // 确保 ExplorerSection 占满空间
+  .explorer-section-accordion {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-top: 1px solid var(--ws-button-background);
+  }
+
+  // 为大纲内容设置最小高度
+  .explorer-section-content {
+    min-height: 120px !important; // 设置最小高度，确保有展开效果
+  }
+}
+
+.outline-content {
+  padding: 2px 0;
+  flex: 1 !important;
+  /* 占据剩余空间 */
+  min-height: 0 !important;
+  /* 允许flex正常工作 */
+  overflow: auto !important;
+  /* 内容可滚动 */
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  /* 确保占满高度 */
 
   .outline-empty {
     padding: 12px 20px;
-    color: var(--foreground-muted, #888888);
     font-size: 13px;
     font-style: italic;
   }
@@ -11,27 +52,25 @@
   .outline-node {
     user-select: none;
 
+
     .outline-node-content {
       display: flex;
       align-items: center;
-      gap: 4px;
-      padding: 4px 8px;
+      gap: 2px;
+      padding: 1px 8px;
       cursor: pointer;
-      transition: background-color 0.15s ease;
+      min-height: 18px;
+      margin-top: 5px;
 
       &:hover {
-        background-color: var(--hover-bg, rgba(255, 255, 255, 0.05));
-      }
-
-      &.selected {
-        background-color: var(--active-bg, rgba(255, 255, 255, 0.1));
+        background: var(--ws-button-background);
+        color: var(--ws-button-secondaryForeground);
       }
 
       .outline-chevron {
         font-size: 10px;
         width: 12px;
         display: inline-block;
-        transition: transform 0.2s ease;
         flex-shrink: 0;
       }
 
@@ -44,7 +83,6 @@
       .outline-name {
         flex: 1;
         font-size: 13px;
-        color: var(--foreground-color, #cccccc);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -57,9 +95,7 @@
     gap: 4px;
 
     .outline-action-button {
-      background: none;
       border: none;
-      color: var(--foreground-color, #cccccc);
       cursor: pointer;
       padding: 4px;
       font-size: 16px;
@@ -68,13 +104,6 @@
       align-items: center;
       justify-content: center;
       border-radius: 3px;
-      transition: background-color 0.15s ease;
-
-      &:hover {
-        background-color: var(--hover-bg, rgba(255, 255, 255, 0.1));
-      }
     }
   }
 }
-
-

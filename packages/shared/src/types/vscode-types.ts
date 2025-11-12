@@ -1,5 +1,5 @@
 /**
- * VSCode 类型定义
+ * 类型定义
  */
 
 export interface VSCodeExtension {

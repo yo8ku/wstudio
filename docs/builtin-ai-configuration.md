@@ -1,6 +1,6 @@
 # 内置AI服务配置指南
 
-## 📝 配置API Key
+##  配置API Key
 
 内置AI服务需要开发者提供API Key才能正常工作。有两种配置方式：
 
@@ -17,9 +17,9 @@ BUILTIN_OPENAI_KEY=sk-your-openai-api-key-here
 ```
 
 **优点：**
-- ✅ 不会被提交到Git
-- ✅ 便于在不同环境使用不同Key
-- ✅ 符合安全最佳实践
+-  不会被提交到Git
+-  便于在不同环境使用不同Key
+-  符合安全最佳实践
 
 ### 方式2：直接修改代码
 
@@ -37,10 +37,10 @@ private readonly builtinProviders: AIProviderConfig[] = [
 ```
 
 **缺点：**
-- ⚠️ API Key可能被提交到Git
-- ⚠️ 需要重新编译才能生效
+-  API Key可能被提交到Git
+-  需要重新编译才能生效
 
-## 🚀 启动应用
+##  启动应用
 
 配置好API Key后，正常启动应用：
 
@@ -53,24 +53,24 @@ npm run dev
 2. 存储到内存中
 3. 供内联聊天功能使用
 
-## 🔍 验证配置
+##  验证配置
 
 启动应用后查看控制台输出：
 
-### ✅ 配置成功
+###  配置成功
 ```
-[BuiltinAI] 🚀 初始化内置AI服务...
+[BuiltinAI]  初始化内置AI服务...
 [BuiltinAI] 📡 开始从 1 个提供商获取模型...
-[BuiltinAI] 🔍 正在从 OpenAI 获取模型列表...
-[BuiltinAI] ✅ 从 OpenAI 获取到 5 个模型: ['gpt-4o', 'gpt-4o-mini', ...]
-[BuiltinAI] ✅ 初始化完成，共获取 5 个模型
+[BuiltinAI]  正在从 OpenAI 获取模型列表...
+[BuiltinAI]  从 OpenAI 获取到 5 个模型: ['gpt-4o', 'gpt-4o-mini', ...]
+[BuiltinAI]  初始化完成，共获取 5 个模型
 ```
 
-### ❌ 配置失败
+###  配置失败
 ```
-[BuiltinAI] 🚀 初始化内置AI服务...
-[BuiltinAI] ⚠️ 从 OpenAI 获取模型失败: HTTP 401: Unauthorized
-[BuiltinAI] ❌ 初始化失败
+[BuiltinAI]  初始化内置AI服务...
+[BuiltinAI]  从 OpenAI 获取模型失败: HTTP 401: Unauthorized
+[BuiltinAI]  初始化失败
 ```
 
 **常见错误：**
@@ -188,10 +188,10 @@ const response = await fetch(url, {
 
 2. **使用环境变量而非硬编码**
    ```typescript
-   // ✅ 好
+   //  好
    apiKey: process.env.BUILTIN_OPENAI_KEY
    
-   // ❌ 差
+   //  差
    apiKey: 'sk-hardcoded-key'
    ```
 

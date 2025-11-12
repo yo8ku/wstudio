@@ -6,11 +6,13 @@
 
 import { KnowledgeItem, KnowledgeGroupType, KnowledgeFileType } from './types';
 
+import { electronStore } from '../../../../services/ElectronStoreService';
+
 /**
  * 知识库服务类
  */
 class KnowledgeBaseService {
-  private storageKey = 'note-studio-knowledge-base';
+  private storageKey = 'knowledge-base';
 
   /**
    * 读取文件内容
@@ -74,7 +76,7 @@ class KnowledgeBaseService {
   }
 
   /**
-   * 解析文件并创建知识库项
+   * 解析文件并创建知识库
    */
   async parseFile(file: File, group: KnowledgeGroupType): Promise<KnowledgeItem> {
     // 验证文件类型
@@ -113,11 +115,39 @@ class KnowledgeBaseService {
   /**
    * 从本地存储加载知识库数据
    */
-  loadFromStorage(): { created: KnowledgeItem[] } {
+  async loadFromStorage(): Promise<{ created: KnowledgeItem[] }> {
     try {
-      const data = localStorage.getItem(this.storageKey);
-      if (data) {
-        return JSON.parse(data);
+      const data = await electronStore.get('knowledge-base');
+      if (data && 'spaces' in data && data.spaces) {
+        // 转换 electron-store 格式到内部格式
+        // 需要将 name 字段转换回 title 字段，并恢复所有元数据
+        const spaces = data.spaces as Array<{
+          id: string;
+          name: string;
+          type: string;
+          createdAt: number;
+          updatedAt: number;
+          cover?: string;
+          description?: string;
+          children?: unknown[];
+          documents?: unknown[];
+        }>;
+        
+        const created: KnowledgeItem[] = spaces.map(space => ({
+          id: space.id,
+          title: space.name, // 将 name 转换为 title
+          type: 'folder' as const,
+          group: 'created' as const,
+          children: (space.children as KnowledgeItem[]) || [], // 恢复子项
+          metadata: {
+            cover: space.cover,
+            description: space.description,
+            createdAt: new Date(space.createdAt),
+            updatedAt: new Date(space.updatedAt),
+          },
+        }));
+        
+        return { created };
       }
     } catch (error) {
       console.error('Failed to load knowledge base from storage:', error);
@@ -128,9 +158,27 @@ class KnowledgeBaseService {
   /**
    * 保存知识库数据到本地存储
    */
-  saveToStorage(data: { created: KnowledgeItem[] }): void {
+  async saveToStorage(data: { created: KnowledgeItem[] }): Promise<void> {
     try {
-      localStorage.setItem(this.storageKey, JSON.stringify(data));
+      // 转换内部格式为 electron-store 格式
+      // 注意：这里的 type 应该是知识库类型（'local' | 'cloud'），不是 item 类型（'file' | 'folder'）
+      const storeData = {
+        spaces: data.created.map(item => ({
+          id: item.id,
+          name: item.title, // title 转换为 name
+          type: 'local' as const, // 默认所有知识库都是本地
+          createdAt: item.metadata?.createdAt ? new Date(item.metadata.createdAt).getTime() : Date.now(),
+          updatedAt: Date.now(),
+          cover: item.metadata?.cover, // 保存封面
+          description: item.metadata?.description, // 保存描述
+          children: item.children || [], // 保存子项
+          documents: [] // 可以根据需要添加文档数据
+        })),
+        settings: {
+          autoSync: false
+        }
+      };
+      await electronStore.set('knowledge-base', storeData);
     } catch (error) {
       console.error('Failed to save knowledge base to storage:', error);
     }
@@ -139,39 +187,39 @@ class KnowledgeBaseService {
   /**
    * 添加知识库项
    */
-  addItem(item: KnowledgeItem): void {
-    const data = this.loadFromStorage();
+  async addItem(item: KnowledgeItem): Promise<void> {
+    const data = await this.loadFromStorage();
     data.created.push(item);
-    this.saveToStorage(data);
+    await this.saveToStorage(data);
   }
 
   /**
    * 删除知识库项
    */
-  removeItem(itemId: string): void {
-    const data = this.loadFromStorage();
+  async removeItem(itemId: string): Promise<void> {
+    const data = await this.loadFromStorage();
     data.created = this.removeItemRecursive(data.created, itemId);
-    this.saveToStorage(data);
+    await this.saveToStorage(data);
   }
 
   /**
    * 删除知识库（removeItem 的别名，更语义化）
    */
-  deleteKnowledgeBase(itemId: string): void {
-    this.removeItem(itemId);
+  async deleteKnowledgeBase(itemId: string): Promise<void> {
+    await this.removeItem(itemId);
   }
 
   /**
    * 更新知识库项
    */
-  updateKnowledgeBase(itemId: string, updates: Partial<KnowledgeItem>): void {
-    const data = this.loadFromStorage();
+  async updateKnowledgeBase(itemId: string, updates: Partial<KnowledgeItem>): Promise<void> {
+    const data = await this.loadFromStorage();
     data.created = this.updateItemRecursive(data.created, itemId, updates);
-    this.saveToStorage(data);
+    await this.saveToStorage(data);
   }
 
   /**
-   * 递归更新项
+   * 递归更新
    */
   private updateItemRecursive(
     items: KnowledgeItem[],
@@ -200,7 +248,7 @@ class KnowledgeBaseService {
   }
 
   /**
-   * 递归删除项
+   * 递归删除
    */
   private removeItemRecursive(items: KnowledgeItem[], itemId: string): KnowledgeItem[] {
     return items.filter((item) => {
@@ -217,13 +265,13 @@ class KnowledgeBaseService {
   /**
    * 查找知识库项
    */
-  findItem(itemId: string): KnowledgeItem | null {
-    const data = this.loadFromStorage();
+  async findItem(itemId: string): Promise<KnowledgeItem | null> {
+    const data = await this.loadFromStorage();
     return this.findItemRecursive(data.created, itemId);
   }
 
   /**
-   * 递归查找项
+   * 递归查找
    */
   private findItemRecursive(items: KnowledgeItem[], itemId: string): KnowledgeItem | null {
     for (const item of items) {
@@ -243,8 +291,8 @@ class KnowledgeBaseService {
   /**
    * 获取指定知识库中所有文件的文件名（用于检查重复）
    */
-  getExistingFileNames(knowledgeBaseId: string): Set<string> {
-    const knowledgeBase = this.findItem(knowledgeBaseId);
+  async getExistingFileNames(knowledgeBaseId: string): Promise<Set<string>> {
+    const knowledgeBase = await this.findItem(knowledgeBaseId);
     if (!knowledgeBase || !knowledgeBase.children) {
       return new Set();
     }
@@ -272,8 +320,8 @@ class KnowledgeBaseService {
    * @param fileName 文件名
    * @param folderPath 可选：文件夹路径（相对于知识库根目录）
    */
-  addFileToKnowledgeBase(knowledgeBaseId: string, filePath: string, fileName: string, folderPath?: string): void {
-    const data = this.loadFromStorage();
+  async addFileToKnowledgeBase(knowledgeBaseId: string, filePath: string, fileName: string, folderPath?: string): Promise<void> {
+    const data = await this.loadFromStorage();
     
     // 根据文件扩展名确定文件类型
     const ext = fileName.split('.').pop()?.toLowerCase();
@@ -298,7 +346,7 @@ class KnowledgeBaseService {
     } else {
       data.created = this.addFileRecursive(data.created, knowledgeBaseId, newItem);
     }
-    this.saveToStorage(data);
+    await this.saveToStorage(data);
   }
 
   /**
@@ -412,12 +460,12 @@ class KnowledgeBaseService {
   /**
    * 搜索知识库项
    */
-  searchItems(query: string): KnowledgeItem[] {
+  async searchItems(query: string): Promise<KnowledgeItem[]> {
     if (!query.trim()) {
       return [];
     }
 
-    const data = this.loadFromStorage();
+    const data = await this.loadFromStorage();
     const results: KnowledgeItem[] = [];
 
     this.searchRecursive(data.created, query.toLowerCase(), results);
@@ -442,15 +490,15 @@ class KnowledgeBaseService {
   /**
    * 清空知识库
    */
-  clear(): void {
-    localStorage.removeItem(this.storageKey);
+  async clear(): Promise<void> {
+    await electronStore.delete('knowledge-base');
   }
 
   /**
    * 获取统计信息
    */
-  getStats(): { totalItems: number; totalWordCount: number; totalSize: number } {
-    const data = this.loadFromStorage();
+  async getStats(): Promise<{ totalItems: number; totalWordCount: number; totalSize: number }> {
+    const data = await this.loadFromStorage();
     
     let totalItems = 0;
     let totalWordCount = 0;

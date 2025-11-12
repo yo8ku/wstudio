@@ -1,0 +1,217 @@
+/**
+ * Highlight.js 代码高亮样式
+ * 基于 VS Code 主题风格
+ */
+
+/* ========== JSON 字段名高亮（最高优先级） ========== */
+.hljs-attr {
+  color: #268bd2 !important;
+  font-weight: 500 !important;
+}
+
+/* 代码块基础样式 */
+.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--ws-editor-foreground);
+}
+
+/* 注释 */
+.hljs-comment,
+.hljs-quote {
+  color: var(--ws-editor-comment-color, #6a9955);
+}
+
+/* 关键字 */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-type {
+  color: var(--ws-syntax-keyword, #569cd6);
+}
+
+/* 变量和属性 */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-attribute,
+.hljs-attr {
+  color: var(--ws-syntax-variable, #9cdcfe);
+}
+
+/* 字符串 */
+.hljs-string,
+.hljs-regexp,
+.hljs-template-string {
+  color: var(--ws-syntax-string, #ce9178);
+}
+
+/* 数字 */
+.hljs-number,
+.hljs-meta .hljs-string {
+  color: var(--ws-syntax-number, #b5cea8);
+}
+
+/* 函数 */
+.hljs-function,
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.class_,
+.hljs-title.class {
+  color: var(--ws-syntax-function, #dcdcaa);
+}
+
+/* 类名 */
+.hljs-class .hljs-title {
+  color: var(--ws-syntax-class, #4ec9b0);
+}
+
+/* 符号和操作符 */
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: var(--ws-syntax-constant, #4fc1ff);
+}
+
+/* 内置函数 */
+.hljs-built_in,
+.hljs-builtin-name {
+  color: var(--ws-syntax-builtin, #4ec9b0);
+}
+
+/* 标签 */
+.hljs-tag {
+  color: var(--ws-syntax-tag, #569cd6);
+}
+
+/* 标签名 */
+.hljs-name {
+  color: var(--ws-syntax-tag-name, #4ec9b0);
+}
+
+/* 属性选择器 */
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: var(--ws-syntax-selector, #d7ba7d);
+}
+
+/* 元数据 */
+.hljs-meta,
+.hljs-meta-keyword {
+  color: var(--ws-syntax-meta, #9cdcfe);
+}
+
+/* 元字符串 */
+.hljs-meta .hljs-string {
+  color: var(--ws-syntax-meta-string, #ce9178);
+}
+
+/* 删除 */
+.hljs-deletion {
+  color: var(--ws-diff-removed, #f85149);
+  background-color: var(--ws-diff-removed-bg, rgba(248, 81, 73, 0.1));
+}
+
+/* 添加 */
+.hljs-addition {
+  color: var(--ws-diff-inserted, #3fb950);
+  background-color: var(--ws-diff-inserted-bg, rgba(63, 185, 80, 0.1));
+}
+
+/* 链接 */
+.hljs-link {
+  text-decoration: underline;
+}
+
+/* 强调 */
+.hljs-emphasis {
+  font-style: italic;
+}
+
+/* 加粗 */
+.hljs-strong {
+  font-weight: bold;
+}
+
+/* 特定语言样式 */
+
+/* JavaScript / TypeScript */
+.hljs-params {
+  color: var(--ws-syntax-parameter, #9cdcfe);
+}
+
+/* CSS */
+.hljs-selector-tag {
+  color: var(--ws-syntax-tag, #d7ba7d);
+}
+
+.hljs-attribute {
+  color: var(--ws-syntax-property, #9cdcfe);
+}
+
+/* HTML */
+.hljs-tag .hljs-attr {
+  color: var(--ws-syntax-attribute, #9cdcfe);
+}
+
+/* JSON - 字段名高亮 */
+.hljs.language-json .hljs-attr,
+.language-json .hljs-attr,
+code.language-json .hljs-attr {
+  color: #268bd2 !important;
+  font-weight: 500;
+}
+
+/* Markdown */
+.hljs-section {
+  color: var(--ws-syntax-heading, #569cd6);
+  font-weight: bold;
+}
+
+.hljs-bullet {
+  color: var(--ws-syntax-list-marker, #6a9955);
+}
+
+.hljs-code {
+  color: var(--ws-syntax-inline-code, #ce9178);
+}
+
+/* Python */
+.hljs-decorator,
+.hljs-meta {
+  color: var(--ws-syntax-decorator, #dcdcaa);
+}
+
+/* Shell / Bash */
+.hljs-subst {
+  color: var(--ws-editor-foreground);
+}
+
+/* SQL - 关键字保持原样，不转换为大写 */
+.hljs-keyword {
+  color: var(--ws-syntax-keyword, #569cd6);
+}
+
+/* 特殊情况处理 */
+.hljs-doctag,
+.hljs-formula {
+  color: var(--ws-syntax-constant, #4fc1ff);
+}
+
+.hljs-section,
+.hljs-name,
+.hljs-selector-tag,
+.hljs-deletion,
+.hljs-subst {
+  font-weight: normal;
+}
+
+/* 错误和无效 */
+.hljs-invalid {
+  color: var(--ws-error-foreground, #f85149);
+  text-decoration: wavy underline;
+}
+

@@ -1,0 +1,105 @@
+/**
+ * Monaco 编辑器样�? * 确保编辑器正确填充容�? */
+
+.monaco-editor-wrapper {
+  width: 100%;
+  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+ 
+  
+  /* Monaco Editor 根容器样式修�?*/
+  > div {
+    width: 100% !important;
+    height: 100% !important;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    position: relative;
+  }
+  
+  /* 确保 Monaco Editor 本身正确填充 */
+  :global {
+    .monaco-editor {
+      width: 100% !important;
+      height: 100% !important;
+      position: relative !important;
+      
+      .overflow-guard {
+        width: 100% !important;
+        height: 100% !important;
+        position: relative !important;
+      }
+      
+      .monaco-scrollable-element {
+        width: 100% !important;
+        height: 100% !important;
+      }
+      
+      /* 确保编辑器视图区域正确显�?*/
+      .view-lines {
+        width: 100%;
+        min-height: 100%;
+      }
+      
+      /* 确保行号区域可见 */
+      .margin,
+      .line-numbers {
+        opacity: 1 !important;
+      }
+      
+      /* 🎯 完全禁用颜色选择器 Widget（默认隐藏） */
+      .colorpicker-widget,
+      .monaco-color-picker,
+      .color-picker-widget {
+        /* 🎯 核心：彻底禁用所有过渡和动画（防止延迟消失） */
+        transition: none !important;
+        animation: none !important;
+        transition-duration: 0s !important;
+        animation-duration: 0s !important;
+        transition-delay: 0s !important;
+        animation-delay: 0s !important;
+        transition-property: none !important;
+        
+        /* 默认完全隐藏 */
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        
+        /* 🎯 只有当 JS 明确添加 .show-picker 类时才显示 */
+        &.show-picker {
+          /* 强制立即显示，无过渡 */
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          pointer-events: auto !important;
+          
+          /* 再次确保无过渡 */
+          transition: none !important;
+          animation: none !important;
+        }
+      }
+      
+      /* 🎯 子元素也彻底禁用过渡（防止子元素动画导致延迟） */
+      .colorpicker-body,
+      .colorpicker-header,
+      .colorpicker-color-bg,
+      .colorpicker-color-border,
+      .colorpicker-color-preview {
+        transition: none !important;
+        animation: none !important;
+        transition-duration: 0s !important;
+        animation-duration: 0s !important;
+        transition-delay: 0s !important;
+        animation-delay: 0s !important;
+      }
+    }
+  }
+}
+

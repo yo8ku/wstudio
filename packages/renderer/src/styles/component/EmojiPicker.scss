@@ -1,0 +1,28 @@
+/**
+ * EmojiPicker 表情选择器颜色样式
+ * 功能：定义表情选择器的颜色主题
+ */
+
+.emoji-picker {
+  background-color: var(--ws-dropdown-background);
+  border-color: var(--ws-dropdown-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.emoji-picker-search {
+  background-color: var(--ws-input-background);
+  color: var(--ws-input-foreground);
+  border-color: var(--ws-input-border);
+}
+
+.emoji-picker-item:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+
+
+
+
+
+
+

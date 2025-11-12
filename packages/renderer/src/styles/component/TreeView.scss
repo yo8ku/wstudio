@@ -1,0 +1,34 @@
+/**
+ * TreeView 通用树视图颜色样式
+ * 功能：定义树视图的颜色主题
+ */
+
+.tree-view {
+
+}
+
+.tree-item {
+  color: var(--ws-sidebar-foreground);
+}
+
+.tree-item:hover {
+  background-color: var(--ws-list-hoverBackground);
+}
+
+.tree-item.active {
+  background-color: var(--ws-list-active-selection-background);
+  color: var(--ws-list-active-selection-foreground);
+}
+
+.tree-item.selected {
+  background-color: var(--ws-list-inactiveSelectionBackground);
+  color: var(--ws-list-inactiveSelectionForeground);
+}
+
+
+
+
+
+
+
+

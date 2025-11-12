@@ -1,10 +1,9 @@
 /**
- * VS Code 风格的命令中心
- * 
+ * 命令中心
  * 功能：
  * - 多级菜单支持 (>, @, #, :)
  * - 动态前缀切换
- * - 最近使用记录 (MRU)
+ * - 最近使用记录(MRU)
  * - 命令分类和分组
  * - 模糊搜索
  * - 快捷键显示
@@ -12,9 +11,9 @@
  */
 
 import type { Command, CommandMode, CommandItem, CommandHistory } from './CommandTypes';
-import { themeManager } from '@note-studio/core';
+import { electronStore } from '../services/ElectronStoreService';
 
-const HISTORY_KEY = 'vscode-command-center-history';
+const HISTORY_KEY = 'command-history';
 const MAX_HISTORY = 20;
 
 export class VSCodeCommandCenter {
@@ -66,13 +65,14 @@ export class VSCodeCommandCenter {
       }
     };
     
-    console.log('[CommandCenter] 设置主题监听器');
-    themeManager.on('theme-changed', this.themeChangeHandler);
+    console.log('[CommandCenter] 设置主题监听');
+    // 监听新主题系统的主题变化事件
+    window.electronAPI?.on?.('theme:theme-changed', this.themeChangeHandler);
   }
   
   /**
    * 刷新UI以应用新主题
-   * 通过完全重新挂载面板来确保所有 CSS 变量都被重新读取
+   * 通过完全重新挂载面板来确保所有CSS变量都被重新读取
    */
   private refreshUI(): void {
     if (!this.container) return;
@@ -98,7 +98,7 @@ export class VSCodeCommandCenter {
             <input 
               type="text" 
               class="command-center-input" 
-              placeholder="输入命令或搜索..."
+              placeholder="输入命令或搜索.."
               spellcheck="false"
               autocomplete="off"
             />
@@ -180,7 +180,8 @@ export class VSCodeCommandCenter {
     if (mode) {
       await this.switchMode(mode);
       if (this.input) {
-        this.input.value = initialMode;
+        // 如果模式配置了隐藏前缀，则不显示前缀
+        this.input.value = mode.hidePrefix ? '' : initialMode;
       }
     }
 
@@ -198,9 +199,9 @@ export class VSCodeCommandCenter {
   async hide(confirmed: boolean = false): Promise<void> {
     if (!this.isVisible) return;
     
-    // ⭐ 只有在"取消"（非确认）时才调用 onCancel 回调
+    // 只有"取消"（非确认）时才调用onCancel回调
     if (!confirmed && this.currentMode?.onCancel) {
-      console.log('[CommandCenter] 调用模式的 onCancel 回调:', this.currentMode.name);
+      console.log('[CommandCenter] 调用模式onCancel回调:', this.currentMode.name);
       await this.currentMode.onCancel();
     }
     
@@ -224,7 +225,7 @@ export class VSCodeCommandCenter {
       prefix: '>',
       name: 'Commands',
       placeholder: '输入命令名称...',
-      icon: '⌘',
+      icon: ',',
       provider: (query) => this.getCommandItems(query)
     });
 
@@ -238,7 +239,7 @@ export class VSCodeCommandCenter {
     });
   }
 
-  // ============ 命令提供者 ============
+  // ============ 命令提供器 ============
 
   private async getCommandItems(query: string): Promise<CommandItem[]> {
     const items: CommandItem[] = [];
@@ -267,7 +268,7 @@ export class VSCodeCommandCenter {
           displayId: command.displayId,
           description: command.description,
           detail: command.detail,
-          icon: command.icon || (isRecent ? '🕐' : '⚡'),
+          icon: command.icon || (isRecent ? 'clock' : ''),
           keybinding: command.keybinding,
           category: command.category,
           value: command,
@@ -296,7 +297,7 @@ export class VSCodeCommandCenter {
 
     // 组合结果：只在没有搜索且有最近命令时添加分割线
     if (!query && recentItems.length > 0 && otherItems.length > 0) {
-      return [
+    return [
         ...recentItems,
         {
           id: '__separator__',
@@ -316,9 +317,9 @@ export class VSCodeCommandCenter {
     if (!match) {
       return [{
         id: 'line-help',
-        label: '输入行号 (例如: 42 或 42:10)',
+        label: '输入行号 (例如: 42 42:10)',
         description: '',
-        icon: 'ℹ️',
+        icon: 'info',
         value: null
       }];
     }
@@ -330,7 +331,7 @@ export class VSCodeCommandCenter {
       id: 'goto-line',
       label: `跳转到第 ${line} 行${column > 1 ? `, 第 ${column} 列` : ''}`,
       description: '',
-      icon: '➡️',
+      icon: 'arrow-right',
       value: { line, column }
     }];
   }
@@ -359,12 +360,14 @@ export class VSCodeCommandCenter {
 
     const value = this.input.value;
     
-    // 检查是否切换模式
-    const firstChar = value.charAt(0);
-    if (this.modes.has(firstChar) && this.currentMode?.prefix !== firstChar) {
-      const mode = this.modes.get(firstChar);
-      if (mode) {
-        await this.switchMode(mode);
+    // 如果当前模式没有隐藏前缀，检查是否切换模式
+    if (!this.currentMode?.hidePrefix) {
+      const firstChar = value.charAt(0);
+      if (this.modes.has(firstChar) && this.currentMode?.prefix !== firstChar) {
+        const mode = this.modes.get(firstChar);
+        if (mode) {
+          await this.switchMode(mode);
+        }
       }
     }
 
@@ -380,9 +383,12 @@ export class VSCodeCommandCenter {
     }
 
     const value = this.input.value;
-    const query = value.startsWith(this.currentMode.prefix)
-      ? value.slice(this.currentMode.prefix.length).trim()
-      : value.trim();
+    // 如果隐藏前缀，直接使用输入值；否则移除前缀
+    const query = this.currentMode.hidePrefix
+      ? value.trim()
+      : (value.startsWith(this.currentMode.prefix)
+        ? value.slice(this.currentMode.prefix.length).trim()
+        : value.trim());
 
     this.filteredItems = await this.currentMode.provider(query);
     
@@ -426,7 +432,7 @@ export class VSCodeCommandCenter {
     if (this.filteredItems.length === 0) {
       this.list.innerHTML = `
         <div class="command-item-empty">
-          <span class="empty-icon">🔍</span>
+          <span class="empty-icon"></span>
           <span class="empty-text">未找到匹配项</span>
         </div>
       `;
@@ -456,37 +462,7 @@ export class VSCodeCommandCenter {
       
       const isFirstRecent = (item as any).isFirstRecent;
       
-      // 优先使用 displayId，否则使用 id
-      const displayIdContent = item.displayId !== undefined ? item.displayId : item.id;
-      // 判断是否为主题 ID - 检查所有可能的主题 ID 特征
-      const isThemeId = displayIdContent && (
-        displayIdContent.includes('-vscode-') || 
-        displayIdContent.includes('theme-') || 
-        displayIdContent.startsWith('ayu-') || 
-        displayIdContent.startsWith('winteriscoming-') || 
-        displayIdContent.startsWith('github-') ||
-        displayIdContent.startsWith('theme:') ||
-        displayIdContent.includes('monokai-pro-') ||
-        displayIdContent.includes('night-owl-') ||
-        displayIdContent.includes('tokyo-night-') ||
-        // 图标主题特征
-        displayIdContent.includes(' Icons') ||
-        displayIdContent.includes(' icon-theme') ||
-        displayIdContent === 'material-icon-theme' ||
-        displayIdContent === 'ayu' ||
-        // 通用规则：ID 中包含主题扩展特征
-        (displayIdContent.match(/-/g) || []).length >= 3 // ID 中有 3 个或更多连字符的视为主题 ID
-      );
-      const shouldShowId = displayIdContent && displayIdContent !== '__separator__' && !displayIdContent.startsWith('line-') && !displayIdContent.startsWith('goto-') && !isThemeId;
-      
-      // 判断是否为主题/图标相关的 detail（不显示"当前主题"等描述）
-      const isThemeOrIconDetail = item.detail && (
-        item.detail === '当前主题' || 
-        item.category?.includes('主题') || 
-        item.category?.includes('图标') ||
-        this.currentMode?.prefix === 'icontheme:'
-      );
-      
+      // 渲染命令项（移除图标、ID 和详细信息）
       itemEl.innerHTML = `
         <div class="command-item-content">
           <div class="command-item-label-row">
@@ -496,8 +472,6 @@ export class VSCodeCommandCenter {
               ${isFirstRecent ? '<span class="command-item-recent-badge">最近使用</span>' : ''}
             </div>
           </div>
-          ${shouldShowId ? `<div class="command-item-id">${this.escapeHtml(displayIdContent)}</div>` : ''}
-          ${item.detail && !isThemeOrIconDetail ? `<div class="command-item-detail">${this.escapeHtml(item.detail)}</div>` : ''}
         </div>
       `;
       
@@ -549,7 +523,7 @@ export class VSCodeCommandCenter {
     };
     this.input.addEventListener('keydown', this.keydownHandler);
 
-    // 点击外部区域关闭 (VS Code 风格)
+    // 点击外部区域关闭
     this.clickHandler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const widget = this.container?.querySelector('.command-center-widget');
@@ -619,7 +593,7 @@ export class VSCodeCommandCenter {
     const item = this.filteredItems[this.selectedIndex];
     if (!item || item.isSeparator) return;
 
-    // 如果有预览回调，执行它
+    // 如果有预览回调，执行
     if (typeof item.onPreview === 'function') {
       try {
         await item.onPreview();
@@ -631,24 +605,48 @@ export class VSCodeCommandCenter {
 
   private async executeSelected(): Promise<void> {
     const item = this.filteredItems[this.selectedIndex];
-    if (!item || !item.value || item.isSeparator) return;
+    if (!item || item.isSeparator) return;
 
-    // 如果是命令，执行它
-    if (item.value && typeof item.value.execute === 'function') {
+    // 如果没有 value，直接返回
+    if (!item.value) return;
+
+    // 如果是命令，执行
+    if (typeof item.value.execute === 'function') {
+      console.log('[VSCodeCommandCenter] 执行命令:', item.id, item.label);
       this.addToHistory(item.id);
-      // ⭐ 传入 true 表示这是"确认"操作，不会触发 onCancel
+      // 传入 true 表示这是"确认"操作，不会触发onCancel
       await this.hide(true);
-      await item.value.execute();
+      console.log('[VSCodeCommandCenter] 命令面板已隐藏，开始执行命令');
+      try {
+        await item.value.execute();
+        console.log('[VSCodeCommandCenter] 命令执行完成');
+      } catch (error) {
+        console.error('[VSCodeCommandCenter] 命令执行失败:', error);
+      }
+    } else {
+      // 对于非命令项（如选择器），触发选择事件
+      this.addToHistory(item.id);
+      await this.hide(true);
+      
+      // 触发命令执行事件，传递选中的项
+      window.dispatchEvent(new CustomEvent('command-executed', {
+        detail: item
+      }));
     }
   }
 
   // ============ 历史记录 ============
 
-  private loadHistory(): void {
+  private async loadHistory(): Promise<void> {
     try {
-      const data = localStorage.getItem(HISTORY_KEY);
-      if (data) {
-        this.history = JSON.parse(data);
+      const data = await electronStore.get(HISTORY_KEY);
+      if (data && Array.isArray(data)) {
+        // 转换 electron-store 格式到内部格式
+        this.history = data.map(item => ({
+          commandId: item.command,
+          timestamp: item.timestamp,
+          count: 1 // electron-store 格式没有 count 字段
+        }));
       }
     } catch (e) {
       console.error('Failed to load command history:', e);
@@ -656,9 +654,15 @@ export class VSCodeCommandCenter {
     }
   }
 
-  private saveHistory(): void {
+  private async saveHistory(): Promise<void> {
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(this.history));
+      // 转换内部格式到 electron-store 格式
+      const data = this.history.map(item => ({
+        command: item.commandId,
+        timestamp: item.timestamp,
+        type: 'command'
+      }));
+      await electronStore.set(HISTORY_KEY, data);
     } catch (e) {
       console.error('Failed to save command history:', e);
     }
@@ -687,11 +691,11 @@ export class VSCodeCommandCenter {
     return this.history.slice(0, 5);
   }
 
-  // ============ DOM 创建和清理 ============
+  // ============ DOM 创建和清空 ============
 
   private createDOM(): void {
     this.container = document.createElement('div');
-    this.container.className = 'vscode-command-center';
+    this.container.className = 'command-center';
     this.container.innerHTML = `
       <div class="command-center-widget">
         <div class="command-center-header">
@@ -699,7 +703,7 @@ export class VSCodeCommandCenter {
             <input 
               type="text" 
               class="command-center-input" 
-              placeholder="输入命令或搜索..."
+              placeholder="输入命令或搜索.."
               spellcheck="false"
               autocomplete="off"
             />
@@ -765,9 +769,9 @@ export class VSCodeCommandCenter {
     this.commands.clear();
     this.modes.clear();
     
-    // 移除主题变化监听器
+    // 移除主题变化监听
     if (this.themeChangeHandler) {
-      themeManager.off('theme-changed', this.themeChangeHandler);
+      window.electronAPI?.off?.('theme:theme-changed', this.themeChangeHandler);
       this.themeChangeHandler = null;
     }
   }

@@ -1,0 +1,398 @@
+/**
+ * 全局样式入口文件
+ *
+ * 设计原则：所有颜色通过 CSS 变量管理，变量值由主题插件控制
+ */
+
+
+/* 组件颜色样式管理（按组件拆分） */
+@use './component/_index.scss';
+
+/* Toast 通知样式 */
+@use './toast.css';
+
+/* Highlight.js 代码高亮样式 */
+@use './highlightjs.scss';
+
+/* ==================== 全局重置 ==================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  // font-family:  'Segoe UI', 'Segoe WPC', 'Segoe UI', 'Ubuntu', 'Droid Sans', sans-serif, 'Droid Sans Fallback';
+  color: var(--ws-editor-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+
+body.background-image-enabled button {
+  z-index: 101;
+
+  &:hover {
+    background-color: rgba(128, 128, 128, 0.486);
+    color: var(--ws-editor-foreground);
+  }
+}
+
+
+body.background-image-enabled .titleBar {
+  opacity: 0.7;
+  z-index: 101;
+  background-color: var(--ws-editor-background) !important;
+
+
+  .titlebar-dropdown {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+
+
+    &-item {}
+
+  }
+
+}
+
+
+body.background-image-enabled .monaco-context-menu {
+  background-color: rgba(194, 194, 194, 0.075) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  &-item {
+    &:hover {
+
+      background-color: rgba(133, 133, 133, 0.233);
+    }
+
+  }
+}
+
+
+body.background-image-enabled .menu>*,
+body.background-image-enabled .agent-menu>* {
+  position: relative;
+  opacity: 0.7;
+  z-index: 100;
+  background-color: var(--ws-editor-background) !important;
+}
+
+
+body.background-image-enabled .editor-area>*,
+body.background-image-enabled .background-image-panel>*,
+body.background-image-enabled .sidebar>*,
+body.background-image-enabled .activitybar>*,
+body.background-image-enabled .sidebar-header-menu>*,
+body.background-image-enabled .ai-chat-panel>*,
+body.background-image-enabled .RightActivityBar>*,
+body.background-image-enabled .activity-bar>*,
+body.background-image-enabled .command-center>*,
+body.background-image-enabled .StatusBar>*,
+body.background-image-enabled .left-ActivityBar>*,
+body.background-image-enabled .panel-container>* {
+  position: relative;
+  opacity: 0.7;
+  z-index: 100;
+  background-color: var(--ws-editor-background) !important;
+}
+
+
+
+
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ==================== 滚动条样�?==================== */
+/* 自定义滚动条（WebKit�?*/
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+/* Firefox 滚动�?*/
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* ==================== 侧边栏滚动条：默认隐藏，悬停显示 ==================== */
+.sidebar-content {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.sidebar-content::-webkit-scrollbar {
+  width: 10px;
+}
+
+/* ==================== 移除表单控件圆角 ==================== */
+
+
+.sidebar-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.sidebar-content:hover {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.sidebar-content:hover::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-content:hover::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+
+/* ==================== Monaco Editor 命令面板样式调整 ==================== */
+/*
+ * 调整 F1 命令面板位置，紧贴窗口标题栏下方
+ * Monaco Editor 的命令面板默认使�?absolute 定位相对于编辑器容器
+ * 需要改�?fixed 定位才能相对于整个窗�? * 类名: quick-input-widget, widgetId: editor.contrib.quickInputWidget
+ */
+div[widgetid="editor.contrib.quickInputWidget"] {
+  position: fixed !important;
+  top: 32px !important;
+  /* 标题栏高*/
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  background-color: var(--ws-editor-background);
+  margin-top: 0 !important;
+
+}
+
+/* 命令面板内部容器也需要调*/
+.quick-input-widget.show-file-icons,
+.quick-input-widget {
+  position: relative !important;
+  top: 0 !important;
+  left: 0 !important;
+  transform: none !important;
+}
+
+/* ==================== 焦点样式 ==================== */
+*:focus-visible {
+  outline: none;
+}
+
+/* ==================== 选择文本样式 ==================== */
+::selection {
+  background-color: var(--ws-editor-selectionBackground);
+}
+
+::-moz-selection {
+  background-color: var(--ws-editor-selectionBackground);
+}
+
+/* ==================== 禁用元素样式 ==================== */
+:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ==================== 工具提示 ==================== */
+[title] {
+  position: relative;
+}
+
+/* ==================== 拖拽样式 ==================== */
+.dragging {
+  opacity: 0.5;
+}
+
+.drag-over {
+  background-color: var(--ws-list-hover-background);
+}
+
+
+
+/* ==================== 手风琴组件样�?==================== */
+
+
+/* ==================== 文件树样�?==================== */
+
+
+.file-tree-node-content.focused {
+  outline: 1px solid var(--ws-focus-border);
+  outline-offset: -1px;
+}
+
+.file-tree-node-content.editing {
+  background-color: var(--ws-input-background);
+}
+
+.file-tree-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 2px;
+  font-size: 12px;
+  cursor: pointer;
+
+}
+
+
+
+.file-tree-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  font-size: 16px;
+}
+
+.file-tree-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+}
+
+.file-tree-children {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==================== 文件树操作按==================== */
+.file-tree-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  /* background-color: var(--ws-sidebar-background); */
+}
+
+.file-tree-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  /* color: var(--ws-sidebar-foreground); */
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* ==================== Monaco 编辑器样式修==================== */
+/* 确保 Monaco 编辑器正确显*/
+.monaco-editor-wrapper {
+  position: relative !important;
+  /* z-index: 1; */
+}
+
+.monaco-editor {
+  position: relative !important;
+}
+
+.monaco-editor .overflow-guard {
+  position: relative !important;
+}
+
+/* 确保编辑器内容可*/
+.monaco-editor .view-lines,
+.monaco-editor .view-line {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* 确保行号可见 */
+.monaco-editor .line-numbers,
+.monaco-editor .margin {
+  /* opacity: 1 !important; */
+  visibility: visible !important;
+}
+
+/* 确保光标可见 */
+.monaco-editor .cursor {
+  /* opacity: 1 !important; */
+  visibility: visible !important;
+}
+
+
+/* ==================== Emoji Picker 滚动条样==================== */
+/* 针对 emoji-mart 组件的滚动条进行细化处理 */
+em-emoji-picker,
+em-emoji-picker *,
+em-emoji-picker .scroll,
+em-emoji-picker div {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent !important;
+}
+
+em-emoji-picker ::-webkit-scrollbar,
+em-emoji-picker::-webkit-scrollbar,
+em-emoji-picker *::-webkit-scrollbar,
+em-emoji-picker .scroll::-webkit-scrollbar,
+em-emoji-picker div::-webkit-scrollbar {
+  width: 4px !important;
+  height: 4px !important;
+}
+
+em-emoji-picker ::-webkit-scrollbar-track,
+em-emoji-picker::-webkit-scrollbar-track,
+em-emoji-picker *::-webkit-scrollbar-track,
+em-emoji-picker .scroll::-webkit-scrollbar-track,
+em-emoji-picker div::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+em-emoji-picker ::-webkit-scrollbar-thumb,
+em-emoji-picker::-webkit-scrollbar-thumb,
+em-emoji-picker *::-webkit-scrollbar-thumb,
+em-emoji-picker .scroll::-webkit-scrollbar-thumb,
+em-emoji-picker div::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  border-radius: 2px !important;
+}
+
+em-emoji-picker ::-webkit-scrollbar-thumb:hover,
+em-emoji-picker::-webkit-scrollbar-thumb:hover,
+em-emoji-picker *::-webkit-scrollbar-thumb:hover,
+em-emoji-picker .scroll::-webkit-scrollbar-thumb:hover,
+em-emoji-picker div::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3) !important;
+}

@@ -1,13 +1,13 @@
 /**
- * Background Cover 控制组件样式
- * 文件功能：定义背景图片控制面板的样式
+ * Background Cover ���������ʽ
+ * �ļ����ܣ����屳��ͼƬ����������ʽ
  */
 
 .background-cover-control {
   position: relative;
 }
 
-/* 状态栏按钮 */
+/* ״̬����ť */
 .status-bar-buttons {
   display: inline-flex;
   gap: 4px;
@@ -25,35 +25,34 @@
   height: 22px;
   background: transparent;
   border: none;
-  color: var(--vscode-statusBar-foreground);
+  color: var(--ws-statusbar-foreground);
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
-  transition: background-color 0.2s;
   flex-shrink: 0;
 }
 
 .status-bar-item:hover {
-  background-color: var(--vscode-statusBarItem-hoverBackground);
+  background-color: var(--ws-statusbar-item-hover-background);
 }
 
 .status-bar-item:active {
-  background-color: var(--vscode-statusBarItem-activeBackground);
+  background-color: var(--ws-statusbar-item-active-background);
 }
 
 .status-bar-item .codicon {
   line-height: 1;
 }
 
-/* 控制面板 */
+/* ������� */
 .background-cover-panel {
   position: fixed;
   bottom: 24px;
   right: 2px;
   width: 400px;
   max-height: 600px;
-  background-color: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   border-radius: 6px;
   overflow: hidden;
@@ -62,14 +61,14 @@
   flex-direction: column;
 }
 
-/* 面板头部 */
+/* ���ͷ�� */
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background-color: var(--vscode-titleBar-activeBackground);
-  border-bottom: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--ws-titlebar-active-background);
+  border-bottom: 1px solid var(--ws-dropdown-border);
 }
 
 .panel-tabs {
@@ -81,47 +80,45 @@
   padding: 6px 12px;
   background: transparent;
   border: none;
-  color: var(--vscode-foreground);
+  color: var(--ws-foreground);
   cursor: pointer;
   border-radius: 4px;
-  transition: background-color 0.2s;
   font-size: 13px;
 }
 
 .panel-tabs .tab:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
+  background-color: var(--ws-toolbar-hover-background);
 }
 
 .panel-tabs .tab.active {
-  background-color: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background-color: var(--ws-button-background);
+  color: var(--ws-button-foreground);
 }
 
 .close-button {
   padding: 4px;
   background: transparent;
   border: none;
-  color: var(--vscode-foreground);
+  color: var(--ws-foreground);
   cursor: pointer;
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s;
 }
 
 .close-button:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
+  background-color: var(--ws-toolbar-hover-background);
 }
 
-/* 面板内容 */
+/* ������� */
 .panel-content {
   padding: 16px;
   overflow-y: auto;
   flex: 1;
 }
 
-/* 设置组 */
+/* ����??*/
 .setting-group {
   margin-bottom: 16px;
 }
@@ -129,7 +126,7 @@
 .setting-group label {
   display: block;
   margin-bottom: 8px;
-  color: var(--vscode-foreground);
+  color: var(--ws-foreground);
   font-size: 13px;
   font-weight: 500;
 }
@@ -138,7 +135,7 @@
   margin-right: 8px;
 }
 
-/* 按钮组 */
+/* ��ť??*/
 .button-group {
   display: flex;
   flex-direction: column;
@@ -150,31 +147,29 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background-color: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background-color: var(--ws-button-background);
+  color: var(--ws-button-foreground);
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
-  transition: background-color 0.2s;
 }
 
 .button-group button:hover {
-  background-color: var(--vscode-button-hoverBackground);
+  background-color: var(--ws-button-hover-background);
 }
 
 .button-group button:active {
-  background-color: var(--vscode-button-activeBackground);
+  background-color: var(--ws-button-active-background);
 }
 
-/* 滑块 */
+/* ���� */
 input[type="range"] {
   width: 100%;
   height: 4px;
-  background: var(--vscode-inputOption-activeBackground);
+  background: var(--ws-input-option-active-background);
   outline: none;
   opacity: 0.7;
-  transition: opacity 0.2s;
   cursor: pointer;
 }
 
@@ -187,7 +182,7 @@ input[type="range"]::-webkit-slider-thumb {
   appearance: none;
   width: 16px;
   height: 16px;
-  background: var(--vscode-button-background);
+  background: var(--ws-button-background);
   cursor: pointer;
   border-radius: 50%;
 }
@@ -195,49 +190,49 @@ input[type="range"]::-webkit-slider-thumb {
 input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
-  background: var(--vscode-button-background);
+  background: var(--ws-button-background);
   cursor: pointer;
   border-radius: 50%;
   border: none;
 }
 
-/* 选择框 */
+/* ѡ��??*/
 select {
   width: 100%;
   padding: 8px 12px;
-  background-color: var(--vscode-dropdown-background);
-  color: var(--vscode-dropdown-foreground);
-  border: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--ws-dropdown-background);
+  color: var(--ws-dropdown-foreground);
+  border: 1px solid var(--ws-dropdown-border);
   border-radius: 0;
   font-size: 13px;
   cursor: pointer;
 }
 
 select:focus {
-  outline: 1px solid var(--vscode-focusBorder);
+  outline: 1px solid var(--ws-focus-border);
 }
 
-/* 颜色选择器 */
+/* ��ɫѡ��??*/
 input[type="color"] {
   width: 100%;
   height: 40px;
   padding: 4px;
-  background-color: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
   border-radius: 4px;
   cursor: pointer;
 }
 
 input[type="color"]:focus {
-  outline: 1px solid var(--vscode-focusBorder);
+  outline: 1px solid var(--ws-focus-border);
 }
 
-/* 图片预览 */
+/* ͼƬԤ�� */
 .image-preview {
   width: 100%;
   padding: 8px;
-  background-color: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border);
+  background-color: var(--ws-input-background);
+  border: 1px solid var(--ws-input-border);
   border-radius: 4px;
 }
 
@@ -250,38 +245,38 @@ input[type="color"]:focus {
 }
 
 .image-path {
-  color: var(--vscode-descriptionForeground);
+  color: var(--ws-description-foreground);
   font-size: 12px;
   word-break: break-all;
-  font-family: var(--vscode-editor-font-family);
+  font-family: var(--ws-editor-font-family);
 }
 
-/* 设置部分 */
+/* ���ò��� */
 .background-settings,
 .particle-settings {
   display: flex;
   flex-direction: column;
 }
 
-/* 滚动条样式 */
+/* ��������??*/
 .panel-content::-webkit-scrollbar {
   width: 8px;
 }
 
 .panel-content::-webkit-scrollbar-track {
-  background: var(--vscode-scrollbarSlider-background);
+  background: var(--ws-scrollbar-slider-background);
 }
 
 .panel-content::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-hoverBackground);
+  background: var(--ws-scrollbar-slider-hover-background);
   border-radius: 4px;
 }
 
 .panel-content::-webkit-scrollbar-thumb:hover {
-  background: var(--vscode-scrollbarSlider-activeBackground);
+  background: var(--ws-scrollbar-slider-active-background);
 }
 
-/* 输入对话框 */
+/* ����Ի�??*/
 .input-dialog-overlay {
   position: fixed;
   top: 0;
@@ -298,8 +293,8 @@ input[type="color"]:focus {
 .input-dialog {
   width: 500px;
   max-width: 90vw;
-  background-color: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   overflow: hidden;
@@ -310,15 +305,15 @@ input[type="color"]:focus {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background-color: var(--vscode-titleBar-activeBackground);
-  border-bottom: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--ws-titlebar-active-background);
+  border-bottom: 1px solid var(--ws-dropdown-border);
 }
 
 .dialog-header h3 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--vscode-foreground);
+  color: var(--ws-foreground);
 }
 
 .dialog-content {
@@ -329,37 +324,37 @@ input[type="color"]:focus {
   margin: 0 0 16px 0;
   font-size: 13px;
   line-height: 1.6;
-  color: var(--vscode-descriptionForeground);
+  color: var(--ws-description-foreground);
 }
 
 .dialog-hint code {
   padding: 2px 6px;
-  background-color: var(--vscode-textCodeBlock-background);
+  background-color: var(--ws-text-code-block-background);
   border-radius: 3px;
-  font-family: var(--vscode-editor-font-family);
+  font-family: var(--ws-editor-font-family);
   font-size: 12px;
-  color: var(--vscode-textPreformat-foreground);
+  color: var(--ws-text-preformat-foreground);
 }
 
 .dialog-input {
   width: 100%;
   padding: 10px 12px;
-  background-color: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  border: 1px solid var(--vscode-input-border);
+  background-color: var(--ws-input-background);
+  color: var(--ws-input-foreground);
+  border: 1px solid var(--ws-input-border);
   border-radius: 4px;
   font-size: 13px;
-  font-family: var(--vscode-editor-font-family);
+  font-family: var(--ws-editor-font-family);
   box-sizing: border-box;
 }
 
 .dialog-input:focus {
-  outline: 1px solid var(--vscode-focusBorder);
-  border-color: var(--vscode-focusBorder);
+  outline: 1px solid var(--ws-focus-border);
+  border-color: var(--ws-focus-border);
 }
 
 .dialog-input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
+  color: var(--ws-input-placeholder-foreground);
 }
 
 .dialog-footer {
@@ -367,8 +362,8 @@ input[type="color"]:focus {
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;
-  background-color: var(--vscode-editorWidget-background);
-  border-top: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--ws-editor-widget-background);
+  border-top: 1px solid var(--ws-dropdown-border);
 }
 
 .dialog-button {
@@ -377,24 +372,23 @@ input[type="color"]:focus {
   border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
-  transition: background-color 0.2s;
 }
 
 .dialog-button.cancel {
-  background-color: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
+  background-color: var(--ws-button-secondary-background);
+  color: var(--ws-button-secondary-foreground);
 }
 
 .dialog-button.cancel:hover {
-  background-color: var(--vscode-button-secondaryHoverBackground);
+  background-color: var(--ws-button-secondary-hover-background);
 }
 
 .dialog-button.confirm {
-  background-color: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background-color: var(--ws-button-background);
+  color: var(--ws-button-foreground);
 }
 
 .dialog-button.confirm:hover {
-  background-color: var(--vscode-button-hoverBackground);
+  background-color: var(--ws-button-hover-background);
 }
 

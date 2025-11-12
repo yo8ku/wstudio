@@ -1,0 +1,122 @@
+/**
+    只负责布局，不配置任何颜色数据。
+    颜色数据单独在：`style/component/ ` 创建组件配置颜色数据
+*/
+
+.accordion-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.accordion-section.expanded {
+  flex: 1;
+}
+
+.accordion-section.collapsed {
+  flex: 0 0 auto;
+}
+
+.accordion-section.flex-grow {
+  flex-grow: 1;
+}
+
+.accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+.accordion-header-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.accordion-chevron {
+  font-size: 12px;
+}
+
+.accordion-icon {
+  font-size: 12px;
+}
+
+.accordion-title {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.accordion-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+}
+
+.accordion-header:hover .accordion-actions {
+  opacity: 1;
+}
+
+.accordion-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+
+
+.accordion-content-wrapper {
+  overflow: hidden;
+}
+
+.accordion-content-wrapper.expanded {
+  max-height: none;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.accordion-content-wrapper.collapsed {
+  max-height: 0;
+  flex: 0 0 0;
+}
+
+.accordion-content {
+  overflow: auto;
+}
+
+.accordion-content.flex-grow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.accordion-resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: ns-resize;
+  z-index: 10;
+}
+
+.accordion-resize-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: transparent;
+}

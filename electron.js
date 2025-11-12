@@ -8,14 +8,19 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 const https = require('https');
 const http = require('http');
-const { initializeExtensions, builtinExtensionManager, themeManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
+const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
+
+// 禁用硬件加速以避免 GPU 进程崩溃
+app.disableHardwareAcceleration();
+console.log('[Electron] 硬件加速已禁用（避免 GPU 进程崩溃）');
 
 let mainWindow;
 
 /**
  * 创建主窗口
+ * @param {string} backgroundColor - 窗口背景色（来自当前主题）
  */
-function createWindow() {
+function createWindow(backgroundColor = '#1e1e1e') {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -23,6 +28,7 @@ function createWindow() {
     minHeight: 934,
     frame: false, // 无边框窗口
     titleBarStyle: 'hidden',
+    backgroundColor: backgroundColor, // 使用主题背景色，避免白色闪烁
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -33,11 +39,14 @@ function createWindow() {
   });
 
   // 开发模式：加载 Vite 开发服务器
+  console.log('[Electron] NODE_ENV:', process.env.NODE_ENV);
   if (process.env.NODE_ENV === 'development') {
+    console.log('[Electron] 开发模式：加载 Vite 开发服务器 http://localhost:5173');
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
     // 生产模式：加载构建后的文件
+    console.log('[Electron] 生产模式：加载构建文件');
     mainWindow.loadFile(path.join(__dirname, 'packages/renderer/dist/index.html'));
   }
 
@@ -45,13 +54,22 @@ function createWindow() {
     mainWindow = null;
   });
   
-  // 窗口加载完成后，发送当前主题
+  // 监听窗口焦点变化
+  mainWindow.on('focus', () => {
+    mainWindow.webContents.send('window-focus');
+  });
+  
+  mainWindow.on('blur', () => {
+    mainWindow.webContents.send('window-blur');
+  });
+  
+  // 窗口加载完成后，通知渲染进程主进程已就绪
   mainWindow.webContents.on('did-finish-load', () => {
-    const currentTheme = themeManager.getCurrentTheme();
-    if (currentTheme) {
-      console.log(`[Electron] 向渲染进程发送当前主题: ${currentTheme.name}`);
-      mainWindow.webContents.send('theme:changed', currentTheme);
-    }
+    console.log('[Electron] 渲染进程页面已加载完成');
+    
+    // 🎉 通知渲染进程主进程已就绪（IPC 处理器已全部注册）
+    console.log('[Electron] 通知渲染进程：主进程已就绪');
+    mainWindow.webContents.send('main-process:ready');
   });
 }
 
@@ -63,8 +81,6 @@ app.whenReady().then(async () => {
   
   // 注册自定义协议处理函数
   const handleFileProtocol = (protocolName) => (request, callback) => {
-    console.log(`[Electron] ========== ${protocolName} 协议请求 ==========`);
-    console.log('[Electron] 原始 URL:', request.url);
     
     try {
       // 移除协议前缀
@@ -77,7 +93,7 @@ app.whenReady().then(async () => {
         url = url.replace(/^vscode-file:\/\/vscode-app\/?/, '');
       }
       
-      console.log('[Electron] 移除协议前缀后:', url);
+      // console.log('[Electron] 移除协议前缀后:', url);
       
       // 对路径的每个部分进行解码
       const decodedParts = url.split('/').map(part => {
@@ -88,69 +104,71 @@ app.whenReady().then(async () => {
         }
       });
       
-      console.log('[Electron] 解码后的路径段:', decodedParts);
+      // console.log('[Electron] 解码后的路径段:', decodedParts);
       
       // 使用正斜杠重新连接，然后转换为系统路径
       const decodedPath = decodedParts.join('/');
-      console.log('[Electron] 连接后的路径:', decodedPath);
+      // console.log('[Electron] 连接后的路径:', decodedPath);
       
       // 规范化路径（将正斜杠转换为反斜杠）
       const normalizedPath = path.normalize(decodedPath);
-      console.log('[Electron] 路径规范化后:', normalizedPath);
+      // console.log('[Electron] 路径规范化后:', normalizedPath);
       
       // 检查文件是否存在
       if (fs.existsSync(normalizedPath)) {
-        console.log('[Electron] ✅ 文件存在，返回路径:', normalizedPath);
+        // console.log('[Electron]  文件存在，返回路径:', normalizedPath);
         return callback({ path: normalizedPath });
       } else {
-        console.error('[Electron] ❌ 文件不存在:', normalizedPath);
+        // console.error('[Electron]  文件不存在:', normalizedPath);
         return callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
       }
     } catch (error) {
-      console.error('[Electron] ❌ 加载本地文件失败:', error);
-      console.error('[Electron] 错误堆栈:', error.stack);
+      console.error('[Electron]  加载本地文件失败:', error);
       return callback({ error: -2 }); // net::ERR_FAILED
     }
   };
   
   // 注册 local-file:// 协议用于加载本地文件
   protocol.registerFileProtocol('local-file', handleFileProtocol('local-file'));
-  console.log('[Electron] ✅ local-file:// 协议已注册');
+  // console.log('[Electron]  local-file:// 协议已注册');
   
   // 注册 vscode-file:// 协议作为备用（兼容旧版扩展）
   protocol.registerFileProtocol('vscode-file', handleFileProtocol('vscode-file'));
-  console.log('[Electron] ✅ vscode-file:// 协议已注册');
+  // console.log('[Electron]  vscode-file:// 协议已注册');
   
-  // 初始化扩展系统（包括内置AI服务）
+  // ⚡ 先初始化扩展系统（注册所有 IPC 处理器）
+  // 注意：必须在创建窗口之前注册 IPC 处理器，否则渲染进程会收到 "No handler registered" 错误
+  console.log('[Electron] 开始初始化扩展系统（注册 IPC 处理器）...');
   try {
-    await initializeExtensions();
-    console.log('[Electron] 扩展系统初始化成功');
+    await initializeExtensions(null); // 暂时不传递窗口，先注册 IPC 处理器
+    console.log('[Electron]  扩展系统初始化成功（IPC 处理器已注册）');
     
-    // 应用默认主题
-    const currentTheme = themeManager.getCurrentTheme();
-    if (!currentTheme) {
-      console.log('[Electron] 未设置主题，应用默认主题');
-      const allThemes = themeManager.getAllThemes();
-      const defaultTheme = allThemes.find(t => t.id.includes('default-dark')) || allThemes[0];
-      if (defaultTheme) {
-        await themeManager.applyTheme(defaultTheme.id);
-        console.log(`[Electron] 已应用默认主题: ${defaultTheme.name}`);
-      }
-    }
+    // 使用默认背景色（主题由渲染进程管理）
+    let backgroundColor = '#1e1e1e'; // 默认深色背景
+    console.log(`[Electron] 使用默认背景色: ${backgroundColor}`);
     
-    // 初始化工作区
-    await workspaceManager.initialize();
-    console.log('[Electron] 工作区初始化成功');
+    // 创建窗口
+    createWindow(backgroundColor);
+    console.log('[Electron]  主窗口已创建');
+
+    // 再次初始化扩展系统，这次传入主窗口以创建 PluginAPIAdapter
+    console.log('[Electron] 创建 PluginAPIAdapter...');
+    await initializeExtensions(mainWindow);
+    console.log('[Electron]  PluginAPIAdapter 已创建');
     
-    // 检查内置AI服务状态（已在 initializeExtensions 中初始化）
+    // 检查内置AI服务状态
     const models = builtinAI.getAvailableModels();
     console.log('[Electron] 📦 内置AI可用模型数量:', models.length);
+    
+    // 🎉 所有初始化完成，通知渲染进程
+    console.log('[Electron]  主进程初始化全部完成，等待渲染进程加载...');
   } catch (error) {
-    console.error('[Electron] 扩展系统初始化失败:', error);
+    console.error('[Electron]  扩展系统初始化失败:', error);
+    // 即使失败也创建窗口（避免应用卡住），但避免重复创建
+    if (!mainWindow) {
+      createWindow('#1e1e1e');
+    }
   }
-  
-  // 创建窗口
-  createWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -169,47 +187,32 @@ app.on('window-all-closed', () => {
 });
 
 /**
- * 内置AI服务
- * 注意：已从 packages/main/dist/src/index.js 导入
- * 使用预定义的模型列表，不需要动态获取
+ * 应用退出前清理
  */
-
-/**
- * 内置AI相关 IPC 处理
- * 注意：所有 IPC handlers 已在 BuiltinAI.ts 的 setupIPC() 方法中注册
- * 这里不需要重复注册，避免 "Attempted to register a second handler" 错误
- */
-
-// 所有内置AI相关的 IPC 处理器已在 BuiltinAI.ts 中注册：
-// - builtin-ai:get-models (获取可用模型列表)
-// - builtin-ai:refresh-models (刷新模型列表)
-// - builtin-ai:chat (AI聊天)
+app.on('before-quit', () => {
+  console.log('[Electron] 应用即将退出，清理资源...');
+});
 
 /**
  * IPC 通信处理
  */
 ipcMain.handle('extension:list', async () => {
-  // 获取所有扩展（builtin-extensions + extensions 目录）
-  const builtinExtensions = builtinExtensionManager.getAllExtensions();
-  const { extensionManager } = require('./packages/main/dist/main/src/index.js');
-  const userExtensions = extensionManager.getAllExtensions();
+  // 获取所有插件
+  const allPlugins = pluginManager.getAllExtensions();
   
-  // 合并所有扩展
-  const allExtensions = [...builtinExtensions, ...userExtensions];
-  
-  // 过滤掉 TypeScript 相关的扩展
-  const filteredExtensions = allExtensions.filter(ext => {
-    const name = (ext.name || '').toLowerCase();
-    const id = (ext.id || '').toLowerCase();
+  // 过滤掉 TypeScript 相关的插件（如果有）
+  const filteredPlugins = allPlugins.filter(plugin => {
+    const name = (plugin.name || '').toLowerCase();
+    const id = (plugin.id || '').toLowerCase();
     return !name.includes('typescript') && 
            !id.includes('typescript') &&
            !name.includes('ts-language') &&
            !id.includes('vscode.typescript');
   });
   
-  console.log(`[IPC] 返回扩展列表: ${filteredExtensions.length} 个扩展 (内置: ${builtinExtensions.length}, 用户: ${userExtensions.length}, 已过滤 TypeScript 相关)`);
+  console.log(`[IPC] 返回插件列表: ${filteredPlugins.length} 个插件 (总数: ${allPlugins.length})`);
   
-  return filteredExtensions;
+  return filteredPlugins;
 });
 
 ipcMain.handle('extension:toggle', async (event, extensionId, enabled) => {
@@ -225,59 +228,11 @@ ipcMain.handle('extension:toggle', async (event, extensionId, enabled) => {
 
 /**
  * 主题相关 IPC 处理
+ * 注意：主题 IPC 处理器已在 storeHandlers.ts 中注册，这里只保留事件监听
  */
-ipcMain.handle('theme:list', async () => {
-  try {
-    const themes = themeManager.getAllThemes();
-    console.log('[IPC] 获取主题列表:', themes.length, '个主题');
-    return { success: true, data: themes };
-  } catch (error) {
-    console.error('[IPC] 获取主题列表失败:', error);
-    return { success: false, error: error.message };
-  }
-});
 
-ipcMain.handle('theme:apply', async (event, themeId) => {
-  try {
-    console.log('[IPC] 应用主题:', themeId);
-    const theme = themeManager.getThemeById(themeId);
-    
-    if (!theme) {
-      throw new Error(`主题不存在: ${themeId}`);
-    }
-    
-    await themeManager.applyTheme(themeId);
-    
-    // 广播主题变化事件到所有渲染进程
-    if (mainWindow) {
-      mainWindow.webContents.send('theme:changed', theme);
-    }
-    
-    return { success: true, theme };
-  } catch (error) {
-    console.error('[IPC] 应用主题失败:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('theme:current', async () => {
-  try {
-    const currentTheme = themeManager.getCurrentTheme();
-    return { success: true, data: currentTheme };
-  } catch (error) {
-    console.error('[IPC] 获取当前主题失败:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// 监听主题列表更新事件，并通知渲染进程
-themeManager.on('themes-updated', () => {
-  console.log('[IPC] 主题列表已更新，通知渲染进程');
-  if (mainWindow) {
-    const themes = themeManager.getAllThemes();
-    mainWindow.webContents.send('themes:list-updated', themes);
-  }
-});
+// 主题系统现在由渲染进程通过 IPC 和新主题数据库管理
+// 旧的主题事件监听器已移除
 
 ipcMain.handle('extension:execute-command', async (event, command, ...args) => {
   // 这里需要实现命令执行逻辑
@@ -979,7 +934,8 @@ ipcMain.on('close-window', () => {
 // 获取所有设置
 ipcMain.handle('settings:get-all', async () => {
   try {
-    const settings = settingsManager.getAllWithDefaults();
+    // 只返回用户实际配置的内容，不包含默认值
+    const settings = await settingsManager.getUserConfiguredSettings();
     return { success: true, data: settings };
   } catch (error) {
     console.error('[IPC] 获取设置失败:', error);
@@ -1069,6 +1025,9 @@ ipcMain.handle('settings:open-json', async (event, target = 'user') => {
       await fsPromises.writeFile(settingsPath, JSON.stringify({}, null, 2), 'utf-8');
     }
     
+    // 强制重新加载设置到内存（确保内存和磁盘同步）
+    await settingsManager.loadSettings();
+    
     // 读取文件内容
     const content = await fsPromises.readFile(settingsPath, 'utf-8');
     const language = workspaceManager.getFileLanguage(settingsPath);
@@ -1118,6 +1077,57 @@ ipcMain.handle('settings:get-defaults', async () => {
     return { success: true, data: defaults };
   } catch (error) {
     console.error('[IPC] 获取默认设置失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * 常用片段配置 IPC 处理
+ */
+
+// 读取常用片段配置
+ipcMain.handle('snippets:read-config', async () => {
+  try {
+    const userDataPath = app.getPath('userData');
+    const snippetsPath = path.join(userDataPath, 'snippets.json');
+    
+    // 如果文件不存在，返回默认内容
+    if (!fs.existsSync(snippetsPath)) {
+      const defaultContent = JSON.stringify({
+        "// 常用片段配置": "",
+        "snippets": []
+      }, null, 2);
+      return defaultContent;
+    }
+    
+    const content = await fsPromises.readFile(snippetsPath, 'utf-8');
+    return content;
+  } catch (error) {
+    console.error('[IPC] 读取snippets.json失败:', error);
+    // 返回默认内容而不是抛出错误
+    return JSON.stringify({
+      "// 常用片段配置": "",
+      "snippets": []
+    }, null, 2);
+  }
+});
+
+// 保存常用片段配置
+ipcMain.handle('snippets:save-config', async (event, content) => {
+  try {
+    const userDataPath = app.getPath('userData');
+    const snippetsPath = path.join(userDataPath, 'snippets.json');
+    
+    // 确保目录存在
+    const dir = path.dirname(snippetsPath);
+    if (!fs.existsSync(dir)) {
+      await fsPromises.mkdir(dir, { recursive: true });
+    }
+    
+    await fsPromises.writeFile(snippetsPath, content, 'utf-8');
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] 保存snippets.json失败:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1233,31 +1243,3 @@ ipcMain.handle('fs:exists', async (event, filePath) => {
   }
 });
 
-// AI API 请求代理 - 通过主进程发送请求以避免 SSL 问题
-ipcMain.handle('ai:fetch', async (event, url, options) => {
-  try {
-    console.log('[IPC] AI API 请求:', url);
-    
-    // 动态导入 node-fetch (如果使用 Node.js 18+，fetch 是内置的)
-    const fetch = globalThis.fetch || require('node-fetch');
-    
-    const response = await fetch(url, options);
-    const headers = {};
-    response.headers.forEach((value, key) => {
-      headers[key] = value;
-    });
-    
-    const text = await response.text();
-    
-    return {
-      ok: response.ok,
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-      body: text
-    };
-  } catch (error) {
-    console.error('[IPC] AI API 请求失败:', error);
-    throw error;
-  }
-});

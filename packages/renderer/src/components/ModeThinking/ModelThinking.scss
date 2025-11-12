@@ -1,0 +1,228 @@
+/**
+ * 模型思考组件样式
+ * 深度思考过程的视觉展示
+ */
+
+.model-thinking {
+  overflow: hidden;
+
+  // 内容区域
+  &-content {}
+
+  // 折叠状态下的简化视图
+  &.collapsed {
+    cursor: pointer;
+  }
+
+  &-collapsed-view {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    user-select: none;
+    transition: all 0.2s;
+    &:active {
+      opacity: 0.8;
+    }
+  }
+
+  &-collapsed-icon {
+    flex-shrink: 0;
+    color: var(--vscode-icon-foreground);
+    
+    // ✅ 折叠状态下的思考图标也旋转
+    &.thinking {
+      animation: spin 2s linear infinite;
+    }
+  }
+
+  // ✅ 转圈动画（用于思考状态）
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  &-collapsed-text {
+    font-size: 13px;
+    color: var(--vscode-foreground);
+    font-weight: 500;
+  }
+
+  &-collapsed-duration {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    margin-left: auto;
+  }
+
+  &-collapsed-expand-icon {
+    flex-shrink: 0;
+    color: var(--vscode-icon-foreground);
+    margin-left: 4px;
+  }
+
+  // 底部折叠区域
+  &-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    margin-top: 4px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s;
+
+    &:hover {
+      // background-color: var(--ws-activitybar-background);
+      border-color: #076077;
+    }
+
+    &:active {
+      opacity: 0.8;
+    }
+  }
+
+  &-collapse-icon {
+    flex-shrink: 0;
+    color: var(--vscode-icon-foreground);
+  }
+
+  &-collapse-text {
+    font-size: 12px;
+    color: var(--vscode-foreground);
+    font-weight: 500;
+  }
+}
+
+// 思考步骤
+.thinking-step {
+  display: flex;
+  position: relative;
+  align-items: center;
+
+  // 时间线
+  &-timeline {}
+
+  &-line {
+    width: 2px;
+    flex: 1;
+    background-color: var(--vscode-editorWidget-border);
+    margin-top: 4px;
+  }
+
+  // 不同状态的时间线样式
+  &.completed {
+    .thinking-step-line {
+      background-color: var(--vscode-charts-green);
+    }
+    //思考过程缩进线
+    .thinking-step-content::before {
+      background-color: #818181;
+      opacity: 0.4;
+    }
+  }
+
+  // 步骤主体
+  &-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+
+    &-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    &-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+  }
+
+  &-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--vscode-foreground);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &-duration,
+  &-time {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    flex-shrink: 0;
+  }
+
+  &-expand-icon {
+    flex-shrink: 0;
+    color: var(--vscode-icon-foreground);
+    transition: transform 0.2s;
+  }
+
+  // ✅ 思考状态图标添加转圈动画（只在展开状态下旋转）
+  &-icon {
+    flex-shrink: 0;
+    
+    // 只有在展开状态下的 thinking 图标才旋转
+    .model-thinking:not(.collapsed) & {
+      &.thinking {
+        animation: spin 2s linear infinite;
+      }
+    }
+  }
+
+  // 步骤内容
+  &-content {
+    padding: 12px 12px 0 16px;
+    position: relative;
+    overflow: hidden; // 隐藏负margin造成的溢出
+    
+    // 左侧缩进线
+    &::before {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 12px;
+      bottom: 6px;
+      width: 1px;
+    }
+  }
+
+  &-text {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #7b7b7b;//TODO: 思考过程文字颜色，不要修改这里
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0 0 -35px 0; // 使用负margin抵消line-height的底部空白
+    padding: 0;
+    display: block;
+  }
+}

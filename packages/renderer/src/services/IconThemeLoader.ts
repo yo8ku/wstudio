@@ -54,7 +54,7 @@ export class IconThemeLoader {
     try {
       // 检查缓存
       if (this.cache.has(themePath)) {
-        console.log('[IconThemeLoader] 从缓存加载图标主题:', themePath);
+        console.log('[IconThemeLoader] 从缓存加载图标主题', themePath);
         return this.cache.get(themePath)!;
       }
 
@@ -118,7 +118,7 @@ export class IconThemeLoader {
     for (const font of fonts) {
       const fontId = font.id;
       if (this.loadedFonts.has(fontId)) {
-        console.log('[IconThemeLoader] 字体已加载:', fontId);
+        console.log('[IconThemeLoader] 字体已加载', fontId);
         continue;
       }
 
@@ -138,7 +138,7 @@ export class IconThemeLoader {
             continue;
           }
 
-          console.log('[IconThemeLoader] 字体文件读取成功，大小:', fontData.length, '字符');
+          console.log('[IconThemeLoader] 字体文件读取成功，大小', fontData.length, '字符');
 
           // 确定 MIME 类型
           const format = src.format || 'woff';
@@ -162,7 +162,7 @@ export class IconThemeLoader {
 
           console.log('[IconThemeLoader] 正在加载字体到 FontFace API...');
           await fontFace.load();
-          console.log('[IconThemeLoader] FontFace 加载完成，状态:', fontFace.status);
+          console.log('[IconThemeLoader] FontFace 加载完成，状态', fontFace.status);
           
           document.fonts.add(fontFace);
           this.loadedFonts.add(fontId);
@@ -178,7 +178,7 @@ export class IconThemeLoader {
       }
       
       if (!fontLoaded) {
-        console.error('[IconThemeLoader] ⚠️ 字体未能加载:', fontId);
+        console.error('[IconThemeLoader]  字体未能加载:', fontId);
       }
     }
   }
@@ -254,7 +254,7 @@ export class IconThemeLoader {
       return config.iconDefinitions[folderKey];
     }
 
-    // 3. 使用 _folder 作为备选
+    // 3. 使用 _folder 作为备用
     const fallbackKey = isExpanded ? '_folder_open' : '_folder';
     if (config.iconDefinitions[fallbackKey]) {
       return config.iconDefinitions[fallbackKey];

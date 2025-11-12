@@ -1,10 +1,21 @@
 {
   "name": "@note-studio/shared",
   "version": "1.0.0",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "commonjs",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "require": "./dist/cjs/index.js",
+      "import": "./dist/esm/index.js"
+    }
+  },
   "scripts": {
-    "build": "npx tsc",
+    "build": "pnpm build:cjs && pnpm build:esm",
+    "build:cjs": "npx tsc --project tsconfig.cjs.json",
+    "build:esm": "npx tsc --project tsconfig.esm.json && node scripts/fix-extensions.cjs",
     "dev": "npx tsc --watch",
     "clean": "rm -rf dist"
   },

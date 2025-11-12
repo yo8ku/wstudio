@@ -1,0 +1,30 @@
+/**
+ * Message 消息提示颜色样式
+ * 功能：定义各类消息提示的颜色主题
+ */
+
+.error-message {
+  color: var(--ws-editorError-foreground);
+  background-color: var(--ws-inputValidation-errorBackground);
+  border-color: var(--ws-inputValidation-errorBorder);
+}
+
+.warning-message {
+  color: var(--ws-editorWarning-foreground);
+  background-color: var(--ws-inputValidation-warningBackground);
+  border-color: var(--ws-inputValidation-warningBorder);
+}
+
+.info-message {
+  color: var(--ws-editorInfo-foreground);
+  background-color: var(--ws-inputValidation-infoBackground);
+  border-color: var(--ws-inputValidation-infoBorder);
+}
+
+
+
+
+
+
+
+

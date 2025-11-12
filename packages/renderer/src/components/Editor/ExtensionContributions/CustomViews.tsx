@@ -11,7 +11,7 @@ interface CustomViewsProps {
 export const CustomViews: React.FC<CustomViewsProps> = ({ viewId }) => {
   return (
     <div className="custom-view">
-      <p>自定义视图: {viewId}</p>
+      <p>自定义视图 {viewId}</p>
     </div>
   );
 };

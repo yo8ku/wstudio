@@ -1,17 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { AccordionSection } from '../Accordion/AccordionSection';
-import { TreeView } from '../Common/TreeView';
-import { FileTreeNode } from './FileTreeNode';
-import { FileTreeNode as FileTreeNodeType, FileTreeCallbacks } from './types';
-import { DragDropHandler } from './DragDropHandler';
+/**
+ * 文件树区域组件
+ * 显示工作区的文件和文件夹结构
+ */
+
+import React, { useRef, useState, useEffect } from 'react';
+import ExplorerSection from '../ExplorerSection';
+import { FileTreeNode, FileTreeCallbacks } from './types';
+import { InlineInput } from '../Common/InlineInput';
 import './FileTreeSection.scss';
 
 export interface FileTreeSectionProps {
   rootName: string;
   rootPath: string;
-  nodes: FileTreeNodeType[];
+  nodes: FileTreeNode[];
   selectedFilePath?: string;
-  callbacks: FileTreeCallbacks;
+  callbacks?: FileTreeCallbacks;
   onNewFile?: () => void;
   onNewFolder?: () => void;
   onRefresh?: () => void;
@@ -20,10 +23,6 @@ export interface FileTreeSectionProps {
   onBlankAreaClick?: () => void;
 }
 
-/**
- * 文件树面板
- * 显示项目文件结构
- */
 export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   rootName,
   rootPath,
@@ -37,148 +36,152 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   onExpandedChange,
   onBlankAreaClick,
 }) => {
-  
-  const [dragDropHandler] = useState(() => new DragDropHandler());
-  const treeViewRef = useRef<HTMLDivElement>(null);
-  
-  // 监听文件树展示事件，滚动到选中的文件
-  useEffect(() => {
-    const handleReveal = (event: Event) => {
-      const customEvent = event as CustomEvent<{ path?: string }>;
-      console.log('[FileTreeSection] 收到 file-tree-reveal 事件:', customEvent.detail?.path);
-      console.log('[FileTreeSection] treeViewRef.current:', treeViewRef.current);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const DEFAULT_OPACITY = 0.5; // 默认透明度
+  const [scrollbarOpacity, setScrollbarOpacity] = useState(0.5); // 初始为0.5，始终显示
+  const fadeTimerRef = useRef<number | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  // 淡入：立即中断所有动画并显示滚动条（鼠标悬停时显示默认透明度）
+  const fadeIn = () => {
+    // 取消所有进行中的动画
+    if (fadeTimerRef.current) {
+      clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+    if (animationFrameRef.current) {
+      clearTimeout(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    // 立即设置为默认透明度
+    setScrollbarOpacity(DEFAULT_OPACITY);
+  };
+
+  // 淡出：从默认透明度逐步降低到完全消失（每次减少 1%）
+  const fadeOut = () => {
+    const step = 0.01; // 每次减少 1%
+    const interval = 10; // 10ms 减少一次
+    let currentOpacity = DEFAULT_OPACITY;
+    
+    const animate = () => {
+      currentOpacity -= step;
       
-      if (customEvent.detail?.path && treeViewRef.current) {
-        let targetElement: HTMLElement | null = null;
-        const originalPath = customEvent.detail.path;
-        
-        // 标准化路径：统一使用反斜杠（Windows风格）
-        const normalizedSearchPath = originalPath.replace(/\//g, '\\');
-        
-        // 尝试精确匹配
-        targetElement = treeViewRef.current.querySelector(
-          `[data-file-path="${normalizedSearchPath}"]`
-        ) as HTMLElement;
-
-        console.log('[FileTreeSection] 查找选择器:', `[data-file-path="${normalizedSearchPath}"]`);
-        console.log('[FileTreeSection] 找到的元素:', targetElement);
-
-        // 如果没找到，尝试正斜杠格式
-        if (!targetElement) {
-          const forwardSlashPath = originalPath.replace(/\\/g, '/');
-          targetElement = treeViewRef.current.querySelector(
-            `[data-file-path="${forwardSlashPath}"]`
-          ) as HTMLElement;
-          console.log('[FileTreeSection] 尝试正斜杠路径:', forwardSlashPath);
-          console.log('[FileTreeSection] 找到的元素:', targetElement);
-        }
-
-        // 如果还没找到，尝试原始路径
-        if (!targetElement) {
-          targetElement = treeViewRef.current.querySelector(
-            `[data-file-path="${originalPath}"]`
-          ) as HTMLElement;
-          console.log('[FileTreeSection] 尝试原始路径:', originalPath);
-          console.log('[FileTreeSection] 找到的元素:', targetElement);
-        }
-
-        // 如果还是没找到，尝试通过文件名模糊匹配（作为后备）
-        if (!targetElement) {
-          const allElements = treeViewRef.current.querySelectorAll('[data-file-path]');
-          const fileName = originalPath.split(/[\\/]/).pop();
-          
-          if (fileName) {
-            // 尝试找到路径末尾匹配的元素
-            for (const el of Array.from(allElements)) {
-              const elPath = el.getAttribute('data-file-path');
-              if (elPath && elPath.endsWith(fileName)) {
-                targetElement = el as HTMLElement;
-                console.log('[FileTreeSection] 通过文件名找到匹配:', elPath);
-                break;
-              }
-            }
-          }
-        }
-
-        if (targetElement) {
-          // 滚动到视图中，居中显示
-          targetElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-          });
-          console.log('[FileTreeSection] ✅ 已滚动到元素');
-        } else {
-          console.error('[FileTreeSection] ❌ 未找到匹配的元素');
-          console.error('[FileTreeSection] 原始路径:', originalPath);
-          console.error('[FileTreeSection] 路径字符统计:', {
-            hasBackslash: originalPath.includes('\\'),
-            hasForwardSlash: originalPath.includes('/'),
-            length: originalPath.length
-          });
-          
-          // 调试：列出所有带 data-file-path 的元素
-          const allElements = treeViewRef.current.querySelectorAll('[data-file-path]');
-          console.error('[FileTreeSection] 所有文件路径元素数量:', allElements.length);
-          
-          if (allElements.length > 0) {
-            console.error('[FileTreeSection] 前10个元素的路径:');
-            Array.from(allElements).slice(0, 10).forEach((el, idx) => {
-              const path = el.getAttribute('data-file-path');
-              console.error(`  [${idx}]`, path);
-              console.error(`      字符统计:`, {
-                hasBackslash: path?.includes('\\'),
-                hasForwardSlash: path?.includes('/'),
-                length: path?.length
-              });
-            });
-            
-            // 尝试模糊匹配
-            console.error('[FileTreeSection] 尝试模糊匹配（文件名）...');
-            const fileName = originalPath.split(/[\\/]/).pop();
-            const fuzzyMatches = Array.from(allElements).filter(el => {
-              const path = el.getAttribute('data-file-path');
-              return path?.includes(fileName || '');
-            });
-            console.error(`[FileTreeSection] 找到 ${fuzzyMatches.length} 个包含 "${fileName}" 的元素`);
-            fuzzyMatches.slice(0, 3).forEach(el => {
-              console.error('  匹配:', el.getAttribute('data-file-path'));
-            });
-          }
-        }
+      // 降低到 0 时完全消失
+      if (currentOpacity <= 0) {
+        setScrollbarOpacity(0);
+        return;
       }
+      
+      setScrollbarOpacity(currentOpacity);
+      animationFrameRef.current = window.setTimeout(() => {
+        animate();
+      }, interval) as unknown as number;
     };
 
-    window.addEventListener('file-tree-reveal', handleReveal as EventListener);
+    animate();
+  };
+
+  // 处理鼠标进入
+  const handleMouseEnter = () => {
+    fadeIn();
+  };
+
+  // 处理鼠标离开
+  const handleMouseLeave = () => {
+    fadeOut();
+  };
+
+  // 清理定时器和动画
+  useEffect(() => {
     return () => {
-      window.removeEventListener('file-tree-reveal', handleReveal as EventListener);
+      if (fadeTimerRef.current) {
+        clearTimeout(fadeTimerRef.current);
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
   }, []);
 
-  // 当 selectedFilePath 改变时也触发滚动（作为后备方案）
+  // 动态更新滚动条样式（使用主题配色）
   useEffect(() => {
-    if (selectedFilePath && treeViewRef.current) {
-      // 延迟执行，确保 DOM 已更新
-      setTimeout(() => {
-        const targetElement = treeViewRef.current?.querySelector(
-          `[data-file-path="${selectedFilePath}"]`
-        ) as HTMLElement;
+    if (contentRef.current) {
+      const styleId = 'file-tree-scrollbar-style';
+      let styleElement = document.getElementById(styleId) as HTMLStyleElement;
+      
+      if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        document.head.appendChild(styleElement);
+      }
 
-        if (targetElement) {
-          targetElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'nearest',
-          });
+      // 获取 CSS 变量的颜色值并转换为 RGBA
+      const getColorWithOpacity = (cssVar: string, fallbackColor: string, opacity: number) => {
+        const computedStyle = getComputedStyle(document.documentElement);
+        const color = computedStyle.getPropertyValue(cssVar).trim() || fallbackColor;
+        
+        // 如果颜色已经是 rgba 格式
+        if (color.startsWith('rgba')) {
+          return color.replace(/[\d.]+\)$/g, `${opacity})`);
         }
-      }, 100);
-    }
-  }, [selectedFilePath]);
+        
+        // 如果是 rgb 格式，转换为 rgba
+        if (color.startsWith('rgb')) {
+          return color.replace('rgb', 'rgba').replace(')', `, ${opacity})`);
+        }
+        
+        // 如果是十六进制，转换为 rgba
+        if (color.startsWith('#')) {
+          const hex = color.replace('#', '');
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+        }
+        
+        return color;
+      };
 
+      // 使用主题配色，动态设置透明度
+      const normalColor = getColorWithOpacity(
+        '--ws-scrollbarSlider-background',
+         'rgba(78, 79, 114, 0.37)',
+        scrollbarOpacity
+      );
+      
+      const hoverColor = getColorWithOpacity(
+        '--ws-scrollbarSlider-hoverBackground',
+        'rgba(78, 79, 114, 0.37)',
+        scrollbarOpacity
+      );
+      
+      const activeColor = getColorWithOpacity(
+        '--ws-scrollbarSlider-activeBackground',
+         'rgba(78, 79, 114, 0.37)',
+        scrollbarOpacity
+      );
+      //TODO:  动态设置滚动条颜色
+      styleElement.textContent = `
+        .file-tree-content::-webkit-scrollbar-thumb {
+          background: ${normalColor} !important;
+        }
+        .file-tree-content::-webkit-scrollbar-thumb:hover {
+          background: ${hoverColor} !important;
+        }
+        .file-tree-content::-webkit-scrollbar-thumb:active {
+          background: ${activeColor} !important;
+        }
+      `;
+    }
+  }, [scrollbarOpacity]);
+
+  // 构建操作按钮
   const actions = [];
 
   if (onNewFile) {
     actions.push({
       id: 'new-file',
-      icon: 'codicon-new-file',
+      icon: <i className="codicon codicon-new-file" />,
       tooltip: '新建文件',
       onClick: onNewFile,
     });
@@ -187,7 +190,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   if (onNewFolder) {
     actions.push({
       id: 'new-folder',
-      icon: 'codicon-new-folder',
+      icon: <i className="codicon codicon-new-folder" />,
       tooltip: '新建文件夹',
       onClick: onNewFolder,
     });
@@ -196,8 +199,8 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   if (onRefresh) {
     actions.push({
       id: 'refresh',
-      icon: 'codicon-refresh',
-      tooltip: '刷新资源管理器',
+      icon: <i className="codicon codicon-refresh" />,
+      tooltip: '刷新',
       onClick: onRefresh,
     });
   }
@@ -205,93 +208,128 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   if (onCollapseAll) {
     actions.push({
       id: 'collapse-all',
-      icon: 'codicon-collapse-all',
+      icon: <i className="codicon codicon-collapse-all" />,
       tooltip: '全部折叠',
       onClick: onCollapseAll,
     });
   }
 
-  // 添加调试日志
-  console.log('[FileTreeSection] 🎨 渲染中，参数:', {
-    rootName,
-    rootPath,
-    nodesLength: nodes.length,
-    nodes: nodes.slice(0, 3), // 只显示前3个节点避免日志过长
-    selectedFilePath
-  });
+  // 渲染文件树节点
+  const renderNode = (node: FileTreeNode) => {
+    const isSelected = node.path === selectedFilePath;
+    const icon = node.isDirectory
+      ? node.isExpanded
+        ? 'codicon-folder-opened'
+        : 'codicon-folder'
+      : 'codicon-file';
 
-  // 添加更多调试信息
-  console.log('[FileTreeSection] 🔍 详细渲染状态:', {
-    hasNodes: nodes.length > 0,
-    firstNodeName: nodes[0]?.name,
-    firstNodeType: nodes[0]?.type,
-    firstNodePath: nodes[0]?.path,
-    renderingEmptyState: nodes.length === 0
-  });
+    // 如果是创建中的节点，显示内联输入框
+    if (node.isCreating) {
+      return (
+        <div key={`creating-${node.creatingType}`} className="file-tree-node">
+          <div
+            className="file-tree-node-content creating"
+            style={{ paddingLeft: `${(node.depth || 0) * 12 + 8}px` }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            onMouseUp={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+          >
+            <span className="file-tree-chevron" />
+            <i className={`file-tree-icon codicon ${node.creatingType === 'folder' ? 'codicon-folder' : 'codicon-file'}`} />
+            <InlineInput
+              placeholder={node.creatingType === 'folder' ? '新建文件夹' : '新建文件'}
+              onConfirm={(name) => callbacks?.onCreateConfirm?.(node, name)}
+              onCancel={() => callbacks?.onCreateCancel?.(node)}
+              autoFocus={true}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={node.path} className="file-tree-node">
+        <div
+          className={`file-tree-node-content ${isSelected ? 'selected' : ''}`}
+          style={{ paddingLeft: `${(node.depth || 0) * 12 + 8}px` }}
+          onClick={() => {
+            if (node.isDirectory) {
+              callbacks?.onFolderToggle?.(node);
+            } else {
+              callbacks?.onFileClick?.(node);
+            }
+          }}
+          onDoubleClick={() => {
+            if (!node.isDirectory) {
+              callbacks?.onFileDoubleClick?.(node);
+            }
+          }}
+          onContextMenu={(e) => callbacks?.onContextMenu?.(node, e)}
+        >
+          {node.isDirectory && (
+            <i
+              className={`file-tree-chevron codicon ${
+                node.isExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'
+              }`}
+            />
+          )}
+          {!node.isDirectory && <span className="file-tree-chevron" />}
+          <i className={`file-tree-icon codicon ${icon}`} />
+          <span className="file-tree-name">{node.name}</span>
+        </div>
+        {node.isDirectory && node.isExpanded && node.children && (
+          <div className="file-tree-children">
+            {node.children.map((child) => renderNode(child))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 处理空白区域点击
+  const handleContentClick = (e: React.MouseEvent) => {
+    // 只有当点击的是容器本身（空白区域），而不是子元素时才触发
+    if (e.target === e.currentTarget && onBlankAreaClick) {
+      onBlankAreaClick();
+    }
+  };
 
   return (
-    <AccordionSection
-      title={rootName.toUpperCase()}
-      defaultExpanded={true}
-      actions={actions}
-      flexGrow={true}
-      onExpandChange={onExpandedChange}
-    >
-      <div 
-        className="file-tree-section" 
-        ref={treeViewRef}
+    <div className="file-tree-section">
+      <ExplorerSection
+        title={rootName}
+        defaultExpanded={true}
+        actions={actions}
+        onExpandChange={onExpandedChange}
       >
-        <TreeView onBlankAreaClick={onBlankAreaClick}>
+        <div 
+          ref={contentRef}
+          className="file-tree-content"
+          onClick={handleContentClick}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
           {nodes.length === 0 ? (
-            <div style={{ 
-              padding: '20px', 
-              textAlign: 'center',
-              color: 'var(--vscode-descriptionForeground)',
-              fontSize: '13px',
-            }}>
-              <p style={{ marginBottom: '12px' }}>尚未打开文件夹</p>
-              <button 
-                onClick={() => window.electron?.folder?.open()}
-                style={{
-                  padding: '6px 14px',
-                  background: 'var(--vscode-button-background)',
-                  color: 'var(--vscode-button-foreground)',
-                  border: '1px solid var(--vscode-button-border, transparent)',
-                  borderRadius: '2px',
-                  cursor: 'pointer',
-                  fontSize: '13px'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--vscode-button-hoverBackground)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'var(--vscode-button-background)';
-                }}
-              >
-                打开文件夹
-              </button>
+            <div className="file-tree-empty">
+              {rootPath ? '文件夹为空' : '尚未打开文件夹'}
             </div>
           ) : (
-            <>
-              {(() => {
-                console.log('[FileTreeSection] 🚀 开始渲染文件节点，数量:', nodes.length);
-                return nodes.map((node, index) => {
-                  return (
-                    <FileTreeNode
-                      key={node.id || node.path}
-                      node={node}
-                      selectedFilePath={selectedFilePath}
-                      callbacks={callbacks}
-                      dragDropHandler={dragDropHandler}
-                    />
-                  );
-                });
-              })()}
-            </>
+            <div className="tree-view">
+              {nodes.map((node) => renderNode(node))}
+            </div>
           )}
-        </TreeView>
-      </div>
-    </AccordionSection>
+        </div>
+      </ExplorerSection>
+    </div>
   );
 };
 

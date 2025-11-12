@@ -2,7 +2,7 @@
  * 同步管理器
  */
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from '@note-studio/core';
 import { FileWatcher } from './FileWatcher';
 import { DeltaSync } from './DeltaSync';
 
@@ -75,6 +75,14 @@ export class SyncManager extends EventEmitter {
     };
   }
 }
+
+
+
+
+
+
+
+
 
 
 

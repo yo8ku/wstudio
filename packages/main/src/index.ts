@@ -3,30 +3,97 @@
  */
 
 import { ExtensionManager } from './extensions/ExtensionManager';
-import { ThemeManager } from './extensions/ThemeManager';
 import { SettingsManager } from './config/SettingsManager';
 import { WorkspaceManager } from './workspace/WorkspaceManager';
 import { BuiltinAI } from './services/BuiltinAI';
+import { PluginAPIAdapter } from './extensions/PluginAPIAdapter';
+import { registerStoreHandlers } from './ipc/storeHandlers';
+import { registerSnippetHandlers } from './ipc/snippetHandlers';
+import { registerFileHandlers } from './ipc/fileHandlers';
+import { registerThemeHandlers } from './ipc/themeHandlers';
+import { registerChatHistoryHandlers } from './ipc/chatHistoryHandlers';
+import { registerInlineChatHistoryHandlers } from './ipc/inlineChatHistoryHandlers';
+import { registerTerminalHandlers } from './ipc/terminalHandlers';
+import { registerAIModelHandlers } from './ipc/aiModelHandlers';
+import { registerFileReferenceHandlers } from './ipc/fileReferenceHandlers';
+import { registerPythonBridgeHandlers } from './ipc/pythonBridgeHandlers';
+import { ThemeService } from './services/ThemeService';
+import { TerminalService } from './services/terminal/TerminalService';
 import * as path from 'path';
 
-// 从 dist 目录往上找到项目根目录下的 extensions
+// 插件系统路径
 // __dirname: packages/main/dist/main/src
-// ../../.. -> packages/main/dist
-// ../../../.. -> packages/main
-// ../../../../.. -> packages
 // ../../../../../ -> 项目根目录
-const extensionsPath = path.join(__dirname, '../../../../../extensions');
-// 内置扩展路径 (dist/src -> dist -> main -> packages/builtin-extensions)
-const builtinExtensionsPath = path.join(__dirname, '../../../builtin-extensions');
+// ../../../../../resources/extensions/builtin -> 内置插件目录
+const builtinPluginsPath = path.join(__dirname, '../../../../../resources/extensions/builtin');
 
-const extensionManager = new ExtensionManager(extensionsPath);
-const builtinExtensionManager = new ExtensionManager(builtinExtensionsPath);
-const themeManager = new ThemeManager();
+// 用户插件路径（未来可能使用）
+// const userPluginsPath = path.join(__dirname, '../../../../../extensions');
+
+// 只使用内置插件管理器
+const pluginManager = new ExtensionManager(builtinPluginsPath);
 const settingsManager = new SettingsManager();
 const workspaceManager = new WorkspaceManager();
 const builtinAI = new BuiltinAI();
 
-export async function initializeExtensions(): Promise<void> {
+// ⭐ 共享的 PluginAPIAdapter 实例（避免重复注册 IPC handlers）
+let sharedAPIAdapter: PluginAPIAdapter | null = null;
+
+// ⭐ 终端服务实例
+let terminalService: TerminalService | null = null;
+
+export async function initializeExtensions(mainWindow?: any): Promise<void> {
+  console.log('[Main] ========== initializeExtensions 开始执行 ==========');
+  console.log('[Main] mainWindow:', !!mainWindow);
+  
+  // 注册 electron-store IPC 处理器
+  registerStoreHandlers();
+  console.log('[Main] electron-store IPC 处理器已注册');
+  
+  // 注册片段数据库 IPC 处理器
+  registerSnippetHandlers();
+  console.log('[Main] 片段数据库 IPC 处理器已注册');
+  
+  // 注册文件操作 IPC 处理器
+  registerFileHandlers();
+  console.log('[Main] 文件操作 IPC 处理器已注册');
+  
+  // 注册主题 IPC 处理器
+  registerThemeHandlers();
+  console.log('[Main] 主题 IPC 处理器已注册');
+  
+  // 注册聊天历史 IPC 处理器
+  registerChatHistoryHandlers();
+  console.log('[Main] 聊天历史 IPC 处理器已注册');
+  
+  // 注册内联聊天历史 IPC 处理器
+  registerInlineChatHistoryHandlers();
+  console.log('[Main] 内联聊天历史 IPC 处理器已注册');
+  
+  // 注册 AI 模型配置 IPC 处理器
+  registerAIModelHandlers();
+  console.log('[Main] AI 模型配置 IPC 处理器已注册');
+  
+  // 注册文件引用 IPC 处理器
+  registerFileReferenceHandlers();
+  console.log('[Main] 文件引用 IPC 处理器已注册');
+  
+  // 注册 PythonBridge IPC 处理器
+  registerPythonBridgeHandlers();
+  console.log('[Main] PythonBridge IPC 处理器已注册');
+  
+  // 初始化终端服务并注册处理器（只在有 mainWindow 时）
+  if (mainWindow && !terminalService) {
+    terminalService = new TerminalService(mainWindow);
+    registerTerminalHandlers(terminalService);
+    console.log('[Main] 终端服务已初始化并注册 IPC 处理器');
+  }
+  
+  // 初始化主题服务
+  const themeService = ThemeService.getInstance();
+  await themeService.initialize();
+  console.log('[Main] 主题服务已初始化');
+  
   // 初始化工作区
   await workspaceManager.initialize();
   console.log('[Main] 工作区已初始化');
@@ -39,112 +106,86 @@ export async function initializeExtensions(): Promise<void> {
   await builtinAI.initialize();
   console.log('[Main] 内置AI服务已初始化');
   
-  // 初始化内置扩展
-  await builtinExtensionManager.initialize();
-  console.log('[Main] 内置扩展系统已初始化');
+  // 如果提供了主窗口，创建共享的 API 适配器并设置到插件管理器
+  if (mainWindow) {
+    if (!sharedAPIAdapter) {
+      console.log('[Main] 创建共享的 PluginAPIAdapter');
+      sharedAPIAdapter = new PluginAPIAdapter(mainWindow);
+      sharedAPIAdapter.setSettingsManager(settingsManager);
+    }
+    
+    // 插件管理器关联 API 适配器
+    pluginManager.setSharedAPIAdapter(sharedAPIAdapter);
+    console.log('[Main] 插件管理器已关联共享的 API 适配器');
+  }
   
-  // 初始化根目录下的扩展（主题扩展位置）
-  await extensionManager.initialize();
-  console.log('[Main] 主题扩展系统已初始化');
+  // 调试：打印路径信息
+  console.log('[Main] ========== 路径调试信息 ==========');
+  console.log('[Main] 当前 __dirname:', __dirname);
+  console.log('[Main] 内置插件路径:', builtinPluginsPath);
+  console.log('[Main] =====================================');
   
-  // 合并所有扩展（内置 + 主题扩展）
-  const allExtensions = [
-    ...builtinExtensionManager.getAllExtensions(),
-    ...extensionManager.getAllExtensions()
-  ];
+  // 初始化插件系统
+  await pluginManager.initialize();
+  console.log('[Main] 插件系统已初始化');
   
-  console.log(`[Main] 共加载 ${allExtensions.length} 个扩展 (内置: ${builtinExtensionManager.getAllExtensions().length}, 主题: ${extensionManager.getAllExtensions().length})`);
+  const allPlugins = pluginManager.getAllExtensions();
+  console.log(`[Main] 共加载 ${allPlugins.length} 个插件`);
   
-  // 激活所有设置为始终激活（"*"）的扩展
-  for (const ext of allExtensions) {
-    if (ext.activationEvents?.includes('*')) {
-      console.log(`[Main] 自动激活扩展: ${ext.name}`);
+  // 激活所有设置为始终激活（"*"）的插件
+  console.log('[Main] ========== 开始激活插件 ==========');
+  for (const plugin of allPlugins) {
+    console.log(`[Main] 检查插件: ${plugin.name}, activationEvents:`, plugin.activationEvents);
+    if (plugin.activationEvents?.includes('*')) {
+      console.log(`[Main]  自动激活插件: ${plugin.name} (${plugin.id})`);
       try {
-        // 判断扩展属于哪个管理器
-        let manager;
-        if (builtinExtensionManager.getAllExtensions().includes(ext)) {
-          manager = builtinExtensionManager;
-        } else {
-          manager = extensionManager;
-        }
-        await manager.loadExtension(ext.id);
+        await pluginManager.loadExtension(plugin.id);
+        console.log(`[Main]  插件激活成功: ${plugin.name}`);
       } catch (error) {
-        console.error(`[Main] 激活扩展失败: ${ext.name}`, error);
+        console.error(`[Main]  激活插件失败: ${plugin.name}`, error);
       }
     }
   }
-  
-  // 加载所有扩展的主题
-  for (const ext of allExtensions) {
-    const extPath = ext.extensionPath || path.join(extensionsPath, ext.id);
-    try {
-      const count = await themeManager.registerThemesFromExtension(extPath);
-      if (count > 0) {
-        console.log(`[Main] 从 ${ext.name} 加载了 ${count} 个主题`);
-      }
-    } catch (error) {
-      // 忽略没有主题的扩展
-    }
-  }
-  
-  // 显示主题统计
-  const stats = themeManager.getStats();
-  console.log(`[Main] 主题系统已初始化，共 ${stats.total} 个主题 (浅色: ${stats.light}, 深色: ${stats.dark})`);
+  console.log('[Main] ========== 插件激活完成 ==========');
 
-  // 监听扩展变化，自动加载新主题
+  // 监听扩展变化
   setupExtensionWatcher();
 }
 
 /**
- * 设置扩展监听器 - 自动处理新安装的扩展和主题
+ * 设置插件监听器 - 自动处理新安装的插件
  */
 function setupExtensionWatcher(): void {
-  // 监听用户扩展目录的变化
-  extensionManager.on('extension-added', async (event: any) => {
-    const ext = event.extension;
-    console.log(`[Main] 检测到新扩展安装: ${ext.name}`);
+  // 监听插件目录的变化
+  pluginManager.on('extension-added', async (event: any) => {
+    const plugin = event.extension;
+    console.log(`[Main] 检测到新插件安装: ${plugin.name}`);
     
-    // 尝试从新扩展加载主题
-    try {
-      const count = await themeManager.registerThemesFromExtension(ext.extensionPath);
-      if (count > 0) {
-        console.log(`[Main] 从新扩展 ${ext.name} 加载了 ${count} 个主题`);
-        
-        // 触发主题列表更新事件
-        themeManager.emit('themes-updated');
-      }
-    } catch (error) {
-      console.log(`[Main] 扩展 ${ext.name} 不包含主题`);
-    }
-    
-    // 如果扩展需要自动激活
-    if (ext.activationEvents?.includes('*')) {
+    // 如果插件需要自动激活
+    if (plugin.activationEvents?.includes('*')) {
       try {
-        await extensionManager.loadExtension(ext.id);
-        console.log(`[Main] 已自动激活新扩展: ${ext.name}`);
+        await pluginManager.loadExtension(plugin.id);
+        console.log(`[Main] 已自动激活新插件: ${plugin.name}`);
       } catch (error) {
-        console.error(`[Main] 激活新扩展失败: ${ext.name}`, error);
+        console.error(`[Main] 激活新插件失败: ${plugin.name}`, error);
       }
     }
   });
 
-  extensionManager.on('extension-removed', (event: any) => {
-    const ext = event.extension;
-    console.log(`[Main] 检测到扩展已卸载: ${ext.name}`);
-    
-    // 触发主题列表更新事件（ThemeManager 会处理主题移除）
-    themeManager.emit('themes-updated');
+  pluginManager.on('extension-removed', (event: any) => {
+    const plugin = event.extension;
+    console.log(`[Main] 检测到插件已卸载: ${plugin.name}`);
   });
 
-  console.log('[Main] 扩展监听器已启动，将自动检测新安装的扩展和主题');
+  console.log('[Main] 插件监听器已启动，将自动检测新安装的插件');
 }
 
-export { extensionManager, builtinExtensionManager, themeManager, settingsManager, workspaceManager, builtinAI };
-
-// 导出主题相关类型和类
-export { ThemeManager } from './extensions/ThemeManager';
-export { VSCodeThemeLoader, ITheme, ThemeColors } from './extensions/vscode-adapter/ThemeLoader';
+export { pluginManager, settingsManager, workspaceManager, builtinAI };
 
 // 导出设置管理器
 export { SettingsManager } from './config/SettingsManager';
 export type { SettingsSchema, SettingsValue } from './config/SettingsManager';
+
+// 导出文件引用服务
+export { FileReferenceService } from './services/FileReferenceService';
+export type { FileReference } from './services/FileReferenceService';

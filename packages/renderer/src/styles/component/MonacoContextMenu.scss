@@ -1,0 +1,36 @@
+/**
+ * MonacoContextMenu Monaco右键菜单颜色样式
+ * 功能：定义Monaco右键菜单的颜色主题
+ */
+
+.monaco-context-menu {
+  background-color: var(--ws-menu-background);
+  border-color: var(--ws-menu-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.monaco-context-menu-item {
+  color: var(--ws-menu-foreground);
+  background-color: (--ws-editor-background);
+}
+
+.monaco-context-menu-item:hover:not(.disabled) {
+  background-color: var(--ws-menu-selectionBackground);
+  color: var(--ws-menu-selectionForeground);
+}
+
+.monaco-context-menu-item.disabled {
+  opacity: 0.4;
+}
+
+.monaco-context-menu-separator {
+  background-color: var(--ws-menu-separatorBackground);
+}
+
+
+
+
+
+
+
+

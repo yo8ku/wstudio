@@ -7,7 +7,7 @@ import React from 'react';
 import { iconRegistry } from './IconRegistry';
 
 export interface IconProps {
-  /** 图标集名称，默认为 'material' */
+  /** 图标集名称，默认'material' */
   iconSet?: string;
   /** 图标名称 */
   name: string;
@@ -15,9 +15,9 @@ export interface IconProps {
   size?: number;
   /** 图标颜色 */
   color?: string;
-  /** 自定义类名 */
+  /** 自定义类型*/
   className?: string;
-  /** 自定义样式 */
+  /** 自定义样式*/
   style?: React.CSSProperties;
   /** 点击事件 */
   onClick?: (e: React.MouseEvent) => void;
@@ -28,10 +28,10 @@ export interface IconProps {
  * 
  * @example
  * ```tsx
- * // 使用默认图标集
+ * // 使用默认图标
  * <Icon name="folder" size={20} color="#dcb67a" />
  * 
- * // 指定图标集
+ * // 指定图标
  * <Icon iconSet="material" name="folder-open" size={24} />
  * 
  * // 使用别名
@@ -57,11 +57,14 @@ export const Icon: React.FC<IconProps> = ({
 
   // 如果图标不存在，使用默认图标
   if (!IconComponent) {
+    // 临时禁用警告，避免淹没调试日志
+    // console.warn(`[Icon] 图标 "${name}" (iconSet: ${iconSet}) 未找到，使用默认图标`);
     IconComponent = iconRegistry.getIcon('material', 'unknown');
   }
 
   // 如果连默认图标都不存在，返回 null
   if (!IconComponent) {
+    console.error(`[Icon] 默认图标也未找到，无法渲染图标 "${name}"`);
     return null;
   }
 
@@ -76,13 +79,18 @@ export const Icon: React.FC<IconProps> = ({
     ...style,
   };
 
+  const svgStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+  };
+
   return (
     <span 
       className={className} 
       style={iconStyle}
       onClick={onClick}
     >
-      <IconComponent />
+      <IconComponent style={svgStyle} className="" />
     </span>
   );
 };

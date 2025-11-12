@@ -2,28 +2,20 @@
  * 混合搜索（向量 + 全文）
  */
 
-import { VectorSearch } from './VectorSearch';
 import { SearchQuery, SearchHit } from './types';
 
 export class HybridSearch {
-  private vectorSearch: VectorSearch;
-
-  constructor(vectorSearch: VectorSearch) {
-    this.vectorSearch = vectorSearch;
-  }
+  constructor() {}
 
   /**
    * 混合搜索
    */
   async search(query: SearchQuery): Promise<SearchHit[]> {
-    // 执行向量搜索
-    const vectorResults = await this.vectorSearch.search(query);
-
     // 这里可以添加全文搜索并融合结果
     // const fulltextResults = await this.fulltextSearch(query);
     // return this.mergeResults(vectorResults, fulltextResults);
 
-    return vectorResults;
+    return [];
   }
 
   /**
@@ -61,6 +53,14 @@ export class HybridSearch {
     return Array.from(merged.values()).sort((a, b) => b.score - a.score);
   }
 }
+
+
+
+
+
+
+
+
 
 
 

@@ -1,0 +1,14 @@
+/**
+ * ResizeHandle 调整大小手柄颜色样式
+ * 功能：定义调整大小手柄的颜色主题
+ */
+
+.resize-handle {
+  background-color: var(--ws-button-background);
+}
+
+.resize-handle:hover,
+.resize-handle.resizing {
+  background-color: var(--ws-sash-hover-border);
+  opacity: 0.6 !important;
+}

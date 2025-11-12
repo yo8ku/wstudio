@@ -1,6 +1,6 @@
 /**
  * 设置 Hook
- * 用于在 React 组件中访问和修改设置
+ * 用于React 组件中访问和修改设置
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -28,7 +28,7 @@ export function useSettings() {
     }
   }, []);
 
-  // 获取单个设置值
+  // 获取单个设置
   const getSetting = useCallback(<T = any>(key: string, defaultValue?: T): T => {
     return settings[key] ?? defaultValue;
   }, [settings]);

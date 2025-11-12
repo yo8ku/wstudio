@@ -102,7 +102,7 @@ export const KnowledgeBaseContextMenu: React.FC<KnowledgeBaseContextMenuProps> =
         zIndex: 10000,
       }}
     >
-      {/* 只有文件夹类型才能修改资料 */}
+      {/* 只有文件夹类型才能修改资源*/}
       {item.type === 'folder' && (
         <div className="context-menu-item" onClick={handleEdit}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">

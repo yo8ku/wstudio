@@ -1,0 +1,97 @@
+/**
+ * Toast 通知样式
+ * 使用 sonner 库，适配应用主题
+ */
+
+/* 覆盖 sonner 默认样式，使用主题变�?*/
+[data-sonner-toaster] {
+  font-family: var(--ws-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif);
+}
+
+[data-sonner-toast] {
+  background-color: var(--ws-notifications-background, #1e1e1e) !important;
+  border: 1px solid var(--ws-notifications-border, #454545) !important;
+  color: var(--ws-notifications-foreground, #cccccc) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* 成功状�?*/
+[data-sonner-toast][data-type="success"] {
+  border-color: var(--ws-notifications-info-icon-foreground, #75beff) !important;
+}
+
+[data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--ws-notifications-info-icon-foreground, #75beff) !important;
+}
+
+/* 错误状�?*/
+[data-sonner-toast][data-type="error"] {
+  border-color: var(--ws-notifications-error-icon-foreground, #f48771) !important;
+}
+
+[data-sonner-toast][data-type="error"] [data-icon] {
+  color: var(--ws-notifications-error-icon-foreground, #f48771) !important;
+}
+
+/* 警告状�?*/
+[data-sonner-toast][data-type="warning"] {
+  border-color: var(--ws-notifications-warning-icon-foreground, #cca700) !important;
+}
+
+[data-sonner-toast][data-type="warning"] [data-icon] {
+  color: var(--ws-notifications-warning-icon-foreground, #cca700) !important;
+}
+
+/* 信息状�?*/
+[data-sonner-toast][data-type="info"] {
+  border-color: var(--ws-notifications-info-icon-foreground, #75beff) !important;
+}
+
+[data-sonner-toast][data-type="info"] [data-icon] {
+  color: var(--ws-notifications-info-icon-foreground, #75beff) !important;
+}
+
+/* Toast 标题和描�?*/
+[data-sonner-toast] [data-title] {
+  color: var(--ws-notifications-foreground, #cccccc) !important;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+[data-sonner-toast] [data-description] {
+  color: var(--ws-description-foreground, #999999) !important;
+  font-size: 12px;
+}
+
+/* 关闭按钮 */
+[data-sonner-toast] [data-close-button] {
+  background-color: transparent !important;
+  border: none !important;
+  color: var(--ws-notifications-foreground, #cccccc) !important;
+}
+
+[data-sonner-toast] [data-close-button]:hover {
+  background-color: var(--ws-toolbar-hover-background, #2a2d2e) !important;
+}
+
+/* Action 按钮 */
+[data-sonner-toast] [data-button] {
+  background-color: var(--ws-button-background, #0e639c) !important;
+  color: var(--ws-button-foreground, #ffffff) !important;
+  border: none !important;
+  padding: 6px 12px;
+  border-radius: 2px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+[data-sonner-toast] [data-button]:hover {
+  background-color: var(--ws-button-hover-background, #1177bb) !important;
+}
+
+/* Loading spinner */
+[data-sonner-toast] [data-icon] svg {
+  width: 16px;
+  height: 16px;
+}
+

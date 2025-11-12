@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from '../../Icons/Icon';
 
 export interface EditorItemProps {
   name: string;
@@ -18,7 +19,7 @@ export const EditorItem: React.FC<EditorItemProps> = ({
   path,
   isDirty = false,
   isActive = false,
-  icon = '📄',
+  icon = 'file',
   onClick,
   onClose,
 }) => {
@@ -38,7 +39,11 @@ export const EditorItem: React.FC<EditorItemProps> = ({
         }}
         title="关闭"
       >
-        {isDirty ? '●' : '×'}
+        {isDirty ? (
+          <span className="editor-item-dirty-indicator">●</span>
+        ) : (
+          <Icon name="close" size={12} />
+        )}
       </button>
     </div>
   );

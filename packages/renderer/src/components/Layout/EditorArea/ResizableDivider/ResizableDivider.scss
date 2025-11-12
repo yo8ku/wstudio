@@ -1,0 +1,55 @@
+/**
+ * 可调整大小的分隔条样式
+ */
+
+.resizable-divider {
+  width: 5px;
+  flex-shrink: 0;
+  position: relative;
+  cursor: col-resize;
+  background-color: var(--ws-panel-border, #2d2d30);
+  transition: background-color 0.15s ease;
+  z-index: 10;
+
+  &:hover {
+    background-color: var(--ws-focus-border, #007acc);
+  }
+
+  &.dragging {
+    background-color: var(--ws-focus-border, #007acc);
+  }
+
+  // 拖动手柄（中间的视觉指示器）
+  &-handle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 40px;
+    background-color: var(--ws-editor-foreground, #cccccc);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    border-radius: 1px;
+    pointer-events: none;
+  }
+
+  &:hover &-handle,
+  &.dragging &-handle {
+    opacity: 0.6;
+  }
+
+  // 扩展鼠标悬停区域
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -3px;
+    right: -3px;
+    bottom: 0;
+  }
+}
+
+
+
+

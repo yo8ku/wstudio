@@ -9,7 +9,7 @@
 - 多种文件格式支持（Markdown, PDF, HTML, Word, 代码文件等）
 - 灵活的分块策略（句子、段落、语义、滑动窗口等）
 
-🔍 **强大的搜索能力**
+ **强大的搜索能力**
 - 向量搜索
 - 全文搜索
 - 混合搜索
@@ -152,6 +152,14 @@ console.log('Sources:', response.sources);
 ## License
 
 MIT
+
+
+
+
+
+
+
+
 
 
 

@@ -1,0 +1,163 @@
+{
+  // ============================================
+  // 自定义主题示例 - 支持注释的 JSONC 格式
+  // ============================================
+  
+  // 基本信息
+  "id": "custom-dark-example",
+  "name": "Custom Dark Example",
+  "type": "dark", // 可选值: "light", "dark", "hc", "hcLight"
+  "author": "Your Name",
+  "description": "这是一个展示 JSONC 格式的示例主题，支持添加注释",
+  "version": "1.0.0",
+  
+  // ============================================
+  // 颜色配置
+  // ============================================
+  "colors": {
+    // 命令中心配置
+    "commandCenter.foreground": "#cccccc",      // 前景色
+    "commandCenter.activeForeground": "#ffffff", // 激活时的前景色
+    "commandCenter.background": "#1e1e1e",      // 背景色
+    "commandCenter.activeBackground": "#2d2d2d", // 激活时的背景色
+    "commandCenter.border": "#3e3e3e",
+    "commandCenter.inactiveForeground": "rgba(204, 204, 204, 0.6)",
+    
+    // 扩展和聊天面板
+    "extensions.modalContent": "#252526",
+    "chat.panleBackground": "#1e1e1e",
+    
+    // 通用颜色
+    "foreground": "#cccccc",
+    "focusBorder": "#007acc",
+    "focus.border": "#007acc",
+    "selection.background": "#264f78",
+    
+    // 输入框配置
+    "input.background": "#2d2d2d",
+    "input.foreground": "#cccccc",
+    "input.placeholderForeground": "#888888",
+    "input.border": "#3e3e3e",
+    
+    // 按钮配置
+    "button.background": "#0e639c",
+    "button.foreground": "#ffffff",
+    "button.hoverBackground": "#1177bb",
+    "button.activeBackground": "#0e639c",
+    "button.activeForeground": "#ffffff",
+    "button.border": "#007acc",
+    
+    // 菜单配置
+    "menu.background": "#252526",
+    "menu.foreground": "#cccccc",
+    "menu.border": "#3e3e3e",
+    "menu.selectionBackground": "#094771",
+    "menu.selectionForeground": "#ffffff",
+    "menu.separatorBackground": "#3e3e3e",
+    
+    // 列表配置
+    "list.activeSelectionBackground": "#094771",
+    "list.activeSelectionForeground": "#ffffff",
+    "list.hoverBackground": "#2a2d2e",
+    "list.hoverForeground": "#cccccc",
+    "list.inactiveSelectionBackground": "#37373d",
+    "list.inactiveSelectionForeground": "#cccccc",
+    
+    // 编辑器配置
+    "editor.background": "#1e1e1e",
+    "editor.foreground": "#d4d4d4",
+    "editorLineNumber.foreground": "#858585",
+    "editorLineNumber.activeForeground": "#c6c6c6",
+    "editorCursor.foreground": "#aeafad",
+    "editor.selectionBackground": "#264f78",
+    "editor.lineHighlightBackground": "#2a2d2e"
+  },
+  
+  // ============================================
+  // 语法高亮规则
+  // ============================================
+  "tokenColors": [
+    {
+      "name": "Comments",  // 注释
+      "scope": ["comment", "punctuation.definition.comment"],
+      "settings": {
+        "foreground": "#6A9955",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Strings",  // 字符串
+      "scope": ["string"],
+      "settings": {
+        "foreground": "#ce9178"
+      }
+    },
+    {
+      "name": "Numbers",  // 数字
+      "scope": ["constant.numeric"],
+      "settings": {
+        "foreground": "#b5cea8"
+      }
+    },
+    {
+      "name": "Keywords",  // 关键字
+      "scope": ["keyword"],
+      "settings": {
+        "foreground": "#569cd6"
+      }
+    },
+    {
+      "name": "Function names",  // 函数名
+      "scope": ["entity.name.function", "support.function"],
+      "settings": {
+        "foreground": "#dcdcaa"
+      }
+    },
+    {
+      "name": "Variables",  // 变量
+      "scope": ["variable"],
+      "settings": {
+        "foreground": "#9cdcfe"
+      }
+    },
+    {
+      "name": "Classes",  // 类名
+      "scope": ["entity.name.class", "entity.name.type.class"],
+      "settings": {
+        "foreground": "#4ec9b0"
+      }
+    }
+  ],
+  
+  // ============================================
+  // 语义高亮配置（可选）
+  // ============================================
+  "semanticHighlighting": true,
+  "semanticTokenColors": {
+    "variable": "#9cdcfe",
+    "parameter": "#9cdcfe",
+    "function": "#dcdcaa",
+    "class": "#4ec9b0"
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

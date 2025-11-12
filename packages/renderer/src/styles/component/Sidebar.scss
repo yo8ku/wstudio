@@ -1,0 +1,39 @@
+/**
+ * Sidebar 侧边栏颜色样式
+ * 功能：定义侧边栏的颜色主题
+ */
+
+
+//颜色-
+.sidebar[data-position="left"] {
+  background-color: var(--ws-sideBar-background);
+  color: var(--ws-panel-border);;
+}
+
+.sidebar-content{
+  color: var(--ws-editor-foreground);
+}
+
+.sidebar[data-position="right"] {
+  // 样式
+  color: var(--ws-panel-border);;
+}
+
+.sidebar-header {
+  color: var(--ws-sideBar-foreground);
+  border-bottom-color: var(--ws-panel-border);;
+}
+
+.sidebar-header button {
+  color: var(--ws-icon-foreground);
+}
+
+.sidebar-header button:hover {
+  opacity: 1;
+}
+
+.sidebar-resize-handle.resizing,
+.sidebar-resize-handle:hover {
+  background-color: var(--ws-sash-hover-border, var(--ws-focus-border));
+  opacity: 0.6;
+}

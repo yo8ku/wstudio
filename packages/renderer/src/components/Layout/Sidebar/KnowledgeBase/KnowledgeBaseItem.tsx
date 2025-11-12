@@ -1,7 +1,6 @@
 /**
  * 知识库项组件
- * 功能：渲染单个知识库项
- * 描述：只显示知识库名称，支持选择、显示元数据、右键菜单等功能
+ * 功能：渲染单个知识库 * 描述：只显示知识库名称，支持选择、显示元数据、右键菜单等功能
  */
 
 import React, { useState } from 'react';
@@ -29,17 +28,16 @@ interface KnowledgeBaseItemProps {
   expandedItems?: Set<string>;
   /** 选中的项ID（用于子项） */
   selectedItemId?: string;
-  /** 修改知识库 */
+  /** 修改知识*/
   onEdit?: (item: KnowledgeItem) => void;
-  /** 删除知识库 */
+  /** 删除知识*/
   onDelete?: (item: KnowledgeItem) => void;
-  /** 添加到聊天 */
+  /** 添加到聊*/
   onAddToChat?: (item: KnowledgeItem) => void;
 }
 
 /**
- * 格式化文件大小
- */
+ * 格式化文件大小 */
 const formatFileSize = (bytes?: number): string => {
   if (!bytes) return '';
   if (bytes < 1024) return `${bytes}B`;
@@ -48,8 +46,7 @@ const formatFileSize = (bytes?: number): string => {
 };
 
 /**
- * 格式化字数
- */
+ * 格式化字 */
 const formatWordCount = (count?: number): string => {
   if (!count) return '';
   if (count < 1000) return `${count}字`;
@@ -132,7 +129,7 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
           {item.title}
         </div>
 
-        {/* 元数据 */}
+        {/* 元数据*/}
         {item.metadata && (
           <div className="knowledge-base-item__metadata">
             {item.metadata.wordCount && (

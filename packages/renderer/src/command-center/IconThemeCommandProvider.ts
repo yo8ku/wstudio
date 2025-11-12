@@ -1,6 +1,5 @@
 /**
- * 文件图标主题命令提供者
- * 
+ * 文件图标主题命令提供器
  * 功能：
  * - 为命令中心提供文件图标主题相关命令
  * - 注册图标主题切换、预览等功能
@@ -27,8 +26,7 @@ export class IconThemeCommandProvider {
 
   constructor(commandCenter: VSCodeCommandCenter) {
     this.commandCenter = commandCenter;
-    // 立即开始初始化，但不阻塞构造函数
-    this.initPromise = this.initialize();
+    // 立即开始初始化，但不阻塞构造函数    this.initPromise = this.initialize();
   }
 
   private async initialize(): Promise<void> {
@@ -39,7 +37,7 @@ export class IconThemeCommandProvider {
       this.isInitialized = true;
       console.log('[IconThemeCommandProvider] 初始化完成');
     } catch (error) {
-      console.error('[IconThemeCommandProvider] 初始化失败:', error);
+      console.error('[IconThemeCommandProvider] 初始化失败', error);
       this.isInitialized = true; // 即使失败也标记为已初始化，避免阻塞
     }
   }
@@ -54,38 +52,18 @@ export class IconThemeCommandProvider {
   }
 
   /**
-   * 加载所有文件图标主题
-   */
+   * 加载所有文件图标主题   */
   private async loadIconThemes(): Promise<void> {
     try {
-      // TODO: 实现从扩展系统加载图标主题
-      // 目前先从 extensions 目录扫描
-      const iconThemes: IconTheme[] = [];
-
-      // Material Icon Theme
-      iconThemes.push({
-        id: 'material-icon-theme',
-        label: 'Material Icon Theme',
-        path: 'extensions/material-icon-theme/extension/dist/material-icons.json',
-        extensionId: 'material-icon-theme',
-        extensionName: 'Material Icon Theme'
-      });
-
-      // Ayu Icons
-      iconThemes.push({
-        id: 'ayu',
-        label: 'Ayu',
-        path: 'extensions/ayu/ayu-icons.json',
-        extensionId: 'ayu',
-        extensionName: 'Ayu'
-      });
+      // TODO: 实现从扩展系统加载图标主题      // 目前图标主题功能暂时禁用，等待从扩展系统动态加载
+    const iconThemes: IconTheme[] = [];
 
       this.allIconThemes = iconThemes;
       console.log(`[IconThemeCommandProvider] 成功加载 ${this.allIconThemes.length} 个文件图标主题`);
 
       // 加载当前图标主题设置
       // TODO: 从设置中读取当前图标主题
-      this.currentIconTheme = 'material-icon-theme';
+      this.currentIconTheme = null;
     } catch (error) {
       console.error('[IconThemeCommandProvider] Failed to load icon themes:', error);
       this.allIconThemes = [];
@@ -107,7 +85,7 @@ export class IconThemeCommandProvider {
       displayId: 'Preferences: File Icon Theme',
       description: '选择文件图标主题',
       category: '首选项',
-      icon: '📁',
+      icon: 'folder',
       execute: async () => {
         await this.showIconThemeQuickPick();
       }
@@ -116,22 +94,21 @@ export class IconThemeCommandProvider {
     // 批量注册核心命令
     this.commandCenter.registerCommands(commands);
 
-    console.log(`[IconThemeCommandProvider] 已注册 ${commands.length} 个核心文件图标主题命令，图标主题总数: ${this.allIconThemes.length}`);
+    console.log(`[IconThemeCommandProvider] 已注册${commands.length} 个核心文件图标主题命令，图标主题总数: ${this.allIconThemes.length}`);
   }
 
   /**
    * 显示文件图标主题快速选择
    */
   private async showIconThemeQuickPick(): Promise<void> {
-    // 确保初始化完成
-    await this.ensureInitialized();
+    // 确保初始化完成    await this.ensureInitialized();
     
     // 创建自定义模式用于图标主题选择
     this.commandCenter.registerMode({
       prefix: 'icontheme:',
       name: 'Select File Icon Theme',
       placeholder: '选择文件图标主题...',
-      icon: '📁',
+      icon: 'folder',
       provider: async (query: string) => {
         // 每次查询时确保数据已加载
         await this.ensureInitialized();
@@ -144,8 +121,7 @@ export class IconThemeCommandProvider {
   }
 
   /**
-   * 获取文件图标主题列表项
-   */
+   * 获取文件图标主题列表   */
   private async getIconThemeItems(query: string): Promise<CommandItem[]> {
     const items: CommandItem[] = [];
     const lowerQuery = query.toLowerCase();
@@ -157,7 +133,7 @@ export class IconThemeCommandProvider {
       items.push({
         id: '__none__',
         label: 'Default Icons',
-        displayId: '', // 不显示 ID
+        displayId: '', // 不显示ID
         icon: isNoneCurrent ? '✓' : undefined,
         alwaysShow: isNoneCurrent,
         value: {
@@ -178,7 +154,7 @@ export class IconThemeCommandProvider {
         items.push({
           id: theme.id,
           label: theme.label,
-          displayId: '', // 不显示 ID
+          displayId: '', // 不显示ID
           icon: isCurrent ? '✓' : undefined,
           alwaysShow: isCurrent,
           onPreview: async () => {
@@ -221,7 +197,7 @@ export class IconThemeCommandProvider {
       // 显示消息
       const themeName = themeId 
         ? this.allIconThemes.find(t => t.id === themeId)?.label || themeId
-        : '无';
+        : 'Default';
       console.log(`[IconThemeCommandProvider] ✓ 文件图标主题已切换到: ${themeName}`);
       
       // TODO: 保存到设置

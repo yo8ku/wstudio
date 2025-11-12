@@ -1,0 +1,52 @@
+/**
+ * Settings 设置颜色样式
+ * 功能：定义设置的颜色主题
+ */
+
+ .ai-chat-settings-panel {
+    background: var(--ws-panel-background);
+ }
+
+.settings-view {
+  background-color: var(--ws-editor-background);
+  color: var(--ws-editor-foreground);
+}
+
+.settings-sidebar {
+  background-color: var(--ws-sidebar-background);
+  border-right-color: var(--ws-sidebar-border);
+}
+
+.settings-category {
+  color: var(--ws-sidebar-foreground);
+}
+
+.settings-category:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.settings-category.active {
+  background-color: var(--ws-list-active-selection-background);
+  color: var(--ws-list-active-selection-foreground);
+}
+
+.settings-content {
+  // background-color: var(--ws-editor-background);
+}
+
+.settings-group-title {
+  color: var(--ws-settings-headerForeground);
+  border-bottom-color: var(--ws-sidebar-border);
+}
+
+.settings-item-modified::after {
+  background-color: var(--ws-settings-modifiedItemIndicator);
+}
+
+
+
+
+
+
+
+

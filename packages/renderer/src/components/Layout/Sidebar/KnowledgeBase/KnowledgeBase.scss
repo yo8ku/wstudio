@@ -1,7 +1,7 @@
 /**
- * 知识库样式文件
- * 功能：定义知识库组件的样式
- * 描述：使用VSCode主题变量，支持主题切换
+ * 知识库样式文 
+ * 功能：定义知识库组件的样 
+ * 描述：使用主题变量，支持主题切
  */
 
 .knowledge-base {
@@ -10,7 +10,7 @@
   height: 100%;
   overflow: hidden;
 
-  /* 搜索栏 */
+  /* 搜索??*/
   &__search {
     padding: 8px;
     border-bottom: 1px solid;
@@ -39,14 +39,14 @@
     height: 32px !important;
   }
 
-  /* 内容区 */
+  /* 内容??*/
   &__content {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
   }
 
-  /* 底部工具栏 */
+  /* 底部工具??*/
   &__footer {
     padding: 8px;
     border-top: 1px solid;
@@ -64,8 +64,6 @@
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
-    transition: opacity 0.1s ease;
-
     .icon-refresh {
       width: 14px;
       height: 14px;
@@ -81,7 +79,7 @@
   }
 }
 
-/* 知识库分组 */
+/* 知识库分??*/
 .knowledge-base-group {
   /* 分组标题 */
   &__header {
@@ -116,11 +114,9 @@
     align-items: center;
     justify-content: center;
     padding: 4px;
-    background: transparent;
     border: none;
     cursor: pointer;
     border-radius: 4px;
-    transition: background-color 0.1s ease;
     flex-shrink: 0;
 
     .icon-add,
@@ -129,10 +125,6 @@
       width: 16px;
       height: 16px;
     }
-
-    &:hover {
-      background-color: var(--list-hover-bg);
-    }
   }
 
   &__add-button {
@@ -140,11 +132,9 @@
     align-items: center;
     justify-content: center;
     padding: 4px;
-    background: transparent;
     border: none;
     cursor: pointer;
     border-radius: 4px;
-    transition: background-color 0.1s ease;
     flex-shrink: 0;
 
     .icon-add {
@@ -152,9 +142,6 @@
       height: 16px;
     }
 
-    &:hover {
-      background-color: var(--list-hover-bg);
-    }
   }
 
   &__icon {
@@ -204,21 +191,10 @@
     user-select: none;
     font-size: 13px;
     border-radius: 4px;
-    transition: background-color 0.15s ease;
-    background-color: transparent;
-    color: var(--sidebar-fg);
-
-    &:hover:not(.selected) {
-      background-color: var(--list-hover-bg);
-    }
-
     &.selected {
-      background-color: var(--list-active-bg);
-      color: var(--list-active-fg);
       font-weight: 500;
 
       &:hover {
-        background-color: var(--list-active-bg);
         filter: brightness(0.95);
       }
     }
@@ -279,20 +255,15 @@
       white-space: nowrap;
     }
   }
-
-  &__children {
-    /* 子项容器 */
-  }
 }
 
-/* 文件导入对话框 */
+/* 文件导入对话??*/
 .file-import-dialog-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -309,7 +280,7 @@
   flex-direction: column;
   overflow: hidden;
 
-  /* 对话框标题 */
+  /* 对话框标??*/
   &__header {
     display: flex;
     align-items: center;
@@ -325,7 +296,6 @@
   }
 
   &__close {
-    background: none;
     border: none;
     font-size: 24px;
     cursor: pointer;
@@ -336,14 +306,9 @@
     align-items: center;
     justify-content: center;
     border-radius: 4px;
-    transition: background-color 0.1s ease;
-
-    &:hover {
-      background-color: var(--list-hover-bg);
-    }
   }
 
-  /* 对话框内容 */
+  /* 对话框内??*/
   &__body {
     flex: 1;
     overflow-y: auto;
@@ -395,8 +360,6 @@
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
-    transition: opacity 0.1s ease;
-
     .icon-add {
       width: 16px;
       height: 16px;
@@ -420,7 +383,7 @@
     overflow-y: auto;
   }
 
-  /* 对话框底部 */
+  /* 对话框底??*/
   &__footer {
     display: flex;
     justify-content: flex-end;
@@ -435,8 +398,6 @@
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
-    transition: opacity 0.1s ease;
-
     &:hover:not(:disabled) {
       opacity: 0.9;
     }
@@ -444,16 +405,10 @@
     &:disabled {
       cursor: not-allowed;
     }
-
-    &--cancel {
-      &:hover {
-        background-color: var(--list-hover-bg);
-      }
-    }
   }
 }
 
-/* 文件预览项 */
+/* 文件预览??*/
 .file-preview-item {
   display: flex;
   align-items: center;
@@ -483,7 +438,6 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -500,7 +454,7 @@
   flex-direction: column;
   overflow: hidden;
 
-  /* 对话框标题 */
+  /* 对话框标??*/
   &__header {
     display: flex;
     align-items: center;
@@ -516,7 +470,6 @@
   }
 
   &__close {
-    background: none;
     border: none;
     font-size: 24px;
     cursor: pointer;
@@ -527,14 +480,9 @@
     align-items: center;
     justify-content: center;
     border-radius: 4px;
-    transition: background-color 0.1s ease;
-
-    &:hover {
-      background-color: var(--list-hover-bg);
-    }
   }
 
-  /* 对话框内容 */
+  /* 对话框内??*/
   &__body {
     flex: 1;
     overflow-y: auto;
@@ -560,14 +508,6 @@
     font-size: 13px;
     outline: none;
     box-sizing: border-box;
-
-    &:focus {
-      border-color: var(--button-bg);
-    }
-
-    &::placeholder {
-      color: var(--descriptionForeground);
-    }
   }
 
   &__textarea {
@@ -579,14 +519,6 @@
     outline: none;
     resize: none;
     box-sizing: border-box;
-
-    &:focus {
-      border-color: var(--button-bg);
-    }
-
-    &::placeholder {
-      color: var(--descriptionForeground);
-    }
   }
 
   &__cover-upload {
@@ -597,11 +529,6 @@
     cursor: pointer;
     overflow: hidden;
     position: relative;
-    transition: border-color 0.1s ease;
-
-    &:hover {
-      border-color: var(--button-bg);
-    }
 
     .cover-preview {
       width: 100%;
@@ -629,7 +556,7 @@
     }
   }
 
-  /* 对话框底部 */
+  /* 对话框底??*/
   &__footer {
     display: flex;
     justify-content: flex-end;
@@ -644,8 +571,6 @@
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
-    transition: opacity 0.1s ease;
-
     &:hover:not(:disabled) {
       opacity: 0.9;
     }
@@ -654,23 +579,14 @@
       cursor: not-allowed;
     }
 
-    &--cancel {
-      &:hover {
-        background-color: var(--list-hover-bg);
-      }
-    }
   }
 }
 
 // 右键菜单
 .knowledge-base-context-menu {
-  background-color: var(--menu-bg);
-  border: 1px solid var(--menu-border);
   border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   min-width: 160px;
   padding: 4px 0;
-  color: var(--menu-fg);
 
   .context-menu-item {
     display: flex;
@@ -679,7 +595,6 @@
     padding: 6px 12px;
     cursor: pointer;
     font-size: 13px;
-    color: var(--menu-fg);
 
     svg {
       flex-shrink: 0;
@@ -689,24 +604,11 @@
     span {
       flex: 1;
     }
-
-    &:hover {
-      background-color: var(--menu-selection-bg);
-      color: var(--menu-selection-fg);
-    }
-
-    &--danger {
-      color: var(--errorForeground, #f48771);
-
-      &:hover {
-        background-color: var(--menu-selection-bg);
-      }
-    }
+ 
   }
 
   .context-menu-divider {
     height: 1px;
-    background-color: var(--menu-border);
     margin: 4px 0;
   }
 }

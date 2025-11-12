@@ -1,0 +1,62 @@
+/**
+ * 模型能力徽章样式
+ */
+
+.model-capability-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: default;
+  white-space: nowrap;
+
+  &__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__label {
+    font-size: 10px;
+  }
+
+  // 尺寸变体
+  &--small {
+    padding: 1px 4px;
+    
+    .model-capability-badge__icon {
+      font-size: 10px;
+    }
+    
+    .model-capability-badge__label {
+      font-size: 9px;
+    }
+  }
+
+  &--medium {
+    padding: 2px 6px;
+    
+    .model-capability-badge__icon {
+      font-size: 12px;
+    }
+    
+    .model-capability-badge__label {
+      font-size: 10px;
+    }
+  }
+
+  &--large {
+    padding: 3px 8px;
+    
+    .model-capability-badge__icon {
+      font-size: 14px;
+    }
+    
+    .model-capability-badge__label {
+      font-size: 11px;
+    }
+  }
+}

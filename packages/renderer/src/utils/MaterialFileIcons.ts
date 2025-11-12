@@ -285,9 +285,11 @@ export class MaterialFileIcons {
 
   /**
    * 获取图标 SVG 路径
+   * 注意：此方法依赖 material-icon-theme 扩展，如果扩展未安装则返回默认路径
    */
   static getIconPath(config: FileIconConfig): string {
     const icon = this.getIcon(config);
+    // TODO: 从扩展系统动态获取图标路径
     return `extensions/material-icon-theme/extension/icons/${icon}.svg`;
   }
 

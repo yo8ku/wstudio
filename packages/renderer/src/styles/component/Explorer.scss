@@ -1,0 +1,25 @@
+/**
+ * Explorer 资源管理器颜色样式
+ * 功能：定义资源管理器的颜色主题
+ */
+
+.explorer-view {
+   background-color: var(--ws-sidebar-background);
+  color: var(--ws-sidebar-foreground);
+}
+
+.explorer-section {
+  background-color: var(--ws-sidebar-background);
+}
+
+.explorer-section-header {
+  background-color: var(--ws-sideBarSectionHeader-background);
+  color: var(--ws-sideBarSectionHeader-foreground);
+  border-color: var(--ws-sideBarSectionHeader-border);
+}
+
+.explorer-section-header:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+

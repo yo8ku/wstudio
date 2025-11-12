@@ -1,0 +1,800 @@
+/**
+ * AI ���������ʽ
+ *
+ */
+
+.ai-chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  &:not(.maximized) {
+    position: relative;
+    flex-shrink: 0;
+    width: 400px;
+  }
+
+  &.maximized {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    border-left: none;
+    width: auto;
+  }
+
+  &-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    z-index: 10;
+    cursor: col-resize;
+    // left/right 由内联样式动态控制
+
+    &.resizing,
+    &:hover {
+      opacity: 0.6;
+    }
+  }
+
+  &-header {
+    padding: 0 16px;
+    display: flex;
+    justify-content: space-between;
+
+    &-left {
+      display: flex;
+      align-items: center;
+      height: 25px;
+      padding-left: 1px;
+      border-bottom: 1px solid #ffffff54;
+
+      >span {
+        font-size: 12px;
+        font-weight: 600;
+      }
+    }
+
+    &-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    &-divider {
+      width: 1px;
+      height: 16px;
+      margin: 0 2px;
+      flex-shrink: 0;
+    }
+
+    button {
+      height: 20px;
+      line-height: 20px;
+      padding: 3px;
+      border: none;
+      border-radius: 3px !important;
+      cursor: pointer;
+
+    
+    }
+  }
+
+  &-messages {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+
+    &.centered {
+      justify-content: center;
+    }
+
+    // 滚动条基础样式（透明度通过 JS 动态控制）
+    &::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      border-radius: 5px;
+      // 颜色和透明度通过 JS 动态注入
+    }
+
+    &-content {
+      padding: 16px;
+      width: 100%;
+
+      &.max-width {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+    }
+  }
+
+  &-input-container {
+    display: flex;
+    padding: 12px;
+
+    &.centered {
+      justify-content: center;
+    }
+
+    &-inner {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-radius: 8px;
+      padding: 8px;
+
+      &.max-width {
+        max-width: 800px;
+      }
+    }
+  }
+}
+
+
+.thinking-container {
+  border-radius: 4px;
+   background-color: #7069693a;
+  &.model-thinking-collapsed-view {
+   
+    &:hover {
+      background-color: var(--ws-activitybar-background);
+      border-color: #076077;
+    }
+  }
+}
+
+
+.message {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+
+  //AI panle AI 面板用户消息块
+  &.user {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-right: 8px;
+    padding-left: 5px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+
+  }
+
+  &.assistant {
+    flex-direction: row;
+    justify-content: flex-start;
+    border: 1px solid transparent;
+    padding-top: 8px;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-bottom: 8px;
+    border-radius: 4px;
+  }
+
+  &-avatar {
+    flex-shrink: 0;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    overflow: hidden;
+
+    .avatar-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+
+  &-avatar-placeholder {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+  }
+
+  &-bubble {
+    display: inline-block;
+    padding-top: 3px;
+    border-radius: 8px;
+    width: 100%;
+
+    // 鼠标悬停时显示工具栏
+    &:hover {
+      .message-toolbar {
+        opacity: 0.7;
+      }
+    }
+  }
+
+  &-model-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    line-height: 29px;
+    // border-bottom: 1px solid var(--ws-sidebar-border);
+
+    .ai-provider-icon-wrapper {
+      border-radius: 50%;
+      display: flex;
+      width: 23px !important;
+      height: 23px !important;
+      padding: 3px;
+      background-color: rgb(100 100 100 / 31%);
+      color: #FFF;
+    }
+
+    .model-name {
+      font-size: 12px;
+      font-weight: 500;
+      padding-left: 3px !important;
+    }
+  }
+
+  &-content {
+    font-size: 13px;
+    word-break: break-word;
+
+    // AI 响应渲染器会自己处理格式，所以不需要 pre-wrap
+    // 用户消息保持原样
+    .user & {
+      white-space: pre-wrap;
+    }
+  }
+
+  &-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 5px;
+    gap: 8px;
+  }
+
+  &-time {
+    font-size: 12px;
+    opacity: 0.6;
+  }
+
+  &-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+
+    .toolbar-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: transparent;
+      transition: background-color 0.2s ease;
+
+      span {
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      svg {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+      }
+
+      &:hover {
+        background-color: var(--ws-button-hover-background);
+      }
+
+      &:active {
+        opacity: 0.7;
+      }
+    }
+  }
+
+  &-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &-dots {
+      display: flex;
+      gap: 4px;
+
+      span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        opacity: 0.5;
+      }
+    }
+
+    span.text {
+      font-size: 13px;
+    }
+  }
+}
+
+// END Mesaage
+
+// 推理容器（独立于消息气泡）
+.thinking-container {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  margin-bottom: 8px;
+  border: 1px solid transparent;
+
+  &:hover {
+    border-color: #89898978;
+    border-radius: 4px;
+  }
+
+  // 当在最大化模式下时，对齐到消息内容宽度
+  .ai-chat-panel-messages.centered & {
+    max-width: var(--max-width, 800px);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  // ✅ 临时思考步骤（正在思考中）
+  &.active-thinking {
+    animation: fadeIn 0.3s ease-in;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// �Ϸ�������
+.input-top-toolbar {
+  display: flex;
+  align-items: center;
+  position: relative;
+
+  .context-button,
+  .agent-button {
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 4px !important;
+    border: none;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    span {
+      line-height: 1;
+    }
+
+  }
+
+  .deep-thinking-button,
+  .web-search-button,
+  .clear-context-button {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 4px !important;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    transition: none;
+    white-space: nowrap;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    span {
+      line-height: 1;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  // 菜单
+  .context-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 11px;
+    min-width: 220px;
+    border-radius: 6px;
+    padding: 4px;
+    z-index: 1000;
+
+    // ����������
+    .context-menu-search {
+      padding: 4px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid var(--ws-sidebar-border);
+
+      .context-menu-search-input {
+        width: 100%;
+        padding: 3px 0px;
+        border-radius: 4px;
+        font-size: 13px;
+        outline: none;
+        transition: none;
+      }
+    }
+
+    .context-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 13px;
+      transition: none;
+
+      .context-menu-item-text {
+        flex: 1;
+        white-space: nowrap;
+      }
+
+      &:active {
+        opacity: 0.8;
+      }
+    }
+  }
+
+  .agent-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 50px;
+    margin-bottom: 11px;
+    width: 210px;
+    max-width: 210px;
+    border-radius: 6px;
+    // box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 4px;
+    z-index: 1000;
+    max-height: 400px;
+    overflow-y: auto;
+
+    .agent-menu-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      transition: none;
+
+      .agent-menu-item-content {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        cursor: pointer;
+        min-width: 0;
+
+        .agent-emoji {
+          font-size: 16px;
+          line-height: 1;
+          flex-shrink: 0;
+        }
+
+        .agent-menu-item-text {
+          flex: 1;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+      }
+
+      .agent-menu-item-edit {
+        flex-shrink: 0;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+        color: var(--ws-icon-foreground);
+
+        &:hover {
+          color: var(--ws-textLink-active-foreground);
+        }
+
+        &:active {
+          opacity: 0.7;
+        }
+      }
+
+      &:hover {
+        .agent-menu-item-edit {
+          opacity: 0.7;
+        }
+      }
+
+      &:active {
+        opacity: 0.8;
+      }
+    }
+
+    .agent-menu-create {
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      border-bottom: 1px solid var(--ws-activityBar-border);
+
+      svg {
+        flex-shrink: 0;
+      }
+
+      &:hover {
+        background: var(--ws-list-hover-background);
+      }
+    }
+
+    .agent-menu-divider {
+      height: 1px;
+      background: var(--ws-menu-separator-background);
+      margin: 4px 0;
+    }
+
+    .agent-menu-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      font-size: 13px;
+      color: var(--ws-description-foreground);
+    }
+
+    .agent-menu-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      gap: 8px;
+      text-align: center;
+
+      .agent-menu-empty-text {
+        font-size: 13px;
+        color: var(--ws-description-foreground);
+      }
+    }
+  }
+}
+
+// ��������
+.input-area {
+  display: flex;
+  flex-direction: column;
+}
+
+// �������ʽ���ޱ߿�����
+.input-textarea {
+  width: 100%;
+  background-color: transparent;
+  min-height: 60px;
+  max-height: 200px;
+  padding: 8px 0;
+  border: none !important;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  font-family: inherit;
+  outline: none;
+  overflow: hidden; // ���ù�����
+  overflow-wrap: break-word;
+
+  &::placeholder {
+    opacity: 0.7;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// �ײ���������ʽ
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+  }
+
+  .model-select {
+    padding: 4px 24px 4px 8px;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 5L6 8L9 5' stroke='%23CCCCCC' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    padding-right: 24px;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  // AI 面板 模型选择
+  .ai-chat-model-selector {
+    .model-selector-dropdown {
+      top: auto !important;
+    }
+
+    .dropdown-menu-trigger {
+      width: fit-content;
+      max-width: 300px;
+      border: 0;
+      background-color: transparent;
+    }
+
+    .dropdown-menu-group-title {
+      margin-bottom: 8px !important;
+      border:none;
+    }
+
+    .dropdown-menu-item {
+      height: 32px;
+      
+      .dropdown-menu-item-icon {
+        width: 18px;
+        height: 18px;
+        
+        .ai-provider-icon-wrapper {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          
+          img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+          }
+        }
+        
+        .ai-provider-icon-placeholder {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 2px;
+          background-color: var(--ws-border-color);
+          opacity: 0.3;
+        }
+      }
+    }
+
+    .dropdown-menu-content {
+      width: 280px;
+    }
+
+
+  }
+
+  .input-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .icon-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    cursor: pointer;
+    border-radius: 3px;
+    opacity: 0.7;
+
+    &:hover:not(:disabled) {
+      opacity: 1;
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    &.stop-button {
+      svg {
+        width: 14px;
+        height: 14px;
+      }
+    }
+  }
+}
+
+
+
+
+// AI Chat Header 右键菜单
+.ai-chat-header-context-menu {
+  background: var(--ws-menu-background);
+  border: 1px solid var(--ws-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+  min-width: 140px;
+  z-index: 50;
+
+  .ai-chat-header-context-menu-item {
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: none;
+    border-radius: 3px;
+    margin: 0 4px;
+
+    span {
+      white-space: nowrap;
+    }
+
+    &:hover {
+      background: var(--ws-menu-item-hover-background);
+    }
+
+    &:active {
+      opacity: 0.8;
+    }
+  }
+}

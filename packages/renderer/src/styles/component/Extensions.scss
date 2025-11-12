@@ -1,0 +1,39 @@
+/**
+ * Extensions 扩展颜色样式
+ * 功能：定义扩展的颜色主题
+ */
+
+.extensions-modal {
+  background-color: var(--ws-editor-background);
+  color: var(--ws-editor-foreground);
+}
+
+.extensions-sidebar {
+  background-color: var(--ws-sidebar-background);
+  border-right-color: var(--ws-sidebar-border);
+}
+
+.extensions-tab {
+  color: var(--ws-sidebar-foreground);
+}
+
+.extensions-tab:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.extensions-tab.active {
+  background-color: var(--ws-list-active-selection-background);
+  color: var(--ws-list-active-selection-foreground);
+}
+
+.extensions-content {
+  background-color: var(--ws-editor-background);
+}
+
+
+
+
+
+
+
+

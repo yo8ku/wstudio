@@ -1,0 +1,30 @@
+/**
+ * TimelinePanel 时间线面板颜色样式
+ * 功能：定义时间线面板的颜色主题
+ */
+
+.timeline-panel {
+  background-color: var(--ws-panel-background);
+  color: var(--ws-editor-foreground);
+}
+
+.timeline-item {
+  border-left-color: var(--ws-sidebar-border);
+}
+
+.timeline-item:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.timeline-item-dot {
+  background-color: var(--ws-button-background);
+  border-color: var(--ws-panel-background);
+}
+
+
+
+
+
+
+
+

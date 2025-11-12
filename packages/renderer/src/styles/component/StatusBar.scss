@@ -1,0 +1,50 @@
+/**
+ * StatusBar 状态栏颜色样式
+ * 功能：定义状态栏的颜色主题
+ */
+
+.status-bar {
+    // background-color: var(--ws-statusBar-background);
+    color: var(--ws-statusBar-foreground);
+    border-color: var(--ws-panel-border);;
+}
+
+.status-bar button {
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}
+
+.status-bar button:hover {
+  opacity: 0.8;
+  background-color: var(--ws-statusBarItem-hoverBackground);
+  color: var(--ws-statusBarItem-hoverForeground);
+}
+
+.status-bar button:active {
+  background-color: var(--ws-statusbar-item-active-background);
+}
+
+.status-bar-extension-btn.enabled .extension-icon {
+  opacity: 1;
+}
+
+.status-bar-extension-btn.enabled .extension-text {
+  opacity: 1;
+}
+
+.status-bar-extension-btn.disabled .extension-icon {
+  opacity: 0.5;
+}
+
+.status-bar-extension-btn.disabled .extension-text {
+  opacity: 0.6;
+}
+
+
+
+
+
+
+
+

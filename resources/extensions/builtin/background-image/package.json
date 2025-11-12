@@ -1,0 +1,36 @@
+{
+  "name": "background-image",
+  "displayName": "背景图片",
+  "version": "1.0.0",
+  "description": "设置应用的背景图片，支持自定义透明度、模糊度等效果",
+  "main": "./dist/index.js",
+  "engines": {
+    "noteStudio": "^1.0.0"
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "background-image.select",
+        "title": "背景图片: 选择背景图片"
+      },
+      {
+        "command": "background-image.remove",
+        "title": "背景图片: 移除背景图片"
+      },
+      {
+        "command": "background-image.settings",
+        "title": "背景图片: 背景图片设置"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
+

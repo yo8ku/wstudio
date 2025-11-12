@@ -6,11 +6,9 @@ export { ExtensionCard } from './ExtensionCard';
 export { ExtensionDetail } from './ExtensionDetail';
 export { ExtensionList } from './ExtensionList';
 export { ExtensionManager } from './ExtensionManager';
-export { ExtensionMarketplace } from './ExtensionMarketplace';
+export { ExtensionMarketplace, MarketplaceExtensionCard } from './ExtensionMarketplace';
 export { ExtensionSearch } from './ExtensionSearch';
 export { SearchBar } from './SearchBar';
-export { MarketplaceExtensionCard } from './MarketplaceExtensionCard';
-export { VSIXUploader } from './VSIXUploader';
 
 
 

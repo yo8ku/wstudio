@@ -1,5 +1,5 @@
 /**
- * 文件命令提供者
+ * 文件命令提供
  * 功能：提供文件操作相关的命令（保存、另存为等）
  * 描述：集成到命令中心，支持通过命令面板执行文件操作
  */
@@ -25,8 +25,8 @@ export class FileCommandProvider {
         keybinding: 'Ctrl+S',
         execute: () => {
           console.log('[FileCommandProvider] 执行保存命令');
-          const saveHandler = (window as any).__editorSaveFile;
-          if (saveHandler) {
+    const saveHandler = (window as any).__editorSaveFile;
+    if (saveHandler) {
             saveHandler();
           } else {
             console.warn('[FileCommandProvider] 保存处理器未找到');
@@ -42,10 +42,10 @@ export class FileCommandProvider {
         execute: async () => {
           console.log('[FileCommandProvider] 执行另存为命令');
           // 获取当前激活的编辑器内容
-          const currentTabId = (window as any).__currentTabId;
-          const currentContent = (window as any).__monacoEditor?.getValue() || '';
+    const currentTabId = (window as any).__currentTabId;
+    const currentContent = (window as any).__monacoEditor?.getValue() || '';
           
-          if (!currentContent) {
+    if (!currentContent) {
             console.warn('[FileCommandProvider] 没有内容可保存');
             return;
           }
@@ -53,21 +53,21 @@ export class FileCommandProvider {
           try {
             const result = await window.electron?.file?.saveAs(currentContent);
             if (result?.success && result.data) {
-              console.log('[FileCommandProvider] 另存为成功:', result.data.path);
-              // 触发文件已保存事件
+              console.log('[FileCommandProvider] 另存为成功', result.data.path);
+              // 触发文件已保存事
               window.dispatchEvent(new CustomEvent('file-saved', {
                 detail: { path: result.data.path, tabId: currentTabId }
               }));
             }
           } catch (error) {
-            console.error('[FileCommandProvider] 另存为失败:', error);
+            console.error('[FileCommandProvider] 另存为失败', error);
           }
         }
       },
       {
         id: 'file.open',
         label: '文件: 打开文件',
-        description: '打开文件对话框',
+        description: '打开文件对话框,',
         category: '文件',
         keybinding: 'Ctrl+O',
         execute: () => {
@@ -96,8 +96,8 @@ export class FileCommandProvider {
       },
       {
         id: 'file.saveAll',
-        label: '文件: 保存所有文件',
-        description: '保存所有打开的文件',
+        label: '文件: 保存所有文档',
+        description: '保存所有打开的文档,',
         category: '文件',
         keybinding: 'Ctrl+K S',
         execute: () => {
@@ -109,7 +109,7 @@ export class FileCommandProvider {
     ];
 
     this.commandCenter.registerCommands(commands);
-    console.log(`[FileCommandProvider] 已注册 ${commands.length} 个文件命令`);
+    console.log(`[FileCommandProvider] 已注册${commands.length} 个文件命令`);
   }
 
   /**
@@ -120,6 +120,14 @@ export class FileCommandProvider {
     // 注销命令的逻辑（如果需要）
   }
 }
+
+
+
+
+
+
+
+
 
 
 

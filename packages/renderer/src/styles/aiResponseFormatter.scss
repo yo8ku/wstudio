@@ -1,0 +1,399 @@
+/**
+ * AI 响应格式化样式
+ * 用于美化 AI 返回的格式化内容
+ */
+
+/* 引入 Highlight.js 代码高亮样式 */
+@use './highlightjs.scss';
+
+.ai-response {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ws-editor-foreground);
+
+  // 标题样式
+  &-heading-1,
+  &-heading-2,
+  &-heading-3,
+  &-heading-4,
+  &-heading-5,
+  &-heading-6 {
+    margin-bottom: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+    padding-bottom: 0.3em;
+  }
+
+  &-heading-1 {
+    font-size: 2em;
+  }
+
+  &-heading-2 {
+    font-size: 1.5em;
+  }
+
+  &-heading-3 {
+    font-size: 1.25em;
+  }
+
+  &-heading-4 {
+    font-size: 1em;
+  }
+
+  &-heading-5 {
+    font-size: 0.875em;
+  }
+
+  &-heading-6 {
+    font-size: 0.85em;
+    color: var(--ws-sidebar-foreground);
+  }
+
+  // 段落样式
+  &-paragraph {
+    margin-top: 0;
+    margin-bottom: 16px;
+    line-height: 1.6;
+
+    // 移除空段落
+    &:empty {
+      display: none;
+    }
+
+    // 如果段落只包含空白字符，也隐藏
+    &:blank {
+      display: none;
+    }
+  }
+
+  // 行内代码样式
+  &-inline-code {
+    padding: 0.2em 0.4em;
+    margin: 0;
+    border-radius: 6px;
+  }
+
+  // 可折叠代码块容器（代码块背景色）
+  &-code-block-wrapper {
+    margin: 20px 0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #57575785;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+    &:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+
+    }
+  }
+
+  // 代码块头部
+  &-code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    backdrop-filter: blur(10px);
+  }
+
+  // 语言标签
+  &-code-block-language {
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+
+  // 折叠按钮
+  &-code-block-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ws-foreground, #abb2bf);
+    transition: transform 0.2s ease;
+    border-radius: 4px;
+
+    &:hover {
+      background-color: var(--ws-input-background, rgba(110, 118, 129, 0.3));
+    }
+
+    &[aria-expanded="false"] {
+      .ai-response-code-block-icon {
+        transform: rotate(-90deg);
+      }
+    }
+  }
+
+  // 折叠图标
+  &-code-block-icon {
+    transition: transform 0.2s ease;
+  }
+
+  // 代码块样式
+  &-code-block {
+    // background-color: var(--ws-editor-background, #282c34);
+    padding: 20px;
+    overflow: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0;
+    max-height: 500px;
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+
+    &.collapsed {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    code {
+      background-color: transparent;
+      padding: 0;
+      margin: 0;
+      font-size: 100%;
+      border-radius: 0;
+      font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      color: var(--ws-editor-foreground, #abb2bf);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      word-break: break-word;
+      display: block;
+      line-height: inherit;
+    }
+
+
+    // 滚动条样式
+    &::-webkit-scrollbar {
+      height: 8px;
+      width: 8px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: var(--ws-scrollbar-track, transparent);
+      border-radius: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--ws-scrollbar-thumb, rgba(121, 121, 121, 0.4));
+      border-radius: 4px;
+
+      &:hover {
+        background: var(--ws-scrollbar-thumb-hover, rgba(121, 121, 121, 0.6));
+      }
+    }
+  }
+
+  // 粗体样式
+  &-bold {
+    font-weight: 600;
+    color: var(--ws-editor-foreground);
+  }
+
+  // 斜体样式
+  &-italic {
+    font-style: italic;
+  }
+
+  // 删除线样式
+  &-strikethrough {
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
+
+  // 链接样式
+  &-link {
+    color: var(--link-fg, #58a6ff);
+    text-decoration: none;
+    transition: color 0.2s ease;
+
+    &:hover {
+      text-decoration: underline;
+      color: var(--link-hover-fg, #79c0ff);
+    }
+
+    &:visited {
+      color: var(--link-visited-fg, #a371f7);
+    }
+  }
+
+  // 图片样式
+  &-image {
+    max-width: 100% !important; // 限制最大宽度
+    max-height: 400px !important; // 限制最大高度为400px
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain; // 保持宽高比，不裁剪
+    border-radius: 6px;
+    margin: 16px auto; // 居中显示
+    display: block;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    cursor: zoom-in; // 鼠标悬停时提示可以放大
+    transition: transform 0.2s ease;
+
+    &:hover {
+      transform: scale(1.02); // 鼠标悬停时轻微放大
+    }
+
+    // 点击放大效果（可选）
+    &:active {
+      cursor: zoom-out;
+    }
+  }
+
+  // 列表样式
+  &-list {
+    margin-top: 0;
+    margin-bottom: 16px;
+    padding-left: 2em;
+
+    &-item {
+      margin-top: 0.25em;
+      line-height: 1.6;
+
+      // 移除空列表项的高度
+      &:empty {
+        display: none;
+      }
+    }
+  }
+
+  // 引用块样式
+  &-blockquote {
+    margin: 0 0 16px 0;
+    padding: 0 1em;
+    color: var(--ws-sidebar-foreground, #8b949e);
+    border-left: 0.25em solid var(--ws-contrast-border, #30363d);
+    background-color: var(--ws-input-background, rgba(110, 118, 129, 0.1));
+    border-radius: 0 6px 6px 0;
+    font-style: italic;
+  }
+
+  // 表格样式
+  &-table {
+    border-spacing: 0;
+    border-collapse: collapse;
+    margin-bottom: 16px;
+    width: 100%;
+    overflow: auto;
+    display: block;
+    border-radius: 6px;
+    border: 1px solid transparent;
+
+    &-header,
+    &-cell {
+      padding: 8px 13px;
+      text-align: left;
+    }
+
+    &-header {
+      font-weight: 600;
+      background-color: var(--ws-input-background);
+    }
+
+    &-row {
+      border-bottom: 1px solid #8787876b;
+    }
+
+    &-row:last-child{
+      border: none;
+    }
+  }
+
+  // 分割线样式
+  &-hr {
+    height: 0.1em;
+    padding: 0;
+    margin: 24px 0;
+    background-color: var(--ws-contrast-border);
+    border: 0;
+
+  }
+
+  // 响应式设计
+  @media (max-width: 768px) {
+    font-size: 13px;
+
+    &-heading-1 {
+      font-size: 1.75em;
+    }
+
+    &-heading-2 {
+      font-size: 1.35em;
+    }
+
+    &-heading-3 {
+      font-size: 1.15em;
+    }
+
+    &-code-block {
+      padding: 12px;
+      font-size: 80%;
+    }
+
+    &-table {
+      font-size: 12px;
+
+      &-header,
+      &-cell {
+        padding: 6px 10px;
+      }
+    }
+  }
+
+
+  // 打印样式
+  @media print {
+    &-link {
+      color: #000;
+      text-decoration: underline;
+
+      &::after {
+        content: ' (' attr(href) ')';
+        font-size: 0.8em;
+        color: #666;
+      }
+    }
+
+    &-code-block {
+      border: 1px solid #ccc;
+      page-break-inside: avoid;
+    }
+
+    &-table {
+      page-break-inside: avoid;
+    }
+  }
+}
+
+// 容器样式（可选）
+.ai-response-container {
+  // 移除 padding，避免多余空白
+  overflow-y: auto;
+  max-height: 100%;
+
+  // 滚动条样式
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: var(--ws-scrollbar-track, transparent);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--ws-scrollbar-thumb, rgba(121, 121, 121, 0.4));
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--ws-scrollbar-thumb-hover, rgba(121, 121, 121, 0.6));
+    }
+  }
+}

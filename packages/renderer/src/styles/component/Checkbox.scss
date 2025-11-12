@@ -1,0 +1,22 @@
+/**
+ * Checkbox 复选框颜色样式
+ * 功能：定义复选框的颜色主题
+ */
+
+input[type="checkbox"] {
+  background-color: var(--ws-settings-checkboxBackground);
+  border-color: var(--ws-settings-checkboxBorder);
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--ws-button-background);
+  border-color: var(--ws-button-background);
+}
+
+
+
+
+
+
+
+

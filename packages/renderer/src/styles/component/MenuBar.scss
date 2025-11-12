@@ -1,0 +1,57 @@
+/**
+ * MenuBar 菜单栏颜色样式
+ * 功能：定义菜单栏的颜色主题
+ */
+
+.titlebar-menu-item{
+  border-radius: 4px;
+  &:hover{
+    background-color: var(--ws-menu-selectionBackground);
+    color: var(--ws-menu-selectionForeground);
+  }
+}
+
+ 
+.menu-bar {
+  background-color: var(--ws-menu-background);
+  color: var(--ws-menu-foreground);
+  border-bottom-color: var(--ws-menu-border);
+}
+
+.menu-bar .menu-label:hover,
+.menu-bar .menu-label.active {
+  background-color: var(--ws-menu-selectionBackground);
+  color: var(--ws-menu-selectionForeground);
+}
+
+.menu-bar .submenu {
+  background-color: var(--ws-menu-background);
+  border-color: var(--ws-menu-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.menu-bar .menu-item:hover:not(.disabled) {
+  background-color: var(--ws-menu-selectionBackground);
+  color: var(--ws-menu-selectionForeground);
+}
+
+.menu-bar .menu-item:hover:not(.disabled) .menu-item-shortcut {
+  color: var(--ws-menu-selectionForeground);
+}
+
+.menu-bar .menu-item-shortcut {
+  color: var(--ws-menu-foreground);
+  opacity: 0.7;
+}
+
+.menu-bar .menu-separator {
+  background-color: var(--ws-menu-separatorBackground);
+}
+
+
+
+
+
+
+
+

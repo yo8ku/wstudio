@@ -1,0 +1,30 @@
+/**
+ * Panel 面板颜色样式
+ * 功能：定义面板的颜色主题
+ */
+
+.panel {
+  background-color: var(--ws-panel-background);
+  border-top:1px solid rebeccapurple;
+}
+
+.panel-tab {
+  color: var(--ws-panelTitle-inactiveForeground);
+}
+
+.panel-tab.active {
+  color: var(--ws-panelTitle-activeForeground);
+  border-bottom-color: var(--ws-panelTitle-activeBorder);
+}
+
+.panel-tab:hover:not(.active) {
+  color: var(--ws-panelTitle-activeForeground);
+}
+
+
+
+
+
+
+
+

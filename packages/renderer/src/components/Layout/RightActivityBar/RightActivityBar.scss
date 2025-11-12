@@ -1,0 +1,55 @@
+/**
+ * 右侧活动栏样�? */
+
+.right-activity-bar {
+  width: 48px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    border-radius: 3px;
+
+  }
+}
+
+.right-activity-bar-item {
+  position: relative;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px !important;
+  margin-top: 10px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  flex-shrink: 0;
+}
+
+.right-activity-bar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.right-activity-bar-indicator {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 24px;
+  border-radius: 0 2px 2px 0;
+}
+

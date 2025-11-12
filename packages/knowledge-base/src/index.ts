@@ -28,18 +28,6 @@ export { SlidingWindowChunker } from './chunker/chunkers/SlidingWindowChunker';
 export { MarkdownChunker } from './chunker/chunkers/MarkdownChunker';
 export { SemanticChunker } from './chunker/chunkers/SemanticChunker';
 
-// 向量化
-export * from './embedding/types';
-export { EmbeddingProvider } from './embedding/EmbeddingProvider';
-export { EmbeddingService } from './embedding/EmbeddingService';
-export { EmbeddingCache } from './embedding/EmbeddingCache';
-export { OpenAIEmbedding } from './embedding/providers/OpenAIEmbedding';
-
-// 向量存储
-export * from './vector-store/types';
-export { BaseVectorStore } from './vector-store/BaseVectorStore';
-export { VectorStoreManager } from './vector-store/VectorStoreManager';
-export { ChromaDBStore } from './vector-store/stores/ChromaDBStore';
 
 // 导入
 export { ImportService } from './import/ImportService';
@@ -57,7 +45,6 @@ export { MetadataIndex } from './indexer/MetadataIndex';
 // 搜索
 export type { SearchQuery, SearchHit, SearchResponse } from './search/types';
 export { SearchEngine } from './search/SearchEngine';
-export { VectorSearch } from './search/VectorSearch';
 export { HybridSearch } from './search/HybridSearch';
 
 // RAG
@@ -82,8 +69,15 @@ export type { SyncOptions } from './sync/SyncManager';
 
 // 工具
 export { TextUtils } from './utils/TextUtils';
-export { VectorUtils } from './utils/VectorUtils';
 export { Logger, LogLevel } from './utils/Logger';
+
+// 向量模块
+export { VectorChunker, type ChunkerConfig } from './vector/VectorChunker';
+export { VectorEmbedder } from './vector/VectorEmbedder';
+export { PythonBridge } from './vector/bridge/PythonBridge';
+export { VectorStoreManager } from './vector/VectorStoreManager';
+export type { ChunkOptions, Chunk, VectorChunkResult, PythonServiceRequest, PythonServiceResponse, ModelInfo, EmbeddingResult, SimilarityResult } from './vector/types';
+export type { DocumentMetadata, SearchResult, AddDocumentsOptions, SearchOptions } from './vector/VectorStoreManager';
 
 
 

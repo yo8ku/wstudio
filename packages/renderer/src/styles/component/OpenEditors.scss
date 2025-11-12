@@ -1,0 +1,33 @@
+/**
+ * OpenEditors 打开的编辑器颜色样式
+ * 功能：定义打开的编辑器的颜色主题
+ */
+
+.open-editors-section {
+  background-color: var(--ws-sidebar-background);
+}
+
+.open-editor-item {
+  color: var(--ws-sidebar-foreground);
+}
+
+.open-editor-item:hover {
+  background-color: var(--ws-list-hover-background);
+}
+
+.open-editor-item.active {
+  background-color: var(--ws-list-active-selection-background);
+  color: var(--ws-list-active-selection-foreground);
+}
+
+.open-editor-item.modified::after {
+  background-color: var(--ws-list-highlightForeground);
+}
+
+
+
+
+
+
+
+

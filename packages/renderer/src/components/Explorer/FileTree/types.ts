@@ -1,44 +1,34 @@
+/**
+ * 文件树相关类型定
+ */
+
+// 文件树节点类型
 export interface FileTreeNode {
-  id: string;
-  name: string;
   path: string;
-  type: 'file' | 'directory';
-  children?: FileTreeNode[];
+  name: string;
+  isDirectory: boolean;
   isExpanded?: boolean;
-  isEditing?: boolean;
-  isCreating?: boolean; // 标记是否是正在创建的临时节点
-  language?: string;
-  icon?: string;
+  depth?: number;
+  children?: FileTreeNode[];
+  isCreating?: boolean;
+  creatingType?: 'file' | 'folder';
 }
 
+// 编辑器信息类型
 export interface EditorInfo {
-  id: string;
-  title: string;
   path: string;
+  title: string;
   isDirty?: boolean;
   isActive?: boolean;
-  isPinned?: boolean;
-  icon?: string;
 }
 
-export interface FileTreeAction {
-  id: string;
-  icon: string;
-  tooltip: string;
-  onClick: () => void;
-}
-
+// 文件树回调函数
 export interface FileTreeCallbacks {
-  onFileClick: (node: FileTreeNode) => void;
-  onFileDoubleClick: (node: FileTreeNode) => void;
-  onFolderToggle: (node: FileTreeNode) => void;
-  onContextMenu: (node: FileTreeNode, event: React.MouseEvent) => void;
-  onRename?: (node: FileTreeNode, newName: string) => void;
-  onDelete?: (node: FileTreeNode) => void;
-  onDragStart?: (node: FileTreeNode, event: React.DragEvent) => void;
-  onDragOver?: (node: FileTreeNode, event: React.DragEvent) => void;
-  onDrop?: (targetNode: FileTreeNode, sourceNode: FileTreeNode) => void;
-  onCreateConfirm?: (node: FileTreeNode, name: string) => void; // 确认创建
-  onCreateCancel?: (node: FileTreeNode) => void; // 取消创建
+  onFileClick?: (node: FileTreeNode) => void;
+  onFileDoubleClick?: (node: FileTreeNode) => void;
+  onFolderToggle?: (node: FileTreeNode) => void;
+  onContextMenu?: (node: FileTreeNode, event: React.MouseEvent) => void;
+  onCreateConfirm?: (node: FileTreeNode, name: string) => void;
+  onCreateCancel?: (node: FileTreeNode) => void;
 }
 

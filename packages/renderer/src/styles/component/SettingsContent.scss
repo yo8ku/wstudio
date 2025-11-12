@@ -1,0 +1,38 @@
+/**
+ * SettingsContent 设置内容颜色样式
+ * 功能：定义设置内容的颜色主题
+ */
+
+.settings-content-input {
+  background-color: var(--ws-settings-textInputBackground);
+  color: var(--ws-settings-textInputForeground);
+  border-color: var(--ws-settings-textInputBorder);
+}
+
+.settings-content-input:focus {
+  border-color: var(--ws-focus-border);
+}
+
+.settings-content-dropdown {
+  background-color: var(--ws-settings-dropdownBackground);
+  color: var(--ws-settings-dropdownForeground);
+  border-color: var(--ws-settings-dropdownBorder);
+}
+
+.settings-content-checkbox {
+  background-color: var(--ws-settings-checkboxBackground);
+  border-color: var(--ws-settings-checkboxBorder);
+}
+
+.settings-content-checkbox:checked {
+  background-color: var(--ws-button-background);
+  border-color: var(--ws-button-background);
+}
+
+
+
+
+
+
+
+

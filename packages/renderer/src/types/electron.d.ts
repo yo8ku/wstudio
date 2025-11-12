@@ -53,18 +53,6 @@ export interface APIResponse<T = any> {
   error?: string;
 }
 
-/**
- * 主题接口
- */
-export interface ITheme {
-  id: string;
-  name: string;
-  type: 'light' | 'dark' | 'hc';
-  colors: Record<string, string>;
-  tokenColors?: any[];
-  semanticTokenColors?: Record<string, any>;
-}
-
 export interface ElectronAPI {
   extension: {
     list: () => Promise<any[]>;
@@ -82,11 +70,6 @@ export interface ElectronAPI {
   };
   vsix: {
     install: (vsixPath: string) => Promise<InstallResult>;
-  };
-  theme: {
-    list: () => Promise<APIResponse<ITheme[]>>;
-    apply: (themeId: string) => Promise<APIResponse>;
-    getCurrent: () => Promise<APIResponse<ITheme>>;
   };
   settings?: {
     getAll: () => Promise<APIResponse<Record<string, any>>>;
@@ -116,7 +99,24 @@ export interface ElectronAPI {
   builtinAI?: {
     getModels: () => Promise<string[]>;
     refreshModels: () => Promise<{ success: boolean; models?: string[]; error?: string }>;
+    updateUserModels: (models: string[]) => Promise<{ success: boolean; count?: number }>;
   };
+  // 窗口焦点状态监听
+  onWindowFocus?: (callback: (focused: boolean) => void) => void;
+  onWindowBlur?: (callback: (focused: boolean) => void) => void;
+  
+  chatHistory?: {
+    init: () => Promise<APIResponse>;
+    createSession: (session: ChatSessionData) => Promise<APIResponse>;
+    updateSession: (id: string, title: string) => Promise<APIResponse>;
+    deleteSession: (id: string) => Promise<APIResponse>;
+    getSessions: () => Promise<APIResponse<ChatSessionData[]>>;
+    addMessage: (message: ChatMessageData) => Promise<APIResponse>;
+    getMessages: (sessionId: string) => Promise<APIResponse<ChatMessageData[]>>;
+    clearAll: () => Promise<APIResponse>;
+  };
+  readSnippetsConfig?: () => Promise<string>;
+  saveSnippetsConfig?: (content: string) => Promise<APIResponse>;
   on?: (channel: string, callback: (event: any, ...args: any[]) => void) => () => void;
   off?: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
   platform: string;
@@ -124,6 +124,7 @@ export interface ElectronAPI {
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;
+  toggleDevTools?: () => void;
 }
 
 export interface FileData {
@@ -182,6 +183,27 @@ export interface AIModelConfig {
   };
 }
 
+/**
+ * 片段接口
+ * 注意：从 shared 包导入以确保类型一致性
+ */
+export interface Snippet {
+  id?: number;
+  name: string;          // 片段名称，用于显示和区分片段
+  prefix: string;        // 触发前缀（必填），用于自动补全
+  body: string;
+  description?: string;
+  language?: string;
+  tags?: string;
+}
+
+export interface SnippetQuery {
+  prefix?: string;
+  language?: string;
+  tags?: string[];
+  limit?: number;
+}
+
 export interface ElectronIPC {
   ipcRenderer: {
     send: (channel: string, ...args: any[]) => void;
@@ -214,6 +236,70 @@ export interface ElectronIPC {
     getLastOpened: () => Promise<FileResult>;
     clearRecentFiles: () => Promise<APIResponse>;
   };
+  snippet?: {
+    initialize: () => Promise<APIResponse>;
+    add: (snippet: Snippet) => Promise<APIResponse<number>>;
+    update: (id: number, snippet: Partial<Snippet>) => Promise<APIResponse<boolean>>;
+    delete: (id: number) => Promise<APIResponse<boolean>>;
+    get: (id: number) => Promise<APIResponse<Snippet>>;
+    query: (query: SnippetQuery) => Promise<APIResponse<Snippet[]>>;
+    getAll: (limit?: number) => Promise<APIResponse<Snippet[]>>;
+    import: (snippets: Snippet[]) => Promise<APIResponse<number>>;
+    clearAll: () => Promise<APIResponse>;
+  };
+  terminal: {
+    create: (cols: number, rows: number, cwd?: string) => Promise<{ success: boolean; terminalId?: string; error?: string }>;
+    write: (id: string, data: string) => Promise<void>;
+    resize: (id: string, cols: number, rows: number) => Promise<void>;
+    destroy: (id: string) => Promise<void>;
+    onData: (callback: (terminalId: string, data: string) => void) => () => void;
+    onExit: (callback: (terminalId: string, exitCode: number) => void) => () => void;
+  };
+  fileReference?: {
+    add: (filePath: string, content: string, storeType?: 'persistent' | 'temporary', sessionId?: string, options?: {
+      modelName?: string;
+      chunkSize?: number;
+      chunkOverlap?: number;
+      chunkStrategy?: string;
+    }) => Promise<APIResponse<string[]>>;
+    search: (query: string, sessionId?: string, options?: {
+      topK?: number;
+      storeTypes?: ('persistent' | 'temporary')[];
+      modelName?: string;
+      filterMetadata?: Record<string, unknown>;
+    }) => Promise<APIResponse<any[]>>;
+    searchBoth: (query: string, sessionId?: string, options?: {
+      topK?: number;
+      modelName?: string;
+      filterMetadata?: Record<string, unknown>;
+    }) => Promise<APIResponse<any[]>>;
+    clearTemporary: (sessionId?: string) => Promise<APIResponse>;
+    setSession: (sessionId: string) => Promise<APIResponse>;
+  };
+}
+
+/**
+ * 聊天消息数据接口
+ */
+export interface ChatMessageData {
+  id: string;
+  sessionId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  model?: string;
+  timestamp: number;
+  reasoning?: string; // 深度推理内容（仅 assistant 角色）
+}
+
+/**
+ * 聊天会话数据接口
+ */
+export interface ChatSessionData {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount?: number;
 }
 
 declare global {

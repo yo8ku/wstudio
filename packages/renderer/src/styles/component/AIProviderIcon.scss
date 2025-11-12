@@ -1,0 +1,28 @@
+/**
+ * AIProviderIcon AI提供商图标颜色样式
+ * 功能：定义AI提供商图标的颜色主题
+ */
+
+.ai-provider-icon {
+  color: var(--ws-icon-foreground);
+}
+
+.ai-provider-icon.openai {
+  color: #10a37f;
+}
+
+.ai-provider-icon.anthropic {
+  color: #d97757;
+}
+
+.ai-provider-icon.google {
+  color: #4285f4;
+}
+
+
+
+
+
+
+
+

@@ -1,0 +1,24 @@
+/**
+ * Scrollbar 滚动条颜色样式
+ * 功能：定义滚动条的颜色主题
+ */
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+
+
+
+
+
+
+

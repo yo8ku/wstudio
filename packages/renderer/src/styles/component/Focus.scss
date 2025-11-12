@@ -1,0 +1,17 @@
+/**
+ * Focus 焦点样式
+ * 功能：定义元素焦点时的颜色主题
+ */
+
+*:focus-visible {
+  outline: 1px solid var(--ws-focus-border);
+  outline-offset: -1px;
+}
+
+
+
+
+
+
+
+

@@ -2,7 +2,7 @@
  * 知识库管理器
  */
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from '@note-studio/core';
 import { KnowledgeBase } from './KnowledgeBase';
 import { KnowledgeBaseConfig } from './types';
 

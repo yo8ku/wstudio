@@ -1,0 +1,27 @@
+/**
+ * ModelCapabilityBadge 模型能力徽章颜色样式
+ * 功能：定义模型能力徽章的颜色主题
+ */
+
+.model-capability-badge {
+  // background-color: var(--ws-badge-background);
+  color: var(--ws-badge-foreground);
+}
+
+.model-capability-badge.vision {
+  background-color: var(--ws-activityWarningBadge-background);
+  color: var(--ws-activityWarningBadge-foreground);
+}
+
+.model-capability-badge.function-calling {
+  background-color: var(--ws-activityErrorBadge-background);
+  color: var(--ws-activityErrorBadge-foreground);
+}
+
+
+
+
+
+
+
+

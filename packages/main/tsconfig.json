@@ -4,5 +4,5 @@
     "outDir": "./dist",
     "lib": ["ES2020", "DOM"]
   },
-  "include": ["src/**/*", "extension-host/**/*", "../extension-api/src/**/*"]
+  "include": ["src/**/*"]
 }

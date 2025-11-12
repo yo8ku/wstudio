@@ -1,0 +1,9 @@
+{
+  "imagePath": "C:\\Users\\Username\\Pictures\\background.jpg",
+  "opacity": 0.3,
+  "blur": 2,
+  "fit": "cover",
+  "position": "center",
+  "enabled": true
+}
+

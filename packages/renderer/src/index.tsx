@@ -2,187 +2,86 @@
  * 渲染进程入口
  */
 
+console.log('[index.tsx] ============ 渲染进程入口文件开始执行 ============');
+console.log('[index.tsx] 当前时间:', new Date().toLocaleTimeString());
+
+// 添加全局错误捕获，防止应用崩溃
+window.addEventListener('error', (event) => {
+  console.error('[Global Error Handler] 捕获到未处理的错误', {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    error: event.error,
+    stack: event.error?.stack
+  });
+  
+  // 阻止错误传播导致应用崩溃
+  event.preventDefault();
+  
+  // 确保界面仍然可见
+  const root = document.getElementById('root');
+  if (root && !root.classList.contains('theme-loaded')) {
+    root.classList.add('theme-loaded');
+    console.log('[Global Error Handler] 强制显示界面');
+  }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[Global Error Handler] 捕获到未处理的 Promise 拒绝:', {
+    reason: event.reason,
+    promise: event.promise
+  });
+  
+  // 阻止错误传播
+  event.preventDefault();
+});
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { MainLayout } from './components/Layout/MainLayout';
-import { ThemeProvider } from './contexts/ThemeContext';
 import { initIconSystem } from './components/Icons';
-// 临时禁用 background-cover 功能以避免遮挡编辑器
-// import { backgroundCover } from '@note-studio/extension-api';
-import './styles/index.css';
+import { Toaster } from '@/components/ui/sonner';
+import './styles/index.scss';
+import './styles/aiResponseFormatter.scss';
+
+console.log('[index.tsx] 所有模块导入完成');
 
 // 初始化图标系统
 initIconSystem();
+console.log('[index.tsx] 图标系统初始化完成');
 
-// 清除所有可能的背景样式和覆盖层
-const clearAllBackgrounds = () => {
-  console.log('[App] 清除所有背景样式和覆盖层...');
+// 清理旧的 background-cover 功能残留
+const clearOldBackgroundCover = () => {
+  console.log('[App] 清理旧的 background-cover 功能残留...');
   
-  // 移除所有背景相关的 style 标签
-  document.querySelectorAll('style[id*="background"]').forEach(el => {
-    console.log('[App] 移除 style 标签:', el.id);
+  // 只移除旧的 background-cover 相关元素
+  document.querySelectorAll('style[id*="background-cover"]').forEach(el => {
+    console.log('[App] 移除旧的 style 标签:', el.id);
     el.remove();
   });
-  document.getElementById('background-cover-style')?.remove();
   
-  // 查找并移除所有可能覆盖编辑器的 SVG 元素
-  document.querySelectorAll('svg').forEach(svg => {
-    const computedStyle = window.getComputedStyle(svg);
-    const position = computedStyle.position;
-    const zIndex = computedStyle.zIndex;
-    
-    // 如果是绝对定位或固定定位，且 z-index 较高，可能是覆盖层
-    if ((position === 'absolute' || position === 'fixed') && 
-        (parseInt(zIndex) > 100 || zIndex === 'auto')) {
-      console.log('[App] 发现可疑 SVG 覆盖层:', {
-        position,
-        zIndex,
-        width: svg.style.width || computedStyle.width,
-        height: svg.style.height || computedStyle.height,
-        parent: svg.parentElement?.className
-      });
-      
-      // 如果 SVG 覆盖了整个视口或大部分区域，移除它
-      const rect = svg.getBoundingClientRect();
-      if (rect.width > window.innerWidth * 0.5 || rect.height > window.innerHeight * 0.5) {
-        console.log('[App] 移除覆盖层 SVG');
-        svg.remove();
-      }
-    }
-  });
+  // 注意：已迁移到 electron-store，不再需要清理 localStorage
   
-  // 查找并移除所有可能的背景覆盖 div
-  document.querySelectorAll('div').forEach(div => {
-    const id = div.id;
-    const className = div.className;
-    
-    if (id && (id.includes('background') || id.includes('cover') || id.includes('overlay'))) {
-      console.log('[App] 移除背景覆盖 div:', id);
-      div.remove();
-    }
-    
-    if (className && typeof className === 'string' && 
-        (className.includes('background') || className.includes('cover') || className.includes('overlay'))) {
-      const computedStyle = window.getComputedStyle(div);
-      if (computedStyle.position === 'fixed' || computedStyle.position === 'absolute') {
-        console.log('[App] 移除背景覆盖 div:', className);
-        div.remove();
-      }
-    }
-  });
-  
-  // 清除 localStorage
-  localStorage.removeItem('background-cover-config');
-  localStorage.removeItem('backgroundCover');
-  
-  // 重置 body 样式
-  document.body.style.cssText = '';
-  document.body.removeAttribute('style');
-  
-  // 注入强制清除背景和修复布局的样式
-  const clearStyle = document.createElement('style');
-  clearStyle.id = 'force-clear-background';
-  clearStyle.textContent = `
-    /* 清除所有背景 */
-    body, body::before, body::after {
-      background: none !important;
-      background-image: none !important;
-      background-color: transparent !important;
-    }
-    #root {
-      background: none !important;
-      background-image: none !important;
-    }
-    
-    /* 强制隐藏所有可能的背景覆盖层 */
-    [id*="background-cover"],
-    [class*="background-cover"],
-    [id*="background-overlay"],
-    [class*="background-overlay"] {
-      display: none !important;
-      visibility: hidden !important;
-      opacity: 0 !important;
-      pointer-events: none !important;
-    }
-    
-    /* 强制修复异常大小的 SVG（可能覆盖编辑器的 SVG） */
-    svg[fill="currentColor"][class*="w-"],
-    svg[fill="currentColor"][style*="color: rgb"],
-    svg.w-4, svg.h-4, svg.mr-2 {
-      max-width: 24px !important;
-      max-height: 24px !important;
-      width: 16px !important;
-      height: 16px !important;
-      position: static !important;
-      display: inline-block !important;
-    }
-    
-    /* 修复可能的绝对定位或固定定位的异常元素 */
-    body > svg:not([id]):not([class]),
-    body > div > svg:not([id]):not([class]) {
-      position: static !important;
-      max-width: 24px !important;
-      max-height: 24px !important;
-    }
-    
-    /* 确保编辑器布局正确 */
-    .main-layout {
-      width: 100vw !important;
-      height: 100vh !important;
-      display: flex !important;
-      flex-direction: column !important;
-      overflow: hidden !important;
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
-      bottom: 0 !important;
-    }
-    
-    .main-content {
-      flex: 1 !important;
-      overflow: hidden !important;
-      display: flex !important;
-      min-height: 0 !important;
-    }
-    
-    .editor-area {
-      flex: 1 !important;
-      overflow: hidden !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-width: 0 !important;
-    }
-  `;
-  document.head.appendChild(clearStyle);
-  
-  console.log('[App] 背景样式和覆盖层已清除');
+  console.log('[App] 旧的 background-cover 功能残留已清理');
 };
 
-// 立即清除
-clearAllBackgrounds();
+// 立即清除旧功能残留
+clearOldBackgroundCover();
 
-// DOM 加载后再次清除
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', clearAllBackgrounds);
-} else {
-  setTimeout(clearAllBackgrounds, 100);
-}
-
-// 主动监听并移除异常 SVG
+// 主动修复异常 SVG
 const removeAbnormalSVGs = () => {
   const allSVGs = document.querySelectorAll('svg');
   allSVGs.forEach(svg => {
     const rect = svg.getBoundingClientRect();
-    const parent = svg.parentElement;
     
     // 检查是否是异常大小的 SVG（覆盖大部分屏幕）
     if (rect.width > window.innerWidth * 0.8 || rect.height > window.innerHeight * 0.8) {
-      console.warn('[App] 发现异常大小的 SVG，将被移除:', {
+      console.warn('[App] 发现异常大小的 SVG，将被移除', {
         width: rect.width,
         height: rect.height,
         classes: svg.className.baseVal || svg.getAttribute('class'),
-        parent: parent?.tagName
+        parent: svg.parentElement?.tagName
       });
       svg.remove();
     }
@@ -197,7 +96,6 @@ const removeAbnormalSVGs = () => {
       svg.style.height = '16px';
       svg.style.position = 'static';
       svg.style.display = 'inline-block';
-      // console.log('[App] 修复 Tailwind 类名的 SVG:', classes);
     }
   });
 };
@@ -238,29 +136,114 @@ if (document.body) {
   });
 }
 
-// background-cover 管理器已完全禁用
-console.log('[App] background-cover 功能已完全禁用');
+console.log('[App] 新的背景图片系统已启动');
 
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
+    <>
       <MainLayout />
-    </ThemeProvider>
+      <Toaster 
+        position="top-right" 
+        richColors 
+        duration={3000}
+        offset={35}
+      />
+    </>
   );
 };
 
+// 添加 F12 快捷键打开开发者工具
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'F12') {
+    try {
+      // 使用 preload 暴露的 API
+      if (window.electronAPI?.toggleDevTools) {
+        window.electronAPI.toggleDevTools();
+        console.log('[App] 请求打开开发者工具');
+      } else if (window.electron?.ipcRenderer) {
+        window.electron.ipcRenderer.send('toggle-devtools');
+        console.log('[App] 通过 ipcRenderer 请求打开开发者工具');
+      } else {
+        console.warn('[App] 无法打开开发者工具：未找到可用的 API');
+      }
+    } catch (error) {
+      console.error('[App] 打开开发者工具失败', error);
+    }
+  }
+});
+
+// 添加全局调试函数
+(window as any).debugDB = async () => {
+  try {
+    const rawData = await window.electron?.ipcRenderer.invoke('ai-model:debug-raw-data');
+    console.log('===== 数据库原始数据=====');
+    console.log('Configs:', rawData.configs);
+    console.log('Models:', rawData.models);
+    
+    const configs = await window.electron?.ipcRenderer.invoke('ai-model:list');
+    console.log('===== 解析后的配置 =====');
+    console.log('配置数量:', configs?.length);
+    console.log('配置列表:', configs);
+    
+    return { rawData, configs };
+  } catch (error) {
+    console.error('调试失败:', error);
+  }
+};
+
+// 添加清理重复配置的函数
+(window as any).cleanupDB = async () => {
+  try {
+    console.log('开始清理数据库重复配置...');
+    const result = await window.electron?.ipcRenderer.invoke('ai-model:cleanup-duplicates');
+    
+    if (result.success) {
+      console.log(`清理完成！删除了 ${result.removed} 条重复配置`);
+      
+      // 重新加载配置
+      window.dispatchEvent(new Event('ai-config-updated'));
+      
+      return result;
+    } else {
+      console.error('清理失败:', result.error);
+      return result;
+    }
+  } catch (error) {
+    console.error('清理失败:', error);
+  }
+};
+
+console.log('[App] 全局调试函数已注册');
+console.log('  - debugDB()   查看数据库内容');
+console.log('  - cleanupDB() 清理重复配置');
+
 const rootElement = document.getElementById('root');
+console.log('[Index] 🔍 准备渲染 React 应用...');
+console.log('[Index] rootElement:', rootElement);
+
 if (rootElement) {
   // 避免重复创建 root（用于 HMR）
   let root = (window as any).__REACT_ROOT__;
+  console.log('[Index] 现有的 React Root:', root);
+  
   if (!root) {
+    console.log('[Index] 创建新的 React Root...');
     root = ReactDOM.createRoot(rootElement);
     (window as any).__REACT_ROOT__ = root;
+    console.log('[Index] ✅ React Root 创建完成');
+  } else {
+    console.log('[Index] 复用现有的 React Root（HMR）');
   }
   
-  root.render(
-    <React.StrictMode>
+  console.log('[Index] 🚀 调用 root.render(<App />)...');
+  try {
+    root.render(
       <App />
-    </React.StrictMode>
-  );
+    );
+    console.log('[Index] ✅ root.render 调用完成（同步部分）');
+  } catch (error) {
+    console.error('[Index] ❌ root.render 失败:', error);
+  }
+} else {
+  console.error('[Index] ❌ 找不到 #root 元素！');
 }

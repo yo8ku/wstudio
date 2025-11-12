@@ -7,9 +7,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "pnpm exec cross-env NODE_ENV=development pnpm exec concurrently \"pnpm dev:renderer\" \"pnpm dev:electron\"",
-    "dev:renderer": "pnpm exec vite --config packages/renderer/vite.config.ts",
-    "dev:electron": "pnpm exec wait-on http://localhost:5173 && pnpm exec electron .",
+    "dev": "concurrently \"pnpm dev:renderer\" \"pnpm dev:electron\"",
+    "dev:renderer": "vite --config packages/renderer/vite.config.ts",
+    "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
     "build": "turbo run build",
     "build:electron": "electron-builder",
     "clean": "turbo run clean",
@@ -19,16 +19,21 @@
     "test:extension": "node scripts/install-extension.js"
   },
   "devDependencies": {
-    "concurrently": "^8.2.0",
+    "@electron/rebuild": "^4.0.1",
+    "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "electron-builder": "^24.6.0",
+    "electron-rebuild": "^3.2.9",
     "sass-embedded": "^1.93.2",
     "turbo": "^1.10.0",
     "typescript": "^5.0.0",
-    "wait-on": "^7.0.1"
+    "wait-on": "^9.0.1"
   },
   "dependencies": {
+    "better-sqlite3": "^11.10.0",
     "electron": "^27.3.11",
-    "electron-store": "^8.2.0"
+    "electron-store": "^8.2.0",
+    "node-pty": "^1.0.0",
+    "smart-buffer": "^4.2.0"
   }
 }

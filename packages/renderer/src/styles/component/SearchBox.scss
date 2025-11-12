@@ -1,0 +1,34 @@
+/**
+ * SearchBox 通用搜索框颜色样式
+ * 功能：定义搜索框的颜色主题
+ */
+
+.search-box {
+  background-color: var(--ws-input-background);
+  border-color: var(--ws-input-border);
+}
+
+.search-box input {
+  background-color: transparent;
+  color: var(--ws-input-foreground);
+}
+
+.search-box input::placeholder {
+  color: var(--ws-input-placeholder-foreground);
+}
+
+.search-box:focus-within {
+  border-color: var(--ws-focus-border);
+}
+
+.search-box-icon {
+  color: var(--ws-icon-foreground);
+}
+
+
+
+
+
+
+
+

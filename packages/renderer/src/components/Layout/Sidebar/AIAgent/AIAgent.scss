@@ -1,0 +1,83 @@
+/**
+ * AI智能体侧边栏样式
+ * 主题配色规范
+ */
+
+.ai-agent {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+
+  &__search {
+    padding: 12px;
+  }
+
+  &__search-input {
+    width: 100%;
+    padding: 6px 10px;
+    font-size: 13px;
+    border-radius: 2px;
+    outline: none;
+    transition: border-color 0.15s ease;
+
+
+
+    &::placeholder {
+      opacity: 0.6;
+    }
+  }
+
+  &__categories {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 0;
+  }
+
+  &__category {
+    padding: 6px 16px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    line-height: 22px;
+    transition: background-color 0.1s ease;
+
+
+    &--active {
+      font-weight: 500;
+    }
+  }
+
+  &__category-name {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__empty {
+    padding: 24px 16px;
+    text-align: center;
+    font-size: 13px;
+    opacity: 0.6;
+  }
+}
+
+/* 自定义滚动条样式 */
+.ai-agent__categories::-webkit-scrollbar {
+  width: 10px;
+}
+
+
+.ai-agent__categories::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+}
+
+
+
+
+
+
+
+

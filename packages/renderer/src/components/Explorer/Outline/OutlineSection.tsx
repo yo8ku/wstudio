@@ -1,8 +1,9 @@
-import React from 'react';
-import { AccordionSection } from '../Accordion/AccordionSection';
+import React, { useState } from 'react';
+import ExplorerSection from '../ExplorerSection';
 import { TreeView } from '../Common/TreeView';
 import { OutlineNode } from './OutlineNode';
 import { OutlineNode as OutlineNodeType } from './types';
+import { ResizeHandle } from '../../Layout/ResizeHandle';
 import './OutlineSection.scss';
 
 export interface OutlineSectionProps {
@@ -32,12 +33,15 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
   showResizeHandle = true,
   onExpandedChange,
 }) => {
+  const [height, setHeight] = useState(300);
+  // 大纲默认折叠状态，用户需要手动展开
+  const [isExpanded, setIsExpanded] = useState(false);
   const actions = [];
 
   if (onCollapse) {
     actions.push({
       id: 'collapse',
-      icon: '⊟',
+      icon: <i className="codicon codicon-collapse-all" />,
       tooltip: '折叠所有',
       onClick: onCollapse,
     });
@@ -46,28 +50,42 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
   if (onFilter) {
     actions.push({
       id: 'filter',
-      icon: '⋯',
+      icon: <i className="codicon codicon-filter" />,
       tooltip: '筛选',
       onClick: onFilter,
     });
   }
 
+  const handleExpandChange = (expanded: boolean) => {
+    setIsExpanded(expanded);
+    onExpandedChange?.(expanded);
+  };
+
   return (
-    <AccordionSection
-      title="大纲"
-      defaultExpanded={false}
-      actions={actions}
-      flexGrow={true}
-      resizable={true}
-      defaultHeight={250}
-      minHeight={100}
-      maxHeight={600}
-      showResizeHandle={showResizeHandle}
-      onExpandChange={onExpandedChange}
+    <div 
+      className={`outline-section ${isExpanded ? 'outline-section--expanded' : 'outline-section--collapsed'}`}
+      style={{ 
+        '--outline-height': `${height}px`
+      } as React.CSSProperties}
     >
-      <div className="outline-section">
+      {showResizeHandle && isExpanded && (
+        <ResizeHandle
+          direction="vertical"
+          initialSize={height}
+          minSize={100}
+          maxSize={2000}
+          onResize={setHeight}
+        />
+      )}
+      <ExplorerSection
+        title="大纲"
+        defaultExpanded={isExpanded}
+        actions={actions}
+        onExpandChange={handleExpandChange}
+      >
+        <div className="outline-content">
         {nodes.length === 0 ? (
-          <div className="outline-empty">当前文件无符号信息</div>
+          <div className="outline-empty">活动编辑器无法提供大纲信息</div>
         ) : (
           <TreeView>
             {nodes.map((node) => (
@@ -81,8 +99,9 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
             ))}
           </TreeView>
         )}
-      </div>
-    </AccordionSection>
+        </div>
+      </ExplorerSection>
+    </div>
   );
 };
 

@@ -64,8 +64,8 @@ export const KnowledgeBase: React.FC = () => {
   }, [groups]);
 
   // 加载知识库数据
-  const loadKnowledgeBase = useCallback(() => {
-    const data = knowledgeBaseService.loadFromStorage();
+  const loadKnowledgeBase = useCallback(async () => {
+    const data = await knowledgeBaseService.loadFromStorage();
     setGroups((prevGroups) =>
       prevGroups.map((group) => ({
         ...group,
@@ -101,7 +101,7 @@ export const KnowledgeBase: React.FC = () => {
     // 更新选中状态
     setSelectedItem(item);
     
-    // 获取所有项（用于展示知识库视图）
+    // 获取所有项（用于展示知识库视图标签）
     const getAllItems = (): KnowledgeItem[] => {
       const createdGroup = groups.find(g => g.type === 'created');
       return createdGroup?.items || [];
@@ -121,7 +121,7 @@ export const KnowledgeBase: React.FC = () => {
       }
     }));
     
-    console.log('[KnowledgeBase] 打开知识库:', item.title);
+    console.log('[KnowledgeBase] 打开知识库', item.title);
   }, [groups]);
 
   // 显示创建对话框
@@ -194,6 +194,7 @@ export const KnowledgeBase: React.FC = () => {
           metadata: {
             cover: coverBase64,
             description: data.description,
+            lastModified: new Date(),
           },
         });
 
@@ -216,7 +217,7 @@ export const KnowledgeBase: React.FC = () => {
   // 添加到聊天
   const handleAddToChat = useCallback((item: KnowledgeItem) => {
     // TODO: 实现添加到聊天功能
-    console.log('添加到聊天:', item);
+    console.log('添加到聊天', item);
     alert(`已将"${item.title}"添加到聊天上下文`);
   }, []);
 
@@ -224,8 +225,9 @@ export const KnowledgeBase: React.FC = () => {
   const handleCreateKnowledge = useCallback(
     async (data: KnowledgeBaseData) => {
       try {
-        // 创建知识库文件夹项
+        // 创建知识库文件夹
         const knowledgeBaseId = `kb_${Date.now()}`;
+        const now = new Date();
         
         // 如果有封面，转换为 Base64
         let coverBase64: string | undefined;
@@ -242,6 +244,8 @@ export const KnowledgeBase: React.FC = () => {
           metadata: {
             cover: coverBase64,
             description: data.description,
+            createdAt: now,
+            lastModified: now,
           },
         };
 
@@ -254,9 +258,9 @@ export const KnowledgeBase: React.FC = () => {
         // 关闭对话框
         setShowCreateDialog(false);
 
-        console.log(`成功创建知识库: ${data.name}`);
+        console.log(`成功创建知识库 ${data.name}`);
       } catch (error) {
-        console.error('创建知识库失败:', error);
+        console.error('创建知识库失败', error);
       }
     },
     [loadKnowledgeBase]
@@ -276,23 +280,6 @@ export const KnowledgeBase: React.FC = () => {
 
   return (
     <div className="knowledge-base">
-      {/* 搜索栏 */}
-      <div 
-        className="knowledge-base__search"
-        style={{ borderColor: 'var(--border-color)' }}
-      >
-        <div className="knowledge-base__search-input-wrapper">
-          <SearchIcon className="knowledge-base__search-icon" />
-          <Input
-            type="text"
-            className="knowledge-base__search-input"
-            placeholder="搜索知识库..."
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-        </div>
-      </div>
-
       {/* 知识库分组列表 */}
       <div className="knowledge-base__content">
         {groups.map((group) => (
@@ -315,14 +302,14 @@ export const KnowledgeBase: React.FC = () => {
       {/* 底部工具栏 */}
       <div 
         className="knowledge-base__footer"
-        style={{ borderColor: 'var(--border-color)' }}
+        style={{ borderColor: 'var(--ws-contrast-border)' }}
       >
         <button
           className="knowledge-base__footer-button"
           onClick={handleRefresh}
           style={{
-            backgroundColor: 'var(--button-bg)',
-            color: 'var(--button-fg)',
+            backgroundColor: 'var(--ws-button-background)',
+            color: 'var(--ws-button-foreground)',
           }}
           title="刷新知识库"
         >

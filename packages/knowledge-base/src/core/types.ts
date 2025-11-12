@@ -8,14 +8,6 @@ export interface KnowledgeBaseConfig {
   description?: string;
   storagePath: string;
   
-  // 向量化配置
-  embeddingProvider: string;
-  embeddingConfig?: Record<string, any>;
-  
-  // 向量存储配置
-  vectorStore: string;
-  vectorStoreConfig?: Record<string, any>;
-  
   // 分块配置
   chunkStrategy?: string;
   chunkSize?: number;

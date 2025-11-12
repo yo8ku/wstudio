@@ -1,0 +1,41 @@
+/**
+ * Button 按钮颜色样式
+ * 功能：定义按钮的颜色主题
+ */
+button {
+  background-color: transparent;
+  color: var(--ws-button-foreground);
+  border: none;
+  border-radius: 4px;
+  &:hover {
+    background-color: var(--ws-button-hoverBackground);
+  }
+}
+
+
+button.primary {
+  background-color: var(--ws-button-background);
+  color: var(--ws-button-foreground);
+}
+
+button.primary:hover {
+  background-color: var(--ws-button-hoverBackground);
+}
+
+button.secondary {
+  background-color: var(--ws-button-secondaryBackground);
+  color: var(--ws-button-secondaryForeground);
+}
+
+button.secondary:hover {
+  background-color: var(--ws-button-secondaryHoverBackground);
+}
+
+button:disabled {
+  opacity: 0.4;
+}
+
+
+
+
+

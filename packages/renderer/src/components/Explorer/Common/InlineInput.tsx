@@ -21,32 +21,71 @@ export const InlineInput: React.FC<InlineInputProps> = ({
 }) => {
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isHandlingBlur = useRef(false);
+  const isMounted = useRef(false);
 
   useEffect(() => {
     if (autoFocus && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
     }
+    // 设置一个短暂的延迟，确保组件已完全挂载
+    const timer = setTimeout(() => {
+      isMounted.current = true;
+    }, 100);
+    
+    return () => {
+      clearTimeout(timer);
+      isMounted.current = false;
+    };
   }, [autoFocus]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (value.trim()) {
+      e.stopPropagation();
+      if (!isHandlingBlur.current && value.trim()) {
+        isHandlingBlur.current = true;
         onConfirm(value.trim());
+      } else if (!value.trim()) {
+        isHandlingBlur.current = true;
+        onCancel();
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      onCancel();
+      e.stopPropagation();
+      if (!isHandlingBlur.current) {
+        isHandlingBlur.current = true;
+        onCancel();
+      }
     }
   };
 
   const handleBlur = () => {
+    // 防止在组件刚挂载时触发blur，或者已经处理过的情况下重复触发
+    if (!isMounted.current || isHandlingBlur.current) {
+      return;
+    }
+    
+    isHandlingBlur.current = true;
     if (value.trim()) {
       onConfirm(value.trim());
     } else {
       onCancel();
     }
+  };
+
+  // 阻止鼠标事件冒泡，防止触发父组件的事件处理
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
   };
 
   return (
@@ -59,6 +98,9 @@ export const InlineInput: React.FC<InlineInputProps> = ({
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={handleKeyDown}
       onBlur={handleBlur}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onClick={handleClick}
     />
   );
 };

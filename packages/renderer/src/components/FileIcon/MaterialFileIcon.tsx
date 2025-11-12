@@ -7,7 +7,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { MaterialFileIcons } from '../../utils/MaterialFileIcons';
 
 export interface MaterialFileIconProps {
-  /** 文件名 */
+  /** 文件*/
   fileName?: string;
   /** 文件夹名 */
   folderName?: string;
@@ -19,16 +19,16 @@ export interface MaterialFileIconProps {
   language?: string;
   /** 图标大小（像素） */
   size?: number;
-  /** 自定义类名 */
+  /** 自定义类型*/
   className?: string;
-  /** 自定义样式 */
+  /** 自定义样式*/
   style?: React.CSSProperties;
 }
 
 /**
  * Material 文件图标组件
  * 
- * 使用示例：
+ * 使用示例
  * ```tsx
  * // 文件图标
  * <MaterialFileIcon fileName="App.tsx" size={16} />
@@ -74,7 +74,7 @@ export const MaterialFileIcon: React.FC<MaterialFileIconProps> = ({
         const content = await window.electronAPI?.fs?.readFile?.(iconPath, 'utf-8');
         
         if (mounted && content) {
-          // 将 SVG 内容转换为 data URL
+          // SVG 内容转换data URL
           const blob = new Blob([content], { type: 'image/svg+xml' });
           const url = URL.createObjectURL(blob);
           setIconUrl(url);
@@ -109,7 +109,7 @@ export const MaterialFileIcon: React.FC<MaterialFileIconProps> = ({
           display: 'inline-block',
           width: size,
           height: size,
-          backgroundColor: 'var(--vscode-icon-foreground, currentColor)',
+          backgroundColor: 'var(--ws-icon-foreground, currentColor)',
           opacity: 0.2,
           borderRadius: '2px',
           ...style
