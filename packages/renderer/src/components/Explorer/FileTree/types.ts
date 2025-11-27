@@ -8,6 +8,7 @@ export interface FileTreeNode {
   name: string;
   isDirectory: boolean;
   isExpanded?: boolean;
+  isEditing?: boolean;
   depth?: number;
   children?: FileTreeNode[];
   isCreating?: boolean;
@@ -30,5 +31,7 @@ export interface FileTreeCallbacks {
   onContextMenu?: (node: FileTreeNode, event: React.MouseEvent) => void;
   onCreateConfirm?: (node: FileTreeNode, name: string) => void;
   onCreateCancel?: (node: FileTreeNode) => void;
+  onRename?: (node: FileTreeNode, newName: string) => void;
+  onDrop?: (target: FileTreeNode, source: FileTreeNode) => void;
 }
 

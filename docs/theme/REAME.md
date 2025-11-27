@@ -1,6 +1,6 @@
 # 主题系统完整概览
 
- 1. 核心层 (packages/core/src/theme-system/)
+ 1. 核心层 (packages/theme/src/theme-system/)
     ├── types/          - 主题类型定义
     ├── parsers/        - VSCode主题解析器
     └── core/           - 主题注册表和合并器
@@ -25,13 +25,13 @@ JSONC 格式允许您在主题配置文件中添加注释，使主题更易于�
 
 # 目录结构
   核心主题系统：
-    packages/core/src/theme-system/ - 主题系统核心代码
+    packages/theme/src/theme-system/ - 主题系统核心代码
     types/app-theme.ts - 主题类型定义（AppTheme, ThemeConfig等）
     core/theme-registry.ts - 主题注册表（管理所有主题）
     core/theme-merger.ts - 主题合并器（合并基础主题和自定义颜色）
     parsers/ - VSCode主题解析器
     内置主题：
-    packages/core/themes/builtin/ - 内置主题源文件
+    packages/theme/themes/builtin/ - 内置主题源文件
     Dark/solarized-pro/ - Solarized Pro 深色主题
     Light/quiet/ - Quiet Light 浅色主题
     packages/renderer/public/core-themes/ - 编译后的主题CSS文件

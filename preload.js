@@ -42,6 +42,12 @@ contextBridge.exposeInMainWorld('electron', {
     open: () => ipcRenderer.invoke('image:open')
   },
   
+  // 视频操作 API
+  video: {
+    open: () => ipcRenderer.invoke('video:open'),
+    saveToCache: (sourcePath) => ipcRenderer.invoke('video:save-to-cache', sourcePath)
+  },
+  
   // 文件夹操作 API
   folder: {
     open: () => ipcRenderer.invoke('folder:open'),
@@ -63,10 +69,16 @@ contextBridge.exposeInMainWorld('electron', {
     clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files')
   },
   
+  // 知识库 API
+  knowledgeBase: {
+    openFolder: () => ipcRenderer.invoke('knowledge-base:open-folder')
+  },
+  
   // 设置相关 API
   settings: {
     getAll: () => ipcRenderer.invoke('settings:get-all'),
     get: (key) => ipcRenderer.invoke('settings:get', key),
+    getPlugin: (key) => ipcRenderer.invoke('settings:get-plugin', key),
     update: (key, value, target) => ipcRenderer.invoke('settings:update', key, value, target),
     updateMany: (updates, target) => ipcRenderer.invoke('settings:update-many', updates, target),
     reset: (key) => ipcRenderer.invoke('settings:reset', key),
@@ -119,16 +131,29 @@ contextBridge.exposeInMainWorld('electron', {
   
   // 文件引用 API
   fileReference: {
-    add: (filePath, content, storeType, sessionId, options) => 
-      ipcRenderer.invoke('file-reference:add', filePath, content, storeType, sessionId, options),
-    search: (query, sessionId, options) => 
-      ipcRenderer.invoke('file-reference:search', query, sessionId, options),
-    searchBoth: (query, sessionId, options) => 
-      ipcRenderer.invoke('file-reference:search-both', query, sessionId, options),
-    clearTemporary: (sessionId) => 
-      ipcRenderer.invoke('file-reference:clear-temporary', sessionId),
-    setSession: (sessionId) => 
-      ipcRenderer.invoke('file-reference:set-session', sessionId)
+    add: (filePath, content, options) => 
+      ipcRenderer.invoke('file-reference:add', filePath, content, options),
+    search: (query, options) => 
+      ipcRenderer.invoke('file-reference:search', query, options)
+  },
+  
+  // 工作区索引 API
+  workspaceIndex: {
+    initialize: () => ipcRenderer.invoke('workspace-index:initialize'),
+    indexWorkspace: (workspacePath) => ipcRenderer.invoke('workspace-index:index-workspace', workspacePath),
+    getProgress: () => ipcRenderer.invoke('workspace-index:get-progress'),
+    isIndexing: () => ipcRenderer.invoke('workspace-index:is-indexing'),
+    search: (options) => ipcRenderer.invoke('workspace-index:search', options),
+    updateFile: (filePath) => ipcRenderer.invoke('workspace-index:update-file', filePath),
+    deleteFile: (filePath) => ipcRenderer.invoke('workspace-index:delete-file', filePath),
+    getStats: () => ipcRenderer.invoke('workspace-index:get-stats'),
+    clear: () => ipcRenderer.invoke('workspace-index:clear'),
+    // 监听索引进度事件
+    onProgress: (callback) => {
+      const subscription = (event, progress) => callback(progress);
+      ipcRenderer.on('workspace-index:progress', subscription);
+      return () => ipcRenderer.removeListener('workspace-index:progress', subscription);
+    }
   }
 });
 
@@ -165,11 +190,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDetails: (extensionId) => ipcRenderer.invoke('marketplace:get-details', extensionId)
   },
   
-  // VSIX 安装 API
-  vsix: {
-    install: (vsixPath) => ipcRenderer.invoke('vsix:install', vsixPath)
-  },
-  
   // AI 相关 API
   ai: {
     fetch: (url, options) => ipcRenderer.invoke('ai:fetch', url, options)
@@ -186,6 +206,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settings: {
     getAll: () => ipcRenderer.invoke('settings:get-all'),
     get: (key) => ipcRenderer.invoke('settings:get', key),
+    getPlugin: (key) => ipcRenderer.invoke('settings:get-plugin', key),
     update: (key, value, target) => ipcRenderer.invoke('settings:update', key, value, target),
     updateMany: (updates, target) => ipcRenderer.invoke('settings:update-many', updates, target),
     reset: (key) => ipcRenderer.invoke('settings:reset', key),

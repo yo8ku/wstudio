@@ -228,7 +228,48 @@ export class ExtensionManager extends EventEmitter {
 
     try {
       const mainPath = path.join(ext.extensionPath || '', ext.main);
-      const extensionModule = require(mainPath);
+      
+      // 如果是 TypeScript 文件，使用 ts-node 加载
+      let extensionModule;
+      if (mainPath.endsWith('.ts')) {
+        try {
+          // 使用 ts-node 加载 TypeScript 文件
+          const tsNode = require('ts-node');
+          // 注册 ts-node（如果还没有注册）
+          try {
+            tsNode.register({
+              transpileOnly: true,
+              compilerOptions: {
+                module: 'commonjs',
+                esModuleInterop: true,
+                allowSyntheticDefaultImports: true,
+                resolveJsonModule: true,
+                skipLibCheck: true,
+                target: 'ES2020',
+                lib: ['ES2020']
+              }
+            });
+          } catch (registerError) {
+            // 如果已经注册，忽略错误
+            if (!(registerError as Error).message.includes('already registered')) {
+              throw registerError;
+            }
+          }
+          // 清除 require 缓存，确保重新加载
+          const resolvedPath = require.resolve(mainPath);
+          if (require.cache[resolvedPath]) {
+            delete require.cache[resolvedPath];
+          }
+          extensionModule = require(mainPath);
+        } catch (tsError) {
+          console.error(`[ExtensionManager] 使用 ts-node 加载 TypeScript 文件失败:`, tsError);
+          console.error(`[ExtensionManager] 错误详情:`, (tsError as Error).message);
+          console.error(`[ExtensionManager] 堆栈:`, (tsError as Error).stack);
+          throw new Error(`无法加载 TypeScript 插件文件: ${(tsError as Error).message}`);
+        }
+      } else {
+        extensionModule = require(mainPath);
+      }
       
       if (typeof extensionModule.activate === 'function') {
         // 创建插件上下文

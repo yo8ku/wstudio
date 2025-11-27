@@ -13,6 +13,7 @@
   user-select: none;
   cursor: default;
   border: 1px solid transparent;
+  background-color: var(--ws-dropdown-background);
 
   // 菜单项
   &-item {

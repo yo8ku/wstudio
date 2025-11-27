@@ -15,6 +15,10 @@ export interface SelectItem {
   icon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   disabled?: boolean;
+  /** 数据类型标识，用于区分文件或文件夹等 */
+  dataType?: string;
+  /** 深度层级，用于文件树缩进（从0开始） */
+  depth?: number;
 }
 
 export interface SelectGroup {
@@ -86,6 +90,7 @@ export const Select: React.FC<SelectProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
   const [actualPlacement, setActualPlacement] = useState<'top' | 'bottom'>('bottom');
+  const [isPositionReady, setIsPositionReady] = useState(false); // 位置是否已计算完成
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const menuListRef = useRef<HTMLDivElement>(null);
@@ -137,11 +142,17 @@ export const Select: React.FC<SelectProps> = ({
       left: rect.left + scrollX,
       width: rect.width,
     });
+    
+    // 标记位置已计算完成
+    setIsPositionReady(true);
   }, [placement, showSearch]);
 
   // 打开菜单时更新位置
   useEffect(() => {
     if (isOpen) {
+      // 重置位置就绪状态，在位置计算完成前隐藏菜单
+      setIsPositionReady(false);
+      
       // 先立即计算一次位置（使用预估高度）
       updatePosition();
       
@@ -170,6 +181,9 @@ export const Select: React.FC<SelectProps> = ({
         window.removeEventListener('resize', handleResize);
         window.removeEventListener('scroll', handleScroll, true);
       };
+    } else {
+      // 菜单关闭时重置位置就绪状态
+      setIsPositionReady(false);
     }
   }, [isOpen, placement, updatePosition]);
 
@@ -208,6 +222,25 @@ export const Select: React.FC<SelectProps> = ({
       }, 0);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
+  }, [isOpen, onOpenChange]);
+
+  // 失去焦点时关闭菜单
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleWindowBlur = () => {
+      // 窗口失去焦点时关闭菜单
+      setIsOpen(false);
+      setSearchQuery('');
+      onOpenChange?.(false);
+    };
+
+    // 监听窗口失去焦点事件
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      window.removeEventListener('blur', handleWindowBlur);
+    };
   }, [isOpen, onOpenChange]);
 
   // 打开菜单时聚焦搜索框
@@ -314,6 +347,8 @@ export const Select: React.FC<SelectProps> = ({
         ref={isSelected ? selectedItemRef : null}
         className={`select-item ${isSelected ? 'selected' : ''} ${item.disabled ? 'disabled' : ''}`}
         onClick={() => handleItemClick(item.value, item.disabled)}
+        data-type={item.dataType}
+        data-depth={item.depth !== undefined ? item.depth : undefined}
       >
         {item.icon && <span className="select-item-icon">{item.icon}</span>}
         <span className="select-item-label">{item.label}</span>
@@ -364,6 +399,8 @@ export const Select: React.FC<SelectProps> = ({
           '--select-content-top': `${position.top}px`,
           '--select-content-left': `${position.left}px`,
           '--select-content-width': `${position.width}px`,
+          opacity: isPositionReady ? 1 : 0,
+          visibility: isPositionReady ? 'visible' : 'hidden',
         } as React.CSSProperties}
       >
         {headerLeftIcon && (

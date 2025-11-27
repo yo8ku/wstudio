@@ -1,0 +1,128 @@
+.timeline-section {
+  padding: 0;
+
+  .timeline-empty {
+    padding: 12px 20px;
+    color: var(--foreground-muted, #888888);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  .timeline-items {
+    .timeline-item {
+      display: flex;
+      gap: 8px;
+      padding: 8px 20px;
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+      border-left: 2px solid transparent;
+
+      &:hover {
+        background-color: var(--hover-bg, rgba(255, 255, 255, 0.05));
+      }
+
+      &.selected {
+        background-color: var(--active-bg, rgba(255, 255, 255, 0.1));
+        border-left-color: var(--accent-color, #007acc);
+      }
+
+      .timeline-item-icon {
+        font-size: 16px;
+        line-height: 1.5;
+        flex-shrink: 0;
+        color: var(--foreground-muted, #888888);
+      }
+
+      .timeline-item-content {
+        flex: 1;
+        min-width: 0;
+
+        .timeline-item-header {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11px;
+          color: var(--foreground-muted, #888888);
+          margin-bottom: 2px;
+
+          .timeline-item-time {
+            font-weight: 500;
+          }
+
+          .timeline-item-source {
+            opacity: 0.8;
+          }
+        }
+
+        .timeline-item-label {
+          font-size: 13px;
+          color: var(--foreground-color, #cccccc);
+          margin-bottom: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .timeline-item-description {
+          font-size: 12px;
+          color: var(--foreground-muted, #888888);
+          margin-bottom: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .timeline-item-detail {
+          font-size: 11px;
+          color: var(--foreground-muted, #707070);
+          font-style: italic;
+        }
+      }
+    }
+  }
+
+  .timeline-actions {
+    display: flex;
+    gap: 4px;
+
+    .timeline-action-button {
+      background: none;
+      border: none;
+      color: var(--foreground-color, #cccccc);
+      cursor: pointer;
+      padding: 4px;
+      font-size: 16px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+      transition: background-color 0.15s ease;
+
+      &:hover {
+        background-color: var(--hover-bg, rgba(255, 255, 255, 0.1));
+      }
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,5 +1,7 @@
 /**
- * Monaco 编辑器样�? * 确保编辑器正确填充容�? */
+ * Monaco 编辑器样式
+ * 确保编辑器正确填充容器
+ */
 
 .monaco-editor-wrapper {
   width: 100%;
@@ -11,9 +13,9 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
- 
+  background-color: var(--vscode-editor-background);
   
-  /* Monaco Editor 根容器样式修�?*/
+  /* Monaco Editor 根容器样式修复 */
   > div {
     width: 100% !important;
     height: 100% !important;
@@ -41,7 +43,7 @@
         height: 100% !important;
       }
       
-      /* 确保编辑器视图区域正确显�?*/
+      /* 确保编辑器视图区域正确显示 */
       .view-lines {
         width: 100%;
         min-height: 100%;
@@ -102,4 +104,3 @@
     }
   }
 }
-

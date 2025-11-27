@@ -33,11 +33,15 @@ export const InlineChatHistory: React.FC<InlineChatHistoryProps> = ({
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [maxHeight, setMaxHeight] = useState(400);
   const [filterMode, setFilterMode] = useState<'all' | 'current'>('current'); // 筛选模式
+  const [isPositionReady, setIsPositionReady] = useState(false); // 位置是否已计算完成
   const menuRef = React.useRef<HTMLDivElement>(null);
 
   // 计算菜单位置和最大高度（仅在浮动模式）
   useEffect(() => {
     if (isOpen && displayMode === 'floating' && buttonRef) {
+      // 重置位置就绪状态，在位置计算完成前隐藏菜单
+      setIsPositionReady(false);
+      
       const rect = buttonRef.getBoundingClientRect();
       const menuWidth = 350; // 菜单宽度
       const spacing = 8; // 距离窗口底部和边缘的间距
@@ -46,8 +50,14 @@ export const InlineChatHistory: React.FC<InlineChatHistoryProps> = ({
       const availableHeight = window.innerHeight - rect.bottom - spacing;
       const calculatedMaxHeight = Math.max(200, Math.min(500, availableHeight - spacing));
       
-      // 菜单位置：按钮左下角
-      const menuX = Math.max(spacing, Math.min(rect.left, window.innerWidth - menuWidth - spacing));
+      // 菜单位置：按钮左下角，确保不超出窗口边界
+      let menuX = rect.left;
+      // 如果菜单会超出右边界，则调整到不超出
+      if (menuX + menuWidth > window.innerWidth - spacing) {
+        menuX = window.innerWidth - menuWidth - spacing;
+      }
+      // 确保菜单不超出左边界
+      menuX = Math.max(spacing, menuX);
       
       setMenuPosition({
         x: menuX,
@@ -55,6 +65,19 @@ export const InlineChatHistory: React.FC<InlineChatHistoryProps> = ({
       });
       
       setMaxHeight(calculatedMaxHeight);
+      
+      // 使用 requestAnimationFrame 确保位置计算完成后再显示菜单
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsPositionReady(true);
+        });
+      });
+    } else if (isOpen && displayMode === 'fixed') {
+      // 固定模式：位置由 fixedPosition 提供，直接标记为就绪
+      setIsPositionReady(true);
+    } else {
+      // 菜单关闭时重置位置就绪状态
+      setIsPositionReady(false);
     }
   }, [isOpen, buttonRef, displayMode]);
 
@@ -229,8 +252,14 @@ export const InlineChatHistory: React.FC<InlineChatHistoryProps> = ({
 
   // 根据显示模式确定样式
   const getContainerStyle = () => {
+    const baseStyle: React.CSSProperties = {
+      opacity: isPositionReady ? 1 : 0,
+      visibility: isPositionReady ? 'visible' : 'hidden',
+    };
+    
     if (displayMode === 'fixed' && fixedPosition) {
       return {
+        ...baseStyle,
         position: 'absolute' as const,
         left: `${fixedPosition.x}px`,
         top: `${fixedPosition.y}px`,
@@ -243,6 +272,7 @@ export const InlineChatHistory: React.FC<InlineChatHistoryProps> = ({
     
     // 浮动模式
     return {
+      ...baseStyle,
       position: 'fixed' as const,
       left: `${menuPosition.x}px`,
       top: `${menuPosition.y}px`,

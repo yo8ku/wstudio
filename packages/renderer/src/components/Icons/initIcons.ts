@@ -130,6 +130,7 @@ function registerCommonAliases(): void {
     'collapse-all': 'ui:collapse-all',
     'more-tools': 'ui:more-tools',
     'extensions-manager': 'ui:extensions-manager',
+    'background-settings': 'ui:background-settings',
     
     // 扩展管理窗口图标别名
     'download': 'ui:chevron-down', // 临时使用，后续可替换为真实下载图标

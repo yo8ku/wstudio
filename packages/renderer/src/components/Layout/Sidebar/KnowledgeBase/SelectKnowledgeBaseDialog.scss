@@ -1,0 +1,111 @@
+.select-knowledge-base-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999999;
+}
+
+.select-knowledge-base-dialog {
+  background-color: var(--ws-activityBar-activeBackground);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  margin: auto;
+  position: relative;
+  overflow: hidden;
+}
+
+.select-knowledge-base-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #324b65;
+}
+
+.select-knowledge-base-dialog__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ws-foreground);
+}
+
+.select-knowledge-base-dialog__close {
+  &:hover {
+    opacity: 0.7;
+  }
+}
+
+.select-knowledge-base-dialog__content {
+  padding: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
+  max-height: calc(50vh - 120px);
+}
+
+.select-knowledge-base-dialog__empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--ws-breadcrumb-foreground);
+}
+
+.select-knowledge-base-dialog__item-description{
+  color: var(--ws-breadcrumb-foreground) !important;
+}
+
+.select-knowledge-base-dialog__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.select-knowledge-base-dialog__item {
+  transition: all 0.2s;
+
+  &:hover {
+    background-color: var(--ws-activityBar-background) !important;
+  }
+
+  &--selected {
+    border-color: var(--ws-primary) !important;
+  }
+}
+
+.select-knowledge-base-dialog__item-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ws-foreground);
+}
+
+.select-knowledge-base-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 16px 20px;
+  border-top: 1px solid var(--ws-contrast-border);
+}
+
+.select-knowledge-base-dialog__button {
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) {
+    opacity: 0.8;
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+}
+

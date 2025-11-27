@@ -2,9 +2,10 @@
  * 主布局容器
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { TitleBar } from '../TitleBar/TitleBar';
-import { ActivityBar, type ActivityBarItem } from './ActivityBar';
+import { ActivityBar } from './ActivityBar';
+import type { ActivityBarItem } from './ActivityBar/ActivityBar';
 import { Sidebar } from './Sidebar/Sidebar';
 import { EditorArea } from './EditorArea/EditorArea/EditorArea';
 import { StatusBar } from './StatusBar/StatusBar';
@@ -227,6 +228,18 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPanelVisible]);
 
+  // 使用 useMemo 优化样式对象，避免每次渲染都创建新对象
+  const mainLayoutStyle = useMemo(() => ({
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    // 当背景图片启用时，使用透明背景；否则使用主题背景色
+    backgroundColor: backgroundEnabled ? 'transparent' : 'var(--ws-editor-background)',
+    overflow: 'hidden' as const,
+    position: 'relative' as const
+  }), [backgroundEnabled]);
+
   return (
     <IconThemeProvider>
       {/* 背景图片 */}
@@ -234,19 +247,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       
       <div 
         className={`main-layout ${className}`} 
-        style={{ 
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          // 当背景图片启用时，使用透明背景；否则使用主题背景色
-          backgroundColor: backgroundEnabled ? 'transparent' : 'var(--ws-editor-background)',
-          overflow: 'hidden',
-          position: 'relative'
-        }}
+        style={mainLayoutStyle}
       >
         {/* 标题栏（包含菜单栏） */}
-        <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative' }}>
+        <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative',backgroundColor:'var(--ws-editor-background)'}}>
           <TitleBar 
             onToggleSidebar={() => setIsSidebarVisible(!isSidebarVisible)}
             onToggleAIPanel={() => setIsAIChatVisible(!isAIChatVisible)}
@@ -277,7 +281,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
               }}
             >
               {/* 活动栏 */}
-              <div style={{ flexShrink: 0, width: '48px', height: '100%', position: 'relative' }}>
+              <div className='activity-bar' style={{ flexShrink: 0, width: '48px', height: '100%', position: 'relative' }}>
                 <ActivityBar 
                   activeItem={activeActivity}
                   onActivityClick={handleActivityClick}
@@ -291,8 +295,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                   onClose={() => setIsSidebarVisible(false)}
                 />
               )}
+
+              <div className='left-ActivityBar-border'>
+
+              </div>
             </div>
           )}
+
+            {/*END 左侧主侧栏（ActivityBar + Sidebar）- 当 sidebarPosition === 'left' 时显示 */}
           
           {/* 编辑器区域和底部面板容器 */}
           <div 
@@ -329,6 +339,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
           {/* AI 对话面板 */}
           {isAIChatVisible && (
             <div 
+              className='ai-chat-panel-right-border'
               style={{ 
                 order: (() => {
                   // 如果主侧栏和 AI Chat 在同一侧，AI Chat 在主侧栏内侧
@@ -345,6 +356,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
               }}
             >
               <AIChatPanel 
+                
                 onClose={() => setIsAIChatVisible(false)}
                 onMoveLeft={handleAIChatMoveLeft}
                 onMoveRight={handleAIChatMoveRight}
@@ -355,7 +367,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
           {/* 右侧主侧栏（Sidebar + ActivityBar）- 当 sidebarPosition === 'right' 时显示 */}
           {sidebarPosition === 'right' && (
-            <div style={{ 
+            <div className='right-ActivityBar-border' style={{ 
               display: 'flex', 
               order: 3,
               height: '100%',
@@ -404,6 +416,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         
         {/* 状态栏 */}
         <div className='StatusBar' style={{ 
+          backgroundColor:'var(--ws-editor-background)',
           flexShrink: 0, 
           height: '24px', 
           minHeight: '24px',

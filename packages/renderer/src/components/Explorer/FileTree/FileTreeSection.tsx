@@ -21,6 +21,7 @@ export interface FileTreeSectionProps {
   onCollapseAll?: () => void;
   onExpandedChange?: (expanded: boolean) => void;
   onBlankAreaClick?: () => void;
+  onContainerContextMenu?: (event: React.MouseEvent<HTMLDivElement>) => void;
 }
 
 export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
@@ -35,6 +36,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   onCollapseAll,
   onExpandedChange,
   onBlankAreaClick,
+  onContainerContextMenu,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const DEFAULT_OPACITY = 0.5; // 默认透明度
@@ -317,6 +319,11 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
           onClick={handleContentClick}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
+          onContextMenu={(event) => {
+            if (onContainerContextMenu) {
+              onContainerContextMenu(event);
+            }
+          }}
         >
           {nodes.length === 0 ? (
             <div className="file-tree-empty">

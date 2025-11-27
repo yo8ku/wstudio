@@ -7,7 +7,13 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@note-studio/global-rag": ["../global-rag/src/index.ts"],
+      "@note-studio/global-rag/*": ["../global-rag/src/*"],
+      "@note-studio/shared": ["../shared/src/index.ts"],
+      "@note-studio/shared/*": ["../shared/src/*"],
+      "@note-studio/theme": ["../theme/src/index.ts"],
+      "@note-studio/theme/*": ["../theme/src/*"]
     }
   },
   "include": ["src/**/*", "extension-webview/**/*"],

@@ -66,6 +66,13 @@ Desktop.ini
 *.temp
 .temp/
 .cache/
+*.txt
+!requirements.txt
+commits.txt
+reflog.txt
+.git-commit-message.txt
+tempResouce/
+tempResource/
 
 # Environment variables (环境变量 - 敏感信息)
 .env
@@ -84,3 +91,6 @@ coverage/
 
 # TypeScript (TS 构建缓存)
 *.tsbuildinfo
+
+# Python bundle (Python 打包文件 - 文件过大，不应提交到仓库)
+python_bundle/

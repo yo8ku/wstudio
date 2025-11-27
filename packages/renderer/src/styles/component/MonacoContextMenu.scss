@@ -4,8 +4,8 @@
  */
 
 .monaco-context-menu {
-  background-color: var(--ws-menu-background);
-  border-color: var(--ws-menu-border);
+  background-color: var(--ws-dropdown-background);
+  border-color: #ffff0336;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
@@ -15,7 +15,7 @@
 }
 
 .monaco-context-menu-item:hover:not(.disabled) {
-  background-color: var(--ws-menu-selectionBackground);
+  background-color: var(--ws-selection-background);
   color: var(--ws-menu-selectionForeground);
 }
 
@@ -25,6 +25,7 @@
 
 .monaco-context-menu-separator {
   background-color: var(--ws-menu-separatorBackground);
+  opacity: 0.3;
 }
 
 

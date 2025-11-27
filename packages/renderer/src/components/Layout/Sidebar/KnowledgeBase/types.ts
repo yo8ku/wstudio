@@ -17,6 +17,18 @@ export type KnowledgeItemType = 'file' | 'folder';
 export type KnowledgeGroupType = 'created' | 'joined';
 
 /**
+ * 分块设置接口
+ */
+export interface ChunkSettings {
+  /** 分块大小 */
+  chunkSize: number;
+  /** 分块重叠大小 */
+  chunkOverlap: number;
+  /** 自定义分块符 */
+  separators: string[];
+}
+
+/**
  * 知识库项元数据 */
 export interface KnowledgeItemMetadata {
   /** 创建时间 */
@@ -35,6 +47,18 @@ export interface KnowledgeItemMetadata {
   cover?: string;
   /** 描述（知识库*/
   description?: string;
+  /** 文件处理状态 */
+  processingStatus?: 'pending' | 'processing' | 'completed' | 'error';
+  /** 文件处理进度（0-100） */
+  processingProgress?: number;
+  /** 嵌入模型名称 */
+  embeddingModel?: string;
+  /** 分块设置 */
+  chunkSettings?: ChunkSettings;
+  /** 文件内容（用于知识库独立存储，不依赖文件系统） */
+  content?: string;
+  /** 配置是否已变更（需要更新知识库） */
+  configChanged?: boolean;
 }
 
 /**

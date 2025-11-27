@@ -1,38 +1,15 @@
 /**
  * RAG 处理服务
- * 对文件工具栏的所有文件进行 RAG 处理（文件监听、读取、分块、向量化）
+ * 简化版本：只负责发送文件路径列表给 Python 端处理
+ * Python 端负责：加载、分块、嵌入、存储
  */
 
-import { VectorChunker, VectorEmbedder } from '@note-studio/knowledge-base';
-
-export interface FileInfo {
-  path: string;
-  name: string;
-}
-
-export interface ProcessedChunk {
-  text: string;
-  embedding: number[];
-  metadata: {
-    filePath: string;
-    fileName: string;
-    chunkIndex: number;
-    totalChunks: number;
-  };
-}
-
-export interface RAGProcessingResult {
-  success: boolean;
-  chunks: ProcessedChunk[];
-  totalFiles: number;
-  totalChunks: number;
-  error?: string;
-}
+import { VectorStore, ProcessFilePathsResult, ProcessFilePathsOptions } from '@note-studio/global-rag';
+import { knowledgeBaseService } from '../components/Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
 
 class RAGProcessingService {
   private static instance: RAGProcessingService;
-  private chunker: VectorChunker | null = null;
-  private embedder: VectorEmbedder | null = null;
+  private vectorStore: VectorStore | null = null;
   private isInitialized: boolean = false;
 
   private constructor() {}
@@ -53,158 +30,223 @@ class RAGProcessingService {
     }
 
     try {
-      // 初始化分块器和嵌入器
-      this.chunker = new VectorChunker({
-        chunkSize: 1000,
-        chunkOverlap: 200,
-        strategy: 'recursive'
-      });
-
-      this.embedder = new VectorEmbedder('BAAI/bge-large-zh-v1.5');
-
-      // 初始化 Python 服务
-      await this.chunker.initialize();
-      await this.embedder.initialize();
+      // 只初始化向量存储（用于与 Python 端通信）
+      this.vectorStore = new VectorStore();
+      await this.vectorStore.initialize();
 
       this.isInitialized = true;
-      console.log('[RAGProcessingService] 初始化成功');
     } catch (error) {
-      console.error('[RAGProcessingService] 初始化失败:', error);
       throw error;
     }
   }
 
   /**
-   * 读取文件内容
+   * 上传文件列表到知识库
+   * 等待后台处理完成（加载、分块、嵌入、存储）
+   * @param filePaths 文件路径列表
+   * @param knowledgeBaseId 知识库ID
+   * @param options 可选的处理选项
+   * @param onProgress 进度回调函数，参数为 (filePath: string, progress: number)
    */
-  private async readFile(filePath: string): Promise<string> {
+  async uploadFilesToKnowledgeBase(
+    filePaths: string[],
+    knowledgeBaseId: string,
+    options?: Omit<ProcessFilePathsOptions, 'knowledgeBaseId'>,
+    onProgress?: (filePath: string, progress: number) => void
+  ): Promise<{ success: boolean; filePaths: string[] }> {
     try {
-      // 使用 Electron API 读取文件
-      const result = await window.electron?.file?.read(filePath);
-      if (result?.success && result.data?.content) {
-        return result.data.content;
-      }
-      throw new Error(`读取文件失败: ${filePath}`);
-    } catch (error) {
-      console.error(`[RAGProcessingService] 读取文件失败: ${filePath}`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * 处理单个文件
-   */
-  private async processFile(file: FileInfo): Promise<ProcessedChunk[]> {
-    try {
-      // 1. 读取文件内容
-      console.log(`[RAGProcessingService] 读取文件: ${file.path}`);
-      const fileContent = await this.readFile(file.path);
-
-      if (!fileContent || fileContent.trim().length === 0) {
-        console.warn(`[RAGProcessingService] 文件内容为空: ${file.path}`);
-        return [];
+      if (!this.isInitialized) {
+        await this.initialize();
       }
 
-      // 2. 文本分块
-      console.log(`[RAGProcessingService] 对文件进行分块: ${file.path}`);
-      if (!this.chunker) {
-        throw new Error('分块器未初始化');
+      if (!this.vectorStore) {
+        throw new Error('向量存储未初始化');
       }
 
-      const chunkResult = await this.chunker.chunkText(fileContent);
-      const chunks = chunkResult.chunks;
-
-      if (chunks.length === 0) {
-        console.warn(`[RAGProcessingService] 文件分块结果为空: ${file.path}`);
-        return [];
+      if (filePaths.length === 0) {
+        return {
+          success: true,
+          filePaths: [],
+        };
       }
 
-      console.log(`[RAGProcessingService] 文件分块完成: ${file.path}, 共 ${chunks.length} 个块`);
+      // 等待后台处理完成
+      await this.processFilesInBackground(filePaths, knowledgeBaseId, options, onProgress);
 
-      // 3. 文本向量化
-      console.log(`[RAGProcessingService] 对文件块进行向量化: ${file.path}`);
-      if (!this.embedder) {
-        throw new Error('嵌入器未初始化');
-      }
-
-      const texts = chunks.map(chunk => chunk.content);
-      const embeddings = await this.embedder.embedTexts(texts);
-
-      if (embeddings.length !== chunks.length) {
-        throw new Error(`向量化结果数量不匹配: 期望 ${chunks.length}, 实际 ${embeddings.length}`);
-      }
-
-      // 4. 组合结果
-      const processedChunks: ProcessedChunk[] = chunks.map((chunk, index) => ({
-        text: chunk.content,
-        embedding: embeddings[index],
-        metadata: {
-          filePath: file.path,
-          fileName: file.name,
-          chunkIndex: index,
-          totalChunks: chunks.length
-        }
-      }));
-
-      console.log(`[RAGProcessingService] 文件处理完成: ${file.path}, 共 ${processedChunks.length} 个处理后的块`);
-      return processedChunks;
-    } catch (error) {
-      console.error(`[RAGProcessingService] 处理文件失败: ${file.path}`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * 处理文件工具栏的所有文件
-   */
-  async processFiles(files: FileInfo[]): Promise<RAGProcessingResult> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    if (files.length === 0) {
       return {
         success: true,
-        chunks: [],
-        totalFiles: 0,
-        totalChunks: 0
+        filePaths,
       };
+    } catch (error) {
+      // 确保错误信息能够正确传递
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[RAGProcessingService] uploadFilesToKnowledgeBase 失败:', errorMessage);
+      throw error;
     }
+  }
 
-    console.log(`[RAGProcessingService] 开始处理 ${files.length} 个文件`);
-
-    const allChunks: ProcessedChunk[] = [];
-    let successCount = 0;
-    let errorCount = 0;
-    const errors: string[] = [];
-
-    // 依次处理每个文件
-    for (const file of files) {
-      try {
-        const chunks = await this.processFile(file);
-        allChunks.push(...chunks);
-        successCount++;
-      } catch (error) {
-        errorCount++;
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        errors.push(`${file.name}: ${errorMessage}`);
-        console.error(`[RAGProcessingService] 处理文件失败: ${file.path}`, error);
+  /**
+   * 后台处理文件（异步）
+   */
+  private async processFilesInBackground(
+    filePaths: string[],
+    knowledgeBaseId: string,
+    options?: Omit<ProcessFilePathsOptions, 'knowledgeBaseId'>,
+    onProgress?: (filePath: string, progress: number) => void
+  ): Promise<void> {
+    try {
+      // 检查 vectorStore 和方法是否存在
+      if (!this.vectorStore) {
+        throw new Error('向量存储未初始化');
       }
+
+      // 检查方法是否存在
+      if (typeof this.vectorStore.processFilePaths !== 'function') {
+        const prototype = Object.getPrototypeOf(this.vectorStore);
+        const store = this.vectorStore as unknown as Record<string, unknown>;
+        const methods = Object.getOwnPropertyNames(prototype).filter(
+          name => typeof store[name] === 'function'
+        );
+        throw new Error(`processFilePaths 方法不存在。可用方法: ${methods.join(', ')}`);
+      }
+
+      // 获取知识库配置（嵌入模型、分块参数等）
+      let embeddingModel: string | undefined;
+      let chunkSize: number | undefined;
+      let chunkOverlap: number | undefined;
+      
+      try {
+        const knowledgeBase = await knowledgeBaseService.findItem(knowledgeBaseId);
+        if (knowledgeBase?.metadata) {
+          embeddingModel = knowledgeBase.metadata.embeddingModel;
+          chunkSize = knowledgeBase.metadata.chunkSettings?.chunkSize;
+          chunkOverlap = knowledgeBase.metadata.chunkSettings?.chunkOverlap;
+        }
+      } catch (error) {
+        console.warn('[RAGProcessingService] 获取知识库配置失败，使用默认配置:', error);
+      }
+      
+      // 如果没有配置嵌入模型，使用默认值
+      if (!embeddingModel) {
+        embeddingModel = 'BAAI/bge-large-zh-v1.5';
+        console.log('[RAGProcessingService] 知识库未配置嵌入模型，使用默认模型:', embeddingModel);
+      }
+
+      // 启动进度模拟器（从10%到90%）
+      const progressIntervals: NodeJS.Timeout[] = [];
+      const fileProgressMap = new Map<string, number>();
+      
+      // 初始化所有文件的进度为10%
+      filePaths.forEach((filePath) => {
+        fileProgressMap.set(filePath, 10);
+        if (onProgress) {
+          onProgress(filePath, 10);
+        }
+      });
+      
+      // 为所有文件启动一个统一的进度模拟器
+      // 从10%逐步增加到90%，平均分配给所有文件
+      let currentProgress = 10;
+      const targetProgress = 90;
+      const progressStep = 2; // 每次增加2%
+      const updateInterval = 500; // 每500ms更新一次
+      
+      const interval = setInterval(() => {
+        currentProgress += progressStep;
+        if (currentProgress < targetProgress) {
+          // 更新所有文件的进度
+          filePaths.forEach((filePath) => {
+            const oldProgress = fileProgressMap.get(filePath) || 10;
+            const newProgress = Math.min(Math.floor(currentProgress), targetProgress);
+            if (newProgress > oldProgress) {
+              fileProgressMap.set(filePath, newProgress);
+              if (onProgress) {
+                onProgress(filePath, newProgress);
+              }
+            }
+          });
+        } else {
+          // 达到目标进度，停止模拟
+          clearInterval(interval);
+        }
+      }, updateInterval);
+      
+      progressIntervals.push(interval);
+
+      // 调用 Python 端处理文件
+      console.log('[RAGProcessingService] 开始调用 Python 端处理文件:', {
+        fileCount: filePaths.length,
+        knowledgeBaseId,
+        embeddingModel,
+        chunkSize: chunkSize || options?.chunkSize,
+        chunkOverlap: chunkOverlap || options?.chunkOverlap,
+      });
+
+      let result: ProcessFilePathsResult;
+      try {
+        result = await this.vectorStore.processFilePaths(filePaths, {
+          ...options,
+          knowledgeBaseId: knowledgeBaseId,
+          modelName: embeddingModel, // 传递嵌入模型名称
+          chunkSize: chunkSize || options?.chunkSize, // 传递分块大小
+          chunkOverlap: chunkOverlap || options?.chunkOverlap, // 传递分块重叠大小
+        });
+      } catch (error) {
+        // 清除所有进度定时器
+        progressIntervals.forEach(interval => clearInterval(interval));
+        
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[RAGProcessingService] Python 端处理文件失败:', {
+          error: errorMessage,
+          fileCount: filePaths.length,
+          filePaths: filePaths.slice(0, 3), // 只记录前3个文件路径
+        });
+        throw error;
+      }
+
+      // 清除所有进度定时器
+      progressIntervals.forEach(interval => clearInterval(interval));
+
+      console.log('[RAGProcessingService] Python 端处理完成:', {
+        processedCount: result.processedCount,
+        fileCount: result.fileCount,
+        errorCount: result.errors?.length || 0,
+      });
+
+      // 检查处理结果是否有错误
+      if (result.errors && result.errors.length > 0) {
+        const errorMessage = `处理文件时发生错误: ${result.errors.join('; ')}`;
+        console.error('[RAGProcessingService] 处理结果包含错误:', {
+          errors: result.errors,
+          fileCount: filePaths.length,
+        });
+        throw new Error(errorMessage);
+      }
+
+      // 检查处理的文件数量是否匹配
+      if (result.processedCount !== filePaths.length) {
+        console.warn('[RAGProcessingService] 处理文件数量不匹配:', {
+          expected: filePaths.length,
+          actual: result.processedCount,
+        });
+      }
+
+      // 更新所有文件为100%
+      if (onProgress) {
+        filePaths.forEach(filePath => {
+          onProgress(filePath, 100);
+        });
+      }
+    } catch (error) {
+      // 清除所有进度定时器
+      if (onProgress) {
+        filePaths.forEach(filePath => {
+          onProgress(filePath, 0); // 错误时设置为0，由调用方处理error状态
+        });
+      }
+      // 静默处理错误
+      throw error;
     }
-
-    const result: RAGProcessingResult = {
-      success: errorCount === 0,
-      chunks: allChunks,
-      totalFiles: files.length,
-      totalChunks: allChunks.length
-    };
-
-    if (errors.length > 0) {
-      result.error = `处理了 ${successCount} 个文件，失败 ${errorCount} 个文件。错误: ${errors.join('; ')}`;
-    }
-
-    console.log(`[RAGProcessingService] 处理完成: 成功 ${successCount} 个文件，失败 ${errorCount} 个文件，共 ${allChunks.length} 个块`);
-    return result;
   }
 
   /**
@@ -212,18 +254,13 @@ class RAGProcessingService {
    */
   async close(): Promise<void> {
     try {
-      if (this.chunker) {
-        await this.chunker.close();
-        this.chunker = null;
-      }
-      if (this.embedder) {
-        await this.embedder.close();
-        this.embedder = null;
+      if (this.vectorStore) {
+        await this.vectorStore.close();
+        this.vectorStore = null;
       }
       this.isInitialized = false;
-      console.log('[RAGProcessingService] 服务已关闭');
     } catch (error) {
-      console.error('[RAGProcessingService] 关闭服务失败:', error);
+      // 静默处理错误
     }
   }
 }

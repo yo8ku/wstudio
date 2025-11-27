@@ -5,13 +5,12 @@
 
 //颜色-AI聊天面板
 .ai-chat-panel {
-  background-color: var(--ws-panel-background);
+  background-color: var(--ws-editor-background);
   color: var(--ws-editor-foreground);
 
   .ai-chat-panel-input-container {
-    border-top: 1px solid var(--ws-panel-border);
     background-color: var(--ws-editor-background);
-    margin-top: 20px;
+    margin-top: 10px;
 
     //颜色-AI 面板输入框背景色
     &-inner {
@@ -56,10 +55,9 @@
 
   //颜色-用户消息
   &.user {
-    background-color: rgba(64, 71, 84, 0.1411764706);
 
     &:hover {
-      border-color: #5e5e5e41;
+      border-color: var(--ws-descriptionForeground);
 
     }
   }
@@ -68,10 +66,9 @@
 
 //颜色-AI模型（Gemini）结果颜色配置
 .message.assistant {
-  background: rgb(69 69 69 / 14%);
-
+  // background: rgb(69 69 69 / 14%);
   &:hover {
-    border-color: #5e5e5e41;
+    border-color: var(--ws-descriptionForeground);
   }
 }
 
@@ -85,11 +82,10 @@
 
   .model-thinking {
     &-content {
-      background-color: #4e4e4e52;
     }
 
     &:hover {
-      border-color: #076077;
+      border-color: var(--ws-descriptionForeground);
     }
   }
 

@@ -5,8 +5,8 @@
 import { ipcMain } from 'electron';
 import { FileReferenceService } from '../services/FileReferenceService';
 
-// 全局文件引用服务实例（按会话ID管理）
-const fileReferenceServices: Map<string, FileReferenceService> = new Map();
+// 全局文件引用服务实例
+let fileReferenceService: FileReferenceService | null = null;
 
 // 防止重复注册的标志
 let isRegistered = false;
@@ -14,12 +14,11 @@ let isRegistered = false;
 /**
  * 获取或创建文件引用服务实例
  */
-function getFileReferenceService(sessionId: string = 'default'): FileReferenceService {
-  if (!fileReferenceServices.has(sessionId)) {
-    const service = new FileReferenceService(sessionId);
-    fileReferenceServices.set(sessionId, service);
+function getFileReferenceService(): FileReferenceService {
+  if (!fileReferenceService) {
+    fileReferenceService = new FileReferenceService();
   }
-  return fileReferenceServices.get(sessionId)!;
+  return fileReferenceService;
 }
 
 /**
@@ -55,9 +54,6 @@ export function registerFileReferenceHandlers(): void {
     const handlersToRemove = [
       'file-reference:add',
       'file-reference:search',
-      'file-reference:search-both',
-      'file-reference:clear-temporary',
-      'file-reference:set-session'
     ];
 
     for (const handler of handlersToRemove) {
@@ -76,39 +72,34 @@ export function registerFileReferenceHandlers(): void {
     console.log('[FileReferenceHandlers] 已清理旧的 IPC 处理器');
     
     // 添加文件引用到向量存储
-    ipcMain.handle('file-reference:add', async (event, filePath: string, content: string, storeType: 'persistent' | 'temporary' = 'temporary', sessionId: string = 'default', options?: {
-    modelName?: string;
-    chunkSize?: number;
-    chunkOverlap?: number;
-    chunkStrategy?: string;
-  }) => {
-    try {
-      const service = getFileReferenceService(sessionId);
-      await service.initialize();
-      const ids = await service.addFileReference(filePath, content, storeType, options);
-      return { success: true, data: ids };
-    } catch (error) {
-      console.error('[IPC] 添加文件引用失败:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  });
+    ipcMain.handle('file-reference:add', async (event, filePath: string, content: string, options?: {
+      modelName?: string;
+    }) => {
+      try {
+        const service = getFileReferenceService();
+        await service.initialize();
+        const ids = await service.addFileReference(filePath, content, options);
+        return { success: true, data: ids };
+      } catch (error) {
+        console.error('[IPC] 添加文件引用失败:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
 
   // 搜索文件引用
-  ipcMain.handle('file-reference:search', async (event, query: string, sessionId: string = 'default', options?: {
+  ipcMain.handle('file-reference:search', async (event, query: string, options?: {
     topK?: number;
-    storeTypes?: ('persistent' | 'temporary')[];
     modelName?: string;
     filterMetadata?: Record<string, unknown>;
   }) => {
     try {
-      const service = getFileReferenceService(sessionId);
+      const service = getFileReferenceService();
       await service.initialize();
       const results = await service.searchFileReferences(query, {
         topK: options?.topK,
-        storeTypes: options?.storeTypes,
         modelName: options?.modelName,
         filterMetadata: options?.filterMetadata,
       });
@@ -122,65 +113,10 @@ export function registerFileReferenceHandlers(): void {
     }
   });
 
-  // 联合搜索（同时搜索持久化和临时存储）
-  ipcMain.handle('file-reference:search-both', async (event, query: string, sessionId: string = 'default', options?: {
-    topK?: number;
-    modelName?: string;
-    filterMetadata?: Record<string, unknown>;
-  }) => {
-    try {
-      const service = getFileReferenceService(sessionId);
-      await service.initialize();
-      const results = await service.searchBoth(query, {
-        topK: options?.topK,
-        modelName: options?.modelName,
-        filterMetadata: options?.filterMetadata,
-      });
-      return { success: true, data: results };
-    } catch (error) {
-      console.error('[IPC] 联合搜索文件引用失败:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  });
-
-  // 清空临时存储
-  ipcMain.handle('file-reference:clear-temporary', async (event, sessionId: string = 'default') => {
-    try {
-      const service = getFileReferenceService(sessionId);
-      await service.initialize();
-      await service.clearTemporaryStore();
-      return { success: true };
-    } catch (error) {
-      console.error('[IPC] 清空临时存储失败:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  });
-
-  // 设置会话ID
-  ipcMain.handle('file-reference:set-session', async (event, sessionId: string) => {
-    try {
-      const service = getFileReferenceService(sessionId);
-      await service.setSessionId(sessionId);
-      return { success: true };
-    } catch (error) {
-      console.error('[IPC] 设置会话ID失败:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  });
-
     // 所有处理器注册完成后，设置注册标志
     isRegistered = true;
     console.log('[FileReferenceHandlers] ✅ 所有 IPC 处理器注册完成！');
-    console.log('[FileReferenceHandlers] 已注册的处理器: file-reference:add, file-reference:search, file-reference:search-both, file-reference:clear-temporary, file-reference:set-session');
+    console.log('[FileReferenceHandlers] 已注册的处理器: file-reference:add, file-reference:search');
   } catch (error) {
     console.error('[FileReferenceHandlers] ❌ 注册 IPC 处理器时发生错误:', error);
     // 如果注册失败，重置标志以便下次重试

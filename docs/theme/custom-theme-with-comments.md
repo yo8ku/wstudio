@@ -145,7 +145,7 @@ JSONC 格式允许在最后一项后面添加逗号（这在标准 JSON 中是�
 ## 示例文件
 
 项目中包含了一个完整的 JSONC 主题示例：
-- 路径：`packages/core/themes/builtin/example-custom-theme.jsonc`
+- 路径：`packages/theme/themes/builtin/example-custom-theme.jsonc`
 
 您可以将此文件复制到您的用户主题目录，并根据需要进行修改。
 

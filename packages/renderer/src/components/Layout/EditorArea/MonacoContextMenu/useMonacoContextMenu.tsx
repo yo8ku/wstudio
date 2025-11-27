@@ -11,10 +11,13 @@ import type { MenuItem, MenuGroup } from './MonacoContextMenu';
 export interface UseMonacoContextMenuOptions {
   editor: monaco.editor.IStandaloneCodeEditor | null;
   onOpenInlineChat?: () => void;
+  onUploadToKnowledgeBase?: () => void;
+  tabId?: string;
+  tabTitle?: string;
 }
 
 export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
-  const { editor, onOpenInlineChat } = options;
+  const { editor, onOpenInlineChat, onUploadToKnowledgeBase, tabId, tabTitle } = options;
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
 
@@ -82,11 +85,18 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
 
   // 构建菜单
   const menuGroups: MenuGroup[] = useMemo(() => {
+    console.log('[useMonacoContextMenu] ========== 构建菜单 ==========');
+    console.log('[useMonacoContextMenu] onOpenInlineChat:', onOpenInlineChat);
+    console.log('[useMonacoContextMenu] typeof onOpenInlineChat:', typeof onOpenInlineChat);
+    
     const hasText = editor ? (() => {
       const selection = editor.getSelection();
       return selection ? !selection.isEmpty() : false;
     })() : false;
 
+    // 检查是否是文件（不是片段文件）
+    const isFile = tabId && !tabId.startsWith('snippet-') && !tabId.includes('snippet');
+    
     const groups: MenuGroup[] = [
       // AI 操作
       {
@@ -104,8 +114,25 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
               </svg>
             ),
             shortcut: 'Ctrl+I',
-            action: onOpenInlineChat || (() => {}),
+            action: onOpenInlineChat ? (() => {
+              console.log('[MonacoContextMenu] ========== 右键菜单：打开内联聊天被点击 ==========');
+              console.log('[MonacoContextMenu] onOpenInlineChat:', onOpenInlineChat);
+              onOpenInlineChat();
+            }) : (() => {
+              console.warn('[MonacoContextMenu] onOpenInlineChat 未定义！');
+            }),
             disabled: !onOpenInlineChat
+          },
+          {
+            id: 'upload-to-knowledge-base',
+            label: '上传知识库',
+            icon: (
+              <svg viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 1L3 6h3v5h4V6h3L8 1zm6 10v3H2v-3H0v3c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-3h-2z"/>
+              </svg>
+            ),
+            action: onUploadToKnowledgeBase || (() => {}),
+            disabled: !onUploadToKnowledgeBase || !isFile
           }
         ]
       },
@@ -172,14 +199,22 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
       }
     ];
 
+    console.log('[useMonacoContextMenu] 创建的菜单组:', groups);
+    console.log('[useMonacoContextMenu] inline-chat 菜单项:', groups[0]?.items[0]);
+    console.log('[useMonacoContextMenu] inline-chat action:', groups[0]?.items[0]?.action);
+    console.log('[useMonacoContextMenu] inline-chat disabled:', groups[0]?.items[0]?.disabled);
+
     return groups;
-  }, [editor, handleCut, handleCopy, handlePaste, handleSelectAll, onOpenInlineChat]);
+  }, [editor, handleCut, handleCopy, handlePaste, handleSelectAll, onOpenInlineChat, onUploadToKnowledgeBase, tabId]);
 
   // 显示菜单
   const showMenu = useCallback((x: number, y: number) => {
+    console.log('[useMonacoContextMenu] ========== showMenu 被调用 ==========');
+    console.log('[useMonacoContextMenu] 位置:', x, y);
+    console.log('[useMonacoContextMenu] 当前 menuGroups:', menuGroups);
     setPosition({ x, y });
     setVisible(true);
-  }, []);
+  }, [menuGroups]);
 
   // 隐藏菜单
   const hideMenu = useCallback(() => {

@@ -262,7 +262,7 @@ interface AppTheme {
 ### 使用解析器
 
 ```typescript
-import { VSCodeThemeParser } from '@note-studio/core';
+import { VSCodeThemeParser } from '@note-studio/theme';
 import * as fs from 'fs/promises';
 
 // 读取 VSCode 主题文件

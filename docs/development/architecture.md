@@ -23,7 +23,7 @@
 │  - 插件管理                                  │
 │  - 命令系统                                  │
 ├─────────────────────────────────────────────┤
-│  @note-studio/knowledge-base (知识库层)     │
+│  @note-studio/global-rag (RAG 层)          │
 │  - 文档索引                                  │
 │  - 向量搜索                                  │
 │  - RAG 系统                                  │
@@ -32,10 +32,8 @@
 │  - AI 提供商                                 │
 │  - 模型管理                                  │
 ├─────────────────────────────────────────────┤
-│  @note-studio/core (核心层)                 │
+│  @note-studio/theme (主题系统层)            │
 │  - 主题系统                                  │
-│  - 工作区管理                                │
-│  - 设置管理                                  │
 ├─────────────────────────────────────────────┤
 │  @note-studio/shared (基础层)               │
 │  - 类型定义                                  │
@@ -59,14 +57,12 @@
 - 基础包，不依赖其他包
 - 被所有其他包依赖
 
-### 2. `@note-studio/core` - 核心功能
+### 2. `@note-studio/theme` - 主题系统
 
 **职责**：
 - 主题系统管理
-- 工作区管理
-- 设置管理
-- IPC 通信协议
-- 核心业务逻辑
+- 主题类型定义
+- 主题解析和应用
 
 **依赖**：
 - `@note-studio/shared`
@@ -84,7 +80,7 @@
 - UI 工具函数
 
 **依赖**：
-- `@note-studio/core`
+- `@note-studio/theme`
 - `@note-studio/shared`
 
 **特点**：
@@ -101,7 +97,7 @@
 - 编辑器扩展
 
 **依赖**：
-- `@note-studio/core`
+- `@note-studio/theme`
 - `@note-studio/ui`
 - `@note-studio/shared`
 
@@ -119,29 +115,31 @@
 - 事件系统
 
 **依赖**：
-- `@note-studio/core`
+- `@note-studio/theme`
 - `@note-studio/shared`
 
 **特点**：
 - 轻量级插件系统
 - 简单易用的 API
 
-### 6. `@note-studio/knowledge-base` - 知识库系统
+### 6. `@note-studio/global-rag` - RAG 系统（已替代 knowledge-base）
 
 **职责**：
-- 文档解析和索引
-- 向量搜索
-- RAG 系统
-- 知识图谱
-- 同步功能
+- 文档分块
+- 向量化
+- 向量存储
+- RAG 引擎
+- Python 服务集成
 
 **依赖**：
 - `@note-studio/shared`
-- `@note-studio/ai`
+
+**注意**：`@note-studio/knowledge-base` 模块已移除，RAG 相关功能已迁移到 `@note-studio/global-rag`
 
 **特点**：
-- 独立的知识库系统
-- 支持多种文档格式
+- 基于 Python 的向量化服务
+- 支持多种分块策略
+- 灵活的 RAG 引擎
 
 ### 7. `@note-studio/ai` - AI 服务
 

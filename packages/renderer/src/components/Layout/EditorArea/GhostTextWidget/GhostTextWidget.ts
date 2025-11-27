@@ -266,7 +266,6 @@ export class GhostTextWidget {
       style.textContent = `
         .ghost-text {
           opacity: 0.6;
-          font-style: italic;
           color: var(--ws-editor-ghost-text-foregroun) !important;
         }
       `;

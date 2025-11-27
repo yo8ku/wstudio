@@ -9,7 +9,7 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
-    strictPort: true,
+    strictPort: false, // 允许自动切换到下一个可用端口
     fs: {
       // 允许访问整个项目根目录及 node_modules
       allow: [
@@ -21,12 +21,15 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@note-studio/core': path.resolve(__dirname, '../core/dist/esm')
+      '@note-studio/theme': path.resolve(__dirname, '../theme/dist/esm'),
+      '@note-studio/shared': path.resolve(__dirname, '../shared/dist/esm'),
+      '@note-studio/global-rag': path.resolve(__dirname, '../global-rag/dist')
     }
   },
   optimizeDeps: {
-    include: ['@note-studio/knowledge-base'],
-    exclude: ['jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events']
+    include: ['@note-studio/global-rag'],
+    exclude: ['jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events'],
+    force: true // 强制重新预构建依赖
   },
   css: {
     preprocessorOptions: {

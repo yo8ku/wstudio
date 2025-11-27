@@ -173,7 +173,7 @@
 ```
 
 ### 完整主题
-参考：`packages/core/themes/builtin/example-custom-theme.jsonc`
+参考：`packages/theme/themes/builtin/example-custom-theme.jsonc`
 
 ## 相关文档
 

@@ -1,0 +1,229 @@
+/**
+ * 用户侧边栏样式
+ * 功能：登录表单与用户信息展示的视觉布局
+ */
+
+.user-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  padding: 16px;
+  overflow-y: auto;
+  background-color: var(--ws-panel-background);
+  color: var(--ws-foreground);
+
+  &-card {
+    background: var(--ws-editor-background);
+    border: 1px solid var(--ws-panel-border);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  &-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ws-foreground);
+  }
+
+  &-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &-input {
+    background-color: var(--ws-input-background);
+    border: 1px solid var(--ws-input-border);
+    color: var(--ws-input-foreground);
+    box-shadow: none;
+
+    &:focus-visible {
+      border-color: var(--ws-focus-border);
+      outline: none;
+    }
+  }
+
+  &-label {
+    font-size: 13px;
+    color: var(--ws-muted-foreground);
+  }
+
+  &-relations {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+
+    .link {
+      color: var(--ws-accent-foreground);
+      cursor: pointer;
+      padding: 0;
+    }
+  }
+
+  &-policy {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+
+    input {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  &-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+
+    .primary,
+    .secondary {
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+    }
+
+    .primary {
+      background-color: var(--ws-accent-background);
+      color: var(--ws-accent-foreground);
+    }
+
+    .secondary {
+      background-color: transparent;
+      color: var(--ws-foreground);
+      border: 1px solid var(--ws-panel-border);
+    }
+  }
+
+  &-error {
+    font-size: 12px;
+    color: var(--ws-error-foreground);
+  }
+
+  &-profile {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  &-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 1px solid var(--ws-panel-border);
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+
+  &-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  &-nickname {
+    font-size: 14px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &-contact {
+    font-size: 12px;
+    color: var(--ws-muted-foreground);
+  }
+
+  &-membership {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &-label {
+      font-size: 12px;
+      color: var(--ws-muted-foreground);
+    }
+
+    &-tag {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--ws-panel-border);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+
+      &.member {
+        background-color: var(--ws-accent-background);
+        color: var(--ws-accent-foreground);
+      }
+
+      &.normal {
+        background-color: var(--ws-secondary-background);
+        color: var(--ws-secondary-foreground);
+      }
+
+      .user-sidebar-membership-icon {
+        width: 25px !important;
+        height: 25px !important;
+      }
+    }
+  }
+
+  &-membership-expiry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--ws-muted-foreground);
+
+    &-value {
+      color: var(--ws-foreground);
+      font-weight: 500;
+
+      .user-sidebar-renew {
+        margin-left: 8px;
+        color: var(--ws-accent-foreground);
+        cursor: pointer;
+      }
+    }
+  }
+
+  &-meta {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+
+    &-label {
+      color: var(--ws-muted-foreground);
+      margin-right: 8px;
+    }
+
+    &-value {
+      color: var(--ws-foreground);
+      font-weight: 500;
+    }
+
+    > div {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  }
+}

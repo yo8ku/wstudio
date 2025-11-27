@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { ActivityBarItem } from '../../MainLayout';
-import { FileExplorer } from '../FileExplorer';
-import { Search } from '../Search';
-import { SourceControl } from '../SourceControl';
-import { Extensions } from '../Extensions';
-import { KnowledgeBase } from '../KnowledgeBase';
-import { AIModel } from '../AIModel';
-import { AIAgent } from '../AIAgent';
-import { Settings } from '../Settings';
+import { FileExplorer } from '../FileExplorer/FileExplorer';
+import { Search } from '../Search/Search';
+import { SourceControl } from '../SourceControl/SourceControl';
+import { Extensions } from '../Extensions/Extensions';
+import { KnowledgeBase } from '../KnowledgeBase/KnowledgeBase';
+import { AIModel } from '../AIModel/AIModel';
+import { AIAgent } from '../AIAgent/AIAgent';
+import { Settings } from '../Settings/Settings';
+import { UserSidebar } from '../User/UserSidebar';
 import { NotionIcon, YuqueIcon, JoplinIcon, ObsidianIcon, SiyuanIcon, FeishuIcon, KouziIcon } from '../../../Icons';
 import { Icon } from '../../../Icons';
 import { SidebarHeaderMenu, SidebarHeaderMenuItem } from '../SidebarHeaderMenu';
@@ -241,19 +242,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
               console.log('刷新扩展');
               // TODO: 实现刷新扩展功能
             }
-          },
-          {
-            id: 'separator-1',
-            label: '',
-            separator: true
-          },
-          {
-            id: 'install-from-file',
-            label: '从VSIX 安装...',
-            onClick: () => {
-              console.log('从VSIX 安装');
-              // TODO: 实现从VSIX 安装功能
-            }
           }
         ];
       
@@ -397,6 +385,8 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
         return <AIModel />;
       case 'ai-agent':
         return <AIAgent />;
+      case 'user':
+        return <UserSidebar />;
       case 'settings':
         return <Settings />;
       default:

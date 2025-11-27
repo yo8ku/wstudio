@@ -4,7 +4,7 @@
  * 描述：负责文件读取、解析、存储等核心业务逻辑
  */
 
-import { KnowledgeItem, KnowledgeGroupType, KnowledgeFileType } from './types';
+import { KnowledgeItem, KnowledgeGroupType, KnowledgeFileType, KnowledgeItemType, KnowledgeItemMetadata } from './types';
 
 import { electronStore } from '../../../../services/ElectronStoreService';
 
@@ -129,6 +129,7 @@ class KnowledgeBaseService {
           updatedAt: number;
           cover?: string;
           description?: string;
+          metadata?: unknown;
           children?: unknown[];
           documents?: unknown[];
         }>;
@@ -138,13 +139,12 @@ class KnowledgeBaseService {
           title: space.name, // 将 name 转换为 title
           type: 'folder' as const,
           group: 'created' as const,
-          children: (space.children as KnowledgeItem[]) || [], // 恢复子项
-          metadata: {
+          children: this.deserializeChildren(space.children || []), // 递归反序列化子项
+          metadata: this.deserializeMetadata(space.metadata, {
             cover: space.cover,
             description: space.description,
             createdAt: new Date(space.createdAt),
-            updatedAt: new Date(space.updatedAt),
-          },
+          }),
         }));
         
         return { created };
@@ -153,6 +153,57 @@ class KnowledgeBaseService {
       console.error('Failed to load knowledge base from storage:', error);
     }
     return { created: [] };
+  }
+
+  /**
+   * 递归反序列化子项（包括 metadata）
+   */
+  private deserializeChildren(children: unknown[]): KnowledgeItem[] {
+    return (children as Array<{
+      id: string;
+      title: string;
+      type: string;
+      group: string;
+      path?: string;
+      metadata?: unknown;
+      children?: unknown[];
+    }>).map(child => ({
+      id: child.id,
+      title: child.title,
+      type: child.type as KnowledgeItemType,
+      group: child.group as KnowledgeGroupType,
+      path: child.path,
+      metadata: this.deserializeMetadata(child.metadata),
+      children: child.children ? this.deserializeChildren(child.children) : undefined,
+    }));
+  }
+
+  /**
+   * 反序列化 metadata（将时间戳转换为 Date 对象）
+   */
+  private deserializeMetadata(
+    storedMetadata: unknown,
+    fallbackMetadata?: Partial<KnowledgeItemMetadata>
+  ): KnowledgeItemMetadata | undefined {
+    if (!storedMetadata && !fallbackMetadata) {
+      return undefined;
+    }
+
+    const metadata = (storedMetadata as Record<string, unknown>) || {};
+    const result: KnowledgeItemMetadata = {
+      ...fallbackMetadata,
+      ...metadata,
+    };
+
+    // 将时间戳转换为 Date 对象
+    if (result.createdAt && typeof result.createdAt === 'number') {
+      result.createdAt = new Date(result.createdAt);
+    }
+    if (result.lastModified && typeof result.lastModified === 'number') {
+      result.lastModified = new Date(result.lastModified);
+    }
+
+    return result;
   }
 
   /**
@@ -171,7 +222,14 @@ class KnowledgeBaseService {
           updatedAt: Date.now(),
           cover: item.metadata?.cover, // 保存封面
           description: item.metadata?.description, // 保存描述
-          children: item.children || [], // 保存子项
+          // 保存完整的 metadata（包括 chunkSettings、embeddingModel 等）
+          metadata: item.metadata ? {
+            ...item.metadata,
+            // 将 Date 对象转换为时间戳
+            createdAt: item.metadata.createdAt ? (item.metadata.createdAt instanceof Date ? item.metadata.createdAt.getTime() : item.metadata.createdAt) : undefined,
+            lastModified: item.metadata.lastModified ? (item.metadata.lastModified instanceof Date ? item.metadata.lastModified.getTime() : item.metadata.lastModified) : undefined,
+          } : undefined,
+          children: this.serializeChildren(item.children || []), // 递归序列化子项
           documents: [] // 可以根据需要添加文档数据
         })),
         settings: {
@@ -182,6 +240,26 @@ class KnowledgeBaseService {
     } catch (error) {
       console.error('Failed to save knowledge base to storage:', error);
     }
+  }
+
+  /**
+   * 递归序列化子项（包括 metadata）
+   */
+  private serializeChildren(children: KnowledgeItem[]): unknown[] {
+    return children.map(child => ({
+      id: child.id,
+      title: child.title,
+      type: child.type,
+      group: child.group,
+      path: child.path,
+      metadata: child.metadata ? {
+        ...child.metadata,
+        // 将 Date 对象转换为时间戳
+        createdAt: child.metadata.createdAt ? (child.metadata.createdAt instanceof Date ? child.metadata.createdAt.getTime() : child.metadata.createdAt) : undefined,
+        lastModified: child.metadata.lastModified ? (child.metadata.lastModified instanceof Date ? child.metadata.lastModified.getTime() : child.metadata.lastModified) : undefined,
+      } : undefined,
+      children: child.children ? this.serializeChildren(child.children) : undefined,
+    }));
   }
 
   /**
@@ -228,12 +306,24 @@ class KnowledgeBaseService {
   ): KnowledgeItem[] {
     return items.map((item) => {
       if (item.id === itemId) {
+        // 过滤掉 undefined 值，避免覆盖现有值
+        const filteredUpdates = Object.fromEntries(
+          Object.entries(updates).filter(([_, value]) => value !== undefined)
+        ) as Partial<KnowledgeItem>;
+        
+        // 过滤 metadata 中的 undefined 值
+        const filteredMetadata = updates.metadata
+          ? Object.fromEntries(
+              Object.entries(updates.metadata).filter(([_, value]) => value !== undefined)
+            )
+          : {};
+        
         return {
           ...item,
-          ...updates,
+          ...filteredUpdates,
           metadata: {
             ...item.metadata,
-            ...updates.metadata,
+            ...filteredMetadata,
           },
         };
       }
@@ -316,11 +406,19 @@ class KnowledgeBaseService {
   /**
    * 添加文件到指定知识库
    * @param knowledgeBaseId 知识库ID
-   * @param filePath 文件的完整路径
+   * @param filePath 文件的完整路径（如果提供 content，则此路径仅用于标识，不会读取文件系统）
    * @param fileName 文件名
    * @param folderPath 可选：文件夹路径（相对于知识库根目录）
+   * @param content 可选：文件内容（如果提供，则不会从文件系统读取，实现知识库与资源管理器隔离）
+   * @returns 返回添加的文件项
    */
-  async addFileToKnowledgeBase(knowledgeBaseId: string, filePath: string, fileName: string, folderPath?: string): Promise<void> {
+  async addFileToKnowledgeBase(
+    knowledgeBaseId: string, 
+    filePath: string, 
+    fileName: string, 
+    folderPath?: string,
+    content?: string
+  ): Promise<KnowledgeItem> {
     const data = await this.loadFromStorage();
     
     // 根据文件扩展名确定文件类型
@@ -333,10 +431,13 @@ class KnowledgeBaseService {
       title: fileName,
       type: 'file',
       group: 'created',
-      path: filePath,
+      path: filePath, // 如果提供 content，此路径仅用于标识
       metadata: {
         fileType,
         lastModified: new Date(),
+        fileSize: content ? new Blob([content]).size : undefined,
+        wordCount: content ? this.countWords(content) : undefined,
+        content: content, // 存储文件内容，实现知识库与资源管理器隔离
       },
     };
     
@@ -347,6 +448,8 @@ class KnowledgeBaseService {
       data.created = this.addFileRecursive(data.created, knowledgeBaseId, newItem);
     }
     await this.saveToStorage(data);
+    
+    return newItem;
   }
 
   /**
@@ -520,6 +623,52 @@ class KnowledgeBaseService {
     countRecursive(data.created);
 
     return { totalItems, totalWordCount, totalSize };
+  }
+
+  /**
+   * 更新文件处理状态
+   * @param filePath 文件的完整路径
+   * @param status 处理状态
+   * @param progress 处理进度（0-100）
+   */
+  async updateFileProcessingStatus(
+    filePathOrId: string,
+    status: 'pending' | 'processing' | 'completed' | 'error',
+    progress: number
+  ): Promise<void> {
+    const data = await this.loadFromStorage();
+    
+    // 递归查找并更新文件（支持通过路径或ID查找）
+    const updateFileRecursive = (items: KnowledgeItem[]): KnowledgeItem[] => {
+      return items.map((item) => {
+        // 支持通过路径或ID查找
+        const isMatch = item.type === 'file' && (
+          item.path === filePathOrId || item.id === filePathOrId
+        );
+        
+        if (isMatch) {
+          // 找到目标文件，更新处理状态
+          return {
+            ...item,
+            metadata: {
+              ...item.metadata,
+              processingStatus: status,
+              processingProgress: progress,
+            },
+          };
+        }
+        if (item.children) {
+          return {
+            ...item,
+            children: updateFileRecursive(item.children),
+          };
+        }
+        return item;
+      });
+    };
+
+    data.created = updateFileRecursive(data.created);
+    await this.saveToStorage(data);
   }
 }
 

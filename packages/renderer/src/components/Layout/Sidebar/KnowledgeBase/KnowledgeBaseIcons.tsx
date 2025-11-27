@@ -225,6 +225,40 @@ export const ClearIcon: React.FC<IconProps> = ({ className, style }) => (
 );
 
 /**
+ * 勾选图标（完成标记）
+ */
+export const CheckIcon: React.FC<IconProps> = ({ className, style }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    viewBox="0 0 24 24" 
+    className={className}
+    style={style}
+  >
+    <path 
+      d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" 
+      fill="currentColor"
+    />
+  </svg>
+);
+
+/**
+ * 设置图标
+ */
+export const SettingsIcon: React.FC<IconProps> = ({ className, style }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    viewBox="0 0 24 24" 
+    className={className}
+    style={style}
+  >
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" />
+    </g>
+  </svg>
+);
+
+/**
  * 获取文件类型对应的图标 */
 export const getFileIcon = (fileType?: string): React.FC<IconProps> => {
   if (fileType === 'markdown' || fileType === 'md') {

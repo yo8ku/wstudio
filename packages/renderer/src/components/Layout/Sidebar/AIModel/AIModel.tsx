@@ -28,17 +28,6 @@ interface AIModelStorageConfig {
   updatedAt: number;
 }
 
-interface AIModelStorageModel {
-  id: string;
-  name: string;
-  displayName?: string;
-  providerId: string;
-  apiEndpoint: string;
-  apiKey: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
 export const AIModel: React.FC = () => {
   const [configs, setConfigs] = useState<AIModelStorageConfig[]>([]);
   const [activeConfigIndex, setActiveConfigIndex] = useState<number | null>(null);
@@ -116,12 +105,20 @@ export const AIModel: React.FC = () => {
   // 监听 AI 配置标签页打开事件，更新选中状态
   useEffect(() => {
     const handleConfigOpened = (event: Event) => {
-      const customEvent = event as CustomEvent<{ configIndex?: number }>;
+      const customEvent = event as CustomEvent<{ configIndex?: number; configId?: string }>;
       const configIndex = customEvent?.detail?.configIndex;
+      const configId = customEvent?.detail?.configId;
       
       if (configIndex !== undefined) {
         setActiveConfigIndex(configIndex);
         console.log('[AIModel] 配置已打开，索引:', configIndex);
+      } else if (configId) {
+        // 通过 configId 查找索引
+        const index = configs.findIndex(c => c.id === configId);
+        if (index !== -1) {
+          setActiveConfigIndex(index);
+          console.log('[AIModel] 配置已打开，通过ID找到索引:', index);
+        }
       }
     };
 
@@ -138,7 +135,7 @@ export const AIModel: React.FC = () => {
       window.removeEventListener('open-ai-config', handleConfigOpened as EventListener);
       window.removeEventListener('ai-config-tab-closed', handleConfigTabClosed);
     };
-  }, []);
+  }, [configs]);
 
   // 添加新配置（创建临时配置，不保存到数据库）
   const addNewConfig = () => {
@@ -162,21 +159,6 @@ export const AIModel: React.FC = () => {
     window.dispatchEvent(new CustomEvent('open-ai-config', {
       detail: { configId, configIndex }
     }));
-  };
-
-  // 获取提供商显示名称
-  const getProviderDisplayName = (providerId: string): string => {
-    const providerNames: Record<string, string> = {
-      'openai': 'OpenAI',
-      'anthropic': 'Anthropic',
-      'gemini': 'Google Gemini',
-      'deepseek': 'DeepSeek',
-      'xai': 'xAI Grok',
-      'groq': 'Groq',
-      'azure': 'Azure OpenAI',
-      'custom': '自定义'
-    };
-    return providerNames[providerId] || '未知';
   };
 
   // 删除配置
@@ -203,6 +185,22 @@ export const AIModel: React.FC = () => {
     } catch (error) {
       console.error('[AIModel] ❌ 删除配置失败:', error);
     }
+  };
+
+  // 获取提供商显示名称
+  const getProviderDisplayName = (providerId: string): string => {
+    const providerNames: Record<string, string> = {
+      'openai': 'OpenAI',
+      'anthropic': 'Anthropic',
+      'gemini': 'Google Gemini',
+      'deepseek': 'DeepSeek',
+      'xai': 'xAI Grok',
+      'groq': 'Groq',
+      'azure': 'Azure OpenAI',
+      'custom': '自定义',
+      'builtin': '内置模型'
+    };
+    return providerNames[providerId] || providerId;
   };
 
 

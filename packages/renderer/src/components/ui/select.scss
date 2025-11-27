@@ -1,0 +1,238 @@
+/**
+ * Select 组件样式
+ * 基于 Radix UI Select 的自定义样式
+ */
+
+.select-trigger {
+  display: flex;
+  height: 28px;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 18px;
+  outline: none;
+  color: var(--vscode-dropdown-foreground);
+  transition: background-color 0.15s ease;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  &:hover:not(:disabled) {
+    // background-color: var(--vscode-dropdown-listBackground);
+  }
+
+  > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .select-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    color: var(--vscode-dropdown-foreground);
+  }
+}
+
+.select-scroll-button {
+  display: flex;
+  cursor: default;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
+  color: var(--vscode-dropdown-foreground);
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.select-content {
+  position: relative;
+  z-index: 99999;
+  max-height: 384px;
+  min-width: 8rem;
+  overflow: hidden;
+  border-radius: 5px;
+  background-color: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-focusBorder);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+
+  &[data-state='open'] {
+    animation: fadeIn 0.15s ease, zoomIn 0.15s ease;
+  }
+
+  &[data-state='closed'] {
+    animation: fadeOut 0.15s ease, zoomOut 0.15s ease;
+  }
+
+  &[data-side='bottom'] {
+    animation: fadeIn 0.15s ease, slideInFromTop 0.15s ease;
+  }
+
+  &[data-side='left'] {
+    animation: fadeIn 0.15s ease, slideInFromRight 0.15s ease;
+  }
+
+  &[data-side='right'] {
+    animation: fadeIn 0.15s ease, slideInFromLeft 0.15s ease;
+  }
+
+  &[data-side='top'] {
+    animation: fadeIn 0.15s ease, slideInFromBottom 0.15s ease;
+  }
+
+  .select-viewport {
+    padding: 4px;
+
+    &.popper {
+      height: var(--radix-select-trigger-height);
+      width: 100%;
+      min-width: var(--radix-select-trigger-width);
+    }
+  }
+}
+
+.select-label {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.7;
+}
+
+.select-item {
+  position: relative;
+  display: flex;
+  width: 100%;
+  cursor: default;
+  user-select: none;
+  align-items: center;
+  padding: 6px 8px 6px 32px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--vscode-dropdown-foreground);
+  outline: none;
+  transition: background-color 0.15s ease;
+
+  &:focus {
+    outline: none;
+  }
+
+  &[data-disabled] {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  &[data-state='checked'] {
+    background-color: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+  }
+
+  &:hover:not([data-state='checked']) {
+    background-color: var(--vscode-list-hoverBackground);
+  }
+
+  .select-item-indicator {
+    position: absolute;
+    left: 8px;
+    display: flex;
+    height: 16px;
+    width: 16px;
+    align-items: center;
+    justify-content: center;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+}
+
+.select-separator {
+  height: 1px;
+  margin: 4px -4px;
+  background-color: var(--vscode-dropdown-border);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes zoomIn {
+  from {
+    transform: scale(0.95);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes zoomOut {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(0.95);
+  }
+}
+
+@keyframes slideInFromTop {
+  from {
+    transform: translateY(-8px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInFromBottom {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    transform: translateX(-8px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(8px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+

@@ -26,11 +26,11 @@ export function registerThemeHandlers(): void {
   console.log('[Theme IPC] 开始注册 IPC 处理器...');
 
   // 移除可能存在的旧处理器（防止热重载时重复注册）
-  const handlersToRemove = Object.values(THEME_CHANNELS);
+  const handlersToRemove = Object.values(THEME_CHANNELS) as string[];
 
   for (const handler of handlersToRemove) {
     try {
-      ipcMain.removeHandler(handler);
+      ipcMain.removeHandler(handler as string);
     } catch (e) {
       // 忽略未注册的处理器
     }

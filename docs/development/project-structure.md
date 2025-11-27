@@ -83,16 +83,13 @@ packages/
 │   ├── package.json
 │   └── tsconfig.json
 │
-├── knowledge-base/            # 知识库系统
+├── global-rag/                # RAG 系统（已迁移，替代 knowledge-base）
 │   ├── src/
-│   │   ├── core/              # 核心功能
-│   │   ├── parser/            # 文档解析
 │   │   ├── chunker/           # 文档分块
 │   │   ├── embedding/         # 向量化
 │   │   ├── vector-store/      # 向量数据库
-│   │   ├── search/            # 搜索功能
-│   │   ├── rag/               # RAG 系统
-│   │   └── sync/              # 同步功能
+│   │   ├── rag/               # RAG 引擎
+│   │   └── python/            # Python 服务
 │   ├── package.json
 │   └── tsconfig.json
 │
@@ -134,9 +131,6 @@ config/
 │   ├── base.json              # 基础配置
 │   ├── node.json              # Node 环境
 │   └── react.json             # React 环境
-│
-├── tailwind/                  # Tailwind 配置
-│   └── base.config.js         # 基础配置
 │
 └── vite/                      # Vite 配置
     └── base.config.ts         # 基础配置
@@ -208,22 +202,21 @@ tests/
 ```
 apps/desktop
     ├── @note-studio/ui
-    │   ├── @note-studio/core
+    │   ├── @note-studio/theme
     │   │   └── @note-studio/shared
     │   └── @note-studio/shared
     │
     ├── @note-studio/editor
-    │   ├── @note-studio/core
+    │   ├── @note-studio/theme
     │   ├── @note-studio/ui
     │   └── @note-studio/shared
     │
     ├── @note-studio/extension-system
-    │   ├── @note-studio/core
+    │   ├── @note-studio/theme
     │   └── @note-studio/shared
     │
-    ├── @note-studio/knowledge-base
-    │   ├── @note-studio/shared
-    │   └── @note-studio/ai
+    ├── @note-studio/global-rag
+    │   └── @note-studio/shared
     │
     └── @note-studio/ai
         └── @note-studio/shared
@@ -239,14 +232,6 @@ packages/ui/tsconfig.json
 config/typescript/react.json
     ↓ extends
 config/typescript/base.json
-```
-
-### Tailwind 配置继承
-
-```
-packages/ui/tailwind.config.js
-    ↓ extends
-config/tailwind/base.config.js
 ```
 
 ## 构建输出

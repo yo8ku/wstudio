@@ -15,15 +15,9 @@
     padding: 3px 10px;
     border-radius: 3px;
     cursor: pointer;
-    background-color: var(--ws-input-background);
-    color: var(--ws-input-foreground);
     font-size: 13px;
     line-height: 1.6;
     min-height: 29px;
-
-    &:hover {
-      background-color: var(--ws-list-hover-background);
-    }
 
     .select-text {
       flex: 1;
@@ -56,19 +50,32 @@
   }
 }
 
+
+.select-header{
+  display: flex;
+  height: 35px;
+  align-items: center;
+  line-height: 15px;
+  &-left{
+    width: 40px;
+    margin-left: 11px;
+  }
+}
+
 // 下拉内容（通过 Portal 渲染到 body）
 .select-content {
-  position: absolute;
+  position: fixed !important; // 使用 fixed 定位，确保在 Portal 中正确显示
   background-color: var(--ws-dropdown-background);
   border-radius: 6px;
-  max-height: 500px;
+  max-height: 430px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  z-index: 999999;
   top: var(--select-content-top, 0);
   left: var(--select-content-left, 0);
   width: 230px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--ws-dropdown-border);
 
   // 搜索框
   .select-search {
@@ -123,10 +130,6 @@
       color: var(--ws-button-foreground);
     }
 
-    &.selected {
-    
-    }
-
     &.disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -169,7 +172,124 @@
   }
 }
 
+// 文件树样式的二级菜单项（文件&文件夹）
+.select-item[data-type='file'],
+.select-item[data-type='folder'] {
+  position: relative;
+  padding: 1px 8px;
+  min-height: 18px;
+  line-height: 20px;
+  font-size: 13px;
+  gap: 2px;
+
+  // 根据 depth 动态缩进
+  @for $i from 0 through 10 {
+    &[data-depth='#{$i}'] {
+      padding-left: calc(8px + #{$i} * 12px);
+    }
+  }
+
+  // 文件树图标样式
+  .select-item-icon {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    width: auto;
+    min-width: 12px;
+
+    // 所有 SVG 图标统一样式
+    svg {
+      width: 14px;
+      height: 14px;
+      font-size: 14px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    // 如果有多个图标，第一个是折叠图标（chevron），样式稍小
+    svg:first-child:not(:only-child) {
+      width: 12px;
+      height: 12px;
+      font-size: 10px;
+      opacity: 0.8;
+    }
+  }
+
+  // 标签样式
+  .select-item-label {
+    flex: 1;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 20px;
+
+    // 移除内联样式中的 paddingLeft（因为现在用 CSS 控制）
+    .indented-label {
+      padding-left: 0 !important;
+    }
+  }
+
+  // 悬停效果
+  &:hover {
+    background-color: var(--ws-list-hover-background);
+    color: var(--ws-list-hoverForeground);
+  }
+
+  // 选中状态
+  &.selected {
+    background-color: var(--ws-list-active-selection-background);
+    color: var(--ws-list-active-selection-foreground);
+  }
+
+  &.selected:hover {
+    background-color: var(--ws-list-active-selection-background);
+    color: var(--ws-list-active-selection-foreground);
+  }
+}
+
+// 文件夹项特殊样式
+.select-item[data-type='folder'] {
+  .select-item-icon {
+    // 文件夹的折叠图标和文件夹图标间距
+    gap: 2px;
+  }
+}
+
+// 文件项特殊样式（没有折叠图标，需要占位以保持对齐）
+.select-item[data-type='file'] {
+  .select-item-icon {
+    // 文件没有折叠图标，添加占位空间以保持与文件夹对齐
+    &::before {
+      content: '';
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 2px;
+    }
+  }
+}
+
 [data-theme-mode='dark'] .select-content {
   border: 1px solid #8f8f8f47;
   box-shadow: 0 0 30px rgb(0 0 0 / 24%);
+}
+
+// 最近文件标签样式
+.recent-file-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  
+  .recent-file-name {
+    color: var(--ws-foreground);
+    font-weight: 400;
+  }
+  
+  .recent-file-path {
+    color: var(--ws-descriptionForeground);
+    font-size: 11px;
+    opacity: 0.7;
+  }
 }

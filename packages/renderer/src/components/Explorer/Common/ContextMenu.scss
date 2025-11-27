@@ -1,0 +1,58 @@
+/**
+ * 资源管理器右键菜单样式
+ * 依赖全局 ws 主题变量，保持与 VSCode 风格一致
+ */
+
+.explorer-context-menu {
+  min-width: 184px;
+  padding: 4px;
+  border: 1px solid var(--ws-dropdown-border);
+  border-radius: 6px;
+  background-color: var(--ws-dropdown-background);
+  color: var(--ws-dropdown-foreground);
+  font-size: 12px;
+  z-index: 9999;
+  user-select: none;
+}
+
+.explorer-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 30px;
+  border-radius: 4px;
+  cursor: default;
+  white-space: nowrap;
+
+  &:hover {
+    background-color: #30363db8;
+    color: var(--ws-list-hover-foreground, var(--ws-menu-foreground));
+  }
+
+  &.disabled {
+    color: var(--ws-disabled-foreground, var(--ws-editor-inactiveSelectionForeground));
+    pointer-events: none;
+  }
+}
+
+.explorer-context-menu-icon {
+  width: 16px;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.explorer-context-menu-label {
+  flex: 1;
+}
+
+.explorer-context-menu-arrow {
+  margin-left: 12px;
+}
+
+.explorer-context-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(--ws-menu-border);
+}
+

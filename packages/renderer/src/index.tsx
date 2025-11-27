@@ -42,6 +42,7 @@ import ReactDOM from 'react-dom/client';
 import { MainLayout } from './components/Layout/MainLayout';
 import { initIconSystem } from './components/Icons';
 import { Toaster } from '@/components/ui/sonner';
+import { ragProcessingService } from './services/RAGProcessingService';
 import './styles/index.scss';
 import './styles/aiResponseFormatter.scss';
 
@@ -86,7 +87,7 @@ const removeAbnormalSVGs = () => {
       svg.remove();
     }
     
-    // 检查是否有 Tailwind 类名的 SVG（可能是外部注入的）
+    // 检查是否有外部注入的 SVG
     const classes = svg.getAttribute('class') || '';
     if (classes.includes('w-') || classes.includes('h-') || classes.includes('mr-')) {
       // 强制设置为合理大小
@@ -216,6 +217,8 @@ document.addEventListener('keydown', (e) => {
 console.log('[App] 全局调试函数已注册');
 console.log('  - debugDB()   查看数据库内容');
 console.log('  - cleanupDB() 清理重复配置');
+
+// RAG 处理服务将在需要时按需初始化（通过右键菜单上传知识库时）
 
 const rootElement = document.getElementById('root');
 console.log('[Index] 🔍 准备渲染 React 应用...');

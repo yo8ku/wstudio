@@ -84,7 +84,7 @@ export function activate(api: PluginAPI) {
 ### 使用核心 API
 
 ```typescript
-import { ThemeManager } from '@note-studio/core';
+import { ThemeManager } from '@note-studio/theme';
 
 const themeManager = new ThemeManager();
 await themeManager.loadTheme('monokai-pro');

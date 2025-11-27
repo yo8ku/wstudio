@@ -30,6 +30,8 @@ interface KnowledgeBaseGroupProps {
   onDelete?: (item: KnowledgeItem) => void;
   /** 添加到聊天 */
   onAddToChat?: (item: KnowledgeItem) => void;
+  /** 打开设置 */
+  onSettings?: (item: KnowledgeItem) => void;
 }
 
 /**
@@ -50,6 +52,7 @@ export const KnowledgeBaseGroup: React.FC<KnowledgeBaseGroupProps> = ({
   onEdit,
   onDelete,
   onAddToChat,
+  onSettings,
 }) => {
   const itemCount = countItems(group.items);
 
@@ -126,6 +129,7 @@ export const KnowledgeBaseGroup: React.FC<KnowledgeBaseGroupProps> = ({
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onAddToChat={onAddToChat}
+                onSettings={onSettings}
               />
             ))
           )}

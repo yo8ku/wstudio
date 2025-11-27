@@ -5,6 +5,7 @@
  */
 
 import React, { useRef, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AddFileIcon } from './KnowledgeBaseIcons';
 import { KnowledgeItem } from './types';
 
@@ -117,10 +118,11 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
     coverInputRef.current?.click();
   };
 
-  return (
-    <div className="create-knowledge-dialog-overlay">
+  const dialogContent = (
+    <div className="create-knowledge-dialog-overlay" onClick={onClose}>
       <div 
         className="create-knowledge-dialog" 
+        onClick={(e) => e.stopPropagation()}
         style={{
           backgroundColor: 'var(--ws-editor-background)',
           borderColor: 'var(--ws-contrast-border)',
@@ -247,5 +249,7 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
       </div>
     </div>
   );
+
+  return createPortal(dialogContent, document.body);
 };
 

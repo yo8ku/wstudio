@@ -80,6 +80,7 @@ const DEFAULT_SETTINGS: SettingsSchema = {
 
 export class SettingsManager extends EventEmitter {
   private settings: Partial<SettingsSchema> = {};
+  private pluginSettings: Record<string, any> = {}; // 存储插件配置（不在 SettingsSchema 中的键）
   private settingsPath: string;
   private userSettingsPath: string;
   private workspaceSettingsPath: string | null = null;
@@ -267,18 +268,25 @@ export class SettingsManager extends EventEmitter {
       
       console.log('[SettingsManager] 原始用户设置键:', Object.keys(parsed));
       
-      // 过滤掉无效的键（只保留在 DEFAULT_SETTINGS 中定义的键）
+      // 分离标准设置和插件设置
       const filtered: Partial<SettingsSchema> = {};
+      const pluginConfig: Record<string, any> = {};
       for (const key of Object.keys(parsed)) {
         if (key in DEFAULT_SETTINGS) {
           filtered[key as keyof SettingsSchema] = parsed[key] as any;
           console.log(`[SettingsManager]  保留有效键: ${key}`);
         } else {
-          console.log(`[SettingsManager]  过滤无效键: ${key}`);
+          // 保留插件配置（不在 DEFAULT_SETTINGS 中的键）
+          pluginConfig[key] = parsed[key];
+          console.log(`[SettingsManager]  保留插件配置键: ${key}`);
         }
       }
       
+      // 保存插件配置到内存
+      this.pluginSettings = { ...this.pluginSettings, ...pluginConfig };
+      
       console.log('[SettingsManager] 过滤后的用户设置键:', Object.keys(filtered));
+      console.log('[SettingsManager] 插件配置键:', Object.keys(pluginConfig));
       return filtered;
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
@@ -354,6 +362,23 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
+   * 获取插件配置（支持任意键）
+   */
+  getPluginSetting<T = any>(key: string, defaultValue?: T): T | undefined {
+    console.log(`[SettingsManager] getPluginSetting 被调用, key: ${key}, defaultValue:`, defaultValue);
+    // 先检查是否是标准设置
+    if (key in DEFAULT_SETTINGS) {
+      return this.get(key as keyof SettingsSchema) as T;
+    }
+    // 检查插件配置
+    const value = this.pluginSettings[key];
+    console.log(`[SettingsManager] pluginSettings[${key}]:`, value);
+    const result = value !== undefined ? (value as T) : defaultValue;
+    console.log(`[SettingsManager] 返回值:`, result);
+    return result;
+  }
+
+  /**
    * 获取所有设置
    */
   getAll(): Partial<SettingsSchema> {
@@ -368,6 +393,13 @@ export class SettingsManager extends EventEmitter {
       ...DEFAULT_SETTINGS,
       ...this.settings,
     };
+  }
+
+  /**
+   * 重新加载设置文件到内存
+   */
+  async reload(): Promise<void> {
+    await this.loadSettings();
   }
 
   /**
@@ -417,6 +449,53 @@ export class SettingsManager extends EventEmitter {
       console.log(`[SettingsManager] 设置已更新: ${key} = ${value}`);
     } catch (error) {
       console.error('[SettingsManager] 更新设置失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 更新插件配置（支持任意键）
+   */
+  async updatePluginSetting(
+    key: string,
+    value: any,
+    target: 'user' | 'workspace' = 'user'
+  ): Promise<void> {
+    try {
+      console.log(`[SettingsManager] updatePluginSetting 被调用, key: ${key}, value:`, value);
+      // 如果是标准设置，使用标准方法
+      if (key in DEFAULT_SETTINGS) {
+        await this.update(key as keyof SettingsSchema, value, target);
+        return;
+      }
+      // 更新插件配置
+      this.pluginSettings[key] = value;
+      console.log(`[SettingsManager] pluginSettings[${key}] 已更新:`, value);
+
+      // 保存到文件
+      if (target === 'user') {
+        await this.saveUserSettings();
+      } else if (target === 'workspace' && this.workspaceSettingsPath) {
+        await this.saveWorkspaceSettings();
+      }
+
+      // 触发变更事件
+      this.emit('change', key, value);
+      
+      console.log(`[SettingsManager] 插件配置已更新: ${key} = ${value}`);
+      
+      // 发送 IPC 事件到渲染进程，通知配置已保存（用于调试）
+      try {
+        const { BrowserWindow } = require('electron');
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('settings:plugin-config-saved', { key, success: true });
+        }
+      } catch (error) {
+        // 忽略错误，这只是调试功能
+      }
+    } catch (error) {
+      console.error('[SettingsManager] 更新插件配置失败:', error);
       throw error;
     }
   }
@@ -507,18 +586,29 @@ export class SettingsManager extends EventEmitter {
    */
   private async saveUserSettings(): Promise<void> {
     try {
+      console.log('[SettingsManager] ========== 开始保存用户设置 ==========');
+      console.log('[SettingsManager] 当前 pluginSettings:', JSON.stringify(this.pluginSettings, null, 2));
+      
       // 读取现有文件内容
       let existingContent = '';
       try {
         existingContent = await fs.readFile(this.userSettingsPath, 'utf-8');
+        console.log('[SettingsManager] 读取到现有文件内容长度:', existingContent.length);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
           throw error;
         }
+        console.log('[SettingsManager] 文件不存在，将创建新文件');
       }
 
       // 读取现有的用户设置（已经过滤了无效键）
+      // 注意：loadUserSettings 会更新 this.pluginSettings，所以先保存当前值
+      const currentPluginSettings = { ...this.pluginSettings };
       const existingSettings = await this.loadUserSettings();
+      
+      // 恢复 pluginSettings（因为 loadUserSettings 可能覆盖了它）
+      this.pluginSettings = { ...currentPluginSettings, ...this.pluginSettings };
+      console.log('[SettingsManager] 合并后的 pluginSettings:', JSON.stringify(this.pluginSettings, null, 2));
       
       // 只保存与默认值不同的设置
       const settingsToSave = this.filterDefaultValues(this.settings);
@@ -529,7 +619,7 @@ export class SettingsManager extends EventEmitter {
         ...settingsToSave,
       };
       
-      // 过滤掉无效的键（只保留在 DEFAULT_SETTINGS 中定义的键）
+      // 分离标准设置和插件设置
       const validSettings: Partial<SettingsSchema> = {};
       for (const key of Object.keys(mergedSettings)) {
         if (key in DEFAULT_SETTINGS) {
@@ -537,37 +627,103 @@ export class SettingsManager extends EventEmitter {
         }
       }
       
-      // 如果文件存在且有内容，使用 jsonc-parser 的编辑功能保留注释
-      if (existingContent.trim()) {
-        let newContent = existingContent;
+      // 合并插件配置
+      const allSettings = {
+        ...validSettings,
+        ...this.pluginSettings,
+      };
+      
+      console.log('[SettingsManager] 要保存的所有设置:', JSON.stringify(allSettings, null, 2));
+      
+      // 检查文件是否为空或只有 {}
+      const trimmedContent = existingContent.trim();
+      const isEmpty = !trimmedContent || trimmedContent === '{}';
+      
+      // 如果文件存在且有内容（且不是空的 {}），尝试保留注释，但优先确保配置正确写入
+      if (trimmedContent && !isEmpty) {
+        // 解析现有内容
+        const errors: jsonc.ParseError[] = [];
+        const existingParsed = jsonc.parse(existingContent, errors) || {};
+        const existingKeysSet = new Set(Object.keys(existingParsed));
         
-        // 使用 jsonc-parser 的编辑 API 保留注释
-        const formattingOptions: jsonc.FormattingOptions = {
-          tabSize: 2,
-          insertSpaces: true,
-          eol: '\n'
-        };
+        console.log('[SettingsManager] 现有文件中的键:', Array.from(existingKeysSet));
+        console.log('[SettingsManager] 要保存的键:', Object.keys(allSettings));
         
-        // 为每个要更新的键生成编辑操作
-        for (const [key, value] of Object.entries(validSettings)) {
-          const edits = jsonc.modify(newContent, [key], value, { formattingOptions });
-          newContent = jsonc.applyEdits(newContent, edits);
-        }
+        // 检查是否有新键需要添加
+        const hasNewKeys = Object.keys(allSettings).some(key => !existingKeysSet.has(key));
         
-        // 删除不再存在的键
-        const existingKeys = Object.keys(existingSettings);
-        for (const key of existingKeys) {
-          if (!(key in validSettings)) {
-            const edits = jsonc.modify(newContent, [key], undefined, { formattingOptions });
+        if (hasNewKeys) {
+          console.log('[SettingsManager] 检测到新键，使用简化写入方式确保配置被写入');
+          // 如果有新键，直接合并并重新写入（确保新键一定被写入）
+          const mergedConfig = {
+            ...existingParsed,
+            ...allSettings
+          };
+          
+          // 生成带注释的 JSON 内容（包含插件配置）
+          const newContent = this.generateSettingsWithCommentsAndPlugins(validSettings, this.pluginSettings);
+          console.log('[SettingsManager] 准备写入合并后的配置，路径:', this.userSettingsPath);
+          await fs.writeFile(this.userSettingsPath, newContent, 'utf-8');
+          console.log('[SettingsManager] 文件写入成功（简化方式）');
+        } else {
+          // 没有新键，使用 jsonc-parser 保留注释
+          let newContent = existingContent;
+          const formattingOptions: jsonc.FormattingOptions = {
+            tabSize: 2,
+            insertSpaces: true,
+            eol: '\n'
+          };
+          
+          // 更新所有键
+          for (const [key, value] of Object.entries(allSettings)) {
+            const edits = jsonc.modify(newContent, [key], value, { formattingOptions });
             newContent = jsonc.applyEdits(newContent, edits);
           }
+          
+          // 删除不再存在的键（只删除标准设置）
+          const existingKeys = Object.keys(existingSettings);
+          for (const key of existingKeys) {
+            if (!(key in validSettings) && key in DEFAULT_SETTINGS) {
+              const edits = jsonc.modify(newContent, [key], undefined, { formattingOptions });
+              newContent = jsonc.applyEdits(newContent, edits);
+            }
+          }
+          
+          console.log('[SettingsManager] 准备写入文件，路径:', this.userSettingsPath);
+          await fs.writeFile(this.userSettingsPath, newContent, 'utf-8');
+          console.log('[SettingsManager] 文件写入成功（保留注释方式）');
         }
         
-        await fs.writeFile(this.userSettingsPath, newContent, 'utf-8');
+        // 验证写入是否成功
+        try {
+          const verifyContent = await fs.readFile(this.userSettingsPath, 'utf-8');
+          const verifyParsed = jsonc.parse(verifyContent, []);
+          console.log('[SettingsManager] 验证：文件中的键:', Object.keys(verifyParsed || {}));
+          if (verifyParsed && 'background-image' in verifyParsed) {
+            console.log('[SettingsManager] ✅ 验证成功：background-image 配置已写入文件');
+            console.log('[SettingsManager] background-image 值:', JSON.stringify(verifyParsed['background-image'], null, 2));
+          } else {
+            console.error('[SettingsManager] ❌ 验证失败：background-image 配置未找到');
+            console.error('[SettingsManager] 文件内容预览:', verifyContent.substring(0, 500));
+          }
+        } catch (verifyError) {
+          console.error('[SettingsManager] 验证文件写入时出错:', verifyError);
+        }
       } else {
         // 如果文件不存在或为空，创建新的带注释的文件
         const content = this.generateSettingsWithComments(validSettings);
-        await fs.writeFile(this.userSettingsPath, content, 'utf-8');
+        // 将插件配置添加到文件末尾
+        let finalContent = content;
+        if (Object.keys(this.pluginSettings).length > 0) {
+          // 移除最后的 } 和换行
+          finalContent = content.trim().slice(0, -1);
+          // 添加插件配置
+          const pluginConfigStr = Object.entries(this.pluginSettings)
+            .map(([key, value]) => `  "${key}": ${JSON.stringify(value)}`)
+            .join(',\n');
+          finalContent += `,\n${pluginConfigStr}\n}`;
+        }
+        await fs.writeFile(this.userSettingsPath, finalContent, 'utf-8');
       }
     } catch (error) {
       console.error('[SettingsManager] 保存设置失败:', error);
@@ -583,7 +739,13 @@ export class SettingsManager extends EventEmitter {
         }
       }
       
-      const content = JSON.stringify(validSettings, null, 2);
+      // 合并插件配置
+      const allSettings = {
+        ...validSettings,
+        ...this.pluginSettings,
+      };
+      
+      const content = JSON.stringify(allSettings, null, 2);
       await fs.writeFile(this.userSettingsPath, content, 'utf-8');
     }
   }
@@ -631,6 +793,33 @@ export class SettingsManager extends EventEmitter {
     
     lines.push('}');
     return lines.join('\n');
+  }
+
+  /**
+   * 生成带注释的设置内容（包含插件配置）
+   */
+  private generateSettingsWithCommentsAndPlugins(settings: Partial<SettingsSchema>, pluginSettings: Record<string, any>): string {
+    // 先生成标准设置的带注释内容
+    const standardContent = this.generateSettingsWithComments(settings);
+    
+    // 如果有插件配置，添加到文件末尾
+    if (Object.keys(pluginSettings).length > 0) {
+      // 移除最后的 }
+      const contentWithoutBrace = standardContent.trim().slice(0, -1);
+      
+      // 添加插件配置
+      const pluginConfigLines: string[] = [];
+      for (const [key, value] of Object.entries(pluginSettings)) {
+        const valueStr = JSON.stringify(value, null, 2).split('\n').map((line, index) => 
+          index === 0 ? line : '  ' + line
+        ).join('\n');
+        pluginConfigLines.push(`  "${key}": ${valueStr}`);
+      }
+      
+      return contentWithoutBrace + (contentWithoutBrace.trim().endsWith(',') ? '' : ',') + '\n' + pluginConfigLines.join(',\n') + '\n}';
+    }
+    
+    return standardContent;
   }
 
   /**

@@ -1,6 +1,8 @@
 {
   "name": "note-studio",
   "version": "1.0.0",
+  "description": "WiseAI Note Studio - AI-powered note-taking application",
+  "author": "WiseAI Team",
   "private": true,
   "main": "electron.js",
   "workspaces": [
@@ -11,29 +13,32 @@
     "dev:renderer": "vite --config packages/renderer/vite.config.ts",
     "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
     "build": "turbo run build",
-    "build:electron": "electron-builder",
+    "build:electron": "pnpm run build && node scripts/prepare-build.js && electron-builder --win --x64 --config.npmRebuild=false",
     "clean": "turbo run clean",
-    "start": "electron .",
-    "extension:install": "node scripts/install-extension.js",
-    "extension:download": "node scripts/download-extensions.js",
-    "test:extension": "node scripts/install-extension.js"
+    "start": "electron ."
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",
     "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
+    "electron": "^27.3.11",
     "electron-builder": "^24.6.0",
     "electron-rebuild": "^3.2.9",
+    "png-to-ico": "^2.1.5",
     "sass-embedded": "^1.93.2",
+    "sharp": "^0.33.4",
     "turbo": "^1.10.0",
     "typescript": "^5.0.0",
     "wait-on": "^9.0.1"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.69.0",
+    "@modelcontextprotocol/sdk": "^1.22.0",
     "better-sqlite3": "^11.10.0",
-    "electron": "^27.3.11",
     "electron-store": "^8.2.0",
+    "jsonc-parser": "^3.3.1",
     "node-pty": "^1.0.0",
-    "smart-buffer": "^4.2.0"
+    "smart-buffer": "^4.2.0",
+    "sql.js": "^1.12.0"
   }
 }

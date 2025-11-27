@@ -7,7 +7,8 @@ import React, { useState } from 'react';
 import { KnowledgeItem } from './types';
 import { 
   FolderIcon,
-  getFileIcon 
+  getFileIcon,
+  CheckIcon
 } from './KnowledgeBaseIcons';
 import { KnowledgeBaseContextMenu } from './KnowledgeBaseContextMenu';
 
@@ -34,6 +35,8 @@ interface KnowledgeBaseItemProps {
   onDelete?: (item: KnowledgeItem) => void;
   /** 添加到聊*/
   onAddToChat?: (item: KnowledgeItem) => void;
+  /** 打开设置*/
+  onSettings?: (item: KnowledgeItem) => void;
 }
 
 /**
@@ -65,6 +68,7 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
   onEdit,
   onDelete,
   onAddToChat,
+  onSettings,
 }) => {
   const FileIcon = getFileIcon(item.metadata?.fileType);
   
@@ -97,6 +101,10 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
 
   const handleAddToChat = (item: KnowledgeItem) => {
     onAddToChat?.(item);
+  };
+
+  const handleSettings = (item: KnowledgeItem) => {
+    onSettings?.(item);
   };
 
   return (
@@ -144,6 +152,29 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
             )}
           </div>
         )}
+
+        {/* 处理进度指示器（仅文件类型） */}
+        {item.type === 'file' && item.metadata?.processingStatus && (
+          <div className="knowledge-base-item__processing">
+            <div className={`processing-indicator ${item.metadata.processingStatus}`}>
+              {item.metadata.processingStatus === 'processing' && (
+                <div className="processing-spinner" />
+              )}
+              {item.metadata.processingStatus === 'completed' && (
+                <CheckIcon className="processing-check-icon" />
+              )}
+              <span className="processing-text">
+                {item.metadata.processingStatus === 'processing' 
+                  ? `${item.metadata.processingProgress ?? 0}%`
+                  : item.metadata.processingStatus === 'completed'
+                  ? '完成'
+                  : item.metadata.processingStatus === 'error'
+                  ? '失败'
+                  : '等待中'}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 右键菜单 */}
@@ -155,6 +186,7 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
           onEdit={handleEdit}
           onDelete={handleDelete}
           onAddToChat={handleAddToChat}
+          onSettings={handleSettings}
         />
       )}
     </div>

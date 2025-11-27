@@ -20,6 +20,32 @@ function getFileName(filePath: string): string {
 }
 
 /**
+ * 生成带有缩进的 label
+ * @param name 文件或文件夹名称
+ * @param depth 深度（从0开始，0表示根目录的直接子项）
+ */
+function createIndentedLabel(
+  name: string,
+  depth: number
+): React.ReactElement {
+  // 每层缩进 16px
+  // const indentWidth = depth * 16;
+  
+  return React.createElement(
+    'span',
+    { 
+      className: 'indented-label',
+      style: { 
+        display: 'flex', 
+        alignItems: 'center',
+        // paddingLeft: `${indentWidth}px`
+      } 
+    },
+    React.createElement('span', { key: 'name' }, name)
+  );
+}
+
+/**
  * 截断路径，从前面截断，只保留最后一个目录和文件名
  * 例如：E:\伟思笔记\AI 服务商.md -> 伟思笔记/AI 服务商.md
  * 例如：E:\aaaa\bbbbb\AI 服务商.md -> ..../bbbbb/AI 服务商.md
@@ -124,7 +150,21 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
     showDivider: true, // 在文件&文件夹上方显示分割线
   });
 
-  // 3. 知识库（始终显示分类，即使没有数据）
+  // 3. AI 智能体（始终显示分类，即使没有数据）
+  groups.push({
+    groupName: '',
+    items: [
+      {
+        value: 'category-ai-agent',
+        label: 'AI 智能体',
+        icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
+        rightIcon: React.createElement(Icon, { iconSet: 'ui', name: 'chevron-right', size: 14 }),
+      },
+    ],
+    showDivider: true, // 在 AI 智能体下方显示分割线
+  });
+
+  // 4. 知识库（始终显示分类，即使没有数据）
   groups.push({
     groupName: '',
     items: [
@@ -132,19 +172,6 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
         value: 'category-knowledge-base',
         label: '知识库',
         icon: React.createElement(Icon, { iconSet: 'ui', name: 'book-open', size: 14 }),
-        rightIcon: React.createElement(Icon, { iconSet: 'ui', name: 'chevron-right', size: 14 }),
-      },
-    ],
-  });
-
-  // 4. AI智能体（始终显示分类，即使没有数据）
-  groups.push({
-    groupName: '',
-    items: [
-      {
-        value: 'category-ai-agent',
-        label: 'AI智能体',
-        icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
         rightIcon: React.createElement(Icon, { iconSet: 'ui', name: 'chevron-right', size: 14 }),
       },
     ],
@@ -201,8 +228,10 @@ export async function buildLevel2MenuItems(
   onFileSelect: (filePath: string) => void,
   onPromptSelect: (promptId: string) => void,
   onKnowledgeBaseSelect: (kbId: string) => void,
+  onSnippetSelect: (snippetId: number) => void,
   onAgentSelect: (agentId: string) => void,
-  onSnippetSelect: (snippetId: number) => void
+  expandedFolders?: Set<string>,
+  parentPath?: string
 ): Promise<SelectGroup[]> {
   const groups: SelectGroup[] = [];
 
@@ -213,52 +242,114 @@ export async function buildLevel2MenuItems(
       const workspaceResult = await window.electron?.workspace?.getDir();
       if (workspaceResult?.success && workspaceResult.data) {
         const workspacePath = workspaceResult.data;
+        const targetPath = parentPath || workspacePath;
         
-        // 递归读取所有文件和文件夹
+        // 只读取当前层级的文件和文件夹
         const fileItems: SelectItem[] = [];
         
-        const readDirectoryRecursive = async (dirPath: string, depth: number = 0): Promise<void> => {
-          try {
-            const treeResult = await window.electron?.folder?.readTree(dirPath);
-            if (treeResult?.success && treeResult.data && Array.isArray(treeResult.data)) {
-              // 使用 for...of 循环以支持异步操作
-              for (const item of treeResult.data) {
-                if (item.type === 'directory') {
-                  // 文件夹
-                  fileItems.push({
-                    value: `folder-${item.path}`,
-                    label: `${'  '.repeat(depth)}${item.name}`,
-                    icon: React.createElement(Icon, { iconSet: 'ui', name: 'folder', size: 14 }),
-                  });
-                  
-                  // 递归读取子目录（限制深度为5层，避免性能问题）
-                  if (depth < 5) {
-                    await readDirectoryRecursive(item.path, depth + 1);
-                  }
-                } else {
-                  // 文件
-                  fileItems.push({
-                    value: `file-${item.path}`,
-                    label: `${'  '.repeat(depth)}${item.name}`,
-                    icon: React.createElement(Icon, { iconSet: 'ui', name: 'file', size: 14 }),
-                  });
+        try {
+          const treeResult = await window.electron?.folder?.readTree(targetPath);
+          if (treeResult?.success && treeResult.data && Array.isArray(treeResult.data)) {
+            // 先添加文件夹，再添加文件
+            const folders: typeof treeResult.data = [];
+            const files: typeof treeResult.data = [];
+            
+            for (const item of treeResult.data) {
+              if (item.type === 'directory') {
+                folders.push(item);
+              } else {
+                files.push(item);
+              }
+            }
+            
+            // 计算当前深度（相对于工作区根目录）
+            const getDepth = (path: string): number => {
+              const workspaceParts = workspacePath.split(/[/\\]/).filter(p => p.length > 0);
+              const pathParts = path.split(/[/\\]/).filter(p => p.length > 0);
+              // 计算路径相对于工作区的深度
+              return Math.max(0, pathParts.length - workspaceParts.length - 1);
+            };
+            
+            // 计算总项数（文件夹 + 文件）
+            const totalItems = folders.length + files.length;
+            
+            // 添加文件夹项
+            for (let i = 0; i < folders.length; i++) {
+              const folder = folders[i];
+              const isExpanded = expandedFolders?.has(folder.path) || false;
+              const depth = getDepth(folder.path);
+              
+              // 创建左侧图标（箭头 + 文件夹图标）
+              const leftIcon = React.createElement(
+                'span',
+                { 
+                  style: { 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    gap: '6px'
+                  } 
+                },
+                React.createElement(Icon, { 
+                  iconSet: 'ui', 
+                  name: isExpanded ? 'chevron-down' : 'chevron-right', 
+                  size: 14 
+                }),
+                React.createElement(Icon, { iconSet: 'ui', name: 'folder', size: 14 })
+              );
+              
+              fileItems.push({
+                value: `folder-${folder.path}`,
+                label: createIndentedLabel(folder.name, depth),
+                icon: leftIcon,
+                dataType: 'folder',
+                depth: depth,
+              });
+              
+              // 如果文件夹已展开，递归添加子项
+              if (isExpanded) {
+                const childGroups = await buildLevel2MenuItems(
+                  category,
+                  onFileSelect,
+                  onPromptSelect,
+                  onKnowledgeBaseSelect,
+                  onSnippetSelect,
+                  onAgentSelect,
+                  expandedFolders,
+                  folder.path
+                );
+                
+                // 将子项添加到当前列表
+                if (childGroups.length > 0 && childGroups[0].items) {
+                  fileItems.push(...childGroups[0].items);
                 }
               }
             }
-          } catch (error) {
-            console.warn(`[buildContextMenuItems] 读取目录失败: ${dirPath}`, error);
+            
+            // 添加文件项
+            for (let i = 0; i < files.length; i++) {
+              const file = files[i];
+              const depth = getDepth(file.path);
+              
+              fileItems.push({
+                value: `file-${file.path}`,
+                label: createIndentedLabel(file.name, depth),
+                icon: React.createElement(Icon, { iconSet: 'ui', name: 'file', size: 14 }),
+                dataType: 'file',
+                depth: depth,
+              });
+            }
           }
-        };
-        
-        await readDirectoryRecursive(workspacePath);
+        } catch (error) {
+          console.warn(`[buildContextMenuItems] 读取目录失败: ${targetPath}`, error);
+        }
         
         if (fileItems.length > 0) {
           groups.push({
-            groupName: '文件&文件夹',
+            groupName: parentPath ? '' : '文件&文件夹',
             items: fileItems,
           });
-        } else {
-          // 如果没有文件和文件夹，显示提示
+        } else if (!parentPath) {
+          // 如果没有文件和文件夹，显示提示（只在根目录时显示）
           groups.push({
             groupName: '文件&文件夹',
             items: [
@@ -273,27 +364,75 @@ export async function buildLevel2MenuItems(
         }
       } else {
         // 没有工作区
+        if (!parentPath) {
+          groups.push({
+            groupName: '文件&文件夹',
+            items: [
+              {
+                value: 'no-workspace',
+                label: '未打开工作区',
+                icon: React.createElement(Icon, { iconSet: 'ui', name: 'folder', size: 14 }),
+                disabled: true,
+              },
+            ],
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[buildContextMenuItems] 获取文件列表失败:', error);
+      if (!parentPath) {
         groups.push({
           groupName: '文件&文件夹',
           items: [
             {
-              value: 'no-workspace',
-              label: '未打开工作区',
-              icon: React.createElement(Icon, { iconSet: 'ui', name: 'folder', size: 14 }),
+              value: 'error',
+              label: '获取文件列表失败',
+              icon: React.createElement(Icon, { iconSet: 'ui', name: 'file', size: 14 }),
+              disabled: true,
+            },
+          ],
+        });
+      }
+    }
+  } else if (category === 'category-ai-agent') {
+    // AI 智能体二级菜单
+    try {
+      const agents = await aiAgentService.getAllAgents();
+      
+      if (agents.length > 0) {
+        const agentItems: SelectItem[] = agents.map((agent) => ({
+          value: `agent-${agent.id}`,
+          label: `${agent.emoji} ${agent.name}`,
+          icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
+        }));
+
+        groups.push({
+          groupName: 'AI 智能体',
+          items: agentItems,
+        });
+      } else {
+        // 如果没有智能体，显示提示
+        groups.push({
+          groupName: 'AI 智能体',
+          items: [
+            {
+              value: 'no-agent',
+              label: '暂无智能体',
+              icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
               disabled: true,
             },
           ],
         });
       }
     } catch (error) {
-      console.error('[buildContextMenuItems] 获取文件列表失败:', error);
+      console.error('[buildContextMenuItems] 获取AI智能体失败:', error);
       groups.push({
-        groupName: '文件&文件夹',
+        groupName: 'AI 智能体',
         items: [
           {
             value: 'error',
-            label: '获取文件列表失败',
-            icon: React.createElement(Icon, { iconSet: 'ui', name: 'file', size: 14 }),
+            label: '获取智能体失败',
+            icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
             disabled: true,
           },
         ],
@@ -334,8 +473,8 @@ export async function buildLevel2MenuItems(
       const kbData = await knowledgeBaseService.loadFromStorage();
       const knowledgeBases = kbData.created || [];
       
-      // 过滤掉测试知识库
-      const filteredKBs = knowledgeBases.filter((kb) => !kb.title.includes('测试'));
+      // 只显示类型为文件夹的知识库（排除文件类型的知识库项）
+      const filteredKBs = knowledgeBases.filter((kb) => kb.type === 'folder');
       
       if (filteredKBs.length > 0) {
         const kbItems: SelectItem[] = filteredKBs.map((kb) => ({
@@ -348,29 +487,33 @@ export async function buildLevel2MenuItems(
           groupName: '知识库',
           items: kbItems,
         });
-      }
-    } catch (error) {
-      console.error('[buildContextMenuItems] 获取知识库失败:', error);
-    }
-  } else if (category === 'category-ai-agent') {
-    // AI智能体二级菜单
-    try {
-      const agents = await aiAgentService.getMyAgents();
-      
-      if (agents.length > 0) {
-        const agentItems: SelectItem[] = agents.map((agent) => ({
-          value: `agent-${agent.id}`,
-          label: `${agent.emoji} ${agent.name}`,
-          icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
-        }));
-
+      } else {
+        // 如果没有知识库，显示提示
         groups.push({
-          groupName: 'AI智能体',
-          items: agentItems,
+          groupName: '知识库',
+          items: [
+            {
+              value: 'no-knowledge-base',
+              label: '暂无知识库',
+              icon: React.createElement(Icon, { iconSet: 'ui', name: 'book-open', size: 14 }),
+              disabled: true,
+            },
+          ],
         });
       }
     } catch (error) {
-      console.error('[buildContextMenuItems] 获取AI智能体失败:', error);
+      console.error('[buildContextMenuItems] 获取知识库失败:', error);
+      groups.push({
+        groupName: '知识库',
+        items: [
+          {
+            value: 'error',
+            label: '获取知识库失败',
+            icon: React.createElement(Icon, { iconSet: 'ui', name: 'book-open', size: 14 }),
+            disabled: true,
+          },
+        ],
+      });
     }
   } else if (category === 'category-rules') {
     // 规则二级菜单（只添加选项，不做其他操作）
@@ -412,7 +555,8 @@ export async function buildContextMenuItems(
   onFileSelect: (filePath: string) => void,
   onPromptSelect: (promptId: string) => void,
   onKnowledgeBaseSelect: (kbId: string) => void,
-  onSnippetSelect: (snippetId: number) => void
+  onSnippetSelect: (snippetId: number) => void,
+  onAgentSelect: (agentId: string) => void
 ): Promise<SelectGroup[]> {
   // 默认返回一级菜单
   return buildLevel1MenuItems();

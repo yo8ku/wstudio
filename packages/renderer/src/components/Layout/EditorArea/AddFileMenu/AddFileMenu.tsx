@@ -7,6 +7,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ImportNoteDialog, ImportFileInfo } from '../ImportNoteDialog/ImportNoteDialog';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
+import { ragProcessingService } from '../../../../services/RAGProcessingService';
+import { toastService } from '../../../../services/ToastService';
 import './AddFileMenu.scss';
 
 interface Note {
@@ -344,13 +346,102 @@ export const AddFileMenu: React.FC<AddFileMenuProps> = ({
                 console.log('[AddFileMenu] 文件复制成功:', newFilePath);
                 
                 // 添加文件到知识库数据（带文件夹路径）
-                knowledgeBaseService.addFileToKnowledgeBase(
+                await knowledgeBaseService.addFileToKnowledgeBase(
                   knowledgeId,
                   newFilePath,
                   newFileName,
                   fileInfo.folderPath // 传递文件夹路径
                 );
                 console.log('[AddFileMenu] 文件已添加到知识库数据，文件夹路径:', fileInfo.folderPath);
+                
+                // 更新处理状态为 processing
+                await knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'processing', 10);
+                
+                // 立即触发知识库刷新事件，更新UI显示处理状态
+                window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                  detail: { knowledgeId }
+                }));
+                
+                // 进度更新回调函数
+                const handleProgress = async (filePath: string, progress: number) => {
+                  await knowledgeBaseService.updateFileProcessingStatus(filePath, 'processing', progress);
+                  // 触发知识库刷新事件，更新UI显示
+                  window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                    detail: { knowledgeId }
+                  }));
+                };
+                
+                // 后台异步处理文件（分块、嵌入、存储）
+                ragProcessingService.uploadFilesToKnowledgeBase(
+                  [newFilePath],
+                  knowledgeId,
+                  undefined,
+                  handleProgress
+                ).then(() => {
+                  // 处理完成，更新状态为 completed
+                  knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'completed', 100).then(() => {
+                    // 触发知识库刷新事件，更新UI显示
+                    window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                      detail: { knowledgeId }
+                    }));
+                  }).catch(() => {
+                    // 静默处理错误
+                  });
+                }).catch((error) => {
+                  // 处理失败，更新状态为 error
+                  knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'error', 0).then(() => {
+                    // 触发知识库刷新事件，更新UI显示
+                    window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                      detail: { knowledgeId }
+                    }));
+                  }).catch(() => {
+                    // 静默处理错误
+                  });
+                  
+                  // 显示错误提示
+                  const errorMessage = error instanceof Error ? error.message : String(error);
+                  let displayMessage = '上传知识库失败';
+                  
+                  // 提取更友好的错误信息
+                  if (errorMessage.includes('ModuleNotFoundError') || errorMessage.includes('No module named')) {
+                    displayMessage = 'Python 依赖缺失，正在自动安装，请稍后重试';
+                  } else if (errorMessage.includes('Failed to process file paths') || errorMessage.includes('处理文件路径失败')) {
+                    displayMessage = '文件处理失败，请检查文件格式或重试';
+                  } else if (errorMessage.includes('Python process') || errorMessage.includes('Python 服务') || errorMessage.includes('无法启动 Python')) {
+                    displayMessage = 'Python 服务启动失败，请检查环境配置';
+                  } else if (errorMessage.includes('处理文件时发生错误')) {
+                    // 提取具体的错误信息
+                    const match = errorMessage.match(/处理文件时发生错误:\s*(.+)/);
+                    if (match && match[1]) {
+                      displayMessage = `文件处理失败: ${match[1].substring(0, 100)}`;
+                    } else {
+                      displayMessage = '文件处理失败，请查看控制台获取详细信息';
+                    }
+                  } else if (errorMessage.includes('向量存储未初始化')) {
+                    displayMessage = '向量存储未初始化，请重试';
+                  } else if (errorMessage.includes('超时')) {
+                    displayMessage = '处理超时，请检查文件大小或网络连接';
+                  } else if (errorMessage) {
+                    // 如果错误信息较短且有意义，直接显示
+                    if (errorMessage.length < 100) {
+                      displayMessage = errorMessage;
+                    } else {
+                      // 尝试提取关键错误信息
+                      const lines = errorMessage.split('\n');
+                      const firstLine = lines[0] || errorMessage;
+                      displayMessage = firstLine.length < 100 ? firstLine : firstLine.substring(0, 50) + '...';
+                    }
+                  }
+                  
+                  toastService.error(displayMessage);
+                  console.error('[AddFileMenu] 文件处理失败:', {
+                    error,
+                    errorMessage,
+                    filePath: newFilePath,
+                    knowledgeId,
+                  });
+                });
+                
                 importedCount++;
               } else {
                 console.error('[AddFileMenu] 文件复制失败:', copyResult?.error);
@@ -372,6 +463,29 @@ export const AddFileMenu: React.FC<AddFileMenuProps> = ({
           window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
             detail: { knowledgeId }
           }));
+          
+          // 自动打开知识库标签页
+          if (knowledgeId && importedCount > 0) {
+            // 重新加载知识库数据以获取最新信息
+            const data = await knowledgeBaseService.loadFromStorage();
+            const knowledgeBase = data.created.find(kb => kb.id === knowledgeId);
+            
+            if (knowledgeBase) {
+              // 触发打开知识库事件，自动打开对应知识库标签页
+              window.dispatchEvent(new CustomEvent('open-knowledge', {
+                detail: {
+                  id: knowledgeBase.id,
+                  title: knowledgeBase.title,
+                  description: knowledgeBase.metadata?.description || '',
+                  items: data.created,
+                  knowledgeData: {
+                    id: knowledgeBase.id,
+                    items: data.created
+                  }
+                }
+              }));
+            }
+          }
           
           setShowImportDialog(false);
         }}

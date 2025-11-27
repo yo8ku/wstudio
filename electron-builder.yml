@@ -1,0 +1,63 @@
+appId: com.wiseai.notestudio
+productName: WiseAI Note Studio
+copyright: Copyright © 2025 WiseAI Note Studio
+
+directories:
+  output: dist
+  buildResources: resources
+
+asar: false
+
+files:
+  - electron.js
+  - preload.js
+  - log/log.png
+  - packages/**/*
+  - "!packages/*/src/**/*"
+  - "!packages/**/node_modules/**/*"
+  - "!packages/**/*.{ts,tsx}"
+  - "!packages/**/tsconfig*.json"
+  - resources/**/*
+  - node_modules/**/*
+  - "!node_modules/**/{CHANGELOG.md,README.md,README,readme.md,readme}"
+  - "!node_modules/**/{test,__tests__,tests,powered-test,example,examples}"
+  - "!node_modules/**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}"
+  - "!node_modules/**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}"
+  - "!**/*.{md,MD}"
+  - "!**/._*"
+  - "!**/{.editorconfig,.eslintrc,.prettierrc}"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: log/log.ico
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: true
+  deleteAppDataOnUninstall: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: ${productName}
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.productivity
+  icon: resources/icon.icns
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+  icon: resources/icon.png
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+publish: null

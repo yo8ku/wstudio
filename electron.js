@@ -2,13 +2,34 @@
  * Electron 主进程启动文件
  */
 
-const { app, BrowserWindow, ipcMain, protocol, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
 const https = require('https');
 const http = require('http');
+const { fileURLToPath } = require('url');
+
+// 设置模块解析路径，将 @note-studio 映射到 packages 目录
+const Module = require('module');
+const originalResolveFilename = Module._resolveFilename;
+Module._resolveFilename = function(request, parent, isMain) {
+  if (request.startsWith('@note-studio/')) {
+    const pkgName = request.replace('@note-studio/', '');
+    const pkgPath = path.join(__dirname, 'packages', pkgName.split('/')[0]);
+    if (fs.existsSync(pkgPath)) {
+      return originalResolveFilename.call(this, pkgPath, parent, isMain);
+    }
+  }
+  return originalResolveFilename.call(this, request, parent, isMain);
+};
+
 const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
+
+const logIconPath = path.join(__dirname, 'log', 'log.png');
+if (!fs.existsSync(logIconPath)) {
+  console.warn('[Electron] 应用图标未找到，预计路径:', logIconPath);
+}
 
 // 禁用硬件加速以避免 GPU 进程崩溃
 app.disableHardwareAcceleration();
@@ -29,6 +50,7 @@ function createWindow(backgroundColor = '#1e1e1e') {
     frame: false, // 无边框窗口
     titleBarStyle: 'hidden',
     backgroundColor: backgroundColor, // 使用主题背景色，避免白色闪烁
+    icon: logIconPath,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -79,47 +101,141 @@ function createWindow(backgroundColor = '#1e1e1e') {
 app.whenReady().then(async () => {
   console.log('[Electron] 应用程序启动');
   
+  // 全局设置 Content Security Policy (CSP)
+  // 必须在创建窗口之前设置，以确保所有请求都应用 CSP
+  const defaultSession = session.defaultSession;
+  
+  // 定义 CSP 策略
+  // 注意：移除 unsafe-eval 可能会影响 Vite HMR，如果遇到问题请恢复
+  // 生产模式：移除 unsafe-eval，更安全
+  // 允许从 jsdelivr CDN 加载 Monaco Editor 脚本
+  const cspHeader = process.env.NODE_ENV === 'development'
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';"
+    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';";
+  
+  // 拦截所有响应并添加 CSP 头
+  defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [cspHeader]
+      }
+    });
+  });
+  
+  console.log('[Electron] Content Security Policy 已全局设置');
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[Electron] 开发模式：CSP 已移除 unsafe-eval（如果 Vite HMR 不工作，请恢复 unsafe-eval）');
+  }
+  
   // 注册自定义协议处理函数
+  const ensureExtendedLengthPath = (filePath) => {
+    if (process.platform !== 'win32') {
+      return filePath;
+    }
+
+    if (!filePath || filePath.startsWith('\\\\?\\')) {
+      return filePath;
+    }
+
+    const isUncPath = filePath.startsWith('\\\\');
+    const needsExtendedPrefix = filePath.length >= 260 || isUncPath;
+
+    if (!needsExtendedPrefix) {
+      return filePath;
+    }
+
+    if (isUncPath) {
+      const uncBody = filePath.replace(/^\\\\/, '');
+      return `\\\\?\\UNC\\${uncBody}`;
+    }
+
+    return `\\\\?\\${filePath}`;
+  };
+
+  const toFileUrl = (rawUrl, protocolName) => {
+    let normalizedUrl = rawUrl;
+
+    if (protocolName === 'local-file') {
+      normalizedUrl = rawUrl.replace(/^local-file:/i, 'file:');
+    } else if (protocolName === 'vscode-file') {
+      normalizedUrl = rawUrl.replace(/^vscode-file:\/\/vscode-app/i, 'file://');
+    }
+
+    if (/^file:\/\/[a-zA-Z]:/.test(normalizedUrl)) {
+      normalizedUrl = normalizedUrl.replace(
+        /^file:\/\/([a-zA-Z]:)/,
+        'file:///$1'
+      );
+    }
+
+    return normalizedUrl;
+  };
+
+  const decodePathFromCustomProtocol = (rawUrl, protocolName) => {
+    let url = rawUrl;
+    if (protocolName === 'local-file') {
+      url = url.replace(/^local-file:\/\/\/?/, '');
+    } else if (protocolName === 'vscode-file') {
+      url = url.replace(/^vscode-file:\/\/vscode-app\/?/, '');
+    }
+
+    const queryIndex = url.indexOf('?');
+    const hashIndex = url.indexOf('#');
+    const cutIndex = (() => {
+      if (queryIndex === -1) return hashIndex;
+      if (hashIndex === -1) return queryIndex;
+      return Math.min(queryIndex, hashIndex);
+    })();
+    if (cutIndex !== -1) {
+      url = url.substring(0, cutIndex);
+    }
+
+    url = url.replace(/^[/\\]+([a-zA-Z]:)/, '$1');
+    console.log('[Electron] 移除协议前缀和查询参数后:', url);
+
+    const decodedParts = url.split('/').map(part => {
+      try {
+        return decodeURIComponent(part);
+      } catch (e) {
+        return part;
+      }
+    });
+
+    console.log('[Electron] 解码后的路径段:', decodedParts);
+
+    const decodedPath = decodedParts.join('/');
+    console.log('[Electron] 连接后的路径:', decodedPath);
+
+    const normalizedPath = path.normalize(decodedPath);
+    console.log('[Electron] 路径规范化后:', normalizedPath);
+    return normalizedPath;
+  };
+
   const handleFileProtocol = (protocolName) => (request, callback) => {
     
     try {
-      // 移除协议前缀
-      let url = request.url;
-      if (protocolName === 'local-file') {
-        // 处理 local-file://D:/path 或 local-file:///D:/path 格式
-        url = url.replace(/^local-file:\/\/\/?/, '');
-      } else if (protocolName === 'vscode-file') {
-        // 处理 vscode-file://vscode-app/path 格式
-        url = url.replace(/^vscode-file:\/\/vscode-app\/?/, '');
+      let resolvedPath;
+      try {
+        const fileUrl = toFileUrl(request.url, protocolName);
+        resolvedPath = fileURLToPath(fileUrl);
+        console.log('[Electron] fileURLToPath 解析路径:', resolvedPath);
+      } catch (parseError) {
+        console.warn('[Electron] fileURLToPath 解析失败，使用手动解析:', parseError);
+        resolvedPath = decodePathFromCustomProtocol(request.url, protocolName);
+      }
+
+      const fsPath = ensureExtendedLengthPath(resolvedPath);
+      if (fsPath !== resolvedPath) {
+        console.log('[Electron] 使用扩展长度路径访问:', fsPath);
       }
       
-      // console.log('[Electron] 移除协议前缀后:', url);
-      
-      // 对路径的每个部分进行解码
-      const decodedParts = url.split('/').map(part => {
-        try {
-          return decodeURIComponent(part);
-        } catch (e) {
-          return part;
-        }
-      });
-      
-      // console.log('[Electron] 解码后的路径段:', decodedParts);
-      
-      // 使用正斜杠重新连接，然后转换为系统路径
-      const decodedPath = decodedParts.join('/');
-      // console.log('[Electron] 连接后的路径:', decodedPath);
-      
-      // 规范化路径（将正斜杠转换为反斜杠）
-      const normalizedPath = path.normalize(decodedPath);
-      // console.log('[Electron] 路径规范化后:', normalizedPath);
-      
       // 检查文件是否存在
-      if (fs.existsSync(normalizedPath)) {
-        // console.log('[Electron]  文件存在，返回路径:', normalizedPath);
-        return callback({ path: normalizedPath });
+      if (fs.existsSync(fsPath)) {
+        console.log('[Electron]  文件存在，返回路径:', resolvedPath);
+        return callback({ path: fsPath });
       } else {
-        // console.error('[Electron]  文件不存在:', normalizedPath);
+        console.error('[Electron]  文件不存在:', resolvedPath);
         return callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
       }
     } catch (error) {
@@ -441,7 +557,51 @@ ipcMain.handle('image:open', async () => {
   }
 });
 
-// 打开文件夹对话框
+// 打开多文件选择对话框（用于知识库导入）
+ipcMain.handle('file:openMultiple', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Supported Files', extensions: ['md', 'markdown', 'json', 'txt'] },
+        { name: 'Markdown', extensions: ['md', 'markdown'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'Text', extensions: ['txt'] },
+      ]
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      // 过滤文件类型，只返回支持的文件
+      const supportedExtensions = ['md', 'markdown', 'json', 'txt'];
+      const filteredPaths = result.filePaths.filter(filePath => {
+        const ext = path.extname(filePath).toLowerCase().slice(1);
+        return supportedExtensions.includes(ext);
+      });
+
+      if (filteredPaths.length === 0) {
+        return {
+          success: false,
+          error: '所选文件中没有支持的文件类型。仅支持 .md, .markdown, .json, .txt 文件'
+        };
+      }
+
+      return {
+        success: true,
+        data: filteredPaths
+      };
+    }
+
+    return { success: false, error: 'User canceled' };
+  } catch (error) {
+    console.error('[IPC] 打开多文件对话框失败:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
+
+// 打开文件夹对话框（用于工作区，会设置工作区目录）
 ipcMain.handle('folder:open', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -466,6 +626,78 @@ ipcMain.handle('folder:open', async () => {
     return { success: false, error: 'User canceled' };
   } catch (error) {
     console.error('[IPC] 打开文件夹失败:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
+
+// 打开文件夹对话框（用于知识库导入，不设置工作区目录）
+ipcMain.handle('knowledge-base:open-folder', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory']
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const folderPath = result.filePaths[0];
+      
+      // 知识库导入文件夹不设置工作区目录，两者完全独立
+      
+      return {
+        success: true,
+        data: {
+          path: folderPath,
+          name: path.basename(folderPath)
+        }
+      };
+    }
+
+    return { success: false, error: 'User canceled' };
+  } catch (error) {
+    console.error('[IPC] 打开文件夹失败:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
+
+// 扫描文件夹中的支持文件（用于知识库导入）
+ipcMain.handle('folder:scanFiles', async (event, folderPath) => {
+  try {
+    const supportedExtensions = ['md', 'markdown', 'json', 'txt'];
+    const filePaths = [];
+
+    // 递归扫描文件夹
+    const scanDirectory = async (dirPath) => {
+      const entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        
+        if (entry.isDirectory()) {
+          // 递归扫描子文件夹
+          await scanDirectory(fullPath);
+        } else if (entry.isFile()) {
+          // 检查文件扩展名
+          const ext = path.extname(entry.name).toLowerCase().slice(1);
+          if (supportedExtensions.includes(ext)) {
+            filePaths.push(fullPath);
+          }
+        }
+      }
+    };
+
+    await scanDirectory(folderPath);
+
+    return {
+      success: true,
+      data: filePaths
+    };
+  } catch (error) {
+    console.error('[IPC] 扫描文件夹失败:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -954,6 +1186,17 @@ ipcMain.handle('settings:get', async (event, key) => {
   }
 });
 
+// 获取插件设置值
+ipcMain.handle('settings:get-plugin', async (event, key) => {
+  try {
+    const value = settingsManager.getPluginSetting(key);
+    return { success: true, data: value };
+  } catch (error) {
+    console.error('[IPC] 获取插件设置值失败:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 // 更新单个设置
 ipcMain.handle('settings:update', async (event, key, value, target = 'user') => {
   try {
@@ -1006,6 +1249,19 @@ ipcMain.handle('settings:get-path', async (event, target = 'user') => {
     return { success: true, data: settingsPath };
   } catch (error) {
     console.error('[IPC] 获取设置路径失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 获取应用路径（系统路径）
+ipcMain.handle('app:get-path', async (event, name) => {
+  try {
+    // 支持 Electron app.getPath 的所有路径类型
+    // 常见类型：home, appData, userData, temp, exe, module, desktop, documents, downloads, music, pictures, videos
+    const pathValue = app.getPath(name);
+    return { success: true, data: pathValue };
+  } catch (error) {
+    console.error('[IPC] 获取应用路径失败:', error);
     return { success: false, error: error.message };
   }
 });

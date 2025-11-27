@@ -1,0 +1,22 @@
+/**
+ * 设置视图样式
+ * VSCode 风格的设置界面布局
+ */
+
+.settings-view {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--editor-bg);
+
+  .settings-sidebar-container {
+    width: 256px;
+    flex-shrink: 0;
+  }
+
+  .settings-content-container {
+    flex: 1;
+    overflow: hidden;
+  }
+}
+

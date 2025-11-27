@@ -96,7 +96,7 @@ pnpm build:electron
 ## 📦 包说明
 
 - `@note-studio/shared` - 共享类型和工具
-- `@note-studio/core` - 核心功能（主题、工作区、设置）
+- `@note-studio/theme` - 主题系统
 - `@note-studio/main` - Electron 主进程
 - `@note-studio/renderer` - React 渲染进程
 - `@note-studio/plugin-system` - 插件系统

@@ -1,0 +1,449 @@
+/**
+ * 导入笔记对话框样式
+ */
+
+.import-note-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.import-note-dialog {
+  width: 800px;
+  max-height: 90vh;
+  border-radius: 10px !important;
+  border: 1px solid;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.import-note-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid;
+
+  h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid;
+    border-radius: 16px;
+    min-width: 200px;
+
+    svg {
+      opacity: 0.6;
+      flex-shrink: 0;
+    }
+
+    input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 13px;
+      background: transparent;
+
+      &::placeholder {
+        opacity: 0.6;
+      }
+    }
+  }
+}
+
+.import-note-dialog__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 1;
+    background-color: var(
+      --vscode-list-hoverBackground,
+      var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1))
+    );
+    border-radius: 3px;
+  }
+
+  svg {
+    display: block;
+  }
+}
+
+.import-note-dialog__tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  gap: 24px;
+
+  .tab {
+    background: none;
+    border: none;
+    padding: 8px 0;
+    font-size: 14px;
+    cursor: pointer;
+    position: relative;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+
+    &:hover {
+      opacity: 1;
+    }
+
+    &.active {
+      opacity: 1;
+      
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background-color: currentColor;
+      }
+    }
+  }
+
+  .tabs-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
+  }
+
+  .sort-buttons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-right: 1px solid var(--border-color);
+    padding-right: 12px;
+  }
+
+  .sort-btn {
+    background: none;
+    border: none;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s, opacity 0.2s, color 0.2s;
+    opacity: 0.7;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    &:hover {
+      opacity: 1;
+      background-color: var(
+        --vscode-list-hoverBackground,
+        var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1))
+      );
+    }
+
+    &.active {
+      opacity: 1;
+      font-weight: 500;
+    }
+
+    svg {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+    }
+
+    span {
+      flex-shrink: 0;
+    }
+
+    .sort-order {
+      font-size: 14px;
+      font-weight: bold;
+      margin-left: 2px;
+    }
+  }
+
+  .select-all-btn {
+    background: none;
+    border: none;
+    padding: 6px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s, opacity 0.2s;
+    opacity: 0.8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    &:hover {
+      opacity: 1;
+      background-color: var(
+        --vscode-list-hoverBackground,
+        var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1))
+      );
+    }
+
+    svg {
+      flex-shrink: 0;
+    }
+
+    span {
+      flex-shrink: 0;
+    }
+  }
+}
+
+.import-note-dialog__list {
+  overflow-y: auto;
+  padding: 16px 20px;
+  max-height: 60vh;
+
+  // 滚动条样式 - 继承 VSCode 主题
+  &::-webkit-scrollbar {
+    width: 12px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    min-height: 40px;
+
+    &:hover {
+      background: var(--scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+      background-clip: padding-box;
+    }
+
+    &:active {
+      background: var(--scrollbarSlider-activeBackground, rgba(85, 85, 85, 0.8));
+      background-clip: padding-box;
+    }
+  }
+}
+
+// 树形结构容器
+.file-tree {
+  display: flex;
+  flex-direction: column;
+}
+
+// 树形文件夹
+.tree-folder {
+  margin-bottom: 2px;
+}
+
+// 树形文件夹头部
+.tree-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+  user-select: none;
+
+  &:hover {
+    background-color: var(
+      --vscode-list-hoverBackground,
+      var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1))
+    );
+  }
+
+  // 文件夹复选框
+  .folder-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    
+    svg {
+      flex-shrink: 0;
+      opacity: 0.8;
+      color: var(--editor-fg);
+    }
+
+    &:hover svg {
+      opacity: 1;
+    }
+  }
+
+  // 文件夹切换区域（箭头+图标+名称）
+  .folder-toggle-area {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    cursor: pointer;
+
+    svg {
+      flex-shrink: 0;
+      opacity: 0.8;
+    }
+
+    .folder-name {
+      font-size: 13px;
+      font-weight: 400;
+    }
+  }
+}
+
+// 树形文件夹内容
+.tree-folder-content {
+  // 不需要额外的样式，子项会通过 paddingLeft 自动缩进
+}
+
+// 树形文件项
+.tree-file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-bottom: 2px;
+  transition: background-color 0.15s ease;
+  background-color: transparent;
+  user-select: none;
+
+  &:hover {
+    background-color: var(
+      --vscode-list-hoverBackground,
+      var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1))
+    );
+  }
+
+  // 文件复选框（与文件夹复选框样式一致）
+  .file-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    
+    svg {
+      flex-shrink: 0;
+      opacity: 0.8;
+      color: var(--editor-fg);
+    }
+
+    &:hover svg {
+      opacity: 1;
+    }
+  }
+
+  // 文件图标
+  svg {
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+}
+
+// 文件内容
+.file-content {
+  flex: 1;
+  min-width: 0;
+
+  h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  font-size: 14px;
+  min-height: 120px;
+}
+
+.import-note-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-top: 1px solid;
+}
+
+.footer-info {
+  font-size: 14px;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-cancel,
+.btn-import {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+
+  svg {
+    flex-shrink: 0;
+  }
+}
+
+.btn-cancel {
+  border: 1px solid;
+}
+
+.btn-import {
+  border: none;
+}
+

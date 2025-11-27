@@ -1,14 +1,18 @@
-
+/**
+ * 编辑器区域样式
+ * 完全遵循 VSCode 编辑器设计
+ */
 
 .editor-area {
   width: 100%;
   height: 100%;
+  background-color: var(--vscode-editor-background);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
   min-height: 0;
-  min-width: 358px;
+  min-width: 0;
 
   &-groups {
     flex: 1;
@@ -28,11 +32,10 @@
     &.split-left {
       width: 50%;
       min-width: 0;
-      flex-shrink: 0;
     }
 
     &.split-right {
-      flex: 1;
+      width: 50%;
       min-width: 0;
     }
 
@@ -40,6 +43,12 @@
       width: 100%;
       min-width: 0;
     }
+  }
+
+  &-divider {
+    width: 1px;
+    background-color: var(--vscode-editorGroup-border, var(--vscode-panel-border));
+    flex-shrink: 0;
   }
 
   &-content {
@@ -50,10 +59,11 @@
     display: flex;
     flex-direction: column;
     position: relative;
+    background-color: var(--vscode-editor-background);
     width: 100%;
     height: 100%;
     
-    /* ȷ����Ԫ����ȷ��� */
+    /* 确保子元素正确填充 */
     > * {
       flex: 1 1 auto;
       min-height: 0;
@@ -68,6 +78,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    color: var(--vscode-editorWidget-foreground);
     opacity: 0.5;
 
     &-content {
@@ -97,9 +108,9 @@
 }
 
 .tab-bar-placeholder {
-  border-bottom: 1px solid var(--ws-editor-group-header-tabs-border, var(--ws-panel-border));
+  background-color: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder, var(--vscode-panel-border));
   height: 35px;
   min-height: 35px;
   flex-shrink: 0;
 }
-

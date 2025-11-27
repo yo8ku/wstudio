@@ -3,6 +3,8 @@ import { Icon } from '../Icons';
 import { useRightSidebarStore } from '../../stores/rightSidebarStore';
 import './TitleBar.scss';
 
+const logIconSrc = new URL('../../../../../log/log.png', import.meta.url).href;
+
 interface TitleBarProps {
   onToggleSidebar?: () => void;
   onToggleAIPanel?: () => void;
@@ -358,7 +360,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     <div className={`titlebar${!isWindowActive ? ' inactive' : ''}`}>
       <div className="titlebar-drag-region">
         <div className="titlebar-icon">
-          <Icon name="app-icon" size={16} />
+          <img src={logIconSrc} alt="WiseAI Note Studio" />
         </div>
         
         {/* 菜单*/}

@@ -23,8 +23,56 @@ import { initializeMonaco } from '../../../../hooks/useMonacoInit';
 import { getCachedModels, getModelConfig } from '../../../../services/ModelCacheService';
 import { aiService } from '../../../../services/ai/AIService';
 import { ragProcessingService } from '../../../../services/RAGProcessingService';
+import { toastService } from '../../../../services/ToastService';
 import { estimateTokens } from '../../../../utils/tokenCounter';
 import { getModelInputTokenLimit } from '../../../../utils/modelTokenLimit';
+import { SelectKnowledgeBaseDialog } from '../../Sidebar/KnowledgeBase/SelectKnowledgeBaseDialog';
+import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
+import { FileParser, VectorStore } from '@note-studio/global-rag';
+import { ModelCapabilityDetector } from '../../../../services/modelCapabilityDetector';
+import { ModelCapability } from '../../../../types/modelCapabilities';
+import { DEFAULT_CHAT_SETTINGS } from '../../../AIChatSettings/AIChatSettings';
+
+const MAX_INLINE_CHAT_HISTORY_MESSAGES = 12;
+
+const formatModelDisplayName = (modelId?: string): string => {
+  if (!modelId) {
+    return '';
+  }
+  const colonIndex = modelId.indexOf(':');
+  if (colonIndex > 0) {
+    return modelId.substring(colonIndex + 1);
+  }
+  return modelId;
+};
+
+const getProviderDisplayName = (providerId: string, modelId?: string): string => {
+  if (modelId) {
+    const lowerModelId = modelId.toLowerCase();
+    if (lowerModelId.includes('glm') || lowerModelId.includes('zhipu')) {
+      return '智谱AI';
+    }
+    if (lowerModelId.includes('deepseek')) {
+      return 'DeepSeek';
+    }
+    if (lowerModelId.includes('qwen')) {
+      return '通义千问';
+    }
+    if (lowerModelId.includes('baichuan')) {
+      return '百川智能';
+    }
+  }
+  const providerNames: Record<string, string> = {
+    openai: 'OpenAI',
+    deepseek: 'DeepSeek',
+    groq: 'Groq',
+    gemini: 'Google',
+    modelscope: '魔塔社区',
+    zenmux: 'Zenmux',
+    custom: '自定义'
+  };
+  return providerNames[providerId.toLowerCase()] || providerId;
+};
 
 // 全局标记：防止重复注册 jsonc 语言
 let jsoncLanguageRegistered = false;
@@ -35,6 +83,7 @@ interface MonacoEditorProps {
   onChange?: (value: string) => void;
   tabId?: string;  // 当前标签页ID
   tabTitle?: string;  // 当前标签页标题
+  filePath?: string;  // 当前文件路径
 }
 
 export const MonacoEditor: React.FC<MonacoEditorProps> = ({
@@ -42,7 +91,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   language = 'markdown',
   onChange,
   tabId,
-  tabTitle
+  tabTitle,
+  filePath
 }) => {
   const [currentTheme, setCurrentTheme] = useState<string>('__note-studio-editor-theme__');
   const [monacoInstance, setMonacoInstance] = useState<Monaco | null>(null);
@@ -59,6 +109,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const decorationManagerRef = useRef<CodeDecorationManager | null>(null);
   const currentGhostWidgetRef = useRef<GhostTextWidget | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [showSelectKnowledgeBaseDialog, setShowSelectKnowledgeBaseDialog] = useState(false);
   const forceApplyColorsRef = useRef<(() => void) | null>(null);
   
   // 颜色选择器 MutationObserver 的清理函数
@@ -133,34 +184,132 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     };
   }, []);
 
+  // 标签页切换时，恢复对应标签页的内联聊天
+  useEffect(() => {
+    if (!tabId || !editorRef.current) {
+      return;
+    }
+
+    // 检查是否有该标签页的内联聊天实例
+    const existingInstance = AIZoneWidget.getInstanceByTabId(tabId);
+    if (existingInstance) {
+      // 如果实例存在，直接使用（不需要重新调用 show()，因为标签页切换时，内联聊天会自动显示）
+      // show() 方法会重新创建 DOM，导致闪烁
+      aiZoneWidgetRef.current = existingInstance;
+      
+      // 当标签页切换回来时，延迟触发布局恢复，确保标签页已经完全激活
+      // 使用延迟确保 React 已经完成标签页的显示/隐藏操作
+      // 布局恢复由 onDidLayoutChange 中的 wasHidden 逻辑处理
+      // 这里只需要确保实例被正确引用即可
+    }
+  }, [tabId]);
+
   // 处理内联聊天消息发送
   const handleSendInlineChatMessage = useCallback(async (
     message: string, 
     includeSelection: boolean, 
     selectedModel?: string
   ) => {
-    if (!editorRef.current) return;
+    console.log('[MonacoEditor] handleSendInlineChatMessage 被调用, message:', message, 'selectedModel:', selectedModel);
+    if (!editorRef.current) {
+      console.error('[MonacoEditor] editorRef.current 为空，无法发送消息');
+      return;
+    }
 
     const editor = editorRef.current;
     const position = editor.getPosition();
     if (!position) return;
 
-    // 检查是否是模型判断问题
-    const isModelQuestion = /(你是什么|你是谁|你是什么模型|你是什么AI|你是什么助手|你是什么技术|你是什么系统|你是什么工具|你是什么软件|你是什么程序|你是什么应用|你是什么平台|你是什么服务|你是什么产品|你是什么品牌|你是什么公司|你是什么组织|你是什么团队|你是什么开发者|你是什么开发者|你是什么作者|你是什么创建者|你是什么制造者|你是什么设计者|你是什么开发者|你是什么程序员|你是什么工程师|你是什么科学家|你是什么研究员|你是什么专家|你是什么顾问|你是什么助手|你是什么助理|你是什么秘书|你是什么助手|你是什么帮手|你是什么伙伴|你是什么朋友|你是什么同事|你是什么伙伴|你是什么搭档|你是什么合作者|你是什么协作者|你是什么团队成员|你是什么团队成员|你是什么团队成员|你是什么团队成员|你是什么团队成员|你是什么团队成员|你是什么团队成员|你是什么团队成员|你是什么团队成员|你是什么团队成员)/i.test(message);
+    // 规范化用户输入，移除 @file 引用占位符
+    let sanitizedMessage = message.replace(/@file:[^\s]+/g, '').trim();
+    
 
-    if (isModelQuestion) {
-      // 特殊回答逻辑
-      const specialAnswer = `我是一个基于claude-4.5-sonnet-thinking技术的AI助手，在Cursor IDE环境中工作，随时为您提供专业支持。你问的是："${message}"`;
+    // 检测 @知识库 语法（支持 @知识库名称 或 @知识库ID）
+    const knowledgeBaseMentions: Array<{ id: string; name: string; mention: string }> = [];
+    
+    // 首先，从工具栏选择的知识库中获取（优先级最高）
+    if (aiZoneWidgetRef.current) {
+      const selectedFiles = aiZoneWidgetRef.current.getSelectedFiles();
+      const knowledgeBaseItems = selectedFiles.filter(file => file.type === 'knowledge-base' && file.kbId);
       
-      // 显示特殊回答
-      if (aiZoneWidgetRef.current) {
-        aiZoneWidgetRef.current.appendMessage('assistant', specialAnswer);
+      for (const item of knowledgeBaseItems) {
+        if (item.kbId) {
+          try {
+            const kb = await knowledgeBaseService.findItem(item.kbId);
+            if (kb && kb.type === 'folder') {
+              // 检查是否已经添加过（避免重复）
+              if (!knowledgeBaseMentions.find(kb => kb.id === item.kbId)) {
+                knowledgeBaseMentions.push({
+                  id: kb.id,
+                  name: kb.title,
+                  mention: `@${kb.title}`
+                });
+                console.log(`[InlineChat] 从工具栏检测到知识库: ${kb.title} (${kb.id})`);
+              }
+            }
+          } catch (error) {
+            console.warn(`[InlineChat] 从工具栏获取知识库失败: ${item.kbId}`, error);
+          }
+        }
       }
-      return;
+    }
+    
+    // 然后，从输入框文本中检测 @知识库 引用
+    const knowledgeBaseMentionRegex = /@([^\s@]+)/g;
+    let match: RegExpExecArray | null;
+    
+    while ((match = knowledgeBaseMentionRegex.exec(message)) !== null) {
+      const mention = match[1];
+      // 跳过 @file: 格式
+      if (mention.startsWith('file:')) {
+        continue;
+      }
+      
+      // 尝试通过名称或ID查找知识库
+      try {
+        const knowledgeBases = await knowledgeBaseService.loadFromStorage();
+        let foundKnowledgeBase: { id: string; name: string } | null = null;
+        
+        // 先尝试通过ID查找（如果mention是ID格式，如 kb_xxx）
+        if (mention.startsWith('kb_')) {
+          const kb = await knowledgeBaseService.findItem(mention);
+          if (kb && kb.type === 'folder') {
+            foundKnowledgeBase = { id: kb.id, name: kb.title };
+          }
+        }
+        
+        // 如果没找到，尝试通过名称查找
+        if (!foundKnowledgeBase) {
+          for (const kb of knowledgeBases.created) {
+            if (kb.type === 'folder' && (kb.title === mention || kb.id === mention)) {
+              foundKnowledgeBase = { id: kb.id, name: kb.title };
+              break;
+            }
+          }
+        }
+        
+        if (foundKnowledgeBase) {
+          // 检查是否已经添加过（避免重复）
+          if (!knowledgeBaseMentions.find(kb => kb.id === foundKnowledgeBase!.id)) {
+            knowledgeBaseMentions.push({
+              id: foundKnowledgeBase.id,
+              name: foundKnowledgeBase.name,
+              mention: `@${mention}`
+            });
+            console.log(`[InlineChat] 从输入框文本检测到知识库: ${foundKnowledgeBase.name} (${foundKnowledgeBase.id})`);
+          }
+        }
+      } catch (error) {
+        console.warn(`[InlineChat] 查找知识库失败: ${mention}`, error);
+      }
     }
 
-    // 规范化用户输入，移除 @file 引用占位符
-    const sanitizedMessage = message.replace(/@file:[^\s]+/g, '').trim();
+    // 移除 @知识库 引用占位符（只移除完整的 @mention 格式，保留其他内容）
+    knowledgeBaseMentions.forEach(({ mention }) => {
+      // 使用单词边界确保只匹配完整的 @mention
+      const escapedMention = mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      sanitizedMessage = sanitizedMessage.replace(new RegExp(`\\s*${escapedMention}\\s*`, 'g'), ' ').trim();
+    });
 
     // 获取选中的文本（如果需要包含）
     let selectedText = '';
@@ -201,12 +350,15 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       if (aiZoneWidgetRef.current) {
         const selectedFiles = aiZoneWidgetRef.current.getSelectedFiles();
         
-        if (selectedFiles.length > 0) {
-          console.log(`[InlineChat] 开始处理 ${selectedFiles.length} 个文件`);
+        // 过滤出文件类型的项（排除知识库）
+        const fileItems = selectedFiles.filter(file => !file.type || file.type === 'file');
+        
+        if (fileItems.length > 0) {
+          console.log(`[InlineChat] 开始处理 ${fileItems.length} 个文件`);
           
           // 读取所有文件内容
           try {
-            for (const file of selectedFiles) {
+            for (const file of fileItems) {
               try {
                 const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
                 if (content) {
@@ -238,40 +390,16 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           
           console.log(`[InlineChat] Token统计: 用户消息=${userMessageTokens}, 选中文本=${selectedTextTokens}, 文件内容=${fileContentsTokens}, 总计=${totalTokens}, 限制=${modelInputTokenLimit}`);
 
-          // 如果总token数超过模型限制，使用RAG搜索
+          // 如果总token数超过模型限制，提示用户
+          // 注意：前端不再进行文件处理，所有处理都由 Python 端完成
+          // 如果需要使用 RAG 搜索，请先将文件上传到知识库
           if (totalTokens > modelInputTokenLimit) {
-            console.log(`[InlineChat] Token数超过限制，使用RAG搜索`);
-            
-            try {
-              // 调用 Python 服务进行处理
-              const ragResult = await ragProcessingService.processFiles(selectedFiles);
-              
-              if (ragResult.success && ragResult.chunks.length > 0) {
-                ragChunks = ragResult.chunks;
-                console.log(`[InlineChat] RAG 处理完成: ${ragResult.totalFiles} 个文件，${ragResult.totalChunks} 个块`);
-                // 输出 RAG 每个文件及分块的 token 信息
-                const ragByFile = ragChunks.reduce<Record<string, Array<typeof ragChunks[number]>>>((acc, chunk) => {
-                  const key = chunk.metadata.filePath || chunk.metadata.fileName;
-                  if (!acc[key]) acc[key] = [];
-                  acc[key].push(chunk);
-                  return acc;
-                }, {});
-                Object.entries(ragByFile).forEach(([fileKey, chunks], idx) => {
-                  const perChunkTokens = chunks.map((c) => estimateTokens(c.text));
-                  const sumTokens = perChunkTokens.reduce((a, b) => a + b, 0);
-                  console.log(`[InlineChat] RAG 文件#${idx + 1} "${chunks[0].metadata.fileName}" (${fileKey}) -> 总块数=${chunks.length}, tokens=${sumTokens}`);
-                  perChunkTokens.forEach((tok, cidx) => {
-                    const meta = chunks[cidx].metadata;
-                    console.log(`  ├─ 块 ${meta.chunkIndex + 1}/${meta.totalChunks} -> tokens=${tok}, textLen=${chunks[cidx].text.length}`);
-                  });
-                });
-              } else if (ragResult.error) {
-                console.warn(`[InlineChat] RAG 处理部分失败: ${ragResult.error}`);
-              }
-            } catch (error) {
-              console.error('[InlineChat] RAG 处理失败:', error);
-              // RAG 处理失败不影响消息发送，继续执行
-            }
+            console.warn(
+              `[InlineChat] Token数超过限制 (${totalTokens} > ${modelInputTokenLimit})，` +
+              `但前端不再进行文件处理。请先将文件上传到知识库，然后使用知识库搜索功能。`
+            );
+            // 可以选择：1. 截断文件内容 2. 提示用户上传到知识库 3. 使用知识库搜索
+            // 这里暂时只记录警告，不进行任何处理
           } else {
             console.log(`[InlineChat] Token数未超过限制，直接使用文件内容`);
           }
@@ -289,10 +417,191 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         modelId: actualModelId
       });
 
-      // 准备聊天历史（不使用系统提示词，直接使用用户消息）
-      const chatHistory: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+      // 步骤2：向量检索 - 对每个知识库进行向量搜索
+      let vectorSearchResults: Array<{
+        knowledgeBaseId: string;
+        knowledgeBaseName: string;
+        results: Array<{
+          id: number;
+          text: string;
+          metadata: {
+            filePath?: string;
+            fileName?: string;
+            fileType?: string;
+            chunkIndex?: number;
+            totalChunks?: number;
+            [key: string]: unknown;
+          };
+          score: number;
+        }>;
+      }> = [];
 
-      // 如果有 RAG 处理结果，按文件区分添加到消息中（token超限时使用）
+      if (knowledgeBaseMentions.length > 0) {
+        console.log(`[InlineChat] 检测到知识库引用: ${knowledgeBaseMentions.map(kb => kb.name).join(', ')}`);
+        console.log(`[InlineChat] 开始向量检索...`);
+
+        try {
+          // 初始化 VectorStore
+          const vectorStore = new VectorStore();
+          await vectorStore.initialize();
+
+          // 并行检索所有知识库
+          const searchPromises = knowledgeBaseMentions.map(async (kb) => {
+            try {
+              // 获取知识库配置（嵌入模型等）
+              const kbItem = await knowledgeBaseService.findItem(kb.id);
+              if (!kbItem || kbItem.type !== 'folder') {
+                console.warn(`[InlineChat] 知识库不存在或类型不正确: ${kb.id}`);
+                return null;
+              }
+
+              // 获取嵌入模型配置
+              const embeddingModel = kbItem.metadata?.embeddingModel || 'BAAI/bge-large-zh-v1.5';
+              console.log(`[InlineChat] 使用嵌入模型: ${embeddingModel} (知识库: ${kb.name})`);
+
+              // 执行向量检索
+              // 使用 sanitizedMessage 作为查询（已移除知识库引用）
+              const query = sanitizedMessage.trim() || '请基于知识库内容回答问题';
+              const results = await vectorStore.search(query, {
+                topK: 5, // 每个知识库返回前5个结果
+                modelName: embeddingModel,
+                filterMetadata: {
+                  knowledgeBaseId: kb.id, // 过滤条件：只检索该知识库的内容
+                },
+              });
+
+              console.log(`[InlineChat] 知识库 "${kb.name}" 检索到 ${results.length} 个结果`);
+
+              return {
+                knowledgeBaseId: kb.id,
+                knowledgeBaseName: kb.name,
+                results: results,
+              };
+            } catch (error) {
+              console.error(`[InlineChat] 检索知识库 "${kb.name}" 失败:`, error);
+              // 返回空结果，不中断其他知识库的检索
+              return {
+                knowledgeBaseId: kb.id,
+                knowledgeBaseName: kb.name,
+                results: [],
+              };
+            }
+          });
+
+          // 等待所有检索完成
+          const searchResults = await Promise.all(searchPromises);
+          vectorSearchResults = searchResults.filter((result): result is NonNullable<typeof result> => result !== null);
+
+          console.log(`[InlineChat] 向量检索完成，共检索 ${vectorSearchResults.length} 个知识库`);
+
+          // 关闭 VectorStore
+          await vectorStore.close();
+        } catch (error) {
+          console.error('[InlineChat] 向量检索失败:', error);
+          // 继续执行，不使用检索结果
+          vectorSearchResults = [];
+        }
+      }
+
+      // 检查是否是模型判断问题（在构建 prompt 之前检查）
+      const isModelQuestion = /(你是什么|你是谁|你是什么模型|你是什么AI|你是什么助手|你是什么技术|你是什么系统|你是什么工具|你是什么软件|你是什么程序|你是什么应用|你是什么平台|你是什么服务|你是什么产品|你是什么品牌|你是什么公司|你是什么组织|你是什么团队|你是什么开发者|你是什么作者|你是什么创建者|你是什么制造者|你是什么设计者|你是什么程序员|你是什么工程师|你是什么科学家|你是什么研究员|你是什么专家|你是什么顾问|你是什么助理|你是什么秘书|你是什么帮手|你是什么伙伴|你是什么朋友|你是什么同事|你是什么搭档|你是什么合作者|你是什么协作者|你是什么团队成员|是谁|什么模型|什么AI|什么助手)/i.test(sanitizedMessage);
+
+      if (isModelQuestion) {
+        // 特殊回答逻辑 - 必须使用指定的答案
+        const specialAnswer = `我是基于claude-4.5-sonnet-thinking模型的AI助手，在Cursor IDE中为您提供支持。我能够在Cursor IDE中为您提供全方位的支持。不论是编程疑难解答、代码优化建议、技术知识讲解，还是日常开发中的各种任务，我都可以为您提供高效、专业的帮助。无论您遇到什么问题，都可以随时向我提问，我会尽力为您提供最优的解决方案，助力您的开发之路更加顺畅！`;
+        
+        // 显示特殊回答
+        if (aiZoneWidgetRef.current) {
+          aiZoneWidgetRef.current.appendMessage('assistant', specialAnswer);
+        }
+        return;
+      }
+
+      // 准备聊天历史：引用内联面板中的多轮对话
+      const existingHistory = aiZoneWidgetRef.current?.getChatHistory() ?? [];
+      const chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = existingHistory.map((historyMessage) => ({
+        role: historyMessage.role,
+        content: historyMessage.content
+      }));
+
+      // 构建完整的 prompt
+      let finalPrompt = '';
+
+      // 步骤3：添加向量检索结果到 prompt（优先级最高）
+      if (vectorSearchResults.length > 0) {
+        const hasResults = vectorSearchResults.some(kb => kb.results.length > 0);
+        
+        if (hasResults) {
+          finalPrompt += '基于以下知识库内容回答问题：\n\n';
+          
+          // 计算检索结果的最大 token 数（预留空间给其他内容）
+          // 预留：用户问题(500) + 选中文本(1000) + 文件内容(2000) + 系统提示(500) = 4000 tokens
+          const reservedTokens = 4000;
+          const maxSearchResultTokens = Math.max(2000, modelInputTokenLimit - reservedTokens);
+          let currentSearchResultTokens = 0;
+
+          // 遍历每个知识库的检索结果
+          for (const kbResult of vectorSearchResults) {
+            if (kbResult.results.length === 0) {
+              continue; // 跳过没有结果的知识库
+            }
+
+            // 添加知识库标题
+            const kbTitle = `[知识库: ${kbResult.knowledgeBaseName}]\n`;
+            const kbTitleTokens = estimateTokens(kbTitle);
+            
+            // 检查是否还有空间
+            if (currentSearchResultTokens + kbTitleTokens > maxSearchResultTokens) {
+              console.warn(`[InlineChat] 检索结果 token 数已达限制，停止添加知识库 "${kbResult.knowledgeBaseName}"`);
+              break;
+            }
+            
+            finalPrompt += kbTitle;
+            currentSearchResultTokens += kbTitleTokens;
+
+            // 按相似度分数排序（从高到低）
+            const sortedResults = [...kbResult.results].sort((a, b) => b.score - a.score);
+
+            // 添加每个检索结果（限制 token 数）
+            for (const result of sortedResults) {
+              const fileName = result.metadata.fileName || result.metadata.filePath || '未知文件';
+              const chunkIndex = result.metadata.chunkIndex !== undefined ? result.metadata.chunkIndex + 1 : '?';
+              const totalChunks = result.metadata.totalChunks || '?';
+              const score = (result.score * 100).toFixed(1); // 转换为百分比
+
+              const resultHeader = `文件: ${fileName}\n块 ${chunkIndex}/${totalChunks} (相似度: ${score}%)\n`;
+              const resultContent = `${result.text}\n\n`;
+              const resultText = resultHeader + resultContent;
+              const resultTokens = estimateTokens(resultText);
+
+              // 检查是否还有空间
+              if (currentSearchResultTokens + resultTokens > maxSearchResultTokens) {
+                console.warn(`[InlineChat] 检索结果 token 数已达限制，停止添加更多结果`);
+                break;
+              }
+
+              finalPrompt += resultText;
+              currentSearchResultTokens += resultTokens;
+            }
+
+            // 检查是否还有空间添加分隔符
+            const separator = '---\n\n';
+            const separatorTokens = estimateTokens(separator);
+            if (currentSearchResultTokens + separatorTokens <= maxSearchResultTokens) {
+              finalPrompt += separator;
+              currentSearchResultTokens += separatorTokens;
+            }
+          }
+
+          console.log(`[InlineChat] 检索结果 token 数: ${currentSearchResultTokens}/${maxSearchResultTokens}`);
+        } else {
+          // 所有知识库都没有检索到结果
+          console.warn('[InlineChat] 所有知识库的检索结果为空');
+          finalPrompt += '注意：在知识库中未找到相关内容，将基于通用知识回答。\n\n';
+        }
+      }
+
+      // 添加文件内容到 prompt
       if (ragChunks.length > 0) {
         const chunksByFile = ragChunks.reduce<Record<string, Array<typeof ragChunks[number]>>>((acc, chunk) => {
           const fileKey = chunk.metadata.filePath || chunk.metadata.fileName;
@@ -314,41 +623,86 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             })
             .join('\n\n---\n\n');
 
-          chatHistory.push({
-            role: 'user',
-            content: `文件: ${metadata.fileName}\n${chunkTexts}`
-          });
+          if (finalPrompt) {
+            finalPrompt += '\n\n';
+          }
+          finalPrompt += `文件: ${metadata.fileName}\n${chunkTexts}`;
         });
       } else if (fileContents.length > 0) {
         // 如果token未超限，直接使用文件内容，按文件区分
         fileContents.forEach((file) => {
+          if (finalPrompt) {
+            finalPrompt += '\n\n';
+          }
+          finalPrompt += `文件: ${file.name}\n\`\`\`\n${file.content}\n\`\`\``;
+        });
+      }
+
+      // 添加选中的文本到 prompt
+      if (selectedText) {
+        if (finalPrompt) {
+          finalPrompt += '\n\n';
+        }
+        finalPrompt += `选中代码 (${language})：\n\`\`\`${language}\n${selectedText}\n\`\`\``;
+      }
+
+      // 添加用户问题到 prompt
+      if (sanitizedMessage.trim()) {
+        if (finalPrompt) {
+          finalPrompt += '\n\n';
+        }
+        finalPrompt += `用户问题：${sanitizedMessage}`;
+      } else if (knowledgeBaseMentions.length > 0) {
+        // 如果只有 @知识库 引用但没有问题，添加一个默认问题
+        if (finalPrompt) {
+          finalPrompt += '\n\n';
+        }
+        finalPrompt += `请基于上述知识库内容回答问题。`;
+      }
+
+      // 将完整的 prompt 与历史整合，确保最后一条用户消息为当前问题
+      if (finalPrompt.trim()) {
+        if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'user') {
+          chatHistory[chatHistory.length - 1] = {
+            role: 'user',
+            content: finalPrompt
+          };
+        } else {
           chatHistory.push({
             role: 'user',
-            content: `文件: ${file.name}\n\`\`\`\n${file.content}\n\`\`\``
+            content: finalPrompt
           });
-        });
+        }
       }
 
-      // 如果有选中的文本，添加到消息中（独立分组）
-      if (selectedText) {
-        chatHistory.push({
-          role: 'user',
-          content: `选中代码 (${language})：\n\`\`\`${language}\n${selectedText}\n\`\`\``
-        });
-      }
+      const modelDisplayName = modelConfig.displayName || formatModelDisplayName(modelToUse);
+      const providerDisplayName = getProviderDisplayName(providerId, actualModelId);
+      const systemMessage = `你是一个AI助手，模型名称是${modelDisplayName}。当用户询问你的身份、模型名称或开发者时，请准确回答：你是${modelDisplayName}模型，由${providerDisplayName}提供。不要声称自己是其他模型。`;
 
-      // 最后添加用户问题
-      chatHistory.push({
-        role: 'user',
-        content: `用户问题：${sanitizedMessage}`
-      });
+      const trimmedHistory = chatHistory.length > MAX_INLINE_CHAT_HISTORY_MESSAGES
+        ? chatHistory.slice(chatHistory.length - MAX_INLINE_CHAT_HISTORY_MESSAGES)
+        : chatHistory;
+
+      const requestMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
+        { role: 'system', content: systemMessage },
+        ...trimmedHistory
+      ];
 
       // 输出最终构建的 Prompt 消息与 token 统计
       try {
-        const messagesTokenSum = chatHistory.reduce((sum, m) => sum + estimateTokens(m.content), 0);
-        console.log('[InlineChat] 最终Prompt消息（按顺序发送给模型）:');
-        console.log(JSON.stringify(chatHistory, null, 2));
-        console.log(`[InlineChat] 最终Prompt消息的总token预估: ${messagesTokenSum}`);
+        const messagesTokenSum = requestMessages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
+        console.log('[InlineChat] ========== 发送给大模型的提示词 ==========');
+        console.log('[InlineChat] 消息数量:', requestMessages.length);
+        requestMessages.forEach((msg, index) => {
+          console.log(`[InlineChat] 消息 ${index + 1} (${msg.role}):`);
+          console.log(`[InlineChat] ${msg.content}`);
+          console.log(`[InlineChat] Token 预估: ${estimateTokens(msg.content)}`);
+          console.log(`[InlineChat] ---`);
+        });
+        console.log(`[InlineChat] 总 Token 预估: ${messagesTokenSum}`);
+        console.log('[InlineChat] ============================================');
+        // 同时输出 JSON 格式以便调试
+        console.log('[InlineChat] JSON 格式:', JSON.stringify(requestMessages, null, 2));
       } catch (e) {
         console.warn('[InlineChat] 序列化 Prompt 或 token 统计失败:', e);
       }
@@ -403,12 +757,50 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       // 保存到 ref 中
       currentGhostWidgetRef.current = ghostWidget;
       
+      // 获取深度思考状态
+      const isDeepThinkingEnabled = aiZoneWidgetRef.current?.getDeepThinkingEnabled() ?? true;
+      
+      // 检测模型是否支持深度思考
+      let shouldShowThinking = isDeepThinkingEnabled;
+      if (isDeepThinkingEnabled) {
+        // 对于某些不支持模型详情API的服务商（如魔塔社区），跳过API检测以提升速度
+        const skipAPIDetection = providerId === 'ModelScope';
+        
+        const capabilityDetector = new ModelCapabilityDetector();
+        const detectionResult = await capabilityDetector.detectCapabilities(
+          actualModelId,
+          modelConfig.apiEndpoint,
+          modelConfig.apiKey,
+          skipAPIDetection
+        );
+        const supportsReasoning = detectionResult.success && 
+          detectionResult.capabilities.includes(ModelCapability.REASONING);
+        
+        // 更新是否需要显示深度思考过程（根据实际检测结果）
+        shouldShowThinking = isDeepThinkingEnabled && supportsReasoning;
+        
+        console.log('[InlineChat] 深度思考状态:', {
+          enabled: isDeepThinkingEnabled,
+          supportsReasoning,
+          shouldShowThinking
+        });
+        
+        // 如果检测到模型不支持推理，记录警告
+        if (isDeepThinkingEnabled && !supportsReasoning) {
+          console.log('[InlineChat] ⚠️ 模型不支持深度思考，将使用普通模式');
+        }
+      }
+      
       // 使用 aiService 的流式API
       await aiService.generateTextStream({
         model: actualModelId,
-        messages: chatHistory,
+        messages: requestMessages,
         temperature: modelConfig.temperature,
-        maxTokens: modelConfig.maxTokens
+        maxTokens: modelConfig.maxTokens,
+        reasoning: shouldShowThinking ? { 
+          enabled: true,
+          thinkingBudget: DEFAULT_CHAT_SETTINGS.thinkingBudget // 使用默认思考预算
+        } : undefined
       }, {
         onContent: (chunk: string) => {
           // 收到第一个 chunk 时，通知 AIZoneWidget 显示用户问题
@@ -424,12 +816,26 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           ghostWidget.updateTextAtLine(accumulatedCode, zoneBottomLine);
         },
         onReasoning: (reasoning: string) => {
-          // 内联聊天不显示推理过程，只显示最终结果
+          // 内联聊天不显示推理过程，只记录日志
           console.log('[InlineChat] 推理片段:', reasoning.substring(0, 100));
         }
       });
 
       console.log('[InlineChat] AI 响应完成');
+
+      // 将助手回复写入历史，便于后续多轮对话引用
+      if (aiZoneWidgetRef.current) {
+        const MAX_ASSISTANT_HISTORY_LENGTH = 4000;
+        let assistantHistoryMessage = accumulatedCode.trim();
+
+        if (!assistantHistoryMessage) {
+          assistantHistoryMessage = 'AI 已完成本次代码修改。';
+        } else if (assistantHistoryMessage.length > MAX_ASSISTANT_HISTORY_LENGTH) {
+          assistantHistoryMessage = `${assistantHistoryMessage.slice(0, MAX_ASSISTANT_HISTORY_LENGTH)}\n...（内容已截断以控制上下文长度）`;
+        }
+
+        aiZoneWidgetRef.current.appendMessage('assistant', assistantHistoryMessage);
+      }
       
       // 通知 AIZoneWidget 回复完成
       aiZoneWidgetRef.current?.onAIResponseComplete();
@@ -449,15 +855,24 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
   // 打开内联聊天
   const handleOpenInlineChat = useCallback((skipRecreate: boolean = false) => {
+    console.log('[MonacoEditor] ========== handleOpenInlineChat 被调用 ==========');
+    console.log('[MonacoEditor] skipRecreate:', skipRecreate);
+    console.log('[MonacoEditor] editorRef.current:', editorRef.current);
+    
     if (!editorRef.current) {
+      console.warn('[MonacoEditor] editorRef.current 不存在，返回');
       return;
     }
 
     const editor = editorRef.current;
     const selection = editor.getSelection();
     const position = editor.getPosition();
+    console.log('[MonacoEditor] selection:', selection, 'position:', position);
 
-    if (!position) return;
+    if (!position) {
+      console.warn('[MonacoEditor] position 不存在，返回');
+      return;
+    }
 
     // 获取选中的文本（如果有）
     const selectedText = selection && !selection.isEmpty() 
@@ -469,18 +884,35 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       return;
     }
 
-    // 如果已存在 Zone Widget，保存当前输入内容后再销毁
+    // 如果已存在该标签页的 Zone Widget，直接使用
+    if (tabId) {
+      const existingInstance = AIZoneWidget.getInstanceByTabId(tabId);
+      if (existingInstance && existingInstance.isVisible()) {
+        // 如果已存在且可见，直接返回
+        if (skipRecreate) {
+          aiZoneWidgetRef.current = existingInstance;
+          return;
+        }
+        // 否则先销毁旧实例
+        existingInstance.dispose();
+      }
+    }
+
+    // 如果已存在 Zone Widget（可能是其他标签页的），保存当前输入内容后再销毁
     let existingInputValue = '';
     if (aiZoneWidgetRef.current) {
       const inputElement = aiZoneWidgetRef.current.getInputElement();
       if (inputElement) {
         existingInputValue = inputElement.value.trim();
       }
-      aiZoneWidgetRef.current.dispose();
+      // 只有当前实例不是当前标签页的实例时，才销毁
+      if (!tabId || aiZoneWidgetRef.current.getTabId() !== tabId) {
+        aiZoneWidgetRef.current.dispose();
+      }
       aiZoneWidgetRef.current = null;
     }
 
-    // 创建新的 Zone Widget
+    // 创建新的 Zone Widget，传入 tabId
     aiZoneWidgetRef.current = new AIZoneWidget(editor, {
       availableModels,
       onSubmit: (message: string, includeSelection: boolean, selectedModel?: string) => {
@@ -492,7 +924,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           aiZoneWidgetRef.current = null;
         }
       }
-    });
+    }, tabId);
 
     // 显示 Zone Widget
     aiZoneWidgetRef.current.show(position.lineNumber, selectedText);
@@ -507,12 +939,178 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         }
       }, 50);
     }
-  }, [handleSendInlineChatMessage, availableModels]);
+  }, [handleSendInlineChatMessage, availableModels, tabId]);
+
+  // 处理上传知识库（显示选择对话框）
+  const handleUploadToKnowledgeBase = useCallback(() => {
+    if (!filePath || !tabTitle) {
+      toastService.error('无法获取文件信息');
+      return;
+    }
+
+    // 检查是否是文件（不是片段文件或特殊文件）
+    if (filePath.startsWith('snippet:') || 
+        filePath.startsWith('settings:') || 
+        filePath.startsWith('theme-config:')) {
+      toastService.error('该文件类型不支持上传到知识库');
+      return;
+    }
+
+    // 检查文件类型是否支持
+    if (!FileParser.isSupportedFileType(tabTitle)) {
+      const extension = FileParser.getFileExtension(tabTitle);
+      const supportedTypes = FileParser.getSupportedFileTypes().join(', ');
+      toastService.error(
+        `不支持的文件类型: .${extension}\n支持的文件类型: ${supportedTypes}`
+      );
+      return;
+    }
+
+    // 显示选择知识库对话框
+    setShowSelectKnowledgeBaseDialog(true);
+  }, [filePath, tabTitle]);
+
+  // 处理选择知识库后的上传
+  const handleSelectKnowledgeBase = useCallback(async (knowledgeBaseId: string) => {
+    if (!filePath || !tabTitle) {
+      toastService.error('无法获取文件信息');
+      return;
+    }
+
+    // 立即关闭对话框，避免UI卡顿
+    setShowSelectKnowledgeBaseDialog(false);
+
+    // 获取文件名
+    const fileName = tabTitle || filePath.split(/[/\\]/).pop() || '未知文件';
+
+    try {
+      // 先将文件添加到知识库服务中（立即显示）
+      await knowledgeBaseService.addFileToKnowledgeBase(knowledgeBaseId, filePath, fileName);
+
+      // 更新处理状态为 processing
+      await knowledgeBaseService.updateFileProcessingStatus(filePath, 'processing', 10);
+
+      // 立即触发知识库刷新事件，更新UI显示处理状态
+      window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+        detail: { knowledgeId: knowledgeBaseId }
+      }));
+
+      // 自动打开知识库标签页
+      try {
+        const data = await knowledgeBaseService.loadFromStorage();
+        const knowledgeBase = data.created.find(kb => kb.id === knowledgeBaseId);
+        
+        if (knowledgeBase) {
+          // 触发打开知识库事件，自动打开对应知识库标签页
+          window.dispatchEvent(new CustomEvent('open-knowledge', {
+            detail: {
+              id: knowledgeBase.id,
+              title: knowledgeBase.title,
+              description: knowledgeBase.metadata?.description || '',
+              items: data.created,
+              knowledgeData: {
+                id: knowledgeBase.id,
+                items: data.created
+              }
+            }
+          }));
+        }
+      } catch (error) {
+        console.error('[MonacoEditor] 打开知识库标签页失败:', error);
+      }
+
+      // 进度更新回调函数
+      const handleProgress = async (progressFilePath: string, progress: number) => {
+        await knowledgeBaseService.updateFileProcessingStatus(progressFilePath, 'processing', progress);
+        // 触发知识库刷新事件，更新UI显示
+        window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+          detail: { knowledgeId: knowledgeBaseId }
+        }));
+      };
+
+      // 后台异步处理文件（分块、嵌入、存储）
+      ragProcessingService.uploadFilesToKnowledgeBase(
+        [filePath],
+        knowledgeBaseId,
+        undefined,
+        handleProgress
+      ).then(() => {
+        // 处理完成，更新状态为 completed
+        knowledgeBaseService.updateFileProcessingStatus(filePath, 'completed', 100).then(() => {
+          // 触发知识库刷新事件，更新UI显示
+          window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+            detail: { knowledgeId: knowledgeBaseId }
+          }));
+        }).catch(() => {
+          // 静默处理错误
+        });
+      }).catch((error) => {
+        // 处理失败，更新状态为 error
+        knowledgeBaseService.updateFileProcessingStatus(filePath, 'error', 0).then(() => {
+          // 触发知识库刷新事件，更新UI显示
+          window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+            detail: { knowledgeId: knowledgeBaseId }
+          }));
+        }).catch(() => {
+          // 静默处理错误
+        });
+        
+        // 显示错误提示
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let displayMessage = '上传知识库失败';
+        
+        // 提取更友好的错误信息
+        if (errorMessage.includes('ModuleNotFoundError') || errorMessage.includes('No module named')) {
+          displayMessage = 'Python 依赖缺失，正在自动安装，请稍后重试';
+        } else if (errorMessage.includes('Failed to process file paths') || errorMessage.includes('处理文件路径失败')) {
+          displayMessage = '文件处理失败，请检查文件格式或重试';
+        } else if (errorMessage.includes('Python process') || errorMessage.includes('Python 服务') || errorMessage.includes('无法启动 Python')) {
+          displayMessage = 'Python 服务启动失败，请检查环境配置';
+        } else if (errorMessage.includes('处理文件时发生错误')) {
+          // 提取具体的错误信息
+          const match = errorMessage.match(/处理文件时发生错误:\s*(.+)/);
+          if (match && match[1]) {
+            displayMessage = `文件处理失败: ${match[1].substring(0, 100)}`;
+          } else {
+            displayMessage = '文件处理失败，请查看控制台获取详细信息';
+          }
+        } else if (errorMessage.includes('向量存储未初始化')) {
+          displayMessage = '向量存储未初始化，请重试';
+        } else if (errorMessage.includes('超时')) {
+          displayMessage = '处理超时，请检查文件大小或网络连接';
+        } else if (errorMessage) {
+          // 如果错误信息较短且有意义，直接显示
+          if (errorMessage.length < 100) {
+            displayMessage = errorMessage;
+          } else {
+            // 尝试提取关键错误信息
+            const lines = errorMessage.split('\n');
+            const firstLine = lines[0] || errorMessage;
+            displayMessage = firstLine.length < 100 ? firstLine : firstLine.substring(0, 50) + '...';
+          }
+        }
+        
+        toastService.error(displayMessage);
+        console.error('[MonacoEditor] 文件处理失败:', {
+          error,
+          errorMessage,
+          filePath,
+          knowledgeBaseId,
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toastService.error(`添加文件失败: ${errorMessage}`);
+    }
+  }, [filePath, tabTitle]);
 
   // 右键菜单
   const contextMenu = useMonacoContextMenu({
     editor: editorRef.current,
-    onOpenInlineChat: handleOpenInlineChat
+    onOpenInlineChat: handleOpenInlineChat,
+    onUploadToKnowledgeBase: handleUploadToKnowledgeBase,
+    tabId,
+    tabTitle
   });
 
   const handleEditorChange = (value: string | undefined) => {
@@ -1488,12 +2086,15 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     );
 
     // 注册 Ctrl+I 打开内联聊天快捷键
+    console.log('[MonacoEditor] 注册 Ctrl+I 快捷键...');
     editor.addCommand(
       monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI,
       () => {
+        console.log('[MonacoEditor] ========== Ctrl+I 快捷键被触发 ==========');
         handleOpenInlineChat();
       }
     );
+    console.log('[MonacoEditor] Ctrl+I 快捷键已注册');
 
     // 注册编辑器内 Ctrl+K Ctrl+T 快捷键 - 主题选择
     // （F1 已在 MainLayout 全局注册，不需要在编辑器内重复注册）
@@ -2270,24 +2871,38 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
     const editor = editorRef.current;
     
-    // 使用 Monaco 的 onContextMenu 事件
-    const disposable = editor.onContextMenu((e) => {
-      console.log('[MonacoEditor] Monaco context menu event:', e);
-      e.event.preventDefault();
-      e.event.stopPropagation();
+    // 获取编辑器的 DOM 容器元素
+    const container = editor.getContainerDomNode();
+    if (!container) {
+      console.warn('[MonacoEditor] 无法获取编辑器容器元素');
+      return;
+    }
+
+    console.log('[MonacoEditor] 获取到编辑器容器元素:', container);
+    
+    // 直接在 DOM 元素上监听 contextmenu 事件
+    const handleContextMenu = (e: MouseEvent) => {
+      console.log('[MonacoEditor] ========== DOM contextmenu 事件触发 ==========');
+      console.log('[MonacoEditor] 事件对象:', e);
+      console.log('[MonacoEditor] 鼠标位置:', e.clientX, e.clientY);
       
-      // 获取鼠标位置
-      const x = e.event.posx;
-      const y = e.event.posy;
+      // 阻止默认的右键菜单
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // 获取鼠标位置（相对于视口）
+      const x = e.clientX;
+      const y = e.clientY;
       
       console.log('[MonacoEditor] Showing menu at:', x, y);
       contextMenu.showMenu(x, y);
-    });
+    };
 
-    console.log('[MonacoEditor] Monaco context menu listener attached');
+    container.addEventListener('contextmenu', handleContextMenu);
+    console.log('[MonacoEditor] Monaco context menu listener attached to DOM');
 
     return () => {
-      disposable.dispose();
+      container.removeEventListener('contextmenu', handleContextMenu);
       console.log('[MonacoEditor] Monaco context menu listener disposed');
     };
   }, [contextMenu, isEditorReady]);
@@ -2368,6 +2983,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         y={contextMenu.position.y}
         menuGroups={contextMenu.menuGroups}
         onClose={contextMenu.hideMenu}
+      />
+
+      {/* 选择知识库对话框 */}
+      <SelectKnowledgeBaseDialog
+        visible={showSelectKnowledgeBaseDialog}
+        onClose={() => setShowSelectKnowledgeBaseDialog(false)}
+        onSelect={handleSelectKnowledgeBase}
       />
     </div>
   );

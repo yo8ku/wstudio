@@ -17,13 +17,99 @@ console.log('========================================');
 process.on('uncaughtException', (error) => {
   console.error('[Electron Main] ❌ 未捕获的异常:', error);
   console.error('[Electron Main] 错误堆栈:', error.stack);
-  process.exit(1);
+  
+  // 显示友好的错误对话框
+  try {
+    const { dialog } = require('electron');
+    const errorMessage = error.message || String(error);
+    const isPythonError = errorMessage.includes('python') || errorMessage.includes('Python') || errorMessage.includes('ENOENT');
+    
+    let title = '应用程序错误';
+    let message = '发生了一个未处理的错误';
+    let detail = errorMessage;
+    
+    if (isPythonError) {
+      title = 'Python 环境错误';
+      message = '无法启动 Python 服务';
+      // 如果错误信息已经包含友好的提示，直接使用
+      if (errorMessage.includes('未找到 Python') || errorMessage.includes('建议:')) {
+        detail = errorMessage;
+      } else {
+        detail = `错误: ${errorMessage}\n\n` +
+          `这可能是因为:\n` +
+          `1. Python 未安装\n` +
+          `2. Python 未添加到 PATH 环境变量\n` +
+          `3. Python 命令名称不正确\n\n` +
+          `请检查 Python 安装并重试。`;
+      }
+    }
+    
+    // 尝试显示错误对话框（如果 app 已初始化）
+    if (require('electron').app && !require('electron').app.isReady()) {
+      require('electron').app.whenReady().then(() => {
+        dialog.showErrorBox(title, `${message}\n\n${detail}`);
+      });
+    } else if (require('electron').app && require('electron').app.isReady()) {
+      dialog.showErrorBox(title, `${message}\n\n${detail}`);
+    }
+  } catch (dialogError) {
+    // 如果无法显示对话框，至少输出到控制台
+    console.error('[Electron Main] 无法显示错误对话框:', dialogError);
+  }
+  
+  // 对于非关键错误，不立即退出，让应用继续运行
+  // 只有在严重错误时才退出
+  if (errorMessage.includes('FATAL') || errorMessage.includes('致命')) {
+    process.exit(1);
+  }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('[Electron Main] ❌ 未处理的 Promise 拒绝:', reason);
   console.error('[Electron Main] Promise:', promise);
-  process.exit(1);
+  
+  const errorMessage = reason instanceof Error ? reason.message : String(reason);
+  
+  // 显示友好的错误对话框
+  try {
+    const { dialog } = require('electron');
+    const isPythonError = errorMessage.includes('python') || errorMessage.includes('Python') || errorMessage.includes('ENOENT');
+    
+    let title = '应用程序错误';
+    let message = '发生了一个未处理的 Promise 拒绝';
+    let detail = errorMessage;
+    
+    if (isPythonError) {
+      title = 'Python 环境错误';
+      message = '无法启动 Python 服务';
+      if (errorMessage.includes('未找到 Python') || errorMessage.includes('建议:')) {
+        detail = errorMessage;
+      } else {
+        detail = `错误: ${errorMessage}\n\n` +
+          `这可能是因为:\n` +
+          `1. Python 未安装\n` +
+          `2. Python 未添加到 PATH 环境变量\n` +
+          `3. Python 命令名称不正确\n\n` +
+          `请检查 Python 安装并重试。`;
+      }
+    }
+    
+    // 尝试显示错误对话框
+    if (require('electron').app && !require('electron').app.isReady()) {
+      require('electron').app.whenReady().then(() => {
+        dialog.showErrorBox(title, `${message}\n\n${detail}`);
+      });
+    } else if (require('electron').app && require('electron').app.isReady()) {
+      dialog.showErrorBox(title, `${message}\n\n${detail}`);
+    }
+  } catch (dialogError) {
+    console.error('[Electron Main] 无法显示错误对话框:', dialogError);
+  }
+  
+  // 对于非关键错误，不立即退出
+  if (errorMessage.includes('FATAL') || errorMessage.includes('致命')) {
+    process.exit(1);
+  }
 });
 
 try {

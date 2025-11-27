@@ -112,27 +112,7 @@
 
 ### 后端集成
 
-知识库前端界面可以与 `@note-studio/knowledge-base` 包集成：
-
-```typescript
-import { KnowledgeBaseManager } from '@note-studio/knowledge-base';
-
-// 初始化知识库管理器
-const kbManager = new KnowledgeBaseManager({
-  storagePath: './knowledge-base',
-  embeddingProvider: 'openai',
-  // ...
-});
-
-// 导入文档
-await kbManager.importDocuments(['./docs/**/*.md']);
-
-// 搜索
-const results = await kbManager.search({
-  query: 'React Hooks',
-  limit: 10
-});
-```
+知识库前端界面使用 `electron-store` 进行本地数据存储，未来可以与 `@note-studio/global-rag` 包集成以实现 RAG 功能。
 
 ### 数据结构
 
@@ -188,7 +168,7 @@ interface KnowledgeItem {
 - [x] 导入选项界面
 
 ### Phase 2 (计划中)
-- [ ] 与后端知识库系统完整集成
+- [ ] 与 `@note-studio/global-rag` 包集成
 - [ ] 实时文件同步
 - [ ] 向量搜索支持
 - [ ] RAG 功能集成
@@ -215,26 +195,8 @@ A: 知识库数据存储在本地，路径可在设置中配置。默认为用�
 
 ## 相关资源
 
-- [知识库架构设计](../../packages/knowledge-base/ARCHITECTURE.md)
-- [知识库 API 文档](../../packages/knowledge-base/README.md)
-- [快速开始指南](../../packages/knowledge-base/QUICKSTART.md)
+- [RAG 功能文档](../../packages/global-rag/README.md)
 - [组件开发文档](../packages/renderer/src/components/Layout/Sidebar/README.md)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

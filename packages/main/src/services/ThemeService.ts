@@ -8,7 +8,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { app } from 'electron';
 import * as jsonc from 'jsonc-parser';
-import type { AppTheme } from '@note-studio/core';
+import type { AppTheme, TokenStyle } from '@note-studio/theme';
 import type {
   ThemeInfo,
   ThemeData,
@@ -48,13 +48,13 @@ export class ThemeService {
    * 初始化主题服务
    */
   async initialize(): Promise<void> {
-    console.log('[ThemeService] initialize() 被调用, initialized:', this.initialized);
+    // console.log('[ThemeService] initialize() 被调用, initialized:', this.initialized);
     if (this.initialized) {
-      console.log('[ThemeService] 已经初始化过，跳过');
+      // console.log('[ThemeService] 已经初始化过，跳过');
       return;
     }
 
-    console.log('[ThemeService] 开始初始化...');
+    // console.log('[ThemeService] 开始初始化...');
 
     try {
       // 确保主题目录存在
@@ -67,7 +67,7 @@ export class ThemeService {
       await this.loadUserThemes();
 
       this.initialized = true;
-      console.log('[ThemeService] 初始化完成');
+      // console.log('[ThemeService] 初始化完成');
       console.log('[ThemeService] 已加载主题数量:', this.themes.size);
     } catch (error) {
       console.error('[ThemeService] 初始化失败:', error);
@@ -103,13 +103,13 @@ export class ThemeService {
       // 内置主题位于项目目录，直接从源目录加载
       // __dirname 在开发模式: E:\Wise Note Studio\note-studio\packages\main\dist\main\src\services
       // 往上 7 级到达项目根目录（dist/main/src/services -> packages/main -> packages -> 项目根）
-      console.log('[ThemeService] ========== 路径调试 ==========');
-      console.log('[ThemeService] 当前 __dirname:', __dirname);
+      // console.log('[ThemeService] ========== 路径调试 ==========');
+      // console.log('[ThemeService] 当前 __dirname:', __dirname);
       const projectRoot = path.join(__dirname, '../../../../../../');
       console.log('[ThemeService] 计算的项目根目录:', projectRoot);
-      const builtinDir = path.join(projectRoot, 'packages', 'core', 'themes', 'builtin');
-      console.log('[ThemeService] 内置主题目录:', builtinDir);
-      console.log('[ThemeService] =====================================');
+      const builtinDir = path.join(projectRoot, 'packages', 'theme', 'themes', 'builtin');
+      // console.log('[ThemeService] 内置主题目录:', builtinDir);
+      // console.log('[ThemeService] =====================================');
 
       // 检查目录是否存在
       try {
@@ -123,7 +123,7 @@ export class ThemeService {
 
       // 递归加载所有主题文件
       const themeFiles = await this.findThemeFilesRecursive(builtinDir);
-      console.log('[ThemeService] 找到的 JSON 主题文件:', themeFiles);
+      // console.log('[ThemeService] 找到的 JSON 主题文件:', themeFiles);
 
       for (const themePath of themeFiles) {
         try {
@@ -134,10 +134,10 @@ export class ThemeService {
             theme.source = 'builtin';
             
             this.themes.set(theme.id, theme);
-            console.log(`[ThemeService] ✅ 已加载内置主题: ${theme.name} (${theme.id})`);
+            // console.log(`[ThemeService] ✅ 已加载内置主题: ${theme.name} (${theme.id})`);
           }
         } catch (error) {
-          console.error(`[ThemeService] 加载内置主题失败: ${themePath}`, error);
+          // console.error(`[ThemeService] 加载内置主题失败: ${themePath}`, error);
         }
       }
 
@@ -326,7 +326,7 @@ export class ThemeService {
           // 不输出警告，因为主题可以是完全独立的
         }
       } else {
-        console.log(`[ThemeService] 主题 ${themeData.name} 是独立主题（不基于任何基础主题）`);
+        // console.log(`[ThemeService] 主题 ${themeData.name} 是独立主题（不基于任何基础主题）`);
       }
       
       // 合并基础主题和自定义配置
@@ -442,7 +442,7 @@ export class ThemeService {
           // 只保存与基础主题不同的颜色
           const customColors: Record<string, string> = {};
           for (const [key, value] of Object.entries(theme.colors)) {
-            if (baseTheme.colors[key] !== value) {
+            if (baseTheme.colors[key] !== value && typeof value === 'string') {
               customColors[key] = value;
             }
           }
@@ -609,7 +609,7 @@ export class ThemeService {
       }
       config.recentThemes = [
         themeId,
-        ...config.recentThemes.filter((id) => id !== themeId),
+        ...config.recentThemes.filter((id: string) => id !== themeId),
       ].slice(0, 10);
 
       // 保存配置
@@ -884,12 +884,13 @@ export class ThemeService {
               return [key, value];
             }
             // 将 TokenStyle 转换为 Record<string, string>
+            const tokenStyle = value as TokenStyle;
             return [
               key,
               {
-                foreground: value.foreground,
-                background: value.background,
-                fontStyle: value.fontStyle,
+                foreground: tokenStyle.foreground,
+                background: tokenStyle.background,
+                fontStyle: tokenStyle.fontStyle,
               } as Record<string, string>,
             ];
           })

@@ -6,9 +6,12 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { KnowledgeItem } from '../../Sidebar/KnowledgeBase/types';
-import { SearchFilterIcon, SortIcon, AddDocumentIcon, ClearIcon } from '../../Sidebar/KnowledgeBase/KnowledgeBaseIcons';
+import { SearchFilterIcon, SortIcon, AddDocumentIcon, ClearIcon, CheckIcon, RefreshIcon, SettingsIcon } from '../../Sidebar/KnowledgeBase/KnowledgeBaseIcons';
 import { AddFileMenu } from '../AddFileMenu';
 import { MaterialFileIcon } from '../../../FileIcon/MaterialFileIcon';
+import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
+import { ragProcessingService } from '../../../../services/RAGProcessingService';
+import { toastService } from '../../../../services/ToastService';
 import './KnowledgeBaseView.scss';
 
 export interface KnowledgeBaseViewProps {
@@ -35,12 +38,63 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   const [showAddMenu, setShowAddMenu] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
+  const [isRetryingFailedFiles, setIsRetryingFailedFiles] = useState(false);
 
   // 过滤出当前知识库的项（只显示 id 匹配的知识库及其子项目）
-  const currentKnowledgeItems = React.useMemo(() => {
+  const { currentKnowledgeItems, failedFiles, configChanged } = React.useMemo(() => {
+    console.log('[KnowledgeBaseView] 计算 currentKnowledgeItems:', {
+      knowledgeId,
+      itemsCount: items.length,
+      items: items.map(item => ({ id: item.id, title: item.title, childrenCount: item.children?.length || 0 }))
+    });
+    
     const knowledgeBase = items.find(item => item.id === knowledgeId);
-    return knowledgeBase ? (knowledgeBase.children || []) : [];
+    const children = knowledgeBase ? (knowledgeBase.children || []) : [];
+    const configChanged = knowledgeBase?.metadata?.configChanged || false;
+    
+    console.log('[KnowledgeBaseView] 找到知识库:', {
+      found: !!knowledgeBase,
+      childrenCount: children.length,
+      children: children.map(item => ({
+        id: item.id,
+        title: item.title,
+        type: item.type,
+        hasMetadata: !!item.metadata,
+        processingStatus: item.metadata?.processingStatus,
+        processingProgress: item.metadata?.processingProgress
+      }))
+    });
+    
+    // 调试：检查是否有文件带处理状态
+    const filesWithStatus = children.filter(
+      (item: KnowledgeItem) => item.type === 'file' && item.metadata?.processingStatus
+    );
+    if (filesWithStatus.length > 0) {
+      console.log('[KnowledgeBaseView] 检测到带处理状态的文件:', filesWithStatus.length, filesWithStatus.map(item => ({
+        title: item.title,
+        status: item.metadata?.processingStatus,
+        progress: item.metadata?.processingProgress,
+        fullMetadata: item.metadata
+      })));
+    }
+
+    const failedItems: KnowledgeItem[] = [];
+    const collectFailedFiles = (list: KnowledgeItem[]) => {
+      list.forEach(child => {
+        if (child.type === 'file' && child.metadata?.processingStatus === 'error') {
+          failedItems.push(child);
+        }
+        if (child.children && child.children.length > 0) {
+          collectFailedFiles(child.children);
+        }
+      });
+    };
+    collectFailedFiles(children);
+    
+    return { currentKnowledgeItems: children, failedFiles: failedItems, configChanged };
   }, [items, knowledgeId]);
+
+  const hasFailedFiles = failedFiles.length > 0;
 
   // 搜索输入框显示时自动聚焦
   useEffect(() => {
@@ -64,6 +118,23 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     searchInputRef.current?.focus();
   }, []);
 
+  // 刷新知识库
+  const handleRefresh = useCallback(() => {
+    // 触发知识库更新事件，重新加载数据
+    window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+      detail: { knowledgeId }
+    }));
+    toastService.success('知识库已刷新');
+  }, [knowledgeId]);
+
+  // 打开设置面板（触发事件通知侧边栏打开）
+  const handleOpenSettings = useCallback(() => {
+    // 触发事件，通知侧边栏打开知识库设置面板
+    window.dispatchEvent(new CustomEvent('open-knowledge-settings', {
+      detail: { knowledgeId }
+    }));
+  }, [knowledgeId]);
+
   // 排序处理
   const handleSort = useCallback(() => {
     // TODO: 实现排序功能
@@ -76,16 +147,395 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   }, []);
 
   // 导入本地文件
-  const handleImportFile = useCallback(() => {
+  const handleImportFile = useCallback(async () => {
+    try {
     console.log('[KnowledgeBaseView] 导入本地文件');
-    // TODO: 实现文件导入逻辑
-  }, []);
+      
+      // 调用 IPC 打开多文件选择对话框
+      const result = await window.electron?.ipcRenderer?.invoke('file:openMultiple');
+      
+      if (!result || !result.success || !result.data || result.data.length === 0) {
+        if (result?.error && result.error !== 'User canceled') {
+          toastService.error(result.error);
+        }
+        return;
+      }
+
+      const filePaths: string[] = result.data;
+      console.log('[KnowledgeBaseView] 选择的文件:', filePaths);
+
+      // 获取工作区目录
+      const workspaceResult = await window.electron?.workspace?.getDir();
+      if (!workspaceResult?.success || !workspaceResult.data) {
+        toastService.error('获取工作区目录失败');
+        return;
+      }
+
+      const workspaceDir = workspaceResult.data;
+      const knowledgeBasePath = `${workspaceDir}\\KnowledgeBases\\${knowledgeId}`;
+
+      // 确保知识库文件夹存在
+      await window.electron?.folder?.ensureDir?.(knowledgeBasePath);
+
+      let importedCount = 0;
+      let failedCount = 0;
+
+      // 处理每个文件
+      for (const filePath of filePaths) {
+        try {
+          const fileName = filePath.split(/[/\\]/).pop() || 'unknown';
+          
+          // 复制文件到知识库文件夹
+          const copyResult = await window.electron?.folder?.copyToFolder(filePath, knowledgeBasePath);
+          
+          if (copyResult?.success && copyResult.data) {
+            const { path: newFilePath, name: newFileName } = copyResult.data;
+            
+            // 添加文件到知识库数据
+            await knowledgeBaseService.addFileToKnowledgeBase(
+              knowledgeId,
+              newFilePath,
+              newFileName
+            );
+            
+            // 更新处理状态为 processing
+            await knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'processing', 10);
+            
+            // 触发知识库刷新事件
+            window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+              detail: { knowledgeId }
+            }));
+            
+            // 进度更新回调
+            const handleProgress = async (progressFilePath: string, progress: number) => {
+              if (progressFilePath !== newFilePath) return;
+              // 当进度达到 100% 时，立即将状态更新为 completed
+              const status = progress >= 100 ? 'completed' : 'processing';
+              await knowledgeBaseService.updateFileProcessingStatus(progressFilePath, status, progress);
+              window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                detail: { knowledgeId }
+              }));
+            };
+            
+            // 后台异步处理文件
+            ragProcessingService.uploadFilesToKnowledgeBase(
+              [newFilePath],
+              knowledgeId,
+              undefined,
+              handleProgress
+            ).then(async () => {
+              // 确保状态为 completed（防止进度回调未正确更新状态）
+              await knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'completed', 100);
+              window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                detail: { knowledgeId }
+              }));
+              
+              // 检查是否所有文件都处理完成，如果是，清除 configChanged 标志
+              const allData = await knowledgeBaseService.loadFromStorage();
+              const knowledgeBase = allData.created.find(kb => kb.id === knowledgeId);
+              if (knowledgeBase) {
+                const allFilesCompleted = (items: KnowledgeItem[]): boolean => {
+                  for (const item of items) {
+                    if (item.type === 'file') {
+                      const status = item.metadata?.processingStatus;
+                      if (status !== 'completed') {
+                        return false;
+                      }
+                    }
+                    if (item.children) {
+                      if (!allFilesCompleted(item.children)) {
+                        return false;
+                      }
+                    }
+                  }
+                  return true;
+                };
+                
+                const children = knowledgeBase.children || [];
+                if (allFilesCompleted(children) && knowledgeBase.metadata?.configChanged) {
+                  await knowledgeBaseService.updateKnowledgeBase(knowledgeId, {
+                    metadata: {
+                      configChanged: false,
+                    },
+                  });
+                  window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                    detail: { knowledgeId }
+                  }));
+                }
+              }
+            }).catch((error) => {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'error', 0).then(() => {
+                window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                  detail: { knowledgeId }
+                }));
+              }).catch(() => {});
+              console.error('[KnowledgeBaseView] 文件处理失败:', errorMessage);
+            });
+            
+            importedCount++;
+          } else {
+            failedCount++;
+            console.error('[KnowledgeBaseView] 文件复制失败:', copyResult?.error);
+          }
+        } catch (error) {
+          failedCount++;
+          console.error('[KnowledgeBaseView] 导入文件失败:', filePath, error);
+        }
+      }
+
+      // 显示导入结果
+      if (importedCount > 0) {
+        toastService.success(`成功导入 ${importedCount} 个文件${failedCount > 0 ? `，${failedCount} 个文件失败` : ''}`);
+      } else if (failedCount > 0) {
+        toastService.error(`导入失败，共 ${failedCount} 个文件`);
+      }
+
+      // 触发知识库刷新事件
+      window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+        detail: { knowledgeId }
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toastService.error(`导入文件失败: ${errorMessage}`);
+      console.error('[KnowledgeBaseView] 导入文件失败:', error);
+    }
+  }, [knowledgeId]);
 
   // 导入本地文件夹
-  const handleImportFolder = useCallback(() => {
+  const handleImportFolder = useCallback(async () => {
+    try {
     console.log('[KnowledgeBaseView] 导入本地文件夹');
-    // TODO: 实现文件夹导入逻辑
-  }, []);
+      
+      // 调用 IPC 打开文件夹选择对话框（知识库专用，不设置工作区目录）
+      const result = await window.electron?.knowledgeBase?.openFolder();
+      
+      if (!result || !result.success || !result.data) {
+        if (result?.error && result.error !== 'User canceled') {
+          toastService.error(result.error);
+        }
+        return;
+      }
+
+      const folderPath = result.data.path;
+      console.log('[KnowledgeBaseView] 选择的文件夹:', folderPath);
+
+      // 获取导入文件夹的名称（用于在知识库中创建对应的文件夹）
+      const folderName = folderPath.split(/[/\\]/).filter((p: string) => p).pop() || '未命名文件夹';
+      console.log('[KnowledgeBaseView] 导入文件夹名称:', folderName);
+
+      // 扫描文件夹中的支持文件
+      const scanResult = await window.electron?.ipcRenderer?.invoke('folder:scanFiles', folderPath);
+      
+      if (!scanResult || !scanResult.success || !scanResult.data || scanResult.data.length === 0) {
+        toastService.warning('所选文件夹中没有支持的文件（仅支持 .md, .markdown, .json, .txt 文件）');
+        return;
+      }
+
+      const filePaths: string[] = scanResult.data;
+      console.log('[KnowledgeBaseView] 扫描到的文件:', filePaths.length, '个');
+
+      // 知识库与资源管理器隔离：不创建文件系统目录，只读取文件内容并存储到知识库数据结构中
+      // 第一阶段：批量导入所有文件（先显示在界面上）
+      const importedFiles: Array<{ id: string; name: string; content: string }> = [];
+      let importedCount = 0;
+      let failedCount = 0;
+
+      console.log('[KnowledgeBaseView] 开始批量导入文件（知识库独立存储模式）...');
+      for (const filePath of filePaths) {
+        try {
+          const fileName = filePath.split(/[/\\]/).pop() || 'unknown';
+          
+          // 读取文件内容（不复制文件，不创建文件系统目录）
+          const fileContent = await window.electronAPI?.fs?.readFile?.(filePath, 'utf-8');
+          
+          if (fileContent) {
+            // 生成一个虚拟路径用于标识（不指向实际文件系统）
+            const virtualPath = `knowledge-base://${knowledgeId}/${folderName}/${fileName}`;
+            
+            // 添加文件到知识库数据（传递文件内容，实现知识库与资源管理器隔离）
+            const addedFile = await knowledgeBaseService.addFileToKnowledgeBase(
+              knowledgeId,
+              virtualPath,
+              fileName,
+              folderName, // 只使用导入文件夹名称，不包含子文件夹路径
+              fileContent // 传递文件内容，不依赖文件系统
+            );
+            
+            // 初始状态设置为 pending（等待向量化）
+            await knowledgeBaseService.updateFileProcessingStatus(addedFile.id, 'pending', 0);
+            
+            importedFiles.push({ 
+              id: addedFile.id, 
+              name: fileName, 
+              content: fileContent 
+            });
+            importedCount++;
+          } else {
+            failedCount++;
+            console.error('[KnowledgeBaseView] 文件读取失败:', filePath);
+          }
+        } catch (error) {
+          failedCount++;
+          console.error('[KnowledgeBaseView] 导入文件失败:', filePath, error);
+        }
+      }
+
+      // 触发知识库刷新事件（显示所有导入的文件）
+      window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+        detail: { knowledgeId }
+      }));
+
+      // 显示导入结果
+      if (importedCount > 0) {
+        toastService.success(`成功导入 ${importedCount} 个文件${failedCount > 0 ? `，${failedCount} 个文件失败` : ''}，开始向量化处理...`);
+      } else if (failedCount > 0) {
+        toastService.error(`导入失败，共 ${failedCount} 个文件`);
+        return;
+      }
+
+      // 第二阶段：所有文件导入成功后，统一开始向量化处理
+      if (importedFiles.length > 0) {
+        console.log('[KnowledgeBaseView] 开始批量向量化处理，文件数量:', importedFiles.length);
+        
+        // 为有内容的文件创建临时文件（在系统临时目录，不影响资源管理器）
+        const tempFilePaths: string[] = [];
+        const tempFileCleanup: Array<{ path: string; id: string }> = [];
+        
+        try {
+          // 获取系统临时目录
+          const tempDirResult = await window.electron?.ipcRenderer?.invoke('app:get-path', 'temp');
+          const tempDir = tempDirResult?.data || '';
+          
+          // 为每个文件创建临时文件（如果文件有内容）
+          for (const file of importedFiles) {
+            try {
+              // 获取文件信息以确定扩展名
+              const fileItem = await knowledgeBaseService.findItem(file.id);
+              if (fileItem && fileItem.metadata?.content) {
+                const ext = file.name.split('.').pop() || 'txt';
+                const tempFilePath = `${tempDir}\\knowledge-base-temp-${file.id}.${ext}`;
+                
+                // 写入临时文件
+                await window.electronAPI?.fs?.writeFile?.(tempFilePath, file.content, 'utf-8');
+                
+                tempFilePaths.push(tempFilePath);
+                tempFileCleanup.push({ path: tempFilePath, id: file.id });
+              }
+            } catch (error) {
+              console.error('[KnowledgeBaseView] 创建临时文件失败:', file.name, error);
+            }
+          }
+          
+          // 进度更新回调
+          const handleProgress = async (progressFilePath: string, progress: number) => {
+            // 根据临时文件路径找到对应的文件ID
+            const tempFile = tempFileCleanup.find(tf => tf.path === progressFilePath);
+            if (tempFile) {
+              // 更新处理状态
+              const status = progress >= 100 ? 'completed' : 'processing';
+              await knowledgeBaseService.updateFileProcessingStatus(tempFile.id, status, progress);
+              window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                detail: { knowledgeId }
+              }));
+            }
+          };
+          
+          // 批量处理所有文件
+          try {
+            // 将所有文件状态更新为 processing
+            for (const file of importedFiles) {
+              await knowledgeBaseService.updateFileProcessingStatus(file.id, 'processing', 10);
+            }
+            window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+              detail: { knowledgeId }
+            }));
+            
+            // 统一开始向量化处理（使用临时文件路径）
+            await ragProcessingService.uploadFilesToKnowledgeBase(
+              tempFilePaths,
+              knowledgeId,
+              undefined,
+              handleProgress
+            );
+            
+            // 确保所有文件状态为 completed
+            for (const file of importedFiles) {
+              await knowledgeBaseService.updateFileProcessingStatus(file.id, 'completed', 100);
+            }
+            
+            window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+              detail: { knowledgeId }
+            }));
+            
+            // 检查是否所有文件都处理完成，如果是，清除 configChanged 标志
+            const allData = await knowledgeBaseService.loadFromStorage();
+            const knowledgeBase = allData.created.find(kb => kb.id === knowledgeId);
+            if (knowledgeBase) {
+              const allFilesCompleted = (items: KnowledgeItem[]): boolean => {
+                for (const item of items) {
+                  if (item.type === 'file') {
+                    const status = item.metadata?.processingStatus;
+                    if (status !== 'completed') {
+                      return false;
+                    }
+                  }
+                  if (item.children) {
+                    if (!allFilesCompleted(item.children)) {
+                      return false;
+                    }
+                  }
+                }
+                return true;
+              };
+              
+              const children = knowledgeBase.children || [];
+              if (allFilesCompleted(children) && knowledgeBase.metadata?.configChanged) {
+                await knowledgeBaseService.updateKnowledgeBase(knowledgeId, {
+                  metadata: {
+                    configChanged: false,
+                  },
+                });
+                window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                  detail: { knowledgeId }
+                }));
+              }
+            }
+            
+            console.log('[KnowledgeBaseView] 批量向量化处理完成');
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('[KnowledgeBaseView] 批量向量化处理失败:', errorMessage);
+            
+            // 将所有文件状态更新为 error
+            for (const file of importedFiles) {
+              await knowledgeBaseService.updateFileProcessingStatus(file.id, 'error', 0);
+            }
+            
+            window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+              detail: { knowledgeId }
+            }));
+            
+            toastService.error(`向量化处理失败: ${errorMessage}`);
+          }
+        } finally {
+          // 清理临时文件
+          for (const tempFile of tempFileCleanup) {
+            try {
+              // 使用 IPC 删除临时文件
+              await window.electron?.ipcRenderer?.invoke('delete-file', tempFile.path);
+            } catch (error) {
+              console.warn('[KnowledgeBaseView] 清理临时文件失败:', tempFile.path, error);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toastService.error(`导入文件夹失败: ${errorMessage}`);
+      console.error('[KnowledgeBaseView] 导入文件夹失败:', error);
+    }
+  }, [knowledgeId]);
 
   // 导入笔记
   const handleImportNote = useCallback((noteId: string) => {
@@ -130,6 +580,130 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     }
   }, [onFileOpen]);
 
+  // 重试失败文件处理
+  const handleRetryFailedFiles = useCallback(async () => {
+    if (!knowledgeId || failedFiles.length === 0 || isRetryingFailedFiles) {
+      return;
+    }
+
+    const filesWithPaths = failedFiles.filter(
+      (item): item is KnowledgeItem & { path: string } => Boolean(item.path)
+    );
+
+    if (filesWithPaths.length === 0) {
+      toastService.error('无法定位需要重试的文件路径');
+      return;
+    }
+
+    setIsRetryingFailedFiles(true);
+
+    try {
+      // 先将所有失败文件标记为 processing
+      for (const file of filesWithPaths) {
+        await knowledgeBaseService.updateFileProcessingStatus(file.path, 'processing', 10);
+      }
+
+      window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+        detail: { knowledgeId }
+      }));
+
+      const failedRetryResults: Array<{ title: string; message: string }> = [];
+
+      for (const file of filesWithPaths) {
+        const filePath = file.path;
+        const handleProgressUpdate = async (progressFilePath: string, progress: number) => {
+          if (progressFilePath !== filePath) {
+            return;
+          }
+          // 当进度达到 100% 时，立即将状态更新为 completed
+          const status = progress >= 100 ? 'completed' : 'processing';
+          await knowledgeBaseService.updateFileProcessingStatus(filePath, status, progress);
+          window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+            detail: { knowledgeId }
+          }));
+        };
+
+        try {
+          await ragProcessingService.uploadFilesToKnowledgeBase(
+            [filePath],
+            knowledgeId,
+            undefined,
+            handleProgressUpdate
+          );
+          await knowledgeBaseService.updateFileProcessingStatus(filePath, 'completed', 100);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          failedRetryResults.push({
+            title: file.title,
+            message: errorMessage
+          });
+          await knowledgeBaseService.updateFileProcessingStatus(filePath, 'error', 0);
+          console.error('[KnowledgeBaseView] 重试处理失败:', {
+            filePath,
+            knowledgeId,
+            error: errorMessage
+          });
+        } finally {
+          window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+            detail: { knowledgeId }
+          }));
+        }
+      }
+
+      if (failedRetryResults.length === 0) {
+        toastService.success('失败的文件已重新处理完成');
+        
+        // 检查是否所有文件都处理完成，如果是，清除 configChanged 标志
+        const allData = await knowledgeBaseService.loadFromStorage();
+        const knowledgeBase = allData.created.find(kb => kb.id === knowledgeId);
+        if (knowledgeBase) {
+          // 检查所有文件是否都处理完成
+          const allFilesCompleted = (items: KnowledgeItem[]): boolean => {
+            for (const item of items) {
+              if (item.type === 'file') {
+                const status = item.metadata?.processingStatus;
+                if (status !== 'completed') {
+                  return false;
+                }
+              }
+              if (item.children) {
+                if (!allFilesCompleted(item.children)) {
+                  return false;
+                }
+              }
+            }
+            return true;
+          };
+          
+          const children = knowledgeBase.children || [];
+          if (allFilesCompleted(children) && knowledgeBase.metadata?.configChanged) {
+            // 清除 configChanged 标志
+            await knowledgeBaseService.updateKnowledgeBase(knowledgeId, {
+              metadata: {
+                configChanged: false,
+              },
+            });
+            
+            // 触发知识库更新事件，更新标签页标题
+            window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+              detail: { knowledgeId }
+            }));
+          }
+        }
+      } else if (failedRetryResults.length === filesWithPaths.length) {
+        toastService.error('重试失败，请检查控制台日志获取更多信息');
+      } else {
+        const failedTitles = failedRetryResults.slice(0, 3).map(item => item.title).join('、');
+        toastService.warning(`部分文件重试失败：${failedTitles}${failedRetryResults.length > 3 ? ' 等' : ''}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toastService.error(message || '重试失败，请稍后再试');
+    } finally {
+      setIsRetryingFailedFiles(false);
+    }
+  }, [failedFiles, isRetryingFailedFiles, knowledgeId]);
+
   // 获取文件图标（使用应用统一的图标系统）
   const getFileIcon = (item: KnowledgeItem) => {
     if (item.type === 'folder') {
@@ -164,7 +738,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
         <div key={item.id} className="knowledge-item-wrapper">
           <div
             className={`knowledge-item ${isSelected ? 'selected' : ''}`}
-            style={{ paddingLeft: item.type === 'folder' ? '28px' : '49px' }}
+            style={{ paddingLeft: item.type === 'folder' ? '28px' : '73px' }}
             onClick={() => handleItemClick(item)}
             onDoubleClick={() => handleItemDoubleClick(item)}
           >
@@ -178,20 +752,63 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             <span className="item-icon">{getFileIcon(item)}</span>
             <span className="item-title">{item.title}</span>
             {item.type === 'file' && (
-              <span className="item-actions">
-                <button
-                  className="action-button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onFileDelete?.(item);
-                  }}
-                  title="删除"
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.506a.58.58 0 0 0-.01 0H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1h-.995a.59.59 0 0 0-.01 0H11Zm1.958 1-.846 10.58a1 1 0 0 1-.997.92h-6.23a1 1 0 0 1-.997-.92L3.042 3.5h9.916Z"/>
-                  </svg>
-                </button>
-              </span>
+              <>
+                {/* 处理状态显示 */}
+                {(() => {
+                  const status = item.metadata?.processingStatus;
+                  const progress = item.metadata?.processingProgress;
+                  
+                  // 显示处理状态（pending、processing、completed、error）
+                  if (status) {
+                    return (
+                      <span className="item-processing-status">
+                        {status === 'processing' && (
+                          <span className="processing-indicator" title={`处理中 ${progress !== undefined ? progress + '%' : ''}`}>
+                            <span className="spinner"></span>
+                            {progress !== undefined && (
+                              <span className="progress-text">{progress}%</span>
+                            )}
+                          </span>
+                        )}
+                        {status === 'pending' && (
+                          <span className="pending-indicator" title="等待处理">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                              <circle cx="6" cy="6" r="2"/>
+                            </svg>
+                          </span>
+                        )}
+                        {status === 'completed' && (
+                          <span className="completed-indicator" title="处理完成">
+                            <CheckIcon className="check-icon" />
+                          </span>
+                        )}
+                        {status === 'error' && (
+                          <span className="error-indicator" title="处理失败">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                              <path d="M6 0C2.69 0 0 2.69 0 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm1 9H5V7h2v2zm0-4H5V3h2v2z"/>
+                            </svg>
+                          </span>
+                        )}
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+                <span className="item-actions">
+                  <button
+                    className="action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFileDelete?.(item);
+                    }}
+                    title="删除"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.506a.58.58 0 0 0-.01 0H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1h-.995a.59.59 0 0 0-.01 0H11Zm1.958 1-.846 10.58a1 1 0 0 1-.997.92h-6.23a1 1 0 0 1-.997-.92L3.042 3.5h9.916Z"/>
+                    </svg>
+                  </button>
+                </span>
+              </>
             )}
           </div>
           {item.type === 'folder' && isExpanded && hasChildren && (
@@ -235,14 +852,31 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
           </div>
         </div>
         <div className="header-middle">
-          <span className="stat-item">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M4 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0H4z"/>
-            </svg>
-            {totalFiles} 个文档
-          </span>
+          {configChanged && (
+            <span className="config-changed-warning">
+              * 配置发生改变，请更新知识库。
+            </span>
+          )}
         </div>
         <div className="header-actions">
+          {hasFailedFiles && (
+            <button
+              type="button"
+              className={`action-button retry-button ${isRetryingFailedFiles ? 'active' : ''}`}
+              onClick={handleRetryFailedFiles}
+              disabled={isRetryingFailedFiles}
+              title={
+                isRetryingFailedFiles
+                  ? '正在重试失败的文件，请稍候'
+                  : `检测到 ${failedFiles.length} 个处理失败的文件，点击重试`
+              }
+            >
+              <span className={`retry-icon ${isRetryingFailedFiles ? 'spinning' : ''}`}>
+                <RefreshIcon />
+              </span>
+              <span className="retry-badge">{failedFiles.length}</span>
+            </button>
+          )}
           {showSearchInput && (
             <div className="search-input-wrapper">
               <input
@@ -275,6 +909,20 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             title="搜索过滤"
           >
             <SearchFilterIcon />
+          </button>
+          <button 
+            className="action-button"
+            onClick={handleOpenSettings}
+            title="知识库设置"
+          >
+            <SettingsIcon />
+          </button>
+          <button 
+            className="action-button"
+            onClick={handleRefresh}
+            title="更新"
+          >
+            <RefreshIcon />
           </button>
           <button 
             className="action-button"

@@ -1,5 +1,5 @@
 /**
- * AI 对话面板组件
+ * AI 对话面板组件  - WiseAI Note Studio 2.0使用的是这个组件
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -1243,6 +1243,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         maxWidth: `${MAX_WIDTH}px`
       } : {}}
     >
+      
+       <div className='ai-chat-panel-border'></div>
       {/* 拖拽手柄 */}
       {!isMaximized && (
         <div

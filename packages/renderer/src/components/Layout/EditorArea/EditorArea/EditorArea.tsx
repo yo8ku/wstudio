@@ -22,6 +22,7 @@ import { AIAgentView } from '../AIAgentView';
 import { ExtensionManagerView } from '../ExtensionManagerView';
 import { ResizableDivider } from '../ResizableDivider';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
+import type { KnowledgeItem } from '../../Sidebar/KnowledgeBase/types';
 import { toastService } from '../../../../services/ToastService';
 import './EditorArea.scss';
 
@@ -544,15 +545,18 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         // 查找是否已存在知识库类型的标签页（不区分 id）
         const existingKnowledgeTab = prev.find(tab => tab.type === 'knowledge');
         
+        // 标签页标题只显示知识库名称，不包含配置变化提示
+        const tabTitle = `知识库 - ${title}`;
+        
         if (existingKnowledgeTab) {
           // 如果已存在知识库标签页，更新其标题和数据
           setActiveTabId(existingKnowledgeTab.id);
-          console.log('[EditorArea] 更新知识库标签页:', `知识库 - ${title}`);
+          console.log('[EditorArea] 更新知识库标签页:', tabTitle);
           return prev.map(tab => 
             tab.id === existingKnowledgeTab.id 
               ? { 
                   ...tab, 
-                  title: `知识库 - ${title}`,
+                  title: tabTitle,
                   path: `knowledge:/${id}`,
                   knowledgeData: { id, items, description } 
                 } 
@@ -562,14 +566,14 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           // 创建新的知识库标签页（首次打开）
           const newTab: EditorTab = {
             id: `knowledge-${Date.now()}`,
-            title: `知识库 - ${title}`,
+            title: tabTitle,
             path: `knowledge:/${id}`,
             isDirty: false,
             type: 'knowledge',
             knowledgeData: { id, items, description }
           };
           setActiveTabId(newTab.id);
-          console.log('[EditorArea] 创建知识库标签页:', `知识库 - ${title}`);
+          console.log('[EditorArea] 创建知识库标签页:', tabTitle);
           return [...prev, newTab];
         }
       });
@@ -582,6 +586,130 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, []); // 无依赖，只注册一次
 
+  // 监听关闭知识库标签页事件
+  useEffect(() => {
+    const handleCloseKnowledgeTab = (event: Event) => {
+      const customEvent = event as CustomEvent<{ knowledgeId: string }>;
+      const { knowledgeId } = customEvent.detail;
+      
+      setTabs(prev => {
+        // 查找匹配的知识库标签页
+        const knowledgeTab = prev.find(
+          tab => tab.type === 'knowledge' && 
+                 (tab.knowledgeData?.id === knowledgeId || tab.path === `knowledge:/${knowledgeId}`)
+        );
+        
+        if (knowledgeTab) {
+          console.log('[EditorArea] 关闭知识库标签页:', knowledgeTab.title, '知识库ID:', knowledgeId);
+          
+          // 移除知识库标签页
+          const remainingTabs = prev.filter(tab => tab.id !== knowledgeTab.id);
+          
+          // 使用函数式更新来获取最新的 activeTabId
+          setActiveTabId(currentActiveTabId => {
+            // 如果关闭的是当前活动标签，需要切换到其他标签
+            if (currentActiveTabId === knowledgeTab.id) {
+              if (remainingTabs.length > 0) {
+                // 切换到最后一个标签页
+                return remainingTabs[remainingTabs.length - 1].id;
+              } else {
+                // 没有其他标签页了，清除活动标签
+                return null;
+              }
+            }
+            // 不是活动标签，保持当前活动标签不变
+            return currentActiveTabId;
+          });
+          
+          return remainingTabs;
+        }
+        
+        return prev;
+      });
+    };
+
+    window.addEventListener('close-knowledge-tab', handleCloseKnowledgeTab as EventListener);
+    
+    return () => {
+      window.removeEventListener('close-knowledge-tab', handleCloseKnowledgeTab as EventListener);
+    };
+  }, []); // 无依赖，只注册一次
+
+  // 修复函数：将进度为 100% 但状态仍为 processing 的文件更新为 completed
+  const fixProcessingFilesWith100Percent = useCallback(async (knowledgeBase: KnowledgeItem): Promise<boolean> => {
+    if (!knowledgeBase.children) {
+      return false;
+    }
+    
+    // 递归查找所有需要修复的文件（包括子文件夹中的文件）
+    const collectFilesToFix = (items: KnowledgeItem[]): KnowledgeItem[] => {
+      const filesToFix: KnowledgeItem[] = [];
+      for (const item of items) {
+        if (item.type === 'file' && 
+            item.metadata?.processingStatus === 'processing' && 
+            item.metadata?.processingProgress === 100 &&
+            item.path) {
+          filesToFix.push(item);
+        }
+        if (item.children && item.children.length > 0) {
+          filesToFix.push(...collectFilesToFix(item.children));
+        }
+      }
+      return filesToFix;
+    };
+    
+    const filesToFix = collectFilesToFix(knowledgeBase.children);
+    
+    if (filesToFix.length > 0) {
+      console.log('[EditorArea] 发现需要修复的文件（processing 100%）:', filesToFix.length);
+      for (const file of filesToFix) {
+        if (file.path) {
+          try {
+            await knowledgeBaseService.updateFileProcessingStatus(
+              file.path,
+              'completed',
+              100
+            );
+            console.log('[EditorArea] 已修复文件状态:', file.title);
+          } catch (error) {
+            console.error('[EditorArea] 修复文件状态失败:', file.title, error);
+          }
+        }
+      }
+      return true; // 表示有文件被修复
+    }
+    return false; // 表示没有文件需要修复
+  }, []);
+
+  // 组件初始化时检查并修复所有知识库中的 processing 100% 文件
+  useEffect(() => {
+    const checkAndFixAllKnowledgeBases = async () => {
+      try {
+        const data = await knowledgeBaseService.loadFromStorage();
+        let hasFixedAny = false;
+        
+        for (const knowledgeBase of data.created) {
+          const hasFixed = await fixProcessingFilesWith100Percent(knowledgeBase);
+          if (hasFixed) {
+            hasFixedAny = true;
+          }
+        }
+        
+        if (hasFixedAny) {
+          console.log('[EditorArea] 初始化时已修复所有知识库中的 processing 100% 文件');
+          // 触发知识库更新事件以刷新UI
+          window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+            detail: { knowledgeId: 'all' }
+          }));
+        }
+      } catch (error) {
+        console.error('[EditorArea] 初始化检查知识库文件状态失败:', error);
+      }
+    };
+    
+    checkAndFixAllKnowledgeBases();
+  }, [fixProcessingFilesWith100Percent]);
+
   // 监听知识库更新事件（刷新知识库数据）
   useEffect(() => {
     const handleKnowledgeBaseUpdated = async (event: Event) => {
@@ -593,19 +721,105 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       // 重新加载知识库数据
       const data = await knowledgeBaseService.loadFromStorage();
       
-      // 更新对应的知识库标签页数据
-      setTabs(prev => prev.map(tab => {
-        if (tab.type === 'knowledge' && tab.knowledgeData?.id === knowledgeId) {
-          return {
-            ...tab,
-            knowledgeData: {
-              id: knowledgeId,
-              items: data.created
-            }
-          };
+      // 调试：检查数据中是否包含处理状态
+      const knowledgeBase = data.created.find(kb => kb.id === knowledgeId);
+      if (knowledgeBase && knowledgeBase.children) {
+        const filesWithStatus = knowledgeBase.children.filter(
+          (item: KnowledgeItem) => item.type === 'file' && item.metadata?.processingStatus
+        );
+        console.log('[EditorArea] 找到带处理状态的文件:', filesWithStatus.length, filesWithStatus.map(item => ({
+          title: item.title,
+          status: item.metadata?.processingStatus,
+          progress: item.metadata?.processingProgress
+        })));
+        
+        // 自动修复：将进度为 100% 但状态仍为 processing 的文件更新为 completed
+        const hasFixed = await fixProcessingFilesWith100Percent(knowledgeBase);
+        if (hasFixed) {
+          // 重新加载数据以反映修复后的状态
+          const fixedData = await knowledgeBaseService.loadFromStorage();
+          // 更新 data 引用
+          Object.assign(data, fixedData);
         }
-        return tab;
-      }));
+      }
+      
+      // 更新左侧对应的知识库标签页数据
+      setTabs(prev => {
+        const updated = prev.map(tab => {
+          if (tab.type === 'knowledge' && tab.knowledgeData?.id === knowledgeId) {
+            // 查找知识库项，获取知识库名称
+            const knowledgeBase = data.created.find(kb => kb.id === knowledgeId);
+            const baseTitle = knowledgeBase?.title || '';
+            const configChanged = knowledgeBase?.metadata?.configChanged;
+            // 标签页标题只显示知识库名称，不包含配置变化提示
+            const newTitle = `知识库 - ${baseTitle}`;
+            
+            const newTab = {
+              ...tab,
+              title: newTitle,
+              knowledgeData: {
+                id: knowledgeId,
+                items: data.created,
+                description: tab.knowledgeData?.description // 保留原有描述
+              }
+            };
+            console.log('[EditorArea] 更新左侧知识库标签页数据:', {
+              tabId: tab.id,
+              knowledgeId,
+              itemsCount: data.created.length,
+              configChanged,
+              newTitle,
+              hasProcessingFiles: data.created.some(kb => 
+                kb.children?.some((item: KnowledgeItem) => 
+                  item.type === 'file' && item.metadata?.processingStatus && item.metadata.processingStatus !== 'completed'
+                )
+              )
+            });
+            return newTab;
+          }
+          return tab;
+        });
+        return updated;
+      });
+      
+      // 更新右侧对应的知识库标签页数据
+      setRightTabs(prev => {
+        const updated = prev.map(tab => {
+          if (tab.type === 'knowledge' && tab.knowledgeData?.id === knowledgeId) {
+            // 查找更新后的知识库数据
+            const updatedKnowledgeBase = data.created.find(kb => kb.id === knowledgeId);
+            const baseTitle = updatedKnowledgeBase?.title || '';
+            const configChanged = updatedKnowledgeBase?.metadata?.configChanged;
+            // 标签页标题只显示知识库名称，不包含配置变化提示
+            const newTitle = `知识库 - ${baseTitle}`;
+            
+            const newTab = {
+              ...tab,
+              title: newTitle,
+              knowledgeData: {
+                id: knowledgeId,
+                items: data.created,
+                description: tab.knowledgeData?.description // 保留原有描述
+              }
+            };
+            console.log('[EditorArea] 更新右侧知识库标签页数据:', {
+              tabId: tab.id,
+              knowledgeId,
+              itemsCount: data.created.length,
+              knowledgeBaseFound: !!updatedKnowledgeBase,
+              configChanged,
+              newTitle,
+              childrenCount: updatedKnowledgeBase?.children?.length || 0,
+              hasProcessingFiles: updatedKnowledgeBase?.children?.some((item: KnowledgeItem) => 
+                item.type === 'file' && item.metadata?.processingStatus && item.metadata.processingStatus !== 'completed'
+              ) || false
+            });
+            return newTab;
+          }
+          return tab;
+        });
+        return updated;
+      });
     };
 
     window.addEventListener('knowledge-base-updated', handleKnowledgeBaseUpdated as EventListener);

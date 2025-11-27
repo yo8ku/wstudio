@@ -17,20 +17,23 @@ import { registerTerminalHandlers } from './ipc/terminalHandlers';
 import { registerAIModelHandlers } from './ipc/aiModelHandlers';
 import { registerFileReferenceHandlers } from './ipc/fileReferenceHandlers';
 import { registerPythonBridgeHandlers } from './ipc/pythonBridgeHandlers';
+import { registerWorkspaceIndexHandlers, setWorkspaceIndexMainWindow, getWorkspaceIndexService } from './ipc/workspaceIndexHandlers';
+import { getRAGFileWatcherService } from './ipc/ragFileWatcherHandlers';
 import { ThemeService } from './services/ThemeService';
 import { TerminalService } from './services/terminal/TerminalService';
 import * as path from 'path';
+import { registerSettingsHandlers } from './ipc/settingsHandlers';
 
 // 插件系统路径
 // __dirname: packages/main/dist/main/src
-// ../../../../../ -> 项目根目录
-// ../../../../../resources/extensions/builtin -> 内置插件目录
-const builtinPluginsPath = path.join(__dirname, '../../../../../resources/extensions/builtin');
+// ../../../../ -> packages 目录
+// ../../../../extensions/builtin -> 内置插件目录
+const builtinPluginsPath = path.join(__dirname, '../../../../extensions/builtin');
 
 // 用户插件路径（未来可能使用）
-// const userPluginsPath = path.join(__dirname, '../../../../../extensions');
+// const userPluginsPath = path.join(__dirname, '../../../../extensions');
 
-// 只使用内置插件管理器
+// 插件管理器
 const pluginManager = new ExtensionManager(builtinPluginsPath);
 const settingsManager = new SettingsManager();
 const workspaceManager = new WorkspaceManager();
@@ -49,6 +52,10 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   // 注册 electron-store IPC 处理器
   registerStoreHandlers();
   console.log('[Main] electron-store IPC 处理器已注册');
+  
+  // 注册设置相关 IPC 处理器
+  registerSettingsHandlers(settingsManager, workspaceManager, mainWindow || null);
+  console.log('[Main] 设置 IPC 处理器已注册');
   
   // 注册片段数据库 IPC 处理器
   registerSnippetHandlers();
@@ -82,6 +89,12 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   registerPythonBridgeHandlers();
   console.log('[Main] PythonBridge IPC 处理器已注册');
   
+  // 注册工作区索引 IPC 处理器
+  registerWorkspaceIndexHandlers();
+  console.log('[Main] 工作区索引 IPC 处理器已注册');
+  
+  // RAG 文件监听服务现在完全由 Python 端处理，不再需要前端 IPC 接口
+  
   // 初始化终端服务并注册处理器（只在有 mainWindow 时）
   if (mainWindow && !terminalService) {
     terminalService = new TerminalService(mainWindow);
@@ -98,6 +111,49 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   await workspaceManager.initialize();
   console.log('[Main] 工作区已初始化');
   
+  // 如果提供了主窗口，设置索引服务的主窗口（用于发送进度事件）
+  if (mainWindow) {
+    setWorkspaceIndexMainWindow(mainWindow);
+    // RAG 文件监听服务现在完全由 Python 端处理，不再需要主窗口
+  }
+
+  // 检查是否首次启动，如果是则索引工作区
+  const workspaceDir = workspaceManager.getWorkspaceDir();
+  if (workspaceDir) {
+    try {
+      // 使用 workspaceIndexHandlers 中的同一个服务实例，确保主窗口设置生效
+      const indexService = getWorkspaceIndexService();
+      // 如果提供了主窗口，设置主窗口以便发送进度事件
+      if (mainWindow) {
+        indexService.setMainWindow(mainWindow);
+      }
+      await indexService.initialize();
+      
+      // 检查索引是否已存在
+      const stats = await indexService.getIndexStats();
+      
+      // 如果索引为空或文件数量很少，执行索引
+      if (stats.totalFiles === 0) {
+        console.log('[Main] 检测到首次启动，开始索引工作区...');
+        // 在后台异步执行索引，不阻塞应用启动
+        indexService.indexWorkspace(workspaceDir).then((result) => {
+          console.log(`[Main] 工作区索引完成: 成功 ${result.indexedFiles} 个文件，失败 ${result.errors.length} 个文件`);
+        }).catch((error) => {
+          console.error('[Main] 工作区索引失败:', error);
+        });
+      } else {
+        console.log(`[Main] 工作区索引已存在，共 ${stats.totalFiles} 个文件`);
+      }
+      
+      // 启动 RAG 文件监听服务
+      const ragWatcherService = getRAGFileWatcherService();
+      ragWatcherService.setWorkspacePath(workspaceDir);
+      console.log('[Main] RAG 文件监听服务已启动');
+    } catch (error) {
+      console.error('[Main] 初始化工作区索引服务失败:', error);
+    }
+  }
+  
   // 初始化设置管理器
   await settingsManager.initialize();
   console.log('[Main] 设置管理器已初始化');
@@ -106,18 +162,21 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   await builtinAI.initialize();
   console.log('[Main] 内置AI服务已初始化');
   
-  // 如果提供了主窗口，创建共享的 API 适配器并设置到插件管理器
-  if (mainWindow) {
-    if (!sharedAPIAdapter) {
-      console.log('[Main] 创建共享的 PluginAPIAdapter');
-      sharedAPIAdapter = new PluginAPIAdapter(mainWindow);
-      sharedAPIAdapter.setSettingsManager(settingsManager);
-    }
-    
-    // 插件管理器关联 API 适配器
-    pluginManager.setSharedAPIAdapter(sharedAPIAdapter);
-    console.log('[Main] 插件管理器已关联共享的 API 适配器');
+  // 创建共享的 API 适配器（即使 mainWindow 为 null，也要创建以注册 IPC 处理器）
+  if (!sharedAPIAdapter) {
+    console.log('[Main] 创建共享的 PluginAPIAdapter');
+    sharedAPIAdapter = new PluginAPIAdapter(mainWindow || null);
+    sharedAPIAdapter.setSettingsManager(settingsManager);
+    sharedAPIAdapter.setWorkspaceManager(workspaceManager);
+  } else if (mainWindow) {
+    // 如果之前创建时 mainWindow 为 null，现在更新它
+    console.log('[Main] 更新 PluginAPIAdapter 的 mainWindow');
+    sharedAPIAdapter.setMainWindow(mainWindow);
   }
+  
+  // 插件管理器关联 API 适配器
+  pluginManager.setSharedAPIAdapter(sharedAPIAdapter);
+  console.log('[Main] 插件管理器已关联共享的 API 适配器');
   
   // 调试：打印路径信息
   console.log('[Main] ========== 路径调试信息 ==========');

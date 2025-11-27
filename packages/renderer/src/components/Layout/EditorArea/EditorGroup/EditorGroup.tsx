@@ -262,6 +262,7 @@ export const EditorGroup: React.FC<EditorGroupProps> = memo(({
         onChange={handleContentChange}
         tabId={file.id}
         tabTitle={file.title}
+        filePath={file.path}
       />
     </div>
   );

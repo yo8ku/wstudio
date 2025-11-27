@@ -6,9 +6,10 @@
 .background-image-panel {
   position: fixed;
   right: 20px;
-  bottom: 40px;
+  bottom: 28px;
   width: 400px;
   max-height: 600px;
+  background-color: var(--ws-editor-background);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-radius: 6px;
@@ -162,5 +163,149 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 图片网格 */
+.bg-image-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* 图片卡片 */
+.bg-image-card {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.2s;
+  background-color: var(--ws-input-background);
+}
+
+.bg-image-card:hover {
+  border-color: var(--ws-button-background);
+}
+
+.bg-image-card-selected {
+  border-color: var(--ws-button-background);
+  box-shadow: 0 0 0 2px var(--ws-button-background);
+}
+
+.bg-image-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* 图片加载中状态：完全隐藏，避免显示加载视觉效果 */
+.bg-image-card-img-loading {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* 图片加载完成状态：显示图片 */
+.bg-image-card-img-loaded {
+  opacity: 1;
+  visibility: visible;
+}
+
+.bg-image-card-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 4px;
+  font-size: 10px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 无图卡片样式 */
+.bg-image-card-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--ws-input-background);
+  border: 2px solid var(--ws-border-color);
+}
+
+.bg-image-card-none-text {
+  font-size: 14px;
+  color: var(--ws-text-secondary);
+  font-weight: 500;
+}
+
+/* 添加图片按钮卡片样式 */
+.bg-image-card-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--ws-input-background);
+  border: 2px solid var(--ws-border-color);
+  color: var(--ws-text-secondary);
+}
+
+.bg-image-card-add:hover {
+  border-color: var(--ws-button-background);
+  color: var(--ws-button-background);
+}
+
+/* 加载状态 */
+.bg-loading {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 20px;
+  color: var(--ws-text-secondary);
+}
+
+.bg-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 20px;
+  color: var(--ws-text-secondary);
+}
+
+/* 加载更多按钮 */
+.bg-load-more-btn {
+  width: 100%;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  height: 20px;
+  font-family: inherit;
+  font-size: inherit;
+  background-color: var(--ws-button-background);
+  color: var(--ws-text-primary);
+  margin-top: 8px;
+}
+
+.bg-load-more-btn:hover {
+  opacity: 0.8;
+}
+
+/* 加载完成提示 */
+.bg-load-complete {
+  text-align: center;
+  padding: 8px;
+  color: var(--ws-text-secondary);
+  font-size: 12px;
+}
+
+/* 横向布局 */
+.bg-setting-group-horizontal {
+  display: flex;
+  gap: 16px;
+}
+
+.bg-setting-item {
+  flex: 1;
 }
 

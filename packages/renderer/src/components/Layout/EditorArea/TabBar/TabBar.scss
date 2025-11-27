@@ -1,4 +1,8 @@
-
+/**
+ * TabBar 组件样式
+ * 功能：标签栏样式定义
+ * 描述：提供标签栏的布局、颜色、交互效果等样式
+ */
 
 .tab-bar {
   display: flex;
@@ -12,6 +16,8 @@
   z-index: 1;
   user-select: none;
   overflow: hidden;
+  background-color: var(--ws-editorGroupHeader-tabsBackground, var(--vscode-editorGroupHeader-tabsBackground, #252526));
+  width: 100%;
 }
 
 .tab-bar-scroll-container {
@@ -33,7 +39,12 @@
   }
 
   &::-webkit-scrollbar-thumb {
+    background: var(--ws-scrollbar-thumb, var(--scrollbar-thumb, #79797966));
     border-radius: 3px;
+
+    &:hover {
+      background: var(--ws-scrollbar-thumb-hover, var(--scrollbar-thumb-hover, #646464b3));
+    }
   }
 }
 
@@ -51,13 +62,16 @@
   flex-shrink: 0;
   cursor: pointer;
   overflow: hidden;
+  background-color: var(--ws-tab-inactiveBackground, var(--tab-inactive-bg, #2d2d2d));
+  color: var(--ws-tab-inactiveForeground, var(--tab-inactive-fg, #969696));
+  border-right: 1px solid var(--ws-tab-border, var(--tab-border, transparent));
 
-  // Ԥ��ģʽ��б�壩
+  // 预览模式（斜体）
   &.preview .tab-item-title {
     font-style: italic;
   }
 
-  // ���ǩ����ָʾ��
+  // 活动标签顶部指示器
   &-border-top {
     position: absolute;
     top: -1px;
@@ -65,9 +79,22 @@
     right: 0;
     height: 2px;
     z-index: 1;
+    background-color: var(--ws-tab-activeBorderTop, var(--tab-active-border-top, #007acc));
   }
 
-  // �ļ�ͼ��
+  // 活动标签样式
+  &.active {
+    background-color: var(--ws-tab-activeBackground, var(--tab-active-bg, #1e1e1e));
+    color: var(--ws-tab-activeForeground, var(--tab-active-fg, #ffffff));
+    border-bottom-color: var(--ws-tab-activeBorder, var(--tab-active-border, transparent));
+  }
+
+  // 悬停样式（非活动标签）
+  &.hovered:not(.active) {
+    background-color: var(--ws-tab-hoverBackground, rgba(255, 255, 255, 0.05));
+  }
+
+  // 文件图标
   &-icon {
     width: 16px;
     height: 16px;
@@ -75,7 +102,7 @@
     opacity: 0.8;
   }
 
-  // �ļ���
+  // 文件名
   &-title {
     flex: 1;
     min-width: 0;
@@ -86,7 +113,7 @@
     line-height: 1.4;
   }
 
-  // ���ǣ�δ���棩
+  // 脏标记（未保存）
   &-dirty-indicator {
     width: 20px;
     height: 20px;
@@ -98,9 +125,10 @@
     justify-content: center;
     font-size: 18px;
     line-height: 1;
+    color: var(--ws-tab-activeForeground, var(--tab-active-fg, #ffffff));
   }
 
-  // �رհ�ť
+  // 关闭按钮
   &-close {
     width: 20px;
     height: 20px;
@@ -115,13 +143,18 @@
     border: none;
     border-radius: 4px;
     cursor: pointer;
+    background-color: transparent;
+    color: inherit;
     opacity: 0.6;
+    transition: opacity 0.2s, background-color 0.2s;
+
     &:hover {
       opacity: 1;
+      background-color: var(--ws-toolbar-hover-background, rgba(255, 255, 255, 0.1));
     }
   }
 
-  // �ǻ��ǩ���عرհ�ť����ͣʱ��ʾ
+  // 非活动标签的关闭按钮（悬停时显示）
   &:not(.active):not(.hovered) &-close {
     opacity: 0;
     pointer-events: none;
@@ -147,9 +180,17 @@
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  background-color: transparent;
+  color: var(--ws-foreground, var(--app-fg, #cccccc));
   opacity: 0.6;
+  transition: opacity 0.2s, background-color 0.2s;
+
   &:hover {
     opacity: 1;
+    background-color: var(--ws-toolbar-hover-background, rgba(255, 255, 255, 0.1));
+  }
+
+  &:active {
+    background-color: var(--ws-toolbar-active-background, var(--toolbar-active-bg, #094771));
   }
 }
-

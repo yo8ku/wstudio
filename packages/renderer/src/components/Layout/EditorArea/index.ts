@@ -4,9 +4,9 @@
  * 描述：提供模块化的导出接口，便于其他模块引用
  */
 
-export { MonacoEditor } from './MonacoEditor';
-export { MonacoContextMenu, useMonacoContextMenu } from './MonacoContextMenu';
-export type { MonacoContextMenuProps } from './MonacoContextMenu';
+export { MonacoContextMenu } from './MonacoContextMenu';
+export { useMonacoContextMenu } from './MonacoContextMenu/useMonacoContextMenu';
+export type { MonacoContextMenuProps } from './MonacoContextMenu/MonacoContextMenu';
 export { GhostTextWidget } from './GhostTextWidget';
 export { AIZoneWidget } from './AIZoneWidget';
 export { CodeDecorationManager } from './CodeDecorationManager';
@@ -22,6 +22,7 @@ export { Breadcrumb } from './Breadcrumb';
 export { AIAgentView } from './AIAgentView';
 
 // 主编辑器区域组件
-export { EditorArea } from './EditorArea';
-export type { EditorTab } from './EditorArea';
-export { EditorGroup } from './EditorGroup';
+export { EditorArea } from './EditorArea/EditorArea';
+export type { EditorTab } from './EditorArea/EditorArea';
+export { EditorGroup } from './EditorGroup/EditorGroup';
+export { MonacoEditor } from './MonacoEditor/MonacoEditor';

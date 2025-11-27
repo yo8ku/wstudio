@@ -4,9 +4,98 @@
  */
 
 // @ 菜单的最小和最大高度设置为 300px
-.ai-zone-context-select-content {
-  min-height: 300px !important;
-  max-height: 300px !important;
+.ai-zone-context-select {
+  // 确保 Select 组件在内联聊天中正确显示
+  position: relative;
+  width: 100%;
+  z-index: 10001; // 确保菜单在编辑器上方
+
+  
+  // Select 触发器样式（隐藏，因为内联聊天中不需要显示触发器）
+  .select-trigger {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    border: none !important;
+    outline: none !important;
+    &:hover{
+      background-color: transparent !important;
+    }
+  }
+  
+  // Select 下拉内容样式
+  .select-content {
+    position: fixed !important; // 使用 fixed 定位，确保菜单正确显示
+    z-index: 999999 !important; // 确保菜单在最上层
+    min-height: 300px !important;
+    max-height: 300px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+
+    background-color: var(--ws-dropdown-background) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    
+    // 确保菜单内容正确显示
+    .select-list {
+      max-height: calc(300px - 80px); // 减去搜索框和头部的高度
+      overflow-y: auto;
+      overflow-x: hidden;
+      flex: 1;
+      min-height: 0;
+      
+      // 自定义滚动条样式
+      &::-webkit-scrollbar {
+        width: 6px;
+      }
+      
+      &::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      
+      &::-webkit-scrollbar-thumb {
+        background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+        border-radius: 3px;
+
+      }
+    }
+    
+    // 搜索框样式
+    .select-search {
+      border-bottom: 1px solid var(--ws-dropdown-border);
+      background-color: var(--ws-dropdown-background);
+      flex-shrink: 0;
+    }
+    
+    // 头部样式
+    .select-header {
+      border-bottom: 1px solid var(--ws-dropdown-border);
+      background-color: var(--ws-dropdown-background);
+      flex-shrink: 0;
+    }
+  }
+}
+
+// 确保内联聊天容器不会因为菜单而改变布局
+.ai-zone-container {
+  // 当菜单打开时，确保容器布局不受影响
+  position: relative;
+  overflow: visible !important;
+  
+  // 确保菜单容器不影响布局
+  .ai-zone-context-select {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; // 不拦截事件，让菜单自己处理
+    
+    .select-content {
+      pointer-events: auto; // 菜单内容可以接收事件
+    }
+  }
 }
 
 // 选中文件工具栏
@@ -16,7 +105,7 @@
   gap: 8px;
   flex-wrap: wrap;
   padding: 4px 0;
-  margin-bottom: 4px;
+  margin-top: 4px;
 }
 
 // 选中文件项
@@ -71,5 +160,58 @@
     width: 12px;
     height: 12px;
   }
+}
+
+// 文档引用显示区域
+.ai-zone-document-references {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--ws-input-background);
+  border: 1px solid var(--ws-input-border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+// 文档引用标题
+.ai-zone-document-references-title {
+  font-weight: 500;
+  color: var(--ws-foreground);
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+// 文档引用列表
+.ai-zone-document-references-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+// 文档引用项
+.ai-zone-document-reference-item {
+  display: flex;
+  align-items: center;
+  color: var(--ws-descriptionForeground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+// 文档引用文件名
+.ai-zone-document-reference-file-name {
+  color: var(--ws-foreground);
+  font-weight: 400;
+}
+
+// 文档引用知识库名
+.ai-zone-document-reference-kb-name {
+  color: var(--ws-descriptionForeground);
+  opacity: 0.8;
+}
+
+// 文档引用片段数
+.ai-zone-document-reference-chunks {
+  color: var(--ws-descriptionForeground);
+  opacity: 0.7;
 }
 

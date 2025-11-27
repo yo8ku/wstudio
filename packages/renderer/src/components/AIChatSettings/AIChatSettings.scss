@@ -78,7 +78,6 @@
         height: 4px;
         border-radius: 2px;
         outline: none;
-        background: var(--ws-input-background);
         cursor: pointer;
         appearance: none;
         -webkit-appearance: none;
@@ -219,12 +218,13 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 8px 12px;
+            padding: 5px 12px;
             cursor: pointer;
             border-radius: 4px;
             font-size: 13px;
             color: var(--ws-dropdown-foreground);
             transition: none;
+            margin-top: 2px;
 
             .menu-item-content {
               display: flex;
@@ -233,7 +233,8 @@
             }
 
             &:hover {
-              background: var(--ws-list-hover-background);
+              background: var(--ws-menubar-selectionBackground);
+              color: var(--ws-menubar-selectionForeground);
             }
 
             &:active {

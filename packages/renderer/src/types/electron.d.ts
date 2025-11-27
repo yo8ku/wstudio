@@ -3,6 +3,17 @@
  */
 
 /**
+ * 主题接口
+ */
+export interface ITheme {
+  id: string;
+  name: string;
+  type: 'dark' | 'light' | 'hc';
+  colors: Record<string, string>;
+  path?: string;
+}
+
+/**
  * 扩展信息接口
  */
 export interface IExtensionInfo {
@@ -68,12 +79,10 @@ export interface ElectronAPI {
     install: (extensionId: string, version?: string) => Promise<InstallResult>;
     getDetails: (extensionId: string) => Promise<APIResponse<IExtensionInfo>>;
   };
-  vsix: {
-    install: (vsixPath: string) => Promise<InstallResult>;
-  };
   settings?: {
     getAll: () => Promise<APIResponse<Record<string, any>>>;
     get: (key: string) => Promise<APIResponse<any>>;
+    getPlugin: (key: string) => Promise<APIResponse<any>>;
     update: (key: string, value: any, target?: 'user' | 'workspace') => Promise<APIResponse>;
     updateMany: (updates: Record<string, any>, target?: 'user' | 'workspace') => Promise<APIResponse>;
     reset: (key?: string) => Promise<APIResponse>;
@@ -117,6 +126,11 @@ export interface ElectronAPI {
   };
   readSnippetsConfig?: () => Promise<string>;
   saveSnippetsConfig?: (content: string) => Promise<APIResponse>;
+  theme?: {
+    list: () => Promise<APIResponse<ITheme[]>>;
+    getCurrent: () => Promise<APIResponse<ITheme>>;
+    apply: (themeId: string) => Promise<APIResponse>;
+  };
   on?: (channel: string, callback: (event: any, ...args: any[]) => void) => () => void;
   off?: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
   platform: string;
@@ -236,6 +250,9 @@ export interface ElectronIPC {
     getLastOpened: () => Promise<FileResult>;
     clearRecentFiles: () => Promise<APIResponse>;
   };
+  knowledgeBase?: {
+    openFolder: () => Promise<FileResult>;
+  };
   snippet?: {
     initialize: () => Promise<APIResponse>;
     add: (snippet: Snippet) => Promise<APIResponse<number>>;
@@ -256,25 +273,50 @@ export interface ElectronIPC {
     onExit: (callback: (terminalId: string, exitCode: number) => void) => () => void;
   };
   fileReference?: {
-    add: (filePath: string, content: string, storeType?: 'persistent' | 'temporary', sessionId?: string, options?: {
+    add: (filePath: string, content: string, options?: {
       modelName?: string;
-      chunkSize?: number;
-      chunkOverlap?: number;
-      chunkStrategy?: string;
     }) => Promise<APIResponse<string[]>>;
-    search: (query: string, sessionId?: string, options?: {
-      topK?: number;
-      storeTypes?: ('persistent' | 'temporary')[];
-      modelName?: string;
-      filterMetadata?: Record<string, unknown>;
-    }) => Promise<APIResponse<any[]>>;
-    searchBoth: (query: string, sessionId?: string, options?: {
+    search: (query: string, options?: {
       topK?: number;
       modelName?: string;
       filterMetadata?: Record<string, unknown>;
     }) => Promise<APIResponse<any[]>>;
-    clearTemporary: (sessionId?: string) => Promise<APIResponse>;
-    setSession: (sessionId: string) => Promise<APIResponse>;
+  };
+  workspaceIndex?: {
+    initialize: () => Promise<APIResponse>;
+    indexWorkspace: (workspacePath: string) => Promise<APIResponse<{
+      totalFiles: number;
+      indexedFiles: number;
+      errors: string[];
+    }>>;
+    getProgress: () => Promise<APIResponse<{
+      totalFiles: number;
+      processedFiles: number;
+      currentFile?: string;
+    } | null>>;
+    isIndexing: () => Promise<APIResponse<boolean>>;
+    search: (options: {
+      query: string;
+      fileExtension?: string;
+      language?: string;
+      limit?: number;
+    }) => Promise<APIResponse<Array<{
+      filePath: string;
+      fileName: string;
+      fileExtension: string;
+      contentPreview: string;
+      language: string;
+      score?: number;
+      matches?: string[];
+    }>>>;
+    updateFile: (filePath: string) => Promise<APIResponse>;
+    deleteFile: (filePath: string) => Promise<APIResponse>;
+    getStats: () => Promise<APIResponse<{
+      totalFiles: number;
+      totalSize: number;
+      languages: Record<string, number>;
+    }>>;
+    clear: () => Promise<APIResponse>;
   };
 }
 

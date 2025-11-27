@@ -38,6 +38,16 @@ export const MonacoContextMenu: React.FC<MonacoContextMenuProps> = ({
   menuGroups,
   onClose
 }) => {
+  console.log('[MonacoContextMenu] ========== 组件渲染 ==========');
+  console.log('[MonacoContextMenu] visible:', visible);
+  console.log('[MonacoContextMenu] menuGroups:', menuGroups);
+  console.log('[MonacoContextMenu] menuGroups.length:', menuGroups.length);
+  if (menuGroups.length > 0 && menuGroups[0].items.length > 0) {
+    console.log('[MonacoContextMenu] 第一个菜单项:', menuGroups[0].items[0]);
+    console.log('[MonacoContextMenu] inline-chat action:', menuGroups[0].items[0]?.action);
+    console.log('[MonacoContextMenu] inline-chat disabled:', menuGroups[0].items[0]?.disabled);
+  }
+  
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
 
@@ -103,9 +113,17 @@ export const MonacoContextMenu: React.FC<MonacoContextMenuProps> = ({
   }
 
   const handleItemClick = (item: MenuItem) => {
+    console.log('[MonacoContextMenu] ========== handleItemClick 被调用 ==========');
+    console.log('[MonacoContextMenu] item:', item);
+    console.log('[MonacoContextMenu] item.disabled:', item.disabled);
+    console.log('[MonacoContextMenu] item.action:', item.action);
+    
     if (!item.disabled) {
+      console.log('[MonacoContextMenu] 执行 item.action()');
       item.action();
       onClose();
+    } else {
+      console.warn('[MonacoContextMenu] 菜单项被禁用，不执行 action');
     }
   };
 

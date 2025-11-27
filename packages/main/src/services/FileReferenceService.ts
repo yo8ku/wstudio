@@ -1,42 +1,46 @@
 /**
  * 文件引用服务
- * 处理@引用的文件，支持持久化和临时存储
+ * 处理@引用的文件，使用持久化存储
  */
 
 // 使用动态导入来导入 ES 模块
-type VectorStoreManagerType = typeof import('@note-studio/knowledge-base')['VectorStoreManager'];
-type AddDocumentsOptionsType = import('@note-studio/knowledge-base').AddDocumentsOptions;
+type VectorStoreManagerType = typeof import('@note-studio/global-rag', { with: { 'resolution-mode': 'import' } })['VectorStoreManager'];
+type AddDocumentsOptionsType = import('@note-studio/global-rag', { with: { 'resolution-mode': 'import' } }).AddDocumentsOptions;
 
 export interface FileReference {
   filePath: string;
   fileName: string;
   content: string;
-  storeType: 'persistent' | 'temporary';
-  sessionId?: string;
 }
 
 export class FileReferenceService {
   private vectorStoreManager: InstanceType<VectorStoreManagerType> | null = null;
   private VectorStoreManagerClass: VectorStoreManagerType | null = null;
-  private sessionId: string;
   private initialized: boolean = false;
   private moduleLoaded: boolean = false;
 
-  constructor(sessionId: string = 'default') {
-    this.sessionId = sessionId;
-  }
+  constructor() {}
 
   /**
    * 动态加载 ES 模块
+   * 使用 Function 构造函数确保动态导入不被 TypeScript 转换为 require()
    */
   private async loadModule(): Promise<void> {
     if (this.moduleLoaded && this.VectorStoreManagerClass) {
       return;
     }
 
-    const module = await import('@note-studio/knowledge-base');
-    this.VectorStoreManagerClass = module.VectorStoreManager;
-    this.moduleLoaded = true;
+    try {
+      // 使用 Function 构造函数创建动态导入，避免被 TypeScript 转换为 require()
+      const dynamicImport = new Function('specifier', 'return import(specifier)');
+      const module = await dynamicImport('@note-studio/global-rag');
+      this.VectorStoreManagerClass = module.VectorStoreManager;
+      this.moduleLoaded = true;
+    } catch (error) {
+      console.error('[FileReferenceService] 加载模块失败:', error);
+      // 重新抛出错误，让调用者处理
+      throw new Error(`Failed to load @note-studio/global-rag: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**
@@ -49,7 +53,6 @@ export class FileReferenceService {
         throw new Error('Failed to load VectorStoreManager');
       }
       this.vectorStoreManager = new this.VectorStoreManagerClass();
-      this.vectorStoreManager.setDefaultSessionId(this.sessionId);
     }
     return this.vectorStoreManager;
   }
@@ -73,29 +76,17 @@ export class FileReferenceService {
   async addFileReference(
     filePath: string,
     content: string,
-    storeType: 'persistent' | 'temporary' = 'temporary',
     options?: {
       modelName?: string;
-      chunkSize?: number;
-      chunkOverlap?: number;
-      chunkStrategy?: string;
     }
   ): Promise<number[]> {
     if (!this.initialized) {
       await this.initialize();
     }
 
-    const fileName = filePath.split(/[/\\]/).pop() || filePath;
-    const fileType = fileName.split('.').pop() || '';
-
     const manager = await this.getVectorStoreManager();
     const addOptions: AddDocumentsOptionsType = {
-      storeType,
-      sessionId: this.sessionId,
       modelName: options?.modelName,
-      chunkSize: options?.chunkSize,
-      chunkOverlap: options?.chunkOverlap,
-      chunkStrategy: options?.chunkStrategy,
     };
 
     return manager.addFile(filePath, content, addOptions);
@@ -108,7 +99,6 @@ export class FileReferenceService {
     query: string,
     options?: {
       topK?: number;
-      storeTypes?: ('persistent' | 'temporary')[];
       modelName?: string;
       filterMetadata?: Record<string, unknown>;
     }
@@ -120,57 +110,9 @@ export class FileReferenceService {
     const manager = await this.getVectorStoreManager();
     return manager.search(query, {
       topK: options?.topK,
-      storeTypes: options?.storeTypes,
-      sessionId: this.sessionId,
       modelName: options?.modelName,
       filterMetadata: options?.filterMetadata,
     });
-  }
-
-  /**
-   * 联合搜索（同时搜索持久化和临时存储）
-   */
-  async searchBoth(
-    query: string,
-    options?: {
-      topK?: number;
-      modelName?: string;
-      filterMetadata?: Record<string, unknown>;
-    }
-  ) {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    const manager = await this.getVectorStoreManager();
-    return manager.searchBoth(query, {
-      topK: options?.topK,
-      sessionId: this.sessionId,
-      modelName: options?.modelName,
-      filterMetadata: options?.filterMetadata,
-    });
-  }
-
-  /**
-   * 设置会话ID
-   */
-  async setSessionId(sessionId: string): Promise<void> {
-    this.sessionId = sessionId;
-    if (this.vectorStoreManager) {
-      this.vectorStoreManager.setDefaultSessionId(sessionId);
-    }
-  }
-
-  /**
-   * 清空当前会话的临时存储
-   */
-  async clearTemporaryStore(): Promise<void> {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    const manager = await this.getVectorStoreManager();
-    await manager.clearTemporaryStore(this.sessionId);
   }
 
   /**
