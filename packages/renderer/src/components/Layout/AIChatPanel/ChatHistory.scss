@@ -8,8 +8,8 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  background: var(--ws-menu-background);
-  border: 1px solid var(--ws-menu-border);
+  background: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
   z-index: 1000; /* 确保在普通内容之上，但低于模态窗口 */
 }
 

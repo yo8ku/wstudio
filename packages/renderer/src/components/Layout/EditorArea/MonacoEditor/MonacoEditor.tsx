@@ -16,6 +16,7 @@ import './MonacoEditor.scss';
 import { AIZoneWidget } from '../AIZoneWidget/AIZoneWidget';
 import { GhostTextWidget } from '../GhostTextWidget/GhostTextWidget';
 import { CodeDecorationManager } from '../CodeDecorationManager/CodeDecorationManager';
+import { AIRewriteWidget } from '../AIRewriteWidget/AIRewriteWidget';
 import { builtinAI } from '../../../../services/BuiltinAIService';
 import { snippetService } from '../../../../services/SnippetService';
 import type { Snippet } from '@note-studio/shared';
@@ -108,9 +109,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const ghostTextRef = useRef<GhostTextWidget | null>(null);
   const decorationManagerRef = useRef<CodeDecorationManager | null>(null);
   const currentGhostWidgetRef = useRef<GhostTextWidget | null>(null);
+  const originalLineCountRef = useRef<number | null>(null); // 记录插入空行前的原始行数
+  const aiRewriteWidgetRef = useRef<AIRewriteWidget | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const availableModelsRef = useRef<string[]>([]); // 用于在闭包中访问最新的 availableModels
   const [showSelectKnowledgeBaseDialog, setShowSelectKnowledgeBaseDialog] = useState(false);
   const forceApplyColorsRef = useRef<(() => void) | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null); // 用于取消 AI 请求
   
   // 颜色选择器 MutationObserver 的清理函数
   const colorPickerObserverCleanupRef = useRef<(() => void) | null>(null);
@@ -135,6 +140,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           // 提取模型ID列表（格式：ProviderName:modelId）
           const modelIds = cachedModels.map(model => model.modelId);
           setAvailableModels(modelIds);
+          availableModelsRef.current = modelIds; // 同步更新 ref
           console.log('[MonacoEditor] 从数据库加载模型配置，数量:', modelIds.length);
         } else {
           // 如果数据库中没有模型配置，回退到内置AI服务
@@ -142,8 +148,10 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           const models = await builtinAI.getModels();
           if (models.length > 0) {
             setAvailableModels(models);
+            availableModelsRef.current = models; // 同步更新 ref
           } else {
             setAvailableModels([]);
+            availableModelsRef.current = []; // 同步更新 ref
           }
         }
       } catch (error) {
@@ -151,10 +159,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         // 出错时回退到内置AI服务
         try {
           const models = await builtinAI.getModels();
-          setAvailableModels(models || []);
+          const modelsArray = models || [];
+          setAvailableModels(modelsArray);
+          availableModelsRef.current = modelsArray; // 同步更新 ref
         } catch (fallbackError) {
           console.error('[MonacoEditor] 回退到内置AI服务也失败:', fallbackError);
           setAvailableModels([]);
+          availableModelsRef.current = []; // 同步更新 ref
         }
       }
     };
@@ -184,11 +195,179 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     };
   }, []);
 
-  // 标签页切换时，恢复对应标签页的内联聊天
+  /**
+   * 清除之前的 diff 内容和空行
+   * 这是一个通用函数，用于在重新生成或新请求时清除之前的 diff 状态
+   */
+  const cleanupPreviousDiff = useCallback(() => {
+    // 立即清除之前的 Ghost Text Widget（如果存在）
+    if (currentGhostWidgetRef.current) {
+      console.log('[MonacoEditor] 清除上一次的 diff 预览（重新生成或新请求）');
+      currentGhostWidgetRef.current.dispose();
+      currentGhostWidgetRef.current = null;
+    }
+    
+    // 清除之前插入的空行（无论 widget 是否存在，都要清除空行）
+    // 保存上一次的原始行数，用于清除空行
+    const previousOriginalLineCount = originalLineCountRef.current;
+    
+    // 获取当前的 zoneBottomLine，用于清除 GhostTextWidget 插入的空行
+    const currentZoneBottomLine = aiZoneWidgetRef.current?.getZoneBottomLineNumber();
+    
+    if (editorRef.current) {
+      const editor = editorRef.current;
+      const model = editor.getModel();
+      if (model) {
+        const currentLineCount = model.getLineCount();
+        
+        // 策略1: 如果有记录的原始行数，使用它来清除空行
+        if (previousOriginalLineCount !== null && currentLineCount > previousOriginalLineCount) {
+          // 从文档末尾向前查找，找到第一个非空行
+          let lastNonEmptyLine = previousOriginalLineCount;
+          
+          // 从最后一行向前检查到原始行数之后
+          for (let lineNum = currentLineCount; lineNum > previousOriginalLineCount; lineNum--) {
+            const lineContent = model.getLineContent(lineNum);
+            // 如果行不为空（有非空白字符），找到最后非空行
+            if (lineContent.trim().length > 0) {
+              lastNonEmptyLine = lineNum;
+              break;
+            }
+          }
+          
+          // 如果最后非空行小于当前行数，说明文档末尾有连续的空行需要删除
+          if (lastNonEmptyLine < currentLineCount) {
+            const linesToRemove = currentLineCount - lastNonEmptyLine;
+            const startLine = lastNonEmptyLine + 1;
+            const endLine = currentLineCount;
+            
+            console.log('[MonacoEditor] 清除', linesToRemove, '个空行（从第', startLine, '行到第', endLine, '行）');
+            
+            // 删除从 startLine 到 endLine 的所有行
+            if (startLine === previousOriginalLineCount + 1) {
+              // 从原始行数的末尾删除到文档末尾
+              const originalLineEndColumn = model.getLineMaxColumn(previousOriginalLineCount);
+              const endLineColumn = model.getLineMaxColumn(endLine);
+              
+              editor.executeEdits('inline-chat-cleanup', [{
+                range: new monaco.Range(previousOriginalLineCount, originalLineEndColumn, endLine, endLineColumn),
+                text: '',
+                forceMoveMarkers: true
+              }]);
+            } else {
+              // 从 startLine 的第1列删除到 endLine 的最后列
+              const startColumn = 1;
+              const endLineColumn = model.getLineMaxColumn(endLine);
+              
+              editor.executeEdits('inline-chat-cleanup', [{
+                range: new monaco.Range(startLine, startColumn, endLine, endLineColumn),
+                text: '',
+                forceMoveMarkers: true
+              }]);
+            }
+          }
+        }
+        
+        // 策略2: 清除从 zoneBottomLine 之后的所有连续空行（清除 GhostTextWidget 插入的空行）
+        if (currentZoneBottomLine !== undefined && currentZoneBottomLine > 0) {
+          // 从 zoneBottomLine 之后开始检查，找到第一个非空行
+          let firstNonEmptyLineAfterZone = currentLineCount + 1; // 初始化为超出范围的值
+          
+          // 从 zoneBottomLine + 1 开始向后查找，找到第一个非空行
+          for (let lineNum = currentZoneBottomLine + 1; lineNum <= currentLineCount; lineNum++) {
+            const lineContent = model.getLineContent(lineNum);
+            if (lineContent.trim().length > 0) {
+              firstNonEmptyLineAfterZone = lineNum;
+              break;
+            }
+          }
+          
+          // 如果从 zoneBottomLine + 1 到 firstNonEmptyLineAfterZone - 1 都是空行，清除它们
+          if (firstNonEmptyLineAfterZone > currentZoneBottomLine + 1) {
+            const startLine = currentZoneBottomLine + 1;
+            const endLine = firstNonEmptyLineAfterZone - 1;
+            const linesToRemove = endLine - startLine + 1;
+            
+            console.log('[MonacoEditor] 清除 GhostTextWidget 插入的', linesToRemove, '个空行（从第', startLine, '行到第', endLine, '行）');
+            
+            // 删除从 startLine 到 endLine 的所有行
+            const startColumn = 1;
+            const endLineColumn = model.getLineMaxColumn(endLine);
+            
+            editor.executeEdits('inline-chat-cleanup-ghost', [{
+              range: new monaco.Range(startLine, startColumn, endLine, endLineColumn),
+              text: '',
+              forceMoveMarkers: true
+            }]);
+          } else if (firstNonEmptyLineAfterZone > currentLineCount) {
+            // 如果从 zoneBottomLine + 1 到文档末尾都是空行，清除它们
+            const startLine = currentZoneBottomLine + 1;
+            const endLine = currentLineCount;
+            
+            if (startLine <= endLine) {
+              const linesToRemove = endLine - startLine + 1;
+              
+              console.log('[MonacoEditor] 清除 GhostTextWidget 插入的', linesToRemove, '个空行（从第', startLine, '行到第', endLine, '行，文档末尾）');
+              
+              // 删除从 startLine 到 endLine 的所有行
+              const startColumn = 1;
+              const endLineColumn = model.getLineMaxColumn(endLine);
+              
+              editor.executeEdits('inline-chat-cleanup-ghost', [{
+                range: new monaco.Range(startLine, startColumn, endLine, endLineColumn),
+                text: '',
+                forceMoveMarkers: true
+              }]);
+            }
+          }
+        }
+        
+        // 策略3: 如果没有记录的原始行数，但从文档末尾有连续空行，也尝试清除
+        if (previousOriginalLineCount === null && currentLineCount > 0) {
+          // 从文档末尾向前查找，找到最后一个非空行
+          let lastNonEmptyLine = currentLineCount;
+          for (let lineNum = currentLineCount; lineNum >= 1; lineNum--) {
+            const lineContent = model.getLineContent(lineNum);
+            if (lineContent.trim().length > 0) {
+              lastNonEmptyLine = lineNum;
+              break;
+            }
+          }
+          
+          // 如果最后非空行小于当前行数，说明文档末尾有连续的空行需要删除
+          if (lastNonEmptyLine < currentLineCount) {
+            const linesToRemove = currentLineCount - lastNonEmptyLine;
+            const startLine = lastNonEmptyLine + 1;
+            const endLine = currentLineCount;
+            
+            console.log('[MonacoEditor] 清除文档末尾', linesToRemove, '个空行（从第', startLine, '行到第', endLine, '行）');
+            
+            // 删除从 startLine 到 endLine 的所有行
+            const startColumn = 1;
+            const endLineColumn = model.getLineMaxColumn(endLine);
+            
+            editor.executeEdits('inline-chat-cleanup', [{
+              range: new monaco.Range(startLine, startColumn, endLine, endLineColumn),
+              text: '',
+              forceMoveMarkers: true
+            }]);
+          }
+        }
+        
+        // 重置原始行数记录，以便重新生成时重新记录
+        originalLineCountRef.current = null;
+      }
+    }
+  }, []);
+
+  // 标签页切换时，恢复对应标签页的内联聊天，并清理之前的 diff
   useEffect(() => {
     if (!tabId || !editorRef.current) {
       return;
     }
+
+    // 清理之前标签页的 diff 内容和空行（如果存在）
+    cleanupPreviousDiff();
 
     // 检查是否有该标签页的内联聊天实例
     const existingInstance = AIZoneWidget.getInstanceByTabId(tabId);
@@ -202,7 +381,83 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       // 布局恢复由 onDidLayoutChange 中的 wasHidden 逻辑处理
       // 这里只需要确保实例被正确引用即可
     }
-  }, [tabId]);
+  }, [tabId]); // cleanupPreviousDiff 没有依赖项，引用稳定，不需要放在依赖项中
+
+  /**
+   * 初始化 diff 显示
+   * 这是一个通用函数，用于创建 GhostTextWidget 并准备显示 diff 内容
+   * @returns 返回包含 ghostWidget 和 zoneBottomLine 的对象
+   */
+  const initializeDiffDisplay = useCallback(() => {
+    if (!editorRef.current) {
+      console.error('[MonacoEditor] editorRef.current 为空，无法初始化 diff 显示');
+      return null;
+    }
+
+    const editor = editorRef.current;
+    const position = editor.getPosition();
+    if (!position) {
+      console.error('[MonacoEditor] 无法获取编辑器位置');
+      return null;
+    }
+
+    // 获取 AIZoneWidget 底部边框的行号
+    const zoneBottomLine = aiZoneWidgetRef.current?.getZoneBottomLineNumber() || position.lineNumber;
+    console.log('[InlineChat] Zone 底部行号:', zoneBottomLine, '原始光标行号:', position.lineNumber);
+    
+    // 确保目标行存在，如果不存在则先插入空行
+    const model = editor.getModel();
+    if (model) {
+      const totalLines = model.getLineCount();
+      // 记录插入空行前的原始行数
+      originalLineCountRef.current = totalLines;
+      console.log('[InlineChat] 文档总行数:', totalLines, '目标行号:', zoneBottomLine);
+      
+      if (zoneBottomLine > totalLines) {
+        // 在文档末尾插入空行，使目标行号有效
+        const lastLine = model.getLineMaxColumn(totalLines);
+        editor.executeEdits('inline-chat-prepare', [{
+          range: new monaco.Range(totalLines, lastLine, totalLines, lastLine),
+          text: '\n'.repeat(zoneBottomLine - totalLines),
+          forceMoveMarkers: true
+        }]);
+        console.log('[InlineChat] 插入了', zoneBottomLine - totalLines, '个空行');
+      }
+    }
+    
+    // 再次确保清除之前的 Ghost Text Widget（如果存在，双重保险）
+    if (currentGhostWidgetRef.current) {
+      console.log('[InlineChat] 再次清除上一次的 diff 预览（双重保险）');
+      currentGhostWidgetRef.current.dispose();
+      currentGhostWidgetRef.current = null;
+    }
+    
+    // 创建新的 Ghost Text Widget 用于显示 diff 效果（从底部边框下一行开始）
+    const ghostWidget = new GhostTextWidget(editor, {
+      onAccept: (text: string) => {
+        console.log('[InlineChat] 用户接受了代码:', text.substring(0, 50));
+        // 代码已经被插入，清理 widget
+        ghostWidget.dispose();
+        currentGhostWidgetRef.current = null;
+        // 用户接受了代码，重置原始行数记录（因为代码已经被插入，不需要清除）
+        originalLineCountRef.current = null;
+      },
+      onReject: () => {
+        console.log('[InlineChat] 用户拒绝了代码');
+        ghostWidget.dispose();
+        currentGhostWidgetRef.current = null;
+        // 用户拒绝了代码，保持原始行数记录，以便在关闭时清除空行
+      }
+    });
+    
+    // 保存到 ref 中
+    currentGhostWidgetRef.current = ghostWidget;
+    
+    return {
+      ghostWidget,
+      zoneBottomLine
+    };
+  }, []);
 
   // 处理内联聊天消息发送
   const handleSendInlineChatMessage = useCallback(async (
@@ -210,11 +465,24 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     includeSelection: boolean, 
     selectedModel?: string
   ) => {
+    // 清除之前的 diff 内容和空行
+    cleanupPreviousDiff();
+    
     console.log('[MonacoEditor] handleSendInlineChatMessage 被调用, message:', message, 'selectedModel:', selectedModel);
     if (!editorRef.current) {
       console.error('[MonacoEditor] editorRef.current 为空，无法发送消息');
       return;
     }
+
+    // 如果已有正在进行的请求，先取消它
+    if (abortControllerRef.current) {
+      console.log('[MonacoEditor] 取消之前的请求');
+      abortControllerRef.current.abort();
+    }
+
+    // 创建新的 AbortController
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     const editor = editorRef.current;
     const position = editor.getPosition();
@@ -314,9 +582,22 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     // 获取选中的文本（如果需要包含）
     let selectedText = '';
     if (includeSelection) {
-      const selection = editor.getSelection();
-      if (selection) {
-        selectedText = editor.getModel()?.getValueInRange(selection) || '';
+      // 优先从 AIZoneWidget 获取选中文本（因为可能已经清除了编辑器中的选中状态）
+      if (aiZoneWidgetRef.current) {
+        const widgetSelectedText = (aiZoneWidgetRef.current as any).selectedText;
+        if (widgetSelectedText) {
+          selectedText = widgetSelectedText;
+          console.log('[MonacoEditor] 从 AIZoneWidget 获取选中文本:', selectedText);
+        }
+      }
+      
+      // 如果 AIZoneWidget 中没有，尝试从编辑器获取
+      if (!selectedText) {
+        const selection = editor.getSelection();
+        if (selection && !selection.isEmpty()) {
+          selectedText = editor.getModel()?.getValueInRange(selection) || '';
+          console.log('[MonacoEditor] 从编辑器获取选中文本:', selectedText);
+        }
       }
     }
 
@@ -710,52 +991,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       let accumulatedCode = '';
       let isFirstChunk = true;
       
-      // 获取 AIZoneWidget 底部边框的行号
-      const zoneBottomLine = aiZoneWidgetRef.current?.getZoneBottomLineNumber() || position.lineNumber;
-      console.log('[InlineChat] Zone 底部行号:', zoneBottomLine, '原始光标行号:', position.lineNumber);
-      
-      // 确保目标行存在，如果不存在则先插入空行
-      const model = editor.getModel();
-      if (model) {
-        const totalLines = model.getLineCount();
-        console.log('[InlineChat] 文档总行数:', totalLines, '目标行号:', zoneBottomLine);
-        
-        if (zoneBottomLine > totalLines) {
-          // 在文档末尾插入空行，使目标行号有效
-          const lastLine = model.getLineMaxColumn(totalLines);
-          editor.executeEdits('inline-chat-prepare', [{
-            range: new monaco.Range(totalLines, lastLine, totalLines, lastLine),
-            text: '\n'.repeat(zoneBottomLine - totalLines),
-            forceMoveMarkers: true
-          }]);
-          console.log('[InlineChat] 插入了', zoneBottomLine - totalLines, '个空行');
-        }
+      // 使用封装的函数初始化 diff 显示
+      const diffDisplay = initializeDiffDisplay();
+      if (!diffDisplay) {
+        console.error('[MonacoEditor] 初始化 diff 显示失败');
+        return;
       }
       
-      // 清除之前的 Ghost Text Widget（如果存在）
-      if (currentGhostWidgetRef.current) {
-        console.log('[InlineChat] 清除上一次的 diff 预览');
-        currentGhostWidgetRef.current.dispose();
-        currentGhostWidgetRef.current = null;
-      }
-      
-      // 创建新的 Ghost Text Widget 用于显示 diff 效果（从底部边框下一行开始）
-      const ghostWidget = new GhostTextWidget(editor, {
-        onAccept: (text: string) => {
-          console.log('[InlineChat] 用户接受了代码:', text.substring(0, 50));
-          // 代码已经被插入，清理 widget
-          ghostWidget.dispose();
-          currentGhostWidgetRef.current = null;
-        },
-        onReject: () => {
-          console.log('[InlineChat] 用户拒绝了代码');
-          ghostWidget.dispose();
-          currentGhostWidgetRef.current = null;
-        }
-      });
-      
-      // 保存到 ref 中
-      currentGhostWidgetRef.current = ghostWidget;
+      const { ghostWidget, zoneBottomLine } = diffDisplay;
       
       // 获取深度思考状态
       const isDeepThinkingEnabled = aiZoneWidgetRef.current?.getDeepThinkingEnabled() ?? true;
@@ -800,9 +1043,15 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         reasoning: shouldShowThinking ? { 
           enabled: true,
           thinkingBudget: DEFAULT_CHAT_SETTINGS.thinkingBudget // 使用默认思考预算
-        } : undefined
+        } : undefined,
+        signal: abortController.signal // 传递 AbortSignal 以支持取消
       }, {
         onContent: (chunk: string) => {
+          // 检查是否已被取消
+          if (abortController.signal.aborted) {
+            return;
+          }
+
           // 收到第一个 chunk 时，通知 AIZoneWidget 显示用户问题
           if (isFirstChunk) {
             isFirstChunk = false;
@@ -816,10 +1065,20 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           ghostWidget.updateTextAtLine(accumulatedCode, zoneBottomLine);
         },
         onReasoning: (reasoning: string) => {
+          // 检查是否已被取消
+          if (abortController.signal.aborted) {
+            return;
+          }
           // 内联聊天不显示推理过程，只记录日志
           console.log('[InlineChat] 推理片段:', reasoning.substring(0, 100));
         }
       });
+
+      // 检查是否已被取消，如果已取消则不执行完成处理
+      if (abortController.signal.aborted) {
+        console.log('[InlineChat] 检测到请求已被取消，跳过完成处理');
+        return;
+      }
 
       console.log('[InlineChat] AI 响应完成');
 
@@ -837,19 +1096,117 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         aiZoneWidgetRef.current.appendMessage('assistant', assistantHistoryMessage);
       }
       
+      // 再次检查是否已被取消（可能在 appendMessage 过程中被取消）
+      if (abortController.signal.aborted) {
+        console.log('[InlineChat] 检测到请求已被取消，跳过完成处理');
+        return;
+      }
+      
       // 通知 AIZoneWidget 回复完成
       aiZoneWidgetRef.current?.onAIResponseComplete();
     } catch (error) {
+      // 如果是取消操作，不显示错误信息
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[InlineChat] 请求已被用户取消');
+        // 清理 AbortController
+        if (abortControllerRef.current === abortController) {
+          abortControllerRef.current = null;
+        }
+        return;
+      }
+
       console.error('[InlineChat] 调用 AI 服务失败:', error);
       
-      // 在 AIZoneWidget 中显示错误信息
-      const errorMessage = `调用 AI 服务失败\n错误: ${String(error)}`;
-      aiZoneWidgetRef.current?.updateAIResponse(errorMessage);
+      // 停止生成状态（不替换提问内容，错误信息将在 diff 区域显示）
+      if (aiZoneWidgetRef.current) {
+        // 手动停止生成，但不调用 stopGeneration（因为那会标记为取消）
+        const widget = aiZoneWidgetRef.current as any;
+        widget.isGenerating = false;
+        widget.updateSendButton();
+        widget.hideThinkingState();
+        
+        // 恢复底部工具栏
+        if (widget.bottomToolbar) {
+          widget.bottomToolbar.style.display = 'flex';
+        }
+        // 更新工具栏显示（隐藏取消工具栏，恢复为文件工具栏或隐藏）
+        if (widget.updateSelectedFilesToolbar) {
+          widget.updateSelectedFilesToolbar();
+        }
+      }
       
-      // 3秒后清空错误信息
-      setTimeout(() => {
-        aiZoneWidgetRef.current?.updateAIResponse('');
-      }, 3000);
+      // 在 diff 区域（ghost text widget）显示错误信息，而不是替换提问内容
+      if (editorRef.current && aiZoneWidgetRef.current) {
+        const editor = editorRef.current;
+        const zoneBottomLine = aiZoneWidgetRef.current.getZoneBottomLineNumber();
+        
+        // 格式化错误信息
+        let errorMessage = `调用 AI 服务失败\n\n`;
+        if (error instanceof Error) {
+          // 尝试解析错误消息，提取更友好的信息
+          let errorDetail = error.message;
+          
+          // 如果是 RateLimitError，尝试提取更友好的消息
+          if (error.name === 'RateLimitError' || error.message.includes('RateLimitError')) {
+            try {
+              // 尝试从错误消息中提取 JSON 格式的错误详情
+              const jsonMatch = error.message.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                const errorData = JSON.parse(jsonMatch[0]);
+                if (errorData.errors && errorData.errors.message) {
+                  errorDetail = errorData.errors.message;
+                } else if (errorData.message) {
+                  errorDetail = errorData.message;
+                }
+              }
+            } catch (e) {
+              // 如果解析失败，使用原始消息
+            }
+            
+            // 如果是配额限制错误，添加更友好的提示
+            if (errorDetail.includes('quota') || errorDetail.includes('配额') || errorDetail.includes('exceeded')) {
+              errorMessage = `⚠️ API 配额已用完\n\n${errorDetail}\n\n建议：\n• 明天再试\n• 或切换到其他模型`;
+            } else {
+              errorMessage = `⚠️ 请求频率限制\n\n${errorDetail}`;
+            }
+          } else {
+            errorMessage += `错误: ${errorDetail}`;
+            if (error.name && error.name !== 'Error') {
+              errorMessage += `\n\n类型: ${error.name}`;
+            }
+          }
+        } else {
+          errorMessage += `错误: ${String(error)}`;
+        }
+        
+        // 如果已有 ghost widget，先清除它
+        if (currentGhostWidgetRef.current) {
+          currentGhostWidgetRef.current.dispose();
+          currentGhostWidgetRef.current = null;
+        }
+        
+        // 创建新的 ghost text widget 显示错误信息
+        const errorGhostWidget = new GhostTextWidget(editor, {
+          onReject: () => {
+            errorGhostWidget.dispose();
+            if (currentGhostWidgetRef.current === errorGhostWidget) {
+              currentGhostWidgetRef.current = null;
+            }
+          }
+        });
+        
+        const errorPosition: monaco.IPosition = {
+          lineNumber: zoneBottomLine,
+          column: 1
+        };
+        errorGhostWidget.show(errorPosition, errorMessage);
+        currentGhostWidgetRef.current = errorGhostWidget;
+      }
+    } finally {
+      // 清理 AbortController（如果这是当前的请求）
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
     }
   }, [tabId, tabTitle, language, availableModels]);
 
@@ -879,21 +1236,50 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       ? editor.getModel()?.getValueInRange(selection) 
       : undefined;
 
+    // 计算内联聊天显示的行号：如果有选中内容，显示在选中内容的下方（结束行号的下一行）
+    let targetLineNumber: number;
+    if (selection && !selection.isEmpty()) {
+      // 有选中内容，显示在选中内容的下方（结束行号的下一行）
+      const model = editor.getModel();
+      const totalLines = model ? model.getLineCount() : 1;
+      // 显示在选中内容的下一行，而不是选中内容的最后一行
+      targetLineNumber = Math.min(totalLines, selection.endLineNumber + 1);
+      console.log('[MonacoEditor] 有选中内容，内联聊天显示在选中内容下方:', {
+        selectionStartLine: selection.startLineNumber,
+        selectionEndLine: selection.endLineNumber,
+        targetLineNumber,
+        totalLines
+      });
+    } else {
+      // 没有选中内容，显示在当前光标位置
+      targetLineNumber = position.lineNumber;
+      console.log('[MonacoEditor] 没有选中内容，内联聊天显示在当前光标位置:', targetLineNumber);
+    }
+
     // 如果已存在 Zone Widget 且不需要重新创建，直接返回
     if (aiZoneWidgetRef.current && skipRecreate) {
       return;
     }
 
-    // 如果已存在该标签页的 Zone Widget，直接使用
+    // 如果已存在该标签页的 Zone Widget，检查是否需要重新创建
     if (tabId) {
       const existingInstance = AIZoneWidget.getInstanceByTabId(tabId);
       if (existingInstance && existingInstance.isVisible()) {
-        // 如果已存在且可见，直接返回
-        if (skipRecreate) {
+        // 检查模型下拉框是否存在
+        const dropdownContainer = existingInstance.getDomNode()?.querySelector('.ai-zone-input-model-dropdown');
+        const shouldHaveDropdown = availableModels && availableModels.length > 0;
+        const isMissingDropdown = shouldHaveDropdown && !dropdownContainer;
+        
+        // 如果已存在且可见，且不需要重新创建，且模型下拉框存在，直接返回
+        if (skipRecreate && !isMissingDropdown) {
           aiZoneWidgetRef.current = existingInstance;
           return;
         }
-        // 否则先销毁旧实例
+        // 否则先销毁旧实例（包括模型下拉框缺失的情况）
+        // 销毁前先清除改写操作的高亮装饰
+        if (aiRewriteWidgetRef.current) {
+          aiRewriteWidgetRef.current.clearRewriteHighlight();
+        }
         existingInstance.dispose();
       }
     }
@@ -907,18 +1293,57 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       }
       // 只有当前实例不是当前标签页的实例时，才销毁
       if (!tabId || aiZoneWidgetRef.current.getTabId() !== tabId) {
+        // 销毁前先清除改写操作的高亮装饰
+        if (aiRewriteWidgetRef.current) {
+          aiRewriteWidgetRef.current.clearRewriteHighlight();
+        }
         aiZoneWidgetRef.current.dispose();
       }
       aiZoneWidgetRef.current = null;
     }
 
     // 创建新的 Zone Widget，传入 tabId
+    // 优先使用 availableModelsRef.current，确保使用最新的值
+    const modelsToUse = availableModelsRef.current.length > 0 ? availableModelsRef.current : availableModels;
+    console.log('[MonacoEditor] 创建 AIZoneWidget', {
+      availableModelsCount: availableModels?.length || 0,
+      availableModelsRefCount: availableModelsRef.current?.length || 0,
+      modelsToUseCount: modelsToUse?.length || 0,
+      availableModels: availableModels,
+      availableModelsRef: availableModelsRef.current,
+      modelsToUse: modelsToUse
+    });
     aiZoneWidgetRef.current = new AIZoneWidget(editor, {
-      availableModels,
+      availableModels: modelsToUse,
       onSubmit: (message: string, includeSelection: boolean, selectedModel?: string) => {
         handleSendInlineChatMessage(message, includeSelection, selectedModel);
       },
+      onStop: () => {
+        // 取消当前的 AI 请求
+        if (abortControllerRef.current) {
+          console.log('[MonacoEditor] 用户点击取消，正在取消请求...');
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+        }
+      },
       onClose: () => {
+        console.log('[MonacoEditor] 内联聊天关闭，开始清理 diff 和空行');
+        
+        // 关闭时也取消正在进行的请求
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+        }
+        
+        // 清除改写操作的高亮装饰
+        if (aiRewriteWidgetRef.current) {
+          aiRewriteWidgetRef.current.clearRewriteHighlight();
+        }
+        
+        // 使用统一的清理函数清除 diff 内容和空行
+        cleanupPreviousDiff();
+        
+        // 清理 AI Zone Widget
         if (aiZoneWidgetRef.current) {
           aiZoneWidgetRef.current.dispose();
           aiZoneWidgetRef.current = null;
@@ -926,8 +1351,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       }
     }, tabId);
 
-    // 显示 Zone Widget
-    aiZoneWidgetRef.current.show(position.lineNumber, selectedText);
+    // 显示 Zone Widget（使用计算的目标行号）
+    aiZoneWidgetRef.current.show(targetLineNumber, selectedText);
 
     // 如果有之前的输入内容，恢复它
     if (existingInputValue) {
@@ -2000,53 +2425,41 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     (window as any).__monacoEditor = editor;
     (window as any).__currentTabId = tabId;
     (window as any).__currentTabTitle = tabTitle;
-    // 暴露打开内联聊天的方法
-    (window as any).__openInlineChat = (initialText?: string) => {
-      // 如果已存在 widget 且提供了初始文本，直接追加内容（不重新创建）
-      if (aiZoneWidgetRef.current && initialText) {
-        const inputElement = aiZoneWidgetRef.current.getInputElement();
-        if (inputElement) {
-          const currentValue = inputElement.value.trim();
-          if (currentValue) {
-            // 如果已有内容，追加新内容
-            inputElement.value = currentValue + '\n\n' + initialText;
-          } else {
-            // 如果没有内容，直接设置
-            inputElement.value = initialText;
-          }
-          inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-          
-          // 滚动到底部
-          inputElement.scrollTop = inputElement.scrollHeight;
-          
-          // 将光标移动到末尾并聚焦
-          inputElement.focus();
-          inputElement.setSelectionRange(inputElement.value.length, inputElement.value.length);
-        }
-        return;
-      }
-
-      // 如果不存在 widget，调用打开内联聊天
-      handleOpenInlineChat(false);
+    // 暴露打开内联聊天的方法（供外部调用，如改写菜单）
+    // 先销毁现有 widget，然后调用 handleOpenInlineChat，确保重新创建并显示模型下拉框
+    (window as any).__openInlineChat = async () => {
+      // 清除上次生成的 diff 内容（如果存在）
+      cleanupPreviousDiff();
       
-      // 如果有初始文本，等待 widget 创建完成后设置
-      if (initialText) {
-        setTimeout(() => {
-          const inputElement = aiZoneWidgetRef.current?.getInputElement();
-          if (inputElement) {
-            inputElement.value = initialText;
-            inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-            
-            // 滚动到底部
-            inputElement.scrollTop = inputElement.scrollHeight;
-            
-            // 将光标移动到末尾并聚焦
-            inputElement.focus();
-            inputElement.setSelectionRange(inputElement.value.length, inputElement.value.length);
-          }
-        }, 100);
+      // 如果已存在 widget，先销毁，确保重新创建
+      if (aiZoneWidgetRef.current) {
+        aiZoneWidgetRef.current.dispose();
+        aiZoneWidgetRef.current = null;
       }
+      
+      // 如果 availableModels 还没有准备好，等待它准备好
+      // 最多等待 2 秒
+      let waitCount = 0;
+      const maxWait = 20; // 20 * 100ms = 2秒
+      while ((!availableModelsRef.current || availableModelsRef.current.length === 0) && waitCount < maxWait) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        waitCount++;
+      }
+      
+      // 再等待一个渲染周期，确保 availableModels state 也已经更新
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      console.log('[MonacoEditor] __openInlineChat 准备创建 widget', {
+        availableModelsCount: availableModelsRef.current?.length || 0,
+        availableModelsStateCount: availableModels?.length || 0,
+        waited: waitCount * 100 + 50
+      });
+      
+      // 调用 handleOpenInlineChat，与右键菜单逻辑一致
+      handleOpenInlineChat();
     };
+    // 暴露 aiZoneWidgetRef，供外部获取输入元素
+    (window as any).__aiZoneWidgetRef = aiZoneWidgetRef;
 
     // 禁用编辑器内置的 F1 命令面板，并转发到全局命令中心
     const editorDomNode = editor.getDomNode();
@@ -2068,6 +2481,21 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
     // 使用全局命令中心实例（由 MainLayout 初始化）
     commandCenterRef.current = (window as any).__commandCenter;
+
+    // 初始化 AI 改写组件
+    if (!aiRewriteWidgetRef.current) {
+      aiRewriteWidgetRef.current = new AIRewriteWidget(editor, {
+        onRewrite: (originalText: string, rewrittenText: string) => {
+          console.log('[MonacoEditor] AI 改写完成:', { originalText, rewrittenText });
+        },
+        onContinue: (originalText: string, continuedText: string) => {
+          console.log('[MonacoEditor] AI 续写完成:', { originalText, continuedText });
+        },
+        onDiff: (originalText: string, rewrittenText: string) => {
+          console.log('[MonacoEditor] AI 差异对比完成:', { originalText, rewrittenText });
+        }
+      });
+    }
     
     if (!commandCenterRef.current) {
       commandCenterRef.current = new VSCodeCommandCenter();
@@ -2815,6 +3243,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         commandCenterRef.current = null;
       }
 
+      // 清理 diff 内容和空行
+      cleanupPreviousDiff();
+
       // 清理 AI widgets
       if (aiZoneWidgetRef.current) {
         aiZoneWidgetRef.current.dispose();
@@ -2834,6 +3265,11 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       if (decorationManagerRef.current) {
         decorationManagerRef.current.dispose();
         decorationManagerRef.current = null;
+      }
+
+      if (aiRewriteWidgetRef.current) {
+        aiRewriteWidgetRef.current.dispose();
+        aiRewriteWidgetRef.current = null;
       }
     };
   }, []);

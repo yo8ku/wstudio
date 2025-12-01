@@ -102,14 +102,17 @@ export const FileTreeNode: React.FC<FileTreeNodeProps> = ({
   };
 
 
+  const parentDepth = level > 0 ? level - 1 : 0;
+
   return (
-    <div className="file-tree-node">
+    <div className="file-tree-node" data-parent-depth={parentDepth}>
       <div
         className={`file-tree-node-content ${isSelected ? 'selected' : ''} ${
           focused ? 'focused' : ''
         } ${node.isEditing ? 'editing' : ''}`}
         style={{ paddingLeft: `${level * 16 + 8}px`, minHeight: '22px' }}
         data-file-path={node.path}
+        data-depth={level}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         draggable={!node.isEditing}
@@ -167,7 +170,7 @@ export const FileTreeNode: React.FC<FileTreeNodeProps> = ({
       </div>
 
       {isDirectory && node.isExpanded && hasChildren && (
-        <div className="file-tree-children">
+        <div className="file-tree-children" data-parent-depth={level}>
           {node.children!.map((child) => (
             <FileTreeNode
               key={child.path}

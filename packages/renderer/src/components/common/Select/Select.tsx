@@ -96,14 +96,15 @@ export const Select: React.FC<SelectProps> = ({
   const menuListRef = useRef<HTMLDivElement>(null);
   const selectedItemRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const lastRectRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null);
 
   // 计算下拉菜单位置
-  const updatePosition = useCallback(() => {
-    if (!containerRef.current) return;
+  const updatePosition = useCallback((providedRect?: DOMRect) => {
+    if (!containerRef.current && !providedRect) {
+      return;
+    }
 
-    const rect = containerRef.current.getBoundingClientRect();
-    const scrollY = window.scrollY;
-    const scrollX = window.scrollX;
+    const rect = providedRect ?? containerRef.current!.getBoundingClientRect();
 
     // 计算下拉菜单的预估高度
     // 如果菜单已经渲染，使用实际高度；否则使用预估高度
@@ -137,9 +138,9 @@ export const Select: React.FC<SelectProps> = ({
 
     setPosition({
       top: calculatedPlacement === 'top' 
-        ? rect.top + scrollY - menuHeight - spacing  // 向上弹出，减去菜单高度和间距
-        : rect.bottom + scrollY + spacing, // 向下弹出，加上间距
-      left: rect.left + scrollX,
+        ? rect.top - menuHeight - spacing  // fixed 定位：直接使用视口坐标
+        : rect.bottom + spacing,
+      left: rect.left,
       width: rect.width,
     });
     
@@ -198,6 +199,46 @@ export const Select: React.FC<SelectProps> = ({
       });
     }
   }, [value, updatePosition]);
+
+  // 追踪触发器位置变化（例如内联容器随编辑器移动）
+  useEffect(() => {
+    if (!isOpen) {
+      lastRectRef.current = null;
+      return;
+    }
+
+    let rafId: number;
+
+    const trackPosition = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const lastRect = lastRectRef.current;
+        if (
+          !lastRect ||
+          Math.abs(rect.top - lastRect.top) > 0.5 ||
+          Math.abs(rect.left - lastRect.left) > 0.5 ||
+          Math.abs(rect.width - lastRect.width) > 0.5
+        ) {
+          lastRectRef.current = {
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height,
+          };
+          updatePosition(rect);
+        }
+      }
+      rafId = requestAnimationFrame(trackPosition);
+    };
+
+    trackPosition();
+
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, [isOpen, updatePosition]);
 
   // 点击外部关闭菜单
   useEffect(() => {

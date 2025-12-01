@@ -80,41 +80,64 @@ async function ensureLogIcon() {
   }
 }
 
+/**
+ * 清理旧的构建产物
+ */
+function cleanOldBuildArtifacts() {
+  console.log('[Prepare Build] 清理旧的构建产物...');
+  
+  // 清理根目录的旧dist目录（如果存在）
+  const rootDistPath = path.join(rootDir, 'dist');
+  if (fs.existsSync(rootDistPath)) {
+    try {
+      fs.rmSync(rootDistPath, { recursive: true, force: true });
+      console.log('[Prepare Build] ✓ 清理根目录 dist');
+    } catch (err) {
+      console.warn(`[Prepare Build] ✗ 清理根目录 dist 失败: ${err.message}`);
+    }
+  }
+  
+  // 清理 main/dist 下的 packages 目录（这些是构建时复制的，现在不再需要）
+  const mainDistPackagesDir = path.join(packagesDir, 'main', 'dist', 'packages');
+  if (fs.existsSync(mainDistPackagesDir)) {
+    try {
+      fs.rmSync(mainDistPackagesDir, { recursive: true, force: true });
+      console.log('[Prepare Build] ✓ 清理 main/dist/packages');
+    } catch (err) {
+      console.warn(`[Prepare Build] ✗ 清理 main/dist/packages 失败: ${err.message}`);
+    }
+  }
+  
+  // 清理 main/dist 下的其他依赖包目录（extension-api, global-rag, plugin-system, shared, theme）
+  const mainDistPath = path.join(packagesDir, 'main', 'dist');
+  if (fs.existsSync(mainDistPath)) {
+    const dirsToClean = ['extension-api', 'global-rag', 'plugin-system', 'shared', 'theme'];
+    dirsToClean.forEach(dir => {
+      const dirPath = path.join(mainDistPath, dir);
+      if (fs.existsSync(dirPath)) {
+        try {
+          fs.rmSync(dirPath, { recursive: true, force: true });
+          console.log(`[Prepare Build] ✓ 清理 main/dist/${dir}`);
+        } catch (err) {
+          console.warn(`[Prepare Build] ✗ 清理 main/dist/${dir} 失败: ${err.message}`);
+        }
+      }
+    });
+  }
+}
+
 async function main() {
   await ensureLogIcon();
+  
+  // 清理旧的构建产物
+  cleanOldBuildArtifacts();
 
   console.log('[Prepare Build] 复制 workspace 包到 node_modules...');
 
   packages.forEach(pkg => {
-    if (pkg === 'main') {
-      const mainDistPackagesDir = path.join(packagesDir, 'main', 'dist', 'packages');
-      const dependencyDistMap = {
-        theme: path.join(packagesDir, 'theme', 'dist'),
-        shared: path.join(packagesDir, 'shared', 'dist'),
-        'plugin-system': path.join(packagesDir, 'plugin-system', 'dist'),
-        renderer: path.join(packagesDir, 'renderer', 'dist')
-      };
-
-      if (!fs.existsSync(mainDistPackagesDir)) {
-        fs.mkdirSync(mainDistPackagesDir, { recursive: true });
-      }
-
-      Object.entries(dependencyDistMap).forEach(([dep, depDistPath]) => {
-        if (!fs.existsSync(depDistPath)) {
-          console.warn(`[Prepare Build] ✗ 跳过依赖（未构建 dist）: @note-studio/${dep}`);
-          return;
-        }
-
-        const targetDepPath = path.join(mainDistPackagesDir, dep);
-        if (fs.existsSync(targetDepPath)) {
-          fs.rmSync(targetDepPath, { recursive: true, force: true });
-        }
-
-        copyDir(depDistPath, targetDepPath);
-        console.log(`[Prepare Build] ✓ 复制主进程依赖: @note-studio/${dep}`);
-      });
-    }
-
+    // 不再复制依赖包到 main/dist/packages，因为现在使用 workspace 协议
+    // 依赖包会通过 node_modules/@note-studio 访问
+    
     const sourcePath = path.join(packagesDir, pkg, pkg === 'main' ? path.join('dist', 'main', 'src') : 'dist');
     const targetPath = path.join(noteStudioDir, pkg);
     

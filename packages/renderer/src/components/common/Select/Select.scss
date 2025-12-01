@@ -98,10 +98,11 @@
     }
   }
 
-  // 菜单列表
+  // 菜单列表  内联聊天下拉菜单
   .select-list {
     overflow-y: auto;
     padding: 5px;
+    background-color: var(--ws-dropdown-background);
 
     // 隐藏滚动条，但保留滚动功能
     scrollbar-width: none; // Firefox

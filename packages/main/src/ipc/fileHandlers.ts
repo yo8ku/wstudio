@@ -3,7 +3,7 @@
  * 处理文件读取、写入等操作
  */
 
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -14,29 +14,23 @@ let isRegistered = false;
  * 注册文件操作相关的 IPC 处理器
  */
 export function registerFileHandlers(): void {
-  // 防止重复注册
-  if (isRegistered) {
-    console.log('[FileHandlers] IPC 处理器已注册，跳过重复注册');
-    return;
-  }
-  
   console.log('[FileHandlers] 开始注册 IPC 处理器...');
   
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = [
-    'read-file', 'write-file', 'file-exists', 'get-file-stats'
+    'read-file', 'write-file', 'file-exists', 'file-stat', 'folder:rename', 'folder:delete', 'folder:reveal-in-explorer'
   ];
   
   for (const handler of handlersToRemove) {
     try {
       ipcMain.removeHandler(handler);
+      console.log(`[FileHandlers] 已移除旧的处理器: ${handler}`);
     } catch (e) {
       // 忽略未注册的处理器
     }
   }
   
   console.log('[FileHandlers] 已清理旧的 IPC 处理器');
-  isRegistered = true;
 
   /**
    * 读取文件内容
@@ -117,6 +111,113 @@ export function registerFileHandlers(): void {
     }
   });
 
+  /**
+   * 重命名文件或文件夹
+   */
+  ipcMain.handle('folder:rename', async (event, oldPath: string, newName: string) => {
+    try {
+      console.log('[FileHandlers] 重命名:', oldPath, '->', newName);
+      
+      // 检查源文件/文件夹是否存在
+      try {
+        await fs.access(oldPath);
+      } catch (error) {
+        console.error('[FileHandlers] 源文件不存在:', oldPath);
+        return { success: false, error: '源文件或文件夹不存在' };
+      }
+      
+      // 计算新路径
+      const dir = path.dirname(oldPath);
+      const newPath = path.join(dir, newName);
+      
+      // 检查目标是否已存在
+      try {
+        await fs.access(newPath);
+        console.error('[FileHandlers] 目标已存在:', newPath);
+        return { success: false, error: '目标文件或文件夹已存在' };
+      } catch (error) {
+        // 目标不存在，可以继续
+      }
+      
+      // 执行重命名
+      await fs.rename(oldPath, newPath);
+      console.log('[FileHandlers] 重命名成功:', newPath);
+      
+      return {
+        success: true,
+        data: {
+          path: newPath,
+          name: newName
+        }
+      };
+    } catch (error) {
+      console.error('[FileHandlers] 重命名失败:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  /**
+   * 删除文件或文件夹
+   */
+  ipcMain.handle('folder:delete', async (event, targetPath: string) => {
+    try {
+      console.log('[FileHandlers] 删除:', targetPath);
+      
+      // 检查文件/文件夹是否存在
+      try {
+        await fs.access(targetPath);
+      } catch (error) {
+        console.error('[FileHandlers] 文件/文件夹不存在:', targetPath);
+        return { success: false, error: '文件或文件夹不存在' };
+      }
+      
+      // 获取文件/文件夹信息
+      const stats = await fs.stat(targetPath);
+      
+      if (stats.isDirectory()) {
+        // 删除文件夹（递归删除所有内容）
+        await fs.rm(targetPath, { recursive: true, force: true });
+        console.log('[FileHandlers] 文件夹删除成功:', targetPath);
+      } else {
+        // 删除文件
+        await fs.unlink(targetPath);
+        console.log('[FileHandlers] 文件删除成功:', targetPath);
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('[FileHandlers] 删除失败:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  /**
+   * 在资源管理器中打开文件或文件夹
+   */
+  ipcMain.handle('folder:reveal-in-explorer', async (event, targetPath: string) => {
+    try {
+      console.log('[FileHandlers] 在资源管理器中打开:', targetPath);
+      
+      // 检查文件/文件夹是否存在
+      try {
+        await fs.access(targetPath);
+      } catch (error) {
+        console.error('[FileHandlers] 文件/文件夹不存在:', targetPath);
+        return { success: false, error: '文件或文件夹不存在' };
+      }
+      
+      // 使用 Electron 的 shell.showItemInFolder 在系统文件管理器中显示
+      shell.showItemInFolder(targetPath);
+      console.log('[FileHandlers] 已在资源管理器中打开:', targetPath);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('[FileHandlers] 在资源管理器中打开失败:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
   console.log('[FileHandlers] 文件操作 IPC 处理器注册完成');
+  isRegistered = true;
 }
 

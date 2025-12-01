@@ -68,11 +68,14 @@ export const InlineInput: React.FC<InlineInputProps> = ({
     }
     
     isHandlingBlur.current = true;
-    if (value.trim()) {
-      onConfirm(value.trim());
-    } else {
-      onCancel();
-    }
+    // 使用 setTimeout 延迟调用，避免在渲染期间更新父组件状态
+    setTimeout(() => {
+      if (value.trim()) {
+        onConfirm(value.trim());
+      } else {
+        onCancel();
+      }
+    }, 0);
   };
 
   // 阻止鼠标事件冒泡，防止触发父组件的事件处理

@@ -1,6 +1,7 @@
 /**
  * 资源管理器主容器样式
- * 包含：打开的编辑器面板、文件树面板、大纲面�? */
+ * 包含：打开的编辑器面板、文件树面板
+ */
 
 .explorer-view {
   display: flex;
@@ -8,11 +9,11 @@
   width: 100%;
   height: 100%;
   overflow: hidden; /* 防止整个资源管理器滚动 */
-  position: relative; /* 为子元素提供定位上下�?*/
+  position: relative; /* 为子元素提供定位上下文 */
 
-  /* 打开的编辑器面板 - 可折叠，不占据额外空�?*/
+  /* 打开的编辑器面板 - 可折叠，不占据额外空间 */
   .open-editors-section {
-    flex: 0 0 auto; /* 不伸缩，高度由内容决�?*/
+    flex: 0 0 auto; /* 不伸缩，高度由内容决定 */
     overflow: hidden; /* 隐藏溢出内容 */
     
     // 打开的编辑器作为第一个section，不显示顶部边框
@@ -21,106 +22,28 @@
     }
   }
 
-  /* 文件树包装器 - 根据展开/折叠状态调�?*/
+  /* 文件树包装器 - 根据展开/折叠状态调整 */
   .file-tree-wrapper {
     display: flex;
     flex-direction: column;
     overflow: hidden; /* 防止该层滚动 */
     min-height: 0; /* 允许内容滚动的关键设置 */
     
-    /* 默认：折叠状态，不占据额外空�?*/
+    /* 默认：折叠状态，不占据额外空间 */
     flex: 0 0 auto;
     
-    /* 展开状态：占据剩余空间，将大纲推到底部 */
+    /* 展开状态：占据剩余空间 */
     &.expanded {
       flex: 1 1 0; /* 占据剩余空间，flex-basis: 0 强制分配空间 */
-      // 调试：添加背景色
     }
   }
 
-  /* 文件树面�?- 占据主要空间，但可以被压�?*/
+  /* 文件树面板 - 占据主要空间，但可以被压缩 */
   .file-tree-section {
-    flex: 1 1 auto; /* 占据剩余空间，但可以被压�?*/
+    flex: 1 1 auto; /* 占据剩余空间，但可以被压缩 */
     display: flex;
     flex-direction: column;
     overflow: hidden; /* 防止该层滚动 */
     min-height: 0; /* 允许内容滚动的关键设置 */
-  }
-
-  /* 大纲包装�?- 动态定�?*/
-  .outline-wrapper {
-    display: flex;
-    flex-direction: column;
-    flex: 0 0 auto; /* 不伸缩，根据内容高度自动调整 */
-    flex-shrink: 0; /* 明确禁止收缩 */
-    overflow: visible; /* 允许 ResizeHandle 显示 */
-    position: relative; /* 为拖动手柄提供定位上下文 */
-    max-height: 80%; /* 最多占�?0%的空�?*/
-    /* 默认不使�?margin-top: auto，紧跟前面的元素 */
-    transition: margin-top 0.3s cubic-bezier(0.4, 0, 0.2, 1); /* 平滑过渡动画 */
-  }
-
-  /* 当文件树展开时，大纲被推到底�?*/
-  &.file-tree-expanded .outline-wrapper {
-    margin-top: auto;
-  }
-
-  /* 拖动手柄 - 覆盖�?section 顶部边框�?*/
-  .outline-resize-handle {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    cursor: ns-resize;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    
-    &:hover {
-      .outline-resize-handle-bar {
-        opacity: 1;
-        height: 2px;
-      }
-    }
-    
-    &.resizing {
-      .outline-resize-handle-bar {
-        opacity: 1;
-        height: 2px;
-      }
-    }
-  }
-
-  .outline-resize-handle-bar {
-    width: 100%;
-    height: 1px;
-    opacity: 0;
-    transition: opacity 0.15s ease, height 0.15s ease, background-color 0.15s ease;
-  }
-
-  /* 大纲面板 - 可折叠，不占据额外空�?*/
-  .outline-section-wrapper {
-    flex: 0 0 auto; /* 不伸缩，保持固定 */
-    display: flex;
-    flex-direction: column;
-    min-height: 0; /* 允许内容溢出滚动 */
-    overflow: hidden; /* 防止整体溢出 */
-    
-    /* 移除大纲 section 的顶部边框，使用拖动手柄代替 */
-    .explorer-section-item {
-      border-top: none !important;
-    }
-  }
-
-  /* 确保大纲区域固定在底�?*/
-  > .outline-wrapper {
-    .outline-section {
-      flex: 0 0 auto; /* 不伸�?*/
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
   }
 }

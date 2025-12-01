@@ -141,11 +141,17 @@ export abstract class BaseAIProvider implements AIProvider {
       }
     };
 
+    // 如果 options 中有 signal，确保传递给 fetch
+    if (options.signal) {
+      requestOptions.signal = options.signal;
+    }
+
     try {
       console.log(`[${this.name}] 🌐 Fetch 请求:`, {
         url,
         method: requestOptions.method,
         hasBody: !!requestOptions.body,
+        hasSignal: !!requestOptions.signal,
         headers: Object.keys(requestOptions.headers || {})
       });
       
@@ -199,6 +205,11 @@ export abstract class BaseAIProvider implements AIProvider {
       
       return response;
     } catch (error) {
+      // 如果是 AbortError，直接抛出，不包装
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+
       if (error instanceof AIProviderError) {
         throw error;
       }
@@ -265,7 +276,8 @@ export abstract class BaseAIProvider implements AIProvider {
   // 通用流式响应处理
   protected async handleStreamResponse(
     response: Response,
-    callback: StreamCallback
+    callback: StreamCallback,
+    signal?: AbortSignal
   ): Promise<void> {
     if (!response.body) {
       throw new AIProviderError('No response body for streaming', this.id);
@@ -277,9 +289,23 @@ export abstract class BaseAIProvider implements AIProvider {
 
     try {
       while (true) {
+        // 检查是否已取消
+        if (signal?.aborted) {
+          console.log(`[${this.name}] 流式响应已被取消`);
+          reader.cancel();
+          break;
+        }
+
         const { done, value } = await reader.read();
         
         if (done) break;
+        
+        // 再次检查是否已取消（在读取数据后）
+        if (signal?.aborted) {
+          console.log(`[${this.name}] 流式响应已被取消`);
+          reader.cancel();
+          break;
+        }
         
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -287,6 +313,13 @@ export abstract class BaseAIProvider implements AIProvider {
         
         for (const line of lines) {
           if (line.trim() === '') continue;
+          
+          // 在处理每行数据前检查是否已取消
+          if (signal?.aborted) {
+            console.log(`[${this.name}] 流式响应已被取消`);
+            reader.cancel();
+            break;
+          }
           
           try {
             const data = JSON.parse(line);
@@ -296,6 +329,13 @@ export abstract class BaseAIProvider implements AIProvider {
           }
         }
       }
+    } catch (error) {
+      // 如果是取消操作，不抛出错误
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log(`[${this.name}] 流式响应处理被取消`);
+        return;
+      }
+      throw error;
     } finally {
       reader.releaseLock();
     }

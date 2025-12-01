@@ -271,10 +271,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
           }}
         >
           {/* 左侧主侧栏（ActivityBar + Sidebar）- 当 sidebarPosition === 'left' 时显示 */}
-          {sidebarPosition === 'left' && (
             <div className='left-ActivityBar' 
               style={{ 
-                display: 'flex', 
+              display: sidebarPosition === 'left' ? 'flex' : 'none', 
                 order: 0,
                 height: '100%',
                 flexShrink: 0
@@ -300,7 +299,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
               </div>
             </div>
-          )}
 
             {/*END 左侧主侧栏（ActivityBar + Sidebar）- 当 sidebarPosition === 'left' 时显示 */}
           
@@ -366,9 +364,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
           )}
 
           {/* 右侧主侧栏（Sidebar + ActivityBar）- 当 sidebarPosition === 'right' 时显示 */}
-          {sidebarPosition === 'right' && (
-            <div className='right-ActivityBar-border' style={{ 
-              display: 'flex', 
+            <div className='right-ActivityBar' style={{ 
+            display: sidebarPosition === 'right' ? 'flex' : 'none', 
               order: 3,
               height: '100%',
               flexShrink: 0
@@ -389,7 +386,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 />
               </div>
             </div>
-          )}
 
           {/* 右侧边栏 */}
           <div style={{ 

@@ -55,6 +55,9 @@ contextBridge.exposeInMainWorld('electron', {
     expand: (folderPath, rootPath) => ipcRenderer.invoke('folder:expand', folderPath, rootPath),
     createFile: (parentPath, fileName) => ipcRenderer.invoke('folder:create-file', parentPath, fileName),
     createFolder: (parentPath, folderName) => ipcRenderer.invoke('folder:create-folder', parentPath, folderName),
+    rename: (oldPath, newName) => ipcRenderer.invoke('folder:rename', oldPath, newName),
+    delete: (path) => ipcRenderer.invoke('folder:delete', path),
+    revealInExplorer: (path) => ipcRenderer.invoke('folder:reveal-in-explorer', path),
     ensureDir: (dirPath) => ipcRenderer.invoke('folder:ensure-dir', dirPath),
     getAllNotes: (folderPath) => ipcRenderer.invoke('folder:get-all-notes', folderPath),
     copyToFolder: (sourcePath, targetFolderPath) => ipcRenderer.invoke('file:copy-to-folder', sourcePath, targetFolderPath)

@@ -44,12 +44,45 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClo
       }
     };
 
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+    document.body.style.overflow = 'hidden';
+
+    const listenerOptions: AddEventListenerOptions = { passive: false, capture: true };
+
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEscape);
+    window.addEventListener('wheel', handleWheel, listenerOptions);
+    window.addEventListener('touchmove', handleTouchMove, listenerOptions);
+    document.addEventListener('wheel', handleWheel, listenerOptions);
+    document.addEventListener('touchmove', handleTouchMove, listenerOptions);
 
     return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('wheel', handleWheel, listenerOptions);
+      window.removeEventListener('touchmove', handleTouchMove, listenerOptions);
+      document.removeEventListener('wheel', handleWheel, listenerOptions);
+      document.removeEventListener('touchmove', handleTouchMove, listenerOptions);
     };
   }, [onClose]);
 
@@ -65,11 +98,32 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClo
     let nextX = position.x;
     let nextY = position.y;
 
+    // 检测是否在屏幕右侧（右半部分）
+    const isRightSide = position.x > viewportWidth / 2;
+    
+    if (isRightSide) {
+      // 在右侧时，菜单向左显示（菜单右边缘对齐点击位置）
+      nextX = position.x - rect.width;
+      // 确保不会超出左边界
+      if (nextX < 8) {
+        nextX = Math.max(8, viewportWidth - rect.width - 8);
+      }
+    } else {
+      // 在左侧时，菜单向右显示（菜单左边缘对齐点击位置）
     if (nextX + rect.width > viewportWidth) {
       nextX = Math.max(8, viewportWidth - rect.width - 8);
     }
+    }
 
-    if (nextY + rect.height > viewportHeight) {
+    // 检测底部空间是否不足
+    const hasBottomSpace = position.y + rect.height <= viewportHeight;
+    const hasTopSpace = position.y - rect.height >= 0;
+
+    if (!hasBottomSpace && hasTopSpace) {
+      // 底部空间不足且有足够顶部空间，向上显示
+      nextY = Math.max(8, position.y - rect.height);
+    } else if (!hasBottomSpace) {
+      // 底部和顶部空间都不足，尽量显示在可见区域
       nextY = Math.max(8, viewportHeight - rect.height - 8);
     }
 

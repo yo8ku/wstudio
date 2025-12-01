@@ -4,6 +4,7 @@
   height: 2rem;
   user-select: none;
   position: relative;
+  z-index: 10; /* 确保在 ai-zone-border 上方 */
 }
 
 .titlebar-drag-region {
@@ -20,7 +21,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1rem;
+  width: 2rem;
   height: 1rem;
   -webkit-app-region: no-drag;
 
@@ -135,6 +136,7 @@
   min-width: 220px;
   border-radius: 4px;
   padding: 3px 5px;
+  z-index: 100;
 
 
 }

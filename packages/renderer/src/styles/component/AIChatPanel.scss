@@ -55,9 +55,9 @@
 
   //颜色-用户消息
   &.user {
-
+    border:1px solid var(--ws-aiPanle-border);
     &:hover {
-      border-color: var(--ws-descriptionForeground);
+      border-color: var(--ws-aiPanle-hoverBorder)
 
     }
   }
@@ -66,9 +66,9 @@
 
 //颜色-AI模型（Gemini）结果颜色配置
 .message.assistant {
-  // background: rgb(69 69 69 / 14%);
+
   &:hover {
-    border-color: var(--ws-descriptionForeground);
+    border-color: var(--ws-aiPanle-hoverBorder);
   }
 }
 
@@ -76,6 +76,12 @@
 
 //颜色-深度思考
 .thinking-container {
+  border:1px solid var(--ws-aiPanle-border);
+
+  &:hover {
+    border-color: var(--ws-aiPanle-hoverBorder);
+  }
+
   &-collapsed-view {
     background-color: #ffffff0a;
   }
@@ -164,10 +170,13 @@
   }
 
   .dropdown-menu-item {
-    color:#969696;
-
     &:hover {
-      background-color: #4d4d4d8a;
+      background-color: var(--ws-dropdown-hoverBackground);
+      color: var(--ws-dropdown-hoverForeground);
+    }
+    &.selected {
+      background-color: var(--ws-dropdown-hoverBackground);
+      color: var(--ws-dropdown-hoverForeground);
     }
   }
 

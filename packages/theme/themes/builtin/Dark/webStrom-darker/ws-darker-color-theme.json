@@ -10,9 +10,7 @@
     "annotation:dart": {
       "foreground": "#d19a66"
     },
-    "enumMember": {
-      "foreground": "#56b6c2"
-    },
+
     "macro": {
       "foreground": "#d19a66"
     },
@@ -43,9 +41,7 @@
     },
     "variable": "#a9b7c5",
     "variable.local.readonly": "#a9b7c5",
-    "variable.defaultLibrary": {
-      "foreground": "#c77dbb"
-    },
+
     "parameter": "#c77dbb",
     "parameter.declaration": "#c77dbb",
     "type": "#bcbec3",
@@ -2540,6 +2536,10 @@
     // webstorm dark end ----------------
   ],
   "colors": {
+    "secondar.foreground":"#666f85",
+    "aiPanle.hoverBorder": "#667083",
+    "aiPanle.border": "#404754",
+     "aiZoneBorder.background": "#109868",
     "categoryCard.background": "#75757522",
     "commandCenter.foreground": "#cccccc",
     "commandCenter.activeForeground": "#cccccc",
@@ -2567,9 +2567,11 @@
     "checkbox.border": "#404754",
     "debugToolBar.background": "#1e2227",
     "descriptionForeground": "#abb2bf",
-    "diffEditor.insertedTextBackground": "#00809b33",
     "dropdown.background": "#1e2227",
-    "dropdown.border": "#1e2227",
+    "dropdown.selectedForeground":"#32c3d3",
+    "dropdown.hoverForeground":"#32c3d3",
+    "dropdown.hoverBackground":"#404754b3",
+    "dropdown.border": "#373f49",
     "editor.background": "#23272e",
     "editor.findMatchBackground": "#d19a6644",
     "editor.findMatchBorder": "#ffffff5a",
@@ -2621,11 +2623,13 @@
     "gitDecoration.ignoredResourceForeground": "#636b78",
     "input.background": "#1d1f23",
     "input.foreground": "#abb2bf",
-    "input.border":"#30333d",
-    "input.focusBorder":"#404754",
+    "input.border":"#39404f",
+    "input.focusBorder":"#4d5565",
     "input.placeholderForeground":"#525761",
     "list.activeSelectionBackground": "#2c313a",
     "list.activeSelectionForeground": "#d7dae0",
+    "list.headerGroupBackground": "#323842",
+    "list.headerGroupForeground": "#abb2bf",
     "list.focusBackground": "#323842",
     "list.focusForeground": "#f0f0f0",
     "list.highlightForeground": "#ecebeb",

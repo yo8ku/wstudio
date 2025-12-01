@@ -7,15 +7,13 @@
   border-radius: 6px;
   display: flex;
   flex-direction: column;
-  background: var(--ws-menu-background);
-  border: 1px solid var(--ws-menu-border);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  background: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
   
   // 浮动模式：弹出效果 + 阴影
   &.floating-mode {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     z-index: 10000;
-    animation: slideDown 0.15s ease-out;
   }
   
   // 固定模式：与 Zone Widget 对齐，无阴影
@@ -23,37 +21,12 @@
     border-radius: 0;
     border-left: none;
     box-shadow: none;
-    animation: slideInRight 0.2s ease-out;
     overflow: hidden;
     
     // 顶部和底部边框与 Zone Widget 对齐
     border-top: 1px solid rgb(0, 122, 204);
     border-bottom: 1px solid rgb(0, 122, 204);
     border-right: 1px solid var(--ws-menu-border);
-  }
-}
-
-// 浮动模式动画
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-// 固定模式动画
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
   }
 }
 

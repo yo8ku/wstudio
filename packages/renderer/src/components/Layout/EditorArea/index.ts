@@ -8,7 +8,7 @@ export { MonacoContextMenu } from './MonacoContextMenu';
 export { useMonacoContextMenu } from './MonacoContextMenu/useMonacoContextMenu';
 export type { MonacoContextMenuProps } from './MonacoContextMenu/MonacoContextMenu';
 export { GhostTextWidget } from './GhostTextWidget';
-export { AIZoneWidget } from './AIZoneWidget';
+export { AIZoneWidget } from './AIZoneWidget/AIZoneWidget';
 export { CodeDecorationManager } from './CodeDecorationManager';
 export { getSendIconSvg, getCloseIconSvg } from './iconHelpers';
 export { TabBar } from './TabBar';

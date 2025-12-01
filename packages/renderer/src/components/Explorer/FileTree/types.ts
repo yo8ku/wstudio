@@ -13,6 +13,7 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
   isCreating?: boolean;
   creatingType?: 'file' | 'folder';
+  parentPath?: string; // 创建时的父目录路径
 }
 
 // 编辑器信息类型

@@ -12,7 +12,7 @@
 }
 
 .select-knowledge-base-dialog {
-  background-color: var(--ws-activityBar-activeBackground);
+  background-color: var(--ws-dropdown-background);
   border-radius: 8px;
   width: 90%;
   max-width: 500px;
@@ -63,7 +63,9 @@
 }
 
 .select-knowledge-base-dialog__item-description{
-  color: var(--ws-breadcrumb-foreground) !important;
+  color: var(--ws-secondar-foreground);
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .select-knowledge-base-dialog__list {

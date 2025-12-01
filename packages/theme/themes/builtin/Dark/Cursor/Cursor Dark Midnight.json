@@ -6,6 +6,8 @@
     "version": "1.0.0",
     "name": "Cursor Dark Midnight",
     "colors": {
+        
+        "aiZoneBorder.background":"#88c0d0",
         "activityBar.background": "#191c22",
         "activityBar.foreground": "#7b88a1",
         "activityBarBadge.background": "#88c0d0",

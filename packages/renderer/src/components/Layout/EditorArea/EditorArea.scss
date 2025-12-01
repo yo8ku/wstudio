@@ -108,7 +108,7 @@
 }
 
 .tab-bar-placeholder {
-  background-color: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+  background-color: var(--ws-breadcrumb-background);
   border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder, var(--vscode-panel-border));
   height: 35px;
   min-height: 35px;

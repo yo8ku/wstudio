@@ -23,7 +23,7 @@ import { snippetService } from '../../../../services/SnippetService';
 import { inlineChatHistoryService } from '../../../../services';
 import { aiAgentService } from '../../../../services/AIAgentService';
 import { knowledgeBaseService } from '../../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
-import './AIZoneWidget.scss';
+// 样式已移至全局样式文件：styles/component/ai-zone-widget.scss
 
 /**
  * 获取文件名（不包含路径）
@@ -109,6 +109,7 @@ export class AIZoneWidget {
   private selectedText: string = '';
   private includeSelection: boolean = false;
   private isGenerating: boolean = false;
+  private isCancelled: boolean = false; // 标记是否已被取消，用于防止取消后显示完成工具栏
   private selectedModel: string = ''; // 当前选中的模型
   private scrollDisposable: monaco.IDisposable | null = null; // 滚动事件监听
   private layoutDisposable: monaco.IDisposable | null = null; // 布局变化监听
@@ -136,6 +137,8 @@ export class AIZoneWidget {
   private borderContainer: HTMLElement | null = null; // 边框容器（overflow-guard 或 monaco-scrollable-element）
   private savedViewZoneTop: number | null = null; // 保存的 view-zone 绝对位置（用于内容变化时恢复）
   private savedBottomBorderTop: number | null = null; // 保存的底部边框位置（用于标签页切换时保持位置）
+  private lastMeasuredContainerHeight: number = 0; // 上一次测量得到的容器高度，用于判断当前是扩展还是收缩
+  private isResponseCompleted: boolean = false; // 当前是否已经完成一次 AI 回复，用于控制结果操作工具栏显示
   private currentCategory: string | null = null; // 当前选中的一级分类
   private historyButtonElement: HTMLButtonElement | null = null; // 历史记录按钮元素
   private historyMenuRoot: Root | null = null; // 历史记录菜单 React Root
@@ -444,7 +447,8 @@ export class AIZoneWidget {
     // 消息文本
     const messageText = document.createElement('div');
     messageText.className = 'ai-zone-message-text';
-    messageText.textContent = '正在思考';
+    // 根据深度思考状态显示不同的文本
+    messageText.textContent = this.deepThinkingEnabled ? '深度思考' : '正在思考';
 
     // 思考动画点
     const thinkingDots = document.createElement('span');
@@ -574,10 +578,7 @@ export class AIZoneWidget {
         this.closeContextMenu();
       }
       // 关闭历史记录菜单
-      if (this.isHistoryOpen) {
-        this.isHistoryOpen = false;
-        this.renderHistoryMenu();
-      }
+      this.closeHistoryMenu();
     });
 
     inputWrapper.appendChild(textarea);
@@ -596,7 +597,13 @@ export class AIZoneWidget {
     inputActions.className = 'ai-zone-input-actions';
 
     // 模型选择下拉框（放在输入框内右侧，发送按钮左侧）
+    console.log('[AIZoneWidget] 检查是否需要创建模型下拉框', {
+      hasAvailableModels: !!this.options.availableModels,
+      availableModelsLength: this.options.availableModels?.length || 0
+    });
+    
     if (this.options.availableModels && this.options.availableModels.length > 0) {
+      console.log('[AIZoneWidget] 开始创建模型下拉框容器');
       const toolbarModelDropdownContainer = document.createElement('div');
       toolbarModelDropdownContainer.className = 'ai-zone-input-model-dropdown';
 
@@ -605,10 +612,15 @@ export class AIZoneWidget {
       
       // 将模型选择器添加到操作按钮容器
       inputActions.appendChild(toolbarModelDropdownContainer);
+      console.log('[AIZoneWidget] 模型下拉框容器已添加到 DOM');
       
       // 重新加载模型分组逻辑（保持原有逻辑）
       if (!this.updateModelSelectionFn) {
+        console.log('[AIZoneWidget] 开始加载模型分组');
         this.loadModelGroups().then(() => {
+          console.log('[AIZoneWidget] 模型分组加载完成，开始渲染 Select 组件', {
+            modelGroupsLength: this.modelGroups.length
+          });
           this.handleDropdownOpenChangeFn = (isOpen: boolean) => {
             this.isDropdownOpen = isOpen;
             if (isOpen) {
@@ -616,6 +628,10 @@ export class AIZoneWidget {
               if (this.isContextMenuOpen) {
                 this.closeContextMenu();
               }
+              if (this.isAgentMenuOpen) {
+                this.closeAgentMenu();
+              }
+              this.closeHistoryMenu();
             } else {
               this.enableEditorScroll();
             }
@@ -670,6 +686,10 @@ export class AIZoneWidget {
           };
 
           if (this.modelGroups.length > 0 && this.toolbarModelDropdownRoot) {
+            console.log('[AIZoneWidget] 渲染 Select 组件', {
+              modelGroupsLength: this.modelGroups.length,
+              selectedModel: this.selectedModel
+            });
             this.toolbarModelDropdownRoot.render(
               React.createElement(Select, {
                 value: this.selectedModel,
@@ -681,6 +701,12 @@ export class AIZoneWidget {
                 open: this.isDropdownOpen
               })
             );
+            console.log('[AIZoneWidget] Select 组件已渲染');
+          } else {
+            console.warn('[AIZoneWidget] 无法渲染 Select 组件', {
+              modelGroupsLength: this.modelGroups.length,
+              hasRoot: !!this.toolbarModelDropdownRoot
+            });
           }
         });
       } else {
@@ -908,6 +934,15 @@ export class AIZoneWidget {
       this.deepThinkingEnabled = !this.deepThinkingEnabled;
       deepThinkingBtn.classList.toggle('active', this.deepThinkingEnabled);
       deepThinkingBtn.title = this.deepThinkingEnabled ? '深度思考已开启' : '深度思考已关闭';
+      
+      // 如果当前正在显示思考状态，更新显示的文本
+      if (this.messageDisplayElement && this.isGenerating) {
+        const messageText = this.messageDisplayElement.querySelector('.ai-zone-message-text');
+        if (messageText && messageText.textContent?.includes('思考')) {
+          const thinkingText = this.deepThinkingEnabled ? '深度思考' : '正在思考';
+          messageText.innerHTML = `${thinkingText}<span class="ai-zone-thinking-dots"></span>`;
+        }
+      }
     });
 
     const deepThinkingIconContainer = document.createElement('span');
@@ -1050,7 +1085,7 @@ export class AIZoneWidget {
         }
       }
 
-      // 编辑器滚动时，关闭所有菜单（模型选择菜单、@菜单、历史记录菜单）
+      // 编辑器滚动时，关闭所有菜单（模型选择菜单、@菜单、历史记录菜单、AI 智能体菜单）
       // 关闭模型选择菜单（closeDropdownFn 内部已检查 isDropdownOpen）
       if (this.closeDropdownFn) {
         this.closeDropdownFn();
@@ -1060,9 +1095,10 @@ export class AIZoneWidget {
         this.closeContextMenu();
       }
       // 关闭历史记录菜单
-      if (this.isHistoryOpen) {
-        this.isHistoryOpen = false;
-        this.renderHistoryMenu();
+      this.closeHistoryMenu();
+      // 关闭 AI 智能体菜单
+      if (this.isAgentMenuOpen) {
+        this.closeAgentMenu();
       }
       // 确保 ai-zone-container 没有 top 属性（Monaco Editor 可能会在某些情况下设置它）
       if (this.domNode && this.domNode.style.top) {
@@ -1077,7 +1113,8 @@ export class AIZoneWidget {
         // 正常滚动时，更新边框位置，防止边框随着编辑器滚动而移动
         // 但只在当前标签页是活动标签页时才更新，避免在标签页切换时更新
         if (this.isActiveTab()) {
-          this.updateBorderPositions();
+          // 滚动时强制更新底部边框位置，不使用保存的位置（skipBottomBorder = false）
+          this.updateBorderPositions(false);
         }
       }
     });
@@ -1534,6 +1571,14 @@ export class AIZoneWidget {
       // 检查编辑器是否可见，如果可见说明只是标签页切换，不需要重新创建
       if (this.isEditorReallyVisible()) {
         console.log('[AIZoneWidget] 已存在且可见，更新行号、选中文本和布局');
+        
+        // 检查模型下拉框是否存在，如果不存在且应该有，需要重新创建整个 widget
+        // 这里只记录日志，实际重新创建由调用方处理（通过重新调用 show 或重新创建 widget）
+        const dropdownContainer = this.domNode.querySelector('.ai-zone-input-model-dropdown');
+        if (!dropdownContainer && this.options.availableModels && this.options.availableModels.length > 0) {
+          console.warn('[AIZoneWidget] 模型下拉框不存在，但 widget 已存在。这不应该发生，应该重新创建 widget。');
+        }
+        
         // 确保 ai-zone-container 没有 top 属性
         if (this.domNode.style.top) {
           this.domNode.style.removeProperty('top');
@@ -2034,7 +2079,7 @@ export class AIZoneWidget {
   /**
    * 处理提交
    */
-  private handleSubmit(): void {
+  private handleSubmit(options?: { preserveResultToolbar?: boolean }): void {
     const message = this.inputElement?.value.trim();
     console.log('[AIZoneWidget] handleSubmit 被调用, message:', message);
     if (!message) {
@@ -2062,7 +2107,6 @@ export class AIZoneWidget {
     }
 
     // 立即显示用户问题，让用户看到自己发送的消息
-    // 不显示"正在思考..."，因为用户应该先看到自己的消息
     this.showUserQuestion();
     
     // 发起提问时需要更新底部边框位置
@@ -2071,6 +2115,15 @@ export class AIZoneWidget {
         this.updateBottomBorderPosition();
       });
     });
+    
+    // 延迟一小段时间后切换到思考状态，让用户先看到自己的问题
+    // 使用 setTimeout 确保用户问题先显示，然后再切换到思考状态
+    setTimeout(() => {
+      // 只有在生成中且还没有收到AI回复时才显示思考状态
+      if (this.isGenerating && !this.isResponseCompleted) {
+        this.showThinkingState();
+      }
+    }, 200); // 200ms 延迟，让用户问题先显示，然后切换到思考状态
     
     // 添加保护机制，确保元素在显示后不会被意外隐藏
     setTimeout(() => {
@@ -2085,11 +2138,33 @@ export class AIZoneWidget {
       }
     }, 100);
 
+    const preserveResultToolbar = options?.preserveResultToolbar === true;
+
     // 设置生成状态
     this.isGenerating = true;
+    this.isCancelled = false; // 重置取消标志
+
+    if (preserveResultToolbar) {
+      // 重新生成：保留完成工具栏
+      // 生成阶段只显示“取消”工具栏，隐藏底部工具栏，避免出现两行工具栏
+      if (this.bottomToolbar) {
+        this.bottomToolbar.style.display = 'none';
+      }
+    } else {
+      // 普通发送：关闭完成工具栏，进入生成阶段
+      this.isResponseCompleted = false;
+
+      // 生成阶段同样只显示“取消”工具栏，隐藏底部工具栏
+      if (this.bottomToolbar) {
+        this.bottomToolbar.style.display = 'none';
+      }
+    }
 
     // 更新按钮状态（发送 -> 停止）
     this.updateSendButton();
+
+    // 生成开始后，根据状态刷新工具栏（会显示“取消”工具栏）
+    this.updateSelectedFilesToolbar();
 
     // 调用回调，传递选中的模型
     console.log('[AIZoneWidget] 调用 onSubmit 回调, message:', message, 'selectedModel:', this.selectedModel);
@@ -2105,6 +2180,57 @@ export class AIZoneWidget {
 
     // 不刷新界面，避免输入框布局问题
     // this.refresh();
+  }
+
+  /**
+   * 重新生成当前轮对话
+   * 使用上一次用户问题再次发起请求，但保持完成工具栏不变，避免短暂切换回文件工具栏
+   */
+  private handleRegenerate(): void {
+    // 必须已有上一轮用户消息
+    if (!this.currentUserMessage) {
+      console.warn('[AIZoneWidget] handleRegenerate: 当前没有可重新生成的用户消息');
+      return;
+    }
+
+    const message = this.currentUserMessage;
+
+    // 重新生成时不清空输入框，也不显示内容，保持输入框为空
+    // 如果输入框有内容，清空它
+    if (this.inputElement) {
+      this.inputElement.value = '';
+      if (this.adjustHeightFn) {
+        this.adjustHeightFn();
+      }
+    }
+
+    // 重新生成视为继续当前轮：进入"生成中"阶段，使用取消工具栏
+    this.isGenerating = true;
+    this.isCancelled = false; // 重置取消标志
+    this.isResponseCompleted = false; // 重置完成状态
+    this.updateSendButton();
+    this.updateSelectedFilesToolbar();
+
+    // 生成阶段只显示"取消"工具栏，隐藏底部工具栏
+    if (this.bottomToolbar) {
+      this.bottomToolbar.style.display = 'none';
+    }
+
+    // 显示思考状态（重新生成时直接显示思考状态，不需要先显示用户问题）
+    this.showThinkingState();
+
+    console.log('[AIZoneWidget] handleRegenerate 重新生成, message:', message, 'selectedModel:', this.selectedModel);
+
+    if (!this.options.onSubmit) {
+      console.error('[AIZoneWidget] handleRegenerate: onSubmit 回调未定义！');
+      return;
+    }
+
+    this.options.onSubmit(
+      message,
+      this.includeSelection && !!this.selectedText,
+      this.selectedModel || undefined
+    );
   }
 
   /**
@@ -2171,12 +2297,17 @@ export class AIZoneWidget {
   private handleStopGeneration(): void {
     console.log('[AIZoneWidget] 用户点击停止生成');
 
-    // 调用停止回调
+    // 先设置生成状态为 false，防止后续的 updateAIResponse 继续更新内容
+    this.isGenerating = false;
+    // 重置完成状态，确保取消后不显示完成工具栏
+    this.isResponseCompleted = false;
+
+    // 调用停止回调，通知外部停止生成
     if (this.options.onStop) {
       this.options.onStop();
     }
 
-    // 更新状态
+    // 更新 UI 状态
     this.stopGeneration();
   }
 
@@ -2185,8 +2316,24 @@ export class AIZoneWidget {
    */
   private stopGeneration(): void {
     this.isGenerating = false;
+    this.isCancelled = true; // 标记为已取消
     this.updateSendButton();
     this.hideThinkingState();
+
+    // 停止生成后，重置完成状态（取消操作不应该显示完成工具栏）
+    // 如果之前有完成过回复，取消后也应该重置，因为用户取消了重新生成
+    this.isResponseCompleted = false;
+
+    // 恢复底部工具栏
+    if (this.bottomToolbar) {
+      this.bottomToolbar.style.display = 'flex';
+    }
+    // 更新工具栏显示（隐藏取消工具栏，恢复为文件工具栏或隐藏）
+    this.updateSelectedFilesToolbar();
+    // 更新底部边框位置
+    requestAnimationFrame(() => {
+      this.updateBottomBorderPosition();
+    });
     // 不调用 refresh()，避免 Zone Widget 位置重置
     // this.refresh();
   }
@@ -2224,8 +2371,10 @@ export class AIZoneWidget {
   /**
    * AI 开始回复时调用（显示用户问题）
    * 公共方法，供外部调用
+   * 当收到第一个 chunk 时，显示用户问题，替换思考状态
    */
   public onAIResponseStart(): void {
+    // 收到第一个 chunk 时，显示用户问题，替换思考状态
     this.showUserQuestion();
   }
 
@@ -2234,11 +2383,23 @@ export class AIZoneWidget {
    * 公共方法，供外部调用
    */
   public onAIResponseComplete(): void {
+    // 检查是否已被取消，如果已取消则不执行完成处理
+    if (this.isCancelled) {
+      console.log('[AIZoneWidget] 检测到请求已被取消，跳过完成处理');
+      return;
+    }
+
     // 只负责结束生成状态 & 保持布局稳定
     // 最终 AI 响应通过编辑器中的代码 diff 展示，
     // 内联聊天顶部消息容器只展示用户提问。
     this.isGenerating = false;
+    this.isResponseCompleted = true;
     this.updateSendButton();
+
+    // 收到模型完整回答后，仅显示完成工具栏，隐藏底部工具栏
+    if (this.bottomToolbar) {
+      this.bottomToolbar.style.display = 'none';
+    }
 
     // 不在 completedResponseElement 中渲染 AI 文本，保持该区域为空/隐藏
     if (this.completedResponseElement) {
@@ -2246,6 +2407,9 @@ export class AIZoneWidget {
       this.completedResponseElement.innerHTML = '';
     }
  
+    // 在展示结果操作工具栏前，优先更新选中文件/结果工具栏区域
+    this.updateSelectedFilesToolbar();
+
     // 先调整高度，确保容器高度正确
     // 在调整高度前先保存并强制设置位置，防止高度调整时位置被重置
     const expectedAfterLineNumber = this.targetLineNumber;
@@ -2254,11 +2418,25 @@ export class AIZoneWidget {
     }
     
     requestAnimationFrame(() => {
+      // 检查是否已被取消
+      if (!this.isResponseCompleted) {
+        return;
+      }
+      
       this.adjustContainerHeightForMessage();
       
       // 在高度调整后立即设置 view-zone 的 top 位置
       // 这是修复 view-zone top 始终为 0 问题的关键
       requestAnimationFrame(() => {
+        // 检查是否已被取消
+        if (!this.isResponseCompleted) {
+          return;
+        }
+        
+        // 当有diff内容时，触发Monaco Editor重新计算布局，确保原有内容的top位置正确更新
+        // 通过调用layout来强制Monaco重新计算所有行的位置
+        this.editor.layout();
+        
         // 直接设置 view-zone DOM 元素的 top 位置
         this.setViewZoneTopPosition();
         
@@ -2274,14 +2452,29 @@ export class AIZoneWidget {
         
         // 再次设置 top 位置，确保位置正确
         requestAnimationFrame(() => {
+          // 检查是否已被取消
+          if (!this.isResponseCompleted) {
+            return;
+          }
+          
           this.setViewZoneTopPosition();
           
           // 额外延迟设置，确保所有 DOM 更新都完成
           setTimeout(() => {
+            // 检查是否已被取消
+            if (!this.isResponseCompleted) {
+              return;
+            }
+            
             this.setViewZoneTopPosition();
             
             // 最后一次设置，确保位置稳定
             setTimeout(() => {
+              // 检查是否已被取消
+              if (!this.isResponseCompleted) {
+                return;
+              }
+              
               this.setViewZoneTopPosition();
             }, 100);
           }, 200);
@@ -2546,18 +2739,42 @@ export class AIZoneWidget {
     // 获取 view-zone 的位置信息（相对于视口）
     const viewZoneRect = this.viewZoneElement.getBoundingClientRect();
     
-    // 计算底部边框的位置：必须始终在最底部元素（bottomToolbar）的下方
-    // selectedFilesToolbar 在 bottomToolbar 上方，所以 bottomToolbar 始终是最底部元素
+    // 计算底部边框的位置：必须始终在当前"最底部可见内容元素"的下方
+    // 优先级：完成工具栏 > 取消工具栏 > 底部工具栏 > view-zone 底部
     let bottomBorderTop: number;
-    
-    if (this.bottomToolbar) {
+
+    const hasResultToolbar =
+      this.isResponseCompleted &&
+      this.selectedFilesToolbar &&
+      this.selectedFilesToolbar.style.display !== 'none';
+
+    const hasCancelToolbar =
+      this.isGenerating &&
+      this.selectedFilesToolbar &&
+      this.selectedFilesToolbar.style.display !== 'none';
+
+    if (hasResultToolbar && this.selectedFilesToolbar) {
+      // 完成工具栏：AI 回复完成后的操作工具栏
+      const resultToolbarRect = this.selectedFilesToolbar.getBoundingClientRect();
+      bottomBorderTop = resultToolbarRect.bottom;
+    } else if (hasCancelToolbar && this.selectedFilesToolbar) {
+      // 取消工具栏：生成中时显示的取消按钮
+      const cancelToolbarRect = this.selectedFilesToolbar.getBoundingClientRect();
+      bottomBorderTop = cancelToolbarRect.bottom;
+    } else if (this.bottomToolbar && this.bottomToolbar.style.display !== 'none') {
+      // 底部工具栏：默认情况下的工具栏（新建聊天、@、智能体等）
       const toolbarRect = this.bottomToolbar.getBoundingClientRect();
       // 使用 position: fixed，所以直接使用视口坐标
       bottomBorderTop = toolbarRect.bottom;
     } else {
-      // 如果没有底部工具栏，则使用 view-zone 底部作为后备
+      // 如果没有可见的工具栏，则使用 view-zone 底部作为后备
       bottomBorderTop = viewZoneRect.bottom;
     }
+    
+    // 不检查 breadcrumb 位置，因为：
+    // 1. breadcrumb 的 z-index 是 10，边框的 z-index 是 0，边框不会遮挡 breadcrumb
+    // 2. 如果强制调整边框位置，会导致边框被固定在 breadcrumb 下方，无法正常跟随内容移动
+    // 3. 让边框正常跟随内容位置，通过 z-index 层级来避免遮挡
     
     // 保存底部边框位置，用于标签页切换时保持位置
     this.savedBottomBorderTop = bottomBorderTop;
@@ -2618,14 +2835,31 @@ export class AIZoneWidget {
     
     // 使用 position: fixed，所以直接使用视口坐标（getBoundingClientRect 返回的就是视口坐标）
     // 顶部边框位置 = view-zone 的视口 top + 偏移量
-    this.topBorderElement.style.setProperty('top', `${viewZoneRect.top + topBorderOffset}px`, 'important');
+    let topBorderTop = viewZoneRect.top + topBorderOffset;
+
+    // 计算不允许越过的最小 top（仅 titleBar）。
+    // 之前同时 clamp tab-bar，会导致 topBorder 在滚动时被固定在 tab-bar 底部。
+    let minAllowedTop = 0;
+    const titleBar = document.querySelector('.titlebar') as HTMLElement | null;
+    if (titleBar) {
+      const rect = titleBar.getBoundingClientRect();
+      minAllowedTop = Math.max(minAllowedTop, rect.bottom);
+    }
+
+    if (minAllowedTop > 0 && topBorderTop < minAllowedTop) {
+      topBorderTop = minAllowedTop + 1;
+    }
+
+    this.topBorderElement.style.setProperty('top', `${topBorderTop}px`, 'important');
     // 清除可能存在的 bottom 属性，避免与 top 冲突
     this.topBorderElement.style.bottom = 'auto';
     
-    // 默认不更新底部边框位置，只有在明确要求时才更新
-    // 底部边框位置应该只在特定时机更新（输入框换行、添加文件、发起提问）
-    if (this.savedBottomBorderTop !== null) {
-      // 使用保存的位置，保持底部边框位置不变
+    // 如果 skipBottomBorder 为 false，则复用 updateBottomBorderPosition 的逻辑统一计算底部边框位置
+    // 否则使用保存的位置（用于布局变化时保持位置不变）
+    if (!skipBottomBorder) {
+      this.updateBottomBorderPosition();
+    } else if (this.savedBottomBorderTop !== null) {
+      // 使用保存的位置，保持底部边框位置不变（用于布局变化时）
       this.bottomBorderElement.style.top = `${this.savedBottomBorderTop}px`;
       this.bottomBorderElement.style.bottom = 'auto';
       // 确保底部边框可见
@@ -2745,6 +2979,33 @@ export class AIZoneWidget {
     }
 
     try {
+      // 检测是否有 diff 内容（ghost text decorations）
+      const model = this.editor.getModel();
+      let diffLineCount = 0;
+      if (model) {
+        const zoneBottomLine = this.getZoneBottomLineNumber();
+        // 检查从 zoneBottomLine 开始是否有 ghost text decorations
+        // 遍历可能的 diff 行范围（最多检查 100 行，避免性能问题）
+        const maxCheckLines = Math.min(zoneBottomLine + 100, model.getLineCount());
+        for (let lineNum = zoneBottomLine; lineNum <= maxCheckLines; lineNum++) {
+          const decorations = model.getLineDecorations(lineNum);
+          // 检查是否有 ghost-text 相关的 decoration
+          const hasGhostText = decorations.some(dec => {
+            const options = dec.options;
+            // 检查 before 或 after 中的 inlineClassName 是否包含 ghost-text
+            return (options.before?.inlineClassName === 'ghost-text') || 
+                   (options.after?.inlineClassName === 'ghost-text') ||
+                   (options.className === 'ghost-text-line-background');
+          });
+          if (hasGhostText) {
+            diffLineCount++;
+          } else if (diffLineCount > 0) {
+            // 如果之前有 ghost text，但现在没有了，说明 diff 内容结束了
+            break;
+          }
+        }
+      }
+
       // 使用 Monaco API 获取指定行号的顶部位置
       // getTopForLineNumber 返回的是该行顶部相对于编辑器内容区域的像素位置
       const currentLineTop = this.editor.getTopForLineNumber(expectedAfterLineNumber);
@@ -2756,6 +3017,9 @@ export class AIZoneWidget {
       const viewZoneOffset = Math.floor(lineHeight * 0.5);
       
       // 计算基础位置：当前行顶部 + 行高 + 偏移量
+      // 如果有 diff 内容，需要考虑 diff 内容占用的空间，将原有内容向下推
+      // diff 内容已经通过插入空行推走了原有内容，所以 view-zone 的位置保持不变
+      // 但是需要确保下方原有内容的 top 位置正确
       const lineTop = currentLineTop + lineHeight + viewZoneOffset;
       
       // 获取 view-zone 的 DOM 元素
@@ -2986,14 +3250,16 @@ export class AIZoneWidget {
     // 显示消息区域
     this.messageDisplayElement.style.display = 'block';
 
-    // 更新消息文本为"正在思考..."
+    // 更新消息文本，根据深度思考状态显示不同的文本
     const messageText = this.messageDisplayElement.querySelector('.ai-zone-message-text');
     if (messageText) {
       // 确保 className 保持不变，不会被替换
       if (messageText.className !== 'ai-zone-message-text') {
         messageText.className = 'ai-zone-message-text';
       }
-      messageText.innerHTML = '正在思考<span class="ai-zone-thinking-dots"></span>';
+      // 根据深度思考状态显示不同的文本
+      const thinkingText = this.deepThinkingEnabled ? '深度思考' : '正在思考';
+      messageText.innerHTML = `${thinkingText}<span class="ai-zone-thinking-dots"></span>`;
     }
 
 
@@ -3158,6 +3424,11 @@ export class AIZoneWidget {
   public updateAIResponse(content: string): void {
     if (!this.messageDisplayElement) return;
 
+    // 如果已经停止生成，忽略后续的更新请求
+    if (!this.isGenerating) {
+      return;
+    }
+
     // 显示消息显示区域
     this.messageDisplayElement.style.display = content ? 'block' : 'none';
 
@@ -3235,6 +3506,10 @@ export class AIZoneWidget {
             this.setViewZoneTopPosition();
             // 更新边框位置
             this.updateBorderPositions();
+            
+            // 当有diff内容时，触发Monaco Editor重新计算布局，确保原有内容的top位置正确更新
+            // 通过调用layout来强制Monaco重新计算所有行的位置
+            this.editor.layout();
           });
         });
       }, 150); // 稍微延迟一点，确保Monaco完成布局计算
@@ -3384,12 +3659,18 @@ export class AIZoneWidget {
       void this.documentReferencesElement.offsetHeight;
     }
 
+    // 记录变更前的高度，用于判断本次是扩展还是收缩
+    const previousHeight = this.lastMeasuredContainerHeight || this.domNode.offsetHeight || 0;
+
     // 先移除固定高度，让浏览器根据内容撑开，再测量真实高度
     this.domNode.style.height = 'auto';
     const minHeight = 72;
     const measuredHeight = Math.max(minHeight, Math.ceil(this.domNode.scrollHeight));
-    const adjustedHeight = this.ensureDiffSpacing(measuredHeight);
+    const adjustedHeight = this.ensureDiffSpacing(measuredHeight, previousHeight);
     this.domNode.style.height = `${adjustedHeight}px`;
+
+    // 记录最新的容器高度
+    this.lastMeasuredContainerHeight = adjustedHeight;
 
     // 宽度依旧交给 CSS 控制，但在测量后重新同步一次，确保与编辑器内容区域保持一致
     this.updateContainerWidth();
@@ -3432,7 +3713,13 @@ export class AIZoneWidget {
    * 根据 bottom border 位置，确保 diff 区域拥有足够的可视空间
    * 这样 Monaco diff（GhostText）始终显示在 ai-zone-border-bottom 之后
    */
-  private ensureDiffSpacing(baseHeight: number): number {
+  private ensureDiffSpacing(baseHeight: number, previousHeight: number): number {
+    // 当容器在收缩时，不再强制根据旧的 bottom border 位置拉高容器，
+    // 直接使用内容高度，以避免清空输入内容后 diff 区域与内联聊天之间出现过大的空白。
+    if (previousHeight > 0 && baseHeight <= previousHeight) {
+      return baseHeight;
+    }
+
     if (!this.bottomBorderElement) {
       return baseHeight;
     }
@@ -3466,6 +3753,10 @@ export class AIZoneWidget {
   /**
    * 获取输入框元素
    */
+  public getDomNode(): HTMLElement | null {
+    return this.domNode;
+  }
+
   public getInputElement(): HTMLTextAreaElement | null {
     return this.inputElement;
   }
@@ -3528,9 +3819,34 @@ export class AIZoneWidget {
   private toggleHistoryMenu(): void {
     this.isHistoryOpen = !this.isHistoryOpen;
 
+    if (this.isHistoryOpen) {
+      // 打开历史菜单前关闭其他菜单
+      if (this.closeDropdownFn) {
+        this.closeDropdownFn();
+      }
+      if (this.isContextMenuOpen) {
+        this.closeContextMenu();
+      }
+      if (this.isAgentMenuOpen) {
+        this.closeAgentMenu();
+      }
+    }
+
     // 每次切换时重新检测显示模式
     this.historyDisplayMode = this.detectHistoryDisplayMode();
 
+    this.renderHistoryMenu();
+  }
+
+  /**
+   * 关闭历史记录菜单（如果已打开）
+   */
+  private closeHistoryMenu(): void {
+    if (!this.isHistoryOpen) {
+      return;
+    }
+
+    this.isHistoryOpen = false;
     this.renderHistoryMenu();
   }
 
@@ -3605,8 +3921,7 @@ export class AIZoneWidget {
         React.createElement(InlineChatHistory, {
           isOpen: this.isHistoryOpen,
           onClose: () => {
-            this.isHistoryOpen = false;
-            this.renderHistoryMenu();
+            this.closeHistoryMenu();
           },
           onSelectSession: (sessionId: string) => {
             this.loadHistorySession(sessionId);
@@ -3715,7 +4030,13 @@ export class AIZoneWidget {
 
     // 清空选中文件列表
     this.selectedFiles = [];
+    this.isResponseCompleted = false;
     this.updateSelectedFilesToolbar();
+
+    // 新建聊天后恢复底部工具栏显示
+    if (this.bottomToolbar) {
+      this.bottomToolbar.style.display = 'flex';
+    }
 
     // 清空输入框并恢复初始 placeholder
     if (this.inputElement) {
@@ -3901,6 +4222,11 @@ export class AIZoneWidget {
       this.closeAgentMenu();
     }
 
+    if (this.closeDropdownFn) {
+      this.closeDropdownFn();
+    }
+    this.closeHistoryMenu();
+
     // 重置菜单状态
     this.currentMenuLevel = 'level1';
     this.currentCategory = null;
@@ -4078,6 +4404,11 @@ export class AIZoneWidget {
     if (this.isAgentMenuOpen) {
       this.closeAgentMenu();
     }
+
+    if (this.closeDropdownFn) {
+      this.closeDropdownFn();
+    }
+    this.closeHistoryMenu();
 
     if (!this.contextMenuContainer) {
       console.error('[AIZoneWidget] 上下文菜单容器未创建');
@@ -4456,42 +4787,7 @@ export class AIZoneWidget {
         this.updateSelectedFilesToolbar();
       }
       
-      // 读取文件内容并在输入框中插入 @file 引用
-      if (this.inputElement) {
-        try {
-          const fileResult = await window.electron?.file?.read(filePath);
-          if (fileResult?.success && fileResult.data?.content) {
-            const currentValue = this.inputElement.value;
-            const cursorPos = this.inputElement.selectionStart || currentValue.length;
-            
-            // 构建文件引用格式
-            const fileReference = `@file:${fileName}\n\`\`\`\n${fileResult.data.content}\n\`\`\`\n`;
-            const newValue = currentValue.slice(0, cursorPos) + fileReference + currentValue.slice(cursorPos);
-            this.inputElement.value = newValue;
-            this.inputElement.focus();
-            this.inputElement.setSelectionRange(cursorPos + fileReference.length, cursorPos + fileReference.length);
-          } else {
-            // 如果读取文件失败，只插入文件名引用
-            const currentValue = this.inputElement.value;
-            const cursorPos = this.inputElement.selectionStart || currentValue.length;
-            const fileReference = `@file:${fileName}\n`;
-            const newValue = currentValue.slice(0, cursorPos) + fileReference + currentValue.slice(cursorPos);
-            this.inputElement.value = newValue;
-            this.inputElement.focus();
-            this.inputElement.setSelectionRange(cursorPos + fileReference.length, cursorPos + fileReference.length);
-          }
-        } catch (error) {
-          console.warn(`[AIZoneWidget] 读取文件失败: ${filePath}`, error);
-          // 即使读取失败，也插入文件名引用
-          const currentValue = this.inputElement.value;
-          const cursorPos = this.inputElement.selectionStart || currentValue.length;
-          const fileReference = `@file:${fileName}\n`;
-          const newValue = currentValue.slice(0, cursorPos) + fileReference + currentValue.slice(cursorPos);
-          this.inputElement.value = newValue;
-          this.inputElement.focus();
-          this.inputElement.setSelectionRange(cursorPos + fileReference.length, cursorPos + fileReference.length);
-        }
-      }
+    
     } catch (error) {
       console.error('[AIZoneWidget] 处理文件选择失败:', error);
     }
@@ -4512,7 +4808,8 @@ export class AIZoneWidget {
 
     // 检查工具栏之前的显示状态和高度
     const wasVisible = this.selectedFilesToolbarWasVisible;
-    const willBeVisible = this.selectedFiles.length > 0;
+    const hasFiles = this.selectedFiles.length > 0;
+    const willBeVisible = this.isGenerating || this.isResponseCompleted || hasFiles;
     const visibilityChanged = wasVisible !== willBeVisible;
     
     // 保存工具栏之前的高度（在清空内容前，如果工具栏是显示的，获取实际高度）
@@ -4523,8 +4820,8 @@ export class AIZoneWidget {
     // 清空工具栏内容
     this.selectedFilesToolbar.innerHTML = '';
 
-    // 如果没有选中文件，隐藏工具栏
-    if (this.selectedFiles.length === 0) {
+    // 如果没有选中文件且当前既不在“生成中”也不在“结果展示”阶段，隐藏工具栏
+    if (!this.isGenerating && !this.isResponseCompleted && !hasFiles) {
       // 在隐藏工具栏前，保存 view-zone 的当前位置
       const viewZoneElement = this.getViewZoneDomElement();
       if (viewZoneElement && this.borderContainer) {
@@ -4576,103 +4873,205 @@ export class AIZoneWidget {
     this.selectedFilesToolbar.style.display = 'flex';
     this.selectedFilesToolbarWasVisible = true;
 
-    // 计算要显示的文件数量（最多5个）
-    const maxDisplayCount = 5;
-    const displayFiles = this.selectedFiles.slice(0, maxDisplayCount);
-    const remainingCount = this.selectedFiles.length - maxDisplayCount;
+    // 优先检查生成状态，如果不在生成中且没有完成，不应该显示完成工具栏
+    if (this.isGenerating) {
+      // ==================== 生成阶段：显示"取消"工具栏 ====================
+      this.selectedFilesToolbar.classList.remove('ai-zone-result-toolbar');
+      this.selectedFilesToolbar.classList.add('ai-zone-cancel-toolbar');
 
-    // 为每个要显示的文件或知识库创建显示项
-    displayFiles.forEach((file) => {
-      const fileItem = document.createElement('div');
-      fileItem.className = 'ai-zone-selected-file-item';
+      const cancelContainer = document.createElement('div');
+      cancelContainer.className = 'ai-zone-cancel-actions';
 
-      // 创建图标容器（根据类型选择不同图标）
-      const iconContainer = document.createElement('span');
-      const iconRoot = createRoot(iconContainer);
-      iconRoot.render(
-        React.createElement(Icon, {
-          iconSet: 'ui',
-          name: file.type === 'knowledge-base' ? 'book-open' : 'file',
-          size: 14
-        })
-      );
-      fileItem.appendChild(iconContainer);
-
-      // 创建文件名文本
-      const fileNameText = document.createElement('span');
-      fileNameText.className = 'ai-zone-selected-file-name';
-      fileNameText.textContent = file.name;
-      fileItem.appendChild(fileNameText);
-
-      // 创建删除按钮
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'ai-zone-selected-file-remove';
-      removeBtn.title = file.type === 'knowledge-base' ? '移除知识库' : '移除文件';
-      removeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-      removeBtn.addEventListener('click', (e) => {
+      const cancelAction = document.createElement('div');
+      cancelAction.className = 'ai-zone-result-action ai-zone-result-action-text';
+      cancelAction.title = '取消本次提问';
+      cancelAction.textContent = '取消';
+      cancelAction.addEventListener('mousedown', (e) => e.stopPropagation());
+      cancelAction.addEventListener('click', (e) => {
         e.stopPropagation();
-        // 从列表中移除（使用路径或知识库ID查找）
-        const fileIndex = file.type === 'knowledge-base' && file.kbId
-          ? this.selectedFiles.findIndex(f => f.kbId === file.kbId)
-          : this.selectedFiles.findIndex(f => f.path === file.path);
-        if (fileIndex !== -1) {
-          this.selectedFiles.splice(fileIndex, 1);
-          // 更新工具栏显示
-          this.updateSelectedFilesToolbar();
+        this.handleStopGeneration();
+      });
+
+      cancelContainer.appendChild(cancelAction);
+      this.selectedFilesToolbar.appendChild(cancelContainer);
+    } else if (this.isResponseCompleted) {
+      // ==================== 结果操作工具栏（关闭 / 接收 / 重新生成 + 点赞 / 点踩） ====================
+      this.selectedFilesToolbar.classList.add('ai-zone-result-toolbar');
+      this.selectedFilesToolbar.classList.remove('ai-zone-cancel-toolbar');
+
+      const leftActions = document.createElement('div');
+      leftActions.className = 'ai-zone-result-actions-left';
+
+      const rightActions = document.createElement('div');
+      rightActions.className = 'ai-zone-result-actions-right';
+
+      // 文字操作项（无需图标）
+      const createTextAction = (label: string, title: string, onClick: () => void): HTMLElement => {
+        const action = document.createElement('div');
+        action.className = 'ai-zone-result-action ai-zone-result-action-text';
+        action.title = title;
+        action.textContent = label;
+        action.addEventListener('mousedown', (e) => e.stopPropagation());
+        action.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onClick();
+        });
+        return action;
+      };
+
+      // 图标操作项
+      const createIconAction = (iconName: string, title: string, onClick: () => void): HTMLElement => {
+        const action = document.createElement('div');
+        action.className = 'ai-zone-result-action';
+        action.title = title;
+        action.addEventListener('mousedown', (e) => e.stopPropagation());
+        action.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onClick();
+        });
+
+        const iconContainer = document.createElement('span');
+        const iconRoot = createRoot(iconContainer);
+        iconRoot.render(
+          React.createElement(Icon, {
+            iconSet: 'ui',
+            name: iconName,
+            size: 14
+          })
+        );
+        action.appendChild(iconContainer);
+
+        return action;
+      };
+
+      // 左侧：关闭 / 接收 / 重新生成
+      leftActions.appendChild(createTextAction('关闭', '关闭内联聊天', () => {
+        this.hide();
+      }));
+
+      leftActions.appendChild(createTextAction('接收', '接收修改（待实现）', () => {
+        console.log('[AIZoneWidget] 接收修改：功能待实现');
+      }));
+
+      leftActions.appendChild(createIconAction('regenerate', '重新生成', () => {
+        console.log('[AIZoneWidget] 重新生成：使用上一次提问重新请求');
+        this.handleRegenerate();
+      }));
+
+      // 右侧：点赞 / 点踩
+      rightActions.appendChild(createIconAction('thumb-up', '点赞本次回答', () => {
+        console.log('[AIZoneWidget] 点赞本次回答');
+      }));
+
+      rightActions.appendChild(createIconAction('thumb-down', '点踩本次回答', () => {
+        console.log('[AIZoneWidget] 点踩本次回答');
+      }));
+
+      this.selectedFilesToolbar.appendChild(leftActions);
+      this.selectedFilesToolbar.appendChild(rightActions);
+    } else {
+      // ==================== 默认文件工具栏显示 ====================
+      this.selectedFilesToolbar.classList.remove('ai-zone-result-toolbar');
+      this.selectedFilesToolbar.classList.remove('ai-zone-cancel-toolbar');
+
+      // 计算要显示的文件数量（最多5个）
+      const maxDisplayCount = 5;
+      const displayFiles = this.selectedFiles.slice(0, maxDisplayCount);
+      const remainingCount = this.selectedFiles.length - maxDisplayCount;
+
+      // 为每个要显示的文件或知识库创建显示项
+      displayFiles.forEach((file) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'ai-zone-selected-file-item';
+
+        // 创建图标容器（根据类型选择不同图标）
+        const iconContainer = document.createElement('span');
+        const iconRoot = createRoot(iconContainer);
+        iconRoot.render(
+          React.createElement(Icon, {
+            iconSet: 'ui',
+            name: file.type === 'knowledge-base' ? 'book-open' : 'file',
+            size: 14
+          })
+        );
+        fileItem.appendChild(iconContainer);
+
+        // 创建文件名文本
+        const fileNameText = document.createElement('span');
+        fileNameText.className = 'ai-zone-selected-file-name';
+        fileNameText.textContent = file.name;
+        fileItem.appendChild(fileNameText);
+
+        // 创建删除按钮
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'ai-zone-selected-file-remove';
+        removeBtn.title = file.type === 'knowledge-base' ? '移除知识库' : '移除文件';
+        removeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // 从列表中移除（使用路径或知识库ID查找）
+          const fileIndex = file.type === 'knowledge-base' && file.kbId
+            ? this.selectedFiles.findIndex(f => f.kbId === file.kbId)
+            : this.selectedFiles.findIndex(f => f.path === file.path);
+          if (fileIndex !== -1) {
+            this.selectedFiles.splice(fileIndex, 1);
+            // 更新工具栏显示
+            this.updateSelectedFilesToolbar();
+          }
+        });
+
+        // 删除图标
+        const removeIconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        removeIconSvg.setAttribute('viewBox', '0 0 16 16');
+        removeIconSvg.style.width = '12px';
+        removeIconSvg.style.height = '12px';
+        const removePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        removePath.setAttribute('d', 'M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z');
+        removePath.setAttribute('fill', 'currentColor');
+        removeIconSvg.appendChild(removePath);
+        removeBtn.appendChild(removeIconSvg);
+
+        fileItem.appendChild(removeBtn);
+        if (this.selectedFilesToolbar) {
+          this.selectedFilesToolbar.appendChild(fileItem);
         }
       });
 
-      // 删除图标
-      const removeIconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      removeIconSvg.setAttribute('viewBox', '0 0 16 16');
-      removeIconSvg.style.width = '12px';
-      removeIconSvg.style.height = '12px';
-      const removePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      removePath.setAttribute('d', 'M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z');
-      removePath.setAttribute('fill', 'currentColor');
-      removeIconSvg.appendChild(removePath);
-      removeBtn.appendChild(removeIconSvg);
+      // 如果还有剩余文件，显示"更多"指示器
+      if (remainingCount > 0) {
+        const moreItem = document.createElement('div');
+        moreItem.className = 'ai-zone-selected-file-item ai-zone-selected-file-more';
 
-      fileItem.appendChild(removeBtn);
-      if (this.selectedFilesToolbar) {
-        this.selectedFilesToolbar.appendChild(fileItem);
-      }
-    });
+        // 创建图标容器
+        const iconContainer = document.createElement('span');
+        const iconRoot = createRoot(iconContainer);
+        iconRoot.render(
+          React.createElement(Icon, {
+            iconSet: 'ui',
+            name: 'file',
+            size: 14
+          })
+        );
+        moreItem.appendChild(iconContainer);
 
-    // 如果还有剩余文件，显示"更多"指示器
-    if (remainingCount > 0) {
-      const moreItem = document.createElement('div');
-      moreItem.className = 'ai-zone-selected-file-item ai-zone-selected-file-more';
+        // 创建数字文本
+        const countText = document.createElement('span');
+        countText.className = 'ai-zone-selected-file-count';
+        countText.textContent = `+${remainingCount}`;
+        moreItem.appendChild(countText);
 
-      // 创建图标容器
-      const iconContainer = document.createElement('span');
-      const iconRoot = createRoot(iconContainer);
-      iconRoot.render(
-        React.createElement(Icon, {
-          iconSet: 'ui',
-          name: 'file',
-          size: 14
-        })
-      );
-      moreItem.appendChild(iconContainer);
+        // 添加悬停事件
+        moreItem.addEventListener('mouseenter', () => {
+          this.showMoreFilesMenu(moreItem, this.selectedFiles.slice(maxDisplayCount));
+        });
 
-      // 创建数字文本
-      const countText = document.createElement('span');
-      countText.className = 'ai-zone-selected-file-count';
-      countText.textContent = `+${remainingCount}`;
-      moreItem.appendChild(countText);
+        moreItem.addEventListener('mouseleave', () => {
+          this.scheduleCloseMoreFilesMenu();
+        });
 
-      // 添加悬停事件
-      moreItem.addEventListener('mouseenter', () => {
-        this.showMoreFilesMenu(moreItem, this.selectedFiles.slice(maxDisplayCount));
-      });
-
-      moreItem.addEventListener('mouseleave', () => {
-        this.scheduleCloseMoreFilesMenu();
-      });
-
-      if (this.selectedFilesToolbar) {
-        this.selectedFilesToolbar.appendChild(moreItem);
+        if (this.selectedFilesToolbar) {
+          this.selectedFilesToolbar.appendChild(moreItem);
+        }
       }
     }
 
@@ -4870,11 +5269,15 @@ export class AIZoneWidget {
       this.closeAgentMenu();
       return;
     }
-    
-    // 如果上下文菜单是打开的，先关闭它
+
+    // 打开智能体菜单前，关闭其他所有菜单
     if (this.isContextMenuOpen) {
       this.closeContextMenu();
     }
+    if (this.closeDropdownFn) {
+      this.closeDropdownFn();
+    }
+    this.closeHistoryMenu();
     
     await this.showAgentMenu();
   }

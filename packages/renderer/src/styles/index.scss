@@ -64,6 +64,8 @@ body.background-image-enabled .explorer-context-menu{
 
 
 
+
+//内联聊天 历史会话记录菜单
 body.background-image-enabled .inline-chat-history-menu,
 body.background-image-enabled .extension-card{
   // background-color: rgb(105 103 103 / 9%) !important;
@@ -77,9 +79,7 @@ body.background-image-enabled  .knowledge-item{
     color: #FFF;
   }
 }
-body.background-image-enabled .ai-zone-border{
-  background: var(--ws-focusBorder);
-}
+
 body.background-image-enabled .select-trigger{
   z-index: 101;
   color: #c5c5c5;
@@ -87,7 +87,10 @@ body.background-image-enabled .select-trigger{
 
 
 body.background-image-enabled .ai-zone-context-select{
-  background-color: var(--ws-dropdown-background) !important;
+  backdrop-filter: blur(12px);
+  opacity: .8;
+  background-color: #7e2a2a36 !important;
+  color: var(--ws-dropdown-foreground);
 }
 
 // body.background-image-enabled .ai-chat-panel-left-border{
@@ -107,7 +110,6 @@ body.background-image-enabled .ai-chat-panel .ai-chat-panel-input-container{
   border-top: 1px solid #ffffff30;
 }
 
-
 body.background-image-enabled .StatusBar{
   background-color: transparent !important;
 }
@@ -117,9 +119,12 @@ body.background-image-enabled .status-bar{
 }
 
 
+
 body.background-image-enabled .ai-zone-border{
-  background-color: var(--ws-breadcrumb-foreground);
+  background-color: var(--ws-aiZoneBorder-background);
 }
+
+
 
 
 body.background-image-enabled .ai-agent-view-tabs,
@@ -213,7 +218,7 @@ body.background-image-enabled .monaco-context-menu {
     opacity: .85;
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid #595959;
+    border: 1px solid #45454570;
 
   &-item {
     &:hover {
@@ -287,7 +292,7 @@ body.background-image-enabled .panel-container>* {
 }
 
 [data-theme-mode='dark'] .ai-chat-panel-right-border {
-  border-left: 1px solid rgba(95, 94, 94, 0.27)
+  border-right: 1px solid rgba(95, 94, 94, 0.27)
 }
 
 [data-theme-mode='dark']  .ai-chat-panel .ai-chat-panel-input-container-inner{
@@ -301,10 +306,7 @@ body.background-image-enabled .panel-container>* {
 }
 
 
-[data-theme-mode=dark] .ai-zone-input-model-select-content{
-  background-color: var(--ws-dropdown-background);
-  color: #63eb8c !important;
-}
+
 
 // 侧边栏
 [data-theme-mode='dark']  .sidebar[data-position=left]{

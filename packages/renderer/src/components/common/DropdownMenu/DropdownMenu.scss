@@ -16,15 +16,9 @@
     padding: 3px 10px;
     border-radius: 3px;
     cursor: pointer;
-    background-color: var(--ws-input-background);
-    color: var(--ws-input-foreground);
     font-size: 13px;
     line-height: 1.6;
     min-height: 29px;
-
-    &:hover {
-      background-color: var(--ws-list-hover-background);
-    }
 
     .dropdown-menu-text {
       flex: 1;
@@ -64,6 +58,7 @@
     right: 0;
     z-index: 99999;
     background-color: var(--ws-dropdown-background);
+    border: 1px solid var(--ws-dropdown-border);
     border-radius: 6px;
     max-height: 500px;
     overflow: hidden;
@@ -192,7 +187,7 @@
 }
 
 [data-theme-mode='dark'] .dropdown-menu-content {
-  border: 1px solid #8f8f8f47;
+  border: 1px solid var(--ws-dropdown-border);
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.6784313725);
   
 }

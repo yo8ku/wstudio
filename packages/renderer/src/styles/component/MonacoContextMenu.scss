@@ -5,18 +5,13 @@
 
 .monaco-context-menu {
   background-color: var(--ws-dropdown-background);
-  border-color: #ffff0336;
+  border-color: var(--ws-dropdown-border);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.monaco-context-menu-item {
-  color: var(--ws-menu-foreground);
-  background-color: (--ws-editor-background);
-}
-
 .monaco-context-menu-item:hover:not(.disabled) {
-  background-color: var(--ws-selection-background);
-  color: var(--ws-menu-selectionForeground);
+  background-color: var(--ws-dropdown-hoverBackground);
+  color: var(--ws-dropdown-hoverForeground);
 }
 
 .monaco-context-menu-item.disabled {

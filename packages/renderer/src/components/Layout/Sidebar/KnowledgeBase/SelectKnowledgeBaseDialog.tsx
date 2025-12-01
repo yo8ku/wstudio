@@ -119,13 +119,7 @@ export const SelectKnowledgeBaseDialog: React.FC<SelectKnowledgeBaseDialogProps>
                   </div>
                   {kb.metadata?.description && (
                     <div 
-                      className="select-knowledge-base-dialog__item-description"
-                      style={{
-                        fontSize: '12px',
-                        color: 'var(--ws-secondary-foreground)',
-                        marginTop: '4px',
-                      }}
-                    >
+                      className="select-knowledge-base-dialog__item-description" >
                       {kb.metadata.description}
                     </div>
                   )}

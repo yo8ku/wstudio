@@ -484,7 +484,8 @@ export class CustomProvider extends BaseAIProvider {
           tools: params.tools,
           tool_choice: params.toolChoice,
           stream: true
-        })
+        }),
+        signal: params.signal // 传递 AbortSignal
       });
 
       if (!response.ok) {
@@ -510,14 +511,35 @@ export class CustomProvider extends BaseAIProvider {
       let usage: AIResponse['usage'] | undefined;
 
       while (true) {
+        // 检查是否已取消
+        if (params.signal?.aborted) {
+          console.log(`[${this.name}] 流式响应已被取消`);
+          reader.cancel();
+          break;
+        }
+
         const { done, value } = await reader.read();
         if (done) break;
+
+        // 再次检查是否已取消（在读取数据后）
+        if (params.signal?.aborted) {
+          console.log(`[${this.name}] 流式响应已被取消`);
+          reader.cancel();
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
+          // 在处理每行数据前检查是否已取消
+          if (params.signal?.aborted) {
+            console.log(`[${this.name}] 流式响应已被取消`);
+            reader.cancel();
+            break;
+          }
+
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
             if (data === '[DONE]') continue;
@@ -557,6 +579,11 @@ export class CustomProvider extends BaseAIProvider {
         usage
       });
     } catch (error) {
+      // 如果是取消操作，直接返回，不抛出错误
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log(`[${this.name}] 流式请求已被用户中断`);
+        return;
+      }
       console.error(`[${this.name}] 流式生成失败:`, error);
       if (error instanceof Error) {
         callback.onError?.(error);

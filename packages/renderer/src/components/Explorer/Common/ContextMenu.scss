@@ -4,14 +4,14 @@
  */
 
 .explorer-context-menu {
-  min-width: 184px;
+  min-width: 227px;
   padding: 4px;
   border: 1px solid var(--ws-dropdown-border);
   border-radius: 6px;
   background-color: var(--ws-dropdown-background);
   color: var(--ws-dropdown-foreground);
   font-size: 12px;
-  z-index: 9999;
+  z-index: 100;
   user-select: none;
 }
 
@@ -19,15 +19,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
+  padding: 5px 30px;
   height: 30px;
   border-radius: 4px;
   cursor: default;
   white-space: nowrap;
 
   &:hover {
-    background-color: #30363db8;
-    color: var(--ws-list-hover-foreground, var(--ws-menu-foreground));
+    background-color: var(--ws-dropdown-hoverBackground);
+    color: var(--ws-dropdown-hoverForeground);
   }
 
   &.disabled {
@@ -53,6 +53,6 @@
 .explorer-context-menu-separator {
   height: 1px;
   margin: 4px 0;
-  background-color: var(--ws-menu-border);
+  background-color: var(--ws-editor-selectionBackground);
 }
 

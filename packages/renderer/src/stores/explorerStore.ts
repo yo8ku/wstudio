@@ -18,6 +18,12 @@ interface ExplorerStore {
   isFileTreeExpanded: boolean;
   /** 大纲区域是否展开 */
   isOutlineExpanded: boolean;
+  /** 文件树数据 */
+  fileTreeData: FileTreeNode[] | null;
+  /** 工作区路径 */
+  workspacePath: string;
+  /** 文件树滚动位置 */
+  fileTreeScrollTop: number;
   
   /** 设置选中的文件节点 */
   setSelectedFile: (file: FileTreeNode | null) => void;
@@ -29,6 +35,14 @@ interface ExplorerStore {
   setFileTreeExpanded: (expanded: boolean) => void;
   /** 设置大纲区域展开状态 */
   setOutlineExpanded: (expanded: boolean) => void;
+  /** 设置文件树数据 */
+  setFileTreeData: (data: FileTreeNode[] | null) => void;
+  /** 设置工作区路径 */
+  setWorkspacePath: (path: string) => void;
+  /** 设置文件树滚动位置 */
+  setFileTreeScrollTop: (scrollTop: number) => void;
+  /** 更新文件树中的节点（用于展开/折叠等操作） */
+  updateFileTreeNode: (path: string, updater: (node: FileTreeNode) => FileTreeNode) => void;
   /** 切换打开的编辑器区域展开状态 */
   toggleOpenEditors: () => void;
   /** 切换文件树区域展开状态 */
@@ -43,6 +57,9 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   isOpenEditorsExpanded: true,
   isFileTreeExpanded: true,
   isOutlineExpanded: false,
+  fileTreeData: null,
+  workspacePath: '',
+  fileTreeScrollTop: 0,
   
   setSelectedFile: (file) => set({ selectedFile: file }),
   
@@ -53,6 +70,31 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   setFileTreeExpanded: (expanded) => set({ isFileTreeExpanded: expanded }),
   
   setOutlineExpanded: (expanded) => set({ isOutlineExpanded: expanded }),
+  
+  setFileTreeData: (data) => set({ fileTreeData: data }),
+  
+  setWorkspacePath: (path) => set({ workspacePath: path }),
+  
+  setFileTreeScrollTop: (scrollTop) => set({ fileTreeScrollTop: scrollTop }),
+  
+  updateFileTreeNode: (path, updater) => {
+    const { fileTreeData } = get();
+    if (!fileTreeData) return;
+    
+    const updateNode = (nodes: FileTreeNode[]): FileTreeNode[] => {
+      return nodes.map(node => {
+        if (node.path === path) {
+          return updater(node);
+        }
+        if (node.children) {
+          return { ...node, children: updateNode(node.children) };
+        }
+        return node;
+      });
+    };
+    
+    set({ fileTreeData: updateNode(fileTreeData) });
+  },
   
   toggleOpenEditors: () => {
     const { isOpenEditorsExpanded } = get();

@@ -240,6 +240,9 @@ export interface ElectronIPC {
     expand: (folderPath: string, rootPath: string) => Promise<APIResponse<any[]>>;
     createFile: (parentPath: string, fileName: string) => Promise<APIResponse<{ path: string; name: string }>>;
     createFolder: (parentPath: string, folderName: string) => Promise<APIResponse<{ path: string; name: string }>>;
+    rename: (oldPath: string, newName: string) => Promise<APIResponse<{ path: string; name: string }>>;
+    delete: (path: string) => Promise<APIResponse<{ success: boolean }>>;
+    revealInExplorer: (path: string) => Promise<APIResponse<void>>;
     ensureDir: (dirPath: string) => Promise<APIResponse<{ path: string }>>;
     getAllNotes: (folderPath: string) => Promise<APIResponse<any[]>>;
     copyToFolder: (sourcePath: string, targetFolderPath: string) => Promise<APIResponse<{ path: string; name: string }>>;

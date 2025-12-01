@@ -18,6 +18,8 @@
   flex-shrink: 0;
   opacity: 0.8;
   margin: 0;
+  position: relative;
+  z-index: 10; // 确保在 ai-zone-border-top / bottom 之上显示
 
   &:hover {
     opacity: 1;

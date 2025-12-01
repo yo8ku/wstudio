@@ -7,10 +7,12 @@ import React, { useState, useEffect } from "react";
 import "./StatusBar.scss";
 import { BackgroundImageSettings } from "../../BackgroundImageSettings/index";
 import { Icon } from "../../Icons/Icon";
+import { useActivityBarStore } from "../../../stores/activityBarStore";
 
 interface StatusBarProps {}
 
 export const StatusBar: React.FC<StatusBarProps> = () => {
+  const { sidebarPosition } = useActivityBarStore();
   const [pluginStatusBarItems, setPluginStatusBarItems] = useState<any[]>([]);
 
   // 新增：监听显示背景图片设置面板事件
@@ -337,6 +339,29 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     console.log("[StatusBar] ==============================");
   }, [pluginStatusBarItems]);
 
+  // 大纲图标组件
+  const OutlineIcon = () => (
+    <div className="status-bar-icon-btn" title="大纲">
+      <svg
+        className="status-bar-icon"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        viewBox="0 0 24 24"
+      >
+        <path d="M10 5h11"/>
+        <path d="M10 12h11"/>
+        <path d="M10 19h11"/>
+        <path d="m3 10 3-3-3-3"/>
+        <path d="m3 20 3-3-3-3"/>
+      </svg>
+    </div>
+  );
+
   return (
     <>
       <div className="status-bar">
@@ -376,6 +401,9 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                 </div>
               );
             })}
+
+          {/* 大纲 - 当侧边栏在左边时显示在左边 */}
+          {sidebarPosition === 'left' && <OutlineIcon />}
         </div>
 
         {/* 右侧：编辑器状态*/}
@@ -413,6 +441,9 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
               <div className="status-bar-info-btn">{currentLanguage}</div>
             </>
           )}
+
+          {/* 大纲 - 当侧边栏在右边时显示在右边 */}
+          {sidebarPosition === 'right' && <OutlineIcon />}
 
           {/* 背景设置 - 始终显示 */}
           <div

@@ -245,11 +245,16 @@ export class OpenAIProvider extends BaseAIProvider {
         headers: {
           'Authorization': `Bearer ${this.config.apiKey}`
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal: params.signal // 传递 AbortSignal
       });
 
-      await this.handleStreamResponse(response, callback);
+      await this.handleStreamResponse(response, callback, params.signal);
     } catch (error) {
+      // 如果是取消操作，直接返回，不抛出错误
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
       this.handleError(error, 'Failed to generate text stream');
     }
   }

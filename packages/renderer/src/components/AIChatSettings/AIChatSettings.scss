@@ -192,7 +192,7 @@
           }
 
           &:hover {
-            border-color: var(--ws-focus-border);
+            border-color: var(--ws-dropdown-border);
           }
 
           &:active {
@@ -233,8 +233,8 @@
             }
 
             &:hover {
-              background: var(--ws-menubar-selectionBackground);
-              color: var(--ws-menubar-selectionForeground);
+              background: var(--ws-dropdown-hoverBackground);
+              color: var(--ws-dropdown-hoverForeground);
             }
 
             &:active {
@@ -242,8 +242,8 @@
             }
 
             &.selected {
-              background: var(--ws-list-active-selection-background);
-              color: var(--ws-list-active-selection-foreground);
+              background: var(--ws-dropdown-hoverBackground);
+              color: var(--ws-dropdown-hoverForeground);
             }
           }
         }

@@ -1,774 +1,1044 @@
-  /**
-     AI 内联聊天小部件
-  
-  */
+/**
+ * AI 内联聊天小部件样式
+ * 功能：定义内联 AI 聊天面板的所有样式
+ */
 
-  /* 确保所有 Monaco Editor 容器允许溢出，使边框可以延伸到行号区域 */
-  /* monaco-editor 是边框的容器（最外层），必须允许溢出并设置相对定位 */
-  .monaco-editor {
-    position: relative !important; /* 确保边框可以绝对定位 */
-  }
-
-  /* overflow-guard 也需要允许溢出（作为备用容器） */
-  .monaco-editor .overflow-guard {
-    overflow: visible !important;
-    position: relative !important; /* 确保边框可以绝对定位 */
-  }
-
-  /* monaco-scrollable-element 也需要允许溢出（作为备用容器） */
-  .monaco-editor .monaco-scrollable-element {
-    overflow: visible !important;
-    position: relative !important; /* 确保边框可以绝对定位 */
-  }
-
-  .monaco-editor .view-zone {
-    overflow: visible !important;
-    overflow-x: visible !important;
-    overflow-y: visible !important;
-  }
-
-  .monaco-editor .view-zones {
-    overflow: visible !important;
-    overflow-x: visible !important;
-    overflow-y: visible !important;
-  }
-
-  /* 确保 Monaco Editor 的内容区域也允许溢出 */
-  .monaco-editor .monaco-editor-background {
-    overflow: visible !important;
-  }
-
-  .monaco-editor .lines-content {
-    overflow: visible !important;
-  }
-
-  .ai-zone-container {
-      background: var(--ws-editor-background);
-      font-family: var(--ws-font-family);
-      font-size: var(--ws-font-size, 13px);
-      box-sizing: border-box !important;
-      pointer-events: auto !important;
-      user-select: text;
-      position: relative;
-      z-index: 1000;
-      padding: 0;
-      margin: 4px 0 0;
-      min-height: 48px;
-      overflow: visible !important;
-      /* 响应式宽度 - 在 Monaco 视区内自适应 */
-      width: min(100%, 834px) !important;
-      max-width: 100% !important;
-      min-width: min(400px, 100%) !important;
-      display: flex;
-      flex-direction: column;
-      /* 确保边框可以延伸到行号区域 */
-      overflow-x: visible !important;
-  }
-
-  /* 顶部和底部边框（在 monaco-editor 容器层级） */
-  /* monaco-editor 是最外层容器，包含行号区域和内容区域，可以确保边框延伸到行号上 */
-  /* 使用 position: fixed 使边框相对于视口定位，不会随着编辑器滚动而移动 */
-.ai-zone-border {
-    position: fixed;
-    height: 1px;
-    /* 边框现在在 monaco-editor 容器层级，可以延伸到行号区域 */
-    /* top、left、width 和 right 位置由 JavaScript 动态设置 */
-    background-color: var(--ws-breadcrumb-foreground);
-    flex-shrink: 0;
-    pointer-events: none;
-    /* z-index 设置为较低值，确保不遮挡行号（行号的 z-index 通常较高） */
-    z-index: 1;
-    /* width 由 JavaScript 动态设置，不在此处设置 */
-    opacity: 0.6;
+/* 确保所有 Monaco Editor 容器允许溢出，使边框可以延伸到行号区域 */
+/* monaco-editor 是边框的容器（最外层），必须允许溢出并设置相对定位 */
+.monaco-editor {
+  position: relative !important; /* 确保边框可以绝对定位 */
 }
 
-  .ai-zone-border-top {
-      /* 顶部边框在内容之前 */
-      top: 0;
+/* overflow-guard 也需要允许溢出（作为备用容器） */
+.monaco-editor .overflow-guard {
+  overflow: visible !important;
+  position: relative !important; /* 确保边框可以绝对定位 */
+}
+
+/* monaco-scrollable-element 也需要允许溢出（作为备用容器） */
+.monaco-editor .monaco-scrollable-element {
+  overflow: visible !important;
+  position: relative !important; /* 确保边框可以绝对定位 */
+}
+
+.monaco-editor .view-zone {
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+}
+
+.monaco-editor .view-zones {
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+}
+
+/* 确保 Monaco Editor 的内容区域也允许溢出 */
+.monaco-editor .monaco-editor-background {
+  overflow: visible !important;
+}
+
+.monaco-editor .lines-content {
+  overflow: visible !important;
+}
+
+.ai-zone-container {
+  background: var(--ws-editor-background);
+  font-family: var(--ws-font-family);
+  font-size: var(--ws-font-size, 13px);
+  box-sizing: border-box !important;
+  pointer-events: auto !important;
+  user-select: text;
+  position: relative;
+  z-index: 1000;
+  padding: 0;
+  margin: 4px 0 0;
+  min-height: 48px;
+  overflow: visible !important;
+  /* 响应式宽度 - 在 Monaco 视区内自适应 */
+  width: min(100%, 834px) !important;
+  max-width: 100% !important;
+  min-width: min(400px, 100%) !important;
+  display: flex;
+  flex-direction: column;
+  /* 确保边框可以延伸到行号区域 */
+  overflow-x: visible !important;
+}
+
+/* 顶部和底部边框（在 monaco-editor 容器层级） */
+/* monaco-editor 是最外层容器，包含行号区域和内容区域，可以确保边框延伸到行号上 */
+/* 使用 position: fixed 使边框相对于视口定位，不会随着编辑器滚动而移动 */
+.ai-zone-border {
+  position: fixed;
+  height: 1px;
+  /* 边框现在在 monaco-editor 容器层级，可以延伸到行号区域 */
+  /* top、left、width 和 right 位置由 JavaScript 动态设置 */
+  background-color: var(--ws-aiZoneBorder-background);
+  flex-shrink: 0;
+  pointer-events: none;
+  /* z-index 设置为 0，确保在编辑器内容上方可见（编辑器内容默认 z-index 是 auto/0） */
+  /* 但不遮挡 z-index 为 10 或更高的 UI 元素（titleBar、tab-bar、breadcrumb） */
+  z-index: 0;
+  /* width 由 JavaScript 动态设置，不在此处设置 */
+  opacity: 0.6;
+}
+
+.ai-zone-border-top {
+  /* 顶部边框在内容之前 */
+  top: 0;
+}
+
+.ai-zone-border-bottom {
+  /* 底部边框在内容之后 */
+  bottom: 0;
+}
+
+.ai-zone-container * {
+  box-sizing: border-box;
+}
+
+/* 内容区域 */
+.ai-zone-content {
+  padding: 24px 16px 20px 16px;
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+  box-sizing: border-box;
+  overflow: visible;
+  flex: 1;
+  min-width: 0;
+
+  textarea {
+    border: none !important;
+  }
+}
+
+/* 输入容器 */
+.ai-zone-input-wrapper {
+  display: flex;
+  background: var(--ws-input-background);
+  align-items: stretch;
+  border-radius: 4px;
+  gap: 0;
+  box-sizing: border-box;
+  pointer-events: auto !important;
+  min-height: 32px;
+  overflow: visible;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--ws-input-border);
+  transition: border-color 0.15s ease;
+
+  &:focus-within {
+    border-color: var(--ws-input-focusBorder);
+  }
+}
+
+/* 输入框 */
+.ai-zone-input {
+  flex: 1;
+  height: 100%;
+  background: transparent;
+  color: var(--ws-input-foreground);
+  border: none;
+  font-size: 13px;
+  line-height: 20px;
+  resize: none;
+  outline: none;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  min-height: 20px;
+  max-height: 120px;
+  box-sizing: border-box;
+  pointer-events: auto !important;
+  cursor: text;
+  min-width: 0;
+  max-width: 100%;
+  word-wrap: break-word;
+  word-break: break-word;
+  padding: 8px 12px;
+
+  /* 自定义滚动条样式 */
+  &::-webkit-scrollbar {
+    width: 6px;
   }
 
-  .ai-zone-border-bottom {
-      /* 底部边框在内容之后 */
-      bottom: 0;
+  &::-webkit-scrollbar-track {
+    background: transparent;
   }
 
-  .ai-zone-container * {
-      box-sizing: border-box;
+  &::-webkit-scrollbar-thumb {
+    background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+    }
+
+    &:active {
+      background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+    }
+  }
+}
+
+.ai-zone-input::placeholder {
+  color: var(--ws-input-placeholder-foreground);
+  opacity: 0.6;
+}
+
+/* 底部控制栏（VSCode 风格：紧凑工具栏） */
+.ai-zone-bottom-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  margin-top: 0;
+  padding: 2px 0 6px 0;
+}
+
+/* 左侧控制按钮 */
+.ai-zone-left-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 右侧控制按钮 */
+.ai-zone-right-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 添加上下文按钮容器（使用 shadcn Button 组件） */
+.ai-zone-add-context-btn-container {
+  pointer-events: auto !important;
+}
+
+/* shadcn Button 组件覆盖样式 */
+.ai-zone-add-context-btn {
+  pointer-events: auto !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  height: 20px;
+  min-height: 20px;
+  font-size: 12px;
+  border-radius: 2px;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+  opacity: 0.7;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+/* 上下文按钮图标 */
+.ai-zone-context-icon {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  flex-shrink: 0;
+  color: var(--ws-icon-foreground);
+}
+
+/* 按钮文字 */
+.ai-zone-btn-text {
+  white-space: nowrap;
+}
+
+/* 工具栏图标按钮（VSCode 风格：紧凑按钮） */
+.ai-zone-toolbar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  pointer-events: auto !important;
+  color: var(--ws-icon-foreground);
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+
+  &:hover {
+    background: var(--ws-button-hoverBackground);
+    color: var(--ws-button-hoverForegound);
+    opacity: 1;
   }
 
-  /* 内容区域 */
-  .ai-zone-content {
-      padding: 24px 16px 20px 16px;
-      width: 100%;
-      min-height: 36px;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      justify-content: flex-start;
-      gap: 8px;
-      box-sizing: border-box;
-      overflow: visible;
-      flex: 1;
-      min-width: 0;
-
-      textarea {
-          border: none !important;
-      }
+  &.active {
+    opacity: 1;
+    color: var(--ws-accent-foreground);
+    background: var(--ws-button-secondary-background);
   }
 
-  /* 输入容器 */
-  .ai-zone-input-wrapper {
-      display: flex;
-      background: var(--ws-input-background);
-      align-items: stretch;
-      border-radius: 4px;
-      gap: 0;
-      box-sizing: border-box;
-      pointer-events: auto !important;
-      min-height: 32px;
-      overflow: visible;
-      width: 100%;
-      min-width: 0;
-      padding: 0;
-      border: 1px solid var(--ws-input-border);
-      transition: border-color 0.15s ease;
-
-      &:focus-within {
-          border-color: #779bb7;
-         
-      }
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
-  /* 输入框 */
-  .ai-zone-input {
-      flex: 1;
-      height: 100%;
-      background: transparent;
-      color: var(--ws-input-foreground);
-      border: none;
-      font-size: 13px;
-      line-height: 20px;
-      resize: none;
-      outline: none;
-      overflow-y: auto !important;
-      overflow-x: hidden;
-      min-height: 20px;
-      max-height: 120px;
-      box-sizing: border-box;
-      pointer-events: auto !important;
-      cursor: text;
-      min-width: 0;
-      max-width: 100%;
-      word-wrap: break-word;
-      word-break: break-word;
-      padding: 8px 12px;
-      font-family: var(--ws-font-family);
+  span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
 
-      /* 自定义滚动条样式 */
-      &::-webkit-scrollbar {
-          width: 6px;
-      }
+/* 输入框操作按钮容器（VSCode 风格：右侧按钮组） */
+.ai-zone-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-left: 1px solid var(--ws-input-border);
+  background: transparent;
 
-      &::-webkit-scrollbar-track {
-          background: transparent;
-      }
+  /* 当输入框获得焦点时，操作按钮容器也获得焦点样式 */
+  .ai-zone-input-wrapper:focus-within & {
+    border-color: var(--ws-input-focusBorder);
+  }
+}
 
-      &::-webkit-scrollbar-thumb {
-          background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-          border-radius: 3px;
+/* 模型下拉框（在输入框内右侧） */
+.ai-zone-input-model-dropdown {
+  flex-shrink: 0;
+  pointer-events: auto;
 
-          &:hover {
-              background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
-          }
+  .dropdown-menu-trigger {
+    padding: 2px 6px !important;
+    min-height: 20px !important;
+    height: 20px !important;
+    font-size: 12px !important;
+    border: none !important;
+    background: transparent !important;
+    color: var(--ws-foreground) !important;
 
-          &:active {
-              background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
-          }
-      }
+    &:hover {
+      background: var(--ws-button-hoverBackground) !important;
+    }
   }
 
-  .ai-zone-input::placeholder {
-      color: var(--ws-input-placeholder-foreground);
-      opacity: 0.6;
+  .dropdown-menu {
+    &-content {
+      width: 187px !important;
+      min-width: 230px;
+    }
+
+    &-text {
+      padding-right: 5px;
+    }
+  }
+}
+
+/* 发送按钮（在输入框内右侧） */
+.ai-zone-send-btn {
+  flex-shrink: 0;
+  padding: 4px;
+  background: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  pointer-events: auto !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  color: var(--ws-icon-foreground);
+
+  &:hover {
+    background: var(--ws-button-hoverBackground);
+    opacity: 1;
   }
 
-  /* 底部控制栏（VSCode 风格：紧凑工具栏） */
-  .ai-zone-bottom-toolbar {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      min-height: 28px;
-      margin-top: 0;
-      padding: 2px 0 6px 0;
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.ai-zone-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-zone-send-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* 关闭按钮 - 在输入框容器内最右侧 */
+.ai-zone-close-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--ws-icon-foreground);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  pointer-events: auto !important;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+
+  &:hover {
+    background: var(--ws-button-hoverBackground);
+    opacity: 1;
   }
 
-  /* 左侧控制按钮 */
-  .ai-zone-left-controls {
-      display: flex;
-      align-items: center;
-      gap: 4px;
+  &:active {
+    background: var(--ws-button-activeBackground);
+    opacity: 0.8;
+  }
+}
+
+/* 关闭图标 SVG */
+.ai-zone-close-icon {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+/* 发送图标 */
+.ai-zone-send-icon {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+/* 消息显示区域（VSCode 风格：简洁布局） */
+.ai-zone-message-display {
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 24px; /* 确保最小高度 */
+  box-sizing: border-box;
+
+  /* 自定义滚动条样式 */
+  &::-webkit-scrollbar {
+    width: 6px;
   }
 
-  /* 右侧控制按钮 */
-  .ai-zone-right-controls {
-      display: flex;
-      align-items: center;
-      gap: 4px;
+  &::-webkit-scrollbar-track {
+    background: transparent;
   }
 
-  /* 添加上下文按钮容器（使用 shadcn Button 组件） */
-  .ai-zone-add-context-btn-container {
-      pointer-events: auto !important;
+  &::-webkit-scrollbar-thumb {
+    background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+    }
+
+    &:active {
+      background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+    }
+  }
+}
+
+/* 消息内容容器（带头像） */
+.ai-zone-message-content {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+/* 消息头像 */
+.ai-zone-message-avatar {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--ws-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  color: var(--ws-foreground);
+  margin-top: 2px;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+  }
+}
+
+/* 消息文本 */
+.ai-zone-message-text {
+  color: var(--ws-foreground);
+  font-size: 12px;
+
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
+  line-height: 2;
+  padding: 0;
+}
+
+/* 思考动画点 */
+.ai-zone-thinking-dots::after {
+  content: '';
+  animation: thinking-dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes thinking-dots {
+  0%,
+  20% {
+    content: '';
   }
 
-  /* shadcn Button 组件覆盖样式 */
-  .ai-zone-add-context-btn {
-      pointer-events: auto !important;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2px 4px;
-      height: 20px;
-      min-height: 20px;
-      font-size: 12px;
-      border-radius: 2px;
-      transition: background-color 0.15s ease, opacity 0.15s ease;
-      opacity: 0.7;
-
-      &:hover {
-          opacity: 1;
-      }
+  40% {
+    content: '.';
   }
 
-  /* 上下文按钮图标 */
-  .ai-zone-context-icon {
-      width: 14px;
-      height: 14px;
-      fill: currentColor;
-      flex-shrink: 0;
-      color: var(--ws-icon-foreground);
+  60% {
+    content: '..';
   }
 
-  /* 按钮文字 */
-  .ai-zone-btn-text {
-      white-space: nowrap;
+  80%,
+  100% {
+    content: '...';
+  }
+}
+
+/* 内联聊天，历史记录diff内容，消息覆盖层（在底部边框下方） */
+.ai-zone-message-overlay {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ws-breadcrumb-foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+
+  /* 自定义滚动条样式 */
+  &::-webkit-scrollbar {
+    width: 6px;
   }
 
-  /* 工具栏图标按钮（VSCode 风格：紧凑按钮） */
-  .ai-zone-toolbar-icon-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-      height: 24px;
-      padding: 4px;
-      background: transparent;
-      border: none;
-      border-radius: 3px;
-      cursor: pointer;
-      pointer-events: auto !important;
-      color: var(--ws-icon-foreground);
-      opacity: 0.7;
-      transition: opacity 0.15s ease, background-color 0.15s ease;
-
-      &:hover {
-          background: var(--ws-button-hoverBackground);
-          color: var(--ws-button-hoverForegound);
-          opacity: 1;
-      }
-
-      &.active {
-          opacity: 1;
-          color: var(--ws-accent-foreground);
-          background: var(--ws-button-secondary-background);
-      }
-
-      &:disabled {
-          opacity: 0.4;
-          cursor: not-allowed;
-      }
-
-      span {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-      }
+  &::-webkit-scrollbar-track {
+    background: transparent;
   }
 
-  /* 输入框操作按钮容器（VSCode 风格：右侧按钮组） */
-  .ai-zone-input-actions {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      flex-shrink: 0;
-      padding: 0 6px;
-      border-left: 1px solid var(--ws-input-border);
-      background: transparent;
-      
-      /* 当输入框获得焦点时，操作按钮容器也获得焦点样式 */
-      .ai-zone-input-wrapper:focus-within & {
-          border-color: #779bb7;
-      }
+  &::-webkit-scrollbar-thumb {
+    background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+    }
+
+    &:active {
+      background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+    }
   }
+}
 
-  /* 模型下拉框（在输入框内右侧） */
-  .ai-zone-input-model-dropdown {
-      flex-shrink: 0;
-      pointer-events: auto;
+/* 完成响应显示区域（在 bottomBorder 下方） */
+.ai-zone-completed-response {
+  padding: 8px 16px 16px 16px;
+  margin-top: 1px; /* 在 bottomBorder 下方，留出 1px 间距（border 高度） */
+  box-sizing: border-box;
+  width: 100%;
+  overflow: visible;
+  position: relative;
+  z-index: 0; /* 确保在 bottomBorder 下方 */
 
-      .dropdown-menu-trigger {
-          padding: 2px 6px !important;
-          min-height: 20px !important;
-          height: 20px !important;
-          font-size: 12px !important;
-          border: none !important;
-          background: transparent !important;
-          color: var(--ws-foreground) !important;
-          
-          &:hover {
-              background: var(--ws-button-hoverBackground) !important;
-          }
-      }
-
-      .dropdown-menu {
-          &-content {
-              width: 187px !important;
-              min-width: 230px;
-          }
-
-          &-text {
-              padding-right: 5px;
-          }
-      }
-  }
-
-  /* 发送按钮（在输入框内右侧） */
-  .ai-zone-send-btn {
-      flex-shrink: 0;
-      padding: 4px;
-      background: transparent;
-      border-radius: 3px;
-      cursor: pointer;
-      pointer-events: auto !important;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-      height: 24px;
-      opacity: 0.7;
-      transition: opacity 0.15s ease, background-color 0.15s ease;
-      color: var(--ws-icon-foreground);
-
-      &:hover {
-          background: var(--ws-button-hoverBackground);
-          opacity: 1;
-      }
-
-      &:active {
-          opacity: 0.8;
-      }
-  }
-
-  //   .ai-zone-send-btn:hover:not(:disabled) {
-  //       background: var(--ws-button-hoverBckground);
-  //   }
-
-  //   .ai-zone-send-btn:active:not(:disabled) {
-  //       background: var(--ws-button-hoverBackground);
-  //   }
-
-  .ai-zone-send-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-  }
-
-  .ai-zone-send-icon {
-      width: 14px;
-      height: 14px;
-  }
-
-
-  /* 关闭按钮 - 在输入框容器内最右侧 */
-  .ai-zone-close-btn {
-      width: 24px;
-      height: 24px;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: transparent;
-      color: var(--ws-icon-foreground);
-      border: none;
-      border-radius: 3px;
-      cursor: pointer;
-      pointer-events: auto !important;
-      flex-shrink: 0;
-      opacity: 0.7;
-      transition: opacity 0.15s ease, background-color 0.15s ease;
-
-      &:hover {
-          background: var(--ws-button-hoverBackground);
-          opacity: 1;
-      }
-
-      &:active {
-          background: var(--ws-button-activeBackground);
-          opacity: 0.8;
-      }
-  }
-
-  /* 关闭图标 SVG */
-  .ai-zone-close-icon {
-      width: 14px;
-      height: 14px;
-      fill: currentColor;
-      pointer-events: none;
-  }
-
-  /* 发送图标 */
-  .ai-zone-send-icon {
-      width: 14px;
-      height: 14px;
-      fill: currentColor;
-      pointer-events: none;
-  }
-
-  /* 消息显示区域（VSCode 风格：简洁布局） */
-  .ai-zone-message-display {
-      padding: 0;
-      max-height: 300px;
-      overflow-y: auto;
-      overflow-x: hidden;
-      min-height: 24px; /* 确保最小高度 */
-      box-sizing: border-box;
-
-      /* 自定义滚动条样式 */
-      &::-webkit-scrollbar {
-          width: 6px;
-      }
-
-      &::-webkit-scrollbar-track {
-          background: transparent;
-      }
-
-      &::-webkit-scrollbar-thumb {
-          background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-          border-radius: 3px;
-
-          &:hover {
-              background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
-          }
-
-          &:active {
-              background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
-          }
-      }
-  }
-
-  /* 消息内容容器（带头像） */
+  /* 消息内容容器样式（复用） */
   .ai-zone-message-content {
-      display: flex;
-      flex-direction: row;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 5px 0;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 0;
+  }
+}
+
+/* 选中文件工具栏（VSCode 风格：紧凑布局） */
+.ai-zone-selected-files-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 0 2px 0;
+  margin-bottom: 0;
+}
+
+/* AI 回复完成后的结果操作工具栏（复用选中文件工具栏区域） */
+.ai-zone-result-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-zone-cancel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.ai-zone-result-actions-left,
+.ai-zone-result-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-zone-result-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--ws-icon-foreground);
+  opacity: 0.8;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+
+  &:hover {
+    opacity: 1;
+    background: var(--ws-button-hoverBackground);
   }
 
-  /* 消息头像 */
-  .ai-zone-message-avatar {
-      width: 20px;
-      height: 20px;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      background: var(--ws-button-secondaryBackground, rgba(128, 128, 128, 0.2));
-      color: var(--ws-foreground);
-      margin-top: 2px;
-
-      svg {
-          width: 14px;
-          height: 14px;
-          fill: currentColor;
-      }
+  &:active {
+    opacity: 0.9;
   }
+}
 
-  /* 消息文本 */
-  .ai-zone-message-text {
-      color: var(--ws-foreground);
-      font-size: 13px;
-      font-family: var(--ws-font-family);
-      flex: 1;
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-wrap: break-word;
-      min-width: 0;
-      line-height: 1.6;
-      padding: 0;
-  }
+/* 文本操作项（关闭 / 接收） */
+.ai-zone-result-action-text {
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--ws-foreground);
+}
 
-  /* 思考动画点 */
-  .ai-zone-thinking-dots::after {
-      content: '';
-      animation: thinking-dots 1.2s steps(4, end) infinite;
-  }
+.ai-zone-cancel-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 
-  @keyframes thinking-dots {
-
-      0%,
-      20% {
-          content: '';
-      }
-
-      40% {
-          content: '.';
-      }
-
-      60% {
-          content: '..';
-      }
-
-      80%,
-      100% {
-          content: '...';
-      }
-  }
-
-  /* 内联聊天，历史记录diff内容，消息覆盖层（在底部边框下方） */
-  .ai-zone-message-overlay {
-      font-size: 13px;
-      line-height: 20px;
-      color: var(--ws-breadcrumb-foreground);
-      ;
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-wrap: break-word;
-
-      /* 自定义滚动条样式 */
-      &::-webkit-scrollbar {
-          width: 6px;
-      }
-
-      &::-webkit-scrollbar-track {
-          background: transparent;
-      }
-
-      &::-webkit-scrollbar-thumb {
-          background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-          border-radius: 3px;
-
-          &:hover {
-              background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
-          }
-
-          &:active {
-              background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
-          }
-      }
-  }
-
-  /* 完成响应显示区域（在 bottomBorder 下方） */
-  .ai-zone-completed-response {
-      padding: 8px 16px 16px 16px;
-      margin-top: 1px; /* 在 bottomBorder 下方，留出 1px 间距（border 高度） */
-      box-sizing: border-box;
-      width: 100%;
-      overflow: visible;
-      position: relative;
-      z-index: 0; /* 确保在 bottomBorder 下方 */
-
-      /* 消息内容容器样式（复用） */
-      .ai-zone-message-content {
-          display: flex;
-          flex-direction: row;
-          align-items: flex-start;
-          gap: 12px;
-          padding: 12px 0;
-      }
-  }
-
-  /* 选中文件工具栏（VSCode 风格：紧凑布局） */
-  .ai-zone-selected-files-toolbar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      padding: 4px 0 2px 0;
-      margin-bottom: 0;
-  }
-
-  
-  // 内联聊天文件工具栏虚线（暗色模型）
+// 内联聊天文件工具栏虚线（暗色模型）
 [data-theme-mode='dark'] .ai-zone-selected-file-item {
-    border: 1px dashed #6d6a6a;
-  }
+  border: 1px dashed #6d6a6a;
+}
 
-    // 内联聊天文件工具栏虚线（暗色模型）
+// 内联聊天文件工具栏虚线（亮色模型）
 [data-theme-mode='light'] .ai-zone-selected-file-item {
-    border: 1px dashed #585858;
+  border: 1px dashed #585858;
+}
+
+/* 选中文件项 */
+.ai-zone-selected-file-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--ws-input-background);
+  font-size: 12px;
+  color: var(--ws-foreground);
+
+  span {
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* 选中文件名 */
+.ai-zone-selected-file-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* 移除文件按钮 */
+.ai-zone-selected-file-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--ws-icon-foreground);
+  opacity: 0.6;
+  transition: opacity 0.1s ease, background-color 0.1s ease;
+  flex-shrink: 0;
+
+  &:hover {
+    opacity: 1;
+    background: var(--ws-button-secondaryBackground);
   }
 
-  /* 选中文件项 */
-  .ai-zone-selected-file-item {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 6px 8px;
-    //   border: 1px dashed var(--ws-input-border);
-      border-radius: 4px;
-      background: var(--ws-input-background);
-      font-size: 12px;
-      color: var(--ws-foreground);
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+}
 
-      span {
-          display: flex;
-          align-items: center;
-      }
+/* 更多文件指示器 */
+.ai-zone-selected-file-more {
+  cursor: default;
+
+  .ai-zone-selected-file-count {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+}
+
+/* 更多文件菜单 */
+.ai-zone-more-files-menu {
+  display: none;
+}
+
+.ai-zone-more-files-menu-content {
+  background: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  min-width: 200px;
+  max-width: 400px;
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  /* 自定义滚动条样式 */
+  &::-webkit-scrollbar {
+    width: 6px;
   }
 
-  /* 选中文件名 */
-  .ai-zone-selected-file-name {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 200px;
+  &::-webkit-scrollbar-track {
+    background: transparent;
   }
 
-  /* 移除文件按钮 */
-  .ai-zone-selected-file-remove {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 16px;
-      height: 16px;
-      padding: 0;
+  &::-webkit-scrollbar-thumb {
+    background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+    }
+
+    &:active {
+      background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+    }
+  }
+}
+
+.ai-zone-more-files-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--ws-foreground);
+  cursor: default;
+  transition: background-color 0.1s ease;
+
+  &:hover {
+    background: var(--ws-list-hover-background);
+  }
+
+  .ai-zone-more-files-menu-item-icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--ws-icon-foreground);
+  }
+
+  .ai-zone-more-files-menu-item-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .ai-zone-more-files-menu-item-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    color: var(--ws-icon-foreground);
+    opacity: 0.6;
+    transition: opacity 0.1s ease, background-color 0.1s ease;
+    flex-shrink: 0;
+
+    &:hover {
+      opacity: 1;
+      background: var(--ws-toolbar-hoverBackground);
+    }
+
+    svg {
+      width: 12px;
+      height: 12px;
+    }
+  }
+}
+
+// Select 组件在内联聊天中的特殊样式
+// @ 菜单的最小和最大高度设置为 300px
+.ai-zone-context-select {
+  // 确保 Select 组件在内联聊天中正确显示
+  position: relative;
+  width: 100%;
+  z-index: 10001; // 确保菜单在编辑器上方
+
+  // Select 触发器样式（隐藏，因为内联聊天中不需要显示触发器）
+  .select-trigger {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    border: none !important;
+    outline: none !important;
+    &:hover {
+      background-color: transparent !important;
+    }
+  }
+}
+
+// AI 智能体菜单样式（与 @ 菜单一致，补充悬停反馈）
+.ai-zone-agent-select {
+  position: relative;
+  width: 100%;
+  z-index: 100;
+
+  .select-trigger {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    border: none !important;
+    outline: none !important;
+  }
+}
+
+.ai-zone-agent-select-content {
+  position: fixed !important;
+  z-index: 100 !important;
+  max-height: 300px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  background-color: var(--ws-dropdown-background) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  /* 在工具栏和菜单之间留出更明显的间距，避免视觉遮挡 */
+  margin-top: 22px;
+
+  .select-list {
+    max-height: calc(300px - 80px);
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
       background: transparent;
-      border: none;
-      border-radius: 2px;
-      cursor: pointer;
-      color: var(--ws-icon-foreground);
-      opacity: 0.6;
-      transition: opacity 0.1s ease, background-color 0.1s ease;
-      flex-shrink: 0;
+    }
 
-      &:hover {
-          opacity: 1;
-          background: var(--ws-toolbar-hoverBackground);
-      }
-
-      svg {
-          width: 12px;
-          height: 12px;
-      }
+    &::-webkit-scrollbar-thumb {
+      background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+      border-radius: 3px;
+    }
   }
 
-  /* 更多文件指示器 */
-  .ai-zone-selected-file-more {
-      cursor: default;
+  .select-item {
+    transition: background-color 0.15s ease, color 0.15s ease;
 
-      .ai-zone-selected-file-count {
-          font-weight: 500;
-          white-space: nowrap;
-      }
+    &:hover {
+      background-color: var(--ws-dropdown-hoverBackground);
+      color: var(--ws-dropdown-hoverForeground);
+    }
+  }
+}
+
+// 模型下拉 Select 下拉内容样式（与其他菜单保持一致的悬停反馈）
+.ai-zone-input-model-select-content {
+
+  .select-item {
+    transition: background-color 0.15s ease, color 0.15s ease;
+    
+    &:hover {
+      background-color: var(--ws-dropdown-hoverBackground);
+      color: var(--ws-dropdown-hoverForeground);
+    }
+  }
+}
+
+// Portal 渲染出来的下拉内容样式（确保不会被 ai-zone-border 遮挡）
+.ai-zone-context-select-content {
+  position: fixed !important;
+  z-index: 100 !important;
+  /* 不强制最小高度，避免底部大面积空白，只限制最大高度 */
+  max-height: 300px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  background-color: var(--ws-dropdown-background) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+
+  // 确保菜单内容正确显示
+  .select-list {
+    max-height: calc(300px - 80px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+    min-height: 0;
+
+    // 自定义滚动条样式
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+      border-radius: 3px;
+    }
   }
 
-  /* 更多文件菜单 */
-  .ai-zone-more-files-menu {
-      display: none;
+  // 菜单项悬停样式（与 AI 智能体菜单保持一致）
+  .select-item {
+    transition: background-color 0.15s ease, color 0.15s ease;
+
+    &:hover {
+      background-color: var(--ws-dropdown-hoverBackground);
+      color: var(--ws-dropdown-hoverForeground);
+    }
   }
 
-  .ai-zone-more-files-menu-content {
-      background: var(--ws-dropdown-background);
-      border: 1px solid var(--ws-dropdown-border);
-      border-radius: 6px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      padding: 4px;
-      min-width: 200px;
-      max-width: 400px;
-      max-height: 300px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-
-      /* 自定义滚动条样式 */
-      &::-webkit-scrollbar {
-          width: 6px;
-      }
-
-      &::-webkit-scrollbar-track {
-          background: transparent;
-      }
-
-      &::-webkit-scrollbar-thumb {
-          background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-          border-radius: 3px;
-
-          &:hover {
-              background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
-          }
-
-          &:active {
-              background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
-          }
-      }
+  // 搜索框样式
+  .select-search {
+    border-bottom: 1px solid var(--ws-dropdown-border);
+    // background-color: var(--ws-dropdown-background);
+    flex-shrink: 0;
   }
 
-  .ai-zone-more-files-menu-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      color: var(--ws-foreground);
-      cursor: default;
-      transition: background-color 0.1s ease;
-
-      &:hover {
-          background: var(--ws-list-hover-background);
-      }
-
-      .ai-zone-more-files-menu-item-icon {
-          display: flex;
-          align-items: center;
-          flex-shrink: 0;
-          color: var(--ws-icon-foreground);
-      }
-
-      .ai-zone-more-files-menu-item-name {
-          flex: 1;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          min-width: 0;
-      }
-
-      .ai-zone-more-files-menu-item-remove {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 16px;
-          height: 16px;
-          padding: 0;
-          background: transparent;
-          border: none;
-          border-radius: 2px;
-          cursor: pointer;
-          color: var(--ws-icon-foreground);
-          opacity: 0.6;
-          transition: opacity 0.1s ease, background-color 0.1s ease;
-          flex-shrink: 0;
-
-          &:hover {
-              opacity: 1;
-              background: var(--ws-toolbar-hoverBackground);
-          }
-
-          svg {
-              width: 12px;
-              height: 12px;
-          }
-      }
+  // 头部样式
+  .select-header {
+    border-bottom: 1px solid var(--ws-dropdown-border);
+    background-color: var(--ws-dropdown-background);
+    flex-shrink: 0;
   }
+}
+
+// 确保内联聊天容器不会因为菜单而改变布局
+.ai-zone-container {
+  // 当菜单打开时，确保容器布局不受影响
+  position: relative;
+  overflow: visible !important;
+
+  // 确保菜单容器不影响布局
+  .ai-zone-context-select {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; // 不拦截事件，让菜单自己处理
+
+    &-content {
+      pointer-events: auto; // 菜单内容可以接收事件
+    }
+  }
+}
+
+// 文档引用显示区域
+.ai-zone-document-references {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--ws-input-background);
+  border: 1px solid var(--ws-input-border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+// 文档引用标题
+.ai-zone-document-references-title {
+  font-weight: 500;
+  color: var(--ws-foreground);
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+// 文档引用列表
+.ai-zone-document-references-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+// 文档引用项
+.ai-zone-document-reference-item {
+  display: flex;
+  align-items: center;
+  color: var(--ws-descriptionForeground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+// 文档引用文件名
+.ai-zone-document-reference-file-name {
+  color: var(--ws-foreground);
+  font-weight: 400;
+}
+
+// 文档引用知识库名
+.ai-zone-document-reference-kb-name {
+  color: var(--ws-descriptionForeground);
+  opacity: 0.8;
+}
+
+// 文档引用片段数
+.ai-zone-document-reference-chunks {
+  color: var(--ws-descriptionForeground);
+  opacity: 0.7;
+}
+

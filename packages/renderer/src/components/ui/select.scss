@@ -1,6 +1,5 @@
 /**
  * Select 组件样式
- * 基于 Radix UI Select 的自定义样式
  */
 
 .select-trigger {
@@ -14,7 +13,7 @@
   font-size: 13px;
   line-height: 18px;
   outline: none;
-  color: var(--vscode-dropdown-foreground);
+  color: var(--ws-foreground);
   transition: background-color 0.15s ease;
 
   &:disabled {
@@ -36,7 +35,7 @@
     flex-shrink: 0;
     width: 20px;
     height: 20px;
-    color: var(--vscode-dropdown-foreground);
+    color: var(--ws-foreground);
   }
 }
 
@@ -46,7 +45,7 @@
   align-items: center;
   justify-content: center;
   padding: 4px 0;
-  color: var(--vscode-dropdown-foreground);
+  color: var(--ws-foreground);
 
   svg {
     width: 16px;
@@ -61,7 +60,7 @@
   min-width: 8rem;
   overflow: hidden;
   border-radius: 5px;
-  background-color: var(--vscode-dropdown-background);
+  background-color: var(--vscode-dropdown-background);//@ 引用文件 菜单列表 内联聊天下拉菜单
   border: 1px solid var(--vscode-focusBorder);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
 
@@ -119,7 +118,7 @@
   padding: 6px 8px 6px 32px;
   font-size: 13px;
   line-height: 18px;
-  color: var(--vscode-dropdown-foreground);
+  color: var(--ws-dropdown-foreground);
   outline: none;
   transition: background-color 0.15s ease;
 
@@ -133,12 +132,12 @@
   }
 
   &[data-state='checked'] {
-    background-color: var(--vscode-list-activeSelectionBackground);
-    color: var(--vscode-list-activeSelectionForeground);
+    color: var(--ws-button-hoverBackground);
   }
 
   &:hover:not([data-state='checked']) {
-    background-color: var(--vscode-list-hoverBackground);
+    background-color: var(--ws-selection-background);
+    color: var(--ws-button-hoverBackground);
   }
 
   .select-item-indicator {
