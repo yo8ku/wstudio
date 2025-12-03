@@ -3372,7 +3372,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           lineNumbers: 'on',
           renderWhitespace: 'selection',
           minimap: {
-            enabled: true
+            enabled: false
+          },
+          scrollbar: {
+            horizontal: 'hidden', // 禁用横向滚动条
+            horizontalScrollbarSize: 0, // 设置横向滚动条大小为 0
+            vertical: 'auto', // 保持纵向滚动条
+            verticalScrollbarSize: 14, // 纵向滚动条大小
           },
           scrollBeyondLastLine: false,
           wordWrap: 'on',

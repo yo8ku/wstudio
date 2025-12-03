@@ -1,3 +1,6 @@
+// 似乎没用到
+
+
 import React, { useEffect } from 'react';
 import { OpenEditorsSection } from '../OpenEditors/OpenEditorsSection';
 import { FileTreeSection } from '../FileTree/FileTreeSection';
@@ -39,6 +42,7 @@ export interface ExplorerViewProps {
   onCollapseAll?: () => void;
   onCreateConfirm?: (node: FileTreeNode, name: string) => void;
   onCreateCancel?: (node: FileTreeNode) => void;
+  onRename?: (node: FileTreeNode, newName: string) => void;
   onBlankAreaClick?: () => void;
 }
 
@@ -69,6 +73,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   onCollapseAll,
   onCreateConfirm,
   onCreateCancel,
+  onRename,
   onBlankAreaClick,
 }) => {
   
@@ -166,6 +171,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
             onContextMenu: handleFileContextMenu,
             onCreateConfirm: onCreateConfirm,
             onCreateCancel: onCreateCancel,
+            onRename: onRename,
           }}
           onNewFile={fileTreeNodes.length === 0 && !rootPath ? undefined : onNewFile}
           onNewFolder={fileTreeNodes.length === 0 && !rootPath ? undefined : onNewFolder}

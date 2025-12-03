@@ -45,8 +45,8 @@ function createWindow(backgroundColor = '#1e1e1e') {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 1413,
-    minHeight: 934,
+    minWidth: 800,
+    minHeight: 600,
     frame: false, // 无边框窗口
     titleBarStyle: 'hidden',
     backgroundColor: backgroundColor, // 使用主题背景色，避免白色闪烁

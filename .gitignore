@@ -24,7 +24,7 @@ app/
 # Documentation files (文档 - 保留项目文档，排除包内文档)
 # *.md (保留 - 项目文档需要上传到 GitHub)
 # README* (保留)
-# docs/ (保留)
+docs/
 # 只排除 node_modules 和第三方扩展中的文档
 **/node_modules/**/*.md
 **/extensions/**/*.md

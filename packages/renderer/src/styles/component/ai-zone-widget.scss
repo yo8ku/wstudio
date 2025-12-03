@@ -99,7 +99,7 @@
 
 /* 内容区域 */
 .ai-zone-content {
-  padding: 24px 16px 20px 16px;
+  padding: 24px 44px 20px 16px; //不要修改这里的44px
   width: 100%;
   min-height: 36px;
   display: flex;
@@ -198,7 +198,8 @@
   gap: 6px;
   min-height: 28px;
   margin-top: 0;
-  padding: 2px 0 6px 0;
+  margin-bottom: 0;
+  padding-bottom: 0; /* 间距通过JavaScript计算底部边框位置时添加 */
 }
 
 /* 左侧控制按钮 */
@@ -582,7 +583,7 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 4px 0 2px 0;
+  padding: 4px 0 16px 0; /* 增加底部padding，确保与底部边框有足够间距 */
   margin-bottom: 0;
 }
 
@@ -668,6 +669,145 @@
     display: flex;
     align-items: center;
   }
+}
+
+/* 选中智能体工具栏（在智能体图标按钮旁边） */
+.ai-zone-selected-agents-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+  
+  /* 隐藏滚动条但保持滚动功能 */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 智能体按钮容器（带共享虚线边框） */
+.ai-zone-agent-btn-container {
+  border-radius: 4px;
+  transition: border-color 0.15s ease;
+
+  &.has-selected-agents {
+    border: 1px dashed;
+  }
+}
+
+// 智能体容器虚线边框（暗色主题）
+[data-theme-mode='dark'] .ai-zone-agent-btn-container.has-selected-agents {
+  border-color: #6d6a6a;
+}
+
+// 智能体容器虚线边框（亮色主题）
+[data-theme-mode='light'] .ai-zone-agent-btn-container.has-selected-agents {
+  border-color: #585858;
+}
+
+/* 选中智能体项 */
+.ai-zone-selected-agent-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--ws-foreground);
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: background-color 0.1s ease;
+}
+
+/* 选中智能体图标容器 */
+.ai-zone-selected-agent-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+  font-size: 14px;
+
+  span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* 选中智能体名称 */
+.ai-zone-selected-agent-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+  flex-shrink: 0;
+}
+
+/* 移除智能体按钮 */
+.ai-zone-selected-agent-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--ws-icon-foreground);
+  opacity: 0.6;
+  transition: opacity 0.1s ease, background-color 0.1s ease;
+  flex-shrink: 0;
+
+  &:hover {
+    opacity: 1;
+    background: var(--ws-button-secondaryBackground);
+  }
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+/* 网络搜索按钮容器（带共享虚线边框） */
+.ai-zone-web-search-btn-container {
+  padding: 2px;
+  border-radius: 4px;
+  transition: border-color 0.15s ease;
+
+  &.has-selected-engine {
+    border: 1px dashed;
+  }
+}
+
+// 网络搜索容器虚线边框（暗色主题）
+[data-theme-mode='dark'] .ai-zone-web-search-btn-container.has-selected-engine {
+  border-color: #6d6a6a;
+}
+
+// 网络搜索容器虚线边框（亮色主题）
+[data-theme-mode='light'] .ai-zone-web-search-btn-container.has-selected-engine {
+  border-color: #585858;
+}
+
+/* 选中的搜索引擎显示 */
+.ai-zone-selected-search-engine {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 3px;
+  background: var(--ws-input-background);
+  font-size: 11px;
+  color: var(--ws-foreground);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* 选中文件名 */
@@ -854,6 +994,62 @@
   }
 }
 
+// 智能体按钮容器
+.ai-zone-agent-btn-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+  border-radius: 4px;
+  
+  // 选中智能体时，整个容器显示统一的虚线边框
+  &.ai-zone-agent-selected {
+    border: 1px dashed var(--ws-input-border);
+    background: var(--ws-input-background);
+    
+    // 确保智能体按钮在容器内不显示自己的边框和圆角
+    .ai-zone-toolbar-icon-btn {
+      border: none;
+      border-radius: 0;
+      border-top-left-radius: 4px;
+      border-bottom-left-radius: 4px;
+      // 移除按钮的默认背景，使用容器的背景
+      background: transparent;
+      
+      &:hover {
+        background: var(--ws-button-hoverBackground);
+      }
+    }
+  }
+}
+
+// 显示选中智能体的元素
+.ai-zone-selected-agent-display {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--ws-foreground);
+  white-space: nowrap;
+  // 移除单独的边框，使用容器的统一边框
+  border: none;
+  background: transparent;
+  // 右侧圆角，与容器保持一致
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  
+  .ai-zone-selected-agent-emoji {
+    font-size: 14px;
+    line-height: 1;
+  }
+  
+  .ai-zone-selected-agent-name {
+    font-size: 12px;
+    color: var(--ws-foreground);
+  }
+}
+
 .ai-zone-agent-select-content {
   position: fixed !important;
   z-index: 100 !important;
@@ -895,6 +1091,122 @@
   }
 }
 
+// 网络搜索按钮容器
+.ai-zone-web-search-btn-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+  border-radius: 4px;
+  
+  // 选中搜索引擎时，整个容器显示统一的虚线边框
+  &.ai-zone-search-engine-selected {
+    border: 1px dashed var(--ws-input-border);
+    background: var(--ws-input-background);
+    
+    // 确保网络搜索按钮在容器内不显示自己的边框和圆角
+    .ai-zone-toolbar-icon-btn {
+      border: none;
+      border-radius: 0;
+      border-top-left-radius: 4px;
+      border-bottom-left-radius: 4px;
+      // 移除按钮的默认背景，使用容器的背景
+      background: transparent;
+    
+    &:hover {
+        background: var(--ws-button-hoverBackground);
+      }
+      
+      // 选中状态时显示背景色
+      &.active {
+        background: var(--ws-button-secondary-background);
+        opacity: 1;
+      color: var(--ws-dropdown-hoverForeground);
+      }
+    }
+  }
+}
+
+// 显示选中搜索引擎的元素
+.ai-zone-selected-search-engine-display {
+      display: flex;
+      align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  line-height: 14px;
+  font-size: 12px;
+  color: var(--ws-foreground);
+  white-space: nowrap;
+  // 移除单独的边框，使用容器的统一边框
+  border: none;
+  background: transparent;
+  // 右侧圆角，与容器保持一致
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  
+  .ai-zone-selected-search-engine-name {
+    font-size: 12px;
+    color: var(--ws-foreground);
+  }
+}
+
+// 网络搜索菜单样式（与 AI 智能体菜单一致）
+.ai-zone-web-search-select {
+  position: relative;
+  width: 100%;
+  z-index: 100;
+
+  .select-trigger {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    border: none !important;
+    outline: none !important;
+  }
+}
+
+.ai-zone-web-search-select-content {
+  position: fixed !important;
+  z-index: 100 !important;
+  max-height: 300px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  background-color: var(--ws-dropdown-background) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  /* 在工具栏和菜单之间留出更明显的间距，避免视觉遮挡 */
+  margin-top: 22px;
+
+  .select-list {
+    max-height: calc(300px - 80px);
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+      border-radius: 3px;
+    }
+      }
+
+  .select-item {
+    transition: background-color 0.15s ease, color 0.15s ease;
+
+      &:hover {
+      background-color: var(--ws-dropdown-hoverBackground);
+        color: var(--ws-dropdown-hoverForeground);
+      }
+  }
+}
+
 // 模型下拉 Select 下拉内容样式（与其他菜单保持一致的悬停反馈）
 .ai-zone-input-model-select-content {
 
@@ -903,10 +1215,11 @@
     
     &:hover {
       background-color: var(--ws-dropdown-hoverBackground);
-      color: var(--ws-dropdown-hoverForeground);
+        color: var(--ws-dropdown-hoverForeground);
+      }
     }
   }
-}
+
 
 // Portal 渲染出来的下拉内容样式（确保不会被 ai-zone-border 遮挡）
 .ai-zone-context-select-content {

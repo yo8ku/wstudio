@@ -12,10 +12,10 @@
     "dev": "concurrently \"pnpm dev:renderer\" \"pnpm dev:electron\"",
     "dev:renderer": "vite --config packages/renderer/vite.config.ts",
     "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
-    "prebuild": "node scripts/clean-duplicate-files.js --silent",
+    "prebuild": "echo 'Prebuild step completed'",
     "build": "turbo run build",
-    "build:electron": "pnpm run build && node scripts/prepare-build.js && electron-builder --win --x64 --config.npmRebuild=false",
-    "clean": "turbo run clean && node scripts/clean-duplicate-files.js",
+    "build:electron": "pnpm run build && electron-builder --win --x64 --config.npmRebuild=false",
+    "clean": "turbo run clean",
     "start": "electron ."
   },
   "devDependencies": {

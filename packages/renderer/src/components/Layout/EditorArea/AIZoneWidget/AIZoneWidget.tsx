@@ -23,6 +23,8 @@ import { snippetService } from '../../../../services/SnippetService';
 import { inlineChatHistoryService } from '../../../../services';
 import { aiAgentService } from '../../../../services/AIAgentService';
 import { knowledgeBaseService } from '../../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
+import { SEARCH_ENGINES, type SearchEngine } from '../../../AIChatSettings/AIChatSettings';
+import { CodeDecorationManager } from '../CodeDecorationManager/CodeDecorationManager';
 // 样式已移至全局样式文件：styles/component/ai-zone-widget.scss
 
 /**
@@ -144,6 +146,7 @@ export class AIZoneWidget {
   private historyMenuRoot: Root | null = null; // 历史记录菜单 React Root
   private historyMenuContainer: HTMLElement | null = null; // 历史记录菜单容器
   private isHistoryOpen: boolean = false; // 历史记录菜单是否打开
+  private webSearchButton: HTMLButtonElement | null = null; // 网络搜索按钮元素
   private currentFileUri: string = ''; // 当前文件 URI
   private historyDisplayMode: 'floating' | 'fixed' = 'floating'; // 历史记录显示模式
   private historyPanelElement: HTMLElement | null = null; // 固定历史面板容器
@@ -157,6 +160,16 @@ export class AIZoneWidget {
   private selectedFilesToolbar: HTMLElement | null = null; // 显示选中文件的工具栏
   private selectedFilesToolbarWasVisible: boolean = false; // 记录工具栏之前的显示状态，用于判断是否需要更新高度
   private selectedFilesToolbarHeight: number = 0; // 记录工具栏之前的高度，用于检测高度变化（换行等情况）
+  private selectedAgents: Array<{ id: string; name: string; emoji?: string }> = []; // 选中的智能体列表
+  private selectedAgentsToolbar: HTMLElement | null = null; // 显示选中智能体的工具栏
+  private aiAgentBtnContainer: HTMLElement | null = null; // 智能体按钮容器（带共享边框）
+  private webSearchBtnContainer: HTMLElement | null = null; // 网络搜索按钮容器（带共享边框）
+  private selectedSearchEngineDisplay: HTMLElement | null = null; // 选中的搜索引擎显示
+  private isWebSearchEnabled: boolean = false; // 网络搜索是否启用
+  private currentSearchEngine: SearchEngine = 'google'; // 当前选择的搜索引擎
+  private webSearchMenuContainer: HTMLElement | null = null; // 网络搜索菜单容器
+  private webSearchMenuRoot: Root | null = null; // 网络搜索菜单 React Root
+  private isWebSearchMenuOpen: boolean = false; // 网络搜索菜单是否打开
   private bottomToolbar: HTMLElement | null = null; // 底部工具栏
   private currentSessionId: string = 'default'; // 当前会话ID
   private agentMenuRoot: Root | null = null; // 智能体菜单 React Root
@@ -181,6 +194,11 @@ export class AIZoneWidget {
   private isLayoutChanging: boolean = false; // 标记是否正在处理布局变化（窗口大小变化等）
   private wasEditorHidden: boolean = false; // 标记编辑器之前是否被隐藏（用于检测标签页重新激活）
   private layoutChangeTimer: NodeJS.Timeout | null = null; // 布局变化防抖定时器
+  private decorationManager: CodeDecorationManager | null = null; // 代码装饰器管理器（用于高亮选中文本）
+  private selectionChangeDisposable: monaco.IDisposable | null = null; // 选择变化监听器（内联聊天打开时）
+  private mouseDownDisposable: monaco.IDisposable | null = null; // 鼠标点击监听器（用于检测点击其他地方取消选择）
+  private globalSelectionChangeDisposable: monaco.IDisposable | null = null; // 全局选择变化监听器（内联聊天未打开时）
+  private static globalSelectionListeners: Map<string, monaco.IDisposable> = new Map(); // 全局选择监听器（按编辑器实例存储）
 
   constructor(editor: monaco.editor.IStandaloneCodeEditor, options: AIZoneWidgetOptions, tabId?: string) {
     this.editor = editor;
@@ -202,6 +220,12 @@ export class AIZoneWidget {
     if (options.availableModels && options.availableModels.length > 0) {
       this.selectedModel = options.availableModels[0];
     }
+
+    // 初始化代码装饰器管理器（用于高亮选中文本）
+    this.decorationManager = new CodeDecorationManager(editor);
+
+    // 设置全局选择监听器（内联聊天未打开时，选中文本高亮且点击其他地方不移除）
+    this.setupGlobalSelectionListener();
   }
 
   /**
@@ -896,10 +920,14 @@ export class AIZoneWidget {
       this.toggleAgentMenu();
     });
 
-    // 创建智能体菜单容器
+    // 创建智能体菜单容器（带共享虚线边框）
     const aiAgentBtnContainer = document.createElement('div');
+    aiAgentBtnContainer.className = 'ai-zone-agent-btn-container';
     aiAgentBtnContainer.style.position = 'relative';
-    aiAgentBtnContainer.style.display = 'inline-block';
+    aiAgentBtnContainer.style.display = 'inline-flex';
+    aiAgentBtnContainer.style.alignItems = 'center';
+    aiAgentBtnContainer.style.gap = '4px';
+    this.aiAgentBtnContainer = aiAgentBtnContainer;
     
     this.agentMenuContainer = document.createElement('div');
     this.agentMenuContainer.style.position = 'absolute';
@@ -922,6 +950,14 @@ export class AIZoneWidget {
     aiAgentBtn.appendChild(aiAgentIconContainer);
     aiAgentBtnContainer.appendChild(aiAgentBtn);
     aiAgentBtnContainer.appendChild(this.agentMenuContainer);
+    
+    // 创建选中智能体工具栏（放在智能体图标按钮容器内，按钮旁边）
+    const selectedAgentsToolbar = document.createElement('div');
+    selectedAgentsToolbar.className = 'ai-zone-selected-agents-toolbar';
+    selectedAgentsToolbar.style.display = 'none'; // 默认隐藏，有智能体时显示
+    this.selectedAgentsToolbar = selectedAgentsToolbar;
+    aiAgentBtnContainer.appendChild(selectedAgentsToolbar);
+    
     leftControls.appendChild(aiAgentBtnContainer);
 
     // 深度思考按钮
@@ -958,15 +994,26 @@ export class AIZoneWidget {
     deepThinkingBtn.classList.toggle('active', this.deepThinkingEnabled);
     leftControls.appendChild(deepThinkingBtn);
 
-    // 网络搜索按钮
+    // 网络搜索按钮容器（带共享虚线边框）
+    const webSearchBtnContainer = document.createElement('div');
+    webSearchBtnContainer.className = 'ai-zone-web-search-btn-container';
+    webSearchBtnContainer.style.position = 'relative';
+    webSearchBtnContainer.style.display = 'inline-flex';
+    webSearchBtnContainer.style.alignItems = 'center';
+    webSearchBtnContainer.style.gap = '4px';
+    this.webSearchBtnContainer = webSearchBtnContainer;
+    
     const webSearchBtn = document.createElement('button');
-    webSearchBtn.className = 'ai-zone-toolbar-icon-btn';
-    webSearchBtn.title = '网络搜索';
+    webSearchBtn.className = `ai-zone-toolbar-icon-btn ${this.isWebSearchEnabled ? 'active' : ''}`;
+    webSearchBtn.title = this.isWebSearchEnabled 
+      ? `关闭网络搜索 (${SEARCH_ENGINES[this.currentSearchEngine].name})` 
+      : `开启网络搜索 (${SEARCH_ENGINES[this.currentSearchEngine].name})`;
     webSearchBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     webSearchBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 实现网络搜索功能
+      this.toggleWebSearchMenu();
     });
+    this.webSearchButton = webSearchBtn;
 
     const webSearchIconContainer = document.createElement('span');
     const webSearchIconRoot = createRoot(webSearchIconContainer);
@@ -978,7 +1025,27 @@ export class AIZoneWidget {
       })
     );
     webSearchBtn.appendChild(webSearchIconContainer);
-    leftControls.appendChild(webSearchBtn);
+    webSearchBtnContainer.appendChild(webSearchBtn);
+    
+    // 创建网络搜索菜单容器（放在按钮容器内，用于Select组件定位）
+    this.webSearchMenuContainer = document.createElement('div');
+    this.webSearchMenuContainer.style.position = 'absolute';
+    this.webSearchMenuContainer.style.top = '0';
+    this.webSearchMenuContainer.style.left = '0';
+    this.webSearchMenuContainer.style.width = '100%';
+    this.webSearchMenuContainer.style.height = '100%';
+    this.webSearchMenuContainer.style.opacity = '0';
+    this.webSearchMenuContainer.style.pointerEvents = 'none';
+    webSearchBtnContainer.appendChild(this.webSearchMenuContainer);
+    
+    // 创建选中搜索引擎显示（放在网络搜索按钮旁边）
+    const selectedSearchEngineDisplay = document.createElement('div');
+    selectedSearchEngineDisplay.className = 'ai-zone-selected-search-engine';
+    selectedSearchEngineDisplay.style.display = 'none'; // 默认隐藏，启用时显示
+    this.selectedSearchEngineDisplay = selectedSearchEngineDisplay;
+    webSearchBtnContainer.appendChild(selectedSearchEngineDisplay);
+    
+    leftControls.appendChild(webSearchBtnContainer);
 
     bottomToolbar.appendChild(leftControls);
 
@@ -1037,6 +1104,159 @@ export class AIZoneWidget {
     container.appendChild(completedResponse);
 
     return container;
+  }
+
+  /**
+   * 设置全局选择监听器（内联聊天未打开时，选中文本高亮且点击其他地方不移除）
+   */
+  private setupGlobalSelectionListener(): void {
+    if (!this.editor || !this.decorationManager) {
+      return;
+    }
+
+    // 获取编辑器的唯一标识（用于存储监听器）
+    const editorId = this.editor.getId().toString();
+
+    // 如果该编辑器已经有全局监听器，先清理
+    if (AIZoneWidget.globalSelectionListeners.has(editorId)) {
+      const existingListener = AIZoneWidget.globalSelectionListeners.get(editorId);
+      if (existingListener) {
+        existingListener.dispose();
+      }
+    }
+
+    // 监听选择变化（内联聊天未打开时）
+    const disposable = this.editor.onDidChangeCursorSelection((e) => {
+      // 如果内联聊天已打开，不处理（由内联聊天的监听器处理）
+      if (this.isVisible()) {
+        return;
+      }
+
+      if (!this.decorationManager) {
+        return;
+      }
+
+      const selection = this.editor.getSelection();
+      if (!selection || selection.isEmpty()) {
+        // 如果没有选中文本，不移除高亮（保持之前的高亮）
+        return;
+      }
+
+      // 先清除所有之前的选中高亮，确保只保留最后选中的文本高亮
+      // 包括改写菜单的高亮（rewrite-selection），确保改写菜单的高亮逻辑与普通打开内联聊天一致
+      if (this.decorationManager) {
+        this.decorationManager.removeDecoration('persistent-selection');
+        this.decorationManager.removeDecoration('inline-chat-selection');
+        this.decorationManager.removeDecoration('rewrite-selection');
+      }
+
+      // 获取选中的范围
+      const range: monaco.IRange = {
+        startLineNumber: selection.startLineNumber,
+        startColumn: selection.startColumn,
+        endLineNumber: selection.endLineNumber,
+        endColumn: selection.endColumn
+      };
+
+      // 更新选中的文本内容，确保发送请求时使用最新选中的文本
+      const model = this.editor.getModel();
+      if (model) {
+        this.selectedText = model.getValueInRange(selection);
+        this.includeSelection = !!this.selectedText;
+        console.log('[AIZoneWidget] 全局监听器更新选中文本:', this.selectedText);
+      }
+
+      // 高亮选中的文本（使用 persistent-selection ID，点击其他地方不会移除）
+      this.decorationManager.highlightSelection(range, 'persistent-selection');
+    });
+
+    // 保存监听器
+    AIZoneWidget.globalSelectionListeners.set(editorId, disposable);
+  }
+
+  /**
+   * 设置选择变化监听器（内联聊天打开时，选中文本高亮且点击其他地方会移除）
+   */
+  private setupSelectionListener(): void {
+    if (!this.editor || !this.decorationManager) {
+      return;
+    }
+
+    // 先清理之前的监听器
+    if (this.selectionChangeDisposable) {
+      this.selectionChangeDisposable.dispose();
+      this.selectionChangeDisposable = null;
+    }
+
+    if (this.mouseDownDisposable) {
+      this.mouseDownDisposable.dispose();
+      this.mouseDownDisposable = null;
+    }
+
+    // 检查并更新高亮的辅助方法
+    const updateSelectionHighlight = () => {
+      if (!this.isVisible() || !this.decorationManager) {
+        return;
+      }
+
+      const selection = this.editor.getSelection();
+      if (!selection || selection.isEmpty()) {
+        // 如果没有选中文本，移除高亮
+        this.decorationManager.removeDecoration('inline-chat-selection');
+        this.decorationManager.removeDecoration('persistent-selection');
+        this.decorationManager.removeDecoration('rewrite-selection');
+        // 清空选中文本
+        this.selectedText = '';
+        this.includeSelection = false;
+        return;
+      }
+
+      // 先清除所有之前的选中高亮，确保只保留最后选中的文本高亮
+      // 包括改写菜单的高亮（rewrite-selection），确保改写菜单的高亮逻辑与普通打开内联聊天一致
+      this.decorationManager.removeDecoration('persistent-selection');
+      this.decorationManager.removeDecoration('inline-chat-selection');
+      this.decorationManager.removeDecoration('rewrite-selection');
+
+      // 获取选中的范围
+      const range: monaco.IRange = {
+        startLineNumber: selection.startLineNumber,
+        startColumn: selection.startColumn,
+        endLineNumber: selection.endLineNumber,
+        endColumn: selection.endColumn
+      };
+
+      // 更新选中的文本内容，确保发送请求时使用最新选中的文本
+      const model = this.editor.getModel();
+      if (model) {
+        this.selectedText = model.getValueInRange(selection);
+        this.includeSelection = !!this.selectedText;
+        console.log('[AIZoneWidget] 内联聊天监听器更新选中文本:', this.selectedText);
+      }
+
+      // 高亮选中的文本
+      this.decorationManager.highlightSelection(range, 'inline-chat-selection');
+    };
+
+    // 监听选择变化
+    this.selectionChangeDisposable = this.editor.onDidChangeCursorSelection((e) => {
+      // 使用 requestAnimationFrame 确保在DOM更新后检查
+      requestAnimationFrame(() => {
+        updateSelectionHighlight();
+      });
+    });
+
+    // 监听鼠标点击事件，确保点击其他地方时也能移除高亮
+    // 使用 onMouseUp 而不是 onMouseDown，因为选择是在鼠标释放时确定的
+    this.mouseDownDisposable = this.editor.onMouseUp((e) => {
+      if (!this.isVisible() || !this.decorationManager) {
+        return;
+      }
+
+      // 使用 requestAnimationFrame 确保在DOM更新后检查选择状态
+      requestAnimationFrame(() => {
+        updateSelectionHighlight();
+      });
+    });
   }
 
   /**
@@ -1795,6 +2015,9 @@ export class AIZoneWidget {
     // 设置滚动监听器（用于关闭菜单）
     this.setupScrollListeners();
 
+    // 设置内联聊天打开时的选择变化监听器（点击其他地方会移除高亮）
+    this.setupSelectionListener();
+
     // 添加全局监听器，防止点击下拉菜单时关闭内联聊天
     this.dropdownClickHandler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -1825,6 +2048,90 @@ export class AIZoneWidget {
         console.error('[AIZoneWidget] 输入框不存在！');
       }
     }, 50);
+  }
+
+  /**
+   * 安全地异步卸载 React Root（避免在 React 渲染期间同步卸载）
+   */
+  private safeUnmountRoot(root: Root | null): void {
+    if (!root) return;
+    
+    // 使用 setTimeout 异步卸载，避免在 React 渲染期间同步卸载
+    setTimeout(() => {
+      try {
+        root.unmount();
+      } catch (error) {
+        console.warn('[AIZoneWidget] 卸载 React Root 时出错:', error);
+      }
+    }, 0);
+  }
+
+  /**
+   * 清除所有选中文本的高亮（无论什么情况，关闭内联聊天时必须调用）
+   */
+  private clearAllHighlights(): void {
+    console.log('[AIZoneWidget] clearAllHighlights 被调用');
+
+    // 先暂时禁用全局监听器，防止在清除过程中重新添加高亮
+    const editorId = this.editor?.getId().toString();
+    let globalListener: monaco.IDisposable | undefined;
+    if (editorId && AIZoneWidget.globalSelectionListeners.has(editorId)) {
+      globalListener = AIZoneWidget.globalSelectionListeners.get(editorId);
+      if (globalListener) {
+        console.log('[AIZoneWidget] 暂时禁用全局监听器');
+        globalListener.dispose();
+        AIZoneWidget.globalSelectionListeners.delete(editorId);
+      }
+    }
+
+    // 先移除所有与内联聊天相关的装饰（包括改写菜单的高亮）
+    if (this.decorationManager) {
+      console.log('[AIZoneWidget] 移除内联聊天相关的高亮装饰');
+      this.decorationManager.removeDecoration('inline-chat-selection');
+      this.decorationManager.removeDecoration('persistent-selection');
+      this.decorationManager.removeDecoration('rewrite-selection');
+    }
+
+    // 然后清除编辑器的选中状态
+    if (this.editor) {
+      const selection = this.editor.getSelection();
+      if (selection && !selection.isEmpty()) {
+        console.log('[AIZoneWidget] 清除编辑器选中状态:', selection);
+        // 将选中状态设置为选中范围的结束位置（清除选中，保留光标位置）
+        this.editor.setSelection(new monaco.Range(
+          selection.endLineNumber,
+          selection.endColumn,
+          selection.endLineNumber,
+          selection.endColumn
+        ));
+      }
+    }
+
+    // 使用多个 requestAnimationFrame 确保在多个帧中清除，防止全局监听器重新添加高亮
+    requestAnimationFrame(() => {
+      if (this.decorationManager) {
+        this.decorationManager.removeDecoration('inline-chat-selection');
+        this.decorationManager.removeDecoration('persistent-selection');
+        this.decorationManager.removeDecoration('rewrite-selection');
+      }
+      // 再次使用 requestAnimationFrame 确保在下一帧也清除
+      requestAnimationFrame(() => {
+        if (this.decorationManager) {
+          this.decorationManager.removeDecoration('inline-chat-selection');
+          this.decorationManager.removeDecoration('persistent-selection');
+          this.decorationManager.removeDecoration('rewrite-selection');
+        }
+        // 延迟重新设置全局监听器，确保清除操作完全完成
+        setTimeout(() => {
+          // 在清除完成后，重新设置全局监听器（如果之前存在且内联聊天已关闭且未销毁）
+          // 注意：如果正在销毁（dispose），不应该重新设置全局监听器
+          if (editorId && !AIZoneWidget.globalSelectionListeners.has(editorId) && !this.isVisible() && !this.isDisposed) {
+            console.log('[AIZoneWidget] 重新设置全局监听器');
+            this.setupGlobalSelectionListener();
+          }
+        }, 100);
+      });
+    });
   }
 
   /**
@@ -1862,6 +2169,21 @@ export class AIZoneWidget {
       this.contentChangeDisposable.dispose();
       this.contentChangeDisposable = null;
     }
+
+    // 清理选择变化监听器（内联聊天打开时的监听器）
+    if (this.selectionChangeDisposable) {
+      this.selectionChangeDisposable.dispose();
+      this.selectionChangeDisposable = null;
+    }
+
+    // 清理鼠标点击监听器
+    if (this.mouseDownDisposable) {
+      this.mouseDownDisposable.dispose();
+      this.mouseDownDisposable = null;
+    }
+
+    // 无论什么情况，关闭内联聊天时必须清除所有选中文本的高亮
+    this.clearAllHighlights();
 
     // 清理布局变化防抖定时器
     if (this.layoutChangeTimer) {
@@ -2330,6 +2652,8 @@ export class AIZoneWidget {
     }
     // 更新工具栏显示（隐藏取消工具栏，恢复为文件工具栏或隐藏）
     this.updateSelectedFilesToolbar();
+    // 更新选中智能体工具栏
+    this.updateSelectedAgentsToolbar();
     // 更新底部边框位置
     requestAnimationFrame(() => {
       this.updateBottomBorderPosition();
@@ -2691,24 +3015,19 @@ export class AIZoneWidget {
     // 获取编辑器布局信息
     const layoutInfo = this.editor.getLayoutInfo();
     
-    // 获取行号宽度
-    const lineNumbersWidth = layoutInfo.lineNumbersWidth;
-    
     // 边框从容器的左边缘开始（使用视口坐标）
     // 注意：当侧边栏打开/关闭时，容器的 left 位置可能会改变
     this.topBorderElement.style.left = `${containerRect.left}px`;
     this.bottomBorderElement.style.left = `${containerRect.left}px`;
     
-    // 计算内容区域宽度（不包括小地图）
-    let contentWidth = layoutInfo.contentWidth;
-    if (layoutInfo.minimap.minimapWidth > 0) {
-      // 如果有小地图，使用 minimapLeft 作为内容区域的右边缘
-      contentWidth = layoutInfo.minimap.minimapLeft - lineNumbersWidth;
-    }
+    // 计算边框宽度：编辑器总宽度减去纵向滚动条宽度，保持与滚动条的距离
+    // layoutInfo.width 是编辑器的总宽度（包括滚动条）
+    // layoutInfo.verticalScrollbarWidth 是纵向滚动条的宽度（通常是 14px）
+    const borderWidth = layoutInfo.width - layoutInfo.verticalScrollbarWidth;
     
-    // 设置边框宽度为内容区域宽度 + 行号宽度（从容器左边缘开始，覆盖行号区域）
-    this.topBorderElement.style.width = `${contentWidth + lineNumbersWidth}px`;
-    this.bottomBorderElement.style.width = `${contentWidth + lineNumbersWidth}px`;
+    // 设置边框宽度，确保与编辑器同宽但不覆盖滚动条
+    this.topBorderElement.style.width = `${borderWidth}px`;
+    this.bottomBorderElement.style.width = `${borderWidth}px`;
     // 清除 right 属性，使用 width 和 left 来控制位置
     this.topBorderElement.style.right = 'auto';
     this.bottomBorderElement.style.right = 'auto';
@@ -2756,16 +3075,19 @@ export class AIZoneWidget {
     if (hasResultToolbar && this.selectedFilesToolbar) {
       // 完成工具栏：AI 回复完成后的操作工具栏
       const resultToolbarRect = this.selectedFilesToolbar.getBoundingClientRect();
-      bottomBorderTop = resultToolbarRect.bottom;
+      // 增加与文件工具栏的间距（16px）
+      bottomBorderTop = resultToolbarRect.bottom + 16;
     } else if (hasCancelToolbar && this.selectedFilesToolbar) {
       // 取消工具栏：生成中时显示的取消按钮
       const cancelToolbarRect = this.selectedFilesToolbar.getBoundingClientRect();
-      bottomBorderTop = cancelToolbarRect.bottom;
+      // 增加与文件工具栏的间距（16px）
+      bottomBorderTop = cancelToolbarRect.bottom + 16;
     } else if (this.bottomToolbar && this.bottomToolbar.style.display !== 'none') {
       // 底部工具栏：默认情况下的工具栏（新建聊天、@、智能体等）
       const toolbarRect = this.bottomToolbar.getBoundingClientRect();
       // 使用 position: fixed，所以直接使用视口坐标
-      bottomBorderTop = toolbarRect.bottom;
+      // 增加与底部工具栏的间距（16px），特别是当智能体被选中时
+      bottomBorderTop = toolbarRect.bottom + 16;
     } else {
       // 如果没有可见的工具栏，则使用 view-zone 底部作为后备
       bottomBorderTop = viewZoneRect.bottom;
@@ -4121,6 +4443,9 @@ export class AIZoneWidget {
       // 如果@符号被删除或不在有效位置，可以选择关闭菜单
       // 但为了更好的用户体验，保持菜单打开直到用户明确关闭或选择项目
     }
+
+    // 更新选中智能体工具栏（解析输入框中的 @agent 引用）
+    this.updateSelectedAgentsToolbar();
   }
 
   /**
@@ -4692,14 +5017,16 @@ export class AIZoneWidget {
   private closeContextMenu(): void {
     // 清理工具栏@菜单
     if (this.contextMenuRoot) {
-      this.contextMenuRoot.unmount();
+      const root = this.contextMenuRoot;
       this.contextMenuRoot = null;
+      this.safeUnmountRoot(root);
     }
 
     // 清理输入框@菜单
     if (this.inputContextMenuRoot) {
-      this.inputContextMenuRoot.unmount();
+      const root = this.inputContextMenuRoot;
       this.inputContextMenuRoot = null;
+      this.safeUnmountRoot(root);
     }
 
     // 清理位置更新监听器
@@ -5245,18 +5572,47 @@ export class AIZoneWidget {
 
   /**
    * 处理AI智能体选择
+   * 注意：智能体始终只能选择一个，选择新的智能体会替换已选中的智能体
    */
-  private handleAgentSelect(agentId: string): void {
-    // 在输入框中插入智能体引用
-    if (this.inputElement) {
-      const currentValue = this.inputElement.value;
-      const cursorPos = this.inputElement.selectionStart || currentValue.length;
-      const agentReference = `@agent:${agentId}\n`;
-      const newValue = currentValue.slice(0, cursorPos) + agentReference + currentValue.slice(cursorPos);
-      this.inputElement.value = newValue;
-      this.inputElement.focus();
-      this.inputElement.setSelectionRange(cursorPos + agentReference.length, cursorPos + agentReference.length);
+  private async handleAgentSelect(agentId: string): Promise<void> {
+    // 获取智能体信息
+    const agents = await aiAgentService.getAllAgents();
+    const agent = agents.find(a => a.id === agentId);
+    
+    if (agent) {
+      // 检查是否已经选中
+      const isAlreadySelected = this.selectedAgents.some(a => a.id === agentId);
+      
+      if (isAlreadySelected) {
+        // 如果已经选中，则取消选择（移除）
+        this.handleRemoveAgent(agentId);
+      } else {
+        // 如果未选中，先清空已选中的智能体（确保只能选择一个）
+        // 移除输入框中的旧引用
+        if (this.inputElement) {
+          const inputValue = this.inputElement.value;
+          // 移除所有 @agent 引用
+          const newValue = inputValue.replace(/@agent:[^\s\n]+[\s\n]*/g, '');
+          this.inputElement.value = newValue;
+        }
+        // 清空已选中的智能体列表
+        this.selectedAgents = [];
+        
+        // 添加新选中的智能体
+        const agentItem: { id: string; name: string; emoji?: string } = {
+          id: agent.id,
+          name: agent.name
+        };
+        if (agent.emoji) {
+          agentItem.emoji = agent.emoji;
+        }
+        this.selectedAgents.push(agentItem);
+      }
     }
+    
+    // 更新选中智能体工具栏（不插入文本到输入框）
+    await this.updateSelectedAgentsToolbar();
+    
     // 关闭智能体菜单
     this.closeAgentMenu();
   }
@@ -5380,11 +5736,341 @@ export class AIZoneWidget {
    */
   private closeAgentMenu(): void {
     if (this.agentMenuRoot) {
-      this.agentMenuRoot.unmount();
+      const root = this.agentMenuRoot;
       this.agentMenuRoot = null;
+      this.safeUnmountRoot(root);
     }
 
     this.isAgentMenuOpen = false;
+  }
+
+  /**
+   * 切换网络搜索菜单显示/隐藏
+   */
+  private toggleWebSearchMenu(): void {
+    if (this.isWebSearchMenuOpen) {
+      this.closeWebSearchMenu();
+      return;
+    }
+
+    // 打开菜单前，关闭其他所有菜单
+    if (this.closeDropdownFn) {
+      this.closeDropdownFn();
+    }
+    if (this.isContextMenuOpen) {
+      this.closeContextMenu();
+    }
+    if (this.isAgentMenuOpen) {
+      this.closeAgentMenu();
+    }
+    if (this.isHistoryOpen) {
+      this.closeHistoryMenu();
+    }
+
+    this.showWebSearchMenu();
+  }
+
+  /**
+   * 显示网络搜索菜单
+   */
+  private showWebSearchMenu(): void {
+    if (!this.webSearchMenuContainer) {
+      console.error('[AIZoneWidget] 网络搜索菜单容器未创建');
+      return;
+    }
+
+    if (!this.webSearchButton) {
+      console.error('[AIZoneWidget] 网络搜索按钮未创建');
+      return;
+    }
+
+    // 确保容器有正确的尺寸和位置（从按钮获取）
+    const buttonRect = this.webSearchButton.getBoundingClientRect();
+    
+    if (buttonRect.width > 0 && buttonRect.height > 0) {
+      // 设置容器的尺寸和位置，使其与按钮对齐
+      this.webSearchMenuContainer.style.width = `${buttonRect.width}px`;
+      this.webSearchMenuContainer.style.height = `${buttonRect.height}px`;
+      // 确保容器可见（用于位置计算），但保持透明
+      this.webSearchMenuContainer.style.opacity = '0';
+      this.webSearchMenuContainer.style.visibility = 'visible';
+    }
+
+    // 创建 React Root
+    if (!this.webSearchMenuRoot) {
+      this.webSearchMenuRoot = createRoot(this.webSearchMenuContainer);
+    }
+
+    // 构建菜单项（添加图标，使用items而不是groups，避免显示分组名称）
+    const menuItems = (Object.keys(SEARCH_ENGINES) as SearchEngine[]).map(engine => ({
+      value: engine,
+      label: SEARCH_ENGINES[engine].displayName,
+      icon: React.createElement(Icon, { name: engine, size: 14 })
+    }));
+
+    // 渲染Select组件
+    setTimeout(() => {
+      if (!this.webSearchMenuRoot) return;
+      
+    this.webSearchMenuRoot.render(
+        React.createElement(Select, {
+          value: this.currentSearchEngine,
+          onChange: (value: string) => {
+            if (value) {
+              // 选择搜索引擎时，始终启用网络搜索
+              this.currentSearchEngine = value as SearchEngine;
+              this.isWebSearchEnabled = true;
+              this.updateWebSearchButton();
+            }
+          },
+          items: menuItems,
+          placeholder: '选择搜索引擎...',
+          className: 'ai-zone-web-search-select',
+          showSearch: false,
+          open: true,
+          onItemClick: (value: string) => {
+            // 选择搜索引擎后关闭菜单
+            if (value) {
+              return true; // 返回 true 表示关闭菜单
+            }
+            return false;
+          },
+          onOpenChange: (isOpen: boolean) => {
+            this.isWebSearchMenuOpen = isOpen;
+            if (isOpen) {
+              this.disableEditorScroll();
+            } else {
+              this.enableEditorScroll();
+              this.closeWebSearchMenu();
+            }
+          },
+        })
+    );
+
+    this.isWebSearchMenuOpen = true;
+    }, 0);
+  }
+
+  /**
+   * 关闭网络搜索菜单
+   */
+  private closeWebSearchMenu(): void {
+    if (this.webSearchMenuRoot) {
+      const root = this.webSearchMenuRoot;
+      this.webSearchMenuRoot = null;
+      this.safeUnmountRoot(root);
+    }
+
+    this.isWebSearchMenuOpen = false;
+  }
+
+  /**
+   * 更新网络搜索按钮状态
+   */
+  private updateWebSearchButton(): void {
+    if (!this.webSearchButton || !this.webSearchBtnContainer || !this.selectedSearchEngineDisplay) return;
+    
+    if (this.isWebSearchEnabled) {
+      this.webSearchButton.classList.add('active');
+      this.webSearchBtnContainer.classList.add('has-selected-engine');
+      
+      // 显示选中的搜索引擎（显示图标和名称，类似智能体）
+      this.selectedSearchEngineDisplay.innerHTML = '';
+      const iconContainer = document.createElement('span');
+      const iconRoot = createRoot(iconContainer);
+      iconRoot.render(
+        React.createElement(Icon, {
+          iconSet: 'ui',
+          name: this.currentSearchEngine,
+          size: 14
+        })
+      );
+      this.selectedSearchEngineDisplay.appendChild(iconContainer);
+      
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = SEARCH_ENGINES[this.currentSearchEngine].displayName;
+      nameSpan.className = 'ai-zone-selected-search-engine-name';
+      this.selectedSearchEngineDisplay.appendChild(nameSpan);
+      
+      this.selectedSearchEngineDisplay.style.display = 'flex';
+    } else {
+      this.webSearchButton.classList.remove('active');
+      this.webSearchBtnContainer.classList.remove('has-selected-engine');
+      this.selectedSearchEngineDisplay.style.display = 'none';
+    }
+    this.webSearchButton.title = this.isWebSearchEnabled 
+      ? `关闭网络搜索 (${SEARCH_ENGINES[this.currentSearchEngine].name})` 
+      : `开启网络搜索 (${SEARCH_ENGINES[this.currentSearchEngine].name})`;
+  }
+
+  /**
+   * 创建选中智能体项
+   * @param agent 智能体信息
+   * @returns 创建的智能体项元素
+   */
+  private createSelectedAgentItem(agent: { id: string; name: string; emoji?: string }): HTMLElement {
+    // 创建智能体项容器
+    const agentItem = document.createElement('div');
+    agentItem.className = 'ai-zone-selected-agent-item';
+    agentItem.setAttribute('data-agent-id', agent.id);
+
+    // 创建图标容器
+    const iconWrapper = document.createElement('span');
+    iconWrapper.className = 'ai-zone-selected-agent-icon';
+
+    // 创建 emoji 或图标
+    if (agent.emoji) {
+      iconWrapper.textContent = agent.emoji;
+      iconWrapper.style.fontSize = '14px';
+    } else {
+      const iconContainer = document.createElement('span');
+      const iconRoot = createRoot(iconContainer);
+      iconRoot.render(
+        React.createElement(Icon, {
+          iconSet: 'ui',
+          name: 'agent',
+          size: 14
+        })
+      );
+      iconWrapper.appendChild(iconContainer);
+    }
+    agentItem.appendChild(iconWrapper);
+
+    // 创建智能体名称文本
+    const agentNameText = document.createElement('span');
+    agentNameText.className = 'ai-zone-selected-agent-name';
+    agentNameText.textContent = agent.name;
+    agentItem.appendChild(agentNameText);
+
+    // 创建删除按钮
+    const removeBtn = this.createRemoveAgentButton(agent.id);
+    agentItem.appendChild(removeBtn);
+
+    return agentItem;
+  }
+
+  /**
+   * 创建移除智能体按钮
+   * @param agentId 智能体ID
+   * @returns 创建的删除按钮元素
+   */
+  private createRemoveAgentButton(agentId: string): HTMLButtonElement {
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'ai-zone-selected-agent-remove';
+    removeBtn.title = '移除智能体';
+    removeBtn.setAttribute('data-agent-id', agentId);
+    removeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.handleRemoveAgent(agentId);
+    });
+
+    // 创建删除图标
+    const removeIconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    removeIconSvg.setAttribute('viewBox', '0 0 16 16');
+    removeIconSvg.setAttribute('width', '12');
+    removeIconSvg.setAttribute('height', '12');
+    removeIconSvg.setAttribute('fill', 'none');
+    
+    const removePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    removePath.setAttribute('d', 'M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z');
+    removePath.setAttribute('fill', 'currentColor');
+    removeIconSvg.appendChild(removePath);
+    removeBtn.appendChild(removeIconSvg);
+
+    return removeBtn;
+  }
+
+  /**
+   * 处理移除智能体
+   * @param agentId 智能体ID
+   */
+  private handleRemoveAgent(agentId: string): void {
+    // 从列表中移除
+    const agentIndex = this.selectedAgents.findIndex(a => a.id === agentId);
+    if (agentIndex !== -1) {
+      this.selectedAgents.splice(agentIndex, 1);
+      // 从输入框中移除引用
+      if (this.inputElement) {
+        const inputValue = this.inputElement.value;
+        const newValue = inputValue.replace(new RegExp(`@agent:${agentId}[\\s\\n]*`, 'g'), '');
+        this.inputElement.value = newValue;
+      }
+      this.updateSelectedAgentsToolbar();
+    }
+  }
+
+  /**
+   * 更新选中智能体工具栏
+   */
+  private async updateSelectedAgentsToolbar(): Promise<void> {
+    if (!this.selectedAgentsToolbar || !this.aiAgentBtnContainer) return;
+
+    // 解析输入框中的 @agent 引用（如果输入框中有引用，则同步到选中列表）
+    // 注意：智能体始终只能选择一个，如果输入框中有多个引用，只保留第一个
+    // 如果用户通过菜单选择智能体，输入框中不会有 @agent 引用，此时保留已有的 selectedAgents
+    if (this.inputElement) {
+      const inputValue = this.inputElement.value;
+      const agentMatches = inputValue.matchAll(/@agent:([^\s\n]+)/g);
+      const agentIds = Array.from(agentMatches, m => m[1]);
+      
+      if (agentIds.length > 0) {
+        // 如果输入框中有 @agent 引用，只保留第一个（确保只能选择一个智能体）
+        const firstAgentId = agentIds[0];
+        const agents = await aiAgentService.getAllAgents();
+        const agent = agents.find(a => a.id === firstAgentId);
+        
+        if (agent) {
+          const agentItem: { id: string; name: string; emoji?: string } = {
+              id: agent.id,
+              name: agent.name
+            };
+            if (agent.emoji) {
+            agentItem.emoji = agent.emoji;
+            }
+          // 只保留一个智能体
+          this.selectedAgents = [agentItem];
+          
+          // 如果输入框中有多个 @agent 引用，移除多余的引用（只保留第一个）
+          if (agentIds.length > 1) {
+            let newValue = inputValue;
+            // 保留第一个引用，移除后续的所有引用
+            for (let i = 1; i < agentIds.length; i++) {
+              newValue = newValue.replace(new RegExp(`@agent:${agentIds[i]}[\\s\\n]*`, 'g'), '');
+            }
+            this.inputElement.value = newValue;
+          }
+        } else {
+          // 如果找不到智能体，清空选中列表
+          this.selectedAgents = [];
+        }
+      }
+      // 如果输入框中没有 @agent 引用，保留已有的 selectedAgents（通过菜单选择的智能体）
+      // 但确保最多只有一个
+      if (this.selectedAgents.length > 1) {
+        this.selectedAgents = [this.selectedAgents[0]];
+      }
+    }
+
+    // 清空工具栏
+    this.selectedAgentsToolbar.innerHTML = '';
+
+    // 如果没有选中智能体，隐藏工具栏并移除边框
+    if (this.selectedAgents.length === 0) {
+      this.selectedAgentsToolbar.style.display = 'none';
+      this.aiAgentBtnContainer.classList.remove('has-selected-agents');
+      return;
+    }
+
+    // 显示工具栏并添加边框
+    this.selectedAgentsToolbar.style.display = 'flex';
+    this.aiAgentBtnContainer.classList.add('has-selected-agents');
+
+    // 为每个选中的智能体创建显示项
+    this.selectedAgents.forEach((agent) => {
+      const agentItem = this.createSelectedAgentItem(agent);
+      this.selectedAgentsToolbar?.appendChild(agentItem);
+    });
   }
 
   /**
@@ -5492,8 +6178,9 @@ export class AIZoneWidget {
     }
 
     if (this.moreFilesMenuRoot) {
-      this.moreFilesMenuRoot.unmount();
+      const root = this.moreFilesMenuRoot;
       this.moreFilesMenuRoot = null;
+      this.safeUnmountRoot(root);
     }
 
     if (this.moreFilesMenuContainer) {
@@ -5535,7 +6222,21 @@ export class AIZoneWidget {
       return;
     }
 
+    // 先设置 isDisposed 标志，防止 clearAllHighlights 的异步回调重新设置全局监听器
     this.isDisposed = true;
+
+    // 清理全局选择监听器
+    const editorId = this.editor.getId().toString();
+    if (AIZoneWidget.globalSelectionListeners.has(editorId)) {
+      const listener = AIZoneWidget.globalSelectionListeners.get(editorId);
+      if (listener) {
+        listener.dispose();
+      }
+      AIZoneWidget.globalSelectionListeners.delete(editorId);
+    }
+
+    // 无论什么情况，关闭内联聊天时必须清除所有选中文本的高亮
+    this.clearAllHighlights();
 
     // 从 Map 中移除实例
     if (this.tabId) {
@@ -5601,10 +6302,11 @@ export class AIZoneWidget {
       this.contextMenuScrollableElement = null;
     }
 
-    // 销毁 React Root
+    // 销毁 React Root（异步卸载，避免在 React 渲染期间同步卸载）
     if (this.toolbarModelDropdownRoot) {
-      this.toolbarModelDropdownRoot.unmount();
+      const root = this.toolbarModelDropdownRoot;
       this.toolbarModelDropdownRoot = null;
+      this.safeUnmountRoot(root);
     }
 
     // 关闭并销毁上下文菜单
@@ -5619,6 +6321,13 @@ export class AIZoneWidget {
     // 关闭并销毁智能体菜单
     this.closeAgentMenu();
 
+    // 关闭并销毁网络搜索菜单
+    this.closeWebSearchMenu();
+    if (this.webSearchMenuContainer) {
+      this.webSearchMenuContainer.remove();
+      this.webSearchMenuContainer = null;
+    }
+
     // 关闭并销毁更多文件菜单
     this.closeMoreFilesMenu();
     if (this.moreFilesMenuContainer) {
@@ -5631,8 +6340,9 @@ export class AIZoneWidget {
 
     // 销毁历史记录菜单
     if (this.historyMenuRoot) {
-      this.historyMenuRoot.unmount();
+      const root = this.historyMenuRoot;
       this.historyMenuRoot = null;
+      this.safeUnmountRoot(root);
     }
 
     if (this.historyMenuContainer) {

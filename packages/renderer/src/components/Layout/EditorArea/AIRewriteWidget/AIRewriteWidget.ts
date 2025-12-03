@@ -1070,10 +1070,16 @@ export class AIRewriteWidget {
             result.then(() => {
               // 延迟恢复选中状态和设置选中文本，确保内联聊天已完全创建
               setTimeout(() => {
+                // 先清除改写菜单的高亮装饰，让内联聊天的监听器来处理高亮
+                if (this.decorationManager) {
+                  this.decorationManager.removeDecoration('rewrite-selection');
+                }
+                
                 // 设置选中文本，用于发送消息时包含
                 setSelectedText();
                 
                 // 恢复选中状态，用于高亮显示（使用保存的选中范围，保持用户选中的部分文本）
+                // 这会触发内联聊天的监听器，使用 inline-chat-selection 来高亮
                 if (savedSelection) {
                   console.log('[AIRewriteWidget] 恢复选中状态:', savedSelection);
                   this.editor.setSelection(savedSelection);
@@ -1091,9 +1097,16 @@ export class AIRewriteWidget {
           } else {
             // 同步调用，延迟恢复选中状态和设置选中文本，确保内联聊天已创建
             setTimeout(() => {
+              // 先清除改写菜单的高亮装饰，让内联聊天的监听器来处理高亮
+              if (this.decorationManager) {
+                this.decorationManager.removeDecoration('rewrite-selection');
+              }
+              
               // 设置选中文本，用于发送消息时包含
               setSelectedText();
               
+              // 恢复选中状态，用于高亮显示（使用保存的选中范围，保持用户选中的部分文本）
+              // 这会触发内联聊天的监听器，使用 inline-chat-selection 来高亮
               if (savedSelection) {
                 console.log('[AIRewriteWidget] 同步调用后恢复选中状态:', savedSelection);
                 this.editor.setSelection(savedSelection);

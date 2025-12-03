@@ -188,7 +188,8 @@ export class CodeDecorationManager {
    * 高亮选中区域
    */
   highlightSelection(range: monaco.IRange, id: string = 'selection'): void {
-    this.addDecoration(id, {
+    // 使用 updateDecoration 而不是 addDecoration，确保替换旧的装饰而不是添加新的
+    this.updateDecoration(id, {
       type: 'selection',
       range
     });

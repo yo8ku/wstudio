@@ -43,10 +43,53 @@
         height: 100% !important;
       }
       
+      /* 禁用横向滚动条 */
+      .monaco-scrollable-element > .scrollbar {
+        &.horizontal {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          height: 0 !important;
+        }
+      }
+      
+      /* 隐藏横向滚动条滑块 */
+      .monaco-scrollable-element > .scrollbar.horizontal {
+        display: none !important;
+      }
+      
+      /* 确保横向滚动条容器不占用空间 */
+      .monaco-scrollable-element > .scrollbar.horizontal,
+      .monaco-scrollable-element > .slider.horizontal {
+        display: none !important;
+        height: 0 !important;
+        max-height: 0 !important;
+      }
+      
+      /* 确保内容区域不会溢出到滚动条 - 调整背景区域宽度 */
+      .monaco-editor-background {
+        width: calc(100% - 16px) !important;
+        box-sizing: border-box;
+      }
+      
       /* 确保编辑器视图区域正确显示 */
       .view-lines {
-        width: 100%;
+        width: 100% !important;
         min-height: 100%;
+        box-sizing: border-box;
+      }
+      
+      /* 为代码内容整体预留出与滚动条同宽的空间，避免行内容被覆盖 */
+      .lines-content {
+        padding-right: 16px !important;
+        box-sizing: border-box;
+        width: 100% !important;
+      }
+      
+      /* 确保视图容器正确计算宽度 */
+      .view-overlays {
+        width: 100% !important;
+        box-sizing: border-box;
       }
       
       /* 确保行号区域可见 */

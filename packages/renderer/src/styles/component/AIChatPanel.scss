@@ -55,9 +55,9 @@
 
   //颜色-用户消息
   &.user {
-    border:1px solid var(--ws-aiPanle-border);
+    border:1px solid var(--ws-aiUserBorder-background);
     &:hover {
-      border-color: var(--ws-aiPanle-hoverBorder)
+      border-color: var(--ws-aiUserBorder-hoverBackground)
 
     }
   }
@@ -68,7 +68,7 @@
 .message.assistant {
 
   &:hover {
-    border-color: var(--ws-aiPanle-hoverBorder);
+    border-color: var(--ws-aiUserBorder-hoverBackground);
   }
 }
 

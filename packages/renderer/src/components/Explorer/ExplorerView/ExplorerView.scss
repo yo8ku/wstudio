@@ -3,7 +3,7 @@
  * 包含：打开的编辑器面板、文件树面板
  */
 
-.explorer-view {
+ .explorer-view {
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -47,3 +47,4 @@
     min-height: 0; /* 允许内容滚动的关键设置 */
   }
 }
+
