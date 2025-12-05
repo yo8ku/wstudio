@@ -59,11 +59,14 @@ export class ExtensionManager extends EventEmitter {
 
   async initialize(): Promise<void> {
     console.log('[ExtensionManager] 初始化扩展管理器');
+    console.log(`[ExtensionManager] 扩展目录路径: ${this.extensionsPath}`);
     
-    // 确保扩展目录存在
+    // 检查扩展目录是否存在，如果不存在则记录警告但不创建（因为可能是路径配置错误）
     if (!fs.existsSync(this.extensionsPath)) {
-      console.log(`[ExtensionManager] 创建扩展目录: ${this.extensionsPath}`);
-      fs.mkdirSync(this.extensionsPath, { recursive: true });
+      console.warn(`[ExtensionManager] 扩展目录不存在: ${this.extensionsPath}`);
+      console.warn('[ExtensionManager] 将跳过扩展扫描，请检查路径配置是否正确');
+      // 不创建目录，因为可能是路径配置错误，创建错误的目录会导致问题
+      return;
     }
     
     // 扫描扩展
@@ -78,6 +81,13 @@ export class ExtensionManager extends EventEmitter {
    */
   private async scanExtensions(): Promise<void> {
     try {
+      // 检查目录是否存在
+      if (!fs.existsSync(this.extensionsPath)) {
+        console.warn(`[ExtensionManager] 扩展目录不存在: ${this.extensionsPath}`);
+        console.log('[ExtensionManager] 将跳过扩展扫描');
+        return;
+      }
+      
       const entries = fs.readdirSync(this.extensionsPath, { withFileTypes: true });
       
       for (const entry of entries) {
@@ -111,6 +121,12 @@ export class ExtensionManager extends EventEmitter {
       
       console.log(`[ExtensionManager] 扫描完成，共发现 ${this.extensions.size} 个扩展`);
     } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'ENOENT') {
+        console.warn(`[ExtensionManager] 扩展目录不存在: ${this.extensionsPath}`);
+        console.log('[ExtensionManager] 将跳过扩展扫描');
+        return;
+      }
       console.error('[ExtensionManager] 扫描扩展目录失败:', error);
     }
   }
@@ -121,6 +137,12 @@ export class ExtensionManager extends EventEmitter {
   private startWatching(): void {
     if (this.watcher) {
       return; // 已经在监听中
+    }
+
+    // 检查目录是否存在
+    if (!fs.existsSync(this.extensionsPath)) {
+      console.warn(`[ExtensionManager] 扩展目录不存在，跳过文件监听: ${this.extensionsPath}`);
+      return;
     }
 
     try {
@@ -140,6 +162,11 @@ export class ExtensionManager extends EventEmitter {
         console.error('[ExtensionManager] 文件监听错误:', error);
       });
     } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'ENOENT') {
+        console.warn(`[ExtensionManager] 扩展目录不存在，无法启动文件监听: ${this.extensionsPath}`);
+        return;
+      }
       console.error('[ExtensionManager] 启动文件监听失败:', error);
     }
   }

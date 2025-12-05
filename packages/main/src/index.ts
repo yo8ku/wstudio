@@ -25,10 +25,10 @@ import * as path from 'path';
 import { registerSettingsHandlers } from './ipc/settingsHandlers';
 
 // 插件系统路径
-// __dirname: packages/main/dist/main/src
-// ../../../../ -> packages 目录
-// ../../../../extensions/builtin -> 内置插件目录
-const builtinPluginsPath = path.join(__dirname, '../../../../extensions/builtin');
+// __dirname: packages/main/dist/main/main/src (实际编译后的路径)
+// ../../../../../ -> 项目根目录
+// ../../../../../packages/extensions/builtin -> 内置插件目录
+const builtinPluginsPath = path.join(__dirname, '../../../../../packages/extensions/builtin');
 
 // 用户插件路径（未来可能使用）
 // const userPluginsPath = path.join(__dirname, '../../../../extensions');

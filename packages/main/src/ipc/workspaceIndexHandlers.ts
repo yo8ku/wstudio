@@ -7,6 +7,9 @@ import { WorkspaceIndexService } from '../services/WorkspaceIndexService';
 
 let indexService: WorkspaceIndexService | null = null;
 
+// 防止重复注册的标志
+let isRegistered = false;
+
 function getIndexService(): WorkspaceIndexService {
   if (!indexService) {
     indexService = new WorkspaceIndexService();
@@ -33,6 +36,38 @@ export function setWorkspaceIndexMainWindow(window: BrowserWindow | null): void 
  * 注册工作区索引 IPC 处理器
  */
 export function registerWorkspaceIndexHandlers(): void {
+  // 防止重复注册
+  if (isRegistered) {
+    console.log('[WorkspaceIndex IPC] IPC 处理器已注册，跳过重复注册');
+    return;
+  }
+
+  console.log('[WorkspaceIndex IPC] 开始注册工作区索引 IPC 处理器...');
+
+  // 移除可能存在的旧处理器（防止热重载时重复注册）
+  const handlersToRemove = [
+    'workspace-index:initialize',
+    'workspace-index:index-workspace',
+    'workspace-index:get-progress',
+    'workspace-index:is-indexing',
+    'workspace-index:search',
+    'workspace-index:update-file',
+    'workspace-index:delete-file',
+    'workspace-index:get-stats',
+    'workspace-index:clear'
+  ];
+
+  for (const handler of handlersToRemove) {
+    try {
+      ipcMain.removeHandler(handler);
+    } catch (e) {
+      // 忽略未注册的处理器
+    }
+  }
+
+  console.log('[WorkspaceIndex IPC] 已清理旧的 IPC 处理器');
+  isRegistered = true;
+
   // 初始化索引服务
   ipcMain.handle('workspace-index:initialize', async () => {
     try {

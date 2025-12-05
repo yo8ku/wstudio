@@ -47,15 +47,15 @@ async function loadPythonBridgeModule(): Promise<PythonBridgeType> {
         const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
         
         // 尝试多个可能的路径
+        // 实际编译后的路径: packages/main/dist/main/main/src/ipc
+        // 需要向上 7 级到达项目根目录: ../../../../../../ -> 项目根目录
         const possiblePaths = [
-          // 从 packages/main/dist/main/src/ipc 到 packages/global-rag/dist/index.js
-          path.default.resolve(currentDir, '../../../../../global-rag/dist/index.js'),
-          // 从 packages/main/dist 到 packages/global-rag/dist/index.js
-          path.default.resolve(currentDir, '../../../../global-rag/dist/index.js'),
-          // 从项目根目录
+          // 从项目根目录（最可靠的方式）
           path.default.resolve(process.cwd(), 'packages/global-rag/dist/index.js'),
-          // 从当前目录向上查找
-          path.default.resolve(currentDir, '../../global-rag/dist/index.js'),
+          // 从 packages/main/dist/main/main/src/ipc 到 packages/global-rag/dist/index.js
+          path.default.resolve(currentDir, '../../../../../../packages/global-rag/dist/index.js'),
+          // 从 packages/main/dist/main/src/ipc 到 packages/global-rag/dist/index.js（旧路径，兼容性）
+          path.default.resolve(currentDir, '../../../../../packages/global-rag/dist/index.js'),
         ];
         
         let globalRagPath: string | undefined;

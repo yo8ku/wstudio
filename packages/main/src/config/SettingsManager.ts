@@ -246,21 +246,39 @@ export class SettingsManager extends EventEmitter {
     try {
       const content = await fs.readFile(this.userSettingsPath, 'utf-8');
       
+      // 检查文件内容是否为空或只有空白字符
+      const trimmedContent = content.trim();
+      if (!trimmedContent || trimmedContent === '' || trimmedContent === '{}') {
+        console.log('[SettingsManager] 配置文件为空，使用默认设置');
+        await this.recoverSettingsFile();
+        return {};
+      }
+      
       // 尝试解析 JSONC（支持注释）
       let parsed: any;
       try {
         // 使用 jsonc-parser 解析，支持注释和尾随逗号
         const errors: jsonc.ParseError[] = [];
-        parsed = jsonc.parse(content, errors);
+        parsed = jsonc.parse(trimmedContent, errors);
+        
+        // 如果解析结果为 null 或 undefined，说明文件格式错误
+        if (parsed === null || parsed === undefined) {
+          console.error('[SettingsManager] 配置文件解析结果为 null/undefined，文件可能已损坏');
+          console.log('[SettingsManager] 触发自动恢复机制...');
+          await this.recoverSettingsFile();
+          return {};
+        }
         
         if (errors.length > 0) {
           console.error('[SettingsManager]  配置文件 JSONC 解析出现错误:', errors);
+          console.log('[SettingsManager] 文件内容预览:', trimmedContent.substring(0, 200));
           console.log('[SettingsManager] 触发自动恢复机制...');
           await this.recoverSettingsFile();
           return {};
         }
       } catch (parseError) {
         console.error('[SettingsManager]  配置文件解析失败，文件可能已损坏:', parseError);
+        console.log('[SettingsManager] 文件内容预览:', trimmedContent.substring(0, 200));
         console.log('[SettingsManager] 触发自动恢复机制...');
         await this.recoverSettingsFile();
         return {};
@@ -642,8 +660,20 @@ export class SettingsManager extends EventEmitter {
       // 如果文件存在且有内容（且不是空的 {}），尝试保留注释，但优先确保配置正确写入
       if (trimmedContent && !isEmpty) {
         // 解析现有内容
-        const errors: jsonc.ParseError[] = [];
-        const existingParsed = jsonc.parse(existingContent, errors) || {};
+        let existingParsed: any = {};
+        try {
+          const errors: jsonc.ParseError[] = [];
+          const parsed = jsonc.parse(existingContent, errors);
+          if (parsed !== null && parsed !== undefined && errors.length === 0) {
+            existingParsed = parsed;
+          } else {
+            console.warn('[SettingsManager] 现有文件内容解析失败，将使用空对象');
+            existingParsed = {};
+          }
+        } catch (parseError) {
+          console.warn('[SettingsManager] 解析现有文件内容时出错，将使用空对象:', parseError);
+          existingParsed = {};
+        }
         const existingKeysSet = new Set(Object.keys(existingParsed));
         
         console.log('[SettingsManager] 现有文件中的键:', Array.from(existingKeysSet));
@@ -697,14 +727,23 @@ export class SettingsManager extends EventEmitter {
         // 验证写入是否成功
         try {
           const verifyContent = await fs.readFile(this.userSettingsPath, 'utf-8');
-          const verifyParsed = jsonc.parse(verifyContent, []);
-          console.log('[SettingsManager] 验证：文件中的键:', Object.keys(verifyParsed || {}));
-          if (verifyParsed && 'background-image' in verifyParsed) {
-            console.log('[SettingsManager] ✅ 验证成功：background-image 配置已写入文件');
-            console.log('[SettingsManager] background-image 值:', JSON.stringify(verifyParsed['background-image'], null, 2));
-          } else {
-            console.error('[SettingsManager] ❌ 验证失败：background-image 配置未找到');
-            console.error('[SettingsManager] 文件内容预览:', verifyContent.substring(0, 500));
+          try {
+            const errors: jsonc.ParseError[] = [];
+            const verifyParsed = jsonc.parse(verifyContent, errors);
+            if (verifyParsed && errors.length === 0) {
+              console.log('[SettingsManager] 验证：文件中的键:', Object.keys(verifyParsed || {}));
+              if ('background-image' in verifyParsed) {
+                console.log('[SettingsManager] ✅ 验证成功：background-image 配置已写入文件');
+                console.log('[SettingsManager] background-image 值:', JSON.stringify(verifyParsed['background-image'], null, 2));
+              } else {
+                console.error('[SettingsManager] ❌ 验证失败：background-image 配置未找到');
+                console.error('[SettingsManager] 文件内容预览:', verifyContent.substring(0, 500));
+              }
+            } else {
+              console.warn('[SettingsManager] 验证：文件解析失败，但文件已写入');
+            }
+          } catch (parseError) {
+            console.warn('[SettingsManager] 验证：文件解析时出错，但文件已写入:', parseError);
           }
         } catch (verifyError) {
           console.error('[SettingsManager] 验证文件写入时出错:', verifyError);

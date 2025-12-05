@@ -9,6 +9,9 @@ import { AIModelDatabase } from '../services/AIModelDatabase';
 
 let aiModelDatabase: AIModelDatabase | null = null;
 
+// 防止重复注册的标志
+let isRegistered = false;
+
 /**
  * 获取数据库实例
  */
@@ -23,7 +26,34 @@ function getDatabase(): AIModelDatabase {
  * 注册 AI 模型配置相关的 IPC 处理器
  */
 export function registerAIModelHandlers(): void {
+  // 防止重复注册
+  if (isRegistered) {
+    console.log('[AIModel IPC] IPC 处理器已注册，跳过重复注册');
+    return;
+  }
+
   console.log('[AIModel IPC] 开始注册 AI 模型配置 IPC 处理器...');
+
+  // 移除可能存在的旧处理器（防止热重载时重复注册）
+  const handlersToRemove = [
+    'ai-model:check-name-exists',
+    'ai-model:save',
+    'ai-model:list',
+    'ai-model:get',
+    'ai-model:get-models',
+    'ai-model:delete'
+  ];
+
+  for (const handler of handlersToRemove) {
+    try {
+      ipcMain.removeHandler(handler);
+    } catch (e) {
+      // 忽略未注册的处理器
+    }
+  }
+
+  console.log('[AIModel IPC] 已清理旧的 IPC 处理器');
+  isRegistered = true;
 
   // 检查配置名称是否存在
   ipcMain.handle('ai-model:check-name-exists', async (event, name: string, excludeId?: string) => {

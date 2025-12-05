@@ -13,6 +13,19 @@ export class ExtensionScanner {
     console.log(`[ExtensionScanner] 扫描扩展目录: ${this.extensionsPath}`);
     
     try {
+      // 检查目录是否存在
+      try {
+        await fs.access(this.extensionsPath);
+      } catch (accessError) {
+        const err = accessError as NodeJS.ErrnoException;
+        if (err.code === 'ENOENT') {
+          console.warn(`[ExtensionScanner] 扩展目录不存在: ${this.extensionsPath}`);
+          console.log('[ExtensionScanner] 将返回空扩展列表');
+          return [];
+        }
+        throw accessError;
+      }
+      
       const dirs = await fs.readdir(this.extensionsPath, { withFileTypes: true });
       console.log(`[ExtensionScanner] 找到 ${dirs.length} 个项目`);
       const extensions: Extension[] = [];
@@ -31,6 +44,12 @@ export class ExtensionScanner {
       console.log(`[ExtensionScanner] 共找到 ${extensions.length} 个扩展`);
       return extensions;
     } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'ENOENT') {
+        console.warn(`[ExtensionScanner] 扩展目录不存在: ${this.extensionsPath}`);
+        console.log('[ExtensionScanner] 将返回空扩展列表');
+        return [];
+      }
       console.error('[ExtensionScanner] 扫描失败:', error);
       return [];
     }

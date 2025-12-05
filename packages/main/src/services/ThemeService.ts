@@ -101,11 +101,41 @@ export class ThemeService {
   private async loadBuiltinThemes(): Promise<void> {
     try {
       // 内置主题位于项目目录，直接从源目录加载
-      // __dirname 在开发模式: E:\Wise Note Studio\note-studio\packages\main\dist\main\src\services
-      // 往上 7 级到达项目根目录（dist/main/src/services -> packages/main -> packages -> 项目根）
+      // __dirname 实际编译后的路径: packages/main/dist/main/main/src/services
+      // 使用多种方式尝试找到项目根目录
       // console.log('[ThemeService] ========== 路径调试 ==========');
       // console.log('[ThemeService] 当前 __dirname:', __dirname);
-      const projectRoot = path.join(__dirname, '../../../../../../');
+      
+      // 尝试多个可能的项目根目录路径
+      const possibleRoots = [
+        // 从 __dirname 向上 7 级（到达 packages 目录，然后需要再上一级）
+        path.resolve(__dirname, '../../../../../../../'),
+        // 从 __dirname 向上 6 级（到达 packages 目录）
+        path.resolve(__dirname, '../../../../../../'),
+        // 使用 process.cwd()（当前工作目录，通常是项目根）
+        process.cwd(),
+      ];
+      
+      // 查找包含 packages/theme/themes/builtin 的根目录
+      let projectRoot: string | undefined;
+      for (const root of possibleRoots) {
+        const testPath = path.join(root, 'packages', 'theme', 'themes', 'builtin');
+        try {
+          await fs.access(testPath);
+          projectRoot = root;
+          console.log('[ThemeService] 找到项目根目录:', projectRoot);
+          break;
+        } catch {
+          // 继续尝试下一个路径
+        }
+      }
+      
+      if (!projectRoot) {
+        // 如果都找不到，使用 process.cwd() 作为后备
+        projectRoot = process.cwd();
+        console.warn('[ThemeService] 无法自动检测项目根目录，使用 process.cwd():', projectRoot);
+      }
+      
       console.log('[ThemeService] 计算的项目根目录:', projectRoot);
       const builtinDir = path.join(projectRoot, 'packages', 'theme', 'themes', 'builtin');
       // console.log('[ThemeService] 内置主题目录:', builtinDir);
