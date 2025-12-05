@@ -1,7 +1,7 @@
 {
   "name": "note-studio",
   "version": "1.0.0",
-  "description": "WiseAI Note Studio - AI-powered note-taking application",
+  "description": "Note WStudio - AI-powered note-taking application",
   "author": "WiseAI Team",
   "private": true,
   "main": "electron.js",

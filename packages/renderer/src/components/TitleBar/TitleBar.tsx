@@ -360,7 +360,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     <div className={`titlebar${!isWindowActive ? ' inactive' : ''}`}>
       <div className="titlebar-drag-region">
         <div className="titlebar-icon">
-          <img src={logIconSrc} alt="WiseAI Note Studio" />
+          <img src={logIconSrc} alt="Note WStudio" />
         </div>
         
         {/* 菜单*/}
@@ -393,7 +393,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         </div>
       </div>
       
-      <div className="titlebar-title">WiseAI Note Studio</div>
+      <div className="titlebar-title">Note WStudio</div>
       
       <div className="titlebar-controls">
         {/* AI 助手按钮 */}

@@ -2,8 +2,8 @@
  * ElectronStoreService - electron-store 服务封装
  * 提供统一的本地存储接口，用于存储应用配置和用户数据
  * 存储位置：
- * - Windows: C:\Users\username\AppData\Roaming\WiseAI Note Studio
- * - macOS: /Users/username/Library/Application Support/WiseAI Note Studio
+ * - Windows: C:\Users\username\AppData\Roaming\Note WStudio
+ * - macOS: /Users/username/Library/Application Support/Note WStudio
  */
 
 import Store from 'electron-store';

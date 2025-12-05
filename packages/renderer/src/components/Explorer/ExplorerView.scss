@@ -1,0 +1,14 @@
+/**
+ * 资源管理器主容器样式
+ * 包含：打开的编辑器面板、文件树面板、时间线面板
+ */
+
+.explorer-view {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+

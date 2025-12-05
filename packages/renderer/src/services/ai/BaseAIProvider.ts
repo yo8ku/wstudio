@@ -130,7 +130,7 @@ export abstract class BaseAIProvider implements AIProvider {
   ): Promise<Response> {
     const defaultHeaders = {
       'Content-Type': 'application/json',
-      'User-Agent': 'WiseAI-Note-Studio/1.0'
+      'User-Agent': 'Note-WStudio/1.0'
     };
 
     const requestOptions: RequestInit = {

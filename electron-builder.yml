@@ -1,6 +1,6 @@
 appId: com.wiseai.notestudio
-productName: WiseAI Note Studio
-copyright: Copyright © 2025 WiseAI Note Studio
+productName: Note WStudio
+copyright: Copyright © 2025 Note WStudio
 
 directories:
   output: dist

@@ -1,4 +1,4 @@
-# Note Studio
+# Note WStudio
 
 一个支持插件扩展的现代化笔记应用。
 
@@ -128,7 +128,7 @@ pnpm build:electron
 
 ---
 
-**Note Studio** - 让笔记更智能 ✨
+**Note WStudio** - 让笔记更智能 ✨
 
 
 

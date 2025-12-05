@@ -1,5 +1,5 @@
 /**
- * AI 对话面板组件  - WiseAI Note Studio 2.0使用的是这个组件
+ * AI 对话面板组件  - Note WStudio 2.0使用的是这个组件
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
