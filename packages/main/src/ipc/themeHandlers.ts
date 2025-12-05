@@ -19,11 +19,8 @@ let isRegistered = false;
 export function registerThemeHandlers(): void {
   // 防止重复注册
   if (isRegistered) {
-    console.log('[Theme IPC] IPC 处理器已注册，跳过重复注册');
     return;
   }
-
-  console.log('[Theme IPC] 开始注册 IPC 处理器...');
 
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = Object.values(THEME_CHANNELS) as string[];
@@ -36,7 +33,6 @@ export function registerThemeHandlers(): void {
     }
   }
 
-  console.log('[Theme IPC] 已清理旧的 IPC 处理器');
   isRegistered = true;
 
   const themeService = ThemeService.getInstance();

@@ -84,7 +84,6 @@ export class ImageCacheManager {
     try {
       const entries = Object.entries(this.cacheIndex);
       if (entries.length === 0) {
-        console.log('[ImageCacheManager] 缓存索引为空，跳过验证');
         return;
       }
 
@@ -138,9 +137,7 @@ export class ImageCacheManager {
         // 索引文件不存在，使用空索引
         this.cacheIndex = {};
         this.indexLoaded = true;
-        console.log('[ImageCacheManager] 缓存索引文件不存在，使用空索引');
-        console.log('[ImageCacheManager] 缓存目录路径:', this.cacheDir);
-        console.log('[ImageCacheManager] 索引文件路径:', this.indexFile);
+        console.log('[ImageCacheManager] 缓存索引文件不存在，使用空索引,索引文件路径:',this.indexFile);
         return;
       }
 
@@ -159,15 +156,11 @@ export class ImageCacheManager {
       this.cacheIndex = JSON.parse(indexContent);
       this.indexLoaded = true;
       const entryCount = Object.keys(this.cacheIndex).length;
-      console.log('[ImageCacheManager] 缓存索引加载成功，条目数:', entryCount);
-      console.log('[ImageCacheManager] 缓存目录路径:', this.cacheDir);
-      console.log('[ImageCacheManager] 索引文件路径:', this.indexFile);
       
       // 检查缓存目录中实际存在的文件数量
       try {
         const files = await fs.readdir(this.cacheDir);
         const cacheFiles = files.filter(f => f !== 'cache-index.json');
-        console.log('[ImageCacheManager] 缓存目录中实际文件数:', cacheFiles.length);
         if (cacheFiles.length > 0 && entryCount === 0) {
           console.warn('[ImageCacheManager] 警告：缓存目录中有文件但索引为空，可能存在"孤儿"缓存文件');
         }
@@ -201,7 +194,6 @@ export class ImageCacheManager {
         await fs.rm(this.indexFile, { force: true });
         await fs.rename(tempIndexFile, this.indexFile);
         
-        console.log('[ImageCacheManager] 缓存索引已保存，条目数:', Object.keys(this.cacheIndex).length);
       } catch (error) {
         console.error('[ImageCacheManager] 保存缓存索引失败:', error);
         console.error('[ImageCacheManager] 错误详情:', error instanceof Error ? error.message : String(error));
@@ -271,16 +263,12 @@ export class ImageCacheManager {
         // 检查原文件修改时间是否变化
         const currentMtime = await this.getFileMtime(originalPath);
         if (currentMtime !== metadata.mtime) {
-          console.log('[ImageCacheManager] 原文件已修改，缓存失效:', originalPath);
           return false;
         }
-      } else {
-        console.log('[ImageCacheManager] 原文件不存在，继续使用缓存:', originalPath);
-      }
+      } 
       
       return true;
     } catch (error) {
-      console.log('[ImageCacheManager] 缓存无效:', originalPath, error);
       return false;
     }
   }
@@ -291,7 +279,6 @@ export class ImageCacheManager {
   private async copyToCache(originalPath: string, cacheFilePath: string): Promise<void> {
     try {
       await fs.copyFile(originalPath, cacheFilePath);
-      console.log('[ImageCacheManager] 文件已缓存:', originalPath, '->', cacheFilePath);
     } catch (error) {
       console.error('[ImageCacheManager] 复制文件到缓存失败:', originalPath, error);
       throw error;
@@ -372,7 +359,6 @@ export class ImageCacheManager {
       try {
         await fs.access(cacheFilePath);
         // 缓存文件已存在，直接更新索引
-        console.log('[ImageCacheManager] 缓存文件已存在，更新索引:', originalPath);
       } catch {
         // 缓存文件不存在，复制文件
         await this.copyToCache(originalPath, cacheFilePath);
@@ -388,7 +374,6 @@ export class ImageCacheManager {
       
       await this.saveIndex();
       
-      console.log('[ImageCacheManager] 缓存创建成功:', originalPath);
     } catch (error) {
       console.error('[ImageCacheManager] 创建缓存失败:', originalPath, error);
       // 不抛出错误，避免影响正常使用
@@ -440,7 +425,6 @@ export class ImageCacheManager {
       // 检查缓存文件是否已存在
       try {
         await fs.access(cacheFilePath);
-        console.log('[ImageCacheManager] 缓存文件已存在，更新索引:', originalPath);
       } catch {
         // 缓存文件不存在，复制文件
         await this.copyToCache(originalPath, cacheFilePath);
@@ -455,7 +439,6 @@ export class ImageCacheManager {
       };
       await this.saveIndex();
 
-      console.log('[ImageCacheManager] 图片缓存成功:', originalPath, '->', cacheFilePath);
       return cacheFilePath;
     } catch (error) {
       console.error('[ImageCacheManager] 缓存图片失败:', originalPath, error);

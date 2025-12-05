@@ -84,13 +84,8 @@ export class ElectronStoreService {
   private static instance: ElectronStoreService;
 
   private constructor() {
-    console.log('[ElectronStoreService] 开始初始化...');
-    console.log('[ElectronStoreService] app.isReady():', app.isReady());
-    console.log('[ElectronStoreService] process.cwd():', process.cwd());
-    
     // 确保 app 已准备好
     const cwd = app.getPath('userData');
-    console.log('[ElectronStoreService] app.getPath(userData):', cwd);
     
     this.store = new Store<StoreSchema>({
       name: 'app-data',

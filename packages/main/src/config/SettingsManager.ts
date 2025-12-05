@@ -99,11 +99,9 @@ export class SettingsManager extends EventEmitter {
    */
   async initialize(): Promise<void> {
     try {
-      console.log('[SettingsManager] 开始初始化设置管理器...');
       
       // 确保设置目录存在
       await fs.mkdir(this.settingsPath, { recursive: true });
-      console.log('[SettingsManager] 设置目录已创建:', this.settingsPath);
       
       // 检查配置文件是否存在，不存在则创建默认配置
       await this.ensureSettingsFile();
@@ -111,12 +109,10 @@ export class SettingsManager extends EventEmitter {
       // 加载用户设置
       await this.loadSettings();
       
-      console.log('[SettingsManager] 设置管理器初始化成功 ');
     } catch (error) {
       console.error('[SettingsManager] 初始化失败:', error);
       // 即使初始化失败，也要确保有默认设置可用
       this.settings = { ...DEFAULT_SETTINGS };
-      console.log('[SettingsManager] 已回退到默认设置');
     }
   }
 
@@ -129,18 +125,13 @@ export class SettingsManager extends EventEmitter {
     try {
       // 检查文件是否存在
       await fs.access(this.userSettingsPath);
-      console.log('[SettingsManager] 配置文件已存在');
     } catch (error) {
       // 文件不存在，创建默认配置
-      console.log('[SettingsManager] 配置文件不存在，创建默认配置...');
       try {
         // 创建带注释的 JSONC 格式配置文件
         const defaultContent = this.generateDefaultSettingsWithComments();
         await fs.writeFile(this.userSettingsPath, defaultContent, 'utf-8');
-        console.log('[SettingsManager]  已成功写入默认配置文件（JSONC 格式）');
-        console.log('[SettingsManager] 配置文件路径:', this.userSettingsPath);
       } catch (writeError) {
-        console.error('[SettingsManager]  写入默认配置失败:', writeError);
         throw writeError;
       }
     }
@@ -181,16 +172,12 @@ export class SettingsManager extends EventEmitter {
   private async loadSettings(): Promise<void> {
     try {
       console.log('[SettingsManager] ========== 开始加载设置 ==========');
-      console.log('[SettingsManager] userSettingsPath:', this.userSettingsPath);
-      console.log('[SettingsManager] workspaceSettingsPath:', this.workspaceSettingsPath);
       
       // 加载用户设置（带自动恢复机制）
       const userSettings = await this.loadUserSettings();
-      console.log('[SettingsManager] 用户设置:', userSettings);
       
       // 加载工作区设置（如果存在）
       const workspaceSettings = await this.loadWorkspaceSettings();
-      console.log('[SettingsManager] 工作区设置:', workspaceSettings);
       
       // 合并设置（工作区设置优先级更高）
       this.settings = {
@@ -208,10 +195,7 @@ export class SettingsManager extends EventEmitter {
       }
       this.settings = validSettings;
       
-      console.log('[SettingsManager] 合并后的设置:', this.settings);
-      console.log('[SettingsManager] 设置加载成功 ');
     } catch (error) {
-      console.error('[SettingsManager]  加载设置失败，回退到默认设置:', error);
       // 安全机制：回退到默认设置
       this.settings = { ...DEFAULT_SETTINGS };
       // 尝试恢复配置文件
@@ -226,14 +210,10 @@ export class SettingsManager extends EventEmitter {
    */
   private async recoverSettingsFile(): Promise<void> {
     try {
-      console.log('[SettingsManager] 尝试恢复配置文件...');
       const defaultContent = this.generateDefaultSettingsWithComments();
       await fs.writeFile(this.userSettingsPath, defaultContent, 'utf-8');
-      console.log('[SettingsManager]  配置文件已成功恢复到默认状态（JSONC 格式）');
-      console.log('[SettingsManager] 恢复路径:', this.userSettingsPath);
     } catch (error) {
       console.error('[SettingsManager]  恢复配置文件失败:', error);
-      console.log('[SettingsManager] 应用将继续使用内存中的默认设置运行');
     }
   }
 
@@ -249,7 +229,6 @@ export class SettingsManager extends EventEmitter {
       // 检查文件内容是否为空或只有空白字符
       const trimmedContent = content.trim();
       if (!trimmedContent || trimmedContent === '' || trimmedContent === '{}') {
-        console.log('[SettingsManager] 配置文件为空，使用默认设置');
         await this.recoverSettingsFile();
         return {};
       }
@@ -263,28 +242,21 @@ export class SettingsManager extends EventEmitter {
         
         // 如果解析结果为 null 或 undefined，说明文件格式错误
         if (parsed === null || parsed === undefined) {
-          console.error('[SettingsManager] 配置文件解析结果为 null/undefined，文件可能已损坏');
-          console.log('[SettingsManager] 触发自动恢复机制...');
           await this.recoverSettingsFile();
           return {};
         }
         
         if (errors.length > 0) {
           console.error('[SettingsManager]  配置文件 JSONC 解析出现错误:', errors);
-          console.log('[SettingsManager] 文件内容预览:', trimmedContent.substring(0, 200));
-          console.log('[SettingsManager] 触发自动恢复机制...');
           await this.recoverSettingsFile();
           return {};
         }
       } catch (parseError) {
         console.error('[SettingsManager]  配置文件解析失败，文件可能已损坏:', parseError);
-        console.log('[SettingsManager] 文件内容预览:', trimmedContent.substring(0, 200));
-        console.log('[SettingsManager] 触发自动恢复机制...');
         await this.recoverSettingsFile();
         return {};
       }
       
-      console.log('[SettingsManager] 原始用户设置键:', Object.keys(parsed));
       
       // 分离标准设置和插件设置
       const filtered: Partial<SettingsSchema> = {};
@@ -292,30 +264,22 @@ export class SettingsManager extends EventEmitter {
       for (const key of Object.keys(parsed)) {
         if (key in DEFAULT_SETTINGS) {
           filtered[key as keyof SettingsSchema] = parsed[key] as any;
-          console.log(`[SettingsManager]  保留有效键: ${key}`);
         } else {
           // 保留插件配置（不在 DEFAULT_SETTINGS 中的键）
           pluginConfig[key] = parsed[key];
-          console.log(`[SettingsManager]  保留插件配置键: ${key}`);
         }
       }
       
       // 保存插件配置到内存
       this.pluginSettings = { ...this.pluginSettings, ...pluginConfig };
-      
-      console.log('[SettingsManager] 过滤后的用户设置键:', Object.keys(filtered));
-      console.log('[SettingsManager] 插件配置键:', Object.keys(pluginConfig));
       return filtered;
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       // 文件不存在
       if (err.code === 'ENOENT') {
-        console.log('[SettingsManager] 配置文件不存在，将使用默认设置');
         return {};
       }
       // 其他错误（权限问题、磁盘错误等）
-      console.error('[SettingsManager]  读取配置文件时发生错误:', error);
-      console.log('[SettingsManager] 触发自动恢复机制...');
       await this.recoverSettingsFile();
       return {};
     }
@@ -338,7 +302,6 @@ export class SettingsManager extends EventEmitter {
       const parsed = jsonc.parse(content, errors);
       
       if (errors.length > 0) {
-        console.error('[SettingsManager]  工作区配置文件 JSONC 解析出现错误:', errors);
         return {};
       }
       
@@ -371,11 +334,7 @@ export class SettingsManager extends EventEmitter {
    * 获取设置值
    */
   get<K extends keyof SettingsSchema>(key: K): SettingsSchema[K] {
-    console.log(`[SettingsManager] get 被调用, key: ${key}`);
-    console.log(`[SettingsManager] this.settings[${key}]:`, this.settings[key]);
-    console.log(`[SettingsManager] DEFAULT_SETTINGS[${key}]:`, DEFAULT_SETTINGS[key]);
     const result = (this.settings[key] ?? DEFAULT_SETTINGS[key]) as SettingsSchema[K];
-    console.log(`[SettingsManager] 返回值:`, result);
     return result;
   }
 
@@ -383,16 +342,13 @@ export class SettingsManager extends EventEmitter {
    * 获取插件配置（支持任意键）
    */
   getPluginSetting<T = any>(key: string, defaultValue?: T): T | undefined {
-    console.log(`[SettingsManager] getPluginSetting 被调用, key: ${key}, defaultValue:`, defaultValue);
     // 先检查是否是标准设置
     if (key in DEFAULT_SETTINGS) {
       return this.get(key as keyof SettingsSchema) as T;
     }
     // 检查插件配置
     const value = this.pluginSettings[key];
-    console.log(`[SettingsManager] pluginSettings[${key}]:`, value);
     const result = value !== undefined ? (value as T) : defaultValue;
-    console.log(`[SettingsManager] 返回值:`, result);
     return result;
   }
 
@@ -464,7 +420,6 @@ export class SettingsManager extends EventEmitter {
       // 触发变更事件
       this.emit('change', key, value);
       
-      console.log(`[SettingsManager] 设置已更新: ${key} = ${value}`);
     } catch (error) {
       console.error('[SettingsManager] 更新设置失败:', error);
       throw error;
@@ -480,7 +435,6 @@ export class SettingsManager extends EventEmitter {
     target: 'user' | 'workspace' = 'user'
   ): Promise<void> {
     try {
-      console.log(`[SettingsManager] updatePluginSetting 被调用, key: ${key}, value:`, value);
       // 如果是标准设置，使用标准方法
       if (key in DEFAULT_SETTINGS) {
         await this.update(key as keyof SettingsSchema, value, target);
@@ -488,7 +442,6 @@ export class SettingsManager extends EventEmitter {
       }
       // 更新插件配置
       this.pluginSettings[key] = value;
-      console.log(`[SettingsManager] pluginSettings[${key}] 已更新:`, value);
 
       // 保存到文件
       if (target === 'user') {
@@ -499,8 +452,6 @@ export class SettingsManager extends EventEmitter {
 
       // 触发变更事件
       this.emit('change', key, value);
-      
-      console.log(`[SettingsManager] 插件配置已更新: ${key} = ${value}`);
       
       // 发送 IPC 事件到渲染进程，通知配置已保存（用于调试）
       try {
@@ -549,7 +500,6 @@ export class SettingsManager extends EventEmitter {
         this.emit('change', key, value);
       }
       
-      console.log('[SettingsManager] 批量更新设置成功');
     } catch (error) {
       console.error('[SettingsManager] 批量更新设置失败:', error);
       throw error;
@@ -572,7 +522,6 @@ export class SettingsManager extends EventEmitter {
       await this.saveUserSettings();
       this.emit('reset', key);
       
-      console.log('[SettingsManager] 设置已重置');
     } catch (error) {
       console.error('[SettingsManager] 重置设置失败:', error);
       throw error;
@@ -604,14 +553,10 @@ export class SettingsManager extends EventEmitter {
    */
   private async saveUserSettings(): Promise<void> {
     try {
-      console.log('[SettingsManager] ========== 开始保存用户设置 ==========');
-      console.log('[SettingsManager] 当前 pluginSettings:', JSON.stringify(this.pluginSettings, null, 2));
-      
       // 读取现有文件内容
       let existingContent = '';
       try {
         existingContent = await fs.readFile(this.userSettingsPath, 'utf-8');
-        console.log('[SettingsManager] 读取到现有文件内容长度:', existingContent.length);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
           throw error;
@@ -626,7 +571,6 @@ export class SettingsManager extends EventEmitter {
       
       // 恢复 pluginSettings（因为 loadUserSettings 可能覆盖了它）
       this.pluginSettings = { ...currentPluginSettings, ...this.pluginSettings };
-      console.log('[SettingsManager] 合并后的 pluginSettings:', JSON.stringify(this.pluginSettings, null, 2));
       
       // 只保存与默认值不同的设置
       const settingsToSave = this.filterDefaultValues(this.settings);
@@ -651,7 +595,6 @@ export class SettingsManager extends EventEmitter {
         ...this.pluginSettings,
       };
       
-      console.log('[SettingsManager] 要保存的所有设置:', JSON.stringify(allSettings, null, 2));
       
       // 检查文件是否为空或只有 {}
       const trimmedContent = existingContent.trim();
@@ -667,23 +610,18 @@ export class SettingsManager extends EventEmitter {
           if (parsed !== null && parsed !== undefined && errors.length === 0) {
             existingParsed = parsed;
           } else {
-            console.warn('[SettingsManager] 现有文件内容解析失败，将使用空对象');
             existingParsed = {};
           }
         } catch (parseError) {
-          console.warn('[SettingsManager] 解析现有文件内容时出错，将使用空对象:', parseError);
           existingParsed = {};
         }
         const existingKeysSet = new Set(Object.keys(existingParsed));
         
-        console.log('[SettingsManager] 现有文件中的键:', Array.from(existingKeysSet));
-        console.log('[SettingsManager] 要保存的键:', Object.keys(allSettings));
         
         // 检查是否有新键需要添加
         const hasNewKeys = Object.keys(allSettings).some(key => !existingKeysSet.has(key));
         
         if (hasNewKeys) {
-          console.log('[SettingsManager] 检测到新键，使用简化写入方式确保配置被写入');
           // 如果有新键，直接合并并重新写入（确保新键一定被写入）
           const mergedConfig = {
             ...existingParsed,
@@ -692,9 +630,7 @@ export class SettingsManager extends EventEmitter {
           
           // 生成带注释的 JSON 内容（包含插件配置）
           const newContent = this.generateSettingsWithCommentsAndPlugins(validSettings, this.pluginSettings);
-          console.log('[SettingsManager] 准备写入合并后的配置，路径:', this.userSettingsPath);
           await fs.writeFile(this.userSettingsPath, newContent, 'utf-8');
-          console.log('[SettingsManager] 文件写入成功（简化方式）');
         } else {
           // 没有新键，使用 jsonc-parser 保留注释
           let newContent = existingContent;
@@ -719,9 +655,7 @@ export class SettingsManager extends EventEmitter {
             }
           }
           
-          console.log('[SettingsManager] 准备写入文件，路径:', this.userSettingsPath);
           await fs.writeFile(this.userSettingsPath, newContent, 'utf-8');
-          console.log('[SettingsManager] 文件写入成功（保留注释方式）');
         }
         
         // 验证写入是否成功
@@ -731,14 +665,6 @@ export class SettingsManager extends EventEmitter {
             const errors: jsonc.ParseError[] = [];
             const verifyParsed = jsonc.parse(verifyContent, errors);
             if (verifyParsed && errors.length === 0) {
-              console.log('[SettingsManager] 验证：文件中的键:', Object.keys(verifyParsed || {}));
-              if ('background-image' in verifyParsed) {
-                console.log('[SettingsManager] ✅ 验证成功：background-image 配置已写入文件');
-                console.log('[SettingsManager] background-image 值:', JSON.stringify(verifyParsed['background-image'], null, 2));
-              } else {
-                console.error('[SettingsManager] ❌ 验证失败：background-image 配置未找到');
-                console.error('[SettingsManager] 文件内容预览:', verifyContent.substring(0, 500));
-              }
             } else {
               console.warn('[SettingsManager] 验证：文件解析失败，但文件已写入');
             }
@@ -989,7 +915,6 @@ export class SettingsManager extends EventEmitter {
       }
       
       await this.updateMany(imported, target);
-      console.log('[SettingsManager] 设置导入成功');
     } catch (error) {
       console.error('[SettingsManager] 导入设置失败:', error);
       throw error;

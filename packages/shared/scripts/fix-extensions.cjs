@@ -36,6 +36,17 @@ const distDir = path.join(__dirname, '..', 'dist', 'esm');
 if (fs.existsSync(distDir)) {
   console.log('正在修复 ES 模块导入扩展名...');
   fixImportExtensions(distDir);
+  
+  // 创建 package.json 文件以支持 ES 模块
+  const packageJsonPath = path.join(distDir, 'package.json');
+  const packageJson = {
+    type: 'module',
+    main: './index.js',
+    types: './index.d.ts'
+  };
+  fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf8');
+  console.log('已创建 dist/esm/package.json');
+  
   console.log('完成！');
 }
 

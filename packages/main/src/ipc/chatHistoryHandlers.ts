@@ -15,11 +15,8 @@ let isRegistered = false;
 export function registerChatHistoryHandlers(): void {
   // 防止重复注册
   if (isRegistered) {
-    console.log('[IPC] 聊天历史处理器已注册，跳过重复注册');
     return;
   }
-
-  console.log('[IPC] 注册聊天历史处理器...');
 
   // 清理旧的处理器
   const handlersToRemove = [
@@ -139,7 +136,6 @@ export function registerChatHistoryHandlers(): void {
     }
   });
 
-  console.log('[IPC] 聊天历史处理器注册完成');
 }
 
 

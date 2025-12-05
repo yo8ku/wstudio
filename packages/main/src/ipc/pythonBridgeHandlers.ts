@@ -29,70 +29,90 @@ async function loadPythonBridgeModule(): Promise<PythonBridgeType> {
       // 使用 Function 构造函数来创建动态导入，避免 TypeScript 编译为 require()
       const dynamicImport = new Function('specifier', 'return import(specifier)');
       
-      // 尝试使用文件 URL 导入，确保使用 ES 模块
-      let module;
-      try {
-        // 首先尝试使用包名导入
-        module = await dynamicImport('@note-studio/global-rag');
-      } catch (packageError) {
-        // 如果包名导入失败，尝试使用文件路径
-        console.warn('[PythonBridge IPC] 包名导入失败，尝试使用文件路径:', packageError);
-        const path = await import('path');
-        const fs = await import('fs');
-        
-        // 计算全局RAG模块的路径
-        // 在编译后的 CommonJS 代码中，__dirname 可用
-        // 使用 require 来获取 __dirname（在运行时可用）
+      // 直接使用文件路径导入，避免包名解析问题
+      // 在 workspace 环境中，包名解析可能失败，直接使用文件路径更可靠
+      const path = await import('path');
+      const fs = await import('fs');
+      
+      // 计算全局RAG模块的路径
+      // 使用多种方式尝试找到项目根目录，确保路径正确
+      const getProjectRoot = (): string => {
+        // 尝试多个可能的项目根目录路径
         // @ts-ignore - __dirname 在运行时可用（编译后的 CommonJS 代码中）
         const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
         
-        // 尝试多个可能的路径
-        // 实际编译后的路径: packages/main/dist/main/main/src/ipc
-        // 需要向上 7 级到达项目根目录: ../../../../../../ -> 项目根目录
-        const possiblePaths = [
-          // 从项目根目录（最可靠的方式）
-          path.default.resolve(process.cwd(), 'packages/global-rag/dist/index.js'),
-          // 从 packages/main/dist/main/main/src/ipc 到 packages/global-rag/dist/index.js
-          path.default.resolve(currentDir, '../../../../../../packages/global-rag/dist/index.js'),
-          // 从 packages/main/dist/main/src/ipc 到 packages/global-rag/dist/index.js（旧路径，兼容性）
-          path.default.resolve(currentDir, '../../../../../packages/global-rag/dist/index.js'),
+        const possibleRoots = [
+          // 从 __dirname 向上 7 级（到达 packages 目录，然后需要再上一级）
+          path.default.resolve(currentDir, '../../../../../../'),
+          // 从 __dirname 向上 6 级（到达 packages 目录）
+          path.default.resolve(currentDir, '../../../../../'),
+          // 使用 process.cwd()（当前工作目录，通常是项目根）
+          process.cwd(),
         ];
         
-        let globalRagPath: string | undefined;
-        for (const testPath of possiblePaths) {
+        
+        // 查找包含 packages/global-rag/dist/index.js 的根目录
+        for (const root of possibleRoots) {
+          const testPath = path.default.join(root, 'packages', 'global-rag', 'dist', 'index.js');
           if (fs.default.existsSync(testPath)) {
-            globalRagPath = testPath;
-            console.log(`[PythonBridge IPC] 找到 global-rag 模块: ${globalRagPath}`);
-            break;
+            return root;
           }
         }
         
-        if (!globalRagPath) {
-          throw new Error(
-            `Global RAG module not found. Tried paths:\n${possiblePaths.map(p => `  - ${p}`).join('\n')}`
-          );
+        // 如果都找不到，使用 process.cwd() 作为后备
+        console.warn('[PythonBridge IPC] 无法找到项目根目录，使用 process.cwd() 作为后备');
+        return process.cwd();
+      };
+      
+      const projectRoot = getProjectRoot();
+      const possiblePaths = [
+        // 从项目根目录（最可靠的方式）
+        path.default.join(projectRoot, 'packages', 'global-rag', 'dist', 'index.js'),
+        // 兼容旧路径（如果项目根目录计算有误）
+        path.default.resolve(process.cwd(), 'packages/global-rag/dist/index.js'),
+      ];
+      
+      
+      let globalRagPath: string | undefined;
+      for (const testPath of possiblePaths) {
+        if (fs.default.existsSync(testPath)) {
+          globalRagPath = testPath;
+          break;
         }
-        
-        // 转换为 file:// URL（Windows 需要特殊处理）
-        let fileUrl: string;
-        if (process.platform === 'win32') {
-          // Windows: file:///C:/path/to/file.js
-          const normalizedPath = globalRagPath.replace(/\\/g, '/');
-          // 确保路径以 / 开头
-          fileUrl = normalizedPath.startsWith('/') 
-            ? `file://${normalizedPath}` 
-            : `file:///${normalizedPath}`;
-        } else {
-          // Unix: file:///path/to/file.js
-          fileUrl = `file://${globalRagPath}`;
-        }
-        
+      }
+      
+      if (!globalRagPath) {
+        throw new Error(
+          `Global RAG module not found. Tried paths:\n${possiblePaths.map(p => `  - ${p}`).join('\n')}`
+        );
+      }
+      
+      // 转换为 file:// URL（Windows 需要特殊处理）
+      let fileUrl: string;
+      if (process.platform === 'win32') {
+        // Windows: file:///C:/path/to/file.js
+        const normalizedPath = globalRagPath.replace(/\\/g, '/');
+        // 确保路径以 / 开头
+        fileUrl = normalizedPath.startsWith('/') 
+          ? `file://${normalizedPath}` 
+          : `file:///${normalizedPath}`;
+      } else {
+        // Unix: file:///path/to/file.js
+        fileUrl = `file://${globalRagPath}`;
+      }
+      
+      let module;
+      try {
+        module = await dynamicImport(fileUrl);
+      } catch (importError) {
+        // 如果 file:// URL 导入失败，尝试直接使用路径（某些环境可能支持）
+        console.warn('[PythonBridge IPC] file:// URL 导入失败，尝试直接路径:', importError);
         try {
-          module = await dynamicImport(fileUrl);
-        } catch (importError) {
-          // 如果 file:// URL 导入失败，尝试直接使用路径（某些环境可能支持）
-          console.warn('[PythonBridge IPC] file:// URL 导入失败，尝试直接路径:', importError);
           module = await dynamicImport(globalRagPath);
+        } catch (directPathError) {
+          // 如果直接路径也失败，尝试使用包名（最后的后备方案）
+          console.warn('[PythonBridge IPC] 直接路径导入也失败，尝试包名导入:', directPathError);
+          module = await dynamicImport('@note-studio/global-rag');
         }
       }
       
@@ -126,11 +146,9 @@ async function getPythonBridge(): Promise<InstanceType<PythonBridgeType>> {
 export function registerPythonBridgeHandlers(): void {
   // 防止重复注册
   if (isRegistered) {
-    console.log('[PythonBridge IPC] IPC 处理器已注册，跳过重复注册');
     return;
   }
 
-  console.log('[PythonBridge IPC] 开始注册 IPC 处理器...');
 
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = [
@@ -148,7 +166,6 @@ export function registerPythonBridgeHandlers(): void {
     }
   }
 
-  console.log('[PythonBridge IPC] 已清理旧的 IPC 处理器');
   isRegistered = true;
 
   // 在应用启动时静默后台检查 Python 依赖

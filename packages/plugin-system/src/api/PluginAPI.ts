@@ -40,6 +40,9 @@ export interface PluginAPI {
 
   /** 网络API */
   readonly http: HttpAPI;
+
+  /** 设置API */
+  readonly settings: SettingsAPI;
 }
 
 /**
@@ -163,5 +166,16 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   /** 超时时间(ms) */
   timeout?: number;
+}
+
+/**
+ * 设置API
+ */
+export interface SettingsAPI {
+  /** 获取设置值 */
+  get<T = any>(key: string, defaultValue?: T): Promise<T | undefined>;
+
+  /** 更新设置值 */
+  update(key: string, value: any): Promise<void>;
 }
 

@@ -15,11 +15,8 @@ let isRegistered = false;
 export function registerSnippetHandlers(): void {
   // 防止重复注册
   if (isRegistered) {
-    console.log('[Snippet IPC] IPC 处理器已注册，跳过重复注册');
     return;
   }
-  
-  console.log('[Snippet IPC] 开始注册 IPC 处理器...');
   
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = [
@@ -35,7 +32,6 @@ export function registerSnippetHandlers(): void {
     }
   }
   
-  console.log('[Snippet IPC] 已清理旧的 IPC 处理器');
   isRegistered = true;
   
   const db = getSnippetDatabase();

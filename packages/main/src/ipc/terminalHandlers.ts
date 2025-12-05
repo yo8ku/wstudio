@@ -92,7 +92,6 @@ export function registerTerminalHandlers(service: TerminalService): void {
   });
 
   handlersRegistered = true;
-  console.log('[Terminal IPC] 终端 IPC 处理器注册完成');
 }
 
 /**

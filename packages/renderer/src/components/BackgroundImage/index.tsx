@@ -305,8 +305,6 @@ const BackgroundImage: React.FC = () => {
       }
 
       const updatedConfig = updatedConfigRaw as Partial<BackgroundConfig>;
-      console.log('[BackgroundImage] ========== 收到配置更新事件 ==========');
-      console.log('[BackgroundImage] 原始配置数据:', updatedConfig);
 
       const configWithLocalFileUrl: BackgroundConfig = {
         imagePath: updatedConfig.imagePath
@@ -331,18 +329,12 @@ const BackgroundImage: React.FC = () => {
         enabled: Boolean(updatedConfig.enabled && updatedConfig.imagePath),
       };
 
-      console.log('[BackgroundImage] 转换后的配置:', configWithLocalFileUrl);
       setConfig(configWithLocalFileUrl);
-      console.log('[BackgroundImage] 配置已更新到 store');
-      console.log('[BackgroundImage] ======================================');
     };
 
-    console.log('[BackgroundImage] ========== 注册事件监听器 ==========');
     ipcRenderer.on('background-image:config-updated', handleConfigUpdated);
-    console.log('[BackgroundImage] 事件监听器已注册');
 
     setTimeout(() => {
-      console.log('[BackgroundImage] 发送 renderer-ready 事件');
       ipcRenderer.send('background-image:renderer-ready');
     }, 200);
 

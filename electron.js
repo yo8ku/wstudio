@@ -61,7 +61,6 @@ function createWindow(backgroundColor = '#1e1e1e') {
   });
 
   // 开发模式：加载 Vite 开发服务器
-  console.log('[Electron] NODE_ENV:', process.env.NODE_ENV);
   if (process.env.NODE_ENV === 'development') {
     console.log('[Electron] 开发模式：加载 Vite 开发服务器 http://localhost:5173');
     mainWindow.loadURL('http://localhost:5173');
@@ -99,7 +98,6 @@ function createWindow(backgroundColor = '#1e1e1e') {
  * 应用程序就绪后初始化
  */
 app.whenReady().then(async () => {
-  console.log('[Electron] 应用程序启动');
   
   // 全局设置 Content Security Policy (CSP)
   // 必须在创建窗口之前设置，以确保所有请求都应用 CSP
@@ -202,13 +200,10 @@ app.whenReady().then(async () => {
       }
     });
 
-    console.log('[Electron] 解码后的路径段:', decodedParts);
 
     const decodedPath = decodedParts.join('/');
-    console.log('[Electron] 连接后的路径:', decodedPath);
 
     const normalizedPath = path.normalize(decodedPath);
-    console.log('[Electron] 路径规范化后:', normalizedPath);
     return normalizedPath;
   };
 
@@ -219,27 +214,21 @@ app.whenReady().then(async () => {
       try {
         const fileUrl = toFileUrl(request.url, protocolName);
         resolvedPath = fileURLToPath(fileUrl);
-        console.log('[Electron] fileURLToPath 解析路径:', resolvedPath);
       } catch (parseError) {
-        console.warn('[Electron] fileURLToPath 解析失败，使用手动解析:', parseError);
         resolvedPath = decodePathFromCustomProtocol(request.url, protocolName);
       }
 
       const fsPath = ensureExtendedLengthPath(resolvedPath);
       if (fsPath !== resolvedPath) {
-        console.log('[Electron] 使用扩展长度路径访问:', fsPath);
       }
       
       // 检查文件是否存在
       if (fs.existsSync(fsPath)) {
-        console.log('[Electron]  文件存在，返回路径:', resolvedPath);
         return callback({ path: fsPath });
       } else {
-        console.error('[Electron]  文件不存在:', resolvedPath);
         return callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
       }
     } catch (error) {
-      console.error('[Electron]  加载本地文件失败:', error);
       return callback({ error: -2 }); // net::ERR_FAILED
     }
   };
@@ -254,7 +243,6 @@ app.whenReady().then(async () => {
   
   // ⚡ 先初始化扩展系统（注册所有 IPC 处理器）
   // 注意：必须在创建窗口之前注册 IPC 处理器，否则渲染进程会收到 "No handler registered" 错误
-  console.log('[Electron] 开始初始化扩展系统（注册 IPC 处理器）...');
   try {
     await initializeExtensions(null); // 暂时不传递窗口，先注册 IPC 处理器
     console.log('[Electron]  扩展系统初始化成功（IPC 处理器已注册）');
@@ -265,19 +253,15 @@ app.whenReady().then(async () => {
     
     // 创建窗口
     createWindow(backgroundColor);
-    console.log('[Electron]  主窗口已创建');
 
     // 再次初始化扩展系统，这次传入主窗口以创建 PluginAPIAdapter
-    console.log('[Electron] 创建 PluginAPIAdapter...');
     await initializeExtensions(mainWindow);
-    console.log('[Electron]  PluginAPIAdapter 已创建');
     
     // 检查内置AI服务状态
     const models = builtinAI.getAvailableModels();
     console.log('[Electron] 📦 内置AI可用模型数量:', models.length);
     
     // 🎉 所有初始化完成，通知渲染进程
-    console.log('[Electron]  主进程初始化全部完成，等待渲染进程加载...');
   } catch (error) {
     console.error('[Electron]  扩展系统初始化失败:', error);
     // 即使失败也创建窗口（避免应用卡住），但避免重复创建

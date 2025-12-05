@@ -354,10 +354,8 @@ export class PythonBridge {
             .filter((p, index, self) => self.indexOf(p) === index);
         let requirementsPath;
         for (const testPath of absolutePaths) {
-            console.log(`[PythonBridge] 检查 requirements.txt: ${testPath}`);
             if (fsModule.existsSync && fsModule.existsSync(testPath)) {
                 requirementsPath = testPath;
-                console.log(`[PythonBridge] 找到 requirements.txt: ${requirementsPath}`);
                 break;
             }
         }
@@ -367,7 +365,6 @@ export class PythonBridge {
         }
         // 检查依赖是否已安装（通过尝试导入实际需要的模块）
         try {
-            console.log('[PythonBridge] 检查 Python 依赖是否已安装...');
             // Build Python check script
             // Try new location first, fallback to old location
             const pythonCheckScript = `try:
@@ -395,7 +392,6 @@ except ImportError:
 `;
             const result = await this.executePythonScript(pythonExecutable, pythonCheckScript, path, childProcess, fsModule);
             if (result && result.trim() === 'OK') {
-                console.log('[PythonBridge] Python 依赖已安装');
                 return;
             }
             else {
@@ -408,10 +404,6 @@ except ImportError:
             const errorOutput = error instanceof Error && 'stderr' in error
                 ? error.stderr?.toString() || ''
                 : '';
-            console.log(`[PythonBridge] Python 依赖未安装或不完整，开始安装...`);
-            if (errorOutput) {
-                console.log(`[PythonBridge] 依赖检查错误详情: ${errorOutput}`);
-            }
         }
         // 如果没有找到 requirements.txt，无法安装依赖
         if (!requirementsPath) {
@@ -439,7 +431,6 @@ except ImportError:
         }
         // 先升级 pip（使用 python -m pip 更可靠）
         try {
-            console.log('[PythonBridge] 升级 pip...');
             // 让出控制权给 UI
             await yieldToUI();
             const upgradeCommand = `"${pythonExecutable}" -m pip install --upgrade pip --quiet`;
@@ -461,7 +452,6 @@ except ImportError:
         }
         // 安装依赖
         try {
-            console.log(`[PythonBridge] 使用 pip 安装依赖: ${requirementsPath}`);
             // 确保使用绝对路径
             const absoluteRequirementsPath = path.isAbsolute(requirementsPath)
                 ? requirementsPath
@@ -469,9 +459,6 @@ except ImportError:
             // 使用 python -m pip 更可靠，特别是在 Windows 上
             // 添加 --no-cache-dir 避免缓存问题，添加 --upgrade 确保安装最新版本
             const installCommand = `"${pythonExecutable}" -m pip install -r "${absoluteRequirementsPath}" --upgrade --no-cache-dir`;
-            console.log(`[PythonBridge] 执行命令: ${installCommand}`);
-            console.log(`[PythonBridge] 工作目录: ${scriptDir}`);
-            console.log(`[PythonBridge] requirements.txt 绝对路径: ${absoluteRequirementsPath}`);
             // 让出控制权给 UI（依赖安装可能需要较长时间）
             await yieldToUI();
             await execAsync(installCommand, {
@@ -487,7 +474,6 @@ except ImportError:
             // 让出控制权给 UI
             await yieldToUI();
             // Verify dependencies after installation
-            console.log('[PythonBridge] 验证依赖安装...');
             const pythonVerifyScript = `try:
     # Try importing from new location (langchain 0.2+)
     import langchain_text_splitters
@@ -653,7 +639,6 @@ except ImportError:
         let pythonExecutable;
         try {
             pythonExecutable = await detectPythonExecutable();
-            console.log(`[PythonBridge] 检测到 Python 可执行文件: ${pythonExecutable}`);
             // 让出控制权给 UI
             await yieldToUI();
         }
@@ -668,7 +653,6 @@ except ImportError:
             if (!fsModule.existsSync || !fsModule.existsSync(pythonScriptPath)) {
                 throw new Error(`Python 脚本不存在: ${pythonScriptPath}`);
             }
-            console.log(`[PythonBridge] Python 脚本路径: ${pythonScriptPath}`);
         }
         catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -679,7 +663,6 @@ except ImportError:
         // 在启动服务之前，确保依赖已安装
         // 这可以避免服务启动时因为缺少依赖而失败
         try {
-            console.log('[PythonBridge] 检查 Python 依赖...');
             await this.ensureDependenciesInstalled(pythonExecutable, pythonScriptPath, path, await getChildProcessModule(), fsModule);
             console.log('[PythonBridge] Python 依赖检查完成');
         }
@@ -688,7 +671,6 @@ except ImportError:
             console.warn(`[PythonBridge] 依赖检查失败，但继续启动服务: ${errorMessage}`);
             // 不抛出错误，继续启动服务（依赖可能已经安装，只是检查失败）
         }
-        console.log('[PythonBridge] 准备启动服务');
         // 监听 spawn 错误事件（ENOENT 等错误会通过这个事件触发）
         // 必须在 spawn 之前创建 Promise，确保 error 监听器能立即设置
         return new Promise((resolve, reject) => {
@@ -745,18 +727,12 @@ except ImportError:
                     PYTHONIOENCODING: 'utf-8',
                     PYTHONUNBUFFERED: '1',
                 };
-                console.log(`[PythonBridge] 准备启动 Python 进程...`);
-                console.log(`[PythonBridge] 可执行文件: ${pythonExecutable}`);
-                console.log(`[PythonBridge] 脚本参数: ${pythonScriptPath}`);
-                console.log(`[PythonBridge] 工作目录: ${path.dirname(pythonScriptPath)}`);
-                console.log(`[PythonBridge] PATH 环境变量: ${spawnEnv.PATH?.substring(0, 200)}...`);
                 this.process = childProcess.spawn(pythonExecutable, [pythonScriptPath], {
                     stdio: ['pipe', 'pipe', 'pipe'],
                     cwd: path.dirname(pythonScriptPath),
                     env: spawnEnv,
                 });
                 const processPid = this.process.pid ?? 'unknown';
-                console.log(`[PythonBridge] Python 进程已创建，PID: ${processPid}`);
                 // 立即同步设置 error 监听器（必须在下一个事件循环之前）
                 this.process.on('error', errorHandler);
             }

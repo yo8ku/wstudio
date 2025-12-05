@@ -1,4 +1,4 @@
-/**
+/**yu dark 
  * 背景图片管理器
  * 负责管理背景图片的设置、更新和移除（仅配置管理，DOM 操作在渲染进程）
  */
@@ -7,7 +7,6 @@ import type { PluginAPI } from './plugin-api';
 import type { BackgroundImageConfig } from './types';
 import { DEFAULT_CONFIG } from './types';
 import * as fs from 'fs';
-import * as path from 'path';
 import * as path from 'path';
 
 interface SettingsResponse<T> {
@@ -49,14 +48,6 @@ export class BackgroundManager {
   async initialize(): Promise<void> {
     // 从 settings.json 加载配置
     await this.loadConfig();
-    
-    // 不在这里立即通知渲染进程，因为渲染进程可能还没有准备好
-    // 等待渲染进程发送 'background-image:renderer-ready' 事件后再发送配置
-    console.log('[BackgroundManager] 配置已加载:', {
-      enabled: this.config.enabled,
-      hasImagePath: !!this.config.imagePath,
-      imagePath: this.config.imagePath
-    });
   }
 
   /**
@@ -69,17 +60,12 @@ export class BackgroundManager {
       // 优先从 settings.json 读取配置
       const settingsConfigRaw = await this.api.settings.get<BackgroundImageConfig>('background-image');
       const settingsConfig = this.extractSettingsData(settingsConfigRaw);
-      console.log('[BackgroundManager] 从 settings.json 读取的配置:', settingsConfig);
-      
       // 检查配置是否有效（不仅仅是 truthy，还要检查是否是对象且有内容）
       if (settingsConfig && typeof settingsConfig === 'object' && Object.keys(settingsConfig).length > 0) {
-        console.log('[BackgroundManager] 检测到有效的 settings.json 配置');
         // 验证并修复不合理的配置值（validateConfig 会确保所有字段都存在）
         const validatedConfig = this.validateConfig(settingsConfig);
-        console.log('[BackgroundManager] 验证后的配置:', validatedConfig);
         // 直接使用验证后的配置（validateConfig 已经确保所有字段都存在）
         this.config = validatedConfig;
-        console.log('[BackgroundManager] 最终配置:', this.config);
         
         // 如果配置被修复或缺少字段，保存完整的配置
         // 使用深度比较，检查配置是否真的发生了变化
@@ -96,69 +82,33 @@ export class BackgroundManager {
                                (settingsConfig.sourcePath && String(settingsConfig.sourcePath).trim() !== '' && 
                                 (!validatedConfig.sourcePath || String(validatedConfig.sourcePath).trim() === ''));
         
-        console.log('[BackgroundManager] 配置比较:', {
-          originalImagePath,
-          validatedImagePath,
-          hadLocalFileProtocol,
-          fileWasRemoved,
-          needsUpdate
-        });
-        
         if (needsUpdate || hadLocalFileProtocol || fileWasRemoved) {
-          console.log('[BackgroundManager] 配置被修复或补充，保存完整配置');
-          console.log('[BackgroundManager] 原始配置:', originalStr);
-          console.log('[BackgroundManager] 修复后配置:', validatedStr);
-          if (hadLocalFileProtocol) {
-            console.log('[BackgroundManager] 检测到 local-file:// 格式路径，需要保存转换后的配置');
-          }
-          if (fileWasRemoved) {
-            console.log('[BackgroundManager] 检测到文件不存在，需要保存清空后的配置');
-            console.log('[BackgroundManager] 原始 imagePath:', originalImagePath);
-            console.log('[BackgroundManager] 修复后 imagePath:', validatedImagePath);
-          }
           // 保存修复后的配置（包括文件不存在时清空的配置）
           await this.api.settings.update('background-image', this.config);
-          console.log('[BackgroundManager] 配置已保存，新的配置:', JSON.stringify(this.config, null, 2));
-          // 配置被修复后，不在这里立即通知渲染进程
-          // 因为此时渲染进程可能还没有准备好
-          // 等待渲染进程发送 'background-image:renderer-ready' 事件后再发送配置
-        } else {
-          console.log('[BackgroundManager] 配置无需更新');
-        }
-        console.log('[BackgroundManager] ========== 配置加载完成 ==========');
+        } 
         return;
       }
       
-      console.log('[BackgroundManager] settings.json 中没有有效配置，尝试从旧存储读取');
       
       // 向后兼容：从旧的插件存储读取
       const storageConfig = await this.api.storage.get<BackgroundImageConfig>('backgroundImageConfig');
-      console.log('[BackgroundManager] 从旧存储读取的配置:', storageConfig);
-      
       if (storageConfig && typeof storageConfig === 'object' && Object.keys(storageConfig).length > 0) {
-        console.log('[BackgroundManager] 检测到有效的旧存储配置，开始迁移');
         // 验证并修复不合理的配置值（validateConfig 会确保所有字段都存在）
         const validatedConfig = this.validateConfig(storageConfig);
         // 直接使用验证后的配置（validateConfig 已经确保所有字段都存在）
         this.config = validatedConfig;
         // 迁移到 settings.json
         await this.api.settings.update('background-image', this.config);
-        console.log('[BackgroundManager] 配置已迁移到 settings.json');
         // 配置迁移后，不在这里立即通知渲染进程
         // 因为此时渲染进程可能还没有准备好
         // 等待渲染进程发送 'background-image:renderer-ready' 事件后再发送配置
-        console.log('[BackgroundManager] ========== 配置加载完成 ==========');
         return;
       }
       
-      console.log('[BackgroundManager] 没有找到任何已保存的配置，使用默认配置');
-      console.log('[BackgroundManager] 默认配置:', DEFAULT_CONFIG);
-      console.log('[BackgroundManager] ========== 配置加载完成 ==========');
     } catch (error) {
-      console.error('[BackgroundManager] 加载配置时发生错误:', error);
       // 发生错误时使用默认配置
       this.config = { ...DEFAULT_CONFIG };
-      console.error('[BackgroundManager] 已回退到默认配置');
+      console.error('[BackgroundManager] 加载配置时发生错误，已回退到默认配置',error);
     }
   }
 
@@ -225,16 +175,12 @@ export class BackgroundManager {
     // 处理 imagePath：如果它是 local-file:// 格式，转换为原始路径
     let imagePath = config.imagePath !== undefined ? String(config.imagePath) : DEFAULT_CONFIG.imagePath;
     if (imagePath && imagePath.startsWith('local-file://')) {
-      console.log('[BackgroundManager] 检测到 local-file:// 格式的路径，转换为原始路径:', imagePath);
       imagePath = this.convertFromLocalFileUrl(imagePath);
-      console.log('[BackgroundManager] 转换后的原始路径:', imagePath);
     }
     
     let sourcePath = config.sourcePath !== undefined ? String(config.sourcePath) : imagePath;
     if (sourcePath && sourcePath.startsWith('local-file://')) {
-      console.log('[BackgroundManager] 检测到 local-file:// 格式的 sourcePath，转换为原始路径:', sourcePath);
       sourcePath = this.convertFromLocalFileUrl(sourcePath);
-      console.log('[BackgroundManager] 转换后的原始 sourcePath:', sourcePath);
     }
     
     // 确保所有必需的字段都存在
@@ -272,7 +218,6 @@ export class BackgroundManager {
     if (validated.imagePath && validated.imagePath.trim() !== '') {
       try {
         const normalizedPath = path.normalize(validated.imagePath);
-        console.log(`[BackgroundManager] 检查文件是否存在: ${normalizedPath}`);
         validated.imagePath = normalizedPath;
         
         if (!fs.existsSync(normalizedPath)) {
@@ -282,9 +227,7 @@ export class BackgroundManager {
           if (!validated.sourcePath || validated.sourcePath.trim() === '') {
             validated.sourcePath = normalizedPath;
           }
-        } else {
-          console.log(`[BackgroundManager] 图片文件存在: ${normalizedPath}`);
-        }
+        } 
       } catch (error) {
         console.warn(`[BackgroundManager] 检查文件存在性失败，暂时禁用背景: ${validated.imagePath}`, error);
         validated.enabled = false;
@@ -294,13 +237,11 @@ export class BackgroundManager {
     // 如果 imagePath 存在但 enabled 为 false，自动启用背景
     // 这可以修复配置不一致的问题（比如用户设置了图片但忘记启用）
     if (validated.imagePath && validated.imagePath.trim() !== '' && !validated.enabled) {
-      console.log(`[BackgroundManager] 检测到 imagePath 存在但 enabled 为 false，自动启用背景`);
       validated.enabled = true;
     }
     
     // 如果 enabled 为 true 但 imagePath 为空，自动禁用背景
     if (validated.enabled && (!validated.imagePath || validated.imagePath.trim() === '')) {
-      console.log(`[BackgroundManager] 检测到 enabled 为 true 但 imagePath 为空，自动禁用背景`);
       validated.enabled = false;
     }
     
@@ -312,21 +253,15 @@ export class BackgroundManager {
    */
   private async saveConfig(): Promise<void> {
     try {
-      console.log('[BackgroundManager] ========== 开始保存配置 ==========');
-      console.log('[BackgroundManager] 要保存的配置:', JSON.stringify(this.config, null, 2));
       
       // 1. 保存到 settings.json
       await this.api.settings.update('background-image', this.config);
-      console.log('[BackgroundManager] 配置已保存到 settings.json');
       
       // 验证保存是否成功
       const savedConfigRaw = await this.api.settings.get<BackgroundImageConfig>('background-image');
-      const savedConfig = this.extractSettingsData(savedConfigRaw);
-      console.log('[BackgroundManager] 验证保存的配置:', JSON.stringify(savedConfig, null, 2));
-      
+      this.extractSettingsData(savedConfigRaw);
       // 2. 通知渲染进程应用背景
       this.notifyRenderer();
-      console.log('[BackgroundManager] ========== 配置保存完成 ==========');
     } catch (error) {
       console.error('[BackgroundManager] 保存配置失败:', error);
       throw error; // 重新抛出错误，让调用者知道保存失败
@@ -533,14 +468,10 @@ export class BackgroundManager {
     // 如果 imagePath 是 local-file:// 格式，转换为原始路径再保存
     const configToSave = { ...partialConfig };
     if (configToSave.imagePath && configToSave.imagePath.startsWith('local-file://')) {
-      console.log('[BackgroundManager] 检测到 local-file:// 格式的路径，转换为原始路径:', configToSave.imagePath);
       configToSave.imagePath = this.convertFromLocalFileUrl(configToSave.imagePath);
-      console.log('[BackgroundManager] 转换后的原始路径:', configToSave.imagePath);
     }
     if (configToSave.sourcePath && configToSave.sourcePath.startsWith('local-file://')) {
-      console.log('[BackgroundManager] 检测到 local-file:// 格式的 sourcePath，转换为原始路径:', configToSave.sourcePath);
       configToSave.sourcePath = this.convertFromLocalFileUrl(configToSave.sourcePath);
-      console.log('[BackgroundManager] 转换后的 sourcePath:', configToSave.sourcePath);
     }
     
     this.config = { ...this.config, ...configToSave };
@@ -585,12 +516,9 @@ export class BackgroundManager {
       if (sourcePath && sourcePath.trim() !== '') {
         try {
           if (fs.existsSync(sourcePath)) {
-            console.warn('[BackgroundManager] imagePath 不存在，回退到 sourcePath');
             return sourcePath;
           }
-        } catch (e) {
-          console.warn('[BackgroundManager] 检查 sourcePath 存在性失败:', sourcePath, e);
-        }
+        } catch (e) {}
       }
     } catch (error) {
       console.error('[BackgroundManager] getExistingImagePath 发生错误:', error);

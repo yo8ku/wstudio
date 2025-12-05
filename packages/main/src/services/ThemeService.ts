@@ -68,7 +68,6 @@ export class ThemeService {
 
       this.initialized = true;
       // console.log('[ThemeService] 初始化完成');
-      console.log('[ThemeService] 已加载主题数量:', this.themes.size);
     } catch (error) {
       console.error('[ThemeService] 初始化失败:', error);
       throw error;
@@ -90,7 +89,6 @@ export class ThemeService {
         await fs.access(dir);
       } catch {
         await fs.mkdir(dir, { recursive: true });
-        console.log('[ThemeService] 创建目录:', dir);
       }
     }
   }
@@ -123,7 +121,6 @@ export class ThemeService {
         try {
           await fs.access(testPath);
           projectRoot = root;
-          console.log('[ThemeService] 找到项目根目录:', projectRoot);
           break;
         } catch {
           // 继续尝试下一个路径
@@ -136,7 +133,6 @@ export class ThemeService {
         console.warn('[ThemeService] 无法自动检测项目根目录，使用 process.cwd():', projectRoot);
       }
       
-      console.log('[ThemeService] 计算的项目根目录:', projectRoot);
       const builtinDir = path.join(projectRoot, 'packages', 'theme', 'themes', 'builtin');
       // console.log('[ThemeService] 内置主题目录:', builtinDir);
       // console.log('[ThemeService] =====================================');
@@ -144,9 +140,7 @@ export class ThemeService {
       // 检查目录是否存在
       try {
         await fs.access(builtinDir);
-        console.log('[ThemeService] ✅ 内置主题目录存在');
       } catch (error) {
-        console.warn('[ThemeService] ❌ 内置主题目录不存在，跳过加载');
         console.warn('[ThemeService] 错误:', error);
         return;
       }
@@ -237,7 +231,6 @@ export class ThemeService {
             // 这是一个覆盖文件
             // 文件名 = 主题ID.json
             const baseThemeId = path.basename(file, '.json');
-            console.log(`[ThemeService] 发现覆盖文件: ${file} -> 基础主题: ${baseThemeId}`);
             
             // 查找对应的内置主题
             const baseTheme = this.themes.get(baseThemeId);
@@ -251,7 +244,6 @@ export class ThemeService {
               
               // 更新主题颜色
               baseTheme.colors = mergedColors;
-              console.log(`[ThemeService] ✓ 已应用 ${Object.keys(overrideColors).length} 个颜色覆盖到主题: ${baseTheme.name}`);
             } else {
               console.warn(`[ThemeService] 未找到对应的内置主题: ${baseThemeId}`);
             }
@@ -260,7 +252,6 @@ export class ThemeService {
             const theme = await this.loadThemeFile(themePath);
             if (theme) {
               this.themes.set(theme.id, theme);
-              console.log(`[ThemeService] ✓ 加载自定义主题: ${theme.name}`);
             }
           }
         } catch (error) {
@@ -268,7 +259,6 @@ export class ThemeService {
         }
       }
 
-      console.log('[ThemeService] 用户主题覆盖加载完成');
     } catch (error) {
       console.warn('[ThemeService] 加载用户主题目录失败:', error);
     }
@@ -278,9 +268,7 @@ export class ThemeService {
    * 重新加载用户主题（用于手动刷新）
    */
   async reloadUserThemes(): Promise<void> {
-    console.log('[ThemeService] 重新加载用户主题...');
     await this.loadUserThemes();
-    console.log('[ThemeService] 用户主题重新加载完成，当前主题总数:', this.themes.size);
   }
 
   /**
@@ -321,9 +309,7 @@ export class ThemeService {
         // 如果生成的 ID 只包含特殊字符（如全中文文件名），使用时间戳
         if (/^[-_]+$/.test(generatedId) || generatedId.length === 0) {
           generatedId = `user-theme-${Date.now()}`;
-          console.log(`[ThemeService] 文件名无法生成有效 ID，使用时间戳: ${generatedId}`);
-        } else {
-          console.log(`[ThemeService] 主题文件未指定 id，从文件名生成: ${generatedId}`);
+         
         }
         
         id = generatedId;
@@ -334,7 +320,6 @@ export class ThemeService {
       let baseTokenColors: any[] = [];
       
       if (themeData.baseTheme) {
-        console.log(`[ThemeService] 主题 ${themeData.name} 尝试基于主题: ${themeData.baseTheme}`);
         
         // 支持通过 ID 或名称查找基础主题
         let baseTheme = this.themes.get(themeData.baseTheme);
@@ -347,14 +332,9 @@ export class ThemeService {
         }
         
         if (baseTheme) {
-          console.log(`[ThemeService] 找到基础主题: ${baseTheme.name} (${baseTheme.id})`);
-          console.log(`[ThemeService] 继承颜色数量: ${Object.keys(baseTheme.colors).length}`);
           baseColors = { ...baseTheme.colors };
           baseTokenColors = [...(baseTheme.tokenColors || [])];
-        } else {
-          console.log(`[ThemeService] 未找到基础主题: ${themeData.baseTheme}，使用独立主题模式`);
-          // 不输出警告，因为主题可以是完全独立的
-        }
+        } 
       } else {
         // console.log(`[ThemeService] 主题 ${themeData.name} 是独立主题（不基于任何基础主题）`);
       }
@@ -373,11 +353,7 @@ export class ThemeService {
       const finalColorCount = Object.keys(mergedColors).length;
       const customColorCount = Object.keys(themeData.colors || {}).length;
       
-      console.log(`[ThemeService] 主题 ${themeData.name} 最终颜色数量: ${finalColorCount}`);
-      if (baseColors && Object.keys(baseColors).length > 0) {
-        console.log(`[ThemeService] - 继承自基础主题: ${Object.keys(baseColors).length}`);
-      }
-      console.log(`[ThemeService] - 自定义颜色: ${customColorCount}`);
+
       
       // 构建完整的主题对象，添加元数据
       const theme: AppTheme = {
@@ -420,22 +396,12 @@ export class ThemeService {
     const filePath = path.join(dir, `${theme.id}.json`);
 
     console.log('[ThemeService] 准备保存主题文件');
-    console.log('[ThemeService] - 主题目录:', this.themesDir);
-    console.log('[ThemeService] - Source:', source);
-    console.log('[ThemeService] - 目标目录:', dir);
-    console.log('[ThemeService] - 文件路径:', filePath);
-    console.log('[ThemeService] - 主题 ID:', theme.id);
-    console.log('[ThemeService] - 主题名称:', theme.name);
-    console.log('[ThemeService] - 基础主题:', theme.baseTheme || '无');
-
     try {
       // 确保目录存在
       try {
         await fs.access(dir);
       } catch {
-        console.log('[ThemeService] 目录不存在，正在创建:', dir);
         await fs.mkdir(dir, { recursive: true });
-        console.log('[ThemeService] 目录创建成功');
       }
       
       // 过滤掉元数据字段
@@ -467,7 +433,6 @@ export class ThemeService {
         }
         
         if (baseTheme) {
-          console.log('[ThemeService] 检测到基础主题，只保存自定义字段');
           
           // 只保存与基础主题不同的颜色
           const customColors: Record<string, string> = {};
@@ -477,8 +442,6 @@ export class ThemeService {
             }
           }
           
-          console.log(`[ThemeService] - 总颜色数: ${Object.keys(theme.colors).length}`);
-          console.log(`[ThemeService] - 自定义颜色数: ${Object.keys(customColors).length}`);
           
           // 构建自定义主题配置（只保留核心字段）
           cleanTheme = {
@@ -527,7 +490,6 @@ export class ThemeService {
         }
       } else {
         // 没有基础主题，保存完整配置，但只保留核心字段
-        console.log('[ThemeService] 无基础主题，保存完整配置');
         cleanTheme = {
           name: theme.name,
           type: theme.type,
@@ -553,7 +515,6 @@ export class ThemeService {
       const content = JSON.stringify(cleanTheme, null, 2);
       await fs.writeFile(filePath, content, 'utf-8');
       console.log('[ThemeService] 主题已保存到文件:', filePath);
-      console.log('[ThemeService] 保存的主题内容预览:', content.substring(0, 300));
     } catch (error) {
       console.error('[ThemeService] 保存主题失败:', error);
       throw error;
@@ -669,7 +630,6 @@ export class ThemeService {
       };
 
       this.store.set('theme-config', config);
-      console.log('[ThemeService] 自定义颜色已更新');
       return true;
     } catch (error) {
       console.error('[ThemeService] 设置自定义颜色失败:', error);
@@ -717,10 +677,6 @@ export class ThemeService {
     themeData: Partial<AppTheme> & { id?: string; name: string },
     options?: { setAsActive?: boolean }
   ): Promise<{ success: boolean; error?: string; data?: ThemeData }> {
-    console.log('[ThemeService] ========== 开始保存主题 ==========');
-    console.log('[ThemeService] 接收到的主题数据:', JSON.stringify(themeData, null, 2));
-    console.log('[ThemeService] 选项:', options);
-    
     try {
       // 检查主题名称是否为空
       if (!themeData.name || themeData.name.trim() === '') {
@@ -735,22 +691,10 @@ export class ThemeService {
       // 优先使用提供的 id，如果没有则从名称生成
       const providedId = themeData.id;
       const generatedId = providedId || this.generateThemeId(themeData.name);
-      console.log('[ThemeService] 主题 ID:', generatedId);
-      if (providedId) {
-        console.log('[ThemeService] - 使用提供的 ID:', providedId);
-      } else {
-        console.log('[ThemeService] - 从名称生成 ID');
-      }
       
       // 检查是否是更新现有主题
       const existingTheme = this.themes.get(generatedId);
       const isUpdate = !!existingTheme;
-
-      console.log('[ThemeService] 保存模式:', isUpdate ? '更新现有主题' : '创建新主题');
-      if (existingTheme) {
-        console.log('[ThemeService] 找到现有主题:', existingTheme.name);
-      }
-
       // 如果是新建主题，检查 ID 和名称是否重复
       if (!isUpdate) {
         // 检查 ID 是否已存在
@@ -786,11 +730,6 @@ export class ThemeService {
         }
         
         if (baseTheme) {
-          console.log('[ThemeService] 合并基础主题颜色:', themeData.baseTheme);
-          console.log('[ThemeService] - 基础主题 ID:', baseTheme.id);
-          console.log('[ThemeService] - 基础主题颜色数量:', Object.keys(baseTheme.colors).length);
-          console.log('[ThemeService] - 自定义颜色数量:', Object.keys(themeData.colors || {}).length);
-          
           // 合并颜色：基础主题 + 自定义颜色
           finalColors = {
             ...baseTheme.colors,
@@ -802,7 +741,6 @@ export class ThemeService {
             finalTokenColors = baseTheme.tokenColors || [];
           }
           
-          console.log('[ThemeService] - 合并后颜色数量:', Object.keys(finalColors).length);
         } else {
           console.warn('[ThemeService] 未找到基础主题:', themeData.baseTheme);
         }
@@ -828,22 +766,15 @@ export class ThemeService {
       };
 
       // 保存到文件
-      console.log('[ThemeService] 即将调用 saveThemeFile...');
       await this.saveThemeFile(theme, 'user');
-      console.log('[ThemeService] saveThemeFile 调用完成');
 
       // 更新内存中的主题列表
       this.themes.set(theme.id, theme);
-      console.log('[ThemeService] 已更新内存中的主题列表');
 
       // 如果选项指定设置为活动主题
       if (options?.setAsActive) {
-        console.log('[ThemeService] 正在设置为活动主题...');
         await this.setTheme(theme.id);
-        console.log('[ThemeService] 已设置为活动主题');
       }
-
-      console.log('[ThemeService] ✅ 主题保存成功:', theme.id);
 
       return {
         success: true,
@@ -984,8 +915,6 @@ export class ThemeService {
       const latestFile = fileStats[0];
       const content = await fs.readFile(latestFile.filePath, 'utf-8');
 
-      console.log('[ThemeService] 找到最新的用户主题文件:', latestFile.file);
-      console.log('[ThemeService] 修改时间:', latestFile.mtime);
 
       return {
         path: latestFile.filePath,
@@ -1006,10 +935,6 @@ export class ThemeService {
     baseThemeId: string,
     colors: Record<string, string>
   ): Promise<{ success: boolean; error?: string }> {
-    console.log('[ThemeService] ========== 开始保存主题颜色覆盖 ==========');
-    console.log('[ThemeService] 基础主题ID:', baseThemeId);
-    console.log('[ThemeService] 覆盖颜色数量:', Object.keys(colors).length);
-
     try {
       // 验证基础主题是否存在
       const baseTheme = this.themes.get(baseThemeId);
@@ -1036,7 +961,6 @@ export class ThemeService {
 
       // 文件名 = 主题ID.json
       const filePath = path.join(userDir, `${baseThemeId}.json`);
-      console.log('[ThemeService] 覆盖文件路径:', filePath);
 
       // 创建覆盖配置（只包含颜色）
       const overrideConfig = {
@@ -1047,8 +971,6 @@ export class ThemeService {
       await fs.writeFile(filePath, JSON.stringify(overrideConfig, null, 2), 'utf-8');
 
       console.log('[ThemeService] ✅ 主题颜色覆盖保存成功');
-      console.log('[ThemeService] 文件路径:', filePath);
-      console.log('[ThemeService] 覆盖颜色数:', Object.keys(colors).length);
 
       // 重新加载用户主题以应用覆盖
       await this.loadUserThemes();
@@ -1070,7 +992,6 @@ export class ThemeService {
   async getThemeOverride(
     baseThemeId: string
   ): Promise<{ success: boolean; colors?: Record<string, string>; error?: string }> {
-    console.log('[ThemeService] 获取主题颜色覆盖:', baseThemeId);
 
     try {
       const userDir = path.join(this.themesDir, 'user');
@@ -1080,7 +1001,6 @@ export class ThemeService {
       try {
         await fs.access(filePath);
       } catch {
-        console.log('[ThemeService] 覆盖文件不存在:', filePath);
         return { success: true, colors: {} };
       }
 
@@ -1116,7 +1036,6 @@ export class ThemeService {
    * 删除主题颜色覆盖
    */
   async deleteThemeOverride(baseThemeId: string): Promise<{ success: boolean; error?: string }> {
-    console.log('[ThemeService] 删除主题颜色覆盖:', baseThemeId);
 
     try {
       const userDir = path.join(this.themesDir, 'user');
@@ -1126,14 +1045,11 @@ export class ThemeService {
       try {
         await fs.access(filePath);
       } catch {
-        console.log('[ThemeService] 覆盖文件不存在，无需删除');
         return { success: true };
       }
 
       // 删除文件
       await fs.unlink(filePath);
-
-      console.log('[ThemeService] ✅ 主题颜色覆盖删除成功');
 
       // 重新加载用户主题以移除覆盖
       await this.loadUserThemes();

@@ -15,11 +15,8 @@ let isRegistered = false;
 export function registerStoreHandlers(): void {
   // 防止重复注册
   if (isRegistered) {
-    console.log('[Store IPC] IPC 处理器已注册，跳过重复注册');
     return;
   }
-  
-  console.log('[Store IPC] 开始注册 IPC 处理器...');
   
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = [
@@ -34,7 +31,6 @@ export function registerStoreHandlers(): void {
     }
   }
   
-  console.log('[Store IPC] 已清理旧的 IPC 处理器');
   isRegistered = true;
   
   // ==================== electron-store IPC 处理器 ====================

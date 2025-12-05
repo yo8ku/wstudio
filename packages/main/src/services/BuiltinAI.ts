@@ -678,8 +678,6 @@ export class BuiltinAI {
    * 设置IPC通信
    */
   private setupIPC(): void {
-    console.log('[BuiltinAI] 开始设置 IPC 处理器...');
-    
     // 移除已存在的处理器（避免重复注册）
     try {
       ipcMain.removeHandler('builtin-ai:get-models');
@@ -688,10 +686,7 @@ export class BuiltinAI {
       ipcMain.removeHandler('builtin-ai:refresh-models');
       ipcMain.removeHandler('builtin-ai:chat');
       ipcMain.removeHandler('builtin-ai:stream-chat');
-      console.log('[BuiltinAI] 已清理旧的 IPC 处理器');
-    } catch (error) {
-      console.log('[BuiltinAI] 无旧处理器需要清理（首次注册）');
-    }
+    } catch (error) {}
     
     // 获取可用模型列表（合并内置模型和用户配置的模型）
     ipcMain.handle('builtin-ai:get-models', () => {
@@ -701,35 +696,26 @@ export class BuiltinAI {
       console.log('[BuiltinAI]   - 用户配置模型:', this.userConfiguredModels.length);
       return allModels;
     });
-    console.log('[BuiltinAI]  已注册 builtin-ai:get-models');
 
     // 更新用户配置的模型列表（从渲染进程同步）
     ipcMain.handle('builtin-ai:update-user-models', async (_event, models: string[]) => {
-      console.log('[BuiltinAI] 更新用户配置模型列表，数量:', models.length);
-      console.log('[BuiltinAI] 模型列表:', models);
       this.userConfiguredModels = models;
       return { success: true, count: models.length };
     });
-    console.log('[BuiltinAI]  已注册 builtin-ai:update-user-models');
 
     // 更新用户配置的模型详细信息（从渲染进程同步）
     ipcMain.handle('builtin-ai:update-user-model-configs', async (_event, configs: UserModelInfo[]) => {
-      console.log('[BuiltinAI] 更新用户模型配置信息，数量:', configs.length);
       this.userModelConfigs.clear();
       configs.forEach(config => {
         this.userModelConfigs.set(config.modelId, config);
       });
-      console.log('[BuiltinAI]  用户模型配置已更新');
       return { success: true, count: configs.length };
     });
-    console.log('[BuiltinAI]  已注册 builtin-ai:update-user-model-configs');
 
     // 刷新模型列表（重新从API获取）
     ipcMain.handle('builtin-ai:refresh-models', async () => {
-      console.log('[BuiltinAI] 刷新模型列表...');
       try {
         await this.fetchModelsFromProviders();
-        console.log('[BuiltinAI]  刷新完成');
         const allModels = [...this.availableModels, ...this.userConfiguredModels];
         return { success: true, models: allModels };
       } catch (error) {
@@ -737,7 +723,6 @@ export class BuiltinAI {
         return { success: false, error: String(error) };
       }
     });
-    console.log('[BuiltinAI]  已注册 builtin-ai:refresh-models');
 
     // 聊天接口（非流式）
     ipcMain.handle('builtin-ai:chat', async (_event, modelId: string, messages: Array<{ role: string; content: string }>) => {
@@ -749,7 +734,6 @@ export class BuiltinAI {
         return { success: false, error: String(error) };
       }
     });
-    console.log('[BuiltinAI]  已注册 builtin-ai:chat');
 
     // 流式聊天接口
     ipcMain.handle('builtin-ai:stream-chat', async (event, modelId: string, messages: Array<{ role: string; content: string }>) => {
@@ -774,11 +758,7 @@ export class BuiltinAI {
         );
       });
     });
-    console.log('[BuiltinAI]  已注册 builtin-ai:stream-chat');
     
-    console.log('[BuiltinAI] 所有 IPC 处理器注册完成！');
-
-    console.log('[BuiltinAI] IPC handlers 已注册');
   }
 
   /**

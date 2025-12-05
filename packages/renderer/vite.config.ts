@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   root: __dirname,
@@ -19,17 +23,22 @@ export default defineConfig({
     }
   },
   resolve: {
+    preserveSymlinks: false,
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@note-studio/theme': path.resolve(__dirname, '../theme/dist/esm'),
-      '@note-studio/shared': path.resolve(__dirname, '../shared/dist/esm'),
-      '@note-studio/global-rag': path.resolve(__dirname, '../global-rag/dist')
-    }
+      '@note-studio/theme': path.resolve(__dirname, '../theme/src/index.ts'),
+      '@note-studio/shared': path.resolve(__dirname, '../shared/src/index.ts'),
+      '@note-studio/global-rag': path.resolve(__dirname, '../global-rag/src/index.ts')
+    },
+    extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
+    conditions: ['import', 'module', 'browser', 'default'],
+    dedupe: ['@note-studio/shared', '@note-studio/global-rag', '@note-studio/theme']
   },
   optimizeDeps: {
-    include: ['@note-studio/global-rag'],
     exclude: ['jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events'],
-    force: true // 强制重新预构建依赖
+    esbuildOptions: {
+      resolveExtensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.json']
+    }
   },
   css: {
     preprocessorOptions: {

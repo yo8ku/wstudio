@@ -190,7 +190,6 @@ export class InlineChatHistoryDatabase {
       this.db.run('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON inline_chat_messages(timestamp)');
       
       this.save();
-      console.log('[InlineChatHistoryDatabase] 索引创建成功');
     } catch (error) {
       console.error('[InlineChatHistoryDatabase] 索引创建失败:', error);
     }
@@ -224,8 +223,6 @@ export class InlineChatHistoryDatabase {
       // 获取当前版本
       const result = this.db.exec('SELECT MAX(version) as version FROM db_version');
       const currentVersion = result[0]?.values[0]?.[0] as number || 0;
-
-      console.log('[InlineChatHistoryDatabase] 当前数据库版本:', currentVersion);
 
       // 未来可以在这里添加版本迁移逻辑
       // if (currentVersion < 2) {
@@ -282,10 +279,8 @@ export class InlineChatHistoryDatabase {
       );
       
       this.save();
-      console.log('[InlineChatHistoryDatabase] 创建会话成功:', newSession.id);
       return newSession;
     } catch (error) {
-      console.error('[InlineChatHistoryDatabase] 创建会话失败:', error);
       throw error;
     }
   }
@@ -429,7 +424,6 @@ export class InlineChatHistoryDatabase {
       );
 
       this.save();
-      console.log('[InlineChatHistoryDatabase] 更新会话成功:', sessionId);
     } catch (error) {
       console.error('[InlineChatHistoryDatabase] 更新会话失败:', error);
       throw error;
@@ -446,7 +440,6 @@ export class InlineChatHistoryDatabase {
     try {
       this.db.run('DELETE FROM inline_chat_sessions WHERE id = ?', [sessionId]);
       this.save();
-      console.log('[InlineChatHistoryDatabase] 删除会话成功:', sessionId);
     } catch (error) {
       console.error('[InlineChatHistoryDatabase] 删除会话失败:', error);
       throw error;
@@ -480,7 +473,6 @@ export class InlineChatHistoryDatabase {
       );
 
       this.save();
-      console.log('[InlineChatHistoryDatabase] 添加消息成功:', newMessage.id);
       return newMessage;
     } catch (error) {
       console.error('[InlineChatHistoryDatabase] 添加消息失败:', error);
@@ -544,7 +536,6 @@ export class InlineChatHistoryDatabase {
     try {
       this.db.run('DELETE FROM inline_chat_messages WHERE id = ?', [messageId]);
       this.save();
-      console.log('[InlineChatHistoryDatabase] 删除消息成功:', messageId);
     } catch (error) {
       console.error('[InlineChatHistoryDatabase] 删除消息失败:', error);
       throw error;
@@ -561,7 +552,6 @@ export class InlineChatHistoryDatabase {
     try {
       this.db.run('DELETE FROM inline_chat_sessions WHERE fileUri = ?', [fileUri]);
       this.save();
-      console.log('[InlineChatHistoryDatabase] 清空文件历史成功:', fileUri);
     } catch (error) {
       console.error('[InlineChatHistoryDatabase] 清空文件历史失败:', error);
       throw error;

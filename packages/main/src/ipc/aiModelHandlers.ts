@@ -28,11 +28,9 @@ function getDatabase(): AIModelDatabase {
 export function registerAIModelHandlers(): void {
   // 防止重复注册
   if (isRegistered) {
-    console.log('[AIModel IPC] IPC 处理器已注册，跳过重复注册');
     return;
   }
 
-  console.log('[AIModel IPC] 开始注册 AI 模型配置 IPC 处理器...');
 
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = [
@@ -52,7 +50,6 @@ export function registerAIModelHandlers(): void {
     }
   }
 
-  console.log('[AIModel IPC] 已清理旧的 IPC 处理器');
   isRegistered = true;
 
   // 检查配置名称是否存在
@@ -82,7 +79,6 @@ export function registerAIModelHandlers(): void {
       await db.initialize();
       const configId = await db.saveConfig(data.config, data.models);
       
-      console.log('[AIModel IPC] 保存配置成功，返回 configId:', configId);
       return configId;
     } catch (error) {
       console.error('[AIModel IPC] 保存配置失败:', error);

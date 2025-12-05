@@ -46,7 +46,6 @@ export class ExtensionManager extends EventEmitter {
     if (settingsManager) {
       this.apiAdapter.setSettingsManager(settingsManager);
     }
-    console.log('[ExtensionManager] API适配器已设置');
   }
 
   /**
@@ -54,17 +53,13 @@ export class ExtensionManager extends EventEmitter {
    */
   setSharedAPIAdapter(apiAdapter: PluginAPIAdapter): void {
     this.apiAdapter = apiAdapter;
-    console.log('[ExtensionManager] 共享 API 适配器已设置');
   }
 
   async initialize(): Promise<void> {
-    console.log('[ExtensionManager] 初始化扩展管理器');
-    console.log(`[ExtensionManager] 扩展目录路径: ${this.extensionsPath}`);
     
     // 检查扩展目录是否存在，如果不存在则记录警告但不创建（因为可能是路径配置错误）
     if (!fs.existsSync(this.extensionsPath)) {
-      console.warn(`[ExtensionManager] 扩展目录不存在: ${this.extensionsPath}`);
-      console.warn('[ExtensionManager] 将跳过扩展扫描，请检查路径配置是否正确');
+      console.warn(`[ExtensionManager] 扩展目录不存在: ${this.extensionsPath},将跳过扩展扫描，请检查路径配置是否正确`);
       // 不创建目录，因为可能是路径配置错误，创建错误的目录会导致问题
       return;
     }
@@ -83,8 +78,7 @@ export class ExtensionManager extends EventEmitter {
     try {
       // 检查目录是否存在
       if (!fs.existsSync(this.extensionsPath)) {
-        console.warn(`[ExtensionManager] 扩展目录不存在: ${this.extensionsPath}`);
-        console.log('[ExtensionManager] 将跳过扩展扫描');
+        console.warn(`[ExtensionManager] 扩展目录不存在: ${this.extensionsPath},将跳过扩展扫描`);
         return;
       }
       
@@ -123,8 +117,7 @@ export class ExtensionManager extends EventEmitter {
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       if (err.code === 'ENOENT') {
-        console.warn(`[ExtensionManager] 扩展目录不存在: ${this.extensionsPath}`);
-        console.log('[ExtensionManager] 将跳过扩展扫描');
+        console.warn(`[ExtensionManager] 扩展目录不存在: ${this.extensionsPath},将跳过扩展扫描`);
         return;
       }
       console.error('[ExtensionManager] 扫描扩展目录失败:', error);
@@ -210,7 +203,6 @@ export class ExtensionManager extends EventEmitter {
    * 重新扫描扩展目录
    */
   private async rescanExtensions(changedFile: string): Promise<void> {
-    console.log(`[ExtensionManager] 检测到变化: ${changedFile}，重新扫描扩展目录...`);
     
     try {
       const oldExtensions = new Map(this.extensions);

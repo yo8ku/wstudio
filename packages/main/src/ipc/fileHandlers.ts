@@ -14,7 +14,6 @@ let isRegistered = false;
  * 注册文件操作相关的 IPC 处理器
  */
 export function registerFileHandlers(): void {
-  console.log('[FileHandlers] 开始注册 IPC 处理器...');
   
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = [
@@ -24,20 +23,17 @@ export function registerFileHandlers(): void {
   for (const handler of handlersToRemove) {
     try {
       ipcMain.removeHandler(handler);
-      console.log(`[FileHandlers] 已移除旧的处理器: ${handler}`);
     } catch (e) {
       // 忽略未注册的处理器
     }
   }
   
-  console.log('[FileHandlers] 已清理旧的 IPC 处理器');
 
   /**
    * 读取文件内容
    */
   ipcMain.handle('read-file', async (event, filePath: string) => {
     try {
-      console.log('[FileHandlers] 读取文件:', filePath);
       
       // 检查文件是否存在
       try {
@@ -49,7 +45,6 @@ export function registerFileHandlers(): void {
       
       // 读取文件内容
       const content = await fs.readFile(filePath, 'utf-8');
-      console.log('[FileHandlers] 文件读取成功，长度:', content.length);
       
       return content;
     } catch (error) {
@@ -63,7 +58,6 @@ export function registerFileHandlers(): void {
    */
   ipcMain.handle('write-file', async (event, filePath: string, content: string) => {
     try {
-      console.log('[FileHandlers] 写入文件:', filePath);
       
       // 确保目录存在
       const dir = path.dirname(filePath);
@@ -71,7 +65,6 @@ export function registerFileHandlers(): void {
       
       // 写入文件内容
       await fs.writeFile(filePath, content, 'utf-8');
-      console.log('[FileHandlers] 文件写入成功');
       
       return { success: true };
     } catch (error) {
@@ -116,7 +109,6 @@ export function registerFileHandlers(): void {
    */
   ipcMain.handle('folder:rename', async (event, oldPath: string, newName: string) => {
     try {
-      console.log('[FileHandlers] 重命名:', oldPath, '->', newName);
       
       // 检查源文件/文件夹是否存在
       try {
@@ -141,7 +133,6 @@ export function registerFileHandlers(): void {
       
       // 执行重命名
       await fs.rename(oldPath, newPath);
-      console.log('[FileHandlers] 重命名成功:', newPath);
       
       return {
         success: true,
@@ -161,7 +152,6 @@ export function registerFileHandlers(): void {
    */
   ipcMain.handle('folder:delete', async (event, targetPath: string) => {
     try {
-      console.log('[FileHandlers] 删除:', targetPath);
       
       // 检查文件/文件夹是否存在
       try {
@@ -177,11 +167,9 @@ export function registerFileHandlers(): void {
       if (stats.isDirectory()) {
         // 删除文件夹（递归删除所有内容）
         await fs.rm(targetPath, { recursive: true, force: true });
-        console.log('[FileHandlers] 文件夹删除成功:', targetPath);
       } else {
         // 删除文件
         await fs.unlink(targetPath);
-        console.log('[FileHandlers] 文件删除成功:', targetPath);
       }
       
       return { success: true };
@@ -196,7 +184,6 @@ export function registerFileHandlers(): void {
    */
   ipcMain.handle('folder:reveal-in-explorer', async (event, targetPath: string) => {
     try {
-      console.log('[FileHandlers] 在资源管理器中打开:', targetPath);
       
       // 检查文件/文件夹是否存在
       try {
@@ -208,7 +195,6 @@ export function registerFileHandlers(): void {
       
       // 使用 Electron 的 shell.showItemInFolder 在系统文件管理器中显示
       shell.showItemInFolder(targetPath);
-      console.log('[FileHandlers] 已在资源管理器中打开:', targetPath);
       
       return { success: true };
     } catch (error) {
@@ -217,7 +203,6 @@ export function registerFileHandlers(): void {
     }
   });
 
-  console.log('[FileHandlers] 文件操作 IPC 处理器注册完成');
   isRegistered = true;
 }
 

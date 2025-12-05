@@ -460,7 +460,6 @@ export class PythonBridge {
     
     let requirementsPath: string | undefined;
     for (const testPath of absolutePaths) {
-      console.log(`[PythonBridge] 检查 requirements.txt: ${testPath}`);
       if (fsModule.existsSync && fsModule.existsSync(testPath)) {
         requirementsPath = testPath;
         console.log(`[PythonBridge] 找到 requirements.txt: ${requirementsPath}`);
@@ -902,10 +901,6 @@ except ImportError:
         };
         
         console.log(`[PythonBridge] 准备启动 Python 进程...`);
-        console.log(`[PythonBridge] 可执行文件: ${pythonExecutable}`);
-        console.log(`[PythonBridge] 脚本参数: ${pythonScriptPath}`);
-        console.log(`[PythonBridge] 工作目录: ${path.dirname(pythonScriptPath)}`);
-        console.log(`[PythonBridge] PATH 环境变量: ${spawnEnv.PATH?.substring(0, 200)}...`);
         
         this.process = childProcess.spawn(pythonExecutable, [pythonScriptPath], {
           stdio: ['pipe', 'pipe', 'pipe'],
@@ -914,7 +909,6 @@ except ImportError:
         }) as ChildProcess;
         
         const processPid = this.process.pid ?? 'unknown';
-        console.log(`[PythonBridge] Python 进程已创建，PID: ${processPid}`);
         
         // 立即同步设置 error 监听器（必须在下一个事件循环之前）
         this.process.on('error', errorHandler);
@@ -1049,7 +1043,7 @@ except ImportError:
             exitMessage += `\n\n错误输出:\n${stderrOutput}`;
           }
           
-          // 为退出码 1 提供更详细的诊断信息
+          // 为特定退出码提供更详细的诊断信息
           if (code === 1) {
             exitMessage += `\n\n可能的原因:\n`;
             exitMessage += `1. Python 脚本语法错误或运行时错误\n`;
@@ -1062,13 +1056,47 @@ except ImportError:
             exitMessage += `3. 查看上方的错误输出以获取更多信息\n`;
             exitMessage += `4. 联系技术支持并提供错误输出信息\n\n`;
             exitMessage += `注意: 本应用程序使用内置的独立 Python 环境，不需要用户本地安装 Python。`;
+          } else if (code === 3221225477 || code === -1073741819) {
+            // Windows 错误代码 0xC0000005 (访问冲突)
+            // 3221225477 是十进制，-1073741819 是有符号整数表示
+            exitMessage += `\n\n错误代码 0xC0000005 (访问冲突) - 这是一个严重的系统级错误\n\n`;
+            exitMessage += `可能的原因:\n`;
+            exitMessage += `1. Python 可执行文件或 DLL 文件损坏\n`;
+            exitMessage += `2. 缺少必要的 Visual C++ 运行时库 (VC++ Redistributable)\n`;
+            exitMessage += `3. Python 环境文件不完整或损坏\n`;
+            exitMessage += `4. 内存访问违规（可能是 Python 扩展模块问题）\n`;
+            exitMessage += `5. 防病毒软件或安全软件阻止了 Python 进程\n`;
+            exitMessage += `6. 文件权限问题或路径包含特殊字符\n\n`;
+            exitMessage += `解决方案:\n`;
+            exitMessage += `1. 检查 python_bundle 文件夹是否完整，特别是以下文件:\n`;
+            exitMessage += `   - python.exe\n`;
+            exitMessage += `   - python313.dll\n`;
+            exitMessage += `   - vcruntime140.dll\n`;
+            exitMessage += `   - vcruntime140_1.dll\n`;
+            exitMessage += `2. 安装或更新 Microsoft Visual C++ Redistributable:\n`;
+            exitMessage += `   - 下载地址: https://aka.ms/vs/17/release/vc_redist.x64.exe\n`;
+            exitMessage += `3. 临时禁用防病毒软件，然后重试\n`;
+            exitMessage += `4. 检查应用程序安装路径是否包含特殊字符或空格\n`;
+            exitMessage += `5. 以管理员身份运行应用程序\n`;
+            exitMessage += `6. 重新安装应用程序\n`;
+            exitMessage += `7. 查看 Windows 事件查看器中的应用程序日志以获取更多信息\n\n`;
+            exitMessage += `注意: 如果问题持续存在，请收集以下信息并联系技术支持:\n`;
+            exitMessage += `- 完整的错误输出\n`;
+            exitMessage += `- Windows 版本信息\n`;
+            exitMessage += `- 应用程序安装路径\n`;
+            exitMessage += `- 防病毒软件名称`;
           }
           
           reject(new Error(exitMessage));
         }
         
         if (this.currentRequest) {
-          this.currentRequest.reject(new Error(`Python process exited with code ${code}`));
+          let errorMessage = `Python process exited with code ${code}`;
+          // 为特定错误代码提供更详细的错误信息
+          if (code === 3221225477 || code === -1073741819) {
+            errorMessage += ` (0xC0000005 - 访问冲突)`;
+          }
+          this.currentRequest.reject(new Error(errorMessage));
           this.currentRequest = null;
         }
         // 拒绝所有待处理的请求

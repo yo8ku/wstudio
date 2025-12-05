@@ -112,10 +112,8 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
       title: '背景图片设置',
       category: '背景图片',
       handler: () => {
-        console.log('[BackgroundImage Plugin] ========== background-image.settings 命令被执行 ==========');
         // 获取原始配置
         const rawConfig = backgroundManager?.getConfig();
-        console.log('[BackgroundImage Plugin] 原始配置:', rawConfig);
         
         // 转换文件路径为 local-file:// 协议
         let configForRenderer = rawConfig;
@@ -210,11 +208,7 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
           };
         }
         
-        console.log('[BackgroundImage Plugin] 准备发送事件 background-image:show-settings');
-        console.log('[BackgroundImage Plugin] 配置数据:', configForRenderer);
         api.events.emit('background-image:show-settings', configForRenderer);
-        console.log('[BackgroundImage Plugin] 事件已发送');
-        console.log('[BackgroundImage Plugin] ===============================================');
       }
     })
   );
@@ -284,21 +278,15 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
   context.subscriptions.push(
     api.events.on('theme:changed', () => {
       // 主题变化时，可能需要调整背景效果
-      console.log('Theme changed, background may need adjustment');
     })
   );
 
   // 监听来自渲染进程的配置更新请求
   context.subscriptions.push(
     api.events.on('background-image:update-config', async (newConfig: any) => {
-      console.log('[BackgroundImage Plugin] ========== 收到渲染进程的配置更新请求 ==========');
-      console.log('[BackgroundImage Plugin] 配置内容:', JSON.stringify(newConfig, null, 2));
-      console.log('[BackgroundImage Plugin] backgroundManager 存在:', !!backgroundManager);
       if (backgroundManager) {
         try {
-          console.log('[BackgroundImage Plugin] 开始调用 backgroundManager.updateConfig...');
           await backgroundManager.updateConfig(newConfig);
-          console.log('[BackgroundImage Plugin] ✅ backgroundManager.updateConfig 执行完成');
         } catch (error) {
           console.error('[BackgroundImage Plugin] ❌ backgroundManager.updateConfig 执行失败:', error);
           console.error('[BackgroundImage Plugin] 错误堆栈:', (error as Error).stack);
@@ -308,7 +296,6 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
       } else {
         console.error('[BackgroundImage Plugin] ❌ backgroundManager 不存在，无法更新配置！');
       }
-      console.log('[BackgroundImage Plugin] ========== 配置更新请求处理完成 ==========');
     })
   );
 
@@ -351,8 +338,6 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
   // 监听渲染进程准备就绪事件，自动发送当前配置
   context.subscriptions.push(
     api.events.on('background-image:renderer-ready', async () => {
-      console.log('[BackgroundImage] ========== 渲染进程已准备就绪 ==========');
-      
       // 确保 backgroundManager 已初始化
       if (!backgroundManager) {
         console.warn('[BackgroundImage] backgroundManager 未初始化，等待初始化...');
@@ -361,12 +346,10 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
           if (backgroundManager) {
             const config = backgroundManager.getConfig();
             if (config) {
-              console.log('[BackgroundImage] 延迟后获取到配置:', config);
               // 延迟一点发送，确保渲染进程的监听器已完全注册
               setTimeout(() => {
                 if (backgroundManager) {
                   (backgroundManager as any).notifyRenderer();
-                  console.log('[BackgroundImage] 配置已发送到渲染进程（延迟）');
                 }
               }, 100);
             }
@@ -386,7 +369,6 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
       
       const config = backgroundManager.getConfig();
       if (config) {
-        console.log('[BackgroundImage] 原始配置:', config);
         // 延迟一点发送，确保渲染进程的监听器已完全注册
         setTimeout(() => {
           // 让 BackgroundManager 的 notifyRenderer 方法处理转换和发送
@@ -394,7 +376,6 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
           if (backgroundManager) {
             // 直接调用 notifyRenderer 方法
             (backgroundManager as any).notifyRenderer();
-            console.log('[BackgroundImage] 配置已发送到渲染进程');
           }
         }, 100);
       } else {
@@ -411,7 +392,6 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
  * 当插件被停用时调用
  */
 export async function deactivate(): Promise<void> {
-  console.log('Background Image Plugin deactivated');
 
   // 清理背景管理器
   if (backgroundManager) {

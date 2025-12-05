@@ -40,14 +40,6 @@ function isHandlerRegistered(handlerName: string): boolean {
  * 注册文件引用 IPC 处理器
  */
 export function registerFileReferenceHandlers(): void {
-  // 如果已注册，先检查关键处理器是否存在
-  if (isRegistered) {
-    // 尝试移除并重新注册，确保处理器确实存在
-    // 这样可以处理热重载或异常情况
-    console.log('[FileReferenceHandlers] 检测到已注册标志，验证并重新注册处理器...');
-  } else {
-    console.log('[FileReferenceHandlers] 开始注册 IPC 处理器...');
-  }
 
   try {
     // 移除可能存在的旧处理器（防止热重载时重复注册）
@@ -59,17 +51,14 @@ export function registerFileReferenceHandlers(): void {
     for (const handler of handlersToRemove) {
       try {
         ipcMain.removeHandler(handler);
-        console.log(`[FileReferenceHandlers] 已移除旧处理器: ${handler}`);
       } catch (e) {
         // 忽略未注册的处理器
-        console.log(`[FileReferenceHandlers] 处理器 ${handler} 不存在，跳过移除`);
       }
     }
 
     // 重置注册标志（因为我们已经移除了旧处理器）
     isRegistered = false;
 
-    console.log('[FileReferenceHandlers] 已清理旧的 IPC 处理器');
     
     // 添加文件引用到向量存储
     ipcMain.handle('file-reference:add', async (event, filePath: string, content: string, options?: {
@@ -115,8 +104,6 @@ export function registerFileReferenceHandlers(): void {
 
     // 所有处理器注册完成后，设置注册标志
     isRegistered = true;
-    console.log('[FileReferenceHandlers] ✅ 所有 IPC 处理器注册完成！');
-    console.log('[FileReferenceHandlers] 已注册的处理器: file-reference:add, file-reference:search');
   } catch (error) {
     console.error('[FileReferenceHandlers] ❌ 注册 IPC 处理器时发生错误:', error);
     // 如果注册失败，重置标志以便下次重试
