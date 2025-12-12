@@ -129,7 +129,7 @@ export class PluginAPIAdapter {
     }
     // 移除旧的监听器（如果存在）
     ipcMain.removeAllListeners('renderer:loaded');
-    ipcMain.on('renderer:loaded', () => {
+    ipcMain.on('renderer:loaded', async () => {
       console.log('[PluginAPIAdapter] ========== 收到渲染进程已加载通知 ==========');
       console.log('[PluginAPIAdapter] 当前状态栏项数量:', this.statusBarItems.size);
       console.log('[PluginAPIAdapter] 当前缓存事件数量:', this.cachedEvents.length);
@@ -143,6 +143,7 @@ export class PluginAPIAdapter {
       } else {
         console.warn('[PluginAPIAdapter] 收到 renderer:loaded 事件，但 mainWindow 为 null');
       }
+
     });
   }
 

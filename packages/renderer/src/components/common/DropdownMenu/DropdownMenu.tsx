@@ -12,6 +12,7 @@ export interface DropdownMenuItem {
   value: string;
   label: string;
   icon?: React.ReactNode;
+  suffix?: React.ReactNode;  // 后缀图标（如深度思考图标）
   disabled?: boolean;
 }
 
@@ -169,6 +170,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
       >
         {item.icon && <span className="dropdown-menu-item-icon">{item.icon}</span>}
         <span className="dropdown-menu-item-label">{item.label}</span>
+        {item.suffix && <span className="dropdown-menu-item-suffix">{item.suffix}</span>}
         {isSelected && <Icon name="check" size={14} />}
       </div>
     );

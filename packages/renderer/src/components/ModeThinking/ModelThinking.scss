@@ -4,7 +4,6 @@
  */
 
 .model-thinking {
-  overflow: hidden;
 
   // 内容区域
   &-content {}
@@ -200,9 +199,8 @@
 
   // 步骤内容
   &-content {
-    padding: 12px 12px 0 16px;
+    padding: 12px 12px 12px 16px;
     position: relative;
-    overflow: hidden; // 隐藏负margin造成的溢出
     
     // 左侧缩进线
     &::before {
@@ -221,7 +219,7 @@
     color: #7b7b7b;//TODO: 思考过程文字颜色，不要修改这里
     white-space: pre-wrap;
     word-break: break-word;
-    margin: 0 0 -35px 0; // 使用负margin抵消line-height的底部空白
+    margin: 0;
     padding: 0;
     display: block;
   }

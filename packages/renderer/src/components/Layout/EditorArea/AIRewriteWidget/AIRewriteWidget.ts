@@ -104,7 +104,7 @@ export class AIRewriteWidget {
     // 确保 glyph margin 已启用
     const glyphMarginEnabled = this.editor.getOption(monaco.editor.EditorOption.glyphMargin);
     if (!glyphMarginEnabled) {
-      console.warn('[AIRewriteWidget] glyph margin 未启用，尝试启用');
+      // 静默启用 glyph margin，不显示警告
       this.editor.updateOptions({
         glyphMargin: true
       });

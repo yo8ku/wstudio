@@ -906,9 +906,25 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         }
       }
       
+      // 如果没有 configId 也没有 configIndex，创建新配置
       if (!actualConfigId) {
-        console.error('[EditorArea] 无法确定配置ID');
-        toastService.error('无法打开配置：缺少配置ID');
+        console.log('[EditorArea] 没有配置ID，创建新的 AI 配置标签页');
+        const tempConfigId = `temp-config-${Date.now()}`;
+        
+        setTabs(prev => {
+          const newTab: EditorTab = {
+            id: `ai-config-${Date.now()}`,
+            title: '新建配置',
+            path: `ai-config:/${tempConfigId}`,
+            isDirty: false,
+            type: 'ai-config',
+            configId: tempConfigId
+          };
+          
+          setActiveTabId(newTab.id);
+          console.log('[EditorArea] 创建新的 AI 配置标签页成功，标签ID:', newTab.id);
+          return [...prev, newTab];
+        });
         return;
       }
       

@@ -146,6 +146,7 @@ export const AddFileMenu: React.FC<AddFileMenuProps> = ({
   };
 
   const handleMenuItemClick = (action: () => void) => {
+    console.log('[AddFileMenu] handleMenuItemClick 被调用');
     action();
     onClose();
   };
@@ -338,6 +339,25 @@ export const AddFileMenu: React.FC<AddFileMenuProps> = ({
               
               console.log('[AddFileMenu] 复制文件:', fileInfo.fileName, '到:', targetFolderPath);
               
+              // 先检查文件内容长度（最小 300 字符）
+              const fileReadResult = await window.electron?.file?.read(fileInfo.filePath);
+              if (!fileReadResult?.success || !fileReadResult.data?.content) {
+                toastService.error(`无法读取文件: ${fileInfo.fileName}`);
+                continue;
+              }
+              
+              // 去除空白字符（但保留换行符），防止恶意上传空内容
+              const contentWithoutSpaces = fileReadResult.data.content.replace(/[^\S\n]/g, '');
+              const contentLength = contentWithoutSpaces.length;
+              const MIN_DOCUMENT_LENGTH = 300;
+              
+              if (contentLength < MIN_DOCUMENT_LENGTH) {
+                toastService.error(
+                  `文档 "${fileInfo.fileName}" 过短（${contentLength} 字符），最少需要 ${MIN_DOCUMENT_LENGTH} 字符`
+                );
+                continue;
+              }
+              
               // 调用 IPC 复制文件到知识库文件夹
               const copyResult = await window.electron?.folder?.copyToFolder(fileInfo.filePath, targetFolderPath);
               
@@ -375,8 +395,7 @@ export const AddFileMenu: React.FC<AddFileMenuProps> = ({
                 ragProcessingService.uploadFilesToKnowledgeBase(
                   [newFilePath],
                   knowledgeId,
-                  undefined,
-                  handleProgress
+                  { onProgress: handleProgress }
                 ).then(() => {
                   // 处理完成，更新状态为 completed
                   knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'completed', 100).then(() => {
@@ -403,10 +422,19 @@ export const AddFileMenu: React.FC<AddFileMenuProps> = ({
                   let displayMessage = '上传知识库失败';
                   
                   // 提取更友好的错误信息
-                  if (errorMessage.includes('ModuleNotFoundError') || errorMessage.includes('No module named')) {
+                  if (errorMessage.includes('0xC0000005') || errorMessage.includes('3221225477') || errorMessage.includes('访问冲突')) {
+                    displayMessage = 'Python 环境错误：访问冲突。请检查 Visual C++ 运行时库或重新安装应用程序';
+                  } else if (errorMessage.includes('ModuleNotFoundError') || errorMessage.includes('No module named')) {
                     displayMessage = 'Python 依赖缺失，正在自动安装，请稍后重试';
                   } else if (errorMessage.includes('Failed to process file paths') || errorMessage.includes('处理文件路径失败')) {
                     displayMessage = '文件处理失败，请检查文件格式或重试';
+                  } else if (errorMessage.includes('Python process exited') || errorMessage.includes('Python 进程退出')) {
+                    // 检查是否是访问冲突错误
+                    if (errorMessage.includes('0xC0000005') || errorMessage.includes('3221225477') || errorMessage.includes('访问冲突')) {
+                      displayMessage = 'Python 环境错误：访问冲突。请检查 Visual C++ 运行时库或重新安装应用程序';
+                    } else {
+                      displayMessage = 'Python 服务异常退出，请检查环境配置或查看控制台获取详细信息';
+                    }
                   } else if (errorMessage.includes('Python process') || errorMessage.includes('Python 服务') || errorMessage.includes('无法启动 Python')) {
                     displayMessage = 'Python 服务启动失败，请检查环境配置';
                   } else if (errorMessage.includes('处理文件时发生错误')) {

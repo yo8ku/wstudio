@@ -20,12 +20,20 @@ export type KnowledgeGroupType = 'created' | 'joined';
  * 分块设置接口
  */
 export interface ChunkSettings {
+  /** 切分策略 */
+  strategy?: 'recursive' | 'token' | 'markdown' | 'parent-child';
   /** 分块大小 */
   chunkSize: number;
   /** 分块重叠大小 */
   chunkOverlap: number;
   /** 自定义分块符 */
   separators: string[];
+  /** 父块大小（仅 parent-child 策略） */
+  parentChunkSize?: number;
+  /** 子块大小（仅 parent-child 策略） */
+  childChunkSize?: number;
+  /** 子块重叠（仅 parent-child 策略） */
+  childChunkOverlap?: number;
 }
 
 /**

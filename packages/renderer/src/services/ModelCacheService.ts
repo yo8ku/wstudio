@@ -5,6 +5,7 @@
  */
 
 import { electronStore } from './ElectronStoreService';
+import { getProviderModels } from './ai';
 
 const MODEL_CACHE_KEY = 'model-cache';
 
@@ -19,6 +20,10 @@ export interface CachedModelInfo {
   name?: string;            // 模型名称（可选）
   displayName?: string;     // 模型显示名称（可选）
   maxTokens?: number;       // 最大令牌数（可选）
+  capabilities?: {          // 模型能力（可选）
+    thinking?: boolean;     // 是否支持深度思考
+    tool_calls?: string[];  // 支持的工具调用
+  };
 }
 
 /**
@@ -46,7 +51,28 @@ export async function getCachedModels(): Promise<CachedModelInfo[]> {
       // 检查缓存格式是否正确
       if (cached[0] && typeof cached[0] === 'object' && 'modelId' in cached[0]) {
         console.log('[ModelCache]  从 electron-store 加载缓存的模型，数量:', cached.length);
-        return cached as CachedModelInfo[];
+        
+        // 补充缺失的 capabilities（从配置文件获取）
+        const modelsWithCapabilities = await Promise.all(
+          (cached as CachedModelInfo[]).map(async (model) => {
+            if (!model.capabilities && model.providerId) {
+              // 从模型ID中提取实际的模型名称（格式：configName:modelName）
+              const actualModelId = model.modelId.includes(':') 
+                ? model.modelId.split(':')[1] 
+                : model.modelId;
+              
+              const configModels = await getProviderModels(model.providerId);
+              const configModel = configModels.find(cm => cm.id === actualModelId);
+              if (configModel?.capabilities) {
+                console.log(`[ModelCache] 从配置文件补充缓存模型 ${actualModelId} 的 capabilities:`, configModel.capabilities);
+                return { ...model, capabilities: configModel.capabilities };
+              }
+            }
+            return model;
+          })
+        );
+        
+        return modelsWithCapabilities;
       }
     }
     
@@ -96,11 +122,11 @@ export async function getCachedModels(): Promise<CachedModelInfo[]> {
     // 遍历配置，提取模型
     const modelMap = new Map<string, CachedModelInfo>(); // 使用Map去重
     
-    configs.forEach((config: any) => {
+    for (const config of configs) {
       // 只处理有API Key的配置（已配置的）
       if (!config.apiKey || !config.apiEndpoint) {
         console.log(`[ModelCache] 跳过未配置的配置: ${config.name}`);
-        return;
+        continue;
       }
 
       const providerName = getProviderName(config.providerId);
@@ -108,11 +134,14 @@ export async function getCachedModels(): Promise<CachedModelInfo[]> {
 
       // 如果配置有chatModels列表，使用列表中的模型
       if (config.chatModels && config.chatModels.length > 0) {
-        config.chatModels.forEach((chatModel: any) => {
+        // 获取配置文件中的模型信息（用于补充 capabilities）
+        const configModels = await getProviderModels(config.providerId);
+        
+        for (const chatModel of config.chatModels) {
           const modelId = chatModel.id || chatModel.name;
           if (!modelId) {
             console.warn(`[ModelCache] 配置 ${config.name} 中的模型没有有效的 ID:`, chatModel);
-            return;
+            continue;
           }
           
           const modelString = `${providerName}:${modelId}`;
@@ -123,6 +152,22 @@ export async function getCachedModels(): Promise<CachedModelInfo[]> {
             // 对于 "ZhipuAI/GLM-4.6" 格式，提取 "/" 后面的部分
             displayName = modelId.split('/').pop() || modelId;
           }
+          
+          // 如果数据库中没有 capabilities，从配置文件获取
+          let capabilities = chatModel.capabilities;
+          if (!capabilities) {
+            const configModel = configModels.find(cm => cm.id === modelId);
+            if (configModel?.capabilities) {
+              capabilities = configModel.capabilities;
+              console.log(`[ModelCache] 从配置文件补充 ${modelId} 的 capabilities:`, capabilities);
+            }
+          }
+          
+          console.log(`[ModelCache] 处理模型 ${modelId}:`, {
+            displayName,
+            capabilities,
+            hasThinking: capabilities?.thinking
+          });
           
           // 使用modelString作为key，避免重复
           if (!modelMap.has(modelString)) {
@@ -136,11 +181,12 @@ export async function getCachedModels(): Promise<CachedModelInfo[]> {
               id: chatModel.id,
               name: chatModel.name || chatModel.id,
               displayName: displayName,
-              maxTokens: config.maxTokens
+              maxTokens: config.maxTokens,
+              capabilities: capabilities
             });
             hasAddedModels = true;
           }
-        });
+        }
       } 
       // 否则，如果有单个model字段，使用它
       else if (config.model) {
@@ -189,7 +235,7 @@ export async function getCachedModels(): Promise<CachedModelInfo[]> {
           hasModelId: !!config.modelId
         });
       }
-    });
+    }
     
     // 将Map转换为数组
     models.push(...Array.from(modelMap.values()));
@@ -390,5 +436,3 @@ export async function updateModelCacheFromConfig(): Promise<void> {
     console.error('[ModelCache]  更新模型缓存失败:', error);
   }
 }
-
-

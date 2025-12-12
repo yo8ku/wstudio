@@ -1,0 +1,244 @@
+[
+    {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "description": "国产开源之光，性价比极高",
+        "protocol": "openai_compatible",
+        "config": {
+            "base_url": "https://api.deepseek.com/v1",
+            "chat_endpoint": "/chat/completions",
+            "auth_header": "Authorization",
+            "auth_prefix": "Bearer"
+        },
+        "models": [
+            {
+                "id": "deepseek-chat",
+                "name": "DeepSeek Chat",
+                "capabilities": {
+                    "thinking": false,
+                    "tool_calls": []
+                },
+                "limits": {
+                    "context_tokens": "96K",
+                    "stream": true
+                }
+            },
+            {
+                "id": "deepseek-reasoner",
+                "name": "DeepSeek Reasoner",
+                "capabilities": {
+                    "thinking": true,
+                    "tool_calls": []
+                },
+                "limits": {
+                    "context_tokens": "96K",
+                    "stream": true
+                }
+            }
+        ]
+    },
+    {
+        "id": "kimi",
+        "name": "Kimi",
+        "protocol": "openai_compatible",
+        "config": {
+            "base_url": "https://api.moonshot.cn/v1",
+            "chat_endpoint": "/chat/completions"
+        },
+        "models": [
+            {
+                "id": "moonshot-v1-8k",
+                "name": "Kimi 8K"
+            },
+            {
+                "id": "moonshot-v1-32k",
+                "name": "Kimi 32K"
+            },
+            {
+                "id": "moonshot-v1-128k",
+                "name": "Kimi 128K"
+            }
+        ]
+    },
+    {
+        "id": "claude",
+        "name": "Claude",
+        "protocol": "anthropic_native",
+        "config": {
+            "base_url": "https://api.anthropic.com/v1",
+            "chat_endpoint": "/messages",
+            "auth_header": "x-api-key",
+            "extra_headers": {
+                "anthropic-version": "2023-06-01"
+            }
+        },
+        "models": [
+            {
+                "id": "claude-3-5-sonnet-20240620",
+                "name": "Claude 3.5 Sonnet"
+            },
+            {
+                "id": "claude-3-opus-20240229",
+                "name": "Claude 3 Opus"
+            }
+        ]
+    },
+    {
+        "id": "gemini",
+        "name": "Gemini",
+        "description": "Google 旗下的AI 助理。在写作、规划和开展头脑风暴等方面出色，使用时：请开启代理（梯子）",
+        "protocol": "openai_compatible",
+        "config": {
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "chat_endpoint": "/chat/completions",
+            "auth_header": "Authorization",
+            "auth_prefix": "Bearer"
+        },
+        "models": [
+             {
+                "id": "gemini-3-pro-preview",
+                "name": "Gemini 3 Pro",
+                "capabilities": {
+                    "thinking": true,
+                    "tool_calls": []
+                },
+                "limits": {
+                    "context_tokens": "1M",
+                    "stream": true
+                }
+            },
+             {
+                "id": "gemini-3-pro-image-preview",
+                "name": "Nano Banana Pro",
+                "capabilities": {
+                    "thinking": true,
+                    "tool_calls": []
+                },
+                "limits": {
+                    "context_tokens": "1M",
+                    "stream": true
+                }
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro",
+                "capabilities": {
+                    "thinking": true,
+                    "tool_calls": []
+                },
+                "limits": {
+                    "context_tokens": "1M",
+                    "stream": true
+                }
+            },
+            {
+                "id": "gemini-2.5-flash",
+                "name": "Gemini 2.5 Flash",
+                "capabilities": {
+                    "thinking": true,
+                    "tool_calls": []
+                },
+                "limits": {
+                    "context_tokens": "1M",
+                    "stream": true
+                }
+            }
+           
+        ]
+    },
+    {
+        "id": "openai",
+        "name": "ChatGPT",
+        "description": "全球最强模型，行业基准，请开启代理（梯子）",
+        "protocol": "openai_compatible",
+        "config": {
+            "base_url": "https://api.openai.com/v1",
+            "chat_endpoint": "/chat/completions",
+            "auth_header": "Authorization",
+            "auth_prefix": "Bearer"
+        },
+        "models": [
+            {
+                "id": "gpt-4o",
+                "name": "GPT-4o (最新全能)"
+            },
+            {
+                "id": "gpt-4-turbo",
+                "name": "GPT-4 Turbo"
+            },
+            {
+                "id": "gpt-3.5-turbo",
+                "name": "GPT-3.5 Turbo (快速)"
+            }
+        ]
+    },
+    {
+        "id": "xai",
+        "name": "xAI Grok",
+        "description": "极具个性的实时大模型，具有推特(X)实时数据访问权限",
+        "protocol": "openai_compatible",
+        "config": {
+            "base_url": "https://api.x.ai/v1",
+            "chat_endpoint": "/chat/completions",
+            "auth_header": "Authorization",
+            "auth_prefix": "Bearer"
+        },
+        "models": [
+            {
+                "id": "grok-beta",
+                "name": "Grok Beta (通用)"
+            },
+            {
+                "id": "grok-vision-beta",
+                "name": "Grok Vision (具备识图能力)"
+            }
+        ]
+    },
+    {
+        "id": "alibaba",
+        "name": "通义千问",
+        "description": "阿里云出品，中文理解能力极强，Qwen 系列",
+        "protocol": "openai_compatible",
+        "config": {
+            // 注意：这里必须用 compatible-mode 地址，否则协议不通
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "chat_endpoint": "/chat/completions",
+            "auth_header": "Authorization",
+            "auth_prefix": "Bearer"
+        },
+        "models": [
+            {
+                "id": "qwen3-max",
+                "name": "Qwen Max (最强逻辑)",
+                "maxOutPut": "32K", //输出最大长度
+                "thinking": "true", //是否支持深度思考
+                "enabled_thinking": "true", //是否开启深度思考
+                "web_search": "true", //是否支持联网
+                "enabled_web_search": "false", //是否开启联网,
+                "temperature": "0.7", //采样温度，控制模型生成文本的多样性。
+                "top_k": "" //候选 Token 数量。值越大，输出越随机；值越小，输出越确定
+            },
+            {
+                "id": "qwen3-vl-plus",
+                "name": "qwen3-vl-plus (均衡型)",
+                "maxOutPut": "32K", //输出最大长度
+                "thinking": "true", //是否支持深度思考
+                "enabled_thinking": "true", //是否开启深度思考
+                "web_search": "true", //是否支持联网
+                "enabled_web_search": "false" //是否开启联网
+            },
+            {
+                "id": "qwen-turbo",
+                "name": "Qwen Turbo (极速低价)"
+            },
+            {
+                "id": "qwen-long",
+                "name": "Qwen Long (超长文档分析)"
+            },
+            {
+                "id": "qwen2.5-72b-instruct",
+                "name": "qwen2.5-72b"
+            }
+        ]
+    }
+]

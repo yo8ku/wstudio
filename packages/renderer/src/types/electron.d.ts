@@ -158,8 +158,14 @@ export interface FileResult {
  * 聊天模型接口
  */
 export interface ChatModel {
+  id: string;
   name: string;
   displayName?: string;
+  enabled?: boolean;
+  capabilities?: {
+    thinking?: boolean;
+    tool_calls?: string[];
+  };
 }
 
 /**

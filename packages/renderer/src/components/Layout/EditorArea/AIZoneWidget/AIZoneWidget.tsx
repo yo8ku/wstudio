@@ -284,6 +284,27 @@ export class AIZoneWidget {
   }
 
   /**
+   * 更新可用模型列表
+   * 当模型启用状态变化时调用此方法更新下拉菜单
+   */
+  updateAvailableModels(models: string[]): void {
+    console.log('[AIZoneWidget] 更新可用模型列表，数量:', models.length);
+    this.options.availableModels = models;
+    
+    // 如果当前选中的模型不在新列表中，重置为第一个模型
+    if (models.length > 0 && !models.includes(this.selectedModel)) {
+      this.selectedModel = models[0];
+    }
+    
+    // 重新加载模型分组并更新下拉菜单
+    this.loadModelGroups().then(() => {
+      if (this.toolbarModelDropdownRoot && this.updateModelSelectionFn) {
+        this.updateModelSelectionFn(this.selectedModel);
+      }
+    });
+  }
+
+  /**
    * 注入 Zone Widget 样式
    */
   private injectStyles(): void {
@@ -324,7 +345,7 @@ export class AIZoneWidget {
       });
 
       // 按服务商分组模型
-      const groupedModels = new Map<string, Array<{ value: string; label: string }>>();
+      const groupedModels = new Map<string, Array<{ value: string; label: string | React.ReactNode; rightIcon?: React.ReactNode }>>();
 
       if (this.options.availableModels) {
         this.options.availableModels.forEach(model => {
@@ -340,10 +361,40 @@ export class AIZoneWidget {
             // 从缓存中获取模型信息，优先使用 displayName
             const modelInfo = modelInfoMap.get(model);
             const displayLabel = modelInfo?.displayName || modelName;
+            
+            // 检查模型是否支持深度思考
+            const hasThinking = modelInfo?.capabilities?.thinking === true;
+            
+            // 创建右侧图标（深度思考图标）
+            const rightIcon = hasThinking ? React.createElement('span', {
+              className: 'model-capability-icon',
+              title: '深度思考'
+            }, React.createElement('svg', {
+              xmlns: 'http://www.w3.org/2000/svg',
+              width: 14,
+              height: 14,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              React.createElement('path', { d: 'M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z' }),
+              React.createElement('path', { d: 'M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z' }),
+              React.createElement('path', { d: 'M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4' }),
+              React.createElement('path', { d: 'M17.599 6.5a3 3 0 0 0 .399-1.375' }),
+              React.createElement('path', { d: 'M6.003 5.125A3 3 0 0 0 6.401 6.5' }),
+              React.createElement('path', { d: 'M3.477 10.896a4 4 0 0 1 .585-.396' }),
+              React.createElement('path', { d: 'M19.938 10.5a4 4 0 0 1 .585.396' }),
+              React.createElement('path', { d: 'M6 18a4 4 0 0 1-1.967-.516' }),
+              React.createElement('path', { d: 'M19.967 17.484A4 4 0 0 1 18 18' })
+            )) : undefined;
 
             groupedModels.get(providerDisplayName)!.push({
               value: model,
-              label: displayLabel
+              label: displayLabel,
+              rightIcon
             });
           }
         });
@@ -626,17 +677,20 @@ export class AIZoneWidget {
       availableModelsLength: this.options.availableModels?.length || 0
     });
     
+    // 始终创建模型下拉框容器
+    // 始终创建模型下拉框容器
+    const toolbarModelDropdownContainer = document.createElement('div');
+    toolbarModelDropdownContainer.className = 'ai-zone-input-model-dropdown';
+    
+    // 使用 React 渲染 Select 组件
+    this.toolbarModelDropdownRoot = createRoot(toolbarModelDropdownContainer);
+    
+    // 将模型选择器添加到操作按钮容器
+    inputActions.appendChild(toolbarModelDropdownContainer);
+    console.log('[AIZoneWidget] 模型下拉框容器已添加到 DOM');
+    
     if (this.options.availableModels && this.options.availableModels.length > 0) {
-      console.log('[AIZoneWidget] 开始创建模型下拉框容器');
-      const toolbarModelDropdownContainer = document.createElement('div');
-      toolbarModelDropdownContainer.className = 'ai-zone-input-model-dropdown';
-
-      // 使用 React 渲染 Select 组件
-      this.toolbarModelDropdownRoot = createRoot(toolbarModelDropdownContainer);
-      
-      // 将模型选择器添加到操作按钮容器
-      inputActions.appendChild(toolbarModelDropdownContainer);
-      console.log('[AIZoneWidget] 模型下拉框容器已添加到 DOM');
+      console.log('[AIZoneWidget] 有可用模型，开始加载模型分组');
       
       // 重新加载模型分组逻辑（保持原有逻辑）
       if (!this.updateModelSelectionFn) {
@@ -667,6 +721,9 @@ export class AIZoneWidget {
                   groups: this.modelGroups,
                   placeholder: '选择模型',
                   className: 'ai-zone-input-model-select',
+                  showSearch: true,
+                  align: 'parent',
+                  menuGap: 3,
                   onOpenChange: this.handleDropdownOpenChangeFn!,
                   open: this.isDropdownOpen
                 })
@@ -684,6 +741,9 @@ export class AIZoneWidget {
                   groups: this.modelGroups,
                   placeholder: '选择模型',
                   className: 'ai-zone-input-model-select',
+                  showSearch: true,
+                  align: 'parent',
+                  menuGap: 3,
                   onOpenChange: this.handleDropdownOpenChangeFn!,
                   open: this.isDropdownOpen
                 })
@@ -702,6 +762,9 @@ export class AIZoneWidget {
                   groups: this.modelGroups,
                   placeholder: '选择模型',
                   className: 'ai-zone-input-model-select',
+                  showSearch: true,
+                  align: 'parent',
+                  menuGap: 3,
                   onOpenChange: this.handleDropdownOpenChangeFn!,
                   open: false
                 })
@@ -721,6 +784,9 @@ export class AIZoneWidget {
                 groups: this.modelGroups,
                 placeholder: '选择模型',
                 className: 'ai-zone-input-model-select',
+                showSearch: true,
+                align: 'parent',
+                menuGap: 3,
                 onOpenChange: this.handleDropdownOpenChangeFn!,
                 open: this.isDropdownOpen
               })
@@ -744,6 +810,9 @@ export class AIZoneWidget {
                   groups: this.modelGroups,
                   placeholder: '选择模型',
                   className: 'ai-zone-input-model-select',
+                  showSearch: true,
+                  align: 'parent',
+                  menuGap: 3,
                   onOpenChange: this.handleDropdownOpenChangeFn!,
                   open: this.isDropdownOpen
                 })
@@ -759,12 +828,133 @@ export class AIZoneWidget {
                 groups: this.modelGroups,
                 placeholder: '选择模型',
                 className: 'ai-zone-input-model-select',
+                showSearch: true,
+                align: 'parent',
+                menuGap: 3,
                 onOpenChange: this.handleDropdownOpenChangeFn!,
                 open: this.isDropdownOpen
               })
             );
           }
         }
+      }
+    } else {
+      // 没有可用模型时，在下拉菜单中显示"暂无可用模型"和"管理模型"
+      console.log('[AIZoneWidget] 没有可用模型，显示提示信息');
+      
+      // 哭脸图标 SVG
+      const FrownIcon = React.createElement('svg', {
+        xmlns: 'http://www.w3.org/2000/svg',
+        width: 32,
+        height: 32,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 2,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        className: 'ai-zone-no-model-icon'
+      },
+        React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+        React.createElement('path', { d: 'M16 16s-1.5-2-4-2-4 2-4 2' }),
+        React.createElement('line', { x1: 9, x2: 9.01, y1: 9, y2: 9 }),
+        React.createElement('line', { x1: 15, x2: 15.01, y1: 9, y2: 9 })
+      );
+      
+      // 创建空模型分组，包含提示信息和管理模型按钮
+      const emptyModelGroups: SelectGroup[] = [{
+        groupName: '',
+        items: [
+          {
+            value: '__no_model__',
+            label: React.createElement('div', { className: 'ai-zone-no-model-content' },
+              FrownIcon,
+              React.createElement('span', { className: 'ai-zone-no-model-text' }, '暂无可用模型')
+            ),
+            disabled: true
+          },
+          {
+            value: '__manage_models__',
+            label: React.createElement('span', { className: 'ai-zone-manage-models-link' }, '管理模型')
+          }
+        ]
+      }];
+      
+      // 处理下拉菜单打开/关闭
+      this.handleDropdownOpenChangeFn = (isOpen: boolean) => {
+        this.isDropdownOpen = isOpen;
+        if (isOpen) {
+          this.disableEditorScroll();
+        } else {
+          this.enableEditorScroll();
+        }
+        if (this.toolbarModelDropdownRoot) {
+          this.toolbarModelDropdownRoot.render(
+            React.createElement(Select, {
+              value: '',
+              onChange: (value: string) => {
+                if (value === '__manage_models__') {
+                  // 打开 AI 模型配置标签页
+                  window.dispatchEvent(new CustomEvent('open-ai-config'));
+                }
+              },
+              groups: emptyModelGroups,
+              placeholder: '选择模型',
+              className: 'ai-zone-input-model-select ai-zone-no-model-select',
+              showSearch: true,
+              align: 'parent',
+              menuGap: 3,
+              onOpenChange: this.handleDropdownOpenChangeFn!,
+              open: this.isDropdownOpen
+            })
+          );
+        }
+      };
+      
+      this.closeDropdownFn = () => {
+        if (this.isDropdownOpen && this.toolbarModelDropdownRoot) {
+          this.isDropdownOpen = false;
+          this.enableEditorScroll();
+          this.toolbarModelDropdownRoot.render(
+            React.createElement(Select, {
+              value: '',
+              onChange: (value: string) => {
+                if (value === '__manage_models__') {
+                  window.dispatchEvent(new CustomEvent('open-ai-config'));
+                }
+              },
+              groups: emptyModelGroups,
+              placeholder: '选择模型',
+              className: 'ai-zone-input-model-select ai-zone-no-model-select',
+              showSearch: true,
+              align: 'parent',
+              menuGap: 3,
+              onOpenChange: this.handleDropdownOpenChangeFn!,
+              open: false
+            })
+          );
+        }
+      };
+      
+      if (this.toolbarModelDropdownRoot) {
+        this.toolbarModelDropdownRoot.render(
+          React.createElement(Select, {
+            value: '',
+            onChange: (value: string) => {
+              if (value === '__manage_models__') {
+                window.dispatchEvent(new CustomEvent('open-ai-config'));
+              }
+            },
+            groups: emptyModelGroups,
+            placeholder: '选择模型',
+            className: 'ai-zone-input-model-select ai-zone-no-model-select',
+            showSearch: true,
+            align: 'parent',
+            menuGap: 3,
+            onOpenChange: this.handleDropdownOpenChangeFn!,
+            open: this.isDropdownOpen
+          })
+        );
       }
     }
 

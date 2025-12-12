@@ -17,7 +17,7 @@ export function registerFileHandlers(): void {
   
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = [
-    'read-file', 'write-file', 'file-exists', 'file-stat', 'folder:rename', 'folder:delete', 'folder:reveal-in-explorer'
+    'read-file', 'write-file', 'file-exists', 'file-stat', 'folder:rename', 'folder:delete', 'folder:reveal-in-explorer', 'delete-file'
   ];
   
   for (const handler of handlersToRemove) {
@@ -148,9 +148,9 @@ export function registerFileHandlers(): void {
   });
 
   /**
-   * 删除文件或文件夹
+   * 删除文件或文件夹（移动到回收站）
    */
-  ipcMain.handle('folder:delete', async (event, targetPath: string) => {
+  const handleDelete = async (event: Electron.IpcMainInvokeEvent, targetPath: string) => {
     try {
       
       // 检查文件/文件夹是否存在
@@ -161,23 +161,41 @@ export function registerFileHandlers(): void {
         return { success: false, error: '文件或文件夹不存在' };
       }
       
-      // 获取文件/文件夹信息
-      const stats = await fs.stat(targetPath);
-      
-      if (stats.isDirectory()) {
-        // 删除文件夹（递归删除所有内容）
-        await fs.rm(targetPath, { recursive: true, force: true });
-      } else {
-        // 删除文件
-        await fs.unlink(targetPath);
+      // 使用 Electron 的 shell.trashItem 将文件移动到回收站
+      // 这样可以恢复文件，而不是永久删除
+      try {
+        await shell.trashItem(targetPath);
+        console.log('[FileHandlers] 文件已移动到回收站:', targetPath);
+        return { success: true };
+      } catch (trashError) {
+        // 如果移动到回收站失败（某些系统可能不支持），回退到永久删除
+        console.warn('[FileHandlers] 移动到回收站失败，尝试永久删除:', trashError);
+        
+        // 获取文件/文件夹信息
+        const stats = await fs.stat(targetPath);
+        
+        if (stats.isDirectory()) {
+          // 删除文件夹（递归删除所有内容）
+          await fs.rm(targetPath, { recursive: true, force: true });
+        } else {
+          // 删除文件
+          await fs.unlink(targetPath);
+        }
+        
+        console.log('[FileHandlers] 文件已永久删除（回收站不可用）:', targetPath);
+        return { success: true };
       }
-      
-      return { success: true };
     } catch (error) {
       console.error('[FileHandlers] 删除失败:', error);
       return { success: false, error: String(error) };
     }
-  });
+  };
+
+  // 注册 folder:delete 处理器（保持向后兼容）
+  ipcMain.handle('folder:delete', handleDelete);
+
+  // 注册 delete-file 处理器（前端使用的名称）
+  ipcMain.handle('delete-file', handleDelete);
 
   /**
    * 在资源管理器中打开文件或文件夹

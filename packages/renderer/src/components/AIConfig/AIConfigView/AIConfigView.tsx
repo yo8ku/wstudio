@@ -6,16 +6,14 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AIProviderIcon } from '../../Icons/AIProviderIcon';
-import { ModelCapabilityList } from '../../common/ModelCapabilityList';
 import { Tooltip } from '../../Tooltip';
 import { Icon } from '../../Icons';
 import { SearchBox } from '../../common/SearchBox';
 import { DropdownMenu } from '../../common/DropdownMenu';
-import { modelCapabilityDetector } from '../../../services/modelCapabilityDetector';
-import { ModelCapability } from '../../../types/modelCapabilities';
-import { aiService, AI_PROVIDERS } from '../../../services/ai';
+import { aiService, AI_PROVIDERS, loadAIProvidersConfig, ConfigProvider, setModelEnabled, isModelEnabled } from '../../../services/ai';
 import { AIProviderConfig } from '../../../types/aiProvider';
 import { toastService } from '../../../services/ToastService';
+import { clearModelCache } from '../../../services/ModelCacheService';
 import './AIConfigView.scss';
 
 interface AIConfigViewProps {
@@ -27,7 +25,38 @@ interface ChatModel {
   id: string;
   name: string;
   displayName?: string;
+  enabled?: boolean; // 模型是否启用
+  capabilities?: {
+    thinking?: boolean;
+    tool_calls?: string[];
+  };
 }
+
+// 深度思考图标组件 (Lucide Brain Icon)
+const ThinkingIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ marginLeft: 15, opacity: 0.8, verticalAlign: 'middle' }}
+    aria-label="支持深度思考"
+  >
+    <title>支持深度思考</title>
+    <path d="M12 18V5"/>
+    <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/>
+    <path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"/>
+    <path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/>
+    <path d="M18 18a4 4 0 0 0 2-7.464"/>
+    <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/>
+    <path d="M6 18a4 4 0 0 1-2-7.464"/>
+    <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/>
+  </svg>
+);
 
 interface AIModelConfig {
   name: string;
@@ -37,11 +66,10 @@ interface AIModelConfig {
   chatModels?: ChatModel[];
   modelId?: string; // 魔塔社区等服务商需要的模型ID（单个模型，向后兼容）
   models?: string[]; // 魔塔社区等服务商的多个模型ID列表
-  isEnabled?: boolean; // 是否启用该配置（默认为true）
 }
 
-// 使用新的AI提供商配置
-const AI_PROVIDERS_LIST = Object.values(AI_PROVIDERS).map(provider => ({
+// 使用新的AI提供商配置（作为默认值）
+const DEFAULT_AI_PROVIDERS_LIST = Object.values(AI_PROVIDERS).map(provider => ({
   id: provider.id,
   name: provider.name,
   iconName: provider.icon,
@@ -49,6 +77,23 @@ const AI_PROVIDERS_LIST = Object.values(AI_PROVIDERS).map(provider => ({
 }));
 
 export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configIndex }) => {
+  // 从配置文件加载的服务商列表
+  const [configProviders, setConfigProviders] = useState<ConfigProvider[]>([]);
+  
+  // 合并后的服务商列表（配置文件优先，然后是默认列表）
+  const AI_PROVIDERS_LIST = useMemo(() => {
+    if (configProviders.length > 0) {
+      // 从配置文件生成服务商列表
+      return configProviders.map(provider => ({
+        id: provider.id,
+        name: provider.name,
+        iconName: provider.id.charAt(0).toUpperCase() + provider.id.slice(1), // 生成图标名称
+        endpoint: provider.config.base_url + (provider.config.chat_endpoint || '')
+      }));
+    }
+    // 回退到默认列表
+    return DEFAULT_AI_PROVIDERS_LIST;
+  }, [configProviders]);
   const [config, setConfig] = useState<AIModelConfig>({
     name: '',
     apiKey: '',
@@ -56,16 +101,15 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     providerId: 'openai',
     chatModels: [],
     modelId: '',
-    models: [],
-    isEnabled: false
+    models: []
   });
   const [showApiKey, setShowApiKey] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [availableModels, setAvailableModels] = useState<ChatModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
-  const [modelCapabilities, setModelCapabilities] = useState<Map<string, ModelCapability[]>>(new Map());
-  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
   const [searchKeyword, setSearchKeyword] = useState('');
+  // 模型启用状态 Map<modelId, isEnabled>
+  const [modelEnabledStates, setModelEnabledStates] = useState<Map<string, boolean>>(new Map());
   const [hasTestedConnection, setHasTestedConnection] = useState(false); // 标记是否已经测试连接成功
   const [isSaving, setIsSaving] = useState(false); // 是否正在保存
   const [currentConfigId, setCurrentConfigId] = useState<string>(() => {
@@ -76,12 +120,60 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     // 新建配置：生成临时 ID
     return `temp-config-${Date.now()}`;
   }); // 当前配置的ID
+  // 保存原始配置用于检测未保存更改
+  const [savedConfig, setSavedConfig] = useState<AIModelConfig | null>(null);
 
   // 获取当前提供商的图标名称
   const currentProviderIconName = useMemo(() => {
     const provider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
     return provider?.iconName || '';
-  }, [config.providerId]);
+  }, [config.providerId, AI_PROVIDERS_LIST]);
+
+  // 从配置文件加载服务商列表
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const providers = await loadAIProvidersConfig();
+        if (providers && providers.length > 0) {
+          console.log('[AIConfigView] 从配置文件加载服务商列表，数量:', providers.length);
+          setConfigProviders(providers);
+        }
+      } catch (error) {
+        console.error('[AIConfigView] 加载服务商配置失败:', error);
+        // 失败时使用默认列表，不影响用户使用
+      }
+    };
+    loadConfig();
+  }, []);
+
+  // 检测未保存更改并通知 EditorArea
+  useEffect(() => {
+    // 比较当前配置与保存的配置
+    const hasUnsavedChanges = savedConfig !== null && (
+      config.name !== savedConfig.name ||
+      config.apiKey !== savedConfig.apiKey ||
+      config.apiEndpoint !== savedConfig.apiEndpoint ||
+      config.providerId !== savedConfig.providerId ||
+      config.modelId !== savedConfig.modelId
+    );
+
+    // 新建配置时，只要有内容就算有未保存更改
+    const isNewConfig = currentConfigId.startsWith('temp-config-');
+    const newConfigHasContent = isNewConfig && (
+      config.name.trim() !== '' ||
+      config.apiKey.trim() !== ''
+    );
+
+    const shouldMarkUnsaved = hasUnsavedChanges || newConfigHasContent;
+
+    // 派发事件通知 EditorArea
+    window.dispatchEvent(new CustomEvent('ai-config-unsaved-status', {
+      detail: {
+        configId: currentConfigId,
+        hasUnsavedChanges: shouldMarkUnsaved
+      }
+    }));
+  }, [config, savedConfig, currentConfigId]);
 
   // 判断是否为文本相关的工具模型（embedding、moderation等）
   const isToolModel = useCallback((modelName: string): boolean => {
@@ -386,64 +478,41 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     );
   }, [availableModels, getProviderByModelName, extractModelDate, isOutdatedModel, searchKeyword]);
 
-  // 切换提供商展开状态
-  const toggleProvider = useCallback((providerId: string) => {
-    setExpandedProviders(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(providerId)) {
-        newSet.delete(providerId);
-      } else {
-        newSet.add(providerId);
-      }
-      return newSet;
+  // 切换模型启用状态
+  const toggleModelEnabled = useCallback((modelId: string, enabled: boolean) => {
+    // 更新本地状态
+    setModelEnabledStates(prev => {
+      const newMap = new Map(prev);
+      newMap.set(modelId, enabled);
+      return newMap;
     });
-  }, []);
-
-  // 当搜索关键词变化时，自动展开包含匹配模型的提供商手风琴
-  useEffect(() => {
-    if (searchKeyword.trim()) {
-      // 如果有搜索关键词，展开所有包含匹配模型的提供商
-      const providersToExpand = new Set<string>();
-      groupedModels.forEach(group => {
-        if (group.models.length > 0) {
-          providersToExpand.add(group.provider.id);
-        }
-      });
-      setExpandedProviders(providersToExpand);
-    } else {
-      // 如果没有搜索关键词，收起所有提供商
-      setExpandedProviders(new Set());
-    }
-  }, [searchKeyword, groupedModels]);
-
-  // 检测模型能力
-  const detectModelCapabilities = useCallback(async (modelId: string) => {
-    if (!config.apiKey || !config.apiEndpoint) {
-      return;
-    }
-
-    try {
-      // 对于某些不支持模型详情API的服务商（如魔塔社区），跳过API检测以提升速度
-      const skipAPIDetection = config.providerId === 'ModelScope';
-      
-      const result = await modelCapabilityDetector.detectCapabilities(
+    
+    // 更新 availableModels 中的 enabled 状态
+    setAvailableModels(prev => prev.map(model => 
+      model.id === modelId ? { ...model, enabled } : model
+    ));
+    
+    // 更新 config.chatModels 中的 enabled 状态
+    setConfig(prev => ({
+      ...prev,
+      chatModels: prev.chatModels?.map(model =>
+        model.id === modelId ? { ...model, enabled } : model
+      )
+    }));
+    
+    // 更新全局服务状态
+    setModelEnabled(modelId, enabled);
+    
+    // 派发事件通知其他组件（AI Panel、编辑器内联聊天）
+    window.dispatchEvent(new CustomEvent('model-enabled-changed', {
+      detail: {
         modelId,
-        config.apiEndpoint,
-        config.apiKey,
-        skipAPIDetection
-      );
-
-      if (result.success) {
-        setModelCapabilities(prev => {
-          const newMap = new Map(prev);
-          newMap.set(modelId, result.capabilities);
-          return newMap;
-        });
+        enabled
       }
-    } catch (error) {
-      console.error('[AIConfigView] 检测模型能力失败', error);
-    }
-  }, [config.apiKey, config.apiEndpoint, config.providerId]);
+    }));
+    
+    console.log(`[AIConfigView] 模型 ${modelId} ${enabled ? '启用' : '禁用'}`);
+  }, []);
 
   // 获取可用模型列表
   const fetchModels = useCallback(async () => {
@@ -459,8 +528,17 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       currentConfigId: currentConfigId
     });
 
-    if (!config.apiKey || !config.apiEndpoint) {
-      console.warn('[AIConfigView] API Key 或 API 端点未设置，跳过获取模型列表');
+    if (!config.apiKey) {
+      console.warn('[AIConfigView] API Key 未设置，跳过获取模型列表');
+      return;
+    }
+
+    // 获取服务商的默认地址
+    const fetchProvider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
+    const effectiveEndpoint = config.apiEndpoint || fetchProvider?.endpoint || '';
+    
+    if (!effectiveEndpoint) {
+      console.warn('[AIConfigView] API 端点未设置且服务商无默认地址，跳过获取模型列表');
       return;
     }
 
@@ -474,7 +552,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
         ...(isTemp ? {} : { id: currentConfigId }),
         name: config.name,
         apiKey: config.apiKey,
-        apiEndpoint: config.apiEndpoint,
+        apiEndpoint: effectiveEndpoint,
         ...(config.modelId !== undefined && config.modelId !== '' ? { modelId: config.modelId } : {}), // 魔塔社区等需要的模型ID（向后兼容）
         ...(config.models && config.models.length > 0 ? { models: config.models } : {}) // 魔塔社区等的多个模型ID列表
       };
@@ -493,78 +571,37 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       
       // 获取可用模型
       const models = await aiService.getAvailableModels();
-      const newChatModels: ChatModel[] = models.map(model => ({
-        id: model.id,
-        name: model.name,
-        displayName: model.displayName
-      }));
+      
+      // 从配置文件获取模型的 capabilities
+      const { getProviderModels } = await import('../../../services/ai');
+      const configModels = await getProviderModels(config.providerId);
+      
+      const newChatModels: ChatModel[] = models.map(model => {
+        // 查找配置文件中对应模型的 capabilities 和 name
+        const configModel = configModels.find(cm => cm.id === model.id);
+        // 保留现有的启用状态，如果没有则默认为 false
+        const existingEnabled = modelEnabledStates.get(model.id) ?? false;
+        return {
+          id: model.id,
+          name: configModel?.name || model.name,
+          displayName: configModel?.name || model.displayName || model.name,
+          enabled: existingEnabled,
+          capabilities: configModel?.capabilities
+        };
+      });
       
       console.log('[AIConfigView] 新获取的模型列表:', newChatModels);
       
-      // 合并新模型到现有模型列表（避免替换，保留所有服务商的模型）
-      // 先计算合并后的模型列表
-      let mergedModels: ChatModel[] = [];
-      setAvailableModels(prevModels => {
-        mergedModels = [...prevModels];
-        
-        // 遍历新模型，如果不存在则追加
-        newChatModels.forEach((newModel: ChatModel) => {
-          // 检查是否已存在（通过id或name判断）
-          const exists = mergedModels.some(
-            (existingModel) => existingModel.id === newModel.id || existingModel.name === newModel.name
-          );
-          if (!exists) {
-            mergedModels.push(newModel);
-          }
-        });
-        
-        console.log('[AIConfigView] 合并后的模型列表:', mergedModels);
-        return mergedModels;
-      });
+      // 直接替换模型列表（每个配置只显示当前服务商的模型）
+      // 不需要保留其他服务商的模型，因为每个配置是独立的
+      setAvailableModels(newChatModels);
+      console.log('[AIConfigView] 替换后的模型列表:', newChatModels);
       
-      // 根据获取到的模型列表，自动展开包含模型的服务商
-      const providersToExpand = new Set<string>();
-      mergedModels.forEach(model => {
-        // 跳过老旧模型
-        if (isOutdatedModel(model.id)) {
-          return;
-        }
-        
-        const provider = getProviderByModelName(model.id);
-        
-        // 跳过"自定义"提供商的模型
-        if (provider.id !== 'custom') {
-          providersToExpand.add(provider.id);
-        }
-      });
-      
-      // 展开包含模型的服务商
-      setExpandedProviders(prev => {
-        const newSet = new Set(prev);
-        providersToExpand.forEach(providerId => {
-          newSet.add(providerId);
-        });
-        return newSet;
-      });
-
-      // 自动将获取到的模型添加到配置的模型列表中（合并而不是替换）
+      // 替换配置中当前服务商的模型列表
       setConfig(prev => {
-        const existingChatModels = prev.chatModels || [];
-        const mergedChatModels: ChatModel[] = [...existingChatModels];
-        
-        // 遍历新模型，如果不存在则追加
-        newChatModels.forEach((newModel: ChatModel) => {
-          const exists = mergedChatModels.some(
-            (existingModel) => existingModel.id === newModel.id || existingModel.name === newModel.name
-          );
-          if (!exists) {
-            mergedChatModels.push(newModel);
-          }
-        });
-        
         return {
           ...prev,
-          chatModels: mergedChatModels
+          chatModels: newChatModels // 直接使用新模型列表
         };
       });
       console.log('[AIConfigView] ✓ 模型已合并到配置列表');
@@ -574,12 +611,6 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       // 1. 使用临时ID保存配置导致重复
       // 2. 用户还没确认就已经保存到数据库
       console.log('[AIConfigView] 模型列表已获取，等待用户点击"保存配置"按钮')
-
-      // 自动检测前几个模型的能力（避免一次性检测太多）
-      const modelsToDetect = newChatModels.slice(0, 10);
-      for (const model of modelsToDetect) {
-        detectModelCapabilities(model.id);
-      }
     } catch (error) {
       console.error('[AIConfigView] 获取模型列表失败:', error);
       // 发生错误时，不清空现有模型列表，只记录错误
@@ -587,7 +618,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     } finally {
       setLoadingModels(false);
     }
-  }, [config.apiKey, config.apiEndpoint, config.providerId, config.name, config.modelId, currentConfigId, detectModelCapabilities]);
+  }, [config.apiKey, config.apiEndpoint, config.providerId, config.name, config.modelId, currentConfigId]);
 
   // 加载配置
   useEffect(() => {
@@ -611,27 +642,43 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       // 从数据库加载已保存的配置
       try {
         console.log('[AIConfigView] 加载配置，ID:', currentConfigId);
-        const savedConfig = await window.electron?.ipcRenderer.invoke('ai-model:get', currentConfigId);
+        const loadedConfig = await window.electron?.ipcRenderer.invoke('ai-model:get', currentConfigId);
         
-        if (savedConfig) {
-          console.log('[AIConfigView] 从数据库加载的配置:', savedConfig);
+        if (loadedConfig) {
+          console.log('[AIConfigView] 从数据库加载的配置:', loadedConfig);
           
           // 加载配置数据
-          setConfig({
-            name: savedConfig.name || '',
-            apiKey: savedConfig.apiKey || '',
-            apiEndpoint: savedConfig.apiEndpoint || '',
-            providerId: savedConfig.providerId || 'openai',
-            chatModels: savedConfig.chatModels || [],
-            modelId: savedConfig.modelId || '',
-            models: savedConfig.models || [],
-            isEnabled: savedConfig.isEnabled !== false
-          });
+          const configData: AIModelConfig = {
+            name: loadedConfig.name || '',
+            apiKey: loadedConfig.apiKey || '',
+            apiEndpoint: loadedConfig.apiEndpoint || '',
+            providerId: loadedConfig.providerId || 'openai',
+            chatModels: loadedConfig.chatModels || [],
+            modelId: loadedConfig.modelId || '',
+            models: loadedConfig.models || []
+          };
+          setConfig(configData);
+          // 保存原始配置用于检测未保存更改
+          setSavedConfig(configData);
 
           // 加载已保存的 chatModels 到 availableModels
-          if (savedConfig.chatModels && Array.isArray(savedConfig.chatModels) && savedConfig.chatModels.length > 0) {
-            console.log('[AIConfigView] 加载已保存的模型列表:', savedConfig.chatModels);
-            setAvailableModels(savedConfig.chatModels);
+          if (loadedConfig.chatModels && Array.isArray(loadedConfig.chatModels) && loadedConfig.chatModels.length > 0) {
+            console.log('[AIConfigView] 加载已保存的模型列表:', loadedConfig.chatModels);
+            setAvailableModels(loadedConfig.chatModels);
+            
+            // 恢复模型启用状态
+            const enabledStates = new Map<string, boolean>();
+            loadedConfig.chatModels.forEach((model: ChatModel) => {
+              if (model.enabled !== undefined) {
+                enabledStates.set(model.id, model.enabled);
+                // 同步到全局服务
+                setModelEnabled(model.id, model.enabled);
+              }
+            });
+            if (enabledStates.size > 0) {
+              setModelEnabledStates(enabledStates);
+              console.log('[AIConfigView] 已恢复模型启用状态:', enabledStates.size, '个模型');
+            }
           } else {
             setAvailableModels([]);
           }
@@ -648,10 +695,14 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
 
   // 自动加载模型列表（仅在测试连接成功后）
   useEffect(() => {
-    if (config.apiKey && config.apiEndpoint && hasTestedConnection) {
+    // 检查是否有有效的 API 端点（用户设置的或服务商默认的）
+    const autoLoadProvider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
+    const hasValidEndpoint = config.apiEndpoint || autoLoadProvider?.endpoint;
+    
+    if (config.apiKey && hasValidEndpoint && hasTestedConnection) {
       fetchModels();
     }
-  }, [config.apiKey, config.apiEndpoint, hasTestedConnection, fetchModels]);
+  }, [config.apiKey, config.apiEndpoint, config.providerId, hasTestedConnection, fetchModels]);
 
   // 处理提供商变更
   const handleProviderChange = (providerId: string) => {
@@ -683,7 +734,12 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       missingFields.push('API Key');
     }
     
-    if (!config.apiEndpoint || !config.apiEndpoint.trim()) {
+    // 检查服务商是否有默认地址
+    const currentProvider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
+    const hasDefaultEndpoint = currentProvider?.endpoint && currentProvider.endpoint.trim() !== '';
+    
+    // 只有没有默认地址的服务商（如自定义）才需要必填 API 地址
+    if (!hasDefaultEndpoint && (!config.apiEndpoint || !config.apiEndpoint.trim())) {
       missingFields.push('API 地址');
     }
     
@@ -691,6 +747,13 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     if (missingFields.length > 0) {
       toastService.error(`请填写以下必填项：${missingFields.join('、')}`);
       return;
+    }
+    
+    // 如果用户没有填写 API 地址，使用服务商的默认地址
+    if (!config.apiEndpoint || !config.apiEndpoint.trim()) {
+      if (hasDefaultEndpoint) {
+        config.apiEndpoint = currentProvider!.endpoint;
+      }
     }
 
     setIsSaving(true);
@@ -712,7 +775,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
 
       // 获取现有配置的创建时间和chatModels（如果是更新操作）
       let existingCreatedAt = Date.now();
-      let existingChatModels: Array<{ id: string; name: string; displayName?: string }> = [];
+      let existingChatModels: Array<{ id: string; name: string; displayName?: string; enabled?: boolean; capabilities?: { thinking?: boolean; tool_calls?: string[] } }> = [];
       if (!currentConfigId.startsWith('temp-config-')) {
         try {
           const existingConfig = await window.electron?.ipcRenderer.invoke('ai-model:get', finalConfigId);
@@ -728,19 +791,34 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
         }
       }
 
-      // 合并chatModels：将新的chatModels追加到现有的chatModels中，避免重复
-      const newChatModels = config.chatModels || [];
-      const mergedChatModels: Array<{ id: string; name: string; displayName?: string }> = [...existingChatModels];
+      // 合并chatModels：使用 availableModels（当前显示的模型列表）作为基础
+      // 这样可以确保包含最新的启用状态
+      const currentModels = availableModels.length > 0 ? availableModels : (config.chatModels || []);
+      const mergedChatModels: Array<{ id: string; name: string; displayName?: string; enabled?: boolean; capabilities?: { thinking?: boolean; tool_calls?: string[] } }> = [];
       
-      // 遍历新的chatModels，如果不存在则追加
-      newChatModels.forEach((newModel: { id: string; name: string; displayName?: string }) => {
-        // 检查是否已存在（通过id或name判断）
-        const exists = mergedChatModels.some(
-          (existingModel) => existingModel.id === newModel.id || existingModel.name === newModel.name
-        );
-        if (!exists) {
-          mergedChatModels.push(newModel);
+      // 先添加现有配置中的模型（保留不在当前列表中的模型）
+      existingChatModels.forEach(existingModel => {
+        const inCurrentList = currentModels.some(m => m.id === existingModel.id);
+        if (!inCurrentList) {
+          // 保留不在当前列表中的模型，但更新其启用状态
+          const isEnabled = modelEnabledStates.get(existingModel.id) ?? existingModel.enabled ?? false;
+          mergedChatModels.push({
+            ...existingModel,
+            enabled: isEnabled
+          });
         }
+      });
+      
+      // 添加当前列表中的模型（使用最新的启用状态）
+      currentModels.forEach((model: ChatModel) => {
+        const isEnabled = modelEnabledStates.get(model.id) ?? model.enabled ?? false;
+        mergedChatModels.push({
+          id: model.id,
+          name: model.name,
+          displayName: model.displayName,
+          enabled: isEnabled,
+          capabilities: model.capabilities
+        });
       });
 
       // 准备保存的配置数据
@@ -753,7 +831,6 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
         modelId: config.modelId || undefined,
         models: config.models || undefined,
         chatModels: mergedChatModels,
-        isEnabled: config.isEnabled !== false,
         createdAt: currentConfigId.startsWith('temp-config-') ? Date.now() : existingCreatedAt,
         updatedAt: Date.now()
       };
@@ -765,9 +842,9 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
         hasApiKey: !!configToSave.apiKey,
         apiEndpoint: configToSave.apiEndpoint,
         hasModelId: !!configToSave.modelId,
-        isEnabled: configToSave.isEnabled,
         chatModelsCount: configToSave.chatModels?.length || 0,
-        availableModelsCount: availableModels.length
+        availableModelsCount: availableModels.length,
+        chatModels: configToSave.chatModels // 打印完整的 chatModels 数据
       });
 
       // 准备保存的模型数据
@@ -797,8 +874,13 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
         toastService.success('配置已保存');
         // 更新当前配置ID
         setCurrentConfigId(savedConfigId);
-        // 通知配置已更新
+        // 更新已保存配置状态（用于检测未保存更改）
+        setSavedConfig({ ...config });
+        // 清除模型缓存，强制 AI Panel 从数据库重新加载
+        await clearModelCache();
+        // 通知配置已更新（触发 AI Panel 重新加载模型）
         window.dispatchEvent(new CustomEvent('ai-config-updated'));
+        window.dispatchEvent(new CustomEvent('models-cache-updated'));
       } else {
         toastService.error('保存失败');
       }
@@ -844,7 +926,12 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       missingFields.push('API Key');
     }
     
-    if (!config.apiEndpoint || !config.apiEndpoint.trim()) {
+    // 检查服务商是否有默认地址
+    const testProvider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
+    const testHasDefaultEndpoint = testProvider?.endpoint && testProvider.endpoint.trim() !== '';
+    
+    // 只有没有默认地址的服务商才需要必填 API 地址
+    if (!testHasDefaultEndpoint && (!config.apiEndpoint || !config.apiEndpoint.trim())) {
       missingFields.push('API 地址');
     }
     
@@ -861,6 +948,13 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       console.log('[AIConfigView] ❌ 必填项未填写:', missingFields);
       toastService.error(`请填写以下必填项：${missingFields.join('、')}`);
       return;
+    }
+    
+    // 如果用户没有填写 API 地址，使用服务商的默认地址
+    if (!config.apiEndpoint || !config.apiEndpoint.trim()) {
+      if (testHasDefaultEndpoint) {
+        config.apiEndpoint = testProvider!.endpoint;
+      }
     }
 
     console.log('[AIConfigView] ✓ 基本验证通过，开始测试连接...');
@@ -1024,36 +1118,6 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
               <p className="form-hint">请妥善保管您的 API Key，不要分享给他人</p>
             </div>
 
-            <div className="form-group">
-              <label>API 地址</label>
-              <input
-                type="text"
-                className="form-control"
-                value={config.apiEndpoint}
-                onChange={(e) => {
-                  setConfig({ ...config, apiEndpoint: e.target.value });
-                  setHasTestedConnection(false); // API Endpoint 变更，需要重新测试
-                }}
-                placeholder={
-                  config.providerId === 'custom' 
-                    ? '例如: https://api.example.com/v1/chat/completions'
-                    : config.providerId === 'gemini'
-                    ? '例如: https://generativelanguage.googleapis.com （可选，留空使用默认）'
-                    : 'API 端点地址'
-                }
-              />
-              {config.providerId === 'gemini' && (
-                <div style={{ fontSize: '12px', color: 'var(--ws-description-foreground)', opacity: 0.75, marginTop: '4px' }}>
-                  提示：填写基础 URL（如 https://generativelanguage.googleapis.com），留空则使用官方默认地址
-                </div>
-              )}
-              {config.providerId === 'custom' && config.apiEndpoint && !config.apiEndpoint.includes('/chat/completions') && !config.apiEndpoint.includes('/messages') && (
-                <div style={{ fontSize: '12px', color: 'var(--ws-description-foreground)', opacity: 0.75, marginTop: '4px' }}>
-                  提示：可以只填写基础域名（如 https://api.example.com），系统会自动添加 /v1
-                </div>
-              )}
-            </div>
-
             {/* 魔塔社区的模型ID输入框 */}
             {config.providerId === 'modelscope' && (
               <div className="form-group">
@@ -1096,11 +1160,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                     <>
                       {groupedModels.map((group) => (
                         <div key={group.provider.id} className="provider-group">
-                          <button
-                            type="button"
-                            className={`provider-header ${expandedProviders.has(group.provider.id) ? 'expanded' : ''}`}
-                            onClick={() => toggleProvider(group.provider.id)}
-                          >
+                          <div className="provider-header expanded">
                             {group.provider.icon ? (
                               <AIProviderIcon provider={group.provider.icon} size={18} />
                             ) : group.provider.id === 'tool' ? (
@@ -1108,45 +1168,40 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                             ) : null}
                             <span className="provider-name">{group.provider.name}</span>
                             <span className="provider-count">({group.models.length})</span>
-                            <svg 
-                              className="provider-icon" 
-                              width="14" 
-                              height="14" 
-                              viewBox="0 0 16 16" 
-                              fill="currentColor"
-                            >
-                              <path d="M4.427 7.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427z"/>
-                            </svg>
-                          </button>
-                          {expandedProviders.has(group.provider.id) && (
-                            <div className="provider-models">
-                              {group.models.map((model) => {
-                                const capabilities = modelCapabilities.get(model.id) || [];
-                                const tooltip = getToolModelTooltip(model.id);
-                                const modelItemContent = (
-                                  <div
-                                    key={model.id}
-                                    className="model-item readonly"
-                                  >
-                                    <span className="model-name">{model.displayName || model.name}</span>
-                                    <ModelCapabilityList 
-                                      capabilities={capabilities} 
-                                      size="small"
-                                      showLabel={false}
+                          </div>
+                          <div className="provider-models">
+                            {group.models.map((model) => {
+                              const tooltip = getToolModelTooltip(model.id);
+                              const isEnabled = modelEnabledStates.get(model.id) === true; // 默认禁用
+                              const modelItemContent = (
+                                <div
+                                  key={model.id}
+                                  className={`model-item readonly ${!isEnabled ? 'disabled' : ''}`}
+                                >
+                                  <span className="model-name">
+                                    {model.displayName || model.name}
+                                    {model.capabilities?.thinking && <ThinkingIcon size={14} />}
+                                  </span>
+                                  <label className="model-switch">
+                                    <input
+                                      type="checkbox"
+                                      checked={isEnabled}
+                                      onChange={(e) => toggleModelEnabled(model.id, e.target.checked)}
                                     />
-                                  </div>
-                                );
+                                    <span className="switch-slider"></span>
+                                  </label>
+                                </div>
+                              );
 
-                                return tooltip ? (
-                                  <Tooltip key={model.id} content={tooltip}>
-                                    {modelItemContent}
-                                  </Tooltip>
-                                ) : (
-                                  modelItemContent
-                                );
-                              })}
-                            </div>
-                          )}
+                              return tooltip ? (
+                                <Tooltip key={model.id} content={tooltip}>
+                                  {modelItemContent}
+                                </Tooltip>
+                              ) : (
+                                modelItemContent
+                              );
+                            })}
+                          </div>
                         </div>
                       ))}
                     </>
@@ -1164,25 +1219,13 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
 
           {/* 操作按钮 */}
           <div className="action-buttons">
-            <div className="button-group">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={config.isEnabled !== false}
-                  onChange={(e) => {
-                    setConfig(prev => ({ ...prev, isEnabled: e.target.checked }));
-                  }}
-                />
-                <span>启用配置</span>
-              </label>
-              <button
-                className="btn-primary"
-                onClick={saveConfig}
-                disabled={isSaving}
-              >
-                {isSaving ? '保存中...' : '保存配置'}
-              </button>
-            </div>
+            <button
+              className="btn-primary"
+              onClick={saveConfig}
+              disabled={isSaving}
+            >
+              {isSaving ? '保存中...' : '保存配置'}
+            </button>
             <button
               className="btn-secondary"
               onClick={testConnection}
@@ -1198,11 +1241,18 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
             <ul>
               <li>选择您要使用的 AI 提供商</li>
               <li>填写配置名称后即可保存配置</li>
-              <li>输入对应的 API Key 和 API 地址</li>
+              <li>输入对应的 API Key（标准服务商会自动使用默认 API 地址）</li>
               {config.providerId === 'modelscope' ? (
                 <>
                   <li>魔塔社区需要在"模型ID"输入框中输入模型ID（例如：qwen-plus）</li>
                   <li>您可以点击"测试连接"来验证模型ID是否正确</li>
+                </>
+              ) : config.providerId === 'deepseek' ? (
+                <>
+                  <li>官方只支持两种对话模式：</li>
+                  <li style={{ marginLeft: '1em' }}>1. DeepSeek Chat（通用对话）</li>
+                  <li style={{ marginLeft: '1em' }}>2. DeepSeek Reasoner（深度思考）</li>
+                  <li>模型始终与官方保持一致，使用最新模型！</li>
                 </>
               ) : (
                 <>

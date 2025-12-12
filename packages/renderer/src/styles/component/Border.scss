@@ -20,7 +20,8 @@
 [data-theme-mode=dark] .command-center,
 // 菜单栏 菜单边框
 [data-theme-mode=dark] .titlebar-dropdown {
-    border: 1px solid rgb(129 129 129 / 28%)
+    border: 1px solid rgb(129 129 129 / 28%);
+
 }
 
 [data-theme-mode=dark] .dropdown-menu-group-title {
@@ -32,6 +33,9 @@
     background-color: rgb(87 87 87 / 52%);
 }
 
+[data-theme-mode=dark] .dropdown-menu{
+    background-color: var(--ws-dropdown-background);
+}
 
 
 [data-theme-mode=dark] .command-center{

@@ -51,7 +51,6 @@ export const KnowledgeBaseGroup: React.FC<KnowledgeBaseGroupProps> = ({
   onAddClick,
   onEdit,
   onDelete,
-  onAddToChat,
   onSettings,
 }) => {
   const itemCount = countItems(group.items);
@@ -128,7 +127,6 @@ export const KnowledgeBaseGroup: React.FC<KnowledgeBaseGroupProps> = ({
                 selectedItemId={selectedItemId}
                 onEdit={onEdit}
                 onDelete={onDelete}
-                onAddToChat={onAddToChat}
                 onSettings={onSettings}
               />
             ))

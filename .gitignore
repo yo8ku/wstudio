@@ -8,6 +8,15 @@ node_modules/
 *.md
 *.ps1
 
+技术文档/
+
+# 忽略临时文档
+docs/
+
+__pycache__/
+*.pyc
+*.py
+
 # Build outputs (构建输出 - 通过编译生成)
 dist/
 build/
@@ -30,7 +39,6 @@ app/
 # Documentation files (文档 - 保留项目文档，排除包内文档)
 # *.md (保留 - 项目文档需要上传到 GitHub)
 # README* (保留)
-docs/
 # 只排除 node_modules 和第三方扩展中的文档
 **/node_modules/**/*.md
 **/extensions/**/*.md
@@ -80,6 +88,10 @@ reflog.txt
 tempResouce/
 tempResource/
 
+# 忽略模型文件
+*.onnx
+*.bin
+
 # Environment variables (环境变量 - 敏感信息)
 .env
 .env.local
@@ -98,5 +110,10 @@ coverage/
 # TypeScript (TS 构建缓存)
 *.tsbuildinfo
 
-# Python bundle (Python 打包文件 - 文件过大，不应提交到仓库)
+# Python bundle (已移除 Python 依赖，此目录可删除)
 python_bundle/
+
+# Embedding models (嵌入模型 - 文件过大，不应提交到仓库)
+resources/models/
+packages/Embeddings/models/
+packages/renderer/public/models/

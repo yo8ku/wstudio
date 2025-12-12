@@ -5,6 +5,13 @@
 console.log('[index.tsx] ============ 渲染进程入口文件开始执行 ============');
 console.log('[index.tsx] 当前时间:', new Date().toLocaleTimeString());
 
+// 设置 EventEmitter 的最大监听器数量，避免内存泄漏警告
+// 由于应用中有多个组件需要监听主题变化等事件，增加限制是合理的
+if (window.electron?.ipcRenderer && typeof (window.electron.ipcRenderer as any).setMaxListeners === 'function') {
+  (window.electron.ipcRenderer as any).setMaxListeners(20);
+  console.log('[index.tsx] EventEmitter maxListeners 已设置为 20');
+}
+
 // 添加全局错误捕获，防止应用崩溃
 window.addEventListener('error', (event) => {
   console.error('[Global Error Handler] 捕获到未处理的错误', {
@@ -43,10 +50,12 @@ import { MainLayout } from './components/Layout/MainLayout';
 import { initIconSystem } from './components/Icons';
 import { Toaster } from '@/components/ui/sonner';
 import { ragProcessingService } from './services/RAGProcessingService';
+import { knowledgeBaseRecoveryService } from './services/KnowledgeBaseRecoveryService';
 import './styles/index.scss';
 import './styles/aiResponseFormatter.scss';
 
 console.log('[index.tsx] 所有模块导入完成');
+console.log('[index.tsx] Embedding 服务将在主进程中运行');
 
 // 初始化图标系统
 initIconSystem();
@@ -219,6 +228,14 @@ console.log('  - debugDB()   查看数据库内容');
 console.log('  - cleanupDB() 清理重复配置');
 
 // RAG 处理服务将在需要时按需初始化（通过右键菜单上传知识库时）
+
+// 知识库崩溃恢复服务：在应用启动时检查并恢复中断的上传任务
+// 延迟初始化，确保 UI 已经渲染完成
+setTimeout(() => {
+  knowledgeBaseRecoveryService.initialize().catch((error) => {
+    console.error('[App] 知识库恢复服务初始化失败:', error);
+  });
+}, 2000);
 
 const rootElement = document.getElementById('root');
 console.log('[Index] 🔍 准备渲染 React 应用...');

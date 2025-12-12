@@ -1,7 +1,7 @@
 /**
  * 知识库右键菜单组件
  * 功能：为知识库项提供上下文菜单
- * 描述：支持修改资料、删除知识库、添加到聊天等功能
+ * 描述：支持修改资料、删除知识库、设置等功能
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -18,8 +18,6 @@ interface KnowledgeBaseContextMenuProps {
   onEdit: (item: KnowledgeItem) => void;
   /** 删除知识库 */
   onDelete: (item: KnowledgeItem) => void;
-  /** 添加到聊天 */
-  onAddToChat: (item: KnowledgeItem) => void;
   /** 打开设置 */
   onSettings?: (item: KnowledgeItem) => void;
 }
@@ -30,7 +28,6 @@ export const KnowledgeBaseContextMenu: React.FC<KnowledgeBaseContextMenuProps> =
   onClose,
   onEdit,
   onDelete,
-  onAddToChat,
   onSettings,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -74,11 +71,6 @@ export const KnowledgeBaseContextMenu: React.FC<KnowledgeBaseContextMenuProps> =
 
   const handleDelete = () => {
     onDelete(item);
-    onClose();
-  };
-
-  const handleAddToChat = () => {
-    onAddToChat(item);
     onClose();
   };
 
@@ -134,15 +126,6 @@ export const KnowledgeBaseContextMenu: React.FC<KnowledgeBaseContextMenuProps> =
           </div>
         </>
       )}
-
-      <div className="context-menu-item" onClick={handleAddToChat}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M2.5 1A1.5 1.5 0 0 0 1 2.5v8A1.5 1.5 0 0 0 2.5 12h1.5v2.5a.5.5 0 0 0 .854.354l3.146-3.146A.5.5 0 0 0 7.646 11H2.5a.5.5 0 0 1-.5-.5v-8a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 1 0v-4A1.5 1.5 0 0 0 13.5 1h-11z"/>
-          <path d="M12 8a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h1.5v-1.5a.5.5 0 0 1 .5-.5z"/>
-          <path d="M12.5 8.5a.5.5 0 0 0-1 0v1.5H10a.5.5 0 0 0 0 1h2a.5.5 0 0 0 .5-.5v-2z"/>
-        </svg>
-        <span>添加到聊天</span>
-      </div>
 
       <div className="context-menu-divider" />
 

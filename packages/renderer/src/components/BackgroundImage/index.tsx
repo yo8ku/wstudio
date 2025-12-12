@@ -431,7 +431,17 @@ const BackgroundImage: React.FC = () => {
   }, [config]);
 
   // 监听主题切换事件，确保背景透明度在主题切换后仍然有效
+  // 使用 useRef 存储监听器函数，避免依赖项变化导致重复添加
+  const themeChangeHandlerRef = useRef<(() => void) | null>(null);
+  
   useEffect(() => {
+    const ipcRenderer = getIpcRenderer();
+    
+    // 如果已经有监听器，先移除旧的
+    if (themeChangeHandlerRef.current && ipcRenderer) {
+      ipcRenderer.removeListener('theme:theme-changed', themeChangeHandlerRef.current);
+    }
+
     const handleThemeChange = () => {
       // 如果背景启用，重新确认body 类名存在
       if (config.enabled && config.imagePath) {
@@ -439,15 +449,18 @@ const BackgroundImage: React.FC = () => {
       }
     };
 
+    // 保存监听器引用
+    themeChangeHandlerRef.current = handleThemeChange;
+
     // 监听主题切换事件
-    const ipcRenderer = getIpcRenderer();
     if (ipcRenderer) {
       ipcRenderer.on('theme:theme-changed', handleThemeChange);
     }
 
     return () => {
-      if (ipcRenderer) {
-        ipcRenderer.removeListener('theme:theme-changed', handleThemeChange);
+      if (ipcRenderer && themeChangeHandlerRef.current) {
+        ipcRenderer.removeListener('theme:theme-changed', themeChangeHandlerRef.current);
+        themeChangeHandlerRef.current = null;
       }
     };
   }, [config.enabled, config.imagePath]);

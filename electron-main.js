@@ -22,27 +22,9 @@ process.on('uncaughtException', (error) => {
   try {
     const { dialog } = require('electron');
     const errorMessage = error.message || String(error);
-    const isPythonError = errorMessage.includes('python') || errorMessage.includes('Python') || errorMessage.includes('ENOENT');
-    
     let title = '应用程序错误';
     let message = '发生了一个未处理的错误';
     let detail = errorMessage;
-    
-    if (isPythonError) {
-      title = 'Python 环境错误';
-      message = '无法启动 Python 服务';
-      // 如果错误信息已经包含友好的提示，直接使用
-      if (errorMessage.includes('未找到 Python') || errorMessage.includes('建议:')) {
-        detail = errorMessage;
-      } else {
-        detail = `错误: ${errorMessage}\n\n` +
-          `这可能是因为:\n` +
-          `1. Python 未安装\n` +
-          `2. Python 未添加到 PATH 环境变量\n` +
-          `3. Python 命令名称不正确\n\n` +
-          `请检查 Python 安装并重试。`;
-      }
-    }
     
     // 尝试显示错误对话框（如果 app 已初始化）
     if (require('electron').app && !require('electron').app.isReady()) {
@@ -73,26 +55,9 @@ process.on('unhandledRejection', (reason, promise) => {
   // 显示友好的错误对话框
   try {
     const { dialog } = require('electron');
-    const isPythonError = errorMessage.includes('python') || errorMessage.includes('Python') || errorMessage.includes('ENOENT');
-    
     let title = '应用程序错误';
     let message = '发生了一个未处理的 Promise 拒绝';
     let detail = errorMessage;
-    
-    if (isPythonError) {
-      title = 'Python 环境错误';
-      message = '无法启动 Python 服务';
-      if (errorMessage.includes('未找到 Python') || errorMessage.includes('建议:')) {
-        detail = errorMessage;
-      } else {
-        detail = `错误: ${errorMessage}\n\n` +
-          `这可能是因为:\n` +
-          `1. Python 未安装\n` +
-          `2. Python 未添加到 PATH 环境变量\n` +
-          `3. Python 命令名称不正确\n\n` +
-          `请检查 Python 安装并重试。`;
-      }
-    }
     
     // 尝试显示错误对话框
     if (require('electron').app && !require('electron').app.isReady()) {

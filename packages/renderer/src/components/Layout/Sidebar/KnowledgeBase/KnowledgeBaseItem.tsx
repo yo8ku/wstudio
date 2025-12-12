@@ -33,8 +33,6 @@ interface KnowledgeBaseItemProps {
   onEdit?: (item: KnowledgeItem) => void;
   /** 删除知识*/
   onDelete?: (item: KnowledgeItem) => void;
-  /** 添加到聊*/
-  onAddToChat?: (item: KnowledgeItem) => void;
   /** 打开设置*/
   onSettings?: (item: KnowledgeItem) => void;
 }
@@ -67,7 +65,6 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
   selectedItemId,
   onEdit,
   onDelete,
-  onAddToChat,
   onSettings,
 }) => {
   const FileIcon = getFileIcon(item.metadata?.fileType);
@@ -97,10 +94,6 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
 
   const handleDelete = (item: KnowledgeItem) => {
     onDelete?.(item);
-  };
-
-  const handleAddToChat = (item: KnowledgeItem) => {
-    onAddToChat?.(item);
   };
 
   const handleSettings = (item: KnowledgeItem) => {
@@ -185,7 +178,6 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
           onClose={handleCloseContextMenu}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          onAddToChat={handleAddToChat}
           onSettings={handleSettings}
         />
       )}

@@ -92,9 +92,8 @@ export abstract class BaseAIProvider implements AIProvider {
     if (!config.apiKey) {
       throw new APIKeyError(this.id);
     }
-    if (!config.apiEndpoint) {
-      throw new AIProviderError('API endpoint is required', this.id, 'MISSING_ENDPOINT');
-    }
+    // apiEndpoint 现在是可选的，标准服务商会使用默认地址
+    // 只有自定义服务商才需要必填
     return true;
   }
 
@@ -312,7 +311,8 @@ export abstract class BaseAIProvider implements AIProvider {
         buffer = lines.pop() || '';
         
         for (const line of lines) {
-          if (line.trim() === '') continue;
+          const trimmedLine = line.trim();
+          if (trimmedLine === '') continue;
           
           // 在处理每行数据前检查是否已取消
           if (signal?.aborted) {
@@ -322,10 +322,29 @@ export abstract class BaseAIProvider implements AIProvider {
           }
           
           try {
-            const data = JSON.parse(line);
+            // 处理 SSE 格式：data: {...}
+            let jsonStr = trimmedLine;
+            if (trimmedLine.startsWith('data:')) {
+              jsonStr = trimmedLine.slice(5).trim();
+            }
+            
+            // 跳过 [DONE] 标记
+            if (jsonStr === '[DONE]') {
+              continue;
+            }
+            
+            // 跳过空数据
+            if (!jsonStr) {
+              continue;
+            }
+            
+            const data = JSON.parse(jsonStr);
             await this.processStreamData(data, callback);
           } catch (parseError) {
-            console.warn(`[${this.name}] Failed to parse stream data:`, line);
+            // 只在非空行解析失败时警告
+            if (trimmedLine && !trimmedLine.startsWith('data: [DONE]')) {
+              console.warn(`[${this.name}] Failed to parse stream data:`, line);
+            }
           }
         }
       }

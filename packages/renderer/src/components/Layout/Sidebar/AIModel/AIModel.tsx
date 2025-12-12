@@ -12,6 +12,11 @@ interface ChatModel {
   id: string;
   name: string;
   displayName?: string;
+  enabled?: boolean;
+  capabilities?: {
+    thinking?: boolean;
+    tool_calls?: string[];
+  };
 }
 
 interface AIModelStorageConfig {

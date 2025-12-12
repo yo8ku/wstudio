@@ -21,36 +21,47 @@ interface KnowledgeBaseSettingsPanelProps {
 }
 
 export interface KnowledgeBaseSettings {
+  /** 切分策略 */
+  strategy: 'recursive' | 'token' | 'markdown' | 'parent-child';
   /** 分块大小 */
   chunkSize: number;
   /** 分块重叠大小 */
   chunkOverlap: number;
   /** 自定义分块符 */
   separators: string[];
-  /** 嵌入模型名称 */
-  embeddingModel: string;
+  /** 父块大小（仅 parent-child 策略） */
+  parentChunkSize?: number;
+  /** 父块重叠（仅 parent-child 策略） */
+  parentChunkOverlap?: number;
+  /** 子块大小（仅 parent-child 策略） */
+  childChunkSize?: number;
+  /** 子块重叠（仅 parent-child 策略） */
+  childChunkOverlap?: number;
+  /** 子块分隔符（仅 parent-child 策略） */
+  childSeparators?: string[];
 }
 
 /**
- * 默认嵌入模型列表
+ * 切分策略选项
  */
-const DEFAULT_EMBEDDING_MODELS: SelectItem[] = [
-  { value: 'BAAI/bge-large-zh-v1.5', label: 'BAAI/bge-large-zh-v1.5' },
-  { value: 'BAAI/bge-base-zh-v1.5', label: 'BAAI/bge-base-zh-v1.5' },
-  { value: 'BAAI/bge-small-zh-v1.5', label: 'BAAI/bge-small-zh-v1.5' },
-  { value: 'text-embedding-ada-002', label: 'text-embedding-ada-002' },
-  { value: 'text-embedding-3-small', label: 'text-embedding-3-small' },
-  { value: 'text-embedding-3-large', label: 'text-embedding-3-large' },
+const CHUNKING_STRATEGIES: SelectItem[] = [
+  { value: 'parent-child', label: '父子索引（推荐）' },
+  { value: 'recursive', label: '递归切分' },
+  { value: 'markdown', label: '语义切分' },
+  { value: 'token', label: 'Token 切分' },
 ];
 
 /**
  * 默认设置值
  */
 const DEFAULT_SETTINGS: KnowledgeBaseSettings = {
+  strategy: 'parent-child', // 默认使用父子索引
   chunkSize: 1000,
   chunkOverlap: 200,
   separators: ['\n\n', '\n', '。', '！', '？', '.', '!', '?'],
-  embeddingModel: 'BAAI/bge-large-zh-v1.5',
+  parentChunkSize: 300,
+  childChunkSize: 100,
+  childChunkOverlap: 20,
 };
 
 export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProps> = ({
@@ -59,36 +70,37 @@ export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProp
   onClose,
   onSave,
 }) => {
+  const [strategy, setStrategy] = useState<'recursive' | 'token' | 'markdown' | 'parent-child'>(
+    DEFAULT_SETTINGS.strategy
+  );
   const [chunkSize, setChunkSize] = useState<number>(DEFAULT_SETTINGS.chunkSize);
   const [chunkOverlap, setChunkOverlap] = useState<number>(DEFAULT_SETTINGS.chunkOverlap);
   const [separators, setSeparators] = useState<string[]>(DEFAULT_SETTINGS.separators);
   const [separatorInput, setSeparatorInput] = useState<string>('');
-  const [embeddingModel, setEmbeddingModel] = useState<string>(DEFAULT_SETTINGS.embeddingModel);
   const [originalSettings, setOriginalSettings] = useState<KnowledgeBaseSettings | null>(null);
 
   // 加载现有设置
   useEffect(() => {
     if (item && item.type === 'folder') {
       const settings = item.metadata?.chunkSettings;
-      const model = item.metadata?.embeddingModel;
 
+      const currentStrategy = settings?.strategy ?? DEFAULT_SETTINGS.strategy;
       const currentChunkSize = settings?.chunkSize ?? DEFAULT_SETTINGS.chunkSize;
       const currentChunkOverlap = settings?.chunkOverlap ?? DEFAULT_SETTINGS.chunkOverlap;
       const currentSeparators = settings?.separators ?? DEFAULT_SETTINGS.separators;
-      const currentEmbeddingModel = model ?? DEFAULT_SETTINGS.embeddingModel;
 
+      setStrategy(currentStrategy);
       setChunkSize(currentChunkSize);
       setChunkOverlap(currentChunkOverlap);
       setSeparators(currentSeparators);
-      setEmbeddingModel(currentEmbeddingModel);
       setSeparatorInput('');
 
       // 保存原始配置用于比较
       setOriginalSettings({
+        strategy: currentStrategy,
         chunkSize: currentChunkSize,
         chunkOverlap: currentChunkOverlap,
         separators: currentSeparators,
-        embeddingModel: currentEmbeddingModel,
       });
     }
   }, [item, visible]);
@@ -125,9 +137,9 @@ export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProp
 
     // 比较基本配置
     if (
+      oldSettings.strategy !== newSettings.strategy ||
       oldSettings.chunkSize !== newSettings.chunkSize ||
-      oldSettings.chunkOverlap !== newSettings.chunkOverlap ||
-      oldSettings.embeddingModel !== newSettings.embeddingModel
+      oldSettings.chunkOverlap !== newSettings.chunkOverlap
     ) {
       return true;
     }
@@ -152,10 +164,10 @@ export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProp
   const handleSave = async () => {
     try {
       const settings: KnowledgeBaseSettings = {
+        strategy,
         chunkSize,
         chunkOverlap,
         separators,
-        embeddingModel,
       };
 
       // 检查配置是否发生变化
@@ -177,10 +189,10 @@ export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProp
    * 重置为默认设置
    */
   const handleReset = () => {
+    setStrategy(DEFAULT_SETTINGS.strategy);
     setChunkSize(DEFAULT_SETTINGS.chunkSize);
     setChunkOverlap(DEFAULT_SETTINGS.chunkOverlap);
     setSeparators(DEFAULT_SETTINGS.separators);
-    setEmbeddingModel(DEFAULT_SETTINGS.embeddingModel);
     setSeparatorInput('');
   };
 
@@ -205,129 +217,138 @@ export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProp
 
       {/* 面板内容 */}
       <div className="knowledge-base-settings-panel__body">
-        {/* 分块大小 */}
+        {/* 切分策略选择 */}
         <div className="knowledge-base-settings-panel__section">
           <div className="knowledge-base-settings-panel__row">
             <label style={{ color: 'var(--ws-editor-foreground)' }}>
-              分块大小
-            </label>
-            <Input
-              type="number"
-              min="100"
-              max="10000"
-              step="100"
-              value={chunkSize}
-              onChange={(e) => setChunkSize(Number.parseInt(e.target.value) || 1000)}
-              style={{
-                backgroundColor: 'var(--ws-input-background)',
-                color: 'var(--ws-input-foreground)',
-                borderColor: 'var(--ws-contrast-border)',
-              }}
-            />
-          </div>
-          <div className="setting-hint">（字符数，建议 500-2000）</div>
-        </div>
-
-        {/* 分块重叠大小 */}
-        <div className="knowledge-base-settings-panel__section">
-          <div className="knowledge-base-settings-panel__row">
-            <label style={{ color: 'var(--ws-editor-foreground)' }}>
-              分块重叠大小
-            </label>
-            <Input
-              type="number"
-              min="0"
-              max={chunkSize}
-              step="50"
-              value={chunkOverlap}
-              onChange={(e) => setChunkOverlap(Number.parseInt(e.target.value) || 0)}
-              style={{
-                backgroundColor: 'var(--ws-input-background)',
-                color: 'var(--ws-input-foreground)',
-                borderColor: 'var(--ws-contrast-border)',
-              }}
-            />
-          </div>
-          <div className="setting-hint">（字符数，建议为分块大小的 10-20%）</div>
-        </div>
-
-        {/* 自定义分块符 */}
-        <div className="knowledge-base-settings-panel__section">
-          <div className="knowledge-base-settings-panel__row">
-            <label style={{ color: 'var(--ws-editor-foreground)' }}>
-              自定义分块符
-            </label>
-          </div>
-          <div className="setting-hint" style={{ marginBottom: '8px' }}>按优先级排序，从上到下</div>
-          <div className="separators-input-group">
-            <Input
-              type="text"
-              placeholder="输入分块符（如：\n\n、。、！等）"
-              value={separatorInput}
-              onChange={(e) => setSeparatorInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddSeparator();
-                }
-              }}
-              style={{
-                backgroundColor: 'var(--ws-input-background)',
-                color: 'var(--ws-input-foreground)',
-                borderColor: 'var(--ws-contrast-border)',
-              }}
-            />
-            <button
-              className="separator-add-button"
-              onClick={handleAddSeparator}
-              disabled={!separatorInput.trim() || separators.includes(separatorInput.trim())}
-              style={{
-                backgroundColor: 'var(--ws-button-background)',
-                color: 'var(--ws-button-foreground)',
-                borderColor: 'var(--ws-contrast-border)',
-                opacity: !separatorInput.trim() || separators.includes(separatorInput.trim()) ? 0.5 : 1,
-              }}
-            >
-              添加
-            </button>
-          </div>
-          <div className="separators-list">
-            {separators.map((sep, index) => (
-              <div key={index} className="separator-item">
-                <span className="separator-value" title={sep}>
-                  {sep === '\n' ? '\\n' : sep === '\n\n' ? '\\n\\n' : sep === '\t' ? '\\t' : sep}
-                </span>
-                <button
-                  className="separator-remove-button"
-                  onClick={() => handleRemoveSeparator(index)}
-                  style={{
-                    color: 'var(--ws-editor-foreground)',
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 嵌入模型选择 */}
-        <div className="knowledge-base-settings-panel__section">
-          <div className="embedding-model-container">
-            <label style={{ color: 'var(--ws-editor-foreground)' }}>
-              嵌入模型
+              切分策略
             </label>
             <Select
-              value={embeddingModel}
-              onChange={setEmbeddingModel}
-              items={DEFAULT_EMBEDDING_MODELS}
-              placeholder="请选择嵌入模型"
-              className="embedding-model-select"
-              showSearch={true}
+              value={strategy}
+              onChange={(value) => setStrategy(value as typeof strategy)}
+              items={CHUNKING_STRATEGIES}
+              placeholder="请选择切分策略"
+              className="chunking-strategy-select"
             />
+          </div>
+          <div className="setting-hint">
+            {strategy === 'parent-child' && '父子索引：使用 [~S#标签] 和 [~E#标签] 标识符切分父块，自动生成子块用于搜索'}
+            {strategy === 'recursive' && '递归切分：使用自定义分隔符递归切分，适合大多数场景'}
+            {strategy === 'markdown' && '语义切分：自动识别 Markdown 结构切分'}
+            {strategy === 'token' && 'Token 切分：按 Token 数量切分'}
           </div>
         </div>
 
+        {/* 分块配置（非父子索引策略显示） */}
+        {strategy !== 'parent-child' && (
+          <>
+            {/* 分块大小 */}
+            <div className="knowledge-base-settings-panel__section">
+              <div className="knowledge-base-settings-panel__row">
+                <label style={{ color: 'var(--ws-editor-foreground)' }}>
+                  分块大小
+                </label>
+                <Input
+                  type="number"
+                  min="100"
+                  max="10000"
+                  step="100"
+                  value={chunkSize}
+                  onChange={(e) => setChunkSize(Number.parseInt(e.target.value) || 1000)}
+                  style={{
+                    backgroundColor: 'var(--ws-input-background)',
+                    color: 'var(--ws-input-foreground)',
+                    borderColor: 'var(--ws-contrast-border)',
+                  }}
+                />
+              </div>
+              <div className="setting-hint">（字符数，建议 500-2000）</div>
+            </div>
+
+            {/* 分块重叠大小 */}
+            <div className="knowledge-base-settings-panel__section">
+              <div className="knowledge-base-settings-panel__row">
+                <label style={{ color: 'var(--ws-editor-foreground)' }}>
+                  分块重叠大小
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  max={chunkSize}
+                  step="50"
+                  value={chunkOverlap}
+                  onChange={(e) => setChunkOverlap(Number.parseInt(e.target.value) || 0)}
+                  style={{
+                    backgroundColor: 'var(--ws-input-background)',
+                    color: 'var(--ws-input-foreground)',
+                    borderColor: 'var(--ws-contrast-border)',
+                  }}
+                />
+              </div>
+              <div className="setting-hint">（字符数，建议为分块大小的 10-20%）</div>
+            </div>
+
+            {/* 自定义分块符 */}
+            <div className="knowledge-base-settings-panel__section">
+              <div className="knowledge-base-settings-panel__row">
+                <label style={{ color: 'var(--ws-editor-foreground)' }}>
+                  自定义分块符
+                </label>
+              </div>
+              <div className="setting-hint" style={{ marginBottom: '8px' }}>按优先级排序，从上到下</div>
+              <div className="separators-input-group">
+                <Input
+                  type="text"
+                  placeholder="输入分块符（如：\n\n、。、！等）"
+                  value={separatorInput}
+                  onChange={(e) => setSeparatorInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddSeparator();
+                    }
+                  }}
+                  style={{
+                    backgroundColor: 'var(--ws-input-background)',
+                    color: 'var(--ws-input-foreground)',
+                    borderColor: 'var(--ws-contrast-border)',
+                  }}
+                />
+                <button
+                  className="separator-add-button"
+                  onClick={handleAddSeparator}
+                  disabled={!separatorInput.trim() || separators.includes(separatorInput.trim())}
+                  style={{
+                    backgroundColor: 'var(--ws-button-background)',
+                    color: 'var(--ws-button-foreground)',
+                    borderColor: 'var(--ws-contrast-border)',
+                    opacity: !separatorInput.trim() || separators.includes(separatorInput.trim()) ? 0.5 : 1,
+                  }}
+                >
+                  添加
+                </button>
+              </div>
+              <div className="separators-list">
+                {separators.map((sep, index) => (
+                  <div key={index} className="separator-item">
+                    <span className="separator-value" title={sep}>
+                      {sep === '\n' ? '\\n' : sep === '\n\n' ? '\\n\\n' : sep === '\t' ? '\\t' : sep}
+                    </span>
+                    <button
+                      className="separator-remove-button"
+                      onClick={() => handleRemoveSeparator(index)}
+                      style={{
+                        color: 'var(--ws-editor-foreground)',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* 面板底部 */}

@@ -148,13 +148,9 @@ export const KnowledgeBase: React.FC = () => {
                 
                 // 如果有向量ID，删除它们
                 if (vectorIds.length > 0) {
-                  // VectorStore.deleteDocuments 接受数字数组，但实际Python端接受字符串
-                  // 为了兼容，将字符串ID转换为数字ID
-                  const numericIds = vectorIds.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-                  if (numericIds.length > 0) {
-                    await vectorStore.deleteDocuments(numericIds);
-                    console.log(`[KnowledgeBase] 已删除 ${numericIds.length} 个向量数据`);
-                  }
+                  // VectorStore.deleteDocuments 接受字符串数组
+                  await vectorStore.deleteDocuments(vectorIds);
+                  console.log(`[KnowledgeBase] 已删除 ${vectorIds.length} 个向量数据`);
                 }
               } catch (error) {
                 // 静默处理错误，不影响用户操作
@@ -401,11 +397,18 @@ export const KnowledgeBase: React.FC = () => {
         // 构建更新对象
         const metadataUpdate: Partial<KnowledgeItemMetadata> = {
           chunkSettings: {
+            strategy: settings.strategy,
             chunkSize: settings.chunkSize,
             chunkOverlap: settings.chunkOverlap,
             separators: settings.separators,
+            ...(settings.strategy === 'parent-child' && {
+              parentChunkSize: settings.parentChunkSize,
+              parentChunkOverlap: settings.parentChunkOverlap,
+              childChunkSize: settings.childChunkSize,
+              childChunkOverlap: settings.childChunkOverlap,
+              childSeparators: settings.childSeparators,
+            }),
           },
-          embeddingModel: settings.embeddingModel,
           // 如果配置已变更，设置 configChanged 标志；否则清除标志
           configChanged: hasChanged,
         };
@@ -462,8 +465,9 @@ export const KnowledgeBase: React.FC = () => {
             lastModified: now,
             // 设置默认嵌入模型
             embeddingModel: 'BAAI/bge-large-zh-v1.5',
-            // 设置默认分块参数
+            // 设置默认分块参数（使用父子索引策略）
             chunkSettings: {
+              strategy: 'parent-child',
               chunkSize: 1000,
               chunkOverlap: 200,
               separators: ['\n\n', '\n', '。', '！', '？', '.', '!', '?'],

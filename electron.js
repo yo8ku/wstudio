@@ -25,6 +25,7 @@ Module._resolveFilename = function(request, parent, isMain) {
 };
 
 const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/main/src/index.js');
+const embeddingService = require('./packages/main/src/services/EmbeddingService.js');
 
 const logIconPath = path.join(__dirname, 'log', 'log.png');
 if (!fs.existsSync(logIconPath)) {
@@ -1375,6 +1376,46 @@ ipcMain.handle('snippets:save-config', async (event, content) => {
 /**
  * 工作区相关 IPC 处理
  */
+
+// 获取应用根目录路径
+ipcMain.handle('app:get-app-path', async () => {
+  try {
+    const appPath = app.getAppPath();
+    console.log('[IPC] 获取应用路径:', appPath);
+    return { success: true, data: appPath };
+  } catch (error) {
+    console.error('[IPC] 获取应用路径失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Embedding 服务相关 IPC 处理
+ */
+
+// 生成单个文本的向量
+ipcMain.handle('embedding:generate', async (event, text) => {
+  try {
+    console.log('[IPC] 生成向量，文本长度:', text.length);
+    const result = await embeddingService.generateEmbedding(text);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('[IPC] 生成向量失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 批量生成向量
+ipcMain.handle('embedding:generate-batch', async (event, texts) => {
+  try {
+    console.log('[IPC] 批量生成向量，数量:', texts.length);
+    const results = await embeddingService.generateBatchEmbeddings(texts);
+    return { success: true, data: results };
+  } catch (error) {
+    console.error('[IPC] 批量生成向量失败:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 // 获取工作区目录
 ipcMain.handle('workspace:get-dir', async () => {

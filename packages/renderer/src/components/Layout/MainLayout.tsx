@@ -161,13 +161,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   // 初始化全局命令中心
   useEffect(() => {
     console.log('[MainLayout] 初始化全局命令中心...');
-    commandCenterRef.current = new VSCodeCommandCenter();
-    iconThemeProviderRef.current = new IconThemeCommandProvider(commandCenterRef.current);
-    themeProviderRef.current = new ThemeCommandProvider(commandCenterRef.current);
-    markdownProviderRef.current = new MarkdownCommandProvider(commandCenterRef.current);
-    fileProviderRef.current = new FileCommandProvider(commandCenterRef.current);
-    aiConfigProviderRef.current = new AIConfigCommandProvider(commandCenterRef.current);
-    snippetsProviderRef.current = new SnippetsCommandProvider(commandCenterRef.current);
+    // 如果全局已有实例，复用；否则创建新实例
+    const commandCenter = (window as any).__commandCenter || new VSCodeCommandCenter();
+    commandCenterRef.current = commandCenter;
+    // 保存到全局，供其他组件使用
+    (window as any).__commandCenter = commandCenter;
+    iconThemeProviderRef.current = new IconThemeCommandProvider(commandCenter);
+    themeProviderRef.current = new ThemeCommandProvider(commandCenter);
+    markdownProviderRef.current = new MarkdownCommandProvider(commandCenter);
+    fileProviderRef.current = new FileCommandProvider(commandCenter);
+    aiConfigProviderRef.current = new AIConfigCommandProvider(commandCenter);
+    snippetsProviderRef.current = new SnippetsCommandProvider(commandCenter);
     
     // 等待命令提供者初始化完成
     Promise.all([

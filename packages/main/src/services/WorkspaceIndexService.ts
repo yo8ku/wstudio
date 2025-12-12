@@ -155,21 +155,6 @@ export class WorkspaceIndexService {
       // 为语言类型创建索引
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_language ON indexed_files(language);`);
       
-      // 为内容预览创建全文搜索索引（SQLite FTS5）
-      // 注意：FTS5 需要 SQLite 编译时启用，如果不可用则使用 LIKE 查询
-      try {
-        this.db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS indexed_files_fts USING fts5(
-          filePath,
-          fileName,
-          content,
-          contentPreview,
-          content='indexed_files',
-          content_rowid='id'
-        );`);
-      } catch (ftsError) {
-        console.warn('[WorkspaceIndexService] FTS5 不可用，将使用 LIKE 查询:', ftsError);
-      }
-      
       this.save();
     } catch (error) {
       console.error('[WorkspaceIndexService] 创建索引失败:', error);

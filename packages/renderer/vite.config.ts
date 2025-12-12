@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   root: __dirname,
+  publicDir: path.resolve(__dirname, 'public'), // 明确指定 public 目录
   plugins: [
     react()
   ],
@@ -35,10 +36,7 @@ export default defineConfig({
     dedupe: ['@note-studio/shared', '@note-studio/global-rag', '@note-studio/theme']
   },
   optimizeDeps: {
-    exclude: ['jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events'],
-    esbuildOptions: {
-      resolveExtensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.json']
-    }
+    exclude: ['jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events']
   },
   css: {
     preprocessorOptions: {

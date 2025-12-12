@@ -16,9 +16,7 @@ import { registerInlineChatHistoryHandlers } from './ipc/inlineChatHistoryHandle
 import { registerTerminalHandlers } from './ipc/terminalHandlers';
 import { registerAIModelHandlers } from './ipc/aiModelHandlers';
 import { registerFileReferenceHandlers } from './ipc/fileReferenceHandlers';
-import { registerPythonBridgeHandlers } from './ipc/pythonBridgeHandlers';
 import { registerWorkspaceIndexHandlers, setWorkspaceIndexMainWindow, getWorkspaceIndexService } from './ipc/workspaceIndexHandlers';
-import { getRAGFileWatcherService } from './ipc/ragFileWatcherHandlers';
 import { ThemeService } from './services/ThemeService';
 import { TerminalService } from './services/terminal/TerminalService';
 import * as path from 'path';
@@ -103,13 +101,8 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   // 注册文件引用 IPC 处理器
   registerFileReferenceHandlers();
   
-  // 注册 PythonBridge IPC 处理器
-  registerPythonBridgeHandlers();
-  
   // 注册工作区索引 IPC 处理器
   registerWorkspaceIndexHandlers();
-  
-  // RAG 文件监听服务现在完全由 Python 端处理，不再需要前端 IPC 接口
   
   // 初始化终端服务并注册处理器（只在有 mainWindow 时）
   if (mainWindow && !terminalService) {
@@ -127,7 +120,6 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   // 如果提供了主窗口，设置索引服务的主窗口（用于发送进度事件）
   if (mainWindow) {
     setWorkspaceIndexMainWindow(mainWindow);
-    // RAG 文件监听服务现在完全由 Python 端处理，不再需要主窗口
   }
 
   // 检查是否首次启动，如果是则索引工作区
@@ -155,10 +147,8 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
         });
       }
       
-      // 启动 RAG 文件监听服务
-      const ragWatcherService = getRAGFileWatcherService();
-      ragWatcherService.setWorkspacePath(workspaceDir);
-      console.log('[Main] RAG 文件监听服务已启动');
+      // RAG 文件监听服务已移除（不再使用 Python）
+      console.log('[Main] RAG 服务已初始化（本地模式）');
     } catch (error) {
       console.error('[Main] 初始化工作区索引服务失败:', error);
     }

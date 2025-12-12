@@ -14,11 +14,14 @@ import {
   WebSearchResult,
   WebSearchConfig,
   ModelCapability,
-  ToolCall,
-  ChatMessage
+  ToolCall
 } from '../../../types/aiProvider';
+import { getProviderModels, getModelConfig } from '../index';
 
 export class DeepSeekProvider extends BaseAIProvider {
+  // DeepSeek 官方 API 端点
+  static readonly DEFAULT_API_ENDPOINT = 'https://api.deepseek.com/v1/chat/completions';
+
   constructor() {
     super(
       'deepseek',
@@ -35,119 +38,54 @@ export class DeepSeekProvider extends BaseAIProvider {
     );
   }
 
+  // 获取正确的 API 端点
+  private getApiEndpoint(): string {
+    const endpoint = this.config.apiEndpoint;
+    // 如果端点不包含 /v1/，使用默认端点
+    if (!endpoint || !endpoint.includes('/v1/')) {
+      console.log('[DeepSeek] 使用默认 API 端点:', DeepSeekProvider.DEFAULT_API_ENDPOINT);
+      return DeepSeekProvider.DEFAULT_API_ENDPOINT;
+    }
+    return endpoint;
+  }
+
   // 获取可用模型列表（使用缓存机制）
   async getAvailableModels(): Promise<AIModel[]> {
     return this.getModelsWithCache(() => this.fetchModelsFromAPI());
   }
 
-  // 从API获取模型列表
+  // 从配置文件获取模型列表
+  // 模型列表定义在 config.json 中
   private async fetchModelsFromAPI(): Promise<AIModel[]> {
     try {
-      const response = await this.makeRequest(`${this.config.apiEndpoint.replace('/chat/completions', '/models')}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`
-        }
-      });
-
-      const data = await response.json();
-      const tempModels: AIModel[] = [];
-
-      if (data.data && Array.isArray(data.data)) {
-        for (const model of data.data) {
-          // 过滤：跳过包含 latest 的模型
-          if (model.id.toLowerCase().includes('latest')) {
-            continue;
-          }
-          
-          const capabilities = await this.detectModelCapabilities(model.id);
-          tempModels.push({
-            id: model.id,
-            name: model.id,
-            displayName: this.getModelDisplayName(model.id),
-            provider: this.id,
-            capabilities,
-            maxTokens: this.getModelMaxTokens(model.id),
-            supportsStreaming: true,
-            supportsTools: capabilities.includes(ModelCapability.TOOLS),
-            supportsFunctionCalling: capabilities.includes(ModelCapability.FUNCTION_CALLING),
-            isDeprecated: this.isModelDeprecated(model.id)
-          });
-        }
-      }
-
-      // 过滤废弃模型
-      const nonDeprecatedModels = tempModels.filter(model => !model.isDeprecated);
+      // 从配置文件读取模型列表
+      const configModels = await getProviderModels('deepseek');
       
-      // 过滤预览版本：只保留最新的预览版本
-      return this.filterPreviewModels(nonDeprecatedModels);
+      console.log('[DeepSeek] 从配置文件获取模型列表，数量:', configModels.length);
+      
+      const models: AIModel[] = [];
+      
+      for (const model of configModels) {
+        const capabilities = await this.detectModelCapabilities(model.id);
+        models.push({
+          id: model.id,
+          name: model.name,
+          displayName: model.name,
+          provider: this.id,
+          capabilities,
+          maxTokens: this.getModelMaxTokens(model.id),
+          supportsStreaming: true,
+          supportsTools: capabilities.includes(ModelCapability.TOOLS),
+          supportsFunctionCalling: capabilities.includes(ModelCapability.FUNCTION_CALLING),
+          isDeprecated: false
+        });
+      }
+      
+      return models;
     } catch (error) {
-      console.error('[DeepSeek] Failed to fetch models:', error);
-      // 失败时返回空数组，不使用预定义模型
+      console.error('[DeepSeek] Failed to load models from config:', error);
       return [];
     }
-  }
-
-  /**
-   * 过滤预览版本模型，只保留最新的预览版本
-   */
-  private filterPreviewModels(models: AIModel[]): AIModel[] {
-    const previewModels: AIModel[] = [];
-    const nonPreviewModels: AIModel[] = [];
-    
-    models.forEach(model => {
-      const lowerModelId = model.id.toLowerCase();
-      if (lowerModelId.includes('preview') || lowerModelId.includes('-exp-') || lowerModelId.includes('experimental')) {
-        previewModels.push(model);
-      } else {
-        nonPreviewModels.push(model);
-      }
-    });
-    
-    if (previewModels.length === 0) {
-      return nonPreviewModels;
-    }
-    
-    const previewGroups = new Map<string, AIModel[]>();
-    
-    previewModels.forEach(model => {
-      const baseName = this.extractModelBaseName(model.id);
-      if (!previewGroups.has(baseName)) {
-        previewGroups.set(baseName, []);
-      }
-      previewGroups.get(baseName)!.push(model);
-    });
-    
-    const latestPreviews: AIModel[] = [];
-    previewGroups.forEach((group) => {
-      const sorted = group.sort((a, b) => {
-        const dateA = this.extractModelDate(a.id);
-        const dateB = this.extractModelDate(b.id);
-        return dateB - dateA;
-      });
-      latestPreviews.push(sorted[0]);
-    });
-    
-    return [...nonPreviewModels, ...latestPreviews];
-  }
-  
-  private extractModelBaseName(modelId: string): string {
-    const lower = modelId.toLowerCase();
-    let baseName = lower.replace(/\d{4}-?\d{2}-?\d{2}/g, '');
-    baseName = baseName.replace(/-+/g, '-').replace(/^-|-$/g, '');
-    return baseName;
-  }
-  
-  private extractModelDate(modelId: string): number {
-    const lower = modelId.toLowerCase();
-    const dateMatch = lower.match(/(\d{4})-?(\d{2})-?(\d{2})/);
-    if (dateMatch) {
-      const year = parseInt(dateMatch[1]);
-      const month = parseInt(dateMatch[2]);
-      const day = parseInt(dateMatch[3]);
-      return new Date(year, month - 1, day).getTime();
-    }
-    return 0;
   }
 
   // 获取模型信息
@@ -182,9 +120,9 @@ export class DeepSeekProvider extends BaseAIProvider {
   // 生成文本
   async generateText(params: AIRequestParams): Promise<AIResponse> {
     try {
-      const requestBody = this.buildRequestBody(params);
+      const requestBody = await this.buildRequestBody(params);
       
-      const response = await this.makeRequest(this.config.apiEndpoint, {
+      const response = await this.makeRequest(this.getApiEndpoint(), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.config.apiKey}`
@@ -202,9 +140,9 @@ export class DeepSeekProvider extends BaseAIProvider {
   // 流式生成文本
   async generateTextStream(params: AIRequestParams, callback: StreamCallback): Promise<void> {
     try {
-      const requestBody = this.buildRequestBody(params, true);
+      const requestBody = await this.buildRequestBody(params, true);
       
-      const response = await this.makeRequest(this.config.apiEndpoint, {
+      const response = await this.makeRequest(this.getApiEndpoint(), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.config.apiKey}`
@@ -323,11 +261,10 @@ export class DeepSeekProvider extends BaseAIProvider {
   }
 
   // 构建请求体
-  private buildRequestBody(params: AIRequestParams, stream: boolean = false): any {
+  private async buildRequestBody(params: AIRequestParams, stream: boolean = false): Promise<any> {
     const requestBody: any = {
       model: params.model,
       messages: params.messages,
-      temperature: params.temperature ?? this.config.temperature ?? 0.7,
       max_tokens: params.maxTokens ?? this.config.maxTokens ?? 2000,
       stream: stream
     };
@@ -335,6 +272,21 @@ export class DeepSeekProvider extends BaseAIProvider {
     if (params.tools && params.tools.length > 0) {
       requestBody.tools = params.tools;
       requestBody.tool_choice = params.toolChoice || 'auto';
+    }
+
+    // 获取模型配置，检查是否支持 thinking
+    // enable_thinking 放在 extra_body 中
+    try {
+      const modelConfig = await getModelConfig('deepseek', params.model);
+      if (modelConfig?.capabilities?.thinking !== undefined) {
+        // 如果模型配置中定义了 thinking 能力，添加到 extra_body
+        requestBody.extra_body = {
+          enable_thinking: modelConfig.capabilities.thinking
+        };
+        console.log(`[DeepSeek] 模型 ${params.model} extra_body.enable_thinking: ${modelConfig.capabilities.thinking}`);
+      }
+    } catch (error) {
+      console.warn('[DeepSeek] 获取模型配置失败，跳过 enable_thinking 设置:', error);
     }
 
     return requestBody;
@@ -357,6 +309,11 @@ export class DeepSeekProvider extends BaseAIProvider {
       } : undefined,
       finishReason: choice.finish_reason
     };
+
+    // 获取 reasoning_content（深度思考内容）
+    if (choice.message?.reasoning_content) {
+      response.reasoning = choice.message.reasoning_content;
+    }
 
     if (choice.message?.tool_calls) {
       response.toolCalls = choice.message.tool_calls;
@@ -418,5 +375,93 @@ export class DeepSeekProvider extends BaseAIProvider {
     ];
 
     return deprecatedModels.includes(modelId);
+  }
+
+  /**
+   * 估算文本的 token 数量
+   * 规则：
+   * - 1 个英文字符 ≈ 0.3 个 token
+   * - 1 个中文字符 ≈ 0.6 个 token
+   * @param text 要计算的文本
+   * @returns 估算的 token 数量
+   */
+  estimateTokens(text: string): number {
+    if (!text) return 0;
+
+    let englishCount = 0;
+    let chineseCount = 0;
+
+    for (const char of text) {
+      // 判断是否为中文字符（包括中文标点）
+      // Unicode 范围：\u4e00-\u9fff 基本汉字，\u3000-\u303f 中文标点
+      if (/[\u4e00-\u9fff\u3000-\u303f]/.test(char)) {
+        chineseCount++;
+      } else {
+        englishCount++;
+      }
+    }
+
+    // 计算 token 数量并向上取整
+    const tokens = englishCount * 0.3 + chineseCount * 0.6;
+    return Math.ceil(tokens);
+  }
+
+  // 最大上下文长度 128K tokens
+  static readonly MAX_CONTEXT_LENGTH = 128 * 1024;
+
+  /**
+   * 计算上下文总长度
+   * @param systemPrompt 系统提示词
+   * @param userInput 用户输入
+   * @param modelOutput 模型输出（可选，用于预估或已有输出）
+   * @returns 上下文信息对象
+   */
+  calculateContextLength(
+    systemPrompt: string,
+    userInput: string,
+    modelOutput: string = ''
+  ): {
+    systemTokens: number;
+    userTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    maxTokens: number;
+    remainingTokens: number;
+    isWithinLimit: boolean;
+  } {
+    const systemTokens = this.estimateTokens(systemPrompt);
+    const userTokens = this.estimateTokens(userInput);
+    const outputTokens = this.estimateTokens(modelOutput);
+    const totalTokens = systemTokens + userTokens + outputTokens;
+    const maxTokens = DeepSeekProvider.MAX_CONTEXT_LENGTH;
+    const remainingTokens = maxTokens - totalTokens;
+
+    return {
+      systemTokens,
+      userTokens,
+      outputTokens,
+      totalTokens,
+      maxTokens,
+      remainingTokens,
+      isWithinLimit: totalTokens <= maxTokens
+    };
+  }
+
+  /**
+   * 检查上下文是否超出限制
+   * @param systemPrompt 系统提示词
+   * @param userInput 用户输入
+   * @param expectedOutputTokens 预期输出 token 数（默认预留 4096）
+   * @returns 是否在限制内
+   */
+  isContextWithinLimit(
+    systemPrompt: string,
+    userInput: string,
+    expectedOutputTokens: number = 4096
+  ): boolean {
+    const systemTokens = this.estimateTokens(systemPrompt);
+    const userTokens = this.estimateTokens(userInput);
+    const totalTokens = systemTokens + userTokens + expectedOutputTokens;
+    return totalTokens <= DeepSeekProvider.MAX_CONTEXT_LENGTH;
   }
 }

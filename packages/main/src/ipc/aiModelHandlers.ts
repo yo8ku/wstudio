@@ -6,6 +6,9 @@
 
 import { ipcMain } from 'electron';
 import { AIModelDatabase } from '../services/AIModelDatabase';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as jsonc from 'jsonc-parser';
 
 let aiModelDatabase: AIModelDatabase | null = null;
 
@@ -39,7 +42,8 @@ export function registerAIModelHandlers(): void {
     'ai-model:list',
     'ai-model:get',
     'ai-model:get-models',
-    'ai-model:delete'
+    'ai-model:delete',
+    'ai-model:get-providers-config'
   ];
 
   for (const handler of handlersToRemove) {
@@ -147,6 +151,50 @@ export function registerAIModelHandlers(): void {
       return { success: true };
     } catch (error) {
       console.error('[AIModel IPC] 删除配置失败:', error);
+      throw error;
+    }
+  });
+
+  // 获取AI服务商配置列表（从config.json读取）
+  ipcMain.handle('ai-model:get-providers-config', async () => {
+    try {
+      // 尝试多个可能的配置文件路径
+      const possiblePaths = [
+        // 开发环境：从编译后的目录向上查找
+        path.join(__dirname, '..', '..', '..', 'AI', 'config.json'),
+        path.join(__dirname, '..', '..', '..', '..', 'AI', 'config.json'),
+        path.join(__dirname, '..', '..', '..', '..', '..', 'AI', 'config.json'),
+        path.join(__dirname, '..', '..', '..', '..', '..', '..', 'AI', 'config.json'),
+        // 从 process.cwd() 查找
+        path.join(process.cwd(), 'packages', 'AI', 'config.json'),
+        // 打包环境：从 resourcesPath 查找
+        path.join(process.resourcesPath || '', 'packages', 'AI', 'config.json'),
+      ];
+      
+      let configPath: string | null = null;
+      for (const p of possiblePaths) {
+        console.log('[AIModel IPC] 尝试路径:', p);
+        if (fs.existsSync(p)) {
+          configPath = p;
+          break;
+        }
+      }
+      
+      if (!configPath) {
+        console.warn('[AIModel IPC] AI服务商配置文件不存在，尝试的路径:', possiblePaths);
+        return [];
+      }
+      
+      console.log('[AIModel IPC] 找到AI服务商配置文件:', configPath);
+      
+      const configContent = fs.readFileSync(configPath, 'utf-8');
+      // 使用 jsonc-parser 解析带注释的 JSON
+      const providers = jsonc.parse(configContent);
+      console.log('[AIModel IPC] 成功读取AI服务商配置，数量:', providers.length);
+      
+      return providers;
+    } catch (error) {
+      console.error('[AIModel IPC] 读取AI服务商配置失败:', error);
       throw error;
     }
   });

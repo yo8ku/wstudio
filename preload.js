@@ -157,6 +157,17 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on('workspace-index:progress', subscription);
       return () => ipcRenderer.removeListener('workspace-index:progress', subscription);
     }
+  },
+  
+  // 应用路径 API
+  app: {
+    getAppPath: () => ipcRenderer.invoke('app:get-app-path')
+  },
+  
+  // Embedding 服务 API
+  embedding: {
+    generate: (text) => ipcRenderer.invoke('embedding:generate', text),
+    generateBatch: (texts) => ipcRenderer.invoke('embedding:generate-batch', texts)
   }
 });
 

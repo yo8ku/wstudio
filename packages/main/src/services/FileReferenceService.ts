@@ -79,17 +79,26 @@ export class FileReferenceService {
     options?: {
       modelName?: string;
     }
-  ): Promise<number[]> {
+  ): Promise<string[]> {
     if (!this.initialized) {
       await this.initialize();
     }
 
     const manager = await this.getVectorStoreManager();
-    const addOptions: AddDocumentsOptionsType = {
-      modelName: options?.modelName,
-    };
-
-    return manager.addFile(filePath, content, addOptions);
+    
+    // VectorStore 现在需要外部提供向量
+    // 这里需要使用 EmbeddingService 生成向量
+    const { EmbeddingService } = await import('@note-studio/shared');
+    const embeddingService = new EmbeddingService();
+    const embeddingResult = await embeddingService.generateEmbedding(content);
+    
+    const ids = await manager.addDocuments(
+      [content],
+      [{ filePath, fileName: filePath.split(/[/\\]/).pop() || filePath }],
+      [embeddingResult.vectors]
+    );
+    
+    return ids;
   }
 
   /**
@@ -108,9 +117,14 @@ export class FileReferenceService {
     }
 
     const manager = await this.getVectorStoreManager();
-    return manager.search(query, {
+    
+    // VectorStore 现在需要查询向量
+    const { EmbeddingService } = await import('@note-studio/shared');
+    const embeddingService = new EmbeddingService();
+    const queryEmbedding = await embeddingService.generateEmbedding(query);
+    
+    return manager.search(query, queryEmbedding.vectors, {
       topK: options?.topK,
-      modelName: options?.modelName,
       filterMetadata: options?.filterMetadata,
     });
   }

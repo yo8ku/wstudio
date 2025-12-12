@@ -27,16 +27,7 @@ export interface VectorChunkResult {
   totalChunks: number;
 }
 
-export interface PythonServiceRequest {
-  method: string;
-  params: Record<string, unknown>;
-}
 
-export interface PythonServiceResponse {
-  success: boolean;
-  result?: unknown;
-  error?: string;
-}
 
 /**
  * 模型信息
@@ -87,7 +78,7 @@ export interface DocumentMetadata {
  * 搜索结果
  */
 export interface SearchResult {
-  id: number;
+  id: string;
   text: string;
   metadata: DocumentMetadata;
   score: number;
@@ -100,26 +91,7 @@ export interface AddDocumentsOptions {
   modelName?: string;
 }
 
-/**
- * 处理文件路径选项
- */
-export interface ProcessFilePathsOptions {
-  modelName?: string;
-  knowledgeBaseId?: string;
-  chunkSize?: number;
-  chunkOverlap?: number;
-  strategy?: 'recursive' | 'character' | 'token' | 'markdown' | 'python';
-}
 
-/**
- * 处理文件路径结果
- */
-export interface ProcessFilePathsResult {
-  ids: number[];
-  processedCount: number;
-  fileCount: number;
-  errors?: string[];
-}
 
 /**
  * 文件处理进度

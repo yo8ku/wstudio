@@ -5,23 +5,42 @@
 // 类型定义
 export * from './types.js';
 
-// Python桥接器
-export { PythonBridge } from './python/bridge/PythonBridge.js';
-
-// 注意：Chunker 和 Embedder 已不再导出，分块和嵌入由 Python 端处理
-// 如需使用，请直接导入：import { Chunker } from '@note-studio/global-rag/chunker/Chunker.js'
+// 文本分块器
+export { Chunker } from './chunker/Chunker.js';
+export type { ChunkerConfig } from './chunker/Chunker.js';
+export { ParentChildChunker } from './chunker/ParentChildChunker.js';
+export type {
+  ParentChunk,
+  ChildChunk,
+  ParentChildChunkResult,
+  ParentChildChunkerConfig,
+} from './chunker/ParentChildChunker.js';
 
 // 向量存储
 export { VectorStore } from './vector-store/VectorStore.js';
 // 向后兼容：导出 VectorStoreManager 作为 VectorStore 的别名
 export { VectorStore as VectorStoreManager } from './vector-store/VectorStore.js';
+export { ParentChildVectorStore } from './vector-store/ParentChildVectorStore.js';
+// 注意：ParentChildVectorStorePersistent 只能在 Node.js 环境中使用
+// 在浏览器环境中导入会导致错误，请使用动态导入
+// export { ParentChildVectorStorePersistent } from './vector-store/ParentChildVectorStorePersistent.js';
+export { ParentChildVectorStoreOptimized, BatchEmbeddingGenerator, PerformanceMonitor } from './vector-store/ParentChildVectorStoreOptimized.js';
+// 父子索引向量入库服务
+export { ParentChildVectorIngestion } from './vector-store/ParentChildVectorIngestion.js';
+export type { ParentDatabase, VectorIngestionOptions, VectorIngestionResult } from './vector-store/ParentChildVectorIngestion.js';
+export type {
+  ParentDocument,
+  ChildDocument,
+  ParentChildSearchResult,
+  AddParentChildDocumentsOptions,
+  ParentChildSearchOptions,
+} from './vector-store/ParentChildVectorStore.js';
+export type { BatchProcessOptions } from './vector-store/ParentChildVectorStoreOptimized.js';
 export type {
   DocumentMetadata,
   SearchResult,
   AddDocumentsOptions,
   SearchOptions,
-  ProcessFilePathsOptions,
-  ProcessFilePathsResult,
 } from './types.js';
 
 // RAG引擎

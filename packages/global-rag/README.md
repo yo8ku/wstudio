@@ -1,14 +1,13 @@
 # 全局RAG模块
 
-全局RAG服务模块，提供独立的Python环境和完整的RAG功能。
+全局RAG服务模块，提供完整的RAG功能。
 
 ## 功能特性
 
-- **文本分块**：使用LangChain进行智能文本分块
-- **向量嵌入**：使用sentence-transformers进行文本向量化
-- **向量存储**：支持持久化存储，使用ChromaDB作为向量数据库
+- **文本分块**：智能文本分块功能，使用 LangChain.js 实现，支持多种分块策略
+- **向量嵌入**：文本向量化功能（正在重构中）
+- **向量存储**：支持持久化存储，使用向量数据库（正在重构中）
 - **RAG引擎**：完整的RAG查询和上下文构建功能
-- **独立Python环境**：包含独立的Python服务，不依赖其他模块
 
 ## 安装
 
@@ -18,37 +17,74 @@ pnpm install
 
 # 构建模块
 pnpm build
-
-# 设置Python环境（可选）
-pnpm setup:python
 ```
 
 ## 使用示例
 
+### 文本分块
+
+```typescript
+import { Chunker } from '@note-studio/global-rag';
+
+// 创建分块器
+const chunker = new Chunker({
+  chunkSize: 1000,
+  chunkOverlap: 200,
+  strategy: 'recursive'
+});
+
+// 初始化
+await chunker.initialize();
+
+// 对单个文本进行分块
+const result = await chunker.chunkText('你的长文本内容...', {
+  chunkSize: 500,
+  chunkOverlap: 100,
+  strategy: 'recursive'
+});
+
+console.log(`总共分成了 ${result.totalChunks} 个块`);
+result.chunks.forEach((chunk, index) => {
+  console.log(`块 ${index}: ${chunk.content.substring(0, 50)}...`);
+});
+
+// 对多个文档进行分块
+const documents = [
+  { content: '文档1内容...', metadata: { filePath: 'doc1.txt' } },
+  { content: '文档2内容...', metadata: { filePath: 'doc2.txt' } }
+];
+const multiResult = await chunker.chunkDocuments(documents);
+
+// 使用不同的分块策略
+const markdownResult = await chunker.chunkText('# Markdown 文档\n内容...', {
+  strategy: 'markdown'
+});
+
+// 使用自定义切分标识符（按优先级排序）
+const customResult = await chunker.chunkText('你的文本内容...', {
+  strategy: 'recursive',
+  separators: ['\n\n', '\n', '。', '！', '？', '.', '!', '?'], // 优先级从高到低
+  chunkSize: 1000,
+  chunkOverlap: 200
+});
+```
+
 ### 基本使用
 
 ```typescript
-import { Chunker, Embedder, VectorStore, RAGEngine } from '@note-studio/global-rag';
+import { VectorStore, RAGEngine } from '@note-studio/global-rag';
 
 // 初始化组件
-const chunker = new Chunker({ chunkSize: 1000, chunkOverlap: 200 });
-const embedder = new Embedder('BAAI/bge-large-zh-v1.5');
 const vectorStore = new VectorStore();
 const ragEngine = new RAGEngine(vectorStore);
 
 // 初始化
-await chunker.initialize();
-await embedder.initialize();
 await vectorStore.initialize();
-
-// 处理文档
-const chunks = await chunker.chunkText('你的文档内容');
-const embeddings = await embedder.embedTexts(chunks.chunks.map(c => c.content));
 
 // 添加到向量存储
 await vectorStore.addDocuments(
-  chunks.chunks.map(c => c.content),
-  chunks.chunks.map(c => ({ filePath: 'example.txt', ...c.metadata }))
+  ['文档内容1', '文档内容2'],
+  [{ filePath: 'example1.txt' }, { filePath: 'example2.txt' }]
 );
 
 // RAG查询
@@ -58,101 +94,31 @@ console.log(result.answer);
 
 ## 目录结构
 
-```
+```text
 packages/global-rag/
 ├── src/
-│   ├── chunker/          # 文本分块器
-│   ├── embedding/        # 向量嵌入器
-│   ├── vector-store/     # 向量存储
+│   ├── chunker/          # 文本分块器（已实现，使用 LangChain.js）
+│   ├── embedding/        # 向量嵌入器（正在重构中）
+│   ├── vector-store/     # 向量存储（正在重构中）
 │   ├── rag/              # RAG引擎
-│   ├── python/           # Python服务
-│   │   ├── bridge/       # Python桥接器
-│   │   └── services/     # Python服务代码
 │   └── types.ts          # 类型定义
 ├── package.json
 └── tsconfig.json
 ```
 
-## Python环境
-
-模块包含独立的Python服务，位于 `src/python/services/` 目录。
-
-### Python依赖
-
-Python服务需要以下依赖（见 `requirements.txt`）：
-- langchain
-- tiktoken
-- sentence-transformers
-- numpy
-- faiss-cpu
-
-### 安装Python依赖
-
-```bash
-# 进入Python服务目录
-cd src/python/services
-
-# 安装依赖
-pip install -r requirements.txt
-```
-
-## API文档
-
-### Chunker（分块器）
-
-```typescript
-const chunker = new Chunker({
-  chunkSize: 1000,
-  chunkOverlap: 200,
-  strategy: 'recursive'
-});
-
-await chunker.initialize();
-const result = await chunker.chunkText('文本内容');
-```
-
-### Embedder（嵌入器）
-
-```typescript
-const embedder = new Embedder('BAAI/bge-large-zh-v1.5');
-await embedder.initialize();
-const embedding = await embedder.embedText('文本内容');
-```
-
-### VectorStore（向量存储）
-
-```typescript
-const vectorStore = new VectorStore();
-await vectorStore.initialize();
-
-// 添加文档
-await vectorStore.addDocuments(
-  ['文本1', '文本2'],
-  [{ filePath: 'file1.txt' }, { filePath: 'file2.txt' }]
-);
-
-// 搜索
-const results = await vectorStore.search('查询文本', { topK: 5 });
-```
-
-### RAGEngine（RAG引擎）
-
-```typescript
-const ragEngine = new RAGEngine(vectorStore, {
-  maxContextLength: 4000,
-  maxSourceDocuments: 5,
-  minRelevanceScore: 0.7
-});
-
-const result = await ragEngine.query('你的问题');
-```
-
 ## 注意事项
 
-1. **Python环境**：项目包含内置的独立 Python 环境（位于 `python_bundle/python-3.13.9-embed/`），不需要用户本地安装 Python
-2. **依赖安装**：Python 依赖已预装在内置环境中，无需手动安装
-3. **向量存储路径**：持久化向量存储默认路径为 `~/.note-studio/vector-store`
-4. **模型下载**：首次使用嵌入模型时会自动下载，可能需要一些时间
+1. **功能状态**：
+   - ✅ 文本分块功能已实现（使用 LangChain.js）
+   - ⏳ 向量嵌入功能正在重构中
+   - ⏳ 向量存储功能正在重构中
+2. **向量存储路径**：持久化向量存储默认路径为 `~/.note-studio/vector-store`
+3. **模型下载**：首次使用嵌入模型时会自动下载，可能需要一些时间
+4. **分块策略**：
+   - `recursive`（递归切分，推荐）：使用自定义分隔符列表，按优先级递归切分，保持语义完整性
+   - `markdown`（Markdown 切分）：自动识别 Markdown 结构（标题、段落、代码块等）进行切分
+   - `token`（Token 切分，当前使用递归切分作为替代）：按 Token 数量切分（需要 Tokenizer 支持）
+   - **自定义切分标识符**：支持用户自定义分隔符列表（如 `['\n\n', '\n', '。', '！', '？']`），按优先级从高到低进行切分
 
 ## 开发
 
@@ -166,5 +132,3 @@ pnpm build
 # 测试
 pnpm test
 ```
-
-

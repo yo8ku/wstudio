@@ -66,8 +66,6 @@ export class TerminalService {
         ...options.env,
         // 强制启用 ANSI 颜色（Windows）
         FORCE_COLOR: '1',
-        // PowerShell 使用 UTF-8 编码
-        PYTHONIOENCODING: 'utf-8',
         // 确保终端类型支持颜色
         TERM: 'xterm-256color',
         // Windows 10+ 原生支持 ANSI

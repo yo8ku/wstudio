@@ -1,9 +1,8 @@
 /**
  * 向量文本分块器
- * 使用 Python LangChain 进行文本分块
+ * 本地实现，不依赖 Python
  */
 
-import { PythonBridge } from '../python/bridge/PythonBridge.js';
 import { ChunkOptions, Chunk, VectorChunkResult } from '../types.js';
 
 export interface ChunkerConfig {
@@ -13,14 +12,11 @@ export interface ChunkerConfig {
 }
 
 export class Chunker {
-  private bridge: PythonBridge;
   private defaultChunkSize: number;
   private defaultChunkOverlap: number;
   private defaultStrategy: 'recursive' | 'character' | 'token' | 'markdown' | 'python';
 
   constructor(config?: ChunkerConfig) {
-    this.bridge = new PythonBridge();
-    // 设置默认值，如果用户后续提供，可以修改
     this.defaultChunkSize = config?.chunkSize ?? 1000;
     this.defaultChunkOverlap = config?.chunkOverlap ?? 200;
     this.defaultStrategy = config?.strategy ?? 'recursive';
@@ -30,7 +26,8 @@ export class Chunker {
    * 初始化分块器
    */
   async initialize(): Promise<void> {
-    await this.bridge.start();
+    // 本地实现，无需初始化
+    console.log('[Chunker] 本地分块器已初始化');
   }
 
   /**
@@ -60,37 +57,115 @@ export class Chunker {
   }
 
   /**
-   * 对文本进行分块
+   * 对文本进行分块（递归策略）
    */
   async chunkText(text: string, options?: ChunkOptions): Promise<VectorChunkResult> {
-    if (!this.bridge.isServiceReady()) {
-      await this.initialize();
-    }
+    const chunkSize = options?.chunkSize ?? this.defaultChunkSize;
+    const chunkOverlap = options?.chunkOverlap ?? this.defaultChunkOverlap;
+    const separators = options?.separators ?? ['\n\n', '\n', '。', '！', '？', '.', '!', '?', ' ', ''];
 
-    const response = await this.bridge.request({
-      method: 'chunk_text',
-      params: {
-        text,
-        chunk_size: options?.chunkSize ?? this.defaultChunkSize,
-        chunk_overlap: options?.chunkOverlap ?? this.defaultChunkOverlap,
-        strategy: options?.strategy ?? this.defaultStrategy,
-        kwargs: {
-          ...(options?.separators && { separators: options.separators }),
-          ...(options?.separator && { separator: options.separator }),
-          ...(options?.encodingName && { encoding_name: options.encodingName }),
-        },
-      },
-    });
+    const chunks = this.recursiveSplit(text, separators, chunkSize, chunkOverlap);
 
-    if (!response.success || !response.result) {
-      throw new Error(response.error || 'Failed to chunk text');
-    }
-
-    const chunks = response.result as Chunk[];
     return {
-      chunks,
+      chunks: chunks.map((content, index) => ({
+        id: `chunk_${index}`,
+        content,
+        metadata: {
+          chunk_index: index,
+          chunk_size: content.length,
+        },
+      })),
       totalChunks: chunks.length,
     };
+  }
+
+  /**
+   * 递归切分文本
+   */
+  private recursiveSplit(
+    text: string,
+    separators: string[],
+    chunkSize: number,
+    chunkOverlap: number
+  ): string[] {
+    const chunks: string[] = [];
+
+    if (text.length <= chunkSize) {
+      return [text];
+    }
+
+    // 尝试使用分隔符切分
+    for (const separator of separators) {
+      if (separator === '') {
+        // 最后的备选方案：按字符切分
+        return this.splitBySize(text, chunkSize, chunkOverlap);
+      }
+
+      if (text.includes(separator)) {
+        const splits = text.split(separator);
+        let currentChunk = '';
+
+        for (const split of splits) {
+          const testChunk = currentChunk
+            ? currentChunk + separator + split
+            : split;
+
+          if (testChunk.length <= chunkSize) {
+            currentChunk = testChunk;
+          } else {
+            if (currentChunk) {
+              chunks.push(currentChunk);
+              // 添加重叠
+              const overlapStart = Math.max(
+                0,
+                currentChunk.length - chunkOverlap
+              );
+              currentChunk = currentChunk.substring(overlapStart) + separator + split;
+            } else {
+              // 单个 split 太大，需要进一步切分
+              const subChunks = this.recursiveSplit(
+                split,
+                separators.slice(1),
+                chunkSize,
+                chunkOverlap
+              );
+              chunks.push(...subChunks);
+              currentChunk = '';
+            }
+          }
+        }
+
+        if (currentChunk) {
+          chunks.push(currentChunk);
+        }
+
+        return chunks;
+      }
+    }
+
+    // 如果没有找到分隔符，按大小切分
+    return this.splitBySize(text, chunkSize, chunkOverlap);
+  }
+
+  /**
+   * 按固定大小切分文本
+   */
+  private splitBySize(
+    text: string,
+    chunkSize: number,
+    chunkOverlap: number
+  ): string[] {
+    const chunks: string[] = [];
+    let start = 0;
+
+    while (start < text.length) {
+      const end = Math.min(start + chunkSize, text.length);
+      chunks.push(text.substring(start, end));
+      start = end - chunkOverlap;
+      if (start >= text.length) break;
+    }
+
+    return chunks;
   }
 
   /**
@@ -100,33 +175,28 @@ export class Chunker {
     documents: Array<{ content: string; metadata?: Record<string, unknown> }>,
     options?: ChunkOptions
   ): Promise<VectorChunkResult> {
-    if (!this.bridge.isServiceReady()) {
-      await this.initialize();
+    const allChunks: Chunk[] = [];
+    let totalIndex = 0;
+
+    for (const doc of documents) {
+      const result = await this.chunkText(doc.content, options);
+      for (const chunk of result.chunks) {
+        allChunks.push({
+          ...chunk,
+          id: `chunk_${totalIndex}`,
+          metadata: {
+            ...chunk.metadata,
+            ...doc.metadata,
+            chunk_index: totalIndex,
+          },
+        });
+        totalIndex++;
+      }
     }
 
-    const response = await this.bridge.request({
-      method: 'chunk_documents',
-      params: {
-        documents,
-        chunk_size: options?.chunkSize ?? this.defaultChunkSize,
-        chunk_overlap: options?.chunkOverlap ?? this.defaultChunkOverlap,
-        strategy: options?.strategy ?? this.defaultStrategy,
-        kwargs: {
-          ...(options?.separators && { separators: options.separators }),
-          ...(options?.separator && { separator: options.separator }),
-          ...(options?.encodingName && { encoding_name: options.encodingName }),
-        },
-      },
-    });
-
-    if (!response.success || !response.result) {
-      throw new Error(response.error || 'Failed to chunk documents');
-    }
-
-    const chunks = response.result as Chunk[];
     return {
-      chunks,
-      totalChunks: chunks.length,
+      chunks: allChunks,
+      totalChunks: allChunks.length,
     };
   }
 
@@ -134,7 +204,7 @@ export class Chunker {
    * 关闭分块器
    */
   async close(): Promise<void> {
-    await this.bridge.stop();
+    // 本地实现，无需关闭
+    console.log('[Chunker] 分块器已关闭');
   }
 }
-

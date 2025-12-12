@@ -1,10 +1,8 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "./dist/main",
+    "outDir": "./dist",
     "lib": ["ES2020", "DOM"],
-    "module": "Node16",
-    "moduleResolution": "node16",
     "paths": {
       "@note-studio/global-rag": ["../global-rag/src/index.ts"],
       "@note-studio/global-rag/*": ["../global-rag/src/*"],

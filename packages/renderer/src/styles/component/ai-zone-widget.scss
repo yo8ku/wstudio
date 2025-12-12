@@ -1207,18 +1207,57 @@
   }
 }
 
-// 模型下拉 Select 下拉内容样式（与其他菜单保持一致的悬停反馈）
-.ai-zone-input-model-select-content {
+// 模型下拉 Select 下拉内容样式
+// 使用更高优先级的选择器覆盖 .select-content 的 width: 230px !important
+.select-content.ai-zone-input-model-select-content {
+  // 固定宽度，与 ai-zone-input-actions 宽度一致
+  width: 200px !important;
+  min-width: unset !important;
+  // 圆角
+  border-radius: 6px !important;
+  
+  // 搜索框样式调整
+  .select-search {
+    padding: 6px 8px;
+  }
+  
+  // 菜单列表内边距调整
+  .select-list {
+    padding: 4px;
+  }
 
   .select-item {
     transition: background-color 0.15s ease, color 0.15s ease;
+    // 减少左侧内边距
+    padding: 6px 8px;
     
     &:hover {
       background-color: var(--ws-dropdown-hoverBackground);
-        color: var(--ws-dropdown-hoverForeground);
+      color: var(--ws-dropdown-hoverForeground);
+    }
+    
+    // 模型能力图标样式
+    .model-capability-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ws-descriptionForeground);
+      opacity: 0.7;
+      line-height: 1;
+      
+      svg {
+        width: 14px;
+        height: 14px;
+        display: block;
       }
     }
   }
+  
+  // 分组标题样式调整
+  .select-group-title {
+    padding: 6px 8px;
+  }
+}
 
 
 // Portal 渲染出来的下拉内容样式（确保不会被 ai-zone-border 遮挡）
@@ -1355,3 +1394,82 @@
   opacity: 0.7;
 }
 
+
+
+/* 无可用模型提示（旧版，保留兼容） */
+.ai-zone-no-model-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  
+  .ai-zone-no-model-text {
+    color: var(--ws-descriptionForeground);
+    white-space: nowrap;
+  }
+  
+  .ai-zone-manage-models-btn {
+    background: transparent;
+    border: none;
+    color: var(--ws-textLink-foreground);
+    cursor: pointer;
+    padding: 0;
+    font-size: 12px;
+    text-decoration: underline;
+    
+    &:hover {
+      color: var(--ws-textLink-activeForeground);
+    }
+  }
+}
+
+/* 无可用模型下拉菜单样式 */
+.ai-zone-no-model-select-content {
+  min-width: 200px;
+  
+  .select-item {
+    &.disabled {
+      opacity: 1;
+      cursor: default;
+      background: transparent !important;
+      
+      .ai-zone-no-model-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 16px 12px;
+        gap: 8px;
+        width: 100%;
+        
+        .ai-zone-no-model-icon {
+          color: var(--ws-descriptionForeground);
+          opacity: 0.6;
+        }
+        
+        .ai-zone-no-model-text {
+          color: var(--ws-descriptionForeground);
+          font-size: 14px;
+          font-weight: 500;
+          text-align: center;
+          opacity: 0.85;
+        }
+      }
+    }
+    
+    .ai-zone-manage-models-link {
+      color: var(--ws-textLink-foreground);
+      font-size: 13px;
+      display: block;
+      text-align: center;
+      width: 100%;
+      
+      &:hover {
+        color: var(--ws-textLink-activeForeground);
+        text-decoration: underline;
+      }
+    }
+  }
+}

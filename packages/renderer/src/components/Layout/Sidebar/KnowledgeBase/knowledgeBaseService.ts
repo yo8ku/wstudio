@@ -288,6 +288,13 @@ class KnowledgeBaseService {
   }
 
   /**
+   * 删除知识库项（removeItem 的别名）
+   */
+  async deleteItem(itemId: string): Promise<void> {
+    await this.removeItem(itemId);
+  }
+
+  /**
    * 更新知识库项
    */
   async updateKnowledgeBase(itemId: string, updates: Partial<KnowledgeItem>): Promise<void> {
@@ -421,6 +428,27 @@ class KnowledgeBaseService {
   ): Promise<KnowledgeItem> {
     const data = await this.loadFromStorage();
     
+    // 检查文件是否已存在（使用文件名检查）
+    const findExistingFile = (items: KnowledgeItem[]): KnowledgeItem | undefined => {
+      for (const item of items) {
+        if (item.id === knowledgeBaseId) {
+          // 在目标知识库中查找同名文件
+          return item.children?.find(child => child.type === 'file' && child.title === fileName);
+        }
+        if (item.children) {
+          const found = findExistingFile(item.children);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+    
+    const existingFile = findExistingFile(data.created);
+    if (existingFile) {
+      console.log(`[KnowledgeBaseService] 文件 "${fileName}" 已存在，跳过添加`);
+      return existingFile;
+    }
+    
     // 根据文件扩展名确定文件类型
     const ext = fileName.split('.').pop()?.toLowerCase();
     const fileType: KnowledgeFileType = (ext === 'md' || ext === 'markdown') ? 'markdown' : 'txt';
@@ -440,6 +468,8 @@ class KnowledgeBaseService {
         content: content, // 存储文件内容，实现知识库与资源管理器隔离
       },
     };
+    
+    console.log(`[KnowledgeBaseService] 添加新文件: ${fileName}`);
     
     // 递归查找知识库并添加文件（如果有文件夹路径，则创建文件夹层级）
     if (folderPath) {

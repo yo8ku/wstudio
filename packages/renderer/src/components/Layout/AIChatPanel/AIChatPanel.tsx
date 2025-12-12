@@ -5,6 +5,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getCachedModels, getModelConfig, type CachedModelInfo } from '../../../services/ModelCacheService';
 import { aiService } from '../../../services/ai/AIService';
+import { isModelEnabled, loadModelEnabledStatesFromDB } from '../../../services/ai';
 import { DropdownMenu, type DropdownMenuItem, type DropdownMenuGroup } from '../../common/DropdownMenu';
 import { AIProviderIconFromModel } from '../../Icons/AIProviderIcon';
 import { Icon } from '../../Icons/Icon';
@@ -37,6 +38,10 @@ interface ModelInfo {
   configName: string;
   providerId: string;
   displayName?: string;
+  capabilities?: {
+    thinking?: boolean;
+    tool_calls?: string[];
+  };
 }
 
 interface AIChatPanelProps {
@@ -51,6 +56,32 @@ const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 400;
 const COLLAPSE_THRESHOLD = 250; // 小于此宽度时自动收缩
 const EDITOR_AREA_MIN_WIDTH = 358; // editor-area 的最小宽度
+
+// 深度思考图标组件 (Lucide Brain Icon)
+const ThinkingIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ marginLeft: 6, opacity: 0.8, verticalAlign: 'middle' }}
+    aria-label="支持深度思考"
+  >
+    <title>支持深度思考</title>
+    <path d="M12 18V5"/>
+    <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/>
+    <path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"/>
+    <path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/>
+    <path d="M18 18a4 4 0 0 0 2-7.464"/>
+    <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/>
+    <path d="M6 18a4 4 0 0 1-2-7.464"/>
+    <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/>
+  </svg>
+);
 
 /**
  * 模型显示名称
@@ -426,13 +457,23 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         console.warn('  2. 是否选择了具体的模型？');
       }
       
-      // 转换为 ModelInfo 格式
-      const modelInfos: ModelInfo[] = cachedModels.map(model => ({
-        modelId: model.modelId,
-        configName: model.configName,
-        providerId: model.providerId,
-        displayName: model.displayName
-      }));
+      // 转换为 ModelInfo 格式，并过滤掉禁用的模型
+      const modelInfos: ModelInfo[] = cachedModels
+        .filter(model => {
+          // 从模型ID中提取实际的模型名称（格式：configName:modelName）
+          const modelName = model.modelId.includes(':') ? model.modelId.split(':')[1] : model.modelId;
+          return isModelEnabled(modelName);
+        })
+        .map(model => {
+          console.log('[AIChatPanel] 模型信息:', model.modelId, 'capabilities:', model.capabilities);
+          return {
+            modelId: model.modelId,
+            configName: model.configName,
+            providerId: model.providerId,
+            displayName: model.displayName,
+            capabilities: model.capabilities
+          };
+        });
       
       setAvailableModels(modelInfos);
       if (modelInfos.length > 0 && !selectedModel) {
@@ -551,8 +592,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   }, []); // 空依赖数组，仅在组件挂载时执行一次
 
   useEffect(() => {
-    // 首次加载模型
-    loadModels();
+    // 首次加载：先从数据库加载模型启用状态，再加载模型列表
+    const initModels = async () => {
+      await loadModelEnabledStatesFromDB();
+      loadModels();
+    };
+    initModels();
     
     // 监听模型缓存更新事件
     const handleModelsCacheUpdate = () => {
@@ -560,10 +605,18 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       loadModels();
     };
     
+    // 监听模型启用状态变化事件
+    const handleModelEnabledChanged = () => {
+      console.log('[AIChatPanel] 模型启用状态已变化，重新加载模型列表...');
+      loadModels();
+    };
+    
     window.addEventListener('models-cache-updated', handleModelsCacheUpdate);
+    window.addEventListener('model-enabled-changed', handleModelEnabledChanged);
     
     return () => {
       window.removeEventListener('models-cache-updated', handleModelsCacheUpdate);
+      window.removeEventListener('model-enabled-changed', handleModelEnabledChanged);
     };
   }, []);
 
@@ -1703,7 +1756,20 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             <div className="toolbar-left">
               <DropdownMenu
                 value={selectedModel}
-                onChange={(model) => setSelectedModel(model)}
+                onChange={(model) => {
+                  setSelectedModel(model);
+                  // 检查选中的模型是否支持深度思考
+                  const selectedModelInfo = availableModels.find(m => m.modelId === model);
+                  const supportsThinking = selectedModelInfo?.capabilities?.thinking === true;
+                  
+                  if (supportsThinking) {
+                    setIsDeepThinkingEnabled(true);
+                    console.log('[AIChatPanel] 切换到支持深度思考的模型，自动开启深度思考');
+                  } else {
+                    setIsDeepThinkingEnabled(false);
+                    console.log('[AIChatPanel] 切换到不支持深度思考的模型，自动关闭深度思考');
+                  }
+                }}
                 groups={(() => {
                   // 按配置名称分组模型
                   const grouped = new Map<string, DropdownMenuItem[]>();
@@ -1714,7 +1780,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                     grouped.get(model.configName)!.push({
                       value: model.modelId,
                       label: model.displayName || formatModelDisplayName(model.modelId),
-                      icon: <AIProviderIconFromModel modelString={model.modelId} size={16} />
+                      icon: <AIProviderIconFromModel modelString={model.modelId} size={16} />,
+                      suffix: model.capabilities?.thinking ? <ThinkingIcon size={14} /> : undefined
                     });
                   });
                   return Array.from(grouped.entries()).map(([configName, items]) => ({

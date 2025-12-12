@@ -39,6 +39,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const [isRetryingFailedFiles, setIsRetryingFailedFiles] = useState(false);
+  const [hoveredErrorItem, setHoveredErrorItem] = useState<string | null>(null);
 
   // 过滤出当前知识库的项（只显示 id 匹配的知识库及其子项目）
   const { currentKnowledgeItems, failedFiles, configChanged } = React.useMemo(() => {
@@ -149,7 +150,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   // 导入本地文件
   const handleImportFile = useCallback(async () => {
     try {
-    console.log('[KnowledgeBaseView] 导入本地文件');
+      console.log('[KnowledgeBaseView] 导入本地文件');
       
       // 调用 IPC 打开多文件选择对话框
       const result = await window.electron?.ipcRenderer?.invoke('file:openMultiple');
@@ -185,18 +186,95 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
         try {
           const fileName = filePath.split(/[/\\]/).pop() || 'unknown';
           
+          // 从存储中获取最新的知识库数据，检查文件处理状态
+          const latestData = await knowledgeBaseService.loadFromStorage();
+          const latestKnowledgeBase = latestData.created.find(kb => kb.id === knowledgeId);
+          const latestChildren = latestKnowledgeBase?.children || [];
+          
+          // 递归查找文件
+          const findExistingFile = (items: KnowledgeItem[]): KnowledgeItem | undefined => {
+            for (const item of items) {
+              if (item.type === 'file' && item.title === fileName) {
+                return item;
+              }
+              if (item.children) {
+                const found = findExistingFile(item.children);
+                if (found) return found;
+              }
+            }
+            return undefined;
+          };
+          
+          const existingFile = findExistingFile(latestChildren);
+          let shouldAddNewFile = true;
+          let existingFileId: string | null = null;
+          
+          console.log(`[KnowledgeBaseView] 检查文件: ${fileName}, 存在: ${!!existingFile}, 状态: ${existingFile?.metadata?.processingStatus}`);
+          
+          if (existingFile) {
+            const processingStatus = existingFile.metadata?.processingStatus;
+            
+            // 如果文件正在处理中，阻止重复上传
+            if (processingStatus === 'processing' || processingStatus === 'pending') {
+              console.log(`[KnowledgeBaseView] 阻止重复上传: ${fileName}, 状态: ${processingStatus}`);
+              toastService.warning(`文件 "${fileName}" 正在上传中，请等待完成！`);
+              failedCount++;
+              continue;
+            }
+            
+            console.log(`[KnowledgeBaseView] 文件 "${fileName}" 已存在，将更新文件`);
+            // 记录现有文件ID，稍后更新而不是删除
+            existingFileId = existingFile.id;
+            shouldAddNewFile = false;
+          }
+          
+          // 先读取文件内容检查长度（最小 300 字符）
+          const fileReadResult = await window.electron?.file?.read(filePath);
+          if (!fileReadResult?.success || !fileReadResult.data?.content) {
+            toastService.error(`无法读取文件: ${fileName}`);
+            failedCount++;
+            continue;
+          }
+          
+          // 去除空白字符（但保留换行符），防止恶意上传空内容
+          const contentWithoutSpaces = fileReadResult.data.content.replace(/[^\S\n]/g, '');
+          const contentLength = contentWithoutSpaces.length;
+          const MIN_DOCUMENT_LENGTH = 300;
+          
+          if (contentLength < MIN_DOCUMENT_LENGTH) {
+            toastService.error(
+              `文档 "${fileName}" 过短（${contentLength} 字符），最少需要 ${MIN_DOCUMENT_LENGTH} 字符`
+            );
+            failedCount++;
+            continue;
+          }
+          
           // 复制文件到知识库文件夹
           const copyResult = await window.electron?.folder?.copyToFolder(filePath, knowledgeBasePath);
           
           if (copyResult?.success && copyResult.data) {
             const { path: newFilePath, name: newFileName } = copyResult.data;
             
-            // 添加文件到知识库数据
-            await knowledgeBaseService.addFileToKnowledgeBase(
-              knowledgeId,
-              newFilePath,
-              newFileName
-            );
+            if (shouldAddNewFile) {
+              // 添加新文件到知识库
+              console.log(`[KnowledgeBaseView] 添加新文件到知识库: ${newFileName}`);
+              await knowledgeBaseService.addFileToKnowledgeBase(
+                knowledgeId,
+                newFilePath,
+                newFileName
+              );
+            } else if (existingFileId) {
+              // 更新现有文件的路径和元数据
+              console.log(`[KnowledgeBaseView] 更新现有文件: ${newFileName}`);
+              await knowledgeBaseService.updateKnowledgeBase(existingFileId, {
+                path: newFilePath,
+                metadata: {
+                  lastModified: new Date(),
+                  processingStatus: undefined,
+                  processingProgress: undefined,
+                },
+              });
+            }
             
             // 更新处理状态为 processing
             await knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'processing', 10);
@@ -209,6 +287,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             // 进度更新回调
             const handleProgress = async (progressFilePath: string, progress: number) => {
               if (progressFilePath !== newFilePath) return;
+              
               // 当进度达到 100% 时，立即将状态更新为 completed
               const status = progress >= 100 ? 'completed' : 'processing';
               await knowledgeBaseService.updateFileProcessingStatus(progressFilePath, status, progress);
@@ -221,11 +300,11 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             ragProcessingService.uploadFilesToKnowledgeBase(
               [newFilePath],
               knowledgeId,
-              undefined,
-              handleProgress
+              { onProgress: handleProgress }
             ).then(async () => {
-              // 确保状态为 completed（防止进度回调未正确更新状态）
+              // 确保状态为 completed
               await knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'completed', 100);
+              
               window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
                 detail: { knowledgeId }
               }));
@@ -265,12 +344,18 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               }
             }).catch((error) => {
               const errorMessage = error instanceof Error ? error.message : String(error);
+              
+              // 更新状态为 error
               knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'error', 0).then(() => {
                 window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
                   detail: { knowledgeId }
                 }));
               }).catch(() => {});
               console.error('[KnowledgeBaseView] 文件处理失败:', errorMessage);
+              
+              // 显示友好的错误提示
+              let displayMessage = '文件处理失败';
+              toastService.error(displayMessage);
             });
             
             importedCount++;
@@ -353,8 +438,48 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             // 生成一个虚拟路径用于标识（不指向实际文件系统）
             const virtualPath = `knowledge-base://${knowledgeId}/${folderName}/${fileName}`;
             
+            // 检查文件是否已存在
+            const allData = await knowledgeBaseService.loadFromStorage();
+            const knowledgeBase = allData.created.find(kb => kb.id === knowledgeId);
+            
+            // 递归查找文件
+            const findFileInChildren = (items: KnowledgeItem[]): KnowledgeItem | undefined => {
+              for (const item of items) {
+                if (item.path === virtualPath) {
+                  return item;
+                }
+                if (item.children) {
+                  const found = findFileInChildren(item.children);
+                  if (found) return found;
+                }
+              }
+              return undefined;
+            };
+            
+            const existingFile = knowledgeBase?.children ? findFileInChildren(knowledgeBase.children) : undefined;
+            
+            let addedFile: KnowledgeItem;
+            if (existingFile) {
+              const processingStatus = existingFile.metadata?.processingStatus;
+              
+              // 如果文件正在处理中，跳过该文件
+              if (processingStatus === 'processing' || processingStatus === 'pending') {
+                console.log(`[KnowledgeBaseView] 文件 "${fileName}" 正在处理中，跳过`);
+                failedCount++;
+                continue;
+              }
+              
+              // 文件已存在，删除旧记录并重新添加（用户可能更新了文档内容）
+              console.log(`[KnowledgeBaseView] 文件 "${fileName}" 已存在，将删除旧记录并重新上传`);
+              try {
+                await knowledgeBaseService.deleteItem(existingFile.id);
+              } catch (error) {
+                console.warn('[KnowledgeBaseView] 删除旧文件记录失败:', error);
+              }
+            }
+            
             // 添加文件到知识库数据（传递文件内容，实现知识库与资源管理器隔离）
-            const addedFile = await knowledgeBaseService.addFileToKnowledgeBase(
+            addedFile = await knowledgeBaseService.addFileToKnowledgeBase(
               knowledgeId,
               virtualPath,
               fileName,
@@ -455,8 +580,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             await ragProcessingService.uploadFilesToKnowledgeBase(
               tempFilePaths,
               knowledgeId,
-              undefined,
-              handleProgress
+              { onProgress: handleProgress }
             );
             
             // 确保所有文件状态为 completed
@@ -516,7 +640,12 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               detail: { knowledgeId }
             }));
             
-            toastService.error(`向量化处理失败: ${errorMessage}`);
+            // 显示友好的错误提示
+            let displayMessage = '向量化处理失败';
+            if (errorMessage.length < 100) {
+              displayMessage = `向量化处理失败: ${errorMessage}`;
+            }
+            toastService.error(displayMessage);
           }
         } finally {
           // 清理临时文件
@@ -627,8 +756,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
           await ragProcessingService.uploadFilesToKnowledgeBase(
             [filePath],
             knowledgeId,
-            undefined,
-            handleProgressUpdate
+            { onProgress: handleProgressUpdate }
           );
           await knowledgeBaseService.updateFileProcessingStatus(filePath, 'completed', 100);
         } catch (error) {
@@ -727,9 +855,68 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     }
   };
 
-  // 递归渲染文件
+  // 重新上传失败的文件
+  const handleRetryFile = useCallback(async (item: KnowledgeItem) => {
+    if (!item.path) {
+      toastService.error('无法获取文件路径');
+      return;
+    }
+
+    try {
+      // 更新状态为 processing
+      await knowledgeBaseService.updateFileProcessingStatus(item.path, 'processing', 10);
+      
+      window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+        detail: { knowledgeId }
+      }));
+
+      // 进度更新回调
+      const handleProgress = async (progressFilePath: string, progress: number) => {
+        if (progressFilePath !== item.path) return;
+        const status = progress >= 100 ? 'completed' : 'processing';
+        await knowledgeBaseService.updateFileProcessingStatus(progressFilePath, status, progress);
+        window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+          detail: { knowledgeId }
+        }));
+      };
+
+      // 重新处理文件
+      await ragProcessingService.uploadFilesToKnowledgeBase(
+        [item.path],
+        knowledgeId,
+        { onProgress: handleProgress }
+      );
+
+      // 确保状态为 completed
+      await knowledgeBaseService.updateFileProcessingStatus(item.path, 'completed', 100);
+      window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+        detail: { knowledgeId }
+      }));
+
+      toastService.success(`文件 "${item.title}" 重新上传成功`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await knowledgeBaseService.updateFileProcessingStatus(item.path, 'error', 0);
+      window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+        detail: { knowledgeId }
+      }));
+      toastService.error(`重新上传失败: ${errorMessage}`);
+    }
+  }, [knowledgeId]);
+
+  // 递归渲染文件（失败文件排在最前面）
   const renderItems = (items: KnowledgeItem[], level: number = 0): React.ReactNode => {
-    return items.map(item => {
+    // 对文件列表排序：失败文件在最前面
+    const sortedItems = [...items].sort((a, b) => {
+      const aIsError = a.type === 'file' && a.metadata?.processingStatus === 'error';
+      const bIsError = b.type === 'file' && b.metadata?.processingStatus === 'error';
+      
+      if (aIsError && !bIsError) return -1;
+      if (!aIsError && bIsError) return 1;
+      return 0;
+    });
+
+    return sortedItems.map(item => {
       const isExpanded = expandedFolders.has(item.id);
       const isSelected = selectedItem === item.id;
       const hasChildren = item.children && item.children.length > 0;
@@ -783,10 +970,27 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                           </span>
                         )}
                         {status === 'error' && (
-                          <span className="error-indicator" title="处理失败">
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                              <path d="M6 0C2.69 0 0 2.69 0 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm1 9H5V7h2v2zm0-4H5V3h2v2z"/>
-                            </svg>
+                          <span 
+                            className="error-indicator" 
+                            title={hoveredErrorItem === item.id ? "点击重新上传" : "处理失败"}
+                            onMouseEnter={() => setHoveredErrorItem(item.id)}
+                            onMouseLeave={() => setHoveredErrorItem(null)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRetryFile(item);
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            {hoveredErrorItem === item.id ? (
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
+                                <path fillRule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/>
+                              </svg>
+                            ) : (
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                                <path d="M6 0C2.69 0 0 2.69 0 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm1 9H5V7h2v2zm0-4H5V3h2v2z"/>
+                              </svg>
+                            )}
                           </span>
                         )}
                       </span>
@@ -794,20 +998,23 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                   }
                   return null;
                 })()}
-                <span className="item-actions">
-                  <button
-                    className="action-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onFileDelete?.(item);
-                    }}
-                    title="删除"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.506a.58.58 0 0 0-.01 0H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1h-.995a.59.59 0 0 0-.01 0H11Zm1.958 1-.846 10.58a1 1 0 0 1-.997.92h-6.23a1 1 0 0 1-.997-.92L3.042 3.5h9.916Z"/>
-                    </svg>
-                  </button>
-                </span>
+                {/* 只有在文件不处于处理中状态时才显示删除按钮 */}
+                {item.metadata?.processingStatus !== 'processing' && item.metadata?.processingStatus !== 'pending' && (
+                  <span className="item-actions">
+                    <button
+                      className="action-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFileDelete?.(item);
+                      }}
+                      title="删除"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.506a.58.58 0 0 0-.01 0H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1h-.995a.59.59 0 0 0-.01 0H11Zm1.958 1-.846 10.58a1 1 0 0 1-.997.92h-6.23a1 1 0 0 1-.997-.92L3.042 3.5h9.916Z"/>
+                      </svg>
+                    </button>
+                  </span>
+                )}
               </>
             )}
           </div>

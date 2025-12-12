@@ -10,6 +10,11 @@ interface ChatModel {
   id: string;
   name: string;
   displayName?: string;
+  enabled?: boolean;
+  capabilities?: {
+    thinking?: boolean;
+    tool_calls?: string[];
+  };
 }
 
 interface AIModelConfig {
@@ -375,37 +380,22 @@ export class AIModelDatabase {
     };
 
     try {
-      // 先尝试更新，如果更新的行数为 0，则执行插入
-      // 这样可以避免并发问题，比先查询再插入更可靠
-      const updatedRows = await this.db.update('ai_configs', configData, [
+      // 使用 INSERT OR REPLACE (UPSERT) 来避免唯一约束冲突
+      // 这样无论配置是否存在，都能正确保存
+      console.log('[AIModelDatabase] 使用 UPSERT 保存配置');
+      
+      // 先删除旧配置（如果存在），然后插入新配置
+      // 这比 INSERT OR REPLACE 更可靠，因为 INSERT OR REPLACE 可能会改变 rowid
+      await this.db.delete('ai_configs', [
         { field: 'id', operator: '=', value: config.id }
       ]);
-
-      if (updatedRows === 0) {
-        // 更新行数为 0，说明配置不存在，执行插入
-        console.log('[AIModelDatabase] 配置不存在，执行插入操作');
-        try {
-          await this.db.insert('ai_configs', {
-            id: config.id,
-            ...configData
-          });
-          console.log('[AIModelDatabase] 配置插入成功');
-        } catch (error: unknown) {
-          // 如果插入时出现唯一约束冲突（可能是在更新和插入之间，另一个进程插入了相同的 ID）
-          // 再次尝试更新
-          if (error instanceof Error && error.message.includes('UNIQUE constraint')) {
-            console.log('[AIModelDatabase] 检测到唯一约束冲突，尝试更新');
-            await this.db.update('ai_configs', configData, [
-              { field: 'id', operator: '=', value: config.id }
-            ]);
-          } else {
-            console.error('[AIModelDatabase] 插入配置失败:', error);
-            throw error;
-          }
-        }
-      } else {
-        console.log('[AIModelDatabase] 配置更新成功，更新了', updatedRows, '行');
-      }
+      
+      await this.db.insert('ai_configs', {
+        id: config.id,
+        ...configData
+      });
+      
+      console.log('[AIModelDatabase] 配置保存成功');
 
       // 删除旧的模型记录
       console.log('[AIModelDatabase] 删除旧的模型记录，configId:', config.id);

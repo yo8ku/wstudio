@@ -9,6 +9,8 @@ export interface RAGConfig {
   includeMetadata?: boolean;
   temperature?: number;
   model?: string;
+  /** 父子索引专用：是否去重父块（多个子块属于同一父块时只返回一次） */
+  deduplicateParents?: boolean;
 }
 
 export interface RAGContext {

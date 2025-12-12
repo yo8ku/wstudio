@@ -23,6 +23,7 @@ import type { Snippet } from '@note-studio/shared';
 import { initializeMonaco } from '../../../../hooks/useMonacoInit';
 import { getCachedModels, getModelConfig } from '../../../../services/ModelCacheService';
 import { aiService } from '../../../../services/ai/AIService';
+import { isModelEnabled, loadModelEnabledStatesFromDB } from '../../../../services/ai';
 import { ragProcessingService } from '../../../../services/RAGProcessingService';
 import { toastService } from '../../../../services/ToastService';
 import { estimateTokens } from '../../../../utils/tokenCounter';
@@ -133,15 +134,24 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   useEffect(() => {
     const loadAvailableModels = async () => {
       try {
+        // 首先从数据库加载模型启用状态（确保 isModelEnabled 能正确工作）
+        await loadModelEnabledStatesFromDB();
+        
         // 优先从数据库加载模型配置
         const cachedModels = await getCachedModels();
         
         if (cachedModels && cachedModels.length > 0) {
-          // 提取模型ID列表（格式：ProviderName:modelId）
-          const modelIds = cachedModels.map(model => model.modelId);
+          // 提取模型ID列表（格式：ProviderName:modelId），并过滤掉禁用的模型
+          const modelIds = cachedModels
+            .filter(model => {
+              // 从模型ID中提取实际的模型名称（格式：configName:modelName）
+              const modelName = model.modelId.includes(':') ? model.modelId.split(':')[1] : model.modelId;
+              return isModelEnabled(modelName);
+            })
+            .map(model => model.modelId);
           setAvailableModels(modelIds);
           availableModelsRef.current = modelIds; // 同步更新 ref
-          console.log('[MonacoEditor] 从数据库加载模型配置，数量:', modelIds.length);
+          console.log('[MonacoEditor] 从数据库加载已启用的模型，数量:', modelIds.length);
         } else {
           // 如果数据库中没有模型配置，回退到内置AI服务
           console.log('[MonacoEditor] 数据库中没有模型配置，使用内置AI服务');
@@ -173,17 +183,45 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     loadAvailableModels();
     
     // 监听模型配置更新事件
-    const handleModelConfigUpdate = () => {
-      loadAvailableModels();
+    const handleModelConfigUpdate = async () => {
+      console.log('[MonacoEditor] AI配置已更新，重新加载模型列表...');
+      await loadAvailableModels();
+    };
+    
+    // 监听模型启用状态变化事件
+    const handleModelEnabledChanged = async () => {
+      console.log('[MonacoEditor] 模型启用状态已变化，重新加载模型列表...');
+      await loadAvailableModels();
+    };
+    
+    // 监听模型缓存更新事件
+    const handleModelsCacheUpdated = async () => {
+      console.log('[MonacoEditor] 模型缓存已更新，重新加载模型列表...');
+      await loadAvailableModels();
     };
     
     // 监听窗口事件（当AI配置更新时触发）
     window.addEventListener('ai-model-config-updated', handleModelConfigUpdate);
+    window.addEventListener('ai-config-updated', handleModelConfigUpdate);
+    window.addEventListener('model-enabled-changed', handleModelEnabledChanged);
+    window.addEventListener('models-cache-updated', handleModelsCacheUpdated);
     
     return () => {
       window.removeEventListener('ai-model-config-updated', handleModelConfigUpdate);
+      window.removeEventListener('ai-config-updated', handleModelConfigUpdate);
+      window.removeEventListener('model-enabled-changed', handleModelEnabledChanged);
+      window.removeEventListener('models-cache-updated', handleModelsCacheUpdated);
     };
   }, []);
+
+  // 当 availableModels 变化时，更新已存在的 AIZoneWidget
+  useEffect(() => {
+    if (aiZoneWidgetRef.current && availableModels.length > 0) {
+      console.log('[MonacoEditor] availableModels 已更新，更新 AIZoneWidget 的模型列表');
+      // 更新 AIZoneWidget 的 options
+      aiZoneWidgetRef.current.updateAvailableModels(availableModels);
+    }
+  }, [availableModels]);
 
   // 组件卸载时清理颜色选择器观察器
   useEffect(() => {
@@ -672,7 +710,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           console.log(`[InlineChat] Token统计: 用户消息=${userMessageTokens}, 选中文本=${selectedTextTokens}, 文件内容=${fileContentsTokens}, 总计=${totalTokens}, 限制=${modelInputTokenLimit}`);
 
           // 如果总token数超过模型限制，提示用户
-          // 注意：前端不再进行文件处理，所有处理都由 Python 端完成
+          // 注意：文件处理功能正在重构中
           // 如果需要使用 RAG 搜索，请先将文件上传到知识库
           if (totalTokens > modelInputTokenLimit) {
             console.warn(
@@ -703,7 +741,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         knowledgeBaseId: string;
         knowledgeBaseName: string;
         results: Array<{
-          id: number;
+          id: string;
           text: string;
           metadata: {
             filePath?: string;
@@ -722,30 +760,35 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         console.log(`[InlineChat] 开始向量检索...`);
 
         try {
-          // 初始化 VectorStore
+          // 初始化 VectorStore 和 EmbeddingService
           const vectorStore = new VectorStore();
           await vectorStore.initialize();
+          
+          const { EmbeddingService } = await import('@note-studio/shared');
+          const embeddingService = new EmbeddingService();
 
           // 并行检索所有知识库
           const searchPromises = knowledgeBaseMentions.map(async (kb) => {
             try {
-              // 获取知识库配置（嵌入模型等）
+              // 获取知识库配置
               const kbItem = await knowledgeBaseService.findItem(kb.id);
               if (!kbItem || kbItem.type !== 'folder') {
                 console.warn(`[InlineChat] 知识库不存在或类型不正确: ${kb.id}`);
                 return null;
               }
 
-              // 获取嵌入模型配置
-              const embeddingModel = kbItem.metadata?.embeddingModel || 'BAAI/bge-large-zh-v1.5';
-              console.log(`[InlineChat] 使用嵌入模型: ${embeddingModel} (知识库: ${kb.name})`);
+              console.log(`[InlineChat] 使用内置嵌入模型 (知识库: ${kb.name})`);
 
               // 执行向量检索
               // 使用 sanitizedMessage 作为查询（已移除知识库引用）
               const query = sanitizedMessage.trim() || '请基于知识库内容回答问题';
-              const results = await vectorStore.search(query, {
+              
+              // 生成查询向量
+              const queryEmbedding = await embeddingService.generateEmbedding(query);
+              
+              // 搜索向量存储
+              const results = await vectorStore.search(query, queryEmbedding.vectors, {
                 topK: 5, // 每个知识库返回前5个结果
-                modelName: embeddingModel,
                 filterMetadata: {
                   knowledgeBaseId: kb.id, // 过滤条件：只检索该知识库的内容
                 },
@@ -1409,6 +1452,52 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     const fileName = tabTitle || filePath.split(/[/\\]/).pop() || '未知文件';
 
     try {
+      // 检查文件是否正在处理中（防止重复上传）
+      const latestData = await knowledgeBaseService.loadFromStorage();
+      const latestKnowledgeBase = latestData.created.find(kb => kb.id === knowledgeBaseId);
+      if (latestKnowledgeBase?.children) {
+        const findExistingFile = (items: typeof latestKnowledgeBase.children): typeof latestKnowledgeBase.children[0] | undefined => {
+          for (const item of items) {
+            if (item.type === 'file' && item.title === fileName) {
+              return item;
+            }
+            if (item.children) {
+              const found = findExistingFile(item.children);
+              if (found) return found;
+            }
+          }
+          return undefined;
+        };
+        
+        const existingFile = findExistingFile(latestKnowledgeBase.children);
+        if (existingFile) {
+          const processingStatus = existingFile.metadata?.processingStatus;
+          if (processingStatus === 'processing' || processingStatus === 'pending') {
+            toastService.warning(`文件 "${fileName}" 正在上传中，请等待完成！`);
+            return;
+          }
+        }
+      }
+      
+      // 先检查文件内容长度（最小 300 字符）
+      const fileReadResult = await window.electron?.file?.read(filePath);
+      if (!fileReadResult?.success || !fileReadResult.data?.content) {
+        toastService.error(`无法读取文件: ${fileName}`);
+        return;
+      }
+      
+      // 去除空白字符（但保留换行符），防止恶意上传空内容
+      const contentWithoutSpaces = fileReadResult.data.content.replace(/[^\S\n]/g, '');
+      const contentLength = contentWithoutSpaces.length;
+      const MIN_DOCUMENT_LENGTH = 300;
+      
+      if (contentLength < MIN_DOCUMENT_LENGTH) {
+        toastService.error(
+          `文档 "${fileName}" 过短（${contentLength} 字符），最少需要 ${MIN_DOCUMENT_LENGTH} 字符`
+        );
+        return;
+      }
+      
       // 先将文件添加到知识库服务中（立即显示）
       await knowledgeBaseService.addFileToKnowledgeBase(knowledgeBaseId, filePath, fileName);
 
@@ -1457,8 +1546,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       ragProcessingService.uploadFilesToKnowledgeBase(
         [filePath],
         knowledgeBaseId,
-        undefined,
-        handleProgress
+        { onProgress: handleProgress }
       ).then(() => {
         // 处理完成，更新状态为 completed
         knowledgeBaseService.updateFileProcessingStatus(filePath, 'completed', 100).then(() => {
@@ -1485,12 +1573,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         let displayMessage = '上传知识库失败';
         
         // 提取更友好的错误信息
-        if (errorMessage.includes('ModuleNotFoundError') || errorMessage.includes('No module named')) {
-          displayMessage = 'Python 依赖缺失，正在自动安装，请稍后重试';
-        } else if (errorMessage.includes('Failed to process file paths') || errorMessage.includes('处理文件路径失败')) {
+        if (errorMessage.includes('Failed to process file paths') || errorMessage.includes('处理文件路径失败')) {
           displayMessage = '文件处理失败，请检查文件格式或重试';
-        } else if (errorMessage.includes('Python process') || errorMessage.includes('Python 服务') || errorMessage.includes('无法启动 Python')) {
-          displayMessage = 'Python 服务启动失败，请检查环境配置';
         } else if (errorMessage.includes('处理文件时发生错误')) {
           // 提取具体的错误信息
           const match = errorMessage.match(/处理文件时发生错误:\s*(.+)/);
@@ -2497,8 +2581,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       });
     }
     
+    // 优先使用全局命令中心实例，避免重复创建
     if (!commandCenterRef.current) {
-      commandCenterRef.current = new VSCodeCommandCenter();
+      commandCenterRef.current = (window as any).__commandCenter || new VSCodeCommandCenter();
+      // 如果创建了新实例，保存到全局
+      if (!(window as any).__commandCenter) {
+        (window as any).__commandCenter = commandCenterRef.current;
+      }
     }
 
     // 注册 Ctrl+S 保存快捷键
@@ -3091,7 +3180,15 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   }, []);
 
   // 监听主题变化
+  // 使用 useRef 存储监听器函数，避免依赖项变化导致重复添加
+  const themeChangeHandlerRef = useRef<((_event: any, themeData: any) => void) | null>(null);
+  
   useEffect(() => {
+    // 如果已经有监听器，先移除旧的
+    if (themeChangeHandlerRef.current) {
+      window.electron?.ipcRenderer.removeListener('theme:theme-changed', themeChangeHandlerRef.current);
+    }
+
     const handleThemeChange = (_event: any, themeData: any) => {
       if (!monacoInstance) {
         setPendingTheme(themeData);
@@ -3100,6 +3197,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
       applyThemeToMonaco(themeData, monacoInstance);
     };
+
+    // 保存监听器引用
+    themeChangeHandlerRef.current = handleThemeChange;
 
     // 监听主题变化事件
     window.electron?.ipcRenderer.on('theme:theme-changed', handleThemeChange);
@@ -3114,7 +3214,10 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     });
 
     return () => {
-      window.electron?.ipcRenderer.removeListener('theme:theme-changed', handleThemeChange);
+      if (themeChangeHandlerRef.current) {
+        window.electron?.ipcRenderer.removeListener('theme:theme-changed', themeChangeHandlerRef.current);
+        themeChangeHandlerRef.current = null;
+      }
     };
   }, [monacoInstance]);
 
@@ -3370,6 +3473,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           fontFamily: "'Cascadia Mono', '微软雅黑', 'MonoLisa', 'Consolas', monospace",
           fontLigatures: true,
           lineNumbers: 'on',
+          glyphMargin: true, // 启用 glyph margin，供 AIRewriteWidget 使用
           renderWhitespace: 'selection',
           minimap: {
             enabled: false

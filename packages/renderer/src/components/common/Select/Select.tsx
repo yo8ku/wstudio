@@ -57,6 +57,10 @@ export interface SelectProps {
   onHeaderLeftClick?: () => void;
   /** 菜单项点击回调，返回 false 时不关闭菜单 */
   onItemClick?: (value: string) => boolean | void;
+  /** 菜单对齐方式：left-左对齐到触发器左边缘，right-右对齐到触发器右边缘，parent-左对齐到父容器左边缘 */
+  align?: 'left' | 'right' | 'parent';
+  /** 菜单与触发器之间的间距（像素），默认为4 */
+  menuGap?: number;
 }
 
 /**
@@ -77,6 +81,8 @@ export const Select: React.FC<SelectProps> = ({
   headerLeftIcon,
   onHeaderLeftClick,
   onItemClick,
+  align = 'left',
+  menuGap = 4,
 }) => {
   // 如果提供了 open 属性，使用受控模式；否则使用内部状态
   const [internalIsOpen, setInternalIsOpen] = useState(false);
@@ -106,13 +112,18 @@ export const Select: React.FC<SelectProps> = ({
 
     const rect = providedRect ?? containerRef.current!.getBoundingClientRect();
 
-    // 计算下拉菜单的预估高度
-    // 如果菜单已经渲染，使用实际高度；否则使用预估高度
+    // 计算下拉菜单的预估高度和宽度
+    // 如果菜单已经渲染，使用实际尺寸；否则使用预估值
     let menuHeight = 300; // 默认预估高度
+    let menuWidth = Math.max(rect.width, 200); // 默认宽度至少200px
     if (contentRef.current) {
       const actualHeight = contentRef.current.offsetHeight;
+      const actualWidth = contentRef.current.offsetWidth;
       if (actualHeight > 0) {
         menuHeight = actualHeight;
+      }
+      if (actualWidth > 0) {
+        menuWidth = actualWidth;
       }
     } else if (menuListRef.current) {
       // 如果菜单列表已渲染但容器未渲染，使用列表高度加上搜索框高度（如果有）
@@ -121,14 +132,14 @@ export const Select: React.FC<SelectProps> = ({
       menuHeight = Math.min(listHeight + searchHeight, 500); // 最大高度限制为 500px
     }
 
-    // 计算可用空间
+    // 计算可用空间（垂直方向）
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    const spacing = 4; // 间距
+    const edgeSpacing = 4; // 边缘间距（防止菜单贴边）
 
     // 判断应该向上还是向下显示
     // 如果底部空间不够且上方空间足够，则向上显示
-    const shouldShowTop = spaceBelow < menuHeight + spacing && spaceAbove > menuHeight + spacing;
+    const shouldShowTop = spaceBelow < menuHeight + menuGap && spaceAbove > menuHeight + menuGap;
 
     // 如果 placement 是 'top'，或者应该向上显示，则向上弹出
     const calculatedPlacement = placement === 'top' || shouldShowTop ? 'top' : 'bottom';
@@ -136,17 +147,51 @@ export const Select: React.FC<SelectProps> = ({
     // 保存实际方向
     setActualPlacement(calculatedPlacement);
 
+    // 计算水平位置
+    let leftPosition: number;
+    
+    if (align === 'parent' && containerRef.current) {
+      // 智能对齐：优先左对齐，如果右侧空间不够则右对齐
+      // 计算左对齐时右侧剩余空间
+      const spaceRightIfLeftAlign = window.innerWidth - rect.left;
+      
+      if (spaceRightIfLeftAlign >= menuWidth + edgeSpacing) {
+        // 右侧空间足够，使用左对齐（菜单左边缘与触发器左边缘对齐）
+        leftPosition = rect.left;
+      } else {
+        // 右侧空间不够，使用右对齐（菜单右边缘与触发器右边缘对齐）
+        leftPosition = rect.right - menuWidth;
+      }
+    } else if (align === 'right') {
+      // 右对齐：菜单右边缘与触发器右边缘对齐
+      leftPosition = rect.right - menuWidth;
+    } else {
+      // 左对齐（默认）：菜单左边缘与触发器左边缘对齐
+      leftPosition = rect.left;
+    }
+    
+    // 边界检查：防止菜单超出视窗
+    // 检查左边界
+    if (leftPosition < edgeSpacing) {
+      leftPosition = edgeSpacing;
+    }
+    // 检查右边界
+    const spaceRight = window.innerWidth - leftPosition;
+    if (spaceRight < menuWidth + edgeSpacing) {
+      leftPosition = Math.max(edgeSpacing, window.innerWidth - menuWidth - edgeSpacing);
+    }
+
     setPosition({
       top: calculatedPlacement === 'top' 
-        ? rect.top - menuHeight - spacing  // fixed 定位：直接使用视口坐标
-        : rect.bottom + spacing,
-      left: rect.left,
+        ? rect.top - menuHeight - menuGap  // fixed 定位：直接使用视口坐标
+        : rect.bottom + menuGap,
+      left: leftPosition,
       width: rect.width,
     });
     
     // 标记位置已计算完成
     setIsPositionReady(true);
-  }, [placement, showSearch]);
+  }, [placement, showSearch, align, menuGap]);
 
   // 打开菜单时更新位置
   useEffect(() => {
@@ -391,10 +436,10 @@ export const Select: React.FC<SelectProps> = ({
         data-type={item.dataType}
         data-depth={item.depth !== undefined ? item.depth : undefined}
       >
+        <span className="select-item-check">{isSelected && <Icon name="check" size={14} />}</span>
         {item.icon && <span className="select-item-icon">{item.icon}</span>}
         <span className="select-item-label">{item.label}</span>
         {item.rightIcon && <span className="select-item-right-icon">{item.rightIcon}</span>}
-        {isSelected && !item.rightIcon && <Icon name="check" size={14} />}
       </div>
     );
   };
