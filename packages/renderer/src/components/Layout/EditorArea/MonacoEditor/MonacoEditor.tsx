@@ -3479,13 +3479,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             enabled: false
           },
           scrollbar: {
-            horizontal: 'hidden', // 禁用横向滚动条
-            horizontalScrollbarSize: 0, // 设置横向滚动条大小为 0
+            horizontal: 'auto', // 启用横向滚动条（配合 wordWrap: 'off' 使用）
+            horizontalScrollbarSize: 10, // 设置横向滚动条大小
             vertical: 'auto', // 保持纵向滚动条
             verticalScrollbarSize: 14, // 纵向滚动条大小
           },
           scrollBeyondLastLine: false,
-          wordWrap: 'on',
+          wordWrap: 'off', // 禁用自动换行，避免编辑器宽度变化时行高变化导致内联聊天位置移动
           automaticLayout: true,
           padding: {
             top: 16,

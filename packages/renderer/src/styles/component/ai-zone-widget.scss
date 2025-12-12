@@ -55,10 +55,9 @@
   margin: 4px 0 0;
   min-height: 48px;
   overflow: visible !important;
-  /* 响应式宽度 - 在 Monaco 视区内自适应 */
-  width: min(100%, 834px) !important;
-  max-width: 100% !important;
-  min-width: min(400px, 100%) !important;
+  /* 宽度由 JavaScript 动态设置，CSS 只设置最大和最小宽度作为后备 */
+  max-width: 834px !important;
+  min-width: 280px !important;
   display: flex;
   flex-direction: column;
   /* 确保边框可以延伸到行号区域 */

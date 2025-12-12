@@ -194,6 +194,9 @@ export class AIZoneWidget {
   private isLayoutChanging: boolean = false; // 标记是否正在处理布局变化（窗口大小变化等）
   private wasEditorHidden: boolean = false; // 标记编辑器之前是否被隐藏（用于检测标签页重新激活）
   private layoutChangeTimer: NodeJS.Timeout | null = null; // 布局变化防抖定时器
+  private lastEditorWidth: number = 0; // 上一次记录的编辑器宽度，用于判断是否只是宽度变化
+  private lastEditorHeight: number = 0; // 上一次记录的编辑器高度，用于判断是否只是高度变化
+  private resizeObserver: ResizeObserver | null = null; // 编辑器容器大小变化监听器（用于快速响应宽度变化）
   private decorationManager: CodeDecorationManager | null = null; // 代码装饰器管理器（用于高亮选中文本）
   private selectionChangeDisposable: monaco.IDisposable | null = null; // 选择变化监听器（内联聊天打开时）
   private mouseDownDisposable: monaco.IDisposable | null = null; // 鼠标点击监听器（用于检测点击其他地方取消选择）
@@ -1469,6 +1472,27 @@ export class AIZoneWidget {
       this.contentChangeDisposable = null;
     }
 
+    // 清理之前的 ResizeObserver
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+
+    // 设置 ResizeObserver 监听编辑器容器大小变化（比 onDidLayoutChange 更快响应）
+    const editorDomNode = this.editor.getDomNode();
+    if (editorDomNode) {
+      this.resizeObserver = new ResizeObserver(() => {
+        // 检查内联聊天是否仍然显示
+        if (!this.zoneId || !this.isVisible() || !this.isActiveTab()) {
+          return;
+        }
+        // 立即更新宽度（无延迟）
+        this.updateContainerWidth();
+        this.updateBorderWidthAndLeft();
+      });
+      this.resizeObserver.observe(editorDomNode);
+    }
+
     // 监听编辑器滚动
     this.scrollDisposable = this.editor.onDidScrollChange(() => {
       // 检查内联聊天是否仍然显示
@@ -1609,10 +1633,81 @@ export class AIZoneWidget {
         parentElement = parentElement.parentElement;
       }
 
+      // 获取当前编辑器布局信息
+      const layoutInfo = this.editor.getLayoutInfo();
+      const currentWidth = layoutInfo.width;
+      const currentHeight = layoutInfo.height;
+      
+      // 判断是否只是宽度变化（AI Panel 打开/关闭、窗口水平拖动等）
+      const isOnlyWidthChange = this.lastEditorWidth > 0 && 
+                                 currentWidth !== this.lastEditorWidth && 
+                                 Math.abs(currentHeight - this.lastEditorHeight) < 5;
+      
+      // 更新记录的宽度和高度
+      this.lastEditorWidth = currentWidth;
+      this.lastEditorHeight = currentHeight;
+
       // 清除之前的定时器，使用防抖避免频繁触发
       if (this.layoutChangeTimer) {
         clearTimeout(this.layoutChangeTimer);
       }
+
+      // 立即设置布局变化标志，防止滚动事件在延迟期间更新 top/bottom 位置
+      this.isLayoutChanging = true;
+
+      // 如果只是宽度变化，只更新宽度相关属性，不更新位置
+      if (isOnlyWidthChange) {
+        // 立即更新宽度和左侧位置（无延迟，确保流畅）
+        this.updateBorderWidthAndLeft();
+        this.updateContainerWidth();
+        
+        // 立即恢复保存的位置（如果 Monaco 已经更新了位置）
+        const viewZoneElement = this.getViewZoneDomElement();
+        if (viewZoneElement && this.savedViewZoneTop !== null && this.savedViewZoneTop > 0) {
+          viewZoneElement.style.setProperty('top', `${this.savedViewZoneTop}px`, 'important');
+        }
+        if (this.bottomBorderElement && this.savedBottomBorderTop !== null && this.savedBottomBorderTop > 0) {
+          this.bottomBorderElement.style.top = `${this.savedBottomBorderTop}px`;
+          this.bottomBorderElement.style.bottom = 'auto';
+        }
+        
+        // 使用 requestAnimationFrame 确保在下一帧清除标志
+        requestAnimationFrame(() => {
+          this.isLayoutChanging = false;
+        });
+        
+        return; // 直接返回，不执行后续的完整布局更新
+      }
+
+      // 非宽度变化的情况（如标签页切换），执行完整的布局更新逻辑
+      // 关键修复：在布局变化时保存并恢复位置
+      const viewZoneElement = this.getViewZoneDomElement();
+      
+      // 如果还没有保存位置，先从当前 DOM 元素获取位置并保存
+      if (viewZoneElement) {
+        const currentTop = parseFloat(viewZoneElement.style.top || '0');
+        if (currentTop > 0 && (this.savedViewZoneTop === null || this.savedViewZoneTop <= 0)) {
+          this.savedViewZoneTop = currentTop;
+        }
+        if (this.savedViewZoneTop !== null && this.savedViewZoneTop > 0) {
+          viewZoneElement.style.setProperty('top', `${this.savedViewZoneTop}px`, 'important');
+        }
+      }
+      
+      // 同样处理底部边框
+      if (this.bottomBorderElement) {
+        const currentTop = parseFloat(this.bottomBorderElement.style.top || '0');
+        if (currentTop > 0 && (this.savedBottomBorderTop === null || this.savedBottomBorderTop <= 0)) {
+          this.savedBottomBorderTop = currentTop;
+        }
+        if (this.savedBottomBorderTop !== null && this.savedBottomBorderTop > 0) {
+          this.bottomBorderElement.style.top = `${this.savedBottomBorderTop}px`;
+          this.bottomBorderElement.style.bottom = 'auto';
+        }
+      }
+      
+      // 只更新宽度和左侧位置
+      this.updateBorderWidthAndLeft();
 
       // 使用防抖，避免在 AI Panel 打开/关闭或标签页切换时频繁触发
       // 延迟检查，确保 React 已经完成标签页的显示/隐藏操作
@@ -1629,6 +1724,7 @@ export class AIZoneWidget {
             }
           }
           this.wasEditorHidden = true;
+          this.isLayoutChanging = false;
           return;
         }
 
@@ -1642,6 +1738,7 @@ export class AIZoneWidget {
             }
           }
           this.wasEditorHidden = true;
+          this.isLayoutChanging = false;
           return;
         }
 
@@ -1656,6 +1753,7 @@ export class AIZoneWidget {
             }
           }
           this.wasEditorHidden = true;
+          this.isLayoutChanging = false;
           return;
         }
         
@@ -1669,6 +1767,7 @@ export class AIZoneWidget {
             }
           }
           this.wasEditorHidden = true;
+          this.isLayoutChanging = false;
           return;
         }
         
@@ -1682,6 +1781,7 @@ export class AIZoneWidget {
             }
           }
           this.wasEditorHidden = true;
+          this.isLayoutChanging = false;
           return;
         }
 
@@ -1689,9 +1789,6 @@ export class AIZoneWidget {
         // 但只在标签页真正切换回来时才恢复，避免切换时的闪烁
         const wasHidden = this.wasEditorHidden;
         this.wasEditorHidden = false;
-
-        // 设置布局变化标志，防止滚动事件更新 top/bottom 位置
-        this.isLayoutChanging = true;
 
         // 更新容器宽度（窗口大小变化时需要）
         this.updateContainerWidth();
@@ -1839,6 +1936,9 @@ export class AIZoneWidget {
         } else {
           // 窗口大小变化或侧边栏打开/关闭时，需要更新边框的宽度和左侧位置
           // 但 view-zone 的位置（top）不应该改变，因为它相对于编辑器内容区域
+          // 
+          // 关键：Monaco Editor 在布局变化时会自动重新计算 view-zone 的 top 位置
+          // 我们需要在 Monaco 完成计算后，立即恢复保存的位置
           requestAnimationFrame(() => {
             // 再次检查可见性，确保在异步回调执行时仍然可见
             if (!this.isEditorReallyVisible()) {
@@ -1855,8 +1955,28 @@ export class AIZoneWidget {
             // 只更新边框的宽度和左侧位置
             this.updateBorderWidthAndLeft();
             
-            // 延迟清除标志
+            // 强制恢复 view-zone 的保存位置（如果存在）
+            // 这是防止布局变化导致位置移动的关键
+            const viewZoneElement = this.getViewZoneDomElement();
+            if (viewZoneElement && this.savedViewZoneTop !== null && this.savedViewZoneTop > 0) {
+              viewZoneElement.style.setProperty('top', `${this.savedViewZoneTop}px`, 'important');
+            }
+            
+            // 强制恢复底部边框的保存位置（如果存在）
+            if (this.bottomBorderElement && this.savedBottomBorderTop !== null && this.savedBottomBorderTop > 0) {
+              this.bottomBorderElement.style.top = `${this.savedBottomBorderTop}px`;
+              this.bottomBorderElement.style.bottom = 'auto';
+            }
+            
+            // 延迟再次恢复位置，确保 Monaco 的异步更新不会覆盖我们的设置
             setTimeout(() => {
+              if (viewZoneElement && this.savedViewZoneTop !== null && this.savedViewZoneTop > 0) {
+                viewZoneElement.style.setProperty('top', `${this.savedViewZoneTop}px`, 'important');
+              }
+              if (this.bottomBorderElement && this.savedBottomBorderTop !== null && this.savedBottomBorderTop > 0) {
+                this.bottomBorderElement.style.top = `${this.savedBottomBorderTop}px`;
+                this.bottomBorderElement.style.bottom = 'auto';
+              }
               this.isLayoutChanging = false;
             }, 100);
           });
@@ -1958,8 +2078,7 @@ export class AIZoneWidget {
               if (this.zoneWidget && this.zoneWidget.afterLineNumber !== this.targetLineNumber) {
                 // 位置被重置了，需要修复
                 this.fixZoneWidgetPosition();
-                // 修复后清除保存的位置，因为已经重新计算了
-                this.savedViewZoneTop = null;
+                // 注意：不要清除 savedViewZoneTop，因为我们需要在布局变化时恢复位置
               }
             });
           });
@@ -2132,6 +2251,11 @@ export class AIZoneWidget {
       this.updateContainerWidth();
     }, 0);
 
+    // 初始化编辑器宽度和高度记录，用于后续判断是否只是宽度变化
+    const layoutInfo = this.editor.getLayoutInfo();
+    this.lastEditorWidth = layoutInfo.width;
+    this.lastEditorHeight = layoutInfo.height;
+
     // 初始高度：顶部分割线(1px) + 内容区域(52px，包含输入框+工具栏 + 底部分割1px) = 54px
     const zoneHeight = 54;
     console.log('[AIZoneWidget] zoneHeight:', zoneHeight);
@@ -2182,9 +2306,11 @@ export class AIZoneWidget {
     }
     
     requestAnimationFrame(() => {
-      this.setViewZoneTopPosition();
-      // 将边框添加到 .view-zones 容器
+      // 先将边框添加到 .view-zones 容器，这会设置 MutationObserver
+      // MutationObserver 需要在设置位置之前就准备好，以便保护位置不被 Monaco 覆盖
       this.attachBordersToViewZone();
+      // 然后设置 view-zone 的 top 位置
+      this.setViewZoneTopPosition();
       // 延迟更新边框位置与容器高度，确保 view-zone 位置已设置
       requestAnimationFrame(() => {
         this.updateBorderPositions();
@@ -2335,6 +2461,13 @@ export class AIZoneWidget {
       delete (this.domNode as any).__topObserver;
     }
     
+    // 清理 view-zone 元素的 MutationObserver（如果存在）
+    if (this.viewZoneElement && (this.viewZoneElement as any).__viewZoneObserver) {
+      const observer = (this.viewZoneElement as any).__viewZoneObserver as MutationObserver;
+      observer.disconnect();
+      delete (this.viewZoneElement as any).__viewZoneObserver;
+    }
+    
     // 清理下拉菜单点击监听器
     if (this.dropdownClickHandler) {
       document.removeEventListener('mousedown', this.dropdownClickHandler, true);
@@ -2381,6 +2514,12 @@ export class AIZoneWidget {
       this.layoutChangeTimer = null;
     }
 
+    // 清理 ResizeObserver
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+
     // 清空文档引用
     this.documentReferences = [];
     if (this.documentReferencesElement) {
@@ -2413,6 +2552,10 @@ export class AIZoneWidget {
 
     this.domNode = null;
     this.inputElement = null;
+    
+    // 清除保存的位置，避免下次打开时使用旧的位置
+    this.savedViewZoneTop = null;
+    this.savedBottomBorderTop = null;
 
     // 只在未销毁时调用 onClose，避免循环调用
     if (!this.isDisposed) {
@@ -2477,17 +2620,23 @@ export class AIZoneWidget {
 
     const layoutInfo = this.editor.getLayoutInfo();
     const minimapElement = this.editor.getDomNode()?.querySelector('.minimap');
-    let editorWidth: number;
+    let editorContentWidth: number;
 
     if (minimapElement && layoutInfo.minimap.minimapWidth > 0) {
-      // 如果有小地图，编辑器宽度 = 小地图左边缘位置
-      editorWidth = layoutInfo.minimap.minimapLeft;
+      // 如果有小地图，编辑器内容宽度 = 小地图左边缘位置 - 行号区域宽度
+      editorContentWidth = layoutInfo.minimap.minimapLeft - layoutInfo.contentLeft;
     } else {
-      // 如果没有小地图，使用整个编辑器宽度
-      editorWidth = layoutInfo.width;
+      // 如果没有小地图，使用整个编辑器宽度 - 行号区域宽度
+      editorContentWidth = layoutInfo.width - layoutInfo.contentLeft;
     }
 
-    // 不再设置容器宽度，让 CSS 控制固定宽度和居中
+    // 动态设置容器宽度：取编辑器内容宽度和最大宽度 834px 的较小值
+    // 同时确保不小于最小宽度 280px
+    const maxWidth = 834;
+    const minWidth = 280;
+    const containerWidth = Math.max(minWidth, Math.min(editorContentWidth, maxWidth));
+    
+    this.domNode.style.width = `${containerWidth}px`;
   }
 
   /**
@@ -2508,9 +2657,20 @@ export class AIZoneWidget {
       }
     });
 
+    // 如果正在处理布局变化（AI Panel 打开/关闭），跳过位置更新
+    // 因为布局变化只影响宽度，不应该影响垂直位置
+    if (this.isLayoutChanging) {
+      return;
+    }
+
     // 在高度更新后立即设置 view-zone 的 top 位置
     // 使用 requestAnimationFrame 确保在 Monaco 完成布局计算后设置
     requestAnimationFrame(() => {
+      // 再次检查，因为 requestAnimationFrame 是异步的
+      if (this.isLayoutChanging) {
+        return;
+      }
+      
       // 如果有保存的位置，优先恢复保存的位置（用于工具栏变化时保持位置）
       const viewZoneElement = this.getViewZoneDomElement();
       if (viewZoneElement && this.savedViewZoneTop !== null) {
@@ -2530,6 +2690,11 @@ export class AIZoneWidget {
         
         // 再次设置 top 位置
         requestAnimationFrame(() => {
+          // 再次检查，因为 requestAnimationFrame 是异步的
+          if (this.isLayoutChanging) {
+            return;
+          }
+          
           // 如果有保存的位置，优先恢复保存的位置
           if (viewZoneElement && this.savedViewZoneTop !== null) {
             viewZoneElement.style.setProperty('top', `${this.savedViewZoneTop}px`, 'important');
@@ -3305,6 +3470,13 @@ export class AIZoneWidget {
       return;
     }
 
+    // 如果正在处理布局变化（AI Panel 打开/关闭），只更新宽度和左侧位置
+    // 不更新 top/bottom 位置，避免布局混乱
+    if (this.isLayoutChanging) {
+      this.updateBorderWidthAndLeft();
+      return;
+    }
+
     // 确保 ai-zone-container 没有 top 属性（Monaco Editor 可能会在某些情况下设置它）
     if (this.domNode.style.top) {
       this.domNode.style.removeProperty('top');
@@ -3402,6 +3574,43 @@ export class AIZoneWidget {
     // 保存 view-zone 引用
     this.viewZoneElement = viewZone;
 
+    // 设置 MutationObserver 来监听 view-zone 元素的样式变化
+    // 关键修复：始终拦截 Monaco 对 top 位置的更新（只要有保存的位置且内联聊天可见）
+    // 这样无论 Monaco 何时尝试更新位置（布局变化、滚动等），我们都能立即恢复
+    if (viewZone && !(viewZone as any).__viewZoneObserver) {
+      // 使用 WeakRef 避免内存泄漏，同时保持对 this 的引用
+      const widgetRef = this;
+      const viewZoneObserver = new MutationObserver((mutations) => {
+        // 只要有保存的位置且内联聊天可见，就始终拦截位置更新
+        // 不再仅限于 isLayoutChanging 期间，因为 Monaco 可能在任何时候更新位置
+        if (widgetRef.savedViewZoneTop !== null && widgetRef.savedViewZoneTop > 0 && widgetRef.zoneId && widgetRef.isVisible()) {
+          for (const mutation of mutations) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+              const currentTop = parseFloat(viewZone.style.top || '0');
+              // 如果位置被改变了（误差超过 1px），立即同步恢复保存的位置
+              // 不使用 requestAnimationFrame，直接同步恢复，避免闪烁
+              if (Math.abs(currentTop - widgetRef.savedViewZoneTop!) > 1) {
+                viewZone.style.setProperty('top', `${widgetRef.savedViewZoneTop}px`, 'important');
+                // 同时恢复底部边框位置
+                if (widgetRef.bottomBorderElement && widgetRef.savedBottomBorderTop !== null && widgetRef.savedBottomBorderTop > 0) {
+                  widgetRef.bottomBorderElement.style.top = `${widgetRef.savedBottomBorderTop}px`;
+                  widgetRef.bottomBorderElement.style.bottom = 'auto';
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      viewZoneObserver.observe(viewZone, {
+        attributes: true,
+        attributeFilter: ['style']
+      });
+      
+      // 保存 observer 引用，以便在销毁时清理
+      (viewZone as any).__viewZoneObserver = viewZoneObserver;
+    }
+
     // 将边框附加到 monaco-editor 根容器（包含行号区域）
     // 这样边框可以从行号区域开始，覆盖整个编辑器宽度
     let container: HTMLElement | null = this.getMonacoEditorElement();
@@ -3479,6 +3688,12 @@ export class AIZoneWidget {
 
     // 检查当前标签页是否是活动标签页，防止在标签页切换时更新
     if (!this.isActiveTab()) {
+      return;
+    }
+
+    // 如果正在处理布局变化（AI Panel 打开/关闭），跳过位置更新
+    // 因为布局变化只影响宽度，不应该影响垂直位置
+    if (this.isLayoutChanging) {
       return;
     }
 
@@ -3576,6 +3791,12 @@ export class AIZoneWidget {
    */
   private fixZoneWidgetPosition(): void {
     if (!this.zoneId || !this.zoneWidget) return;
+
+    // 如果正在处理布局变化（AI Panel 打开/关闭），跳过位置修复
+    // 因为布局变化只影响宽度，不应该触发位置修复
+    if (this.isLayoutChanging) {
+      return;
+    }
 
     // 检查编辑器是否真的可见（避免在隐藏的标签页上更新布局）
     if (!this.isEditorReallyVisible()) {
@@ -4153,6 +4374,12 @@ export class AIZoneWidget {
   private syncContainerHeight(updateBorder: boolean = true): void {
     if (!this.domNode) return;
 
+    // 如果正在处理布局变化（AI Panel 打开/关闭），跳过高度同步
+    // 因为布局变化只影响宽度，不应该触发高度重新计算和位置更新
+    if (this.isLayoutChanging) {
+      return;
+    }
+
     // 检查编辑器是否真的可见（避免在隐藏的标签页上更新布局）
     if (!this.isEditorReallyVisible()) {
       return;
@@ -4200,22 +4427,35 @@ export class AIZoneWidget {
 
       this.updateZoneHeight(newZoneHeight);
 
-      if (updateBorder) {
+      // 如果正在处理布局变化（AI Panel 打开/关闭），跳过边框位置更新
+      if (updateBorder && !this.isLayoutChanging) {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            this.updateBorderPositions();
+            // 再次检查，因为 requestAnimationFrame 是异步的
+            if (!this.isLayoutChanging) {
+              this.updateBorderPositions();
+            }
           });
         });
       }
     } else {
       // 即使高度未变化，也要确保 view-zone 和边框位置正确
-      requestAnimationFrame(() => {
-        this.setViewZoneTopPosition();
-      });
-
-      if (updateBorder) {
+      // 但如果正在处理布局变化（AI Panel 打开/关闭），跳过位置更新
+      if (!this.isLayoutChanging) {
         requestAnimationFrame(() => {
-          this.updateBorderPositions();
+          // 再次检查，因为 requestAnimationFrame 是异步的
+          if (!this.isLayoutChanging) {
+            this.setViewZoneTopPosition();
+          }
+        });
+      }
+
+      if (updateBorder && !this.isLayoutChanging) {
+        requestAnimationFrame(() => {
+          // 再次检查，因为 requestAnimationFrame 是异步的
+          if (!this.isLayoutChanging) {
+            this.updateBorderPositions();
+          }
         });
       }
     }
@@ -5371,8 +5611,7 @@ export class AIZoneWidget {
             requestAnimationFrame(() => {
               if (viewZoneElement && this.savedViewZoneTop !== null) {
                 viewZoneElement.style.setProperty('top', `${this.savedViewZoneTop}px`, 'important');
-                // 清除保存的位置，让后续的位置更新正常进行
-                this.savedViewZoneTop = null;
+                // 注意：不要清除 savedViewZoneTop，因为我们需要在布局变化时恢复位置
               }
             });
           });
@@ -5624,8 +5863,7 @@ export class AIZoneWidget {
           requestAnimationFrame(() => {
             if (viewZoneElement && this.savedViewZoneTop !== null) {
               viewZoneElement.style.setProperty('top', `${this.savedViewZoneTop}px`, 'important');
-              // 清除保存的位置，让后续的位置更新正常进行
-              this.savedViewZoneTop = null;
+              // 注意：不要清除 savedViewZoneTop，因为我们需要在布局变化时恢复位置
             }
           });
         }
