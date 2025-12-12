@@ -1369,6 +1369,23 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           abortControllerRef.current = null;
         }
       },
+      onAccept: () => {
+        // 接受 AI 生成的 diff 内容
+        console.log('[MonacoEditor] 用户点击接受，开始应用 diff 内容');
+        
+        if (currentGhostWidgetRef.current) {
+          // 调用 GhostTextWidget 的公共方法来接受内容
+          currentGhostWidgetRef.current.acceptGhostText();
+          currentGhostWidgetRef.current = null;
+          
+          // 重置原始行数记录（因为内容已被接受，不需要清除空行）
+          originalLineCountRef.current = null;
+          
+          console.log('[MonacoEditor] diff 内容已应用');
+        } else {
+          console.warn('[MonacoEditor] 没有可接受的 diff 内容');
+        }
+      },
       onClose: () => {
         console.log('[MonacoEditor] 内联聊天关闭，开始清理 diff 和空行');
         

@@ -150,21 +150,7 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
     showDivider: true, // 在文件&文件夹上方显示分割线
   });
 
-  // 3. AI 智能体（始终显示分类，即使没有数据）
-  groups.push({
-    groupName: '',
-    items: [
-      {
-        value: 'category-ai-agent',
-        label: 'AI 智能体',
-        icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
-        rightIcon: React.createElement(Icon, { iconSet: 'ui', name: 'chevron-right', size: 14 }),
-      },
-    ],
-    showDivider: true, // 在 AI 智能体下方显示分割线
-  });
-
-  // 4. 知识库（始终显示分类，即使没有数据）
+  // 3. 知识库（始终显示分类，即使没有数据）
   groups.push({
     groupName: '',
     items: [
@@ -178,7 +164,7 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
     showDivider: true, // 在知识库下方显示分割线
   });
 
-  // 5. 提示词（始终显示）
+  // 4. 提示词（始终显示）
   groups.push({
     groupName: '',
     items: [
@@ -191,7 +177,7 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
     ],
   });
 
-  // 6. 规则（始终显示分类，即使没有数据）
+  // 5. 规则（始终显示分类，即使没有数据）
   groups.push({
     groupName: '',
     items: [
@@ -204,7 +190,7 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
     ],
   });
 
-  // 7. 常用片段（始终显示分类，即使没有数据）
+  // 6. 常用片段（始终显示分类，即使没有数据）
   groups.push({
     groupName: '',
     items: [

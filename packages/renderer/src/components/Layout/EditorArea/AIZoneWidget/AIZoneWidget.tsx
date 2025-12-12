@@ -25,6 +25,7 @@ import { aiAgentService } from '../../../../services/AIAgentService';
 import { knowledgeBaseService } from '../../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
 import { SEARCH_ENGINES, type SearchEngine } from '../../../AIChatSettings/AIChatSettings';
 import { CodeDecorationManager } from '../CodeDecorationManager/CodeDecorationManager';
+import { TipTapInput, type TipTapInputRef } from './TipTapInput';
 // 样式已移至全局样式文件：styles/component/ai-zone-widget.scss
 
 /**
@@ -84,6 +85,7 @@ interface AIZoneWidgetOptions {
   onSubmit: (message: string, includeSelection: boolean, selectedModel?: string) => void;
   onClose: () => void;
   onStop?: () => void; // 停止生成的回调
+  onAccept?: () => void; // 接受 diff 内容的回调
   onHeightChanged?: (height: number) => void;
   availableModels?: string[]; // 可用的模型列表
 }
@@ -155,8 +157,17 @@ export class AIZoneWidget {
   private inputContextMenuRoot: Root | null = null; // 输入框@菜单 React Root（使用Select组件）
   private inputContextMenuContainer: HTMLElement | null = null; // 输入框@菜单容器（输入框@符号触发使用）
   private isContextMenuOpen: boolean = false; // 上下文菜单是否打开
+  private contextMenuHighlightedIndex: number = 0; // 当前高亮的菜单项索引
+  private contextMenuFlatItems: Array<{ value: string; disabled?: boolean }> = []; // 扁平化的菜单项列表（用于键盘导航）
   private recentFilesMap: Map<string, string> = new Map(); // 最近文件映射（index -> filePath）
-  private selectedFiles: Array<{ path: string; name: string; type?: 'file' | 'knowledge-base'; kbId?: string }> = []; // 选中的文件列表（支持文件和知识库）
+  private selectedFiles: Array<{ path: string; name: string; type?: 'file' | 'knowledge-base'; kbId?: string }> = []; // 选中的文件列表（支持文件和知识库）- 工具栏@按钮选择的文件
+  private inputFileReferences: Array<{ path: string; name: string; startIndex: number; endIndex: number }> = []; // 输入框中的@文件引用（独立于工具栏）
+  private isInputMenuTriggered: boolean = false; // 标记当前@菜单是否由输入框触发
+  private inputOverlayElement: HTMLElement | null = null; // 输入框文件引用覆盖层（已禁用）
+  private inputFileRefsContainer: HTMLElement | null = null; // 输入框文件引用标签容器（显示在输入框下方）
+  private tiptapInputRef: TipTapInputRef | null = null; // TipTap 输入组件引用
+  private tiptapInputRoot: Root | null = null; // TipTap 输入组件 React Root
+  private tiptapInputContainer: HTMLElement | null = null; // TipTap 输入组件容器
   private selectedFilesToolbar: HTMLElement | null = null; // 显示选中文件的工具栏
   private selectedFilesToolbarWasVisible: boolean = false; // 记录工具栏之前的显示状态，用于判断是否需要更新高度
   private selectedFilesToolbarHeight: number = 0; // 记录工具栏之前的高度，用于检测高度变化（换行等情况）
@@ -439,6 +450,82 @@ export class AIZoneWidget {
   }
 
   /**
+   * 渲染 TipTap 输入组件
+   * 抽取为独立方法，以便在菜单状态变化时重新渲染
+   */
+  private renderTipTapInput(adjustHeight?: () => void): void {
+    if (!this.tiptapInputRoot) return;
+    
+    const adjustHeightFn = adjustHeight || this.adjustHeightFn || (() => {});
+    
+    this.tiptapInputRoot.render(
+      React.createElement(TipTapInput, {
+        ref: (ref: TipTapInputRef | null) => {
+          this.tiptapInputRef = ref;
+        },
+        placeholder: '向AI描述您想要做什么...',
+        onSubmit: (_text: string, fileReferences: Array<{ path: string; name: string }>) => {
+          // 更新输入框文件引用
+          this.inputFileReferences = fileReferences.map((ref, index) => ({
+            path: ref.path,
+            name: ref.name,
+            startIndex: index,
+            endIndex: index
+          }));
+          this.handleSubmit();
+        },
+        onEscape: () => {
+          this.hide();
+        },
+        onChange: (_text: string) => {
+          adjustHeightFn();
+          // 更新选中智能体工具栏
+          this.updateSelectedAgentsToolbar();
+        },
+        onAtTrigger: (query: string, position: { top: number; left: number }) => {
+          // 标记当前菜单是由输入框触发的
+          this.isInputMenuTriggered = true;
+          // 显示 @ 菜单
+          this.showContextMenuFromInputAtPosition(query, position);
+        },
+        onAtCancel: () => {
+          // 关闭 @ 菜单
+          if (this.isContextMenuOpen && this.isInputMenuTriggered) {
+            this.closeContextMenu();
+          }
+        },
+        onFileReferencesChange: (fileReferences: Array<{ path: string; name: string }>) => {
+          // TipTap 中的文件引用变化时，同步到文件工具栏
+          this.syncFileReferencesFromTipTap(fileReferences);
+        },
+        // 键盘导航相关 props
+        isAtMenuOpen: this.isContextMenuOpen && this.isInputMenuTriggered,
+        onAtMenuNavigate: (direction: 'up' | 'down') => {
+          this.navigateContextMenu(direction);
+        },
+        onAtMenuSelect: () => {
+          this.selectHighlightedContextMenuItem();
+        }
+      })
+    );
+  }
+
+  /**
+   * 更新 TipTap 的 @ 菜单状态（用于键盘导航）
+   * 直接更新 TipTap 内部的 ref 值，无需重新渲染整个组件
+   */
+  private updateTipTapMenuState(): void {
+    if (!this.tiptapInputRef) return;
+    
+    const isMenuOpen = this.isContextMenuOpen && this.isInputMenuTriggered;
+    this.tiptapInputRef.setAtMenuState(
+      isMenuOpen,
+      isMenuOpen ? (direction: 'up' | 'down') => this.navigateContextMenu(direction) : undefined,
+      isMenuOpen ? () => this.selectHighlightedContextMenuItem() : undefined
+    );
+  }
+
+  /**
    * 创建 Zone Widget DOM
    */
   private createDomNode(): HTMLElement {
@@ -473,6 +560,11 @@ export class AIZoneWidget {
 
       // 如果点击的是输入框，不阻止事件传播
       if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.closest('textarea') || target.closest('input')) {
+        return false;
+      }
+
+      // 如果点击的是 TipTap/ProseMirror 编辑器，不阻止事件传播（允许文本选择）
+      if (target.closest('.ProseMirror') || target.closest('.tiptap-editor') || target.closest('.tiptap-input-wrapper')) {
         return false;
       }
 
@@ -548,118 +640,51 @@ export class AIZoneWidget {
     const inputWrapper = document.createElement('div');
     inputWrapper.className = 'ai-zone-input-wrapper';
 
-    // 输入框
-    const textarea = document.createElement('textarea');
-    textarea.className = 'ai-zone-input';
-    textarea.placeholder = '向AI描述您想要做什么...';
-    textarea.rows = 1;
-    this.inputElement = textarea;
-    console.log('[AIZoneWidget] 输入框已创建:', textarea);
+    // 创建 TipTap 输入组件容器
+    this.tiptapInputContainer = document.createElement('div');
+    this.tiptapInputContainer.className = 'ai-zone-tiptap-container';
     
-    // 添加焦点事件，用于调试
-    textarea.addEventListener('focus', () => {
-      console.log('[AIZoneWidget] ========== 输入框获得焦点 ==========');
-    });
-    
-    // 添加点击事件，用于调试
-    textarea.addEventListener('click', (e) => {
-      console.log('[AIZoneWidget] ========== 输入框被点击 ==========', e);
+    // 阻止 TipTap 容器内的鼠标事件冒泡到 Monaco Editor（但不阻止默认行为，允许文本选择）
+    this.tiptapInputContainer.addEventListener('mousedown', (e) => {
       e.stopPropagation();
-    });
-
-    // 自动调整高度（调整输入框自身高度，并驱动整个内联容器的 view-zone 重新布局）
-    const adjustHeight = () => {
-      const maxInputHeight = 120;
-
-      // 重置为 auto 以便获取最新的 scrollHeight
-      textarea.style.height = 'auto';
-      const scrollHeight = textarea.scrollHeight;
-
-      // 在最大高度内自适应，超过则固定高度并启用内部滚动
-      const newHeight = Math.min(scrollHeight, maxInputHeight);
-      textarea.style.height = scrollHeight > 0 ? `${newHeight}px` : "";
-
-      if (scrollHeight > maxInputHeight) {
-        textarea.style.overflowY = 'auto';
-      
-      } else {
-        textarea.style.overflowY = 'hidden';
+    }, false);
+    this.tiptapInputContainer.addEventListener('mouseup', (e) => {
+      e.stopPropagation();
+    }, false);
+    this.tiptapInputContainer.addEventListener('mousemove', (e) => {
+      // 只在按下鼠标按钮时阻止冒泡（拖动选择时）
+      if (e.buttons > 0) {
+        e.stopPropagation();
       }
-
-      // 输入框高度变化后，同步容器高度并更新 view-zone，使后面的行号往下推
-      // 使用 requestAnimationFrame 确保 DOM 布局已完成
-      // 输入框换行时需要更新底部边框位置
+    }, false);
+    this.tiptapInputContainer.addEventListener('click', (e) => {
+      e.stopPropagation();
+    }, false);
+    
+    // 使用 React 渲染 TipTap 输入组件
+    this.tiptapInputRoot = createRoot(this.tiptapInputContainer);
+    
+    // 高度调整函数（TipTap 版本）
+    const adjustHeight = () => {
+      // TipTap 编辑器高度由 CSS 控制，这里只需要同步容器高度
       requestAnimationFrame(() => {
         this.syncContainerHeight(true);
-        // 更新底部边框位置并保存
         requestAnimationFrame(() => {
           this.updateBottomBorderPosition();
         });
       });
     };
-
-    // 保存引用，以便在其他地方调用
     this.adjustHeightFn = adjustHeight;
 
-    // 输入事件：自动调整高度 + 检测@符号
-    textarea.addEventListener('input', (e) => {
-      adjustHeight();
-      // 检测@符号，自动显示文件引用菜单
-      this.handleInputForAtMention(e);
-    });
+    // 渲染 TipTap 组件
+    this.renderTipTapInput(adjustHeight);
 
-    // 鼠标滚轮事件 - 允许在 textarea 内滚动
-    textarea.addEventListener('wheel', (e) => {
-      const target = e.currentTarget as HTMLTextAreaElement;
-      const atTop = target.scrollTop === 0;
-      const atBottom = target.scrollTop + target.clientHeight >= target.scrollHeight;
+    // 将 TipTap 容器添加到 inputWrapper
+    inputWrapper.appendChild(this.tiptapInputContainer);
 
-      // 只有当内容可以滚动时才阻止事件冒泡
-      if (target.scrollHeight > target.clientHeight) {
-        // 如果在顶部向上滚动，或在底部向下滚动，允许事件冒泡
-        if ((atTop && e.deltaY < 0) || (atBottom && e.deltaY > 0)) {
-          return;
-        }
-        // 否则阻止事件冒泡，让 textarea 自己处理滚动
-        e.stopPropagation();
-      }
-    }, { passive: false });
-
-    // 键盘事件
-    textarea.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        console.log('[AIZoneWidget] Enter 键被按下，执行发送');
-        this.handleSubmit();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        console.log('[AIZoneWidget] Escape 键被按下，关闭面板');
-        this.hide();
-      }
-    });
-
-    textarea.addEventListener('keyup', (e) => e.stopPropagation());
-    textarea.addEventListener('keypress', (e) => e.stopPropagation());
-    textarea.addEventListener('mousedown', (e) => e.stopPropagation());
-    textarea.addEventListener('click', (e) => e.stopPropagation());
-
-    // 输入框获得焦点时，关闭所有菜单（模型选择菜单、@菜单、历史记录菜单）
-    textarea.addEventListener('focus', () => {
-      // 关闭模型选择菜单
-      if (this.closeDropdownFn) {
-        this.closeDropdownFn();
-      }
-      // 关闭@菜单
-      if (this.isContextMenuOpen) {
-        this.closeContextMenu();
-      }
-      // 关闭历史记录菜单
-      this.closeHistoryMenu();
-    });
-
-    inputWrapper.appendChild(textarea);
+    // 保留旧的 textarea 引用为 null（兼容旧代码）
+    this.inputElement = null;
+    this.inputOverlayElement = null;
 
     // 创建输入框@菜单容器（独立于工具栏@菜单）
     this.inputContextMenuContainer = document.createElement('div');
@@ -1021,6 +1046,13 @@ export class AIZoneWidget {
 
     // 将输入框容器添加到内容区
     content.appendChild(inputWrapper);
+
+    // 输入框文件引用标签容器（显示在输入框下方）
+    const inputFileRefsContainer = document.createElement('div');
+    inputFileRefsContainer.className = 'ai-zone-input-file-refs';
+    inputFileRefsContainer.style.display = 'none'; // 初始隐藏
+    this.inputFileRefsContainer = inputFileRefsContainer;
+    content.appendChild(inputFileRefsContainer);
 
     // 底部工具栏
     const bottomToolbar = document.createElement('div');
@@ -1481,14 +1513,26 @@ export class AIZoneWidget {
     // 设置 ResizeObserver 监听编辑器容器大小变化（比 onDidLayoutChange 更快响应）
     const editorDomNode = this.editor.getDomNode();
     if (editorDomNode) {
+      // 使用防抖避免过于频繁的更新
+      let resizeTimeout: NodeJS.Timeout | null = null;
       this.resizeObserver = new ResizeObserver(() => {
         // 检查内联聊天是否仍然显示
         if (!this.zoneId || !this.isVisible() || !this.isActiveTab()) {
           return;
         }
-        // 立即更新宽度（无延迟）
-        this.updateContainerWidth();
-        this.updateBorderWidthAndLeft();
+        // 使用防抖，避免快速拖动时过于频繁的更新
+        if (resizeTimeout) {
+          clearTimeout(resizeTimeout);
+        }
+        resizeTimeout = setTimeout(() => {
+          resizeTimeout = null;
+          // 再次检查状态
+          if (!this.zoneId || !this.isVisible() || !this.isActiveTab()) {
+            return;
+          }
+          this.updateContainerWidth();
+          this.updateBorderWidthAndLeft();
+        }, 16); // 约 60fps 的更新频率
       });
       this.resizeObserver.observe(editorDomNode);
     }
@@ -2337,6 +2381,12 @@ export class AIZoneWidget {
     // 添加全局监听器，防止点击下拉菜单时关闭内联聊天
     this.dropdownClickHandler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+      
+      // 如果点击在 TipTap/ProseMirror 编辑器内，不做任何处理（允许正常的文本选择）
+      if (target.closest('.ProseMirror') || target.closest('.tiptap-editor') || target.closest('.tiptap-input-wrapper')) {
+        return;
+      }
+      
       // 检查点击是否在 CustomSelect 下拉菜单内
       if (target.closest('.custom-select') ||
         target.closest('.custom-select-dropdown')) {
@@ -2355,11 +2405,15 @@ export class AIZoneWidget {
 
     // 聚焦输入框
     setTimeout(() => {
-      console.log('[AIZoneWidget] 尝试聚焦输入框，inputElement:', this.inputElement);
-      if (this.inputElement) {
-        console.log('[AIZoneWidget] 输入框存在，执行 focus()');
+      console.log('[AIZoneWidget] 尝试聚焦输入框，tiptapInputRef:', this.tiptapInputRef, 'inputElement:', this.inputElement);
+      if (this.tiptapInputRef) {
+        console.log('[AIZoneWidget] TipTap 输入框存在，执行 focus()');
+        this.tiptapInputRef.focus();
+        console.log('[AIZoneWidget] TipTap 输入框 focus 后，document.activeElement:', document.activeElement);
+      } else if (this.inputElement) {
+        console.log('[AIZoneWidget] textarea 输入框存在，执行 focus()');
         this.inputElement.focus();
-        console.log('[AIZoneWidget] 输入框 focus 后，document.activeElement:', document.activeElement);
+        console.log('[AIZoneWidget] textarea 输入框 focus 后，document.activeElement:', document.activeElement);
       } else {
         console.error('[AIZoneWidget] 输入框不存在！');
       }
@@ -2525,6 +2579,13 @@ export class AIZoneWidget {
     if (this.documentReferencesElement) {
       this.documentReferencesElement.innerHTML = '';
       this.documentReferencesElement.style.display = 'none';
+    }
+
+    // 清空输入框文件引用和标签容器
+    this.inputFileReferences = [];
+    if (this.inputFileRefsContainer) {
+      this.inputFileRefsContainer.innerHTML = '';
+      this.inputFileRefsContainer.style.display = 'none';
     }
 
     // 清理边框容器上的边框
@@ -2757,7 +2818,21 @@ export class AIZoneWidget {
    * 处理提交
    */
   private handleSubmit(options?: { preserveResultToolbar?: boolean }): void {
-    const message = this.inputElement?.value.trim();
+    // 从 TipTap 或 textarea 获取消息
+    let message = '';
+    if (this.tiptapInputRef) {
+      message = this.tiptapInputRef.getText().trim();
+      // 同时获取文件引用
+      const fileRefs = this.tiptapInputRef.getFileReferences();
+      this.inputFileReferences = fileRefs.map((ref, index) => ({
+        path: ref.path,
+        name: ref.name,
+        startIndex: index,
+        endIndex: index
+      }));
+    } else if (this.inputElement) {
+      message = this.inputElement.value.trim();
+    }
     console.log('[AIZoneWidget] handleSubmit 被调用, message:', message);
     if (!message) {
       console.warn('[AIZoneWidget] 消息为空，取消发送');
@@ -2775,12 +2850,21 @@ export class AIZoneWidget {
     });
 
     // 清空输入
-    if (this.inputElement) {
+    if (this.tiptapInputRef) {
+      this.tiptapInputRef.clear();
+    } else if (this.inputElement) {
       this.inputElement.value = '';
-      // 重置高度
-      if (this.adjustHeightFn) {
-        this.adjustHeightFn();
-      }
+    }
+    // 重置高度
+    if (this.adjustHeightFn) {
+      this.adjustHeightFn();
+    }
+
+    // 清空输入框文件引用和标签容器（发送后清空，下次输入重新开始）
+    this.inputFileReferences = [];
+    if (this.inputFileRefsContainer) {
+      this.inputFileRefsContainer.innerHTML = '';
+      this.inputFileRefsContainer.style.display = 'none';
     }
 
     // 立即显示用户问题，让用户看到自己发送的消息
@@ -2874,11 +2958,13 @@ export class AIZoneWidget {
 
     // 重新生成时不清空输入框，也不显示内容，保持输入框为空
     // 如果输入框有内容，清空它
-    if (this.inputElement) {
+    if (this.tiptapInputRef) {
+      this.tiptapInputRef.clear();
+    } else if (this.inputElement) {
       this.inputElement.value = '';
-      if (this.adjustHeightFn) {
-        this.adjustHeightFn();
-      }
+    }
+    if (this.adjustHeightFn) {
+      this.adjustHeightFn();
     }
 
     // 重新生成视为继续当前轮：进入"生成中"阶段，使用取消工具栏
@@ -3953,7 +4039,9 @@ export class AIZoneWidget {
 
     // 重新聚焦输入框
     setTimeout(() => {
-      if (this.inputElement) {
+      if (this.tiptapInputRef) {
+        this.tiptapInputRef.focus();
+      } else if (this.inputElement) {
         this.inputElement.focus();
       }
     }, 50);
@@ -4755,10 +4843,10 @@ export class AIZoneWidget {
         });
       }
 
-      // 更新输入框提示
-      if (this.inputElement) {
-        this.inputElement.placeholder = '继续对话';
-      }
+      // 更新输入框提示（TipTap 不支持动态更改 placeholder，跳过）
+      // if (this.inputElement) {
+      //   this.inputElement.placeholder = '继续对话';
+      // }
 
     } catch (error) {
       console.error('[AIZoneWidget] 加载历史会话失败:', error);
@@ -4791,7 +4879,9 @@ export class AIZoneWidget {
     }
 
     // 清空输入框并恢复初始 placeholder
-    if (this.inputElement) {
+    if (this.tiptapInputRef) {
+      this.tiptapInputRef.clear();
+    } else if (this.inputElement) {
       this.inputElement.value = '';
       this.inputElement.placeholder = '向AI 描述您想要做什么...';
     }
@@ -4826,7 +4916,9 @@ export class AIZoneWidget {
       // 等待布局完成后让输入框获得焦点
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (this.inputElement) {
+          if (this.tiptapInputRef) {
+            this.tiptapInputRef.focus();
+          } else if (this.inputElement) {
             this.inputElement.focus();
           }
         });
@@ -4963,6 +5055,9 @@ export class AIZoneWidget {
     if (!this.inputElement || !this.inputContextMenuContainer) {
       return;
     }
+
+    // 标记当前菜单是由输入框触发的
+    this.isInputMenuTriggered = true;
 
     // 如果工具栏@菜单是打开的，先关闭它（输入框@菜单和工具栏@菜单是隔离的）
     if (this.isContextMenuOpen) {
@@ -5145,6 +5240,70 @@ export class AIZoneWidget {
   }
 
   /**
+   * 从 TipTap 输入框位置显示上下文菜单（用于@符号自动触发）
+   * @param _query 当前输入的查询文本（@符号后的内容）
+   * @param position @符号在视口中的位置
+   */
+  private async showContextMenuFromInputAtPosition(_query: string, position: { top: number; left: number }): Promise<void> {
+    if (!this.inputContextMenuContainer) {
+      return;
+    }
+
+    // 如果智能体菜单是打开的，先关闭它
+    if (this.isAgentMenuOpen) {
+      this.closeAgentMenu();
+    }
+
+    if (this.closeDropdownFn) {
+      this.closeDropdownFn();
+    }
+    this.closeHistoryMenu();
+
+    // 重置菜单状态
+    this.currentMenuLevel = 'level1';
+    this.currentCategory = null;
+
+    // 设置容器的位置（使用 TipTap 提供的位置）
+    this.inputContextMenuContainer.style.top = `${position.top + 5}px`;
+    this.inputContextMenuContainer.style.left = `${position.left}px`;
+    this.inputContextMenuContainer.style.width = '300px';
+    this.inputContextMenuContainer.style.height = 'auto';
+    this.inputContextMenuContainer.style.maxHeight = `${window.innerHeight - position.top - 20}px`;
+    this.inputContextMenuContainer.style.overflowY = 'auto';
+    this.inputContextMenuContainer.style.position = 'fixed';
+    this.inputContextMenuContainer.style.zIndex = '10000';
+    this.inputContextMenuContainer.style.opacity = '1';
+    this.inputContextMenuContainer.style.visibility = 'visible';
+    this.inputContextMenuContainer.style.pointerEvents = 'auto';
+
+    // 创建 React Root（使用输入框菜单容器）
+    if (!this.inputContextMenuRoot && this.inputContextMenuContainer) {
+      this.inputContextMenuRoot = createRoot(this.inputContextMenuContainer);
+    }
+
+    // 清空最近文件映射
+    this.recentFilesMap.clear();
+
+    // 获取最近文件并建立映射
+    try {
+      const response = await window.electron?.workspace?.getRecentFiles();
+      if (response?.success && response.data && Array.isArray(response.data)) {
+        response.data.slice(0, 3).forEach((filePath: string, index: number) => {
+          this.recentFilesMap.set(`recent-file-${index}`, filePath);
+        });
+      }
+    } catch (error) {
+      console.error('[AIZoneWidget] 获取最近文件失败:', error);
+    }
+
+    // 标记菜单已打开
+    this.isContextMenuOpen = true;
+
+    // 显示一级菜单（使用输入框菜单Root）
+    await this.showMenuLevel1(true);
+  }
+
+  /**
    * 处理@按钮点击，显示上下文菜单
    */
   private async handleContextMenuClick(): Promise<void> {
@@ -5267,15 +5426,26 @@ export class AIZoneWidget {
       this.isContextMenuOpen = true;
       this.currentMenuLevel = 'level1';
       
-      // 菜单渲染后，再次更新位置以确保正确显示
-      if (this.contextMenuPositionUpdateHandler) {
-        // 使用 requestAnimationFrame 确保 DOM 已更新
-        requestAnimationFrame(() => {
-          if (this.contextMenuPositionUpdateHandler) {
-            this.contextMenuPositionUpdateHandler();
-          }
-        });
+      // 设置扁平化的菜单项列表（用于键盘导航）
+      this.contextMenuFlatItems = [];
+      this.contextMenuHighlightedIndex = 0;
+      for (const group of menuGroups) {
+        for (const item of group.items) {
+          this.contextMenuFlatItems.push({ value: item.value, disabled: item.disabled });
+        }
       }
+      
+      // 更新 TipTap 的 @ 菜单状态（用于键盘导航）
+      this.updateTipTapMenuState();
+      
+      // 菜单渲染后，更新高亮显示
+      requestAnimationFrame(() => {
+        this.updateContextMenuHighlight();
+        // 再次更新位置以确保正确显示
+        if (this.contextMenuPositionUpdateHandler) {
+          this.contextMenuPositionUpdateHandler();
+        }
+      });
     }, 0);
   }
 
@@ -5356,15 +5526,26 @@ export class AIZoneWidget {
       this.isContextMenuOpen = true;
       this.currentMenuLevel = 'level2';
       
-      // 菜单渲染后，再次更新位置以确保正确显示
-      if (this.contextMenuPositionUpdateHandler) {
-        // 使用 requestAnimationFrame 确保 DOM 已更新
-        requestAnimationFrame(() => {
-          if (this.contextMenuPositionUpdateHandler) {
-            this.contextMenuPositionUpdateHandler();
-          }
-        });
+      // 设置扁平化的菜单项列表（用于键盘导航）
+      this.contextMenuFlatItems = [];
+      this.contextMenuHighlightedIndex = 0;
+      for (const group of menuGroups) {
+        for (const item of group.items) {
+          this.contextMenuFlatItems.push({ value: item.value, disabled: item.disabled });
+        }
       }
+      
+      // 更新 TipTap 的 @ 菜单状态（用于键盘导航）
+      this.updateTipTapMenuState();
+      
+      // 菜单渲染后，更新高亮显示
+      requestAnimationFrame(() => {
+        this.updateContextMenuHighlight();
+        // 再次更新位置以确保正确显示
+        if (this.contextMenuPositionUpdateHandler) {
+          this.contextMenuPositionUpdateHandler();
+        }
+      });
     }, 0);
   }
 
@@ -5378,10 +5559,18 @@ export class AIZoneWidget {
     if (this.currentMenuLevel === 'level1') {
       // 最近文件选项
       if (value.startsWith('recent-file-')) {
-        this.closeContextMenu();
         const filePath = this.recentFilesMap.get(value);
         if (filePath) {
+          // 保存触发来源标记（closeContextMenu 会重置它）
+          const wasInputMenuTriggered = this.isInputMenuTriggered;
+          this.closeContextMenu();
+          // 恢复触发来源标记，以便 handleFileSelect 正确判断
+          this.isInputMenuTriggered = wasInputMenuTriggered;
           await this.handleFileSelect(filePath);
+          // 处理完成后重置标记
+          this.isInputMenuTriggered = false;
+        } else {
+          this.closeContextMenu();
         }
         return;
       }
@@ -5399,9 +5588,15 @@ export class AIZoneWidget {
     // 根据value前缀判断操作类型
     if (value.startsWith('file-')) {
       // 文件选择（从资源管理器）
-      this.closeContextMenu();
       const filePath = value.replace('file-', '');
+      // 保存触发来源标记（closeContextMenu 会重置它）
+      const wasInputMenuTriggered = this.isInputMenuTriggered;
+      this.closeContextMenu();
+      // 恢复触发来源标记，以便 handleFileSelect 正确判断
+      this.isInputMenuTriggered = wasInputMenuTriggered;
       await this.handleFileSelect(filePath);
+      // 处理完成后重置标记
+      this.isInputMenuTriggered = false;
     } else if (value.startsWith('folder-')) {
       // 文件夹展开/折叠处理
       const folderPath = value.replace('folder-', '');
@@ -5506,10 +5701,77 @@ export class AIZoneWidget {
     // inputContextMenuContainer 也不需要从 DOM 中移除，只需要隐藏即可
 
     this.isContextMenuOpen = false;
+    this.isInputMenuTriggered = false; // 重置输入框菜单触发标记
     this.currentMenuLevel = 'level1';
     this.currentCategory = null;
     // 清空展开状态
     this.expandedFolders.clear();
+    // 重置高亮索引
+    this.contextMenuHighlightedIndex = 0;
+    this.contextMenuFlatItems = [];
+    // 更新 TipTap 的 @ 菜单状态（用于键盘导航）
+    this.updateTipTapMenuState();
+  }
+
+  /**
+   * 导航上下文菜单（上下键）
+   */
+  private navigateContextMenu(direction: 'up' | 'down'): void {
+    if (!this.isContextMenuOpen || this.contextMenuFlatItems.length === 0) return;
+    
+    // 找到下一个非禁用的项
+    let newIndex = this.contextMenuHighlightedIndex;
+    const itemCount = this.contextMenuFlatItems.length;
+    
+    if (direction === 'down') {
+      // 向下导航
+      do {
+        newIndex = (newIndex + 1) % itemCount;
+      } while (this.contextMenuFlatItems[newIndex]?.disabled && newIndex !== this.contextMenuHighlightedIndex);
+    } else {
+      // 向上导航
+      do {
+        newIndex = (newIndex - 1 + itemCount) % itemCount;
+      } while (this.contextMenuFlatItems[newIndex]?.disabled && newIndex !== this.contextMenuHighlightedIndex);
+    }
+    
+    this.contextMenuHighlightedIndex = newIndex;
+    // 更新菜单显示（高亮当前项）
+    this.updateContextMenuHighlight();
+  }
+
+  /**
+   * 选择当前高亮的菜单项
+   */
+  private selectHighlightedContextMenuItem(): void {
+    if (!this.isContextMenuOpen || this.contextMenuFlatItems.length === 0) return;
+    
+    const highlightedItem = this.contextMenuFlatItems[this.contextMenuHighlightedIndex];
+    if (highlightedItem && !highlightedItem.disabled) {
+      // 模拟点击该项
+      this.handleContextMenuItemSelect(highlightedItem.value);
+    }
+  }
+
+  /**
+   * 更新上下文菜单的高亮显示
+   */
+  private updateContextMenuHighlight(): void {
+    // Select 组件的下拉菜单通过 Portal 渲染到 body，需要在 body 中查找
+    // 查找 .ai-zone-context-select-content 下的 .select-item 元素
+    const dropdownContent = document.querySelector('.ai-zone-context-select-content');
+    if (!dropdownContent) return;
+    
+    // 移除所有项的高亮
+    const allItems = dropdownContent.querySelectorAll('.select-item');
+    allItems.forEach((item, index) => {
+      item.classList.remove('highlighted');
+      if (index === this.contextMenuHighlightedIndex) {
+        item.classList.add('highlighted');
+        // 滚动到可见区域
+        (item as HTMLElement).scrollIntoView({ block: 'nearest' });
+      }
+    });
   }
 
   /**
@@ -5534,27 +5796,315 @@ export class AIZoneWidget {
     try {
       const fileName = getFileName(filePath);
       
-      // 检查文件是否已经选中，避免重复添加
-      const isAlreadySelected = this.selectedFiles.some(file => file.path === filePath);
-      if (!isAlreadySelected) {
-        const fileInfo = { path: filePath, name: fileName };
-        // 添加到选中文件列表
-        this.selectedFiles.push(fileInfo);
-        // 更新工具栏显示
-        this.updateSelectedFilesToolbar();
+      // 根据触发来源决定行为
+      if (this.isInputMenuTriggered) {
+        // 从输入框@触发：在输入框中插入 @文件名 引用
+        if (this.tiptapInputRef) {
+          // 使用 TipTap 插入文件引用
+          this.tiptapInputRef.insertFileReference(filePath, fileName);
+          // 更新文件引用列表
+          const fileRefs = this.tiptapInputRef.getFileReferences();
+          this.inputFileReferences = fileRefs.map((ref, index) => ({
+            path: ref.path,
+            name: ref.name,
+            startIndex: index,
+            endIndex: index
+          }));
+        } else if (this.inputElement) {
+          // 回退到旧的 textarea 方式
+          this.insertFileReferenceInInput(filePath, fileName);
+        }
+      } else {
+        // 从工具栏@按钮触发：添加到工具栏选中文件列表
+        const isAlreadySelected = this.selectedFiles.some(file => file.path === filePath);
+        if (!isAlreadySelected) {
+          const fileInfo = { path: filePath, name: fileName };
+          this.selectedFiles.push(fileInfo);
+          this.updateSelectedFilesToolbar();
+        }
       }
-      
-    
     } catch (error) {
       console.error('[AIZoneWidget] 处理文件选择失败:', error);
     }
   }
 
   /**
+   * 在输入框中插入文件引用
+   * @param filePath 文件路径
+   * @param fileName 文件名
+   */
+  private insertFileReferenceInInput(filePath: string, fileName: string): void {
+    if (!this.inputElement) return;
+
+    const textarea = this.inputElement;
+    const value = textarea.value;
+    const cursorPos = textarea.selectionStart || value.length;
+
+    // 从光标位置向前查找最近的@符号
+    let atIndex = -1;
+    for (let i = cursorPos - 1; i >= 0; i--) {
+      if (value[i] === '@') {
+        if (i === 0 || value[i - 1] === ' ' || value[i - 1] === '\n') {
+          atIndex = i;
+          break;
+        }
+      } else if (value[i] === ' ' || value[i] === '\n') {
+        break;
+      }
+    }
+
+    // 构建文件引用文本
+    const fileRefText = `@${fileName} `;
+    
+    if (atIndex !== -1) {
+      // 替换从@符号到光标位置的内容
+      const beforeAt = value.substring(0, atIndex);
+      const afterCursor = value.substring(cursorPos);
+      const newValue = beforeAt + fileRefText + afterCursor;
+      
+      textarea.value = newValue;
+      
+      // 设置光标位置到引用文本之后
+      const newCursorPos = atIndex + fileRefText.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+      
+      // 记录文件引用信息（用于后续解析）
+      this.inputFileReferences.push({
+        path: filePath,
+        name: fileName,
+        startIndex: atIndex,
+        endIndex: atIndex + fileRefText.length - 1 // 不包括末尾空格
+      });
+      
+      console.log('[AIZoneWidget] 在输入框中插入文件引用:', fileName, '位置:', atIndex);
+    } else {
+      // 如果没找到@符号，在光标位置插入
+      const beforeCursor = value.substring(0, cursorPos);
+      const afterCursor = value.substring(cursorPos);
+      const newValue = beforeCursor + fileRefText + afterCursor;
+      
+      textarea.value = newValue;
+      
+      const newCursorPos = cursorPos + fileRefText.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+      
+      this.inputFileReferences.push({
+        path: filePath,
+        name: fileName,
+        startIndex: cursorPos,
+        endIndex: cursorPos + fileRefText.length - 1
+      });
+    }
+
+    // 更新覆盖层显示
+    this.updateInputOverlay();
+
+    // 触发 input 事件以更新高度
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    
+    // 聚焦输入框
+    textarea.focus();
+  }
+
+  /**
+   * 更新输入框文件引用标签显示
+   * 在输入框下方显示文件引用标签（chips）
+   */
+  private updateInputOverlay(): void {
+    if (!this.inputFileRefsContainer) return;
+
+    // 如果没有文件引用，隐藏容器
+    if (this.inputFileReferences.length === 0) {
+      this.inputFileRefsContainer.innerHTML = '';
+      this.inputFileRefsContainer.style.display = 'none';
+      return;
+    }
+
+    // 显示容器
+    this.inputFileRefsContainer.style.display = 'flex';
+
+    // 构建文件引用标签 HTML
+    let html = '';
+    for (const ref of this.inputFileReferences) {
+      html += `
+        <div class="ai-zone-input-file-ref-chip" data-path="${this.escapeHtml(ref.path)}">
+          <span class="ai-zone-input-file-ref-icon">
+            <svg viewBox="0 0 16 16"><path d="M13.71 4.29l-3-3L10 1H4L3 2v12l1 1h9l1-1V5l-.29-.71zM13 14H4V2h5v4h4v8zm-3-9V2l3 3h-3z" fill="currentColor"/></svg>
+          </span>
+          <span class="ai-zone-input-file-ref-name">${this.escapeHtml(ref.name)}</span>
+          <button class="ai-zone-input-file-ref-remove" data-path="${this.escapeHtml(ref.path)}" title="移除">
+            <svg viewBox="0 0 16 16"><path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z" fill="currentColor"/></svg>
+          </button>
+        </div>
+      `;
+    }
+
+    this.inputFileRefsContainer.innerHTML = html;
+
+    // 添加移除按钮事件监听
+    const removeButtons = this.inputFileRefsContainer.querySelectorAll('.ai-zone-input-file-ref-remove');
+    removeButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const path = (btn as HTMLElement).dataset.path;
+        if (path) {
+          this.removeInputFileReference(path);
+        }
+      });
+    });
+  }
+
+  /**
+   * 移除输入框中的文件引用
+   */
+  private removeInputFileReference(filePath: string): void {
+    const refIndex = this.inputFileReferences.findIndex(ref => ref.path === filePath);
+    if (refIndex === -1) return;
+
+    const ref = this.inputFileReferences[refIndex];
+    const textarea = this.inputElement;
+    if (!textarea) return;
+
+    // 从 textarea 中移除对应的 @filename 文本
+    const value = textarea.value;
+    const expectedText = `@${ref.name}`;
+    const actualText = value.substring(ref.startIndex, ref.startIndex + expectedText.length);
+    
+    if (actualText === expectedText) {
+      // 移除文本（包括后面的空格）
+      let endIndex = ref.startIndex + expectedText.length;
+      if (value[endIndex] === ' ') {
+        endIndex++; // 包括空格
+      }
+      const newValue = value.substring(0, ref.startIndex) + value.substring(endIndex);
+      textarea.value = newValue;
+      
+      // 触发 input 事件
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    // 从数组中移除
+    this.inputFileReferences.splice(refIndex, 1);
+    
+    // 重新计算剩余引用的位置
+    this.recalculateFileReferencePositions();
+    
+    // 更新显示
+    this.updateInputOverlay();
+  }
+
+  /**
+   * 重新计算文件引用的位置索引
+   */
+  private recalculateFileReferencePositions(): void {
+    if (!this.inputElement) return;
+    
+    const text = this.inputElement.value;
+    
+    // 重新查找每个文件引用的位置
+    for (const ref of this.inputFileReferences) {
+      const searchText = `@${ref.name}`;
+      const index = text.indexOf(searchText);
+      if (index !== -1) {
+        ref.startIndex = index;
+        ref.endIndex = index + searchText.length - 1;
+      }
+    }
+  }
+
+  /**
+   * 验证并更新输入框文件引用覆盖层
+   * 当用户编辑文本时，检查文件引用是否仍然有效，移除无效的引用
+   */
+  private validateAndUpdateInputOverlay(): void {
+    if (!this.inputElement) return;
+
+    const text = this.inputElement.value;
+    
+    // 过滤掉无效的文件引用（用户可能删除或修改了引用文本）
+    this.inputFileReferences = this.inputFileReferences.filter(ref => {
+      const expectedText = `@${ref.name}`;
+      const actualText = text.substring(ref.startIndex, ref.startIndex + expectedText.length);
+      return actualText === expectedText;
+    });
+
+    // 更新覆盖层显示
+    this.updateInputOverlay();
+  }
+
+  /**
    * 获取选中的文件列表（支持文件和知识库）
+   * 包括工具栏选中的文件和输入框中的@文件引用
    */
   getSelectedFiles(): Array<{ path: string; name: string; type?: 'file' | 'knowledge-base'; kbId?: string }> {
-    return [...this.selectedFiles];
+    // 合并工具栏选中的文件和输入框中的文件引用
+    const allFiles = [...this.selectedFiles];
+    
+    // 添加输入框中的文件引用（避免重复）
+    for (const ref of this.inputFileReferences) {
+      const isAlreadyIncluded = allFiles.some(f => f.path === ref.path);
+      if (!isAlreadyIncluded) {
+        allFiles.push({ path: ref.path, name: ref.name, type: 'file' });
+      }
+    }
+    
+    return allFiles;
+  }
+
+  /**
+   * 获取输入框中的文件引用列表
+   */
+  getInputFileReferences(): Array<{ path: string; name: string }> {
+    return this.inputFileReferences.map(ref => ({ path: ref.path, name: ref.name }));
+  }
+
+  /**
+   * 从 TipTap 同步文件引用到文件工具栏
+   * 当 TipTap 中的文件引用变化时调用
+   */
+  private syncFileReferencesFromTipTap(fileReferences: Array<{ path: string; name: string }>): void {
+    // 获取 TipTap 中的文件路径集合
+    const tiptapFilePaths = new Set(fileReferences.map(ref => ref.path));
+    
+    // 获取当前工具栏中的文件路径集合（只考虑普通文件，不考虑知识库）
+    const toolbarFilePaths = new Set(
+      this.selectedFiles
+        .filter(f => f.type !== 'knowledge-base')
+        .map(f => f.path)
+    );
+    
+    let hasChanges = false;
+    
+    // 1. 添加 TipTap 中有但工具栏中没有的文件
+    for (const ref of fileReferences) {
+      if (!toolbarFilePaths.has(ref.path)) {
+        this.selectedFiles.push({
+          path: ref.path,
+          name: ref.name,
+          type: 'file'
+        });
+        hasChanges = true;
+      }
+    }
+    
+    // 2. 移除工具栏中有但 TipTap 中没有的文件（只移除普通文件，保留知识库）
+    const filesToRemove: number[] = [];
+    this.selectedFiles.forEach((file, index) => {
+      if (file.type !== 'knowledge-base' && !tiptapFilePaths.has(file.path)) {
+        filesToRemove.push(index);
+        hasChanges = true;
+      }
+    });
+    
+    // 从后往前删除，避免索引变化
+    for (let i = filesToRemove.length - 1; i >= 0; i--) {
+      this.selectedFiles.splice(filesToRemove[i], 1);
+    }
+    
+    // 如果有变化，更新工具栏显示
+    if (hasChanges) {
+      this.updateSelectedFilesToolbar();
+    }
   }
 
   /**
@@ -5705,8 +6255,13 @@ export class AIZoneWidget {
         this.hide();
       }));
 
-      leftActions.appendChild(createTextAction('接收', '接收修改（待实现）', () => {
-        console.log('[AIZoneWidget] 接收修改：功能待实现');
+      leftActions.appendChild(createTextAction('接收', '接收 AI 生成的代码', () => {
+        console.log('[AIZoneWidget] 接收修改');
+        if (this.options.onAccept) {
+          this.options.onAccept();
+        }
+        // 接收后关闭内联聊天
+        this.hide();
       }));
 
       leftActions.appendChild(createIconAction('regenerate', '重新生成', () => {
@@ -5771,6 +6326,10 @@ export class AIZoneWidget {
             : this.selectedFiles.findIndex(f => f.path === file.path);
           if (fileIndex !== -1) {
             this.selectedFiles.splice(fileIndex, 1);
+            // 同时从 TipTap 编辑器中删除对应的文件引用（如果是普通文件）
+            if (file.type !== 'knowledge-base' && this.tiptapInputRef) {
+              this.tiptapInputRef.removeFileReference(file.path);
+            }
             // 更新工具栏显示
             this.updateSelectedFilesToolbar();
           }
@@ -6554,7 +7113,12 @@ export class AIZoneWidget {
         onRemoveFile: (filePath: string) => {
           const fileIndex = this.selectedFiles.findIndex(f => f.path === filePath);
           if (fileIndex !== -1) {
+            const file = this.selectedFiles[fileIndex];
             this.selectedFiles.splice(fileIndex, 1);
+            // 同时从 TipTap 编辑器中删除对应的文件引用（如果是普通文件）
+            if (file.type !== 'knowledge-base' && this.tiptapInputRef) {
+              this.tiptapInputRef.removeFileReference(filePath);
+            }
             this.updateSelectedFilesToolbar();
             // 如果删除后没有剩余文件，关闭菜单
             if (this.selectedFiles.length <= 5) {
@@ -6736,6 +7300,15 @@ export class AIZoneWidget {
       this.toolbarModelDropdownRoot = null;
       this.safeUnmountRoot(root);
     }
+
+    // 销毁 TipTap 输入组件
+    if (this.tiptapInputRoot) {
+      const root = this.tiptapInputRoot;
+      this.tiptapInputRoot = null;
+      this.safeUnmountRoot(root);
+    }
+    this.tiptapInputRef = null;
+    this.tiptapInputContainer = null;
 
     // 关闭并销毁上下文菜单
     this.closeContextMenu();

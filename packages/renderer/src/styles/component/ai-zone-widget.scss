@@ -25,12 +25,16 @@
   overflow: visible !important;
   overflow-x: visible !important;
   overflow-y: visible !important;
+  /* 确保 view-zone 内的元素可以接收鼠标事件 */
+  pointer-events: auto !important;
 }
 
 .monaco-editor .view-zones {
   overflow: visible !important;
   overflow-x: visible !important;
   overflow-y: visible !important;
+  /* 确保 view-zones 容器可以接收鼠标事件 */
+  pointer-events: auto !important;
 }
 
 /* 确保 Monaco Editor 的内容区域也允许溢出 */
@@ -158,9 +162,14 @@
   cursor: text;
   min-width: 0;
   max-width: 100%;
+  /* 与覆盖层保持一致的文本换行行为 */
+  white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-word;
   padding: 8px 12px;
+  /* 确保 textarea 在覆盖层上方，光标可见 */
+  position: relative;
+  z-index: 2;
 
   /* 自定义滚动条样式 */
   &::-webkit-scrollbar {
@@ -1298,7 +1307,8 @@
   .select-item {
     transition: background-color 0.15s ease, color 0.15s ease;
 
-    &:hover {
+    &:hover,
+    &.highlighted {
       background-color: var(--ws-dropdown-hoverBackground);
       color: var(--ws-dropdown-hoverForeground);
     }
@@ -1471,4 +1481,278 @@
       }
     }
   }
+}
+
+/* 输入框文件引用覆盖层 - 用于显示带样式的 @文件名 块 */
+.ai-zone-input-overlay-container {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+/* 禁用覆盖层方案 - textarea 和 div 的文本渲染差异导致重影问题 */
+/* 改用输入框下方显示文件引用标签的方案 */
+.ai-zone-input-overlay {
+  display: none !important;
+}
+
+/* 不再需要 has-file-refs 类的特殊处理 */
+.ai-zone-input-overlay-container.has-file-refs .ai-zone-input {
+  /* 保持默认样式 */
+}
+
+/* 输入框文件引用标签容器 - 显示在输入框下方 */
+.ai-zone-input-file-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0 0 0;
+  margin-top: 4px;
+}
+
+/* 输入框文件引用标签 */
+.ai-zone-input-file-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: var(--ws-badge-background, rgba(0, 122, 204, 0.2));
+  color: var(--ws-textLink-foreground, #3794ff);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  
+  /* 文件图标 */
+  .ai-zone-input-file-ref-icon {
+    display: flex;
+    align-items: center;
+    
+    svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+  }
+  
+  /* 文件名 */
+  .ai-zone-input-file-ref-name {
+    font-weight: 500;
+  }
+  
+  /* 移除按钮 */
+  .ai-zone-input-file-ref-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 2px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    color: currentColor;
+    opacity: 0.6;
+    transition: opacity 0.1s ease, background-color 0.1s ease;
+    
+    &:hover {
+      opacity: 1;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    svg {
+      width: 12px;
+      height: 12px;
+    }
+  }
+}
+
+/* 暗色主题下的文件引用标签 */
+[data-theme-mode='dark'] .ai-zone-input-file-ref-chip {
+  background-color: rgba(0, 122, 204, 0.25);
+  color: #58a6ff;
+}
+
+/* 亮色主题下的文件引用标签 */
+[data-theme-mode='light'] .ai-zone-input-file-ref-chip {
+  background-color: rgba(0, 122, 204, 0.15);
+  color: #0969da;
+}
+
+
+/* TipTap 容器样式 */
+.ai-zone-tiptap-container {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+}
+
+/* TipTap 编辑器样式 */
+.tiptap-input-wrapper {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+
+  /* EditorContent 生成的 div 容器 */
+  > div {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+  }
+}
+
+/* ProseMirror 编辑器容器 */
+.tiptap-input-wrapper .ProseMirror {
+  flex: 1;
+  width: 100%;
+  min-height: 20px;
+  max-height: 120px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ws-input-foreground);
+  outline: none;
+  overflow-y: auto;
+  word-wrap: break-word;
+  word-break: break-word;
+  /* 允许文本选择 - 关键样式 */
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  cursor: text;
+  /* 确保可以接收鼠标事件 */
+  pointer-events: auto !important;
+
+  /* 文本选择样式 */
+  &::selection {
+    background: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.8)) !important;
+    color: inherit;
+  }
+
+  *::selection {
+    background: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.8)) !important;
+    color: inherit;
+  }
+
+  /* 所有子元素也允许选择和接收鼠标事件 */
+  * {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    pointer-events: auto !important;
+  }
+
+  /* 段落样式 */
+  p {
+    margin: 0;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    pointer-events: auto !important;
+
+    &::selection {
+      background: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.8)) !important;
+      color: inherit;
+    }
+  }
+}
+
+.tiptap-editor {
+  flex: 1;
+  width: 100%;
+  min-height: 20px;
+  max-height: 120px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ws-input-foreground);
+  outline: none;
+  overflow-y: auto;
+  word-wrap: break-word;
+  word-break: break-word;
+  
+  /* 段落样式 */
+  p {
+    margin: 0;
+  }
+  
+  /* 自定义滚动条样式 */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+    }
+  }
+}
+
+/* TipTap 占位符样式 */
+.tiptap-editor.tiptap-empty::before {
+  content: attr(data-placeholder);
+  color: var(--ws-input-placeholder-foreground);
+  opacity: 0.6;
+  pointer-events: none;
+  position: absolute;
+}
+
+.tiptap-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ws-input-placeholder-foreground);
+  opacity: 0.6;
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* TipTap 文件引用样式 */
+.tiptap-file-reference {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--ws-badge-background, rgba(0, 122, 204, 0.25));
+  color: var(--ws-textLink-foreground, #3794ff);
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin: 0 2px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+/* 暗色主题下的文件引用 */
+[data-theme-mode='dark'] .tiptap-file-reference {
+  background-color: rgba(0, 122, 204, 0.3);
+  color: #58a6ff;
+}
+
+/* 亮色主题下的文件引用 */
+[data-theme-mode='light'] .tiptap-file-reference {
+  background-color: rgba(0, 122, 204, 0.15);
+  color: #0969da;
+}
+
+/* 选中状态的文件引用 */
+.tiptap-file-reference.ProseMirror-selectednode {
+  outline: 2px solid var(--ws-focusBorder);
+  outline-offset: 1px;
 }

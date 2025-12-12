@@ -468,6 +468,72 @@ export class GhostTextWidget {
   }
 
   /**
+   * 获取当前的 Ghost Text 内容
+   * @returns 当前显示的 ghost text 内容，如果没有则返回空字符串
+   */
+  getGhostText(): string {
+    return this.ghostText;
+  }
+
+  /**
+   * 获取当前的起始位置
+   * @returns 当前的起始位置，如果没有则返回 null
+   */
+  getPosition(): monaco.IPosition | null {
+    return this.position;
+  }
+
+  /**
+   * 公共方法：接受当前的 Ghost Text 内容
+   * 将 ghost text 内容替换到指定位置，并清理 widget
+   */
+  acceptGhostText(): void {
+    if (!this.ghostText || !this.position) {
+      console.warn('[GhostTextWidget] acceptGhostText: 没有可接受的内容');
+      return;
+    }
+
+    const model = this.editor.getModel();
+    if (!model) {
+      console.error('[GhostTextWidget] acceptGhostText: 无法获取编辑器模型');
+      return;
+    }
+
+    const lines = this.ghostText.split('\n');
+    const startLine = this.position.lineNumber;
+    const endLine = startLine + lines.length - 1;
+
+    console.log('[GhostTextWidget] acceptGhostText: 开始接受内容', {
+      startLine,
+      endLine,
+      linesCount: lines.length,
+      contentPreview: this.ghostText.substring(0, 100)
+    });
+
+    // 计算需要替换的范围
+    // 从 startLine 到 endLine，替换这些行的内容
+    const startColumn = 1;
+    const endColumn = model.getLineMaxColumn(Math.min(endLine, model.getLineCount()));
+
+    // 执行替换操作
+    this.editor.executeEdits('ghost-text-accept', [{
+      range: new monaco.Range(startLine, startColumn, Math.min(endLine, model.getLineCount()), endColumn),
+      text: this.ghostText,
+      forceMoveMarkers: true
+    }]);
+
+    console.log('[GhostTextWidget] acceptGhostText: 内容已替换');
+
+    // 回调
+    if (this.options.onAccept) {
+      this.options.onAccept(this.ghostText);
+    }
+
+    // 清除预览
+    this.hide();
+  }
+
+  /**
    * 销毁组件
    */
   dispose(): void {
