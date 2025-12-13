@@ -59,7 +59,7 @@ export interface TipTapInputRef {
   removeFileReference: (filePath: string) => void;
   getFileReferences: () => Array<{ path: string; name: string }>;
   /** 更新 @ 菜单状态（用于键盘导航） */
-  setAtMenuState: (isOpen: boolean, onNavigate?: (direction: 'up' | 'down') => void, onSelect?: () => void) => void;
+  setAtMenuState: (isOpen: boolean, onNavigate?: (direction: 'up' | 'down') => void, onSelect?: () => void, onBack?: () => void) => void;
 }
 
 interface TipTapInputProps {
@@ -76,22 +76,26 @@ interface TipTapInputProps {
   onAtMenuNavigate?: (direction: 'up' | 'down') => void;
   /** 回车选择当前高亮项回调 */
   onAtMenuSelect?: () => void;
+  /** Alt+左箭头回退一级菜单回调 */
+  onAtMenuBack?: () => void;
   className?: string;
 }
 
 export const TipTapInput = forwardRef<TipTapInputRef, TipTapInputProps>(
-  ({ placeholder = '向AI描述您想要做什么...', onSubmit, onEscape, onChange, onAtTrigger, onAtCancel, onFileReferencesChange, isAtMenuOpen, onAtMenuNavigate, onAtMenuSelect, className }, ref) => {
+  ({ placeholder = '向AI描述您想要做什么...', onSubmit, onEscape, onChange, onAtTrigger, onAtCancel, onFileReferencesChange, isAtMenuOpen, onAtMenuNavigate, onAtMenuSelect, onAtMenuBack, className }, ref) => {
     // 使用 ref 存储最新的 props 值，避免闭包捕获旧值
     const isAtMenuOpenRef = useRef(isAtMenuOpen);
     const onAtMenuNavigateRef = useRef(onAtMenuNavigate);
     const onAtMenuSelectRef = useRef(onAtMenuSelect);
+    const onAtMenuBackRef = useRef(onAtMenuBack);
     
     // 同步更新 ref 值
     useEffect(() => {
       isAtMenuOpenRef.current = isAtMenuOpen;
       onAtMenuNavigateRef.current = onAtMenuNavigate;
       onAtMenuSelectRef.current = onAtMenuSelect;
-    }, [isAtMenuOpen, onAtMenuNavigate, onAtMenuSelect]);
+      onAtMenuBackRef.current = onAtMenuBack;
+    }, [isAtMenuOpen, onAtMenuNavigate, onAtMenuSelect, onAtMenuBack]);
     
     const editor = useEditor({
       extensions: [
@@ -143,6 +147,14 @@ export const TipTapInput = forwardRef<TipTapInputRef, TipTapInputProps>(
               event.preventDefault();
               if (onAtMenuSelectRef.current) {
                 onAtMenuSelectRef.current();
+              }
+              return true;
+            }
+            // Alt + 左箭头键：回退一级菜单
+            if (event.key === 'ArrowLeft' && event.altKey) {
+              event.preventDefault();
+              if (onAtMenuBackRef.current) {
+                onAtMenuBackRef.current();
               }
               return true;
             }
@@ -314,11 +326,12 @@ export const TipTapInput = forwardRef<TipTapInputRef, TipTapInputProps>(
       getFileReferences: () => {
         return getFileReferences();
       },
-      setAtMenuState: (isOpen: boolean, onNavigate?: (direction: 'up' | 'down') => void, onSelect?: () => void) => {
+      setAtMenuState: (isOpen: boolean, onNavigate?: (direction: 'up' | 'down') => void, onSelect?: () => void, onBack?: () => void) => {
         // 直接更新 ref 值，无需重新渲染组件
         isAtMenuOpenRef.current = isOpen;
         onAtMenuNavigateRef.current = onNavigate;
         onAtMenuSelectRef.current = onSelect;
+        onAtMenuBackRef.current = onBack;
       },
     }), [editor, getPlainText, getFileReferences]);
 

@@ -505,6 +505,9 @@ export class AIZoneWidget {
         },
         onAtMenuSelect: () => {
           this.selectHighlightedContextMenuItem();
+        },
+        onAtMenuBack: () => {
+          this.goBackToLevel1Menu();
         }
       })
     );
@@ -521,8 +524,24 @@ export class AIZoneWidget {
     this.tiptapInputRef.setAtMenuState(
       isMenuOpen,
       isMenuOpen ? (direction: 'up' | 'down') => this.navigateContextMenu(direction) : undefined,
-      isMenuOpen ? () => this.selectHighlightedContextMenuItem() : undefined
+      isMenuOpen ? () => this.selectHighlightedContextMenuItem() : undefined,
+      isMenuOpen ? () => this.goBackToLevel1Menu() : undefined
     );
+  }
+
+  /**
+   * 回退到一级菜单（Alt + 左箭头键）
+   */
+  private goBackToLevel1Menu(): void {
+    // 只有在二级菜单时才回退
+    if (this.currentMenuLevel === 'level2') {
+      // 保存当前分类，用于回退时恢复选中状态
+      const categoryToRestore = this.currentCategory;
+      // 清空展开状态
+      this.expandedFolders.clear();
+      // 显示一级菜单，并恢复到之前选中的分类
+      this.showMenuLevel1(this.isInputMenuTriggered, categoryToRestore || undefined);
+    }
   }
 
   /**
@@ -5379,8 +5398,9 @@ export class AIZoneWidget {
   /**
    * 显示一级菜单（分类菜单）
    * @param useInputMenu 是否使用输入框菜单容器（true=输入框@菜单，false=工具栏@菜单）
+   * @param keepSelectedValue 保持选中的菜单项值（用于从二级菜单回退时恢复选中状态）
    */
-  private async showMenuLevel1(useInputMenu: boolean = false): Promise<void> {
+  private async showMenuLevel1(useInputMenu: boolean = false, keepSelectedValue?: string): Promise<void> {
     const menuRoot = useInputMenu ? this.inputContextMenuRoot : this.contextMenuRoot;
     if (!menuRoot) return;
 
@@ -5428,23 +5448,33 @@ export class AIZoneWidget {
       
       // 设置扁平化的菜单项列表（用于键盘导航）
       this.contextMenuFlatItems = [];
-      this.contextMenuHighlightedIndex = 0;
       for (const group of menuGroups) {
         for (const item of group.items) {
           this.contextMenuFlatItems.push({ value: item.value, disabled: item.disabled });
         }
       }
       
+      // 如果有需要保持选中的值，查找其索引；否则默认选中第一项
+      if (keepSelectedValue) {
+        const keepIndex = this.contextMenuFlatItems.findIndex(item => item.value === keepSelectedValue);
+        this.contextMenuHighlightedIndex = keepIndex >= 0 ? keepIndex : 0;
+      } else {
+        this.contextMenuHighlightedIndex = 0;
+      }
+      
       // 更新 TipTap 的 @ 菜单状态（用于键盘导航）
       this.updateTipTapMenuState();
       
-      // 菜单渲染后，更新高亮显示
+      // 菜单渲染后，高亮选中项
+      // 使用双重 requestAnimationFrame 确保 DOM 完全更新
       requestAnimationFrame(() => {
-        this.updateContextMenuHighlight();
-        // 再次更新位置以确保正确显示
-        if (this.contextMenuPositionUpdateHandler) {
-          this.contextMenuPositionUpdateHandler();
-        }
+        requestAnimationFrame(() => {
+          this.updateContextMenuHighlight();
+          // 再次更新位置以确保正确显示
+          if (this.contextMenuPositionUpdateHandler) {
+            this.contextMenuPositionUpdateHandler();
+          }
+        });
       });
     }, 0);
   }
@@ -5465,8 +5495,9 @@ export class AIZoneWidget {
   /**
    * 渲染二级菜单
    * @param useInputMenu 是否使用输入框菜单容器（true=输入框@菜单，false=工具栏@菜单）
+   * @param keepSelectedValue 保持选中的菜单项值（用于文件夹展开/折叠后恢复选中状态）
    */
-  private async renderMenuLevel2(useInputMenu: boolean = false): Promise<void> {
+  private async renderMenuLevel2(useInputMenu: boolean = false, keepSelectedValue?: string): Promise<void> {
     const menuRoot = useInputMenu ? this.inputContextMenuRoot : this.contextMenuRoot;
     if (!menuRoot || !this.currentCategory) return;
 
@@ -5528,23 +5559,33 @@ export class AIZoneWidget {
       
       // 设置扁平化的菜单项列表（用于键盘导航）
       this.contextMenuFlatItems = [];
-      this.contextMenuHighlightedIndex = 0;
       for (const group of menuGroups) {
         for (const item of group.items) {
           this.contextMenuFlatItems.push({ value: item.value, disabled: item.disabled });
         }
       }
       
+      // 如果有需要保持选中的值，查找其索引；否则默认选中第一项
+      if (keepSelectedValue) {
+        const keepIndex = this.contextMenuFlatItems.findIndex(item => item.value === keepSelectedValue);
+        this.contextMenuHighlightedIndex = keepIndex >= 0 ? keepIndex : 0;
+      } else {
+        this.contextMenuHighlightedIndex = 0;
+      }
+      
       // 更新 TipTap 的 @ 菜单状态（用于键盘导航）
       this.updateTipTapMenuState();
       
-      // 菜单渲染后，更新高亮显示
+      // 菜单渲染后，高亮选中项
+      // 使用双重 requestAnimationFrame 确保 DOM 完全更新
       requestAnimationFrame(() => {
-        this.updateContextMenuHighlight();
-        // 再次更新位置以确保正确显示
-        if (this.contextMenuPositionUpdateHandler) {
-          this.contextMenuPositionUpdateHandler();
-        }
+        requestAnimationFrame(() => {
+          this.updateContextMenuHighlight();
+          // 再次更新位置以确保正确显示
+          if (this.contextMenuPositionUpdateHandler) {
+            this.contextMenuPositionUpdateHandler();
+          }
+        });
       });
     }, 0);
   }
@@ -5601,6 +5642,9 @@ export class AIZoneWidget {
       // 文件夹展开/折叠处理
       const folderPath = value.replace('folder-', '');
       
+      // 保存当前选中的文件夹值，用于展开后恢复选中状态
+      const currentSelectedValue = value;
+      
       // 切换展开状态
       if (this.expandedFolders.has(folderPath)) {
         this.expandedFolders.delete(folderPath);
@@ -5608,8 +5652,8 @@ export class AIZoneWidget {
         this.expandedFolders.add(folderPath);
       }
       
-      // 重新渲染菜单以反映展开状态变化
-      await this.renderMenuLevel2();
+      // 重新渲染菜单以反映展开状态变化（传递 useInputMenu 参数，并保持选中状态）
+      await this.renderMenuLevel2(useInputMenu, currentSelectedValue);
     } else if (value.startsWith('kb-')) {
       // 知识库选项（从二级菜单选择）
       this.closeContextMenu();
@@ -5719,23 +5763,50 @@ export class AIZoneWidget {
   private navigateContextMenu(direction: 'up' | 'down'): void {
     if (!this.isContextMenuOpen || this.contextMenuFlatItems.length === 0) return;
     
-    // 找到下一个非禁用的项
-    let newIndex = this.contextMenuHighlightedIndex;
     const itemCount = this.contextMenuFlatItems.length;
+    let newIndex: number;
     
-    if (direction === 'down') {
-      // 向下导航
-      do {
-        newIndex = (newIndex + 1) % itemCount;
-      } while (this.contextMenuFlatItems[newIndex]?.disabled && newIndex !== this.contextMenuHighlightedIndex);
+    // 如果当前没有选中项（索引为 -1），直接选中第一项或最后一项
+    if (this.contextMenuHighlightedIndex < 0) {
+      if (direction === 'down') {
+        // 向下：选中第一个非禁用项
+        newIndex = 0;
+        while (this.contextMenuFlatItems[newIndex]?.disabled && newIndex < itemCount - 1) {
+          newIndex++;
+        }
+      } else {
+        // 向上：选中最后一个非禁用项
+        newIndex = itemCount - 1;
+        while (this.contextMenuFlatItems[newIndex]?.disabled && newIndex > 0) {
+          newIndex--;
+        }
+      }
     } else {
-      // 向上导航
-      do {
-        newIndex = (newIndex - 1 + itemCount) % itemCount;
-      } while (this.contextMenuFlatItems[newIndex]?.disabled && newIndex !== this.contextMenuHighlightedIndex);
+      // 已有选中项，正常导航
+      newIndex = this.contextMenuHighlightedIndex;
+      const startIndex = newIndex;
+      
+      if (direction === 'down') {
+        // 向下导航
+        do {
+          newIndex = (newIndex + 1) % itemCount;
+        } while (this.contextMenuFlatItems[newIndex]?.disabled && newIndex !== startIndex);
+      } else {
+        // 向上导航
+        do {
+          newIndex = (newIndex - 1 + itemCount) % itemCount;
+        } while (this.contextMenuFlatItems[newIndex]?.disabled && newIndex !== startIndex);
+      }
     }
     
     this.contextMenuHighlightedIndex = newIndex;
+    
+    // 添加 keyboard-nav 类，禁用鼠标 hover 效果
+    const dropdownContent = document.querySelector('.ai-zone-context-select-content');
+    if (dropdownContent) {
+      dropdownContent.classList.add('keyboard-nav');
+    }
+    
     // 更新菜单显示（高亮当前项）
     this.updateContextMenuHighlight();
   }
@@ -5746,10 +5817,14 @@ export class AIZoneWidget {
   private selectHighlightedContextMenuItem(): void {
     if (!this.isContextMenuOpen || this.contextMenuFlatItems.length === 0) return;
     
+    // 如果没有高亮项（index 为 -1），不执行任何操作
+    if (this.contextMenuHighlightedIndex < 0) return;
+    
     const highlightedItem = this.contextMenuFlatItems[this.contextMenuHighlightedIndex];
     if (highlightedItem && !highlightedItem.disabled) {
-      // 模拟点击该项
-      this.handleContextMenuItemSelect(highlightedItem.value);
+      // 传递 isInputMenuTriggered 作为 useInputMenu 参数
+      // 这样分类项可以正确进入二级菜单
+      this.handleContextMenuItemSelect(highlightedItem.value, this.isInputMenuTriggered);
     }
   }
 
@@ -5766,10 +5841,42 @@ export class AIZoneWidget {
     const allItems = dropdownContent.querySelectorAll('.select-item');
     allItems.forEach((item, index) => {
       item.classList.remove('highlighted');
-      if (index === this.contextMenuHighlightedIndex) {
+      // 只有当 contextMenuHighlightedIndex >= 0 时才添加高亮
+      if (this.contextMenuHighlightedIndex >= 0 && index === this.contextMenuHighlightedIndex) {
         item.classList.add('highlighted');
         // 滚动到可见区域
         (item as HTMLElement).scrollIntoView({ block: 'nearest' });
+      }
+      
+      // 添加鼠标移动事件监听，鼠标移动时给当前项添加高亮
+      // 使用 mousemove 而不是 mouseenter，这样只有鼠标真正移动时才会触发
+      // 使用 data 属性标记是否已添加监听器，避免重复添加
+      if (!item.hasAttribute('data-highlight-listener')) {
+        item.setAttribute('data-highlight-listener', 'true');
+        
+        // 鼠标移动时，切换到鼠标模式并高亮当前项
+        item.addEventListener('mousemove', () => {
+          const currentDropdown = document.querySelector('.ai-zone-context-select-content');
+          if (currentDropdown) {
+            // 如果当前处于键盘导航模式，切换到鼠标模式
+            if (currentDropdown.classList.contains('keyboard-nav')) {
+              currentDropdown.classList.remove('keyboard-nav');
+            }
+            // 检查当前项是否已经高亮，避免重复操作
+            if (!item.classList.contains('highlighted')) {
+              // 移除所有项的高亮
+              currentDropdown.querySelectorAll('.select-item').forEach(i => i.classList.remove('highlighted'));
+              // 给当前鼠标悬停项添加高亮
+              item.classList.add('highlighted');
+              // 重新查找当前元素在 DOM 中的实际索引（因为菜单可能已重新渲染）
+              const currentItems = currentDropdown.querySelectorAll('.select-item');
+              const currentIndex = Array.from(currentItems).indexOf(item);
+              if (currentIndex >= 0) {
+                this.contextMenuHighlightedIndex = currentIndex;
+              }
+            }
+          }
+        });
       }
     });
   }

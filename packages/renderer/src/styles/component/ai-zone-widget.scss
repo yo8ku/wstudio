@@ -1307,11 +1307,28 @@
   .select-item {
     transition: background-color 0.15s ease, color 0.15s ease;
 
-    &:hover,
+    // 键盘高亮样式
     &.highlighted {
       background-color: var(--ws-dropdown-hoverBackground);
       color: var(--ws-dropdown-hoverForeground);
     }
+    
+    // 隐藏勾选图标区域，减少左边距
+    .select-item-check {
+      display: none;
+    }
+  }
+  
+  // 当处于键盘导航模式时，禁用 :hover 效果
+  &.keyboard-nav .select-item:hover:not(.highlighted) {
+    background-color: transparent;
+    color: inherit;
+  }
+  
+  // 当不处于键盘导航模式时，:hover 正常生效
+  &:not(.keyboard-nav) .select-item:hover {
+    background-color: var(--ws-dropdown-hoverBackground);
+    color: var(--ws-dropdown-hoverForeground);
   }
 
   // 搜索框样式
