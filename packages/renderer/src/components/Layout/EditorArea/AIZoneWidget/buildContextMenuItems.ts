@@ -266,6 +266,7 @@ export async function buildLevel2MenuItems(
               const depth = getDepth(folder.path);
               
               // 创建左侧图标（箭头 + 文件夹图标）
+              // 统一使用 chevron-right 图标，展开时旋转90度
               const leftIcon = React.createElement(
                 'span',
                 { 
@@ -275,11 +276,22 @@ export async function buildLevel2MenuItems(
                     gap: '6px'
                   } 
                 },
-                React.createElement(Icon, { 
-                  iconSet: 'ui', 
-                  name: isExpanded ? 'chevron-down' : 'chevron-right', 
-                  size: 14 
-                }),
+                React.createElement(
+                  'span',
+                  {
+                    style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.15s ease'
+                    }
+                  },
+                  React.createElement(Icon, { 
+                    iconSet: 'ui', 
+                    name: 'chevron-right', 
+                    size: 14 
+                  })
+                ),
                 React.createElement(Icon, { iconSet: 'ui', name: 'folder', size: 14 })
               );
               

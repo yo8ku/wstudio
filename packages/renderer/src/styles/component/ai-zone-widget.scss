@@ -697,28 +697,38 @@
   scrollbar-width: none;
 }
 
-/* 智能体按钮容器（带共享虚线边框） */
-.ai-zone-agent-btn-container {
+/* 工具栏按钮容器共用样式（智能体、网络搜索等） */
+.ai-zone-agent-btn-container,
+.ai-zone-web-search-btn-container {
   border-radius: 4px;
   transition: border-color 0.15s ease;
+}
 
-  &.has-selected-agents {
-    border: 1px dashed;
+// 选中状态共用样式
+.ai-zone-agent-btn-container.has-selected-agents,
+.ai-zone-web-search-btn-container.has-selected-engine {
+  border: 1px dashed;
+}
+
+// 容器虚线边框（暗色主题）
+[data-theme-mode='dark'] {
+  .ai-zone-agent-btn-container.has-selected-agents,
+  .ai-zone-web-search-btn-container.has-selected-engine {
+    border-color: #6d6a6a;
   }
 }
 
-// 智能体容器虚线边框（暗色主题）
-[data-theme-mode='dark'] .ai-zone-agent-btn-container.has-selected-agents {
-  border-color: #6d6a6a;
+// 容器虚线边框（亮色主题）
+[data-theme-mode='light'] {
+  .ai-zone-agent-btn-container.has-selected-agents,
+  .ai-zone-web-search-btn-container.has-selected-engine {
+    border-color: #585858;
+  }
 }
 
-// 智能体容器虚线边框（亮色主题）
-[data-theme-mode='light'] .ai-zone-agent-btn-container.has-selected-agents {
-  border-color: #585858;
-}
-
-/* 选中智能体项 */
-.ai-zone-selected-agent-item {
+/* 选中项共用样式（智能体、网络搜索等） */
+.ai-zone-selected-agent-item,
+.ai-zone-selected-search-engine-display {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -731,7 +741,15 @@
   transition: background-color 0.1s ease;
 }
 
-/* 选中智能体图标容器 */
+// 网络搜索选中项额外样式
+.ai-zone-selected-search-engine-display {
+  border: none;
+  background: transparent;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+/* 选中项图标容器共用样式 */
 .ai-zone-selected-agent-icon {
   display: flex;
   align-items: center;
@@ -747,22 +765,27 @@
   }
 }
 
-/* 选中智能体名称 */
-.ai-zone-selected-agent-name {
+/* 选中项名称共用样式 */
+.ai-zone-selected-agent-name,
+.ai-zone-selected-search-engine-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 80px;
   flex-shrink: 0;
+  font-size: 11px;
+  color: var(--ws-foreground);
 }
 
-/* 移除智能体按钮 */
-.ai-zone-selected-agent-remove {
+/* 移除按钮共用样式（智能体、网络搜索等） */
+.ai-zone-selected-agent-remove,
+.ai-zone-selected-search-engine-remove {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
+  margin-left: 2px;
   padding: 0;
   background: transparent;
   border: none;
@@ -784,34 +807,12 @@
   }
 }
 
-/* 网络搜索按钮容器（带共享虚线边框） */
-.ai-zone-web-search-btn-container {
-  padding: 2px;
-  border-radius: 4px;
-  transition: border-color 0.15s ease;
-
-  &.has-selected-engine {
-    border: 1px dashed;
-  }
-}
-
-// 网络搜索容器虚线边框（暗色主题）
-[data-theme-mode='dark'] .ai-zone-web-search-btn-container.has-selected-engine {
-  border-color: #6d6a6a;
-}
-
-// 网络搜索容器虚线边框（亮色主题）
-[data-theme-mode='light'] .ai-zone-web-search-btn-container.has-selected-engine {
-  border-color: #585858;
-}
-
 /* 选中的搜索引擎显示 */
 .ai-zone-selected-search-engine {
   display: flex;
   align-items: center;
   padding: 4px 6px;
   border-radius: 3px;
-  background: var(--ws-input-background);
   font-size: 11px;
   color: var(--ws-foreground);
   flex-shrink: 0;
@@ -1096,6 +1097,11 @@
       background-color: var(--ws-dropdown-hoverBackground);
       color: var(--ws-dropdown-hoverForeground);
     }
+    
+    // 隐藏勾选图标区域，减少左边距
+    .select-item-check {
+      display: none;
+    }
   }
 }
 
@@ -1135,28 +1141,7 @@
   }
 }
 
-// 显示选中搜索引擎的元素
-.ai-zone-selected-search-engine-display {
-      display: flex;
-      align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  line-height: 14px;
-  font-size: 12px;
-  color: var(--ws-foreground);
-  white-space: nowrap;
-  // 移除单独的边框，使用容器的统一边框
-  border: none;
-  background: transparent;
-  // 右侧圆角，与容器保持一致
-  border-top-right-radius: 4px;
-  border-bottom-right-radius: 4px;
-  
-  .ai-zone-selected-search-engine-name {
-    font-size: 12px;
-    color: var(--ws-foreground);
-  }
-}
+// 网络搜索选中项样式已在上方共用样式中定义
 
 // 网络搜索菜单样式（与 AI 智能体菜单一致）
 .ai-zone-web-search-select {
@@ -1178,6 +1163,8 @@
   position: fixed !important;
   z-index: 100 !important;
   max-height: 300px !important;
+  width: 120px !important;
+  min-width: unset !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
   background-color: var(--ws-dropdown-background) !important;
   display: flex !important;

@@ -200,6 +200,7 @@ export class AIZoneWidget {
   private moreFilesMenuTimeout: number | null = null; // 更多文件菜单延迟关闭定时器
   private aiAgentBtn: HTMLButtonElement | null = null; // AI智能体按钮元素
   private expandedFolders: Set<string> = new Set(); // 展开的文件夹路径集合
+  private isFolderToggling: boolean = false; // 防止文件夹展开/折叠操作重复触发
   private deepThinkingEnabled: boolean = true; // 深度思考开关状态
   private borderElement: HTMLElement | null = null; // 顶部边框元素（不在 ai-zone-container 内部）
   private isLayoutChanging: boolean = false; // 标记是否正在处理布局变化（窗口大小变化等）
@@ -756,6 +757,9 @@ export class AIZoneWidget {
               if (this.isAgentMenuOpen) {
                 this.closeAgentMenu();
               }
+              if (this.isWebSearchMenuOpen) {
+                this.closeWebSearchMenu();
+              }
               this.closeHistoryMenu();
             } else {
               this.enableEditorScroll();
@@ -932,6 +936,16 @@ export class AIZoneWidget {
         this.isDropdownOpen = isOpen;
         if (isOpen) {
           this.disableEditorScroll();
+          if (this.isContextMenuOpen) {
+            this.closeContextMenu();
+          }
+          if (this.isAgentMenuOpen) {
+            this.closeAgentMenu();
+          }
+          if (this.isWebSearchMenuOpen) {
+            this.closeWebSearchMenu();
+          }
+          this.closeHistoryMenu();
         } else {
           this.enableEditorScroll();
         }
@@ -2397,12 +2411,31 @@ export class AIZoneWidget {
     // 设置内联聊天打开时的选择变化监听器（点击其他地方会移除高亮）
     this.setupSelectionListener();
 
-    // 添加全局监听器，防止点击下拉菜单时关闭内联聊天
+    // 添加全局监听器，防止点击下拉菜单时关闭内联聊天，并处理点击外部关闭菜单
     this.dropdownClickHandler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       
       // 如果点击在 TipTap/ProseMirror 编辑器内，不做任何处理（允许正常的文本选择）
       if (target.closest('.ProseMirror') || target.closest('.tiptap-editor') || target.closest('.tiptap-input-wrapper')) {
+        // 关闭所有打开的菜单
+        // 注意：输入框触发的 @ 菜单由 TipTap 控制，不需要在这里关闭
+        // 但工具栏触发的 @ 菜单需要关闭
+        if (this.isWebSearchMenuOpen) {
+          this.closeWebSearchMenu();
+        }
+        if (this.isAgentMenuOpen) {
+          this.closeAgentMenu();
+        }
+        if (this.isDropdownOpen && this.closeDropdownFn) {
+          this.closeDropdownFn();
+        }
+        if (this.isHistoryOpen) {
+          this.closeHistoryMenu();
+        }
+        // 如果是工具栏触发的 @ 菜单，也需要关闭
+        if (this.isContextMenuOpen && !this.isInputMenuTriggered) {
+          this.closeContextMenu();
+        }
         return;
       }
       
@@ -2411,6 +2444,32 @@ export class AIZoneWidget {
         target.closest('.custom-select-dropdown')) {
         e.stopPropagation();
         e.stopImmediatePropagation();
+        return;
+      }
+      
+      // 检查点击是否在内联聊天容器内但不在任何菜单内
+      const isInAiZoneContainer = target.closest('.ai-zone-container');
+      const isInSelectContent = target.closest('.select-content');
+      const isInWebSearchMenu = target.closest('.ai-zone-web-search-select-content');
+      const isInAgentMenu = target.closest('.ai-zone-agent-select-content');
+      const isInContextMenu = target.closest('.ai-zone-context-select-content');
+      const isInHistoryMenu = target.closest('.ai-zone-history-menu');
+      
+      // 如果点击不在任何菜单内，关闭所有打开的菜单
+      if (!isInSelectContent && !isInWebSearchMenu && !isInAgentMenu && !isInContextMenu && !isInHistoryMenu) {
+        if (this.isWebSearchMenuOpen) {
+          this.closeWebSearchMenu();
+        }
+        if (this.isAgentMenuOpen) {
+          this.closeAgentMenu();
+        }
+        if (this.isContextMenuOpen) {
+          this.closeContextMenu();
+        }
+        if (this.isHistoryOpen) {
+          this.closeHistoryMenu();
+        }
+        // 模型下拉框由 Select 组件自己处理点击外部关闭
       }
     };
     // 使用捕获阶段，优先级高于 Monaco 的事件监听器
@@ -5454,22 +5513,27 @@ export class AIZoneWidget {
         }
       }
       
-      // 如果有需要保持选中的值，查找其索引；否则默认选中第一项
+      // 如果有需要保持选中的值，查找其索引；否则不设置默认选中项
+      // 鼠标点击进入菜单时，不应该有默认选中项，避免与鼠标悬停冲突
       if (keepSelectedValue) {
         const keepIndex = this.contextMenuFlatItems.findIndex(item => item.value === keepSelectedValue);
-        this.contextMenuHighlightedIndex = keepIndex >= 0 ? keepIndex : 0;
+        this.contextMenuHighlightedIndex = keepIndex >= 0 ? keepIndex : -1;
       } else {
-        this.contextMenuHighlightedIndex = 0;
+        // 不设置默认选中项，让用户通过鼠标悬停或键盘导航来选择
+        this.contextMenuHighlightedIndex = -1;
       }
       
       // 更新 TipTap 的 @ 菜单状态（用于键盘导航）
       this.updateTipTapMenuState();
       
-      // 菜单渲染后，高亮选中项
+      // 菜单渲染后，更新高亮状态
       // 使用双重 requestAnimationFrame 确保 DOM 完全更新
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          this.updateContextMenuHighlight();
+          // 只有当有选中项时才更新高亮
+          if (this.contextMenuHighlightedIndex >= 0) {
+            this.updateContextMenuHighlight();
+          }
           // 再次更新位置以确保正确显示
           if (this.contextMenuPositionUpdateHandler) {
             this.contextMenuPositionUpdateHandler();
@@ -5565,22 +5629,27 @@ export class AIZoneWidget {
         }
       }
       
-      // 如果有需要保持选中的值，查找其索引；否则默认选中第一项
+      // 如果有需要保持选中的值，查找其索引；否则不设置默认选中项
+      // 鼠标点击进入菜单时，不应该有默认选中项，避免与鼠标悬停冲突
       if (keepSelectedValue) {
         const keepIndex = this.contextMenuFlatItems.findIndex(item => item.value === keepSelectedValue);
-        this.contextMenuHighlightedIndex = keepIndex >= 0 ? keepIndex : 0;
+        this.contextMenuHighlightedIndex = keepIndex >= 0 ? keepIndex : -1;
       } else {
-        this.contextMenuHighlightedIndex = 0;
+        // 不设置默认选中项，让用户通过鼠标悬停或键盘导航来选择
+        this.contextMenuHighlightedIndex = -1;
       }
       
       // 更新 TipTap 的 @ 菜单状态（用于键盘导航）
       this.updateTipTapMenuState();
       
-      // 菜单渲染后，高亮选中项
+      // 菜单渲染后，更新高亮状态
       // 使用双重 requestAnimationFrame 确保 DOM 完全更新
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          this.updateContextMenuHighlight();
+          // 只有当有选中项时才更新高亮
+          if (this.contextMenuHighlightedIndex >= 0) {
+            this.updateContextMenuHighlight();
+          }
           // 再次更新位置以确保正确显示
           if (this.contextMenuPositionUpdateHandler) {
             this.contextMenuPositionUpdateHandler();
@@ -5640,6 +5709,12 @@ export class AIZoneWidget {
       this.isInputMenuTriggered = false;
     } else if (value.startsWith('folder-')) {
       // 文件夹展开/折叠处理
+      // 防止重复触发（回车键和 onChange 可能同时触发）
+      if (this.isFolderToggling) {
+        return;
+      }
+      this.isFolderToggling = true;
+      
       const folderPath = value.replace('folder-', '');
       
       // 保存当前选中的文件夹值，用于展开后恢复选中状态
@@ -5654,6 +5729,11 @@ export class AIZoneWidget {
       
       // 重新渲染菜单以反映展开状态变化（传递 useInputMenu 参数，并保持选中状态）
       await this.renderMenuLevel2(useInputMenu, currentSelectedValue);
+      
+      // 延迟重置防抖标记，确保渲染完成后才允许下一次操作
+      setTimeout(() => {
+        this.isFolderToggling = false;
+      }, 100);
     } else if (value.startsWith('kb-')) {
       // 知识库选项（从二级菜单选择）
       this.closeContextMenu();
@@ -5750,6 +5830,8 @@ export class AIZoneWidget {
     this.currentCategory = null;
     // 清空展开状态
     this.expandedFolders.clear();
+    // 重置文件夹展开/折叠防抖标记
+    this.isFolderToggling = false;
     // 重置高亮索引
     this.contextMenuHighlightedIndex = 0;
     this.contextMenuFlatItems = [];
@@ -6769,7 +6851,7 @@ export class AIZoneWidget {
     // 构建菜单项
     const menuGroups: SelectGroup[] = [
       {
-        groupName: 'AI 智能体',
+        groupName: '',
         items: agents.length > 0
           ? agents.map(agent => ({
               value: agent.id,
@@ -6968,23 +7050,39 @@ export class AIZoneWidget {
       this.webSearchButton.classList.add('active');
       this.webSearchBtnContainer.classList.add('has-selected-engine');
       
-      // 显示选中的搜索引擎（显示图标和名称，类似智能体）
+      // 显示选中的搜索引擎（只显示名称和关闭按钮）
       this.selectedSearchEngineDisplay.innerHTML = '';
-      const iconContainer = document.createElement('span');
-      const iconRoot = createRoot(iconContainer);
-      iconRoot.render(
-        React.createElement(Icon, {
-          iconSet: 'ui',
-          name: this.currentSearchEngine,
-          size: 14
-        })
-      );
-      this.selectedSearchEngineDisplay.appendChild(iconContainer);
       
       const nameSpan = document.createElement('span');
       nameSpan.textContent = SEARCH_ENGINES[this.currentSearchEngine].displayName;
       nameSpan.className = 'ai-zone-selected-search-engine-name';
       this.selectedSearchEngineDisplay.appendChild(nameSpan);
+      
+      // 添加关闭按钮
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'ai-zone-selected-search-engine-remove';
+      removeBtn.title = '关闭网络搜索';
+      removeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.isWebSearchEnabled = false;
+        this.updateWebSearchButton();
+      });
+      
+      // 创建关闭图标
+      const removeIconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      removeIconSvg.setAttribute('viewBox', '0 0 16 16');
+      removeIconSvg.setAttribute('width', '12');
+      removeIconSvg.setAttribute('height', '12');
+      removeIconSvg.setAttribute('fill', 'none');
+      
+      const removePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      removePath.setAttribute('d', 'M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z');
+      removePath.setAttribute('fill', 'currentColor');
+      removeIconSvg.appendChild(removePath);
+      removeBtn.appendChild(removeIconSvg);
+      
+      this.selectedSearchEngineDisplay.appendChild(removeBtn);
       
       this.selectedSearchEngineDisplay.style.display = 'flex';
     } else {

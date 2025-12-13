@@ -172,11 +172,16 @@ export const TipTapInput = forwardRef<TipTapInputRef, TipTapInputProps>(
           // Escape 关闭
           if (event.key === 'Escape') {
             event.preventDefault();
-            if (onAtCancel) {
-              onAtCancel();
-            }
-            if (onEscape) {
-              onEscape();
+            // 如果 @ 菜单打开，只关闭菜单，不关闭内联聊天
+            if (isAtMenuOpenRef.current) {
+              if (onAtCancel) {
+                onAtCancel();
+              }
+            } else {
+              // @ 菜单未打开，关闭内联聊天
+              if (onEscape) {
+                onEscape();
+              }
             }
             return true;
           }
@@ -202,6 +207,10 @@ export const TipTapInput = forwardRef<TipTapInputRef, TipTapInputProps>(
           });
           onFileReferencesChange(refs);
         }
+      },
+      // 光标位置变化时也检测 @ 符号（用于处理光标移动到 @ 左边/右边的情况）
+      onSelectionUpdate: () => {
+        checkAtTrigger();
       },
     });
 
