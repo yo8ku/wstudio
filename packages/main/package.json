@@ -11,9 +11,10 @@
     "test:compatibility": "ts-node src/services/CompatibilityService.example.ts"
   },
   "dependencies": {
-    "@note-studio/theme": "workspace:*",
+    "@lancedb/lancedb": "^0.22.3",
     "@note-studio/global-rag": "workspace:*",
     "@note-studio/shared": "workspace:*",
+    "@note-studio/theme": "workspace:*",
     "better-sqlite3": "^11.0.0",
     "electron": "^27.0.0",
     "electron-store": "^8.2.0",

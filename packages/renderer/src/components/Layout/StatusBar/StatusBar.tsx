@@ -26,7 +26,15 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     "file" | "settings" | "ai-config" | "markdown-preview" | "knowledge" | null
   >("file");
 
-  // 索引进度状态
+  // 工作区向量索引进度状态
+  const [vectorIndexingProgress, setVectorIndexingProgress] = useState<{
+    totalFiles: number;
+    processedFiles: number;
+    currentFile: string | null;
+    status: 'idle' | 'scanning' | 'indexing' | 'paused' | 'completed' | 'error';
+  } | null>(null);
+
+  // 索引进度状态（主进程的文件索引）
   const [indexingProgress, setIndexingProgress] = useState<{
     totalFiles: number;
     processedFiles: number;
@@ -281,7 +289,28 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   }, []);
 
-  // 监听索引进度事件
+  // 监听工作区向量索引服务进度（通过 IPC）
+  useEffect(() => {
+    const ipcRenderer = window.electron?.ipcRenderer;
+    if (!ipcRenderer) {
+      console.warn("[StatusBar] IPC 不可用，无法监听向量索引进度");
+      return;
+    }
+
+    console.log("[StatusBar] 开始监听工作区向量索引进度");
+
+    const unsubscribe = ipcRenderer.on('workspace-vector-index:progress', (_event: any, progress: any) => {
+      console.log("[StatusBar] 收到向量索引进度:", progress);
+      setVectorIndexingProgress(progress);
+    });
+
+    return () => {
+      console.log("[StatusBar] 取消监听向量索引进度");
+      unsubscribe();
+    };
+  }, []);
+
+  // 监听索引进度事件（主进程的文件索引）
   useEffect(() => {
     const electron = (window as any).electron;
     if (!electron?.workspaceIndex?.onProgress) {
@@ -367,11 +396,11 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       <div className="status-bar">
         {/* 左侧：扩展状态*/}
         <div className="status-bar-left">
-          {/* 索引进度显示 */}
+          {/* 主进程索引进度显示 */}
           {indexingProgress && (
             <div className="status-bar-indexing">
               <Icon
-                name="refresh"
+                name="sync"
                 size={14}
                 style={{
                   animation: "spin 1s linear infinite",
@@ -404,6 +433,49 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
 
           {/* 大纲 - 当侧边栏在左边时显示在左边 */}
           {sidebarPosition === 'left' && <OutlineIcon />}
+
+          {/* 向量索引进度显示 - 在大纲图标右侧 */}
+          {vectorIndexingProgress && (vectorIndexingProgress.status === 'scanning' || vectorIndexingProgress.status === 'indexing') && (
+            <div 
+              className="status-bar-indexing" 
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}
+              title={vectorIndexingProgress.currentFile || '正在索引工作区文件...'}
+            >
+              <Icon
+                name="sync"
+                size={12}
+                style={{
+                  animation: "spin 1s linear infinite",
+                  display: "inline-flex",
+                  opacity: 0.8,
+                }}
+              />
+              <span className="status-bar-text" style={{ fontSize: '11px', opacity: 0.9 }}>
+                {vectorIndexingProgress.status === 'scanning' ? '扫描中' : '索引'}
+              </span>
+              {/* 进度条 */}
+              <div style={{ 
+                width: '60px', 
+                height: '4px', 
+                backgroundColor: 'var(--ws-input-background, rgba(255,255,255,0.1))', 
+                borderRadius: '2px',
+                overflow: 'hidden'
+              }}>
+                <div style={{ 
+                  width: vectorIndexingProgress.totalFiles > 0 
+                    ? `${(vectorIndexingProgress.processedFiles / vectorIndexingProgress.totalFiles) * 100}%` 
+                    : '0%',
+                  height: '100%',
+                  backgroundColor: 'var(--ws-button-background, #0e639c)',
+                  borderRadius: '2px',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+              <span className="status-bar-text" style={{ fontSize: '10px', opacity: 0.7 }}>
+                {vectorIndexingProgress.processedFiles}/{vectorIndexingProgress.totalFiles}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* 右侧：编辑器状态*/}

@@ -87,6 +87,19 @@ interface StoreSchema {
     presencePenalty: number;
     frequencyPenalty: number;
   };
+  
+  // 工作区向量索引信息
+  'workspace-vector-index': {
+    [workspaceHash: string]: {
+      [filePath: string]: {
+        filePath: string;
+        lastModified: number;
+        size: number;
+        indexed: boolean;
+        indexedAt?: number;
+      };
+    };
+  };
 }
 
 /**

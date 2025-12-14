@@ -231,6 +231,11 @@ export interface ElectronIPC {
     on: (channel: string, callback: (event: any, ...args: any[]) => void) => () => void;
     removeListener: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
   };
+  fs?: {
+    readFile: (filePath: string, encoding?: string) => Promise<string>;
+    writeFile: (filePath: string, content: string, encoding?: string) => Promise<{ success: boolean }>;
+    exists: (filePath: string) => Promise<boolean>;
+  };
   file?: {
     open: () => Promise<FileResult>;
     read: (filePath: string) => Promise<FileResult>;
@@ -326,6 +331,24 @@ export interface ElectronIPC {
       languages: Record<string, number>;
     }>>;
     clear: () => Promise<APIResponse>;
+  };
+  workspaceVectorIndex?: {
+    start: (workspacePath: string) => Promise<APIResponse>;
+    stop: () => Promise<APIResponse>;
+    getProgress: () => Promise<APIResponse<{
+      totalFiles: number;
+      processedFiles: number;
+      currentFile: string | null;
+      status: 'idle' | 'scanning' | 'indexing' | 'completed' | 'error';
+      errorMessage?: string;
+    }>>;
+    onProgress: (callback: (progress: {
+      totalFiles: number;
+      processedFiles: number;
+      currentFile: string | null;
+      status: 'idle' | 'scanning' | 'indexing' | 'completed' | 'error';
+      errorMessage?: string;
+    }) => void) => () => void;
   };
 }
 

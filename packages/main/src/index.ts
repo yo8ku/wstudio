@@ -16,7 +16,8 @@ import { registerInlineChatHistoryHandlers } from './ipc/inlineChatHistoryHandle
 import { registerTerminalHandlers } from './ipc/terminalHandlers';
 import { registerAIModelHandlers } from './ipc/aiModelHandlers';
 import { registerFileReferenceHandlers } from './ipc/fileReferenceHandlers';
-import { registerWorkspaceIndexHandlers, setWorkspaceIndexMainWindow, getWorkspaceIndexService } from './ipc/workspaceIndexHandlers';
+import { registerWorkspaceVectorIndexHandlers, setWorkspaceVectorIndexMainWindow } from './ipc/workspaceVectorIndexHandlers';
+import { registerWorkspaceIndexDbHandlers, setWorkspaceIndexDbMainWindow } from './ipc/workspaceIndexDbHandlers';
 import { ThemeService } from './services/ThemeService';
 import { TerminalService } from './services/terminal/TerminalService';
 import * as path from 'path';
@@ -101,8 +102,11 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   // 注册文件引用 IPC 处理器
   registerFileReferenceHandlers();
   
-  // 注册工作区索引 IPC 处理器
-  registerWorkspaceIndexHandlers();
+  // 注册工作区向量索引 IPC 处理器
+  registerWorkspaceVectorIndexHandlers();
+  
+  // 注册工作区索引数据库 IPC 处理器
+  registerWorkspaceIndexDbHandlers();
   
   // 初始化终端服务并注册处理器（只在有 mainWindow 时）
   if (mainWindow && !terminalService) {
@@ -119,40 +123,13 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   
   // 如果提供了主窗口，设置索引服务的主窗口（用于发送进度事件）
   if (mainWindow) {
-    setWorkspaceIndexMainWindow(mainWindow);
+    setWorkspaceVectorIndexMainWindow(mainWindow);
+    setWorkspaceIndexDbMainWindow(mainWindow);
   }
 
-  // 检查是否首次启动，如果是则索引工作区
-  const workspaceDir = workspaceManager.getWorkspaceDir();
-  if (workspaceDir) {
-    try {
-      // 使用 workspaceIndexHandlers 中的同一个服务实例，确保主窗口设置生效
-      const indexService = getWorkspaceIndexService();
-      // 如果提供了主窗口，设置主窗口以便发送进度事件
-      if (mainWindow) {
-        indexService.setMainWindow(mainWindow);
-      }
-      await indexService.initialize();
-      
-      // 检查索引是否已存在
-      const stats = await indexService.getIndexStats();
-      
-      // 如果索引为空或文件数量很少，执行索引
-      if (stats.totalFiles === 0) {
-        // 在后台异步执行索引，不阻塞应用启动
-        indexService.indexWorkspace(workspaceDir).then((result) => {
-          console.log(`[Main] 工作区索引完成: 成功 ${result.indexedFiles} 个文件，失败 ${result.errors.length} 个文件`);
-        }).catch((error) => {
-          console.error('[Main] 工作区索引失败:', error);
-        });
-      }
-      
-      // RAG 文件监听服务已移除（不再使用 Python）
-      console.log('[Main] RAG 服务已初始化（本地模式）');
-    } catch (error) {
-      console.error('[Main] 初始化工作区索引服务失败:', error);
-    }
-  }
+  // 工作区向量索引由 MainLayout.tsx 在渲染进程启动时触发
+  // 不在这里自动启动，避免重复索引
+  console.log('[Main] RAG 服务已初始化（本地模式）');
   
   // 初始化设置管理器
   await settingsManager.initialize();

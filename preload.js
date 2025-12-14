@@ -140,22 +140,16 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('file-reference:search', query, options)
   },
   
-  // 工作区索引 API
-  workspaceIndex: {
-    initialize: () => ipcRenderer.invoke('workspace-index:initialize'),
-    indexWorkspace: (workspacePath) => ipcRenderer.invoke('workspace-index:index-workspace', workspacePath),
-    getProgress: () => ipcRenderer.invoke('workspace-index:get-progress'),
-    isIndexing: () => ipcRenderer.invoke('workspace-index:is-indexing'),
-    search: (options) => ipcRenderer.invoke('workspace-index:search', options),
-    updateFile: (filePath) => ipcRenderer.invoke('workspace-index:update-file', filePath),
-    deleteFile: (filePath) => ipcRenderer.invoke('workspace-index:delete-file', filePath),
-    getStats: () => ipcRenderer.invoke('workspace-index:get-stats'),
-    clear: () => ipcRenderer.invoke('workspace-index:clear'),
+  // 工作区向量索引 API
+  workspaceVectorIndex: {
+    start: (workspacePath) => ipcRenderer.invoke('workspace-vector-index:start', workspacePath),
+    stop: () => ipcRenderer.invoke('workspace-vector-index:stop'),
+    getProgress: () => ipcRenderer.invoke('workspace-vector-index:get-progress'),
     // 监听索引进度事件
     onProgress: (callback) => {
       const subscription = (event, progress) => callback(progress);
-      ipcRenderer.on('workspace-index:progress', subscription);
-      return () => ipcRenderer.removeListener('workspace-index:progress', subscription);
+      ipcRenderer.on('workspace-vector-index:progress', subscription);
+      return () => ipcRenderer.removeListener('workspace-vector-index:progress', subscription);
     }
   },
   

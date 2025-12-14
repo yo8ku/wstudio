@@ -158,6 +158,87 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     initSnippetDatabase();
   }, []);
 
+  // 初始化工作区后台索引服务（使用双 Worker Thread，不阻塞 UI）
+  useEffect(() => {
+    const initWorkspaceIndexing = async () => {
+      try {
+        console.log('[MainLayout] 初始化工作区后台索引服务...');
+
+        const ipcRenderer = window.electron?.ipcRenderer;
+        if (!ipcRenderer) {
+          console.warn('[MainLayout] IPC 不可用，跳过索引');
+          return;
+        }
+
+        // 等待主进程就绪
+        await new Promise<void>((resolve) => {
+          let resolved = false;
+          const doResolve = () => {
+            if (!resolved) {
+              resolved = true;
+              resolve();
+            }
+          };
+
+          ipcRenderer
+            .invoke('workspace-index-db:get-stats')
+            .then(() => doResolve())
+            .catch(() => {
+              const unsubscribe = ipcRenderer.on('main-process:ready', () => {
+                unsubscribe();
+                doResolve();
+              });
+            });
+
+          setTimeout(doResolve, 10000);
+        });
+
+        console.log('[MainLayout] 主进程已就绪');
+
+        // 获取工作区路径
+        const workspaceResult = await window.electron?.workspace?.getDir();
+        if (!workspaceResult?.success || !workspaceResult.data) {
+          console.warn('[MainLayout] 无法获取工作区路径，跳过索引');
+          return;
+        }
+
+        const workspacePath = workspaceResult.data;
+        console.log(`[MainLayout] 启动主进程索引服务: ${workspacePath}`);
+
+        // 监听进度更新
+        const unsubscribe = ipcRenderer.on('workspace-vector-index:progress', (_event: any, progress: any) => {
+          if (progress.status === 'scanning') {
+            console.log('[WorkspaceIndexing] 正在扫描文件...');
+          } else if (progress.status === 'indexing') {
+            console.log(`[WorkspaceIndexing] 进度: ${progress.processedFiles}/${progress.totalFiles}`);
+          } else if (progress.status === 'completed') {
+            console.log('[WorkspaceIndexing] ✓ 索引完成');
+          } else if (progress.status === 'error') {
+            console.error('[WorkspaceIndexing] 索引错误:', progress.errorMessage);
+          }
+        });
+
+        // 启动索引（使用双 Worker，不阻塞 UI）
+        const result = await ipcRenderer.invoke('workspace-vector-index:start', workspacePath);
+        if (!result.success) {
+          console.error('[MainLayout] 启动索引失败:', result.error);
+        }
+
+        return () => {
+          unsubscribe();
+        };
+      } catch (error) {
+        console.error('[MainLayout] 工作区索引服务初始化失败:', error);
+      }
+    };
+
+    initWorkspaceIndexing();
+
+    return () => {
+      window.electron?.ipcRenderer?.invoke('workspace-vector-index:stop').catch(() => {});
+    };
+  }, []);
+
   // 初始化全局命令中心
   useEffect(() => {
     console.log('[MainLayout] 初始化全局命令中心...');

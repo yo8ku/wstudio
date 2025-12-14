@@ -1186,7 +1186,7 @@ export class AIZoneWidget {
     aiAgentBtnContainer.style.alignItems = 'center';
     aiAgentBtnContainer.style.gap = '4px';
     this.aiAgentBtnContainer = aiAgentBtnContainer;
-    
+
     this.agentMenuContainer = document.createElement('div');
     this.agentMenuContainer.style.position = 'absolute';
     this.agentMenuContainer.style.top = '0';
@@ -1208,14 +1208,14 @@ export class AIZoneWidget {
     aiAgentBtn.appendChild(aiAgentIconContainer);
     aiAgentBtnContainer.appendChild(aiAgentBtn);
     aiAgentBtnContainer.appendChild(this.agentMenuContainer);
-    
+
     // 创建选中智能体工具栏（放在智能体图标按钮容器内，按钮旁边）
     const selectedAgentsToolbar = document.createElement('div');
     selectedAgentsToolbar.className = 'ai-zone-selected-agents-toolbar';
     selectedAgentsToolbar.style.display = 'none'; // 默认隐藏，有智能体时显示
     this.selectedAgentsToolbar = selectedAgentsToolbar;
     aiAgentBtnContainer.appendChild(selectedAgentsToolbar);
-    
+
     leftControls.appendChild(aiAgentBtnContainer);
 
     // 深度思考按钮

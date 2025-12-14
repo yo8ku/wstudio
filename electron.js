@@ -24,7 +24,7 @@ Module._resolveFilename = function(request, parent, isMain) {
   return originalResolveFilename.call(this, request, parent, isMain);
 };
 
-const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/main/src/index.js');
+const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
 const embeddingService = require('./packages/main/src/services/EmbeddingService.js');
 
 const logIconPath = path.join(__dirname, 'log', 'log.png');

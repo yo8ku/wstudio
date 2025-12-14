@@ -39,6 +39,7 @@
     "global-service"
   ],
   "dependencies": {
+    "@lancedb/lancedb": "^0.22.3",
     "@langchain/textsplitters": "^1.0.1",
     "@note-studio/shared": "workspace:*",
     "@note-studio/theme": "workspace:*"

@@ -57,6 +57,7 @@ export interface TipTapInputRef {
   clear: () => void;
   insertFileReference: (filePath: string, fileName: string) => void;
   removeFileReference: (filePath: string) => void;
+  clearAllFileReferences: () => void;
   getFileReferences: () => Array<{ path: string; name: string }>;
   /** 更新 @ 菜单状态（用于键盘导航） */
   setAtMenuState: (isOpen: boolean, onNavigate?: (direction: 'up' | 'down') => void, onSelect?: () => void, onBack?: () => void) => void;
@@ -330,6 +331,28 @@ export const TipTapInput = forwardRef<TipTapInputRef, TipTapInputProps>(
           editor.chain()
             .deleteRange(posToDelete)
             .run();
+        }
+      },
+      clearAllFileReferences: () => {
+        if (!editor) return;
+        
+        // 收集所有文件引用节点的位置（从后往前删除，避免位置偏移）
+        const { doc } = editor.state;
+        const positionsToDelete: Array<{ from: number; to: number }> = [];
+        
+        doc.descendants((node, pos) => {
+          if (node.type.name === 'fileReference') {
+            positionsToDelete.push({ from: pos, to: pos + node.nodeSize });
+          }
+        });
+        
+        // 从后往前删除，避免位置偏移问题
+        if (positionsToDelete.length > 0) {
+          let chain = editor.chain();
+          for (let i = positionsToDelete.length - 1; i >= 0; i--) {
+            chain = chain.deleteRange(positionsToDelete[i]);
+          }
+          chain.run();
         }
       },
       getFileReferences: () => {
