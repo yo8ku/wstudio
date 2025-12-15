@@ -9,6 +9,7 @@ import type { EditorInfo, FileTreeNode } from '../../../Explorer';
 import { electronStore } from '../../../../services/ElectronStoreService';
 import { useExplorerStore } from '../../../../stores/explorerStore';
 import { modal } from '../../../../stores/modalStore';
+import { toastService } from '../../../../services/ToastService';
 
 export const FileExplorer: React.FC = () => {
   // 从 store 获取文件树数据
@@ -1072,6 +1073,70 @@ export const FileExplorer: React.FC = () => {
     }
   }, []);
 
+  // 立即索引文件
+  const handleIndexFile = useCallback(async (targetPath: string) => {
+    try {
+      console.log('[FileExplorer] 立即索引文件:', targetPath);
+      
+      const ipcRenderer = window.electron?.ipcRenderer;
+      if (!ipcRenderer) {
+        console.error('[FileExplorer] IPC 不可用');
+        toastService.error('索引失败', { description: 'IPC 不可用' });
+        return;
+      }
+
+      // 显示开始索引提示
+      const fileName = targetPath.split(/[/\\]/).pop() || targetPath;
+      toastService.info('开始索引', { description: fileName, duration: 2000 });
+
+      // 使用单文件索引 API，只索引选中的文件
+      const result = await ipcRenderer.invoke('workspace-vector-index:index-file', targetPath);
+      
+      if (result?.success) {
+        console.log('[FileExplorer] 文件索引完成');
+        // 通知由 MainLayout 的进度监听处理
+      } else {
+        console.error('[FileExplorer] 文件索引失败:', result?.error);
+        toastService.error('索引失败', { description: result?.error || '未知错误' });
+      }
+    } catch (error) {
+      console.error('[FileExplorer] 索引文件出错:', error);
+      toastService.error('索引失败', { description: String(error) });
+    }
+  }, []);
+
+  // 立即索引文件夹
+  const handleIndexFolder = useCallback(async (targetPath: string) => {
+    try {
+      console.log('[FileExplorer] 立即索引文件夹:', targetPath);
+      
+      const ipcRenderer = window.electron?.ipcRenderer;
+      if (!ipcRenderer) {
+        console.error('[FileExplorer] IPC 不可用');
+        toastService.error('索引失败', { description: 'IPC 不可用' });
+        return;
+      }
+
+      // 显示开始索引提示
+      const folderName = targetPath.split(/[/\\]/).pop() || targetPath;
+      toastService.info('开始索引文件夹', { description: folderName, duration: 2000 });
+
+      // 触发指定文件夹的索引
+      const result = await ipcRenderer.invoke('workspace-vector-index:start', targetPath);
+      
+      if (result?.success) {
+        console.log('[FileExplorer] 索引已启动');
+        // 通知由 MainLayout 的进度监听处理
+      } else {
+        console.error('[FileExplorer] 启动索引失败:', result?.error);
+        toastService.error('索引失败', { description: result?.error || '未知错误' });
+      }
+    } catch (error) {
+      console.error('[FileExplorer] 索引文件夹出错:', error);
+      toastService.error('索引失败', { description: String(error) });
+    }
+  }, []);
+
   // 监听右键菜单的文件操作事件
   useEffect(() => {
     const handleFileAction = (event: Event) => {
@@ -1113,6 +1178,18 @@ export const FileExplorer: React.FC = () => {
             handleRevealInExplorer(node.path);
           }
           break;
+        case 'index-file':
+          // 立即索引文件
+          if (node?.path) {
+            handleIndexFile(node.path);
+          }
+          break;
+        case 'index-folder':
+          // 立即索引文件夹
+          if (node?.path) {
+            handleIndexFolder(node.path);
+          }
+          break;
         default:
           // 其他操作暂不处理
           break;
@@ -1124,7 +1201,7 @@ export const FileExplorer: React.FC = () => {
     return () => {
       window.removeEventListener('explorer-file-action', handleFileAction as EventListener);
     };
-  }, [addCreatingNodeInFolder, startRename, handleDelete, handleRevealInExplorer]);
+  }, [addCreatingNodeInFolder, startRename, handleDelete, handleRevealInExplorer, handleIndexFile, handleIndexFolder]);
 
   return (
     <>

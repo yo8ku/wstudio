@@ -314,7 +314,18 @@ export class WorkspaceVectorIndexService {
 
       case 'scan-complete':
         console.log(`[WorkspaceVectorIndexService] 扫描完成: ${result.files?.length || 0} 个文件`);
-        this.pendingFiles = result.files || [];
+        // 增量索引：过滤掉已索引且未修改的文件
+        const allFiles = result.files || [];
+        this.pendingFiles = await this.filterFilesForIndexing(allFiles);
+        console.log(`[WorkspaceVectorIndexService] 需要索引: ${this.pendingFiles.length} 个文件（跳过 ${allFiles.length - this.pendingFiles.length} 个已索引文件）`);
+        
+        if (this.pendingFiles.length === 0) {
+          console.log('[WorkspaceVectorIndexService] ✓ 所有文件已是最新，无需索引');
+          this.updateProgress({ status: 'completed', totalFiles: 0, processedFiles: 0, currentFile: null });
+          this.cleanup();
+          return;
+        }
+        
         this.updateProgress({ status: 'indexing', totalFiles: this.pendingFiles.length, processedFiles: 0 });
         this.processNextFile();
         break;
@@ -333,6 +344,42 @@ export class WorkspaceVectorIndexService {
         this.processNextFile();
         break;
     }
+  }
+
+  /**
+   * 过滤需要索引的文件（增量索引）
+   * 只返回新文件或已修改的文件
+   */
+  private async filterFilesForIndexing(allFiles: string[]): Promise<string[]> {
+    const indexedFilesMap = workspaceIndexDatabase.getIndexedFilesMap();
+    const filesToIndex: string[] = [];
+    
+    for (const filePath of allFiles) {
+      const indexedAt = indexedFilesMap.get(filePath);
+      
+      if (indexedAt === undefined) {
+        // 新文件，需要索引
+        filesToIndex.push(filePath);
+      } else {
+        // 已索引，检查是否修改过
+        try {
+          const stats = fs.statSync(filePath);
+          const mtime = stats.mtimeMs;
+          
+          if (mtime > indexedAt) {
+            // 文件已修改，删除旧数据后重新索引
+            console.log(`[WorkspaceVectorIndexService] 文件已修改，重新索引: ${path.basename(filePath)}`);
+            await workspaceIndexDatabase.deleteFileData(filePath);
+            filesToIndex.push(filePath);
+          }
+          // 否则跳过（文件未修改）
+        } catch (e) {
+          // 无法获取文件信息，跳过
+        }
+      }
+    }
+    
+    return filesToIndex;
   }
 
   private processNextFile(): void {
@@ -412,6 +459,106 @@ export class WorkspaceVectorIndexService {
 
   getProgress(): IndexingProgress {
     return { ...this.progress };
+  }
+
+  /**
+   * 删除文件的索引数据（当文件被删除时调用）
+   */
+  async deleteFileIndex(filePath: string): Promise<void> {
+    try {
+      await workspaceIndexDatabase.initialize();
+      await workspaceIndexDatabase.deleteFileData(filePath);
+      console.log(`[WorkspaceVectorIndexService] ✓ 已删除文件索引: ${path.basename(filePath)}`);
+    } catch (error) {
+      console.error(`[WorkspaceVectorIndexService] 删除文件索引失败: ${filePath}`, error);
+    }
+  }
+
+  /**
+   * 索引单个文件（右键菜单"立即索引"）
+   */
+  async indexSingleFile(filePath: string): Promise<void> {
+    if (this.isRunning) {
+      console.log('[WorkspaceVectorIndexService] 索引已在运行中，请稍后再试');
+      return;
+    }
+
+    console.log(`[WorkspaceVectorIndexService] ========== 索引单个文件 ==========`);
+    console.log(`[WorkspaceVectorIndexService] 文件: ${filePath}`);
+
+    this.isRunning = true;
+    this.shouldStop = false;
+    this.updateProgress({ status: 'indexing', totalFiles: 1, processedFiles: 0, currentFile: filePath });
+
+    try {
+      // 初始化数据库
+      await workspaceIndexDatabase.initialize();
+
+      // 删除旧的索引数据（如果存在）
+      await workspaceIndexDatabase.deleteFileData(filePath);
+
+      // 创建 Embedding 子进程
+      await this.createEmbeddingChild();
+
+      // 创建 Worker 处理单个文件
+      this.indexingWorker = this.createIndexingWorker();
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('索引超时'));
+        }, 120000);
+
+        this.indexingWorker!.on('message', async (result: IndexResult) => {
+          if (result.type === 'ready') {
+            // Worker 就绪，发送索引请求
+            this.indexingWorker!.postMessage({ type: 'index-file', filePath });
+          } else if (result.type === 'chunk-ready' && result.chunks?.length) {
+            // 处理 chunks
+            await this.processChunks(result.filePath!, result.chunks, result.fileSize || 0);
+            clearTimeout(timeout);
+            resolve();
+          } else if (result.type === 'file-skipped' || result.type === 'file-error') {
+            clearTimeout(timeout);
+            if (result.type === 'file-error') {
+              console.warn(`[WorkspaceVectorIndexService] 文件处理失败: ${result.error}`);
+            }
+            resolve();
+          }
+        });
+      });
+
+      this.updateProgress({ status: 'completed', processedFiles: 1, currentFile: null });
+      console.log(`[WorkspaceVectorIndexService] ✓ 单文件索引完成: ${path.basename(filePath)}`);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[WorkspaceVectorIndexService] 单文件索引失败:`, errorMsg);
+      this.updateProgress({ status: 'error', errorMessage: errorMsg });
+    } finally {
+      this.cleanup();
+    }
+  }
+
+  /**
+   * 删除目录下所有文件的索引数据（当目录被删除时调用）
+   */
+  async deleteDirectoryIndex(dirPath: string): Promise<void> {
+    try {
+      await workspaceIndexDatabase.initialize();
+      const indexedFiles = workspaceIndexDatabase.getAllIndexedFiles();
+      
+      // 找出该目录下的所有已索引文件
+      const filesToDelete = indexedFiles.filter(file => 
+        file.filePath.startsWith(dirPath + path.sep) || file.filePath === dirPath
+      );
+      
+      for (const file of filesToDelete) {
+        await workspaceIndexDatabase.deleteFileData(file.filePath);
+      }
+      
+      console.log(`[WorkspaceVectorIndexService] ✓ 已删除目录索引: ${path.basename(dirPath)} (${filesToDelete.length} 个文件)`);
+    } catch (error) {
+      console.error(`[WorkspaceVectorIndexService] 删除目录索引失败: ${dirPath}`, error);
+    }
   }
 
   private updateProgress(update: Partial<IndexingProgress>): void {

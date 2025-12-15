@@ -181,6 +181,16 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         label: '删除',
         onClick: () => emitFileAction('delete-file', node),
       },
+      {
+        id: 'file-menu-separator-4',
+        label: '',
+        separator: true,
+      },
+      {
+        id: 'index-file',
+        label: '立即索引',
+        onClick: () => emitFileAction('index-file', node),
+      },
     ],
     [emitFileAction]
   );
@@ -321,6 +331,20 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         id: 'delete-folder',
         label: '删除',
         onClick: () => emitFileAction('delete-folder', node),
+      });
+
+      // 分割线
+      items.push({
+        id: 'folder-menu-separator-6',
+        label: '',
+        separator: true,
+      });
+
+      // 立即索引
+      items.push({
+        id: 'index-folder',
+        label: '立即索引',
+        onClick: () => emitFileAction('index-folder', node),
       });
 
       return items;

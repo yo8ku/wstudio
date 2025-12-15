@@ -456,6 +456,59 @@ export class WorkspaceIndexDatabase {
   }
 
   /**
+   * 获取已索引文件的路径和时间戳映射
+   * 用于增量索引时快速查找
+   */
+  getIndexedFilesMap(): Map<string, number> {
+    if (!this.db) return new Map();
+    
+    const result = this.db.exec('SELECT filePath, indexedAt FROM files');
+    
+    if (result.length === 0) return new Map();
+    
+    const map = new Map<string, number>();
+    for (const row of result[0].values) {
+      map.set(row[0] as string, row[1] as number);
+    }
+    return map;
+  }
+
+  /**
+   * 删除文件的所有索引数据（用于重新索引）
+   */
+  async deleteFileData(filePath: string): Promise<void> {
+    if (!this.db) return;
+    
+    try {
+      // 先获取该文件的所有 parentIds（用于删除 LanceDB 中的子块）
+      const result = this.db.exec(
+        'SELECT parentId FROM parents WHERE filePath = ?',
+        [filePath]
+      );
+      
+      const parentIds = result.length > 0 ? result[0].values.map(row => row[0] as string) : [];
+      
+      // 删除 SQLite 中的记录
+      this.db.run('DELETE FROM files WHERE filePath = ?', [filePath]);
+      this.db.run('DELETE FROM parents WHERE filePath = ?', [filePath]);
+      this.saveDatabase();
+      
+      // 删除 LanceDB 中的子块
+      if (this.childrenTable && parentIds.length > 0) {
+        for (const parentId of parentIds) {
+          try {
+            await this.childrenTable.delete(`parentId = '${parentId}'`);
+          } catch (e) {
+            // 忽略删除错误
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[WorkspaceIndexDatabase] 删除文件数据失败:', error);
+    }
+  }
+
+  /**
    * 清空所有数据
    */
   async clearAll(): Promise<void> {

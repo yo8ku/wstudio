@@ -145,6 +145,9 @@ contextBridge.exposeInMainWorld('electron', {
     start: (workspacePath) => ipcRenderer.invoke('workspace-vector-index:start', workspacePath),
     stop: () => ipcRenderer.invoke('workspace-vector-index:stop'),
     getProgress: () => ipcRenderer.invoke('workspace-vector-index:get-progress'),
+    deleteFile: (filePath) => ipcRenderer.invoke('workspace-vector-index:delete-file', filePath),
+    deleteDirectory: (dirPath) => ipcRenderer.invoke('workspace-vector-index:delete-directory', dirPath),
+    indexFile: (filePath) => ipcRenderer.invoke('workspace-vector-index:index-file', filePath),
     // 监听索引进度事件
     onProgress: (callback) => {
       const subscription = (event, progress) => callback(progress);

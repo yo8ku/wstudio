@@ -60,5 +60,41 @@ export function registerWorkspaceVectorIndexHandlers(): void {
     }
   });
 
+  // 删除文件索引（当文件被删除时调用）
+  ipcMain.handle('workspace-vector-index:delete-file', async (event, filePath: string) => {
+    try {
+      await workspaceVectorIndexService.deleteFileIndex(filePath);
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[WorkspaceVectorIndex IPC] 删除文件索引失败:', errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // 删除目录索引（当目录被删除时调用）
+  ipcMain.handle('workspace-vector-index:delete-directory', async (event, dirPath: string) => {
+    try {
+      await workspaceVectorIndexService.deleteDirectoryIndex(dirPath);
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[WorkspaceVectorIndex IPC] 删除目录索引失败:', errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // 索引单个文件（右键菜单"立即索引"）
+  ipcMain.handle('workspace-vector-index:index-file', async (event, filePath: string) => {
+    try {
+      await workspaceVectorIndexService.indexSingleFile(filePath);
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[WorkspaceVectorIndex IPC] 单文件索引失败:', errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  });
+
   console.log('[WorkspaceVectorIndex IPC] 处理器注册完成');
 }

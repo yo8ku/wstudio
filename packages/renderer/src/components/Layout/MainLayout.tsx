@@ -29,6 +29,7 @@ import { useThemeStore } from '../../stores/themeStore';
 import { useActivityBarStore } from '../../stores/activityBarStore';
 import { snippetService } from '../../services/SnippetService';
 import { shouldMigrateSnippets, migrateSnippetsFromJSON } from '../../utils/migrateSnippets';
+import { toastService } from '../../services/ToastService';
 
 export type { ActivityBarItem };
 
@@ -213,8 +214,20 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
             console.log(`[WorkspaceIndexing] 进度: ${progress.processedFiles}/${progress.totalFiles}`);
           } else if (progress.status === 'completed') {
             console.log('[WorkspaceIndexing] ✓ 索引完成');
+            // 显示成功通知
+            if (progress.totalFiles > 0) {
+              toastService.success('索引完成', {
+                description: `已索引 ${progress.totalFiles} 个文件`,
+                duration: 3000
+              });
+            }
           } else if (progress.status === 'error') {
             console.error('[WorkspaceIndexing] 索引错误:', progress.errorMessage);
+            // 显示错误通知
+            toastService.error('索引失败', {
+              description: progress.errorMessage || '未知错误',
+              duration: 5000
+            });
           }
         });
 

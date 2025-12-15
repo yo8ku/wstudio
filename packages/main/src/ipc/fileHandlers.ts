@@ -6,6 +6,7 @@
 import { ipcMain, shell } from 'electron';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { workspaceVectorIndexService } from '../services/WorkspaceVectorIndexService';
 
 // 防止重复注册的标志
 let isRegistered = false;
@@ -154,8 +155,10 @@ export function registerFileHandlers(): void {
     try {
       
       // 检查文件/文件夹是否存在
+      let isDirectory = false;
       try {
-        await fs.access(targetPath);
+        const stats = await fs.stat(targetPath);
+        isDirectory = stats.isDirectory();
       } catch (error) {
         console.error('[FileHandlers] 文件/文件夹不存在:', targetPath);
         return { success: false, error: '文件或文件夹不存在' };
@@ -166,15 +169,11 @@ export function registerFileHandlers(): void {
       try {
         await shell.trashItem(targetPath);
         console.log('[FileHandlers] 文件已移动到回收站:', targetPath);
-        return { success: true };
       } catch (trashError) {
         // 如果移动到回收站失败（某些系统可能不支持），回退到永久删除
         console.warn('[FileHandlers] 移动到回收站失败，尝试永久删除:', trashError);
         
-        // 获取文件/文件夹信息
-        const stats = await fs.stat(targetPath);
-        
-        if (stats.isDirectory()) {
+        if (isDirectory) {
           // 删除文件夹（递归删除所有内容）
           await fs.rm(targetPath, { recursive: true, force: true });
         } else {
@@ -183,8 +182,21 @@ export function registerFileHandlers(): void {
         }
         
         console.log('[FileHandlers] 文件已永久删除（回收站不可用）:', targetPath);
-        return { success: true };
       }
+      
+      // 删除对应的索引数据
+      try {
+        if (isDirectory) {
+          await workspaceVectorIndexService.deleteDirectoryIndex(targetPath);
+        } else {
+          await workspaceVectorIndexService.deleteFileIndex(targetPath);
+        }
+      } catch (indexError) {
+        console.warn('[FileHandlers] 删除索引数据失败:', indexError);
+        // 不影响删除操作的成功
+      }
+      
+      return { success: true };
     } catch (error) {
       console.error('[FileHandlers] 删除失败:', error);
       return { success: false, error: String(error) };
