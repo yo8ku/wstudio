@@ -165,18 +165,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
       const filePaths: string[] = result.data;
       console.log('[KnowledgeBaseView] 选择的文件:', filePaths);
 
-      // 获取工作区目录
-      const workspaceResult = await window.electron?.workspace?.getDir();
-      if (!workspaceResult?.success || !workspaceResult.data) {
-        toastService.error('获取工作区目录失败');
-        return;
-      }
-
-      const workspaceDir = workspaceResult.data;
-      const knowledgeBasePath = `${workspaceDir}\\KnowledgeBases\\${knowledgeId}`;
-
-      // 确保知识库文件夹存在
-      await window.electron?.folder?.ensureDir?.(knowledgeBasePath);
+      // 知识库直接使用原始文件路径，不复制文件
 
       let importedCount = 0;
       let failedCount = 0;
@@ -249,86 +238,81 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             continue;
           }
           
-          // 复制文件到知识库文件夹
-          const copyResult = await window.electron?.folder?.copyToFolder(filePath, knowledgeBasePath);
+          // 直接使用原始文件路径，不复制文件
+          if (shouldAddNewFile) {
+            // 添加新文件到知识库
+            console.log(`[KnowledgeBaseView] 添加新文件到知识库: ${fileName}`);
+            await knowledgeBaseService.addFileToKnowledgeBase(
+              knowledgeId,
+              filePath,
+              fileName
+            );
+          } else if (existingFileId) {
+            // 更新现有文件的元数据
+            console.log(`[KnowledgeBaseView] 更新现有文件: ${fileName}`);
+            await knowledgeBaseService.updateKnowledgeBase(existingFileId, {
+              path: filePath,
+              metadata: {
+                lastModified: new Date(),
+                processingStatus: undefined,
+                processingProgress: undefined,
+              },
+            });
+          }
           
-          if (copyResult?.success && copyResult.data) {
-            const { path: newFilePath, name: newFileName } = copyResult.data;
+          // 更新处理状态为 processing
+          await knowledgeBaseService.updateFileProcessingStatus(filePath, 'processing', 10);
+          
+          // 触发知识库刷新事件
+          window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+            detail: { knowledgeId }
+          }));
+          
+          // 进度更新回调
+          const handleProgress = async (progressFilePath: string, progress: number) => {
+            if (progressFilePath !== filePath) return;
             
-            if (shouldAddNewFile) {
-              // 添加新文件到知识库
-              console.log(`[KnowledgeBaseView] 添加新文件到知识库: ${newFileName}`);
-              await knowledgeBaseService.addFileToKnowledgeBase(
-                knowledgeId,
-                newFilePath,
-                newFileName
-              );
-            } else if (existingFileId) {
-              // 更新现有文件的路径和元数据
-              console.log(`[KnowledgeBaseView] 更新现有文件: ${newFileName}`);
-              await knowledgeBaseService.updateKnowledgeBase(existingFileId, {
-                path: newFilePath,
-                metadata: {
-                  lastModified: new Date(),
-                  processingStatus: undefined,
-                  processingProgress: undefined,
-                },
-              });
-            }
+            // 当进度达到 100% 时，立即将状态更新为 completed
+            const status = progress >= 100 ? 'completed' : 'processing';
+            await knowledgeBaseService.updateFileProcessingStatus(progressFilePath, status, progress);
+            window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+              detail: { knowledgeId }
+            }));
+          };
+          
+          // 后台异步处理文件（切分 > 向量化 > 入库）
+          ragProcessingService.uploadFilesToKnowledgeBase(
+            [filePath],
+            knowledgeId,
+            { onProgress: handleProgress }
+          ).then(async () => {
+            // 确保状态为 completed
+            await knowledgeBaseService.updateFileProcessingStatus(filePath, 'completed', 100);
             
-            // 更新处理状态为 processing
-            await knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'processing', 10);
-            
-            // 触发知识库刷新事件
             window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
               detail: { knowledgeId }
             }));
             
-            // 进度更新回调
-            const handleProgress = async (progressFilePath: string, progress: number) => {
-              if (progressFilePath !== newFilePath) return;
-              
-              // 当进度达到 100% 时，立即将状态更新为 completed
-              const status = progress >= 100 ? 'completed' : 'processing';
-              await knowledgeBaseService.updateFileProcessingStatus(progressFilePath, status, progress);
-              window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
-                detail: { knowledgeId }
-              }));
-            };
-            
-            // 后台异步处理文件
-            ragProcessingService.uploadFilesToKnowledgeBase(
-              [newFilePath],
-              knowledgeId,
-              { onProgress: handleProgress }
-            ).then(async () => {
-              // 确保状态为 completed
-              await knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'completed', 100);
-              
-              window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
-                detail: { knowledgeId }
-              }));
-              
-              // 检查是否所有文件都处理完成，如果是，清除 configChanged 标志
-              const allData = await knowledgeBaseService.loadFromStorage();
-              const knowledgeBase = allData.created.find(kb => kb.id === knowledgeId);
-              if (knowledgeBase) {
-                const allFilesCompleted = (items: KnowledgeItem[]): boolean => {
-                  for (const item of items) {
-                    if (item.type === 'file') {
-                      const status = item.metadata?.processingStatus;
-                      if (status !== 'completed') {
-                        return false;
-                      }
-                    }
-                    if (item.children) {
-                      if (!allFilesCompleted(item.children)) {
-                        return false;
-                      }
+            // 检查是否所有文件都处理完成，如果是，清除 configChanged 标志
+            const allData = await knowledgeBaseService.loadFromStorage();
+            const knowledgeBase = allData.created.find(kb => kb.id === knowledgeId);
+            if (knowledgeBase) {
+              const allFilesCompleted = (items: KnowledgeItem[]): boolean => {
+                for (const item of items) {
+                  if (item.type === 'file') {
+                    const status = item.metadata?.processingStatus;
+                    if (status !== 'completed') {
+                      return false;
                     }
                   }
-                  return true;
-                };
+                  if (item.children) {
+                    if (!allFilesCompleted(item.children)) {
+                      return false;
+                    }
+                  }
+                }
+                return true;
+              };
                 
                 const children = knowledgeBase.children || [];
                 if (allFilesCompleted(children) && knowledgeBase.metadata?.configChanged) {
@@ -342,27 +326,22 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                   }));
                 }
               }
-            }).catch((error) => {
-              const errorMessage = error instanceof Error ? error.message : String(error);
-              
-              // 更新状态为 error
-              knowledgeBaseService.updateFileProcessingStatus(newFilePath, 'error', 0).then(() => {
-                window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
-                  detail: { knowledgeId }
-                }));
-              }).catch(() => {});
-              console.error('[KnowledgeBaseView] 文件处理失败:', errorMessage);
-              
-              // 显示友好的错误提示
-              let displayMessage = '文件处理失败';
-              toastService.error(displayMessage);
-            });
+          }).catch((error) => {
+            const errorMessage = error instanceof Error ? error.message : String(error);
             
-            importedCount++;
-          } else {
-            failedCount++;
-            console.error('[KnowledgeBaseView] 文件复制失败:', copyResult?.error);
-          }
+            // 更新状态为 error
+            knowledgeBaseService.updateFileProcessingStatus(filePath, 'error', 0).then(() => {
+              window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
+                detail: { knowledgeId }
+              }));
+            }).catch(() => {});
+            console.error('[KnowledgeBaseView] 文件处理失败:', errorMessage);
+            
+            // 显示友好的错误提示
+            toastService.error('文件处理失败');
+          });
+          
+          importedCount++;
         } catch (error) {
           failedCount++;
           console.error('[KnowledgeBaseView] 导入文件失败:', filePath, error);

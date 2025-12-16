@@ -209,6 +209,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             { label: 'AI 助手', shortcut: 'Ctrl+Shift+A', action: onToggleAIPanel },
           ]
         },
+        { separator: true },
+        { label: 'LanceDB 数据查看', action: () => window.dispatchEvent(new CustomEvent('open-lancedb-view')) },
       ]
     },
     {

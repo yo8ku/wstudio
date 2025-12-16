@@ -149,5 +149,59 @@ export function registerWorkspaceIndexDbHandlers(): void {
     }
   });
 
+  // 获取所有子块数据（用于数据查看）
+  ipcMain.handle('workspace-index-db:get-all-children', async (event, limit: number = 100) => {
+    try {
+      await workspaceIndexDatabase.initialize();
+      const children = await workspaceIndexDatabase.getAllChildren(limit);
+      return { success: true, data: children };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // 获取所有父块数据（用于数据查看）
+  ipcMain.handle('workspace-index-db:get-all-parents', async () => {
+    try {
+      await workspaceIndexDatabase.initialize();
+      const parents = workspaceIndexDatabase.getAllParents();
+      return { success: true, data: parents };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // 获取指定文件的父块数据
+  ipcMain.handle('workspace-index-db:get-parents-by-file', async (_event, filePath: string) => {
+    try {
+      await workspaceIndexDatabase.initialize();
+      const parents = workspaceIndexDatabase.getParentsByFilePath(filePath);
+      return { success: true, data: parents };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // 获取指定文件的子块数据
+  ipcMain.handle('workspace-index-db:get-children-by-file', async (_event, filePath: string) => {
+    console.log(`\n========== [WorkspaceIndexDb IPC] get-children-by-file ==========`);
+    console.log(`[WorkspaceIndexDb IPC] 文件路径: ${filePath}`);
+    try {
+      console.log(`[WorkspaceIndexDb IPC] 初始化数据库...`);
+      await workspaceIndexDatabase.initialize();
+      console.log(`[WorkspaceIndexDb IPC] 调用 getChildrenByFilePath...`);
+      const children = await workspaceIndexDatabase.getChildrenByFilePath(filePath);
+      console.log(`[WorkspaceIndexDb IPC] 返回结果: ${children.length} 个子块`);
+      return { success: true, data: children };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[WorkspaceIndexDb IPC] 错误: ${errorMessage}`);
+      return { success: false, error: errorMessage };
+    }
+  });
+
   console.log('[WorkspaceIndexDb IPC] 处理器注册完成');
 }

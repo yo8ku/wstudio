@@ -4,7 +4,7 @@
   height: 2rem;
   user-select: none;
   position: relative;
-  z-index: 10; /* 确保在 ai-zone-border 上方 */
+  z-index: 100; /* 确保在 ai-zone-border 上方 */
 }
 
 .titlebar-drag-region {

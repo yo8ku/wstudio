@@ -2938,12 +2938,21 @@ export class AIZoneWidget {
       this.adjustHeightFn();
     }
 
+    // 保存文件引用的副本（在清空之前），用于 onSubmit 回调
+    const savedFileReferences = [...this.inputFileReferences];
+    const savedSelectedFiles = [...this.selectedFiles];
+
     // 清空输入框文件引用和标签容器（发送后清空，下次输入重新开始）
     this.inputFileReferences = [];
     if (this.inputFileRefsContainer) {
       this.inputFileRefsContainer.innerHTML = '';
       this.inputFileRefsContainer.style.display = 'none';
     }
+
+    // 临时恢复文件引用，供 getSelectedFiles() 使用
+    // 在 onSubmit 回调完成后会再次清空
+    this.inputFileReferences = savedFileReferences;
+    this.selectedFiles = savedSelectedFiles;
 
     // 立即显示用户问题，让用户看到自己发送的消息
     this.showUserQuestion();
@@ -3016,6 +3025,12 @@ export class AIZoneWidget {
       this.includeSelection && !!this.selectedText,
       this.selectedModel || undefined
     );
+
+    // onSubmit 回调完成后，清空文件引用（异步回调可能还在使用，延迟清空）
+    setTimeout(() => {
+      this.inputFileReferences = [];
+      this.selectedFiles = [];
+    }, 100);
 
     // 不刷新界面，避免输入框布局问题
     // this.refresh();

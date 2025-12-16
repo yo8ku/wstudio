@@ -403,26 +403,58 @@ export class WorkspaceVectorIndexService {
       const fileExt = path.extname(filePath).toLowerCase();
 
       const parentRecords: Array<{ parentId: string; filePath: string; content: string; chunkIndex: number; createdAt: number }> = [];
-      const childRecords: Array<{ childId: string; parentId: string; content: string; vector: number[]; chunkIndex: number }> = [];
+      const childRecords: Array<{ childId: string; parentId: string; content: string; vector: number[]; chunkIndex: number; tags: string }> = [];
 
+      console.log(`[WorkspaceVectorIndexService] 处理文件: ${fileName}, 父块数量: ${chunks.length}`);
+      
       for (let pIdx = 0; pIdx < chunks.length && !this.shouldStop; pIdx++) {
         const chunk = chunks[pIdx];
         const parentId = generateUUID();
+
+        console.log(`[WorkspaceVectorIndexService] 父块${pIdx}: 内容长度=${chunk.parentContent.length}, 子块数量=${chunk.childContents.length}`);
 
         parentRecords.push({ parentId, filePath, content: chunk.parentContent, chunkIndex: pIdx, createdAt: Date.now() });
 
         for (let cIdx = 0; cIdx < chunk.childContents.length && !this.shouldStop; cIdx++) {
           try {
+            console.log(`[WorkspaceVectorIndexService] 开始生成向量: 父块${pIdx} 子块${cIdx}, 内容长度=${chunk.childContents[cIdx].length}`);
             const vector = await this.generateEmbedding(chunk.childContents[cIdx]);
-            childRecords.push({ childId: generateUUID(), parentId, content: chunk.childContents[cIdx], vector, chunkIndex: cIdx });
+            console.log(`[WorkspaceVectorIndexService] 向量生成完成: 父块${pIdx} 子块${cIdx}, 向量维度=${vector?.length || 0}`);
+            if (vector && vector.length > 0) {
+              childRecords.push({
+                childId: generateUUID(),
+                parentId,
+                content: chunk.childContents[cIdx],
+                vector,
+                chunkIndex: cIdx,
+                tags: '[]', // 默认空标签JSON字符串，后续可通过其他方式添加标签
+              });
+            } else {
+              console.warn(`[WorkspaceVectorIndexService] 向量为空: 父块${pIdx} 子块${cIdx}`);
+            }
           } catch (e) {
-            console.warn('[WorkspaceVectorIndexService] 向量生成失败');
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            console.warn(`[WorkspaceVectorIndexService] 向量生成失败: 父块${pIdx} 子块${cIdx}, 错误: ${errorMsg}`);
           }
         }
       }
 
-      if (parentRecords.length) workspaceIndexDatabase.addParentsBatch(parentRecords);
-      if (childRecords.length) await workspaceIndexDatabase.addChildren(childRecords);
+      console.log(`[WorkspaceVectorIndexService] 准备入库: 父块=${parentRecords.length}, 子块=${childRecords.length}`);
+      
+      if (parentRecords.length) {
+        workspaceIndexDatabase.addParentsBatch(parentRecords);
+        console.log(`[WorkspaceVectorIndexService] 父块入库完成`);
+      }
+      
+      if (childRecords.length) {
+        try {
+          await workspaceIndexDatabase.addChildren(childRecords);
+          console.log(`[WorkspaceVectorIndexService] 子块入库完成`);
+        } catch (dbError) {
+          const dbErrorMsg = dbError instanceof Error ? dbError.message : String(dbError);
+          console.error(`[WorkspaceVectorIndexService] 子块入库失败: ${dbErrorMsg}`);
+        }
+      }
 
       workspaceIndexDatabase.addFileIndex({
         filePath, fileName, fileExtension: fileExt, fileSize,
@@ -431,7 +463,8 @@ export class WorkspaceVectorIndexService {
 
       console.log(`[WorkspaceVectorIndexService] ✓ ${fileName}: ${childRecords.length} 向量`);
     } catch (error) {
-      console.error(`[WorkspaceVectorIndexService] 处理失败: ${filePath}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[WorkspaceVectorIndexService] 处理失败: ${filePath}, 错误: ${errorMsg}`);
     }
   }
 

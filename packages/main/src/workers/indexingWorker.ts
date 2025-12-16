@@ -6,6 +6,7 @@
 import { parentPort } from 'worker_threads';
 import * as fs from 'fs';
 import * as path from 'path';
+import { parentChildChunk } from './textChunker';
 
 // 支持索引的文件扩展名
 const SUPPORTED_EXTENSIONS = [
@@ -26,17 +27,19 @@ const IGNORED_DIRECTORIES = [
 // 最小文档长度（字符数）
 const MIN_DOCUMENT_LENGTH = 100;
 
-// 父块大小
-const PARENT_CHUNK_SIZE = 2000;
-// 子块大小
-const CHILD_CHUNK_SIZE = 400;
-// 子块重叠
-const CHILD_CHUNK_OVERLAP = 50;
-
 interface IndexTask {
   type: 'index-file' | 'scan-directory';
   filePath?: string;
   dirPath?: string;
+}
+
+interface ChunkMetadata {
+  filePath: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  chunkIndex: number;
+  workspaceIndex: boolean;
 }
 
 interface IndexResult {
@@ -48,43 +51,8 @@ interface IndexResult {
   chunks?: {
     parentContent: string;
     childContents: string[];
-    metadata: Record<string, any>;
+    metadata: ChunkMetadata;
   }[];
-}
-
-/**
- * 简单的文本切分器
- */
-function chunkText(text: string, chunkSize: number, overlap: number): string[] {
-  const chunks: string[] = [];
-  let start = 0;
-  
-  while (start < text.length) {
-    const end = Math.min(start + chunkSize, text.length);
-    chunks.push(text.slice(start, end));
-    start = end - overlap;
-    if (start >= text.length - overlap) break;
-  }
-  
-  return chunks;
-}
-
-/**
- * 父子切分
- */
-function parentChildChunk(content: string): { parentContent: string; childContents: string[] }[] {
-  const results: { parentContent: string; childContents: string[] }[] = [];
-  
-  // 先切分成父块
-  const parentChunks = chunkText(content, PARENT_CHUNK_SIZE, 0);
-  
-  for (const parentContent of parentChunks) {
-    // 每个父块再切分成子块
-    const childContents = chunkText(parentContent, CHILD_CHUNK_SIZE, CHILD_CHUNK_OVERLAP);
-    results.push({ parentContent, childContents });
-  }
-  
-  return results;
 }
 
 /**

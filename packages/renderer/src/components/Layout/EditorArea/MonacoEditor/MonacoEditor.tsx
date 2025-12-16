@@ -34,6 +34,7 @@ import { FileParser, VectorStore } from '@note-studio/global-rag';
 import { ModelCapabilityDetector } from '../../../../services/modelCapabilityDetector';
 import { ModelCapability } from '../../../../types/modelCapabilities';
 import { DEFAULT_CHAT_SETTINGS } from '../../../AIChatSettings/AIChatSettings';
+import { getAIZoneSystemPromptAsync } from '../../../../services/ai/SystemPrompt';
 
 const MAX_INLINE_CHAT_HISTORY_MESSAGES = 12;
 
@@ -307,12 +308,17 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         }
         
         // 策略2: 清除从 zoneBottomLine 之后的所有连续空行（清除 GhostTextWidget 插入的空行）
-        if (currentZoneBottomLine !== undefined && currentZoneBottomLine > 0) {
+        // 重新获取当前行数（因为策略1可能已经修改了文档）
+        const updatedLineCount = model.getLineCount();
+        if (currentZoneBottomLine !== undefined && currentZoneBottomLine > 0 && currentZoneBottomLine <= updatedLineCount) {
           // 从 zoneBottomLine 之后开始检查，找到第一个非空行
-          let firstNonEmptyLineAfterZone = currentLineCount + 1; // 初始化为超出范围的值
+          let firstNonEmptyLineAfterZone = updatedLineCount + 1; // 初始化为超出范围的值
           
           // 从 zoneBottomLine + 1 开始向后查找，找到第一个非空行
-          for (let lineNum = currentZoneBottomLine + 1; lineNum <= currentLineCount; lineNum++) {
+          for (let lineNum = currentZoneBottomLine + 1; lineNum <= updatedLineCount; lineNum++) {
+            // 确保行号有效（重新检查当前行数）
+            const actualLineCount = model.getLineCount();
+            if (lineNum < 1 || lineNum > actualLineCount) continue;
             const lineContent = model.getLineContent(lineNum);
             if (lineContent.trim().length > 0) {
               firstNonEmptyLineAfterZone = lineNum;
@@ -337,10 +343,10 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
               text: '',
               forceMoveMarkers: true
             }]);
-          } else if (firstNonEmptyLineAfterZone > currentLineCount) {
+          } else if (firstNonEmptyLineAfterZone > updatedLineCount) {
             // 如果从 zoneBottomLine + 1 到文档末尾都是空行，清除它们
             const startLine = currentZoneBottomLine + 1;
-            const endLine = currentLineCount;
+            const endLine = model.getLineCount(); // 重新获取当前行数
             
             if (startLine <= endLine) {
               const linesToRemove = endLine - startLine + 1;
@@ -361,10 +367,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         }
         
         // 策略3: 如果没有记录的原始行数，但从文档末尾有连续空行，也尝试清除
-        if (previousOriginalLineCount === null && currentLineCount > 0) {
+        const finalLineCount = model.getLineCount(); // 重新获取当前行数
+        if (previousOriginalLineCount === null && finalLineCount > 0) {
           // 从文档末尾向前查找，找到最后一个非空行
-          let lastNonEmptyLine = currentLineCount;
-          for (let lineNum = currentLineCount; lineNum >= 1; lineNum--) {
+          let lastNonEmptyLine = finalLineCount;
+          for (let lineNum = finalLineCount; lineNum >= 1; lineNum--) {
+            // 确保行号有效
+            if (lineNum < 1 || lineNum > model.getLineCount()) continue;
             const lineContent = model.getLineContent(lineNum);
             if (lineContent.trim().length > 0) {
               lastNonEmptyLine = lineNum;
@@ -373,22 +382,26 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           }
           
           // 如果最后非空行小于当前行数，说明文档末尾有连续的空行需要删除
-          if (lastNonEmptyLine < currentLineCount) {
-            const linesToRemove = currentLineCount - lastNonEmptyLine;
+          const currentFinalLineCount = model.getLineCount();
+          if (lastNonEmptyLine < currentFinalLineCount) {
+            const linesToRemove = currentFinalLineCount - lastNonEmptyLine;
             const startLine = lastNonEmptyLine + 1;
-            const endLine = currentLineCount;
+            const endLine = currentFinalLineCount;
             
-            console.log('[MonacoEditor] 清除文档末尾', linesToRemove, '个空行（从第', startLine, '行到第', endLine, '行）');
-            
-            // 删除从 startLine 到 endLine 的所有行
-            const startColumn = 1;
-            const endLineColumn = model.getLineMaxColumn(endLine);
-            
-            editor.executeEdits('inline-chat-cleanup', [{
-              range: new monaco.Range(startLine, startColumn, endLine, endLineColumn),
-              text: '',
-              forceMoveMarkers: true
-            }]);
+            // 确保行号有效
+            if (startLine >= 1 && endLine >= startLine && endLine <= model.getLineCount()) {
+              console.log('[MonacoEditor] 清除文档末尾', linesToRemove, '个空行（从第', startLine, '行到第', endLine, '行）');
+              
+              // 删除从 startLine 到 endLine 的所有行
+              const startColumn = 1;
+              const endLineColumn = model.getLineMaxColumn(endLine);
+              
+              editor.executeEdits('inline-chat-cleanup', [{
+                range: new monaco.Range(startLine, startColumn, endLine, endLineColumn),
+                text: '',
+                forceMoveMarkers: true
+              }]);
+            }
           }
         }
         
@@ -440,7 +453,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     }
 
     // 获取 AIZoneWidget 底部边框的行号
-    const zoneBottomLine = aiZoneWidgetRef.current?.getZoneBottomLineNumber() || position.lineNumber;
+    let zoneBottomLine = aiZoneWidgetRef.current?.getZoneBottomLineNumber() || position.lineNumber;
+    
+    // 确保行号有效（至少为 1）
+    if (zoneBottomLine < 1) {
+      console.warn('[InlineChat] zoneBottomLine 无效:', zoneBottomLine, '使用光标位置:', position.lineNumber);
+      zoneBottomLine = Math.max(1, position.lineNumber);
+    }
+    
     console.log('[InlineChat] Zone 底部行号:', zoneBottomLine, '原始光标行号:', position.lineNumber);
     
     // 确保目标行存在，如果不存在则先插入空行
@@ -662,21 +682,95 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       const modelInputTokenLimit = getModelInputTokenLimit(providerId, actualModelId);
       console.log('[InlineChat] 模型输入token限制:', modelInputTokenLimit);
 
-      // 1. 文件监听与读取：获取文件工具栏的所有文件
+      // 1. 文件向量检索：获取文件工具栏的所有文件，进行向量搜索
       let ragChunks: Array<{ text: string; embedding: number[]; metadata: { filePath: string; fileName: string; chunkIndex: number; totalChunks: number } }> = [];
       let fileContents: Array<{ path: string; name: string; content: string }> = [];
+      // 文件向量搜索结果
+      let fileVectorSearchResults: Array<{
+        filePath: string;
+        fileName: string;
+        results: Array<{
+          id: string;
+          text: string;
+          metadata: Record<string, unknown>;
+          score: number;
+        }>;
+      }> = [];
       
       if (aiZoneWidgetRef.current) {
         const selectedFiles = aiZoneWidgetRef.current.getSelectedFiles();
+        console.log('[InlineChat] getSelectedFiles() 返回:', selectedFiles);
         
         // 过滤出文件类型的项（排除知识库）
         const fileItems = selectedFiles.filter(file => !file.type || file.type === 'file');
+        console.log('[InlineChat] 过滤后的文件项:', fileItems);
         
         if (fileItems.length > 0) {
-          console.log(`[InlineChat] 开始处理 ${fileItems.length} 个文件`);
+          console.log(`[InlineChat] 开始对 ${fileItems.length} 个文件进行向量搜索`);
           
-          // 读取所有文件内容
           try {
+            // 初始化嵌入服务
+            const { EmbeddingService } = await import('@note-studio/shared');
+            const embeddingService = new EmbeddingService();
+            
+            // 生成查询向量
+            const query = sanitizedMessage.trim() || '请基于文件内容回答问题';
+            const queryEmbedding = await embeddingService.generateEmbedding(query);
+            console.log('[InlineChat] 查询向量生成完成');
+            
+            // 对每个文件进行向量搜索
+            for (const file of fileItems) {
+              try {
+                console.log(`[InlineChat] 搜索文件: ${file.name} (${file.path})`);
+                
+                // 调用主进程的向量搜索 API
+                const searchResults = await window.electronAPI?.workspaceIndexDb?.searchByFilePath?.(
+                  file.path,
+                  queryEmbedding.vectors,
+                  5 // topK: 每个文件返回前5个相关父块
+                );
+                
+                if (searchResults && searchResults.length > 0) {
+                  fileVectorSearchResults.push({
+                    filePath: file.path,
+                    fileName: file.name,
+                    results: searchResults
+                  });
+                  console.log(`[InlineChat] 文件 "${file.name}" 搜索到 ${searchResults.length} 个相关片段`);
+                } else {
+                  console.log(`[InlineChat] 文件 "${file.name}" 未找到相关片段，尝试读取全文`);
+                  // 如果向量搜索没有结果，回退到读取全文（可能文件未被索引）
+                  const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
+                  if (content) {
+                    fileContents.push({
+                      path: file.path,
+                      name: file.name,
+                      content: content
+                    });
+                  }
+                }
+              } catch (error) {
+                console.warn(`[InlineChat] 搜索文件失败: ${file.path}`, error);
+                // 搜索失败时回退到读取全文
+                try {
+                  const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
+                  if (content) {
+                    fileContents.push({
+                      path: file.path,
+                      name: file.name,
+                      content: content
+                    });
+                  }
+                } catch (readError) {
+                  console.warn(`[InlineChat] 读取文件也失败: ${file.path}`, readError);
+                }
+              }
+            }
+            
+            console.log(`[InlineChat] 文件向量搜索完成: ${fileVectorSearchResults.length} 个文件有结果, ${fileContents.length} 个文件回退到全文`);
+          } catch (error) {
+            console.error('[InlineChat] 文件向量搜索失败，回退到读取全文:', error);
+            // 向量搜索整体失败时，回退到读取所有文件全文
             for (const file of fileItems) {
               try {
                 const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
@@ -687,40 +781,10 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                     content: content
                   });
                 }
-              } catch (error) {
-                console.warn(`[InlineChat] 读取文件失败: ${file.path}`, error);
+              } catch (readError) {
+                console.warn(`[InlineChat] 读取文件失败: ${file.path}`, readError);
               }
             }
-            console.log(`[InlineChat] 成功读取 ${fileContents.length} 个文件`);
-            // 输出每个文件的 token 信息
-            fileContents.forEach((file, index) => {
-              const tokens = estimateTokens(file.content);
-              console.log(`[InlineChat] 文件#${index + 1} "${file.name}" (${file.path}) -> tokens=${tokens}, length=${file.content.length}`);
-            });
-          } catch (error) {
-            console.error('[InlineChat] 读取文件内容失败:', error);
-          }
-
-          // 计算总token数
-      const userMessageTokens = estimateTokens(sanitizedMessage);
-          const selectedTextTokens = estimateTokens(selectedText);
-          const fileContentsTokens = fileContents.reduce((sum, file) => sum + estimateTokens(file.content), 0);
-          const totalTokens = userMessageTokens + selectedTextTokens + fileContentsTokens;
-          
-          console.log(`[InlineChat] Token统计: 用户消息=${userMessageTokens}, 选中文本=${selectedTextTokens}, 文件内容=${fileContentsTokens}, 总计=${totalTokens}, 限制=${modelInputTokenLimit}`);
-
-          // 如果总token数超过模型限制，提示用户
-          // 注意：文件处理功能正在重构中
-          // 如果需要使用 RAG 搜索，请先将文件上传到知识库
-          if (totalTokens > modelInputTokenLimit) {
-            console.warn(
-              `[InlineChat] Token数超过限制 (${totalTokens} > ${modelInputTokenLimit})，` +
-              `但前端不再进行文件处理。请先将文件上传到知识库，然后使用知识库搜索功能。`
-            );
-            // 可以选择：1. 截断文件内容 2. 提示用户上传到知识库 3. 使用知识库搜索
-            // 这里暂时只记录警告，不进行任何处理
-          } else {
-            console.log(`[InlineChat] Token数未超过限制，直接使用文件内容`);
           }
         }
       }
@@ -848,18 +912,17 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         content: historyMessage.content
       }));
 
-      // 构建完整的 prompt
-      let finalPrompt = '';
+      // 构建用户消息内容
+      // 格式：参考文档：\n...\n用户问题：xxxx
+      let referenceDocuments = '';
+      let documentIndex = 1;
 
-      // 步骤3：添加向量检索结果到 prompt（优先级最高）
+      // 步骤3：添加向量检索结果到参考文档
       if (vectorSearchResults.length > 0) {
         const hasResults = vectorSearchResults.some(kb => kb.results.length > 0);
         
         if (hasResults) {
-          finalPrompt += '基于以下知识库内容回答问题：\n\n';
-          
           // 计算检索结果的最大 token 数（预留空间给其他内容）
-          // 预留：用户问题(500) + 选中文本(1000) + 文件内容(2000) + 系统提示(500) = 4000 tokens
           const reservedTokens = 4000;
           const maxSearchResultTokens = Math.max(2000, modelInputTokenLimit - reservedTokens);
           let currentSearchResultTokens = 0;
@@ -867,65 +930,72 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           // 遍历每个知识库的检索结果
           for (const kbResult of vectorSearchResults) {
             if (kbResult.results.length === 0) {
-              continue; // 跳过没有结果的知识库
+              continue;
             }
-
-            // 添加知识库标题
-            const kbTitle = `[知识库: ${kbResult.knowledgeBaseName}]\n`;
-            const kbTitleTokens = estimateTokens(kbTitle);
-            
-            // 检查是否还有空间
-            if (currentSearchResultTokens + kbTitleTokens > maxSearchResultTokens) {
-              console.warn(`[InlineChat] 检索结果 token 数已达限制，停止添加知识库 "${kbResult.knowledgeBaseName}"`);
-              break;
-            }
-            
-            finalPrompt += kbTitle;
-            currentSearchResultTokens += kbTitleTokens;
 
             // 按相似度分数排序（从高到低）
             const sortedResults = [...kbResult.results].sort((a, b) => b.score - a.score);
 
-            // 添加每个检索结果（限制 token 数）
+            // 添加每个检索结果
             for (const result of sortedResults) {
               const fileName = result.metadata.fileName || result.metadata.filePath || '未知文件';
-              const chunkIndex = result.metadata.chunkIndex !== undefined ? result.metadata.chunkIndex + 1 : '?';
-              const totalChunks = result.metadata.totalChunks || '?';
-              const score = (result.score * 100).toFixed(1); // 转换为百分比
+              
+              // 格式：[文档 N] 文件名\n内容
+              const docContent = `[文档 ${documentIndex}] ${fileName}\n${result.text}\n`;
+              const docTokens = estimateTokens(docContent);
 
-              const resultHeader = `文件: ${fileName}\n块 ${chunkIndex}/${totalChunks} (相似度: ${score}%)\n`;
-              const resultContent = `${result.text}\n\n`;
-              const resultText = resultHeader + resultContent;
-              const resultTokens = estimateTokens(resultText);
-
-              // 检查是否还有空间
-              if (currentSearchResultTokens + resultTokens > maxSearchResultTokens) {
+              if (currentSearchResultTokens + docTokens > maxSearchResultTokens) {
                 console.warn(`[InlineChat] 检索结果 token 数已达限制，停止添加更多结果`);
                 break;
               }
 
-              finalPrompt += resultText;
-              currentSearchResultTokens += resultTokens;
-            }
-
-            // 检查是否还有空间添加分隔符
-            const separator = '---\n\n';
-            const separatorTokens = estimateTokens(separator);
-            if (currentSearchResultTokens + separatorTokens <= maxSearchResultTokens) {
-              finalPrompt += separator;
-              currentSearchResultTokens += separatorTokens;
+              referenceDocuments += docContent + '\n';
+              currentSearchResultTokens += docTokens;
+              documentIndex++;
             }
           }
 
           console.log(`[InlineChat] 检索结果 token 数: ${currentSearchResultTokens}/${maxSearchResultTokens}`);
         } else {
-          // 所有知识库都没有检索到结果
           console.warn('[InlineChat] 所有知识库的检索结果为空');
-          finalPrompt += '注意：在知识库中未找到相关内容，将基于通用知识回答。\n\n';
         }
       }
 
-      // 添加文件内容到 prompt
+      // 步骤4：添加文件向量搜索结果到参考文档
+      if (fileVectorSearchResults.length > 0) {
+        console.log(`[InlineChat] 添加 ${fileVectorSearchResults.length} 个文件的向量搜索结果`);
+        
+        // 计算文件搜索结果的最大 token 数
+        const reservedTokens = 4000;
+        const maxFileSearchTokens = Math.max(2000, modelInputTokenLimit - reservedTokens);
+        let currentFileSearchTokens = 0;
+        
+        for (const fileResult of fileVectorSearchResults) {
+          if (fileResult.results.length === 0) continue;
+          
+          // 按相似度分数排序（从高到低）
+          const sortedResults = [...fileResult.results].sort((a, b) => b.score - a.score);
+          
+          for (const result of sortedResults) {
+            // 格式：[文档 N] 文件名\n内容
+            const docContent = `[文档 ${documentIndex}] ${fileResult.fileName}\n${result.text}\n`;
+            const docTokens = estimateTokens(docContent);
+            
+            if (currentFileSearchTokens + docTokens > maxFileSearchTokens) {
+              console.warn(`[InlineChat] 文件搜索结果 token 数已达限制，停止添加更多结果`);
+              break;
+            }
+            
+            referenceDocuments += docContent + '\n';
+            currentFileSearchTokens += docTokens;
+            documentIndex++;
+          }
+        }
+        
+        console.log(`[InlineChat] 文件搜索结果 token 数: ${currentFileSearchTokens}/${maxFileSearchTokens}`);
+      }
+
+      // 添加文件内容到参考文档（回退方案：未被索引的文件）
       if (ragChunks.length > 0) {
         const chunksByFile = ragChunks.reduce<Record<string, Array<typeof ragChunks[number]>>>((acc, chunk) => {
           const fileKey = chunk.metadata.filePath || chunk.metadata.fileName;
@@ -942,46 +1012,37 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           }
           const [{ metadata }] = chunks;
           const chunkTexts = chunks
-            .map((chunk) => {
-              return `块 ${chunk.metadata.chunkIndex + 1}/${chunk.metadata.totalChunks}\n${chunk.text}`;
-            })
-            .join('\n\n---\n\n');
+            .map((chunk) => chunk.text)
+            .join('\n\n');
 
-          if (finalPrompt) {
-            finalPrompt += '\n\n';
-          }
-          finalPrompt += `文件: ${metadata.fileName}\n${chunkTexts}`;
+          referenceDocuments += `[文档 ${documentIndex}] ${metadata.fileName}\n${chunkTexts}\n\n`;
+          documentIndex++;
         });
       } else if (fileContents.length > 0) {
-        // 如果token未超限，直接使用文件内容，按文件区分
+        // 直接使用文件内容（回退方案：向量搜索失败或文件未被索引）
+        console.log(`[InlineChat] 使用 ${fileContents.length} 个文件的全文内容（回退方案）`);
         fileContents.forEach((file) => {
-          if (finalPrompt) {
-            finalPrompt += '\n\n';
-          }
-          finalPrompt += `文件: ${file.name}\n\`\`\`\n${file.content}\n\`\`\``;
+          referenceDocuments += `[文档 ${documentIndex}] ${file.name}\n${file.content}\n\n`;
+          documentIndex++;
         });
       }
 
-      // 添加选中的文本到 prompt
+      // 添加选中的文本到参考文档
       if (selectedText) {
-        if (finalPrompt) {
-          finalPrompt += '\n\n';
-        }
-        finalPrompt += `选中代码 (${language})：\n\`\`\`${language}\n${selectedText}\n\`\`\``;
+        referenceDocuments += `[文档 ${documentIndex}] 选中代码 (${language})\n\`\`\`${language}\n${selectedText}\n\`\`\`\n\n`;
+        documentIndex++;
       }
 
-      // 添加用户问题到 prompt
-      if (sanitizedMessage.trim()) {
-        if (finalPrompt) {
-          finalPrompt += '\n\n';
-        }
-        finalPrompt += `用户问题：${sanitizedMessage}`;
-      } else if (knowledgeBaseMentions.length > 0) {
-        // 如果只有 @知识库 引用但没有问题，添加一个默认问题
-        if (finalPrompt) {
-          finalPrompt += '\n\n';
-        }
-        finalPrompt += `请基于上述知识库内容回答问题。`;
+      // 构建最终的用户消息
+      let finalPrompt = '';
+      
+      if (referenceDocuments.trim()) {
+        // 有参考文档时，使用 RAG 格式
+        const userQuery = sanitizedMessage.trim() || '请基于上述文档内容回答问题。';
+        finalPrompt = `这是你需要参考的知识库片段：\n######################\n${referenceDocuments.trim()}\n######################\n\n用户的提问是："${userQuery}"\n\n请根据以上文档回答用户的问题。`;
+      } else {
+        // 没有参考文档时，直接使用用户问题
+        finalPrompt = sanitizedMessage.trim();
       }
 
       // 将完整的 prompt 与历史整合，确保最后一条用户消息为当前问题
@@ -1001,7 +1062,25 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
       const modelDisplayName = modelConfig.displayName || formatModelDisplayName(modelToUse);
       const providerDisplayName = getProviderDisplayName(providerId, actualModelId);
-      const systemMessage = `你是一个AI助手，模型名称是${modelDisplayName}。当用户询问你的身份、模型名称或开发者时，请准确回答：你是${modelDisplayName}模型，由${providerDisplayName}提供。不要声称自己是其他模型。`;
+      
+      // 判断是否有 RAG 上下文（@文件引用、知识库引用、向量检索结果、参考文档）
+      const hasRagContext = vectorSearchResults.length > 0 || 
+                            fileContents.length > 0 || 
+                            ragChunks.length > 0 || 
+                            knowledgeBaseMentions.length > 0 ||
+                            referenceDocuments.trim().length > 0;
+      
+      console.log('[InlineChat] RAG 上下文检测:', {
+        vectorSearchResults: vectorSearchResults.length,
+        fileContents: fileContents.length,
+        ragChunks: ragChunks.length,
+        knowledgeBaseMentions: knowledgeBaseMentions.length,
+        referenceDocuments: referenceDocuments.trim().length > 0,
+        hasRagContext
+      });
+      
+      // 根据是否有 RAG 上下文选择不同的 System Prompt（从 AI-Zone.md 文件动态加载）
+      const systemMessage = await getAIZoneSystemPromptAsync(hasRagContext, modelDisplayName, providerDisplayName);
 
       const trimmedHistory = chatHistory.length > MAX_INLINE_CHAT_HISTORY_MESSAGES
         ? chatHistory.slice(chatHistory.length - MAX_INLINE_CHAT_HISTORY_MESSAGES)

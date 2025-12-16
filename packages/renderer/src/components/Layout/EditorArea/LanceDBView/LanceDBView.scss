@@ -1,0 +1,433 @@
+/**
+ * LanceDB 数据查看器样式
+ */
+
+.lancedb-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--ws-editor-background);
+  color: var(--ws-editor-foreground);
+  font-size: 13px;
+
+  // 滚动条样式
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--ws-scrollbarSlider-background);
+    border-radius: 5px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--ws-scrollbarSlider-hoverBackground);
+    border-radius: 5px;
+
+    &:hover {
+      background: var(--ws-scrollbarSlider-activeBackground);
+    }
+  }
+
+  .lancedb-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ws-panel-border);
+    background-color: var(--ws-sideBar-background);
+    flex-shrink: 0;
+
+    h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .stats {
+        font-size: 12px;
+        color: var(--ws-descriptionForeground);
+      }
+
+      .refresh-btn {
+        cursor: pointer;
+        font-size: 16px;
+        padding: 4px 8px;
+        border-radius: 4px;
+
+        &:hover {
+          background-color: var(--ws-list-hoverBackground);
+        }
+      }
+    }
+  }
+
+  // 标签页导航
+  .lancedb-tabs {
+    display: flex;
+    gap: 0;
+    background-color: var(--ws-sideBar-background);
+    border-bottom: 1px solid var(--ws-panel-border);
+    overflow-x: auto;
+    flex-shrink: 0;
+
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      border-right: 1px solid var(--ws-panel-border);
+      font-size: 12px;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+
+      &:hover {
+        background-color: var(--ws-list-hoverBackground);
+      }
+
+      &.active {
+        background-color: var(--ws-editor-background);
+        border-bottom-color: var(--ws-focusBorder);
+      }
+
+      .tab-title {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .tab-close {
+        font-size: 14px;
+        line-height: 1;
+        padding: 2px 4px;
+        border-radius: 3px;
+        margin-left: 4px;
+
+        &:hover {
+          background-color: var(--ws-list-hoverBackground);
+        }
+      }
+    }
+  }
+
+  .error-message {
+    padding: 12px 16px;
+    background-color: var(--ws-inputValidation-errorBackground);
+    color: var(--ws-inputValidation-errorForeground);
+    border: 1px solid var(--ws-inputValidation-errorBorder);
+    margin: 8px 16px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .loading {
+    padding: 24px;
+    text-align: center;
+    color: var(--ws-descriptionForeground);
+  }
+
+  .lancedb-content {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+
+    .main-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .detail-panel {
+      flex-shrink: 0;
+      width: 280px;
+      border-left: 1px solid var(--ws-panel-border);
+      background-color: var(--ws-sideBar-background);
+      overflow: auto;
+
+      .detail-empty {
+        padding: 24px;
+        text-align: center;
+        color: var(--ws-descriptionForeground);
+      }
+
+      .detail-content {
+        padding: 16px;
+
+        h4 {
+          margin: 0 0 16px 0;
+          font-size: 13px;
+          font-weight: 500;
+          padding-bottom: 8px;
+          border-bottom: 1px solid var(--ws-panel-border);
+        }
+
+        .detail-item {
+          margin-bottom: 12px;
+
+          .label {
+            display: block;
+            font-size: 11px;
+            color: var(--ws-descriptionForeground);
+            margin-bottom: 4px;
+          }
+
+          .value {
+            display: block;
+            word-break: break-all;
+            font-family: var(--ws-editor-font-family);
+            font-size: 12px;
+          }
+        }
+      }
+    }
+  }
+
+  .lancedb-table-container {
+    flex: 1;
+    overflow: auto;
+
+    .empty-state {
+      padding: 48px;
+      text-align: center;
+      color: var(--ws-descriptionForeground);
+    }
+  }
+
+  .lancedb-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+
+    th,
+    td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--ws-panel-border);
+    }
+
+    th {
+      background-color: var(--ws-sideBar-background);
+      font-weight: 500;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tbody tr {
+      cursor: pointer;
+
+      &:hover {
+        background-color: var(--ws-list-hoverBackground);
+      }
+
+      &.selected {
+        background-color: var(--ws-list-activeSelectionBackground);
+        color: var(--ws-list-activeSelectionForeground);
+      }
+    }
+
+    .name-cell {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  // 分块内容区域
+  .chunk-content {
+    flex: 1;
+    overflow: auto;
+    padding: 12px;
+
+    .chunk-stats {
+      font-size: 11px;
+      color: var(--ws-descriptionForeground);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--ws-panel-border);
+    }
+
+    .chunk-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .parent-chunk {
+      border: 1px solid var(--ws-panel-border);
+      border-radius: 4px;
+      overflow: hidden;
+
+      .parent-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background-color: var(--ws-sideBar-background);
+        border-bottom: 1px solid var(--ws-panel-border);
+
+        .chunk-label {
+          font-weight: 500;
+          font-size: 12px;
+        }
+
+        .chunk-info {
+          font-size: 11px;
+          color: var(--ws-descriptionForeground);
+        }
+      }
+
+      .parent-content {
+        margin: 0;
+        padding: 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 200px;
+        overflow: auto;
+        background-color: var(--ws-editor-background);
+        font-family: var(--ws-editor-font-family);
+
+        // 默认隐藏滚动条
+        &::-webkit-scrollbar {
+          width: 6px !important;
+          height: 6px !important;
+        }
+
+        &::-webkit-scrollbar-track {
+          background: transparent !important;
+        }
+
+        &::-webkit-scrollbar-thumb {
+          background: transparent !important;
+          border-radius: 3px;
+        }
+
+        // 鼠标移入显示滚动条
+        &:hover::-webkit-scrollbar-thumb {
+          background: var(--ws-scrollbarSlider-hoverBackground) !important;
+        }
+      }
+
+      .children-list {
+        border-top: 1px solid var(--ws-panel-border);
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background-color: var(--ws-sideBar-background);
+      }
+    }
+
+    .child-chunk {
+      border: 1px solid var(--ws-panel-border);
+      border-radius: 4px;
+      overflow: hidden;
+      background-color: var(--ws-editor-background);
+
+      .child-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 10px;
+        background-color: var(--ws-editor-background);
+        border-bottom: 1px solid var(--ws-panel-border);
+
+        .chunk-label {
+          font-size: 11px;
+          color: var(--ws-textLink-foreground);
+        }
+
+        .chunk-info {
+          font-size: 10px;
+          color: var(--ws-descriptionForeground);
+        }
+      }
+
+      .child-content {
+        margin: 0;
+        padding: 8px 10px;
+        font-size: 11px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 100px;
+        overflow: auto;
+        font-family: var(--ws-editor-font-family);
+
+        // 默认隐藏滚动条
+        &::-webkit-scrollbar {
+          width: 6px !important;
+          height: 6px !important;
+        }
+
+        &::-webkit-scrollbar-track {
+          background: transparent !important;
+        }
+
+        &::-webkit-scrollbar-thumb {
+          background: transparent !important;
+          border-radius: 3px;
+        }
+
+        // 鼠标移入显示滚动条
+        &:hover::-webkit-scrollbar-thumb {
+          background: var(--ws-scrollbarSlider-hoverBackground) !important;
+        }
+      }
+    }
+  }
+
+  // 右键菜单
+  .context-menu {
+    position: fixed;
+    z-index: 1000;
+    background-color: var(--ws-menu-background);
+    border: 1px solid var(--ws-panel-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    min-width: 130px;
+    padding: 4px;
+
+    .context-menu-item {
+      padding: 5px 10px;
+      margin-top: 2px;
+      cursor: pointer;
+      font-size: 12px;
+      border-radius: 4px;
+
+      &:first-child {
+        margin-top: 0;
+      }
+
+      &:hover {
+        background-color: var(--ws-list-hoverBackground);
+      }
+
+      &.danger {
+        &:hover {
+          color: var(--ws-errorForeground);
+          background-color: var(--ws-list-hoverBackground);
+        }
+      }
+    }
+
+    .context-menu-separator {
+      height: 1px;
+      margin: 3px 0;
+      background-color: var(--ws-menu-separatorBackground);
+    }
+  }
+}

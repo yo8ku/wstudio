@@ -21,6 +21,7 @@ import { AIConfigView } from '../../../AIConfig/AIConfigView';
 import { AIAgentView } from '../AIAgentView';
 import { ExtensionManagerView } from '../ExtensionManagerView';
 import { ResizableDivider } from '../ResizableDivider';
+import { LanceDBView } from '../LanceDBView';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
 import type { KnowledgeItem } from '../../Sidebar/KnowledgeBase/types';
 import { toastService } from '../../../../services/ToastService';
@@ -33,7 +34,7 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'ai-agent' | 'extension-manager';  // 新增：extension-manager 扩展管理类型
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'ai-agent' | 'extension-manager' | 'lancedb-view';  // 新增：lancedb-view 数据查看类型
   isPreview?: boolean;  // 新增：是否为预览模式（单击打开）
   sourceTabId?: string;  // 新增：预览标签页关联的源文件标签页ID
   knowledgeData?: any;  // 新增：知识库数据（用于 knowledge 类型）
@@ -497,9 +498,33 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       setIsSplitView(true);
     };
 
+    const handleOpenLanceDBView = () => {
+      setTabs(currentTabs => {
+        const existingTab = currentTabs.find(tab => tab.type === 'lancedb-view');
+        
+        if (existingTab) {
+          setTimeout(() => setActiveTabId(existingTab.id), 0);
+          console.log('[EditorArea] 激活现有 LanceDB 数据查看标签页');
+          return currentTabs;
+        } else {
+          const newTab: EditorTab = {
+            id: `lancedb-view-${Date.now()}`,
+            title: 'LanceDB 数据查看',
+            path: 'lancedb-view:/',
+            isDirty: false,
+            type: 'lancedb-view'
+          };
+          setTimeout(() => setActiveTabId(newTab.id), 0);
+          console.log('[EditorArea] 创建新的 LanceDB 数据查看标签页');
+          return [...currentTabs, newTab];
+        }
+      });
+    };
+
     window.addEventListener('open-file', handleOpenFile as EventListener);
     window.addEventListener('open-settings', handleOpenSettings);
     window.addEventListener('open-extension-manager', handleOpenExtensionManager);
+    window.addEventListener('open-lancedb-view', handleOpenLanceDBView);
     window.addEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
     
@@ -522,6 +547,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-file', handleOpenFile as EventListener);
       window.removeEventListener('open-settings', handleOpenSettings);
       window.removeEventListener('open-extension-manager', handleOpenExtensionManager);
+      window.removeEventListener('open-lancedb-view', handleOpenLanceDBView);
       window.removeEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
       window.removeEventListener('close-all-editors', handleCloseAllEditors);
@@ -1476,7 +1502,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           )}
 
           {/* 左侧面包屑 */}
-          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'ai-agent' && (
+          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'ai-agent' && activeTab.type !== 'lancedb-view' && (
             <Breadcrumb path={activeTab.path} />
           )}
 
@@ -1508,6 +1534,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   {tab.type === 'settings' && <SettingsView />}
                   
                   {tab.type === 'extension-manager' && <ExtensionManagerView />}
+                  
+                  {tab.type === 'lancedb-view' && <LanceDBView />}
                   
                   {tab.type === 'ai-config' && (
                     <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />
@@ -1628,7 +1656,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             )}
 
             {/* 右侧面包屑 */}
-            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'ai-agent' && (
+            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'ai-agent' && rightActiveTab.type !== 'lancedb-view' && (
               <Breadcrumb path={rightActiveTab.path} />
             )}
 
@@ -1647,6 +1675,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     {tab.type === 'settings' && <SettingsView />}
                     
                     {tab.type === 'extension-manager' && <ExtensionManagerView />}
+                    
+                    {tab.type === 'lancedb-view' && <LanceDBView />}
                     
                     {tab.type === 'ai-config' && (
                       <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />
