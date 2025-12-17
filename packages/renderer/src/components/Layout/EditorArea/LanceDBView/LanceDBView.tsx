@@ -33,22 +33,12 @@ interface ParentChunk {
   createdAt: number;
 }
 
-interface ChildChunk {
-  childId: string;
-  parentId: string;
-  content: string;
-  chunkIndex: number;
-  vectorDim: number;
-  parentChunkIndex: number;
-}
-
 interface ChunkTab {
   id: string;
   type: 'chunks';
   fileName: string;
   filePath: string;
   parents: ParentChunk[];
-  children: ChildChunk[];
 }
 
 interface FilesTab {
@@ -137,11 +127,6 @@ export const LanceDBView: React.FC = () => {
       console.log('[LanceDBView] 调用 get-parents-by-file...');
       const parentsResult = await ipcRenderer.invoke('workspace-index-db:get-parents-by-file', file.filePath);
       console.log('[LanceDBView] 父块结果:', JSON.stringify(parentsResult, null, 2));
-      
-      console.log('[LanceDBView] 调用 get-children-by-file...');
-      const childrenResult = await ipcRenderer.invoke('workspace-index-db:get-children-by-file', file.filePath);
-      console.log('[LanceDBView] 子块结果:', JSON.stringify(childrenResult, null, 2));
-      console.log('[LanceDBView] 子块数量:', childrenResult?.data?.length || 0);
 
       const newTab: ChunkTab = {
         id: `chunk-${Date.now()}`,
@@ -149,10 +134,9 @@ export const LanceDBView: React.FC = () => {
         fileName: file.fileName,
         filePath: file.filePath,
         parents: parentsResult?.success ? parentsResult.data : [],
-        children: childrenResult?.success ? childrenResult.data : []
       };
 
-      console.log('[LanceDBView] 创建新标签页, 父块:', newTab.parents.length, '子块:', newTab.children.length);
+      console.log('[LanceDBView] 创建新标签页, 父块:', newTab.parents.length);
       setTabs(prev => [...prev, newTab]);
       setActiveTabId(newTab.id);
     } catch (err) {
@@ -281,42 +265,18 @@ export const LanceDBView: React.FC = () => {
     </div>
   );
 
-  // 渲染分块内容
+  // 渲染分块内容（只显示父块）
   const renderChunkContent = (chunkTab: ChunkTab) => (
     <div className="chunk-content">
-      <div className="chunk-stats">
-        父块: {chunkTab.parents.length} | 子块: {chunkTab.children.length}
-      </div>
       <div className="chunk-list">
-        {chunkTab.parents.map((parent, pIndex) => {
-          const relatedChildren = chunkTab.children.filter(
-            c => c.parentChunkIndex === parent.chunkIndex
-          );
-          return (
-            <div key={parent.parentId} className="parent-chunk">
-              <div className="parent-header">
-                <span className="chunk-label">父块 {pIndex + 1}</span>
-                <span className="chunk-info">
-                  {parent.content.length} 字符 | {relatedChildren.length} 个子块
-                </span>
-              </div>
-              <pre className="parent-content">{parent.content}</pre>
-              <div className="children-list">
-                {relatedChildren.map((child, cIndex) => (
-                  <div key={child.childId} className="child-chunk">
-                    <div className="child-header">
-                      <span className="chunk-label">子块 {cIndex + 1}</span>
-                      <span className="chunk-info">
-                        {child.content.length} 字符 | 向量维度: {child.vectorDim}
-                      </span>
-                    </div>
-                    <pre className="child-content">{child.content}</pre>
-                  </div>
-                ))}
-              </div>
+        {chunkTab.parents.map((parent, pIndex) => (
+          <div key={parent.parentId} className="parent-chunk">
+            <div className="parent-header">
+              <span className="chunk-label">块{pIndex + 1}</span>
             </div>
-          );
-        })}
+            <pre className="parent-content">{parent.content}</pre>
+          </div>
+        ))}
       </div>
     </div>
   );
