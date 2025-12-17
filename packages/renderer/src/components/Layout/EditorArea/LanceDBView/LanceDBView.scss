@@ -17,7 +17,7 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: var(--ws-scrollbarSlider-background);
+    background: var(--ws-editor-background);
     border-radius: 5px;
   }
 
@@ -34,25 +34,62 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--ws-panel-border);
     background-color: var(--ws-sideBar-background);
     flex-shrink: 0;
+    gap: 12px;
 
-    h3 {
-      margin: 0;
-      font-size: 14px;
-      font-weight: 500;
+    .search-box {
+      flex: 1;
+      position: relative;
+      max-width: 300px;
+
+      .search-input {
+        width: 100%;
+        padding: 6px 28px 6px 10px;
+        font-size: 12px;
+        border: 1px solid var(--ws-input-border);
+        border-radius: 4px;
+        background-color: var(--ws-input-background);
+        color: var(--ws-input-foreground);
+        outline: none;
+
+        &::placeholder {
+          color: var(--ws-input-placeholderForeground);
+        }
+
+        &:focus {
+          border-color: var(--ws-focusBorder);
+        }
+      }
+
+      .search-clear {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        font-size: 14px;
+        color: var(--ws-descriptionForeground);
+        line-height: 1;
+
+        &:hover {
+          color: var(--ws-foreground);
+        }
+      }
     }
 
     .header-actions {
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-shrink: 0;
 
       .stats {
         font-size: 12px;
         color: var(--ws-descriptionForeground);
+        white-space: nowrap;
       }
 
       .refresh-btn {
@@ -195,11 +232,47 @@
   .lancedb-table-container {
     flex: 1;
     overflow: auto;
+    display: flex;
+    flex-direction: column;
 
     .empty-state {
       padding: 48px;
       text-align: center;
       color: var(--ws-descriptionForeground);
+    }
+
+    // 分页控件
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      padding: 12px;
+      border-top: 1px solid var(--ws-panel-border);
+      background-color: var(--ws-sideBar-background);
+      flex-shrink: 0;
+
+      .pagination-btn {
+        padding: 4px 12px;
+        font-size: 12px;
+        cursor: pointer;
+        border-radius: 4px;
+        color: var(--ws-textLink-foreground);
+
+        &:hover:not(.disabled) {
+          background-color: var(--ws-list-hoverBackground);
+        }
+
+        &.disabled {
+          color: var(--ws-disabledForeground);
+          cursor: not-allowed;
+        }
+      }
+
+      .pagination-info {
+        font-size: 12px;
+        color: var(--ws-descriptionForeground);
+      }
     }
   }
 

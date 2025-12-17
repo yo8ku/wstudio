@@ -27,6 +27,9 @@ const IGNORED_DIRECTORIES = [
 // 最小文档长度（字符数）
 const MIN_DOCUMENT_LENGTH = 100;
 
+// 最小文件大小（字节），小于此大小的文件不索引
+const MIN_FILE_SIZE = 2 * 1024; // 2KB
+
 interface IndexTask {
   type: 'index-file' | 'scan-directory';
   filePath?: string;
@@ -117,6 +120,15 @@ function processFile(filePath: string): IndexResult {
     // 获取文件信息
     const stats = fs.statSync(filePath);
     const fileSize = stats.size;
+    
+    // 检查文件大小，小于 2KB 不索引
+    if (fileSize < MIN_FILE_SIZE) {
+      return {
+        type: 'file-skipped',
+        filePath,
+        error: '文件小于2KB'
+      };
+    }
     
     // 读取文件
     const content = fs.readFileSync(filePath, 'utf-8');

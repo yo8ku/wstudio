@@ -4153,6 +4153,26 @@ export class AIZoneWidget {
   }
 
   /**
+   * 更新思考状态文本（公开方法，用于优先索引等场景）
+   * @param text 自定义思考文本，如 "正在优先解析文档结构..."
+   */
+  public updateThinkingText(text: string): void {
+    if (!this.messageDisplayElement) return;
+
+    // 显示消息区域
+    this.messageDisplayElement.style.display = 'block';
+
+    // 更新消息文本
+    const messageText = this.messageDisplayElement.querySelector('.ai-zone-message-text');
+    if (messageText) {
+      if (messageText.className !== 'ai-zone-message-text') {
+        messageText.className = 'ai-zone-message-text';
+      }
+      messageText.innerHTML = `${text}<span class="ai-zone-thinking-dots"></span>`;
+    }
+  }
+
+  /**
    * 显示"正在思考..."状态
    */
   private showThinkingState(): void {

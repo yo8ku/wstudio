@@ -348,7 +348,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         style={mainLayoutStyle}
       >
         {/* 标题栏（包含菜单栏） */}
-        <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative', zIndex: 10, backgroundColor:'var(--ws-editor-background)'}}>
+        <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative', backgroundColor:'var(--ws-editor-background)'}}>
           <TitleBar 
             onToggleSidebar={() => setIsSidebarVisible(!isSidebarVisible)}
             onToggleAIPanel={() => setIsAIChatVisible(!isAIChatVisible)}

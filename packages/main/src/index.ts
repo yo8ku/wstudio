@@ -17,7 +17,7 @@ import { registerTerminalHandlers } from './ipc/terminalHandlers';
 import { registerAIModelHandlers } from './ipc/aiModelHandlers';
 import { registerFileReferenceHandlers } from './ipc/fileReferenceHandlers';
 import { registerWorkspaceVectorIndexHandlers, setWorkspaceVectorIndexMainWindow } from './ipc/workspaceVectorIndexHandlers';
-import { registerWorkspaceIndexDbHandlers, setWorkspaceIndexDbMainWindow } from './ipc/workspaceIndexDbHandlers';
+import { registerWorkspaceIndexDbHandlers } from './ipc/workspaceIndexDbHandlers';
 import { ThemeService } from './services/ThemeService';
 import { TerminalService } from './services/terminal/TerminalService';
 import * as path from 'path';
@@ -124,7 +124,6 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   // 如果提供了主窗口，设置索引服务的主窗口（用于发送进度事件）
   if (mainWindow) {
     setWorkspaceVectorIndexMainWindow(mainWindow);
-    setWorkspaceIndexDbMainWindow(mainWindow);
   }
 
   // 工作区向量索引由 MainLayout.tsx 在渲染进程启动时触发

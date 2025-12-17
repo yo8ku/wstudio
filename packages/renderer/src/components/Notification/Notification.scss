@@ -1,0 +1,77 @@
+/**
+ * 消息提示框样式
+ * 功能：定义右下角消息通知的样式
+ */
+
+.notification-container {
+  position: fixed;
+  bottom: 35px;
+  right: 12px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+  pointer-events: none;
+}
+
+.notification-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background-color: var(--ws-notifications-background);
+  border: 1px solid var(--ws-notifications-border);
+  border-left-width: 3px;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+
+  // 成功状态 - 绿色边框
+  &.notification-success {
+    border-left-color: var(--ws-testing-iconPassed, #73c991);
+  }
+
+  // 错误状态 - 红色边框
+  &.notification-error {
+    border-left-color: var(--ws-errorForeground, #f14c4c);
+  }
+
+  // 警告状态 - 黄色边框
+  &.notification-warning {
+    border-left-color: var(--ws-list-warningForeground, #cca700);
+  }
+
+  // 信息状态 - 蓝色边框
+  &.notification-info {
+    border-left-color: var(--ws-textLink-foreground, #3794ff);
+  }
+}
+
+.notification-message {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ws-notifications-foreground);
+  word-break: break-word;
+}
+
+.notification-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  border-radius: 3px;
+  color: var(--ws-descriptionForeground);
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    color: var(--ws-foreground);
+  }
+}
+
+

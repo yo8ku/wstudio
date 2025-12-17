@@ -48,7 +48,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { MainLayout } from './components/Layout/MainLayout';
 import { initIconSystem } from './components/Icons';
-import { Toaster } from '@/components/ui/sonner';
+import { NotificationContainer } from './components/Notification';
 import { ragProcessingService } from './services/RAGProcessingService';
 import { knowledgeBaseRecoveryService } from './services/KnowledgeBaseRecoveryService';
 import './styles/index.scss';
@@ -152,12 +152,7 @@ const App: React.FC = () => {
   return (
     <>
       <MainLayout />
-      <Toaster 
-        position="top-right" 
-        richColors 
-        duration={3000}
-        offset={35}
-      />
+      <NotificationContainer />
     </>
   );
 };

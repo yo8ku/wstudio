@@ -3,11 +3,12 @@
  * 功能：显示编辑器状态、扩展信息等
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./StatusBar.scss";
 import { BackgroundImageSettings } from "../../BackgroundImageSettings/index";
 import { Icon } from "../../Icons/Icon";
 import { useActivityBarStore } from "../../../stores/activityBarStore";
+import { notification } from "../../Notification";
 
 interface StatusBarProps {}
 
@@ -32,6 +33,8 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     processedFiles: number;
     currentFile: string | null;
     status: 'idle' | 'scanning' | 'indexing' | 'paused' | 'completed' | 'error';
+    workspaceTotalFiles?: number;  // 工作区总文件数
+    indexedTotalFiles?: number;    // 已索引完成的文件总数
   } | null>(null);
 
   // 索引进度状态（主进程的文件索引）
@@ -289,6 +292,9 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   }, []);
 
+  // 记录上一次的索引状态，用于检测完成
+  const prevIndexStatusRef = useRef<string | null>(null);
+
   // 监听工作区向量索引服务进度（通过 IPC）
   useEffect(() => {
     const ipcRenderer = window.electron?.ipcRenderer;
@@ -299,8 +305,25 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
 
     console.log("[StatusBar] 开始监听工作区向量索引进度");
 
-    const unsubscribe = ipcRenderer.on('workspace-vector-index:progress', (_event: any, progress: any) => {
+    const unsubscribe = ipcRenderer.on('workspace-vector-index:progress', (_event: unknown, progress: {
+      totalFiles: number;
+      processedFiles: number;
+      currentFile: string | null;
+      status: 'idle' | 'scanning' | 'indexing' | 'paused' | 'completed' | 'error';
+      workspaceTotalFiles?: number;
+      indexedTotalFiles?: number;
+    }) => {
       console.log("[StatusBar] 收到向量索引进度:", progress);
+      
+      // 检测索引完成：从 indexing 状态变为 completed 状态，且本次实际处理了文件
+      if (progress.status === 'completed' && 
+          prevIndexStatusRef.current === 'indexing' &&
+          progress.processedFiles > 0) {
+        notification.success(`向量索引完成，本次索引 ${progress.processedFiles} 个文件`);
+      }
+      
+      // 更新上一次状态
+      prevIndexStatusRef.current = progress.status;
       setVectorIndexingProgress(progress);
     });
 
@@ -453,7 +476,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
               <span className="status-bar-text" style={{ fontSize: '11px', opacity: 0.9 }}>
                 {vectorIndexingProgress.status === 'scanning' ? '扫描中' : '索引'}
               </span>
-              {/* 进度条 */}
+              {/* 进度条 - 使用已索引总数/工作区总文件数 */}
               <div style={{ 
                 width: '60px', 
                 height: '4px', 
@@ -462,8 +485,8 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                 overflow: 'hidden'
               }}>
                 <div style={{ 
-                  width: vectorIndexingProgress.totalFiles > 0 
-                    ? `${(vectorIndexingProgress.processedFiles / vectorIndexingProgress.totalFiles) * 100}%` 
+                  width: (vectorIndexingProgress.workspaceTotalFiles ?? 0) > 0 
+                    ? `${((vectorIndexingProgress.indexedTotalFiles ?? 0) / (vectorIndexingProgress.workspaceTotalFiles ?? 1)) * 100}%` 
                     : '0%',
                   height: '100%',
                   backgroundColor: 'var(--ws-button-background, #0e639c)',
@@ -471,8 +494,9 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                   transition: 'width 0.3s ease'
                 }} />
               </div>
+              {/* 显示：已索引总数/工作区总文件数 */}
               <span className="status-bar-text" style={{ fontSize: '10px', opacity: 0.7 }}>
-                {vectorIndexingProgress.processedFiles}/{vectorIndexingProgress.totalFiles}
+                {vectorIndexingProgress.indexedTotalFiles ?? 0}/{vectorIndexingProgress.workspaceTotalFiles ?? 0}
               </span>
             </div>
           )}

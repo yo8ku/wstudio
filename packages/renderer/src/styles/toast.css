@@ -3,21 +3,25 @@
  * 使用 sonner 库，适配应用主题
  */
 
-/* 覆盖 sonner 默认样式，使用主题变�?*/
-[data-sonner-toaster] {
-  font-family: var(--ws-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif);
-}
+/* 覆盖 sonner 默认样式，使用主题变量*/
 
 [data-sonner-toast] {
   background-color: var(--ws-notifications-background, #1e1e1e) !important;
   border: 1px solid var(--ws-notifications-border, #454545) !important;
-  color: var(--ws-notifications-foreground, #cccccc) !important;
+  /* color: var(--ws-notifications-foreground, #cccccc) !important; */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  height: 40px;
+  width: 260px !important;
+  max-height: 150px;
+  color: #b4b2b2 !important;
+  font-size: 12px !important;
+  right: 13px !important;
+  border-radius: 4px !important;
 }
 
 /* 成功状�?*/
 [data-sonner-toast][data-type="success"] {
-  border-color: var(--ws-notifications-info-icon-foreground, #75beff) !important;
+  border-color: var(--ws-notifications-info-icon-foreground, #22bb0d56) !important;
 }
 
 [data-sonner-toast][data-type="success"] [data-icon] {
@@ -51,17 +55,6 @@
   color: var(--ws-notifications-info-icon-foreground, #75beff) !important;
 }
 
-/* Toast 标题和描�?*/
-[data-sonner-toast] [data-title] {
-  color: var(--ws-notifications-foreground, #cccccc) !important;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-[data-sonner-toast] [data-description] {
-  color: var(--ws-description-foreground, #999999) !important;
-  font-size: 12px;
-}
 
 /* 关闭按钮 */
 [data-sonner-toast] [data-close-button] {
@@ -94,4 +87,3 @@
   width: 16px;
   height: 16px;
 }
-

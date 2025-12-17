@@ -2536,10 +2536,12 @@
     // webstorm dark end ----------------
   ],
   "colors": {
+    "aiUserBorder.background":"",
     "secondar.foreground":"#666f85",
+    "aiThinking.boder":"#707a8c40",
     "aiPanle.hoverBorder": "#667083",
     "aiPanle.border": "#404754",
-     "aiZoneBorder.background": "#109868",
+     "aiZoneBorder.background": "#ffb466f2",
     "categoryCard.background": "#75757522",
     "commandCenter.foreground": "#cccccc",
     "commandCenter.activeForeground": "#cccccc",

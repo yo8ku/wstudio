@@ -232,14 +232,12 @@ export const LanceDBView: React.FC = () => {
           <tr>
             <th>序号</th>
             <th>文件名</th>
-            <th>扩展名</th>
             <th>大小</th>
             <th>语言</th>
-            <th>索引时间</th>
           </tr>
         </thead>
         <tbody>
-          {files.map((file, index) => (
+          {paginatedFiles.map((file, index) => (
             <tr
               key={file.filePath}
               className={selectedFile?.filePath === file.filePath ? 'selected' : ''}
@@ -247,18 +245,38 @@ export const LanceDBView: React.FC = () => {
               onDoubleClick={() => handleDoubleClick(file)}
               onContextMenu={(e) => handleContextMenu(e, file)}
             >
-              <td>{index + 1}</td>
+              <td>{(currentPage - 1) * pageSize + index + 1}</td>
               <td className="name-cell">{file.fileName}</td>
-              <td>{file.fileExtension}</td>
               <td>{(file.fileSize / 1024).toFixed(2)} KB</td>
               <td>{file.language}</td>
-              <td>{formatDate(file.indexedAt)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {files.length === 0 && !loading && (
-        <div className="empty-state">暂无已索引文件</div>
+      {filteredFiles.length === 0 && !loading && (
+        <div className="empty-state">
+          {searchKeyword ? '没有匹配的文件' : '暂无已索引文件'}
+        </div>
+      )}
+      {/* 分页控件 */}
+      {totalPages > 1 && (
+        <div className="pagination">
+          <span
+            className={`pagination-btn ${currentPage === 1 ? 'disabled' : ''}`}
+            onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
+          >
+            上一页
+          </span>
+          <span className="pagination-info">
+            {currentPage} / {totalPages}
+          </span>
+          <span
+            className={`pagination-btn ${currentPage === totalPages ? 'disabled' : ''}`}
+            onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)}
+          >
+            下一页
+          </span>
+        </div>
       )}
     </div>
   );
@@ -340,12 +358,61 @@ export const LanceDBView: React.FC = () => {
     );
   };
 
+  // 搜索关键词
+  const [searchKeyword, setSearchKeyword] = useState('');
+
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50;
+
+  // 过滤后的文件列表
+  const filteredFiles = files.filter(file => {
+    if (!searchKeyword.trim()) return true;
+    const keyword = searchKeyword.toLowerCase();
+    return (
+      file.fileName.toLowerCase().includes(keyword) ||
+      file.filePath.toLowerCase().includes(keyword) ||
+      file.fileExtension.toLowerCase().includes(keyword)
+    );
+  });
+
+  // 计算分页数据
+  const totalPages = Math.ceil(filteredFiles.length / pageSize);
+  const paginatedFiles = filteredFiles.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  // 搜索时重置到第一页
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchKeyword]);
+
   return (
     <div className="lancedb-view">
       <div className="lancedb-header">
-        <h3>索引数据查看器</h3>
+        <div className="search-box">
+          <input
+            type="text"
+            placeholder="搜索已索引文件..."
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            className="search-input"
+          />
+          {searchKeyword && (
+            <span
+              className="search-clear"
+              onClick={() => setSearchKeyword('')}
+              title="清除搜索"
+            >
+              ×
+            </span>
+          )}
+        </div>
         <div className="header-actions">
-          <span className="stats">已索引文件: {files.length}</span>
+          <span className="stats">
+            {searchKeyword ? `${filteredFiles.length}/${files.length}` : files.length} 个文件
+          </span>
           <span
             className="refresh-btn"
             onClick={loadFiles}

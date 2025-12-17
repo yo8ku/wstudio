@@ -2,18 +2,10 @@
  * 工作区索引数据库 IPC 处理器
  */
 
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain } from 'electron';
 import { workspaceIndexDatabase, FileIndexRecord, ParentRecord, ChildRecord } from '../services/WorkspaceIndexDatabase';
 
 let isRegistered = false;
-let mainWindow: BrowserWindow | null = null;
-
-/**
- * 设置主窗口
- */
-export function setWorkspaceIndexDbMainWindow(window: BrowserWindow | null): void {
-  mainWindow = window;
-}
 
 /**
  * 注册 IPC 处理器
@@ -39,23 +31,30 @@ export function registerWorkspaceIndexDbHandlers(): void {
   });
 
   // 检查文件是否应该被索引
-  ipcMain.handle('workspace-index-db:should-index-file', async (event, fileSize: number) => {
+  ipcMain.handle('workspace-index-db:should-index-file', async (_event, fileSize: number) => {
     return { success: true, data: workspaceIndexDatabase.shouldIndexFile(fileSize) };
   });
 
   // 检查文件是否已索引
-  ipcMain.handle('workspace-index-db:is-file-indexed', async (event, filePath: string) => {
-    return { success: true, data: workspaceIndexDatabase.isFileIndexed(filePath) };
+  ipcMain.handle('workspace-index-db:is-file-indexed', async (_event, filePath: string) => {
+    try {
+      await workspaceIndexDatabase.initialize();
+      const isIndexed = workspaceIndexDatabase.isFileIndexed(filePath);
+      return { success: true, data: isIndexed };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return { success: false, error: errorMessage };
+    }
   });
 
   // 获取文件索引信息
-  ipcMain.handle('workspace-index-db:get-file-index', async (event, filePath: string) => {
+  ipcMain.handle('workspace-index-db:get-file-index', async (_event, filePath: string) => {
     const record = workspaceIndexDatabase.getFileIndex(filePath);
     return { success: true, data: record };
   });
 
   // 添加文件索引
-  ipcMain.handle('workspace-index-db:add-file-index', async (event, record: FileIndexRecord) => {
+  ipcMain.handle('workspace-index-db:add-file-index', async (_event, record: FileIndexRecord) => {
     try {
       workspaceIndexDatabase.addFileIndex(record);
       return { success: true };
@@ -66,7 +65,7 @@ export function registerWorkspaceIndexDbHandlers(): void {
   });
 
   // 删除文件索引
-  ipcMain.handle('workspace-index-db:delete-file-index', async (event, filePath: string) => {
+  ipcMain.handle('workspace-index-db:delete-file-index', async (_event, filePath: string) => {
     try {
       workspaceIndexDatabase.deleteFileIndex(filePath);
       return { success: true };
@@ -77,7 +76,7 @@ export function registerWorkspaceIndexDbHandlers(): void {
   });
 
   // 添加父块
-  ipcMain.handle('workspace-index-db:add-parent', async (event, record: ParentRecord) => {
+  ipcMain.handle('workspace-index-db:add-parent', async (_event, record: ParentRecord) => {
     try {
       workspaceIndexDatabase.addParent(record);
       return { success: true };
@@ -88,7 +87,7 @@ export function registerWorkspaceIndexDbHandlers(): void {
   });
 
   // 批量添加父块
-  ipcMain.handle('workspace-index-db:add-parents-batch', async (event, records: ParentRecord[]) => {
+  ipcMain.handle('workspace-index-db:add-parents-batch', async (_event, records: ParentRecord[]) => {
     try {
       workspaceIndexDatabase.addParentsBatch(records);
       return { success: true };
@@ -99,13 +98,13 @@ export function registerWorkspaceIndexDbHandlers(): void {
   });
 
   // 获取父块
-  ipcMain.handle('workspace-index-db:get-parent', async (event, parentId: string) => {
+  ipcMain.handle('workspace-index-db:get-parent', async (_event, parentId: string) => {
     const record = workspaceIndexDatabase.getParent(parentId);
     return { success: true, data: record };
   });
 
   // 添加子块向量
-  ipcMain.handle('workspace-index-db:add-children', async (event, records: ChildRecord[]) => {
+  ipcMain.handle('workspace-index-db:add-children', async (_event, records: ChildRecord[]) => {
     try {
       await workspaceIndexDatabase.addChildren(records);
       return { success: true };
@@ -116,7 +115,7 @@ export function registerWorkspaceIndexDbHandlers(): void {
   });
 
   // 向量搜索
-  ipcMain.handle('workspace-index-db:search', async (event, queryVector: number[], topK: number = 10) => {
+  ipcMain.handle('workspace-index-db:search', async (_event, queryVector: number[], topK: number = 10) => {
     try {
       const results = await workspaceIndexDatabase.search(queryVector, topK);
       return { success: true, data: results };
@@ -150,7 +149,7 @@ export function registerWorkspaceIndexDbHandlers(): void {
   });
 
   // 获取所有子块数据（用于数据查看）
-  ipcMain.handle('workspace-index-db:get-all-children', async (event, limit: number = 100) => {
+  ipcMain.handle('workspace-index-db:get-all-children', async (_event, limit: number = 100) => {
     try {
       await workspaceIndexDatabase.initialize();
       const children = await workspaceIndexDatabase.getAllChildren(limit);
@@ -185,6 +184,19 @@ export function registerWorkspaceIndexDbHandlers(): void {
     }
   });
 
+  // 按文件路径进行向量搜索
+  ipcMain.handle('workspace-index-db:search-by-file-path', async (_event, filePath: string, queryVector: number[], topK: number = 5) => {
+    try {
+      await workspaceIndexDatabase.initialize();
+      const results = await workspaceIndexDatabase.searchByFilePath(filePath, queryVector, topK);
+      return { success: true, data: results };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[WorkspaceIndexDb IPC] searchByFilePath 错误: ${errorMessage}`);
+      return { success: false, error: errorMessage };
+    }
+  });
+
   // 获取指定文件的子块数据
   ipcMain.handle('workspace-index-db:get-children-by-file', async (_event, filePath: string) => {
     console.log(`\n========== [WorkspaceIndexDb IPC] get-children-by-file ==========`);
@@ -199,6 +211,27 @@ export function registerWorkspaceIndexDbHandlers(): void {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[WorkspaceIndexDb IPC] 错误: ${errorMessage}`);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // 优先索引文件（用于 @文件 场景）
+  ipcMain.handle('workspace-index-db:priority-index-file', async (event, filePath: string) => {
+    console.log(`[WorkspaceIndexDb IPC] 优先索引文件: ${filePath}`);
+    try {
+      // 动态导入避免循环依赖
+      const { workspaceVectorIndexService } = await import('../services/WorkspaceVectorIndexService');
+      
+      // 发送进度更新到渲染进程
+      const onProgress = (stage: string) => {
+        event.sender.send('workspace-index-db:priority-index-progress', { filePath, stage });
+      };
+      
+      const success = await workspaceVectorIndexService.priorityIndexFile(filePath, onProgress);
+      return { success, data: success };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[WorkspaceIndexDb IPC] 优先索引失败: ${errorMessage}`);
       return { success: false, error: errorMessage };
     }
   });

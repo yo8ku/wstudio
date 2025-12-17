@@ -697,6 +697,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         }>;
       }> = [];
       
+      // 最小文件大小阈值（2KB），小于此大小的文件直接读取全文
+      const MIN_FILE_SIZE_FOR_VECTOR = 2 * 1024;
+      
       if (aiZoneWidgetRef.current) {
         const selectedFiles = aiZoneWidgetRef.current.getSelectedFiles();
         console.log('[InlineChat] getSelectedFiles() 返回:', selectedFiles);
@@ -706,83 +709,168 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         console.log('[InlineChat] 过滤后的文件项:', fileItems);
         
         if (fileItems.length > 0) {
-          console.log(`[InlineChat] 开始对 ${fileItems.length} 个文件进行向量搜索`);
+          // 分离大文件（带缓存内容）
+          const largeFiles: Array<{ path: string; name: string; type?: string; kbId?: string; content: string }> = [];
           
-          try {
-            // 初始化嵌入服务
-            const { EmbeddingService } = await import('@note-studio/shared');
-            const embeddingService = new EmbeddingService();
-            
-            // 生成查询向量
-            const query = sanitizedMessage.trim() || '请基于文件内容回答问题';
-            const queryEmbedding = await embeddingService.generateEmbedding(query);
-            console.log('[InlineChat] 查询向量生成完成');
-            
-            // 对每个文件进行向量搜索
-            for (const file of fileItems) {
-              try {
-                console.log(`[InlineChat] 搜索文件: ${file.name} (${file.path})`);
-                
-                // 调用主进程的向量搜索 API
-                const searchResults = await window.electronAPI?.workspaceIndexDb?.searchByFilePath?.(
-                  file.path,
-                  queryEmbedding.vectors,
-                  5 // topK: 每个文件返回前5个相关父块
-                );
-                
-                if (searchResults && searchResults.length > 0) {
-                  fileVectorSearchResults.push({
-                    filePath: file.path,
-                    fileName: file.name,
-                    results: searchResults
-                  });
-                  console.log(`[InlineChat] 文件 "${file.name}" 搜索到 ${searchResults.length} 个相关片段`);
-                } else {
-                  console.log(`[InlineChat] 文件 "${file.name}" 未找到相关片段，尝试读取全文`);
-                  // 如果向量搜索没有结果，回退到读取全文（可能文件未被索引）
-                  const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
-                  if (content) {
-                    fileContents.push({
-                      path: file.path,
-                      name: file.name,
-                      content: content
-                    });
-                  }
-                }
-              } catch (error) {
-                console.warn(`[InlineChat] 搜索文件失败: ${file.path}`, error);
-                // 搜索失败时回退到读取全文
+          for (const file of fileItems) {
+            try {
+              // 读取文件内容来判断大小
+              const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
+              if (!content) {
+                console.warn(`[InlineChat] 文件内容为空: ${file.path}`);
+                continue;
+              }
+              
+              const fileSize = new Blob([content]).size;
+              console.log(`[InlineChat] 文件 "${file.name}" 大小: ${fileSize} bytes`);
+              
+              if (fileSize >= MIN_FILE_SIZE_FOR_VECTOR) {
+                largeFiles.push({ ...file, content }); // 保存内容，避免重复读取
+              } else {
+                // 小文件直接添加到 fileContents
+                fileContents.push({
+                  path: file.path,
+                  name: file.name,
+                  content: content
+                });
+                console.log(`[InlineChat] 小文件 "${file.name}" 直接使用全文，长度: ${content.length}`);
+              }
+            } catch (readError) {
+              console.warn(`[InlineChat] 读取文件失败: ${file.path}`, readError);
+            }
+          }
+          
+          console.log(`[InlineChat] 大文件(>=2KB): ${largeFiles.length} 个, 小文件已直接添加到 fileContents`);
+          
+          // 处理大文件：进行向量搜索
+          if (largeFiles.length > 0) {
+            try {
+              // 初始化嵌入服务
+              const { EmbeddingService } = await import('@note-studio/shared');
+              const embeddingService = new EmbeddingService();
+              
+              // 生成查询向量
+              const query = sanitizedMessage.trim() || '请基于文件内容回答问题';
+              const queryEmbedding = await embeddingService.generateEmbedding(query);
+              console.log('[InlineChat] 查询向量生成完成，维度:', queryEmbedding.vectors.length);
+              
+              // 对每个大文件进行向量搜索
+              for (const file of largeFiles) {
                 try {
-                  const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
-                  if (content) {
-                    fileContents.push({
-                      path: file.path,
-                      name: file.name,
-                      content: content
-                    });
+                  console.log(`[InlineChat] 向量搜索文件: ${file.name}`);
+                  
+                  // 检查文件是否已索引
+                  const isIndexedResponse = await window.electron?.ipcRenderer.invoke(
+                    'workspace-index-db:is-file-indexed',
+                    file.path
+                  );
+                  const isIndexed = isIndexedResponse?.success && isIndexedResponse?.data;
+                  
+                  // 如果文件未索引，触发优先索引
+                  if (!isIndexed) {
+                    console.log(`[InlineChat] 文件 "${file.name}" 未索引，触发优先索引...`);
+                    
+                    // 显示优先索引状态
+                    aiZoneWidgetRef.current?.updateThinkingText('正在优先解析文档结构');
+                    
+                    // 调用优先索引 API
+                    const indexResponse = await window.electron?.ipcRenderer.invoke(
+                      'workspace-index-db:priority-index-file',
+                      file.path
+                    );
+                    
+                    if (!indexResponse?.success) {
+                      console.warn(`[InlineChat] 优先索引失败: ${file.name}，使用全文`);
+                      // 索引失败，使用缓存的全文内容
+                      fileContents.push({
+                        path: file.path,
+                        name: file.name,
+                        content: file.content
+                      });
+                      // 恢复思考状态
+                      aiZoneWidgetRef.current?.updateThinkingText('深度思考');
+                      continue;
+                    }
+                    
+                    console.log(`[InlineChat] 文件 "${file.name}" 优先索引完成`);
+                    // 恢复思考状态
+                    aiZoneWidgetRef.current?.updateThinkingText('深度思考');
                   }
-                } catch (readError) {
-                  console.warn(`[InlineChat] 读取文件也失败: ${file.path}`, readError);
+                  
+                  // 调用主进程的向量搜索 API（使用 source 字段进行带条件搜索）
+                  const searchResponse = await window.electron?.ipcRenderer.invoke(
+                    'workspace-index-db:search-by-file-path',
+                    file.path,
+                    queryEmbedding.vectors,
+                    3 // topK: 每个文件返回前3个相关父块
+                  );
+                  
+                  if (!searchResponse?.success) {
+                    console.warn(`[InlineChat] 向量搜索失败: ${searchResponse?.error || '未知错误'}`);
+                  }
+                  
+                  const searchResults = searchResponse?.success ? searchResponse.data : null;
+                  
+                  console.log(`[InlineChat] 向量搜索结果:`, {
+                    success: searchResponse?.success,
+                    resultsCount: searchResults?.length || 0
+                  });
+                  
+                  if (searchResults && searchResults.length > 0) {
+                    // 将 SearchResult 转换为 fileVectorSearchResults 期望的格式
+                    const transformedResults = searchResults.map((r: { parentId: string; parentContent: string; childContent: string; filePath: string; score: number }) => ({
+                      id: r.parentId,
+                      text: r.parentContent, // 使用父块内容作为参考文档
+                      metadata: { filePath: r.filePath, childContent: r.childContent },
+                      score: r.score
+                    }));
+                    
+                    fileVectorSearchResults.push({
+                      filePath: file.path,
+                      fileName: file.name,
+                      results: transformedResults
+                    });
+                    console.log(`[InlineChat] 文件 "${file.name}" 搜索到 ${searchResults.length} 个相关父块`);
+                  } else {
+                    // 向量搜索无结果，可能文件未被索引，回退到读取全文
+                    console.log(`[InlineChat] 文件 "${file.name}" 向量搜索无结果，回退到读取全文`);
+                    const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
+                    if (content) {
+                      fileContents.push({
+                        path: file.path,
+                        name: file.name,
+                        content: content
+                      });
+                    }
+                  }
+                } catch (error) {
+                  console.warn(`[InlineChat] 向量搜索文件失败: ${file.path}`, error);
+                  // 搜索失败时回退到读取全文
+                  try {
+                    const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
+                    if (content) {
+                      fileContents.push({
+                        path: file.path,
+                        name: file.name,
+                        content: content
+                      });
+                    }
+                  } catch (readError) {
+                    console.warn(`[InlineChat] 读取文件也失败: ${file.path}`, readError);
+                  }
                 }
               }
-            }
-            
-            console.log(`[InlineChat] 文件向量搜索完成: ${fileVectorSearchResults.length} 个文件有结果, ${fileContents.length} 个文件回退到全文`);
-          } catch (error) {
-            console.error('[InlineChat] 文件向量搜索失败，回退到读取全文:', error);
-            // 向量搜索整体失败时，回退到读取所有文件全文
-            for (const file of fileItems) {
-              try {
-                const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
-                if (content) {
-                  fileContents.push({
-                    path: file.path,
-                    name: file.name,
-                    content: content
-                  });
-                }
-              } catch (readError) {
-                console.warn(`[InlineChat] 读取文件失败: ${file.path}`, readError);
+              
+              console.log(`[InlineChat] 文件向量搜索完成: ${fileVectorSearchResults.length} 个文件有结果, ${fileContents.length} 个文件使用全文`);
+            } catch (error) {
+              console.error('[InlineChat] 文件向量搜索失败，回退到读取全文:', error);
+              // 向量搜索整体失败时，回退到读取所有大文件全文
+              for (const file of largeFiles) {
+                fileContents.push({
+                  path: file.path,
+                  name: file.name,
+                  content: file.content
+                });
               }
             }
           }
@@ -940,8 +1028,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             for (const result of sortedResults) {
               const fileName = result.metadata.fileName || result.metadata.filePath || '未知文件';
               
-              // 格式：[文档 N] 文件名\n内容
-              const docContent = `[文档 ${documentIndex}] ${fileName}\n${result.text}\n`;
+              // 格式：[文件名]\n内容（便于大模型引用时显示文件名）
+              const docContent = `[${fileName}]\n${result.text}\n`;
               const docTokens = estimateTokens(docContent);
 
               if (currentSearchResultTokens + docTokens > maxSearchResultTokens) {
@@ -977,8 +1065,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           const sortedResults = [...fileResult.results].sort((a, b) => b.score - a.score);
           
           for (const result of sortedResults) {
-            // 格式：[文档 N] 文件名\n内容
-            const docContent = `[文档 ${documentIndex}] ${fileResult.fileName}\n${result.text}\n`;
+            // 格式：[文件名]\n内容（便于大模型引用时显示文件名）
+            const docContent = `[${fileResult.fileName}]\n${result.text}\n`;
             const docTokens = estimateTokens(docContent);
             
             if (currentFileSearchTokens + docTokens > maxFileSearchTokens) {
@@ -1015,21 +1103,21 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             .map((chunk) => chunk.text)
             .join('\n\n');
 
-          referenceDocuments += `[文档 ${documentIndex}] ${metadata.fileName}\n${chunkTexts}\n\n`;
+          referenceDocuments += `[${metadata.fileName}]\n${chunkTexts}\n\n`;
           documentIndex++;
         });
       } else if (fileContents.length > 0) {
         // 直接使用文件内容（回退方案：向量搜索失败或文件未被索引）
         console.log(`[InlineChat] 使用 ${fileContents.length} 个文件的全文内容（回退方案）`);
         fileContents.forEach((file) => {
-          referenceDocuments += `[文档 ${documentIndex}] ${file.name}\n${file.content}\n\n`;
+          referenceDocuments += `[${file.name}]\n${file.content}\n\n`;
           documentIndex++;
         });
       }
 
       // 添加选中的文本到参考文档
       if (selectedText) {
-        referenceDocuments += `[文档 ${documentIndex}] 选中代码 (${language})\n\`\`\`${language}\n${selectedText}\n\`\`\`\n\n`;
+        referenceDocuments += `[选中代码]\n\`\`\`${language}\n${selectedText}\n\`\`\`\n\n`;
         documentIndex++;
       }
 
@@ -1039,7 +1127,18 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       if (referenceDocuments.trim()) {
         // 有参考文档时，使用 RAG 格式
         const userQuery = sanitizedMessage.trim() || '请基于上述文档内容回答问题。';
-        finalPrompt = `这是你需要参考的知识库片段：\n######################\n${referenceDocuments.trim()}\n######################\n\n用户的提问是："${userQuery}"\n\n请根据以上文档回答用户的问题。`;
+        // 根据来源类型选择不同的提示语
+        const hasKnowledgeBase = vectorSearchResults.length > 0 && vectorSearchResults.some(kb => kb.results.length > 0);
+        const hasFileReference = fileVectorSearchResults.length > 0 || fileContents.length > 0;
+        
+        let referenceLabel = '这是你需要参考的文档片段';
+        if (hasKnowledgeBase && !hasFileReference) {
+          referenceLabel = '这是你需要参考的知识库片段';
+        } else if (hasFileReference && !hasKnowledgeBase) {
+          referenceLabel = '这是你需要参考的文件片段';
+        }
+        
+        finalPrompt = `${referenceLabel}：\n######################\n${referenceDocuments.trim()}\n######################\n\n用户的提问是："${userQuery}"\n\n请根据以上文档回答用户的问题。`;
       } else {
         // 没有参考文档时，直接使用用户问题
         finalPrompt = sanitizedMessage.trim();
@@ -1065,6 +1164,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       
       // 判断是否有 RAG 上下文（@文件引用、知识库引用、向量检索结果、参考文档）
       const hasRagContext = vectorSearchResults.length > 0 || 
+                            fileVectorSearchResults.length > 0 ||
                             fileContents.length > 0 || 
                             ragChunks.length > 0 || 
                             knowledgeBaseMentions.length > 0 ||
@@ -1072,6 +1172,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       
       console.log('[InlineChat] RAG 上下文检测:', {
         vectorSearchResults: vectorSearchResults.length,
+        fileVectorSearchResults: fileVectorSearchResults.length,
         fileContents: fileContents.length,
         ragChunks: ragChunks.length,
         knowledgeBaseMentions: knowledgeBaseMentions.length,
@@ -3470,6 +3571,23 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         aiRewriteWidgetRef.current.dispose();
         aiRewriteWidgetRef.current = null;
       }
+    };
+  }, []);
+
+  // 监听优先索引进度事件
+  useEffect(() => {
+    const handlePriorityIndexProgress = (_event: unknown, data: { filePath: string; stage: string }) => {
+      console.log(`[MonacoEditor] 优先索引进度: ${data.stage} - ${data.filePath}`);
+      // 更新 AIZoneWidget 的思考状态
+      if (aiZoneWidgetRef.current) {
+        aiZoneWidgetRef.current.updateThinkingText(data.stage);
+      }
+    };
+
+    window.electron?.ipcRenderer.on('workspace-index-db:priority-index-progress', handlePriorityIndexProgress);
+
+    return () => {
+      window.electron?.ipcRenderer.removeListener('workspace-index-db:priority-index-progress', handlePriorityIndexProgress);
     };
   }, []);
 

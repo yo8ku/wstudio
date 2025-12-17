@@ -82,7 +82,7 @@ async function initialize(appPath) {
 }
 
 /**
- * 生成向量
+ * 生成向量（单个）
  */
 async function generateEmbedding(id, text) {
   if (!pipeline) {
@@ -115,6 +115,62 @@ async function generateEmbedding(id, text) {
   }
 }
 
+/**
+ * 批量生成向量
+ * @param {number} id - 请求ID
+ * @param {string[]} texts - 文本数组
+ */
+async function generateEmbeddingBatch(id, texts) {
+  if (!pipeline) {
+    process.send({
+      type: 'embedding-batch-result',
+      id,
+      success: false,
+      error: 'Pipeline 未初始化',
+    });
+    return;
+  }
+
+  try {
+    const vectors = [];
+
+    // 逐个处理，但在同一个请求中返回所有结果
+    for (let i = 0; i < texts.length; i++) {
+      try {
+        const output = await pipeline(texts[i], { pooling: 'mean', normalize: true });
+        vectors.push({
+          index: i,
+          vector: Array.from(output.data),
+          success: true,
+        });
+      } catch (err) {
+        vectors.push({
+          index: i,
+          vector: null,
+          success: false,
+          error: err.message,
+        });
+      }
+    }
+
+    process.send({
+      type: 'embedding-batch-result',
+      id,
+      success: true,
+      vectors,
+      totalCount: texts.length,
+      successCount: vectors.filter(v => v.success).length,
+    });
+  } catch (error) {
+    process.send({
+      type: 'embedding-batch-result',
+      id,
+      success: false,
+      error: error.message,
+    });
+  }
+}
+
 // 监听来自主进程的消息
 process.on('message', async (msg) => {
   const { type, id, data } = msg;
@@ -128,9 +184,12 @@ process.on('message', async (msg) => {
       await generateEmbedding(id, data.text);
       break;
 
+    case 'generate-batch':
+      await generateEmbeddingBatch(id, data.texts);
+      break;
+
     case 'shutdown':
       process.exit(0);
-      break;
   }
 });
 

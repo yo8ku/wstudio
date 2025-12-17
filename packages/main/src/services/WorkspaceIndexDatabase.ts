@@ -28,6 +28,8 @@ export interface FileIndexRecord {
   fileSize: number;
   language: string;
   indexedAt: number;
+  /** 文件内容的 hash 值，用于增量索引判断 */
+  contentHash?: string;
 }
 
 /**
@@ -52,6 +54,8 @@ export interface ChildRecord {
   chunkIndex: number;
   /** 标签JSON字符串，例如：'["#口播", "#美食", "#同城"]'，空时为 '[]' */
   tags: string;
+  /** 来源文件名，用于快速过滤 */
+  source: string;
 }
 
 /**
@@ -80,6 +84,8 @@ export class WorkspaceIndexDatabase {
     const userDataPath = app.getPath('userData');
     this.dbPath = path.join(userDataPath, 'workspace-index.db');
     this.lanceDbPath = path.join(userDataPath, 'workspace-vectors');
+    console.log(`[WorkspaceIndexDatabase] 数据库路径: ${this.dbPath}`);
+    console.log(`[WorkspaceIndexDatabase] 向量库路径: ${this.lanceDbPath}`);
   }
 
   public static getInstance(): WorkspaceIndexDatabase {
@@ -103,9 +109,12 @@ export class WorkspaceIndexDatabase {
       
       // 如果数据库文件存在，加载它
       if (fs.existsSync(this.dbPath)) {
+        console.log(`[WorkspaceIndexDatabase] 加载已有数据库文件: ${this.dbPath}`);
         const fileBuffer = fs.readFileSync(this.dbPath);
+        console.log(`[WorkspaceIndexDatabase] 数据库文件大小: ${fileBuffer.length} bytes`);
         this.db = new SQL.Database(fileBuffer);
       } else {
+        console.log(`[WorkspaceIndexDatabase] 创建新数据库`);
         this.db = new SQL.Database();
       }
       
@@ -127,7 +136,10 @@ export class WorkspaceIndexDatabase {
       }
       
       this.isInitialized = true;
-      console.log('[WorkspaceIndexDatabase] 数据库初始化完成');
+      
+      // 调试：输出已索引文件数量
+      const stats = this.getStats();
+      console.log(`[WorkspaceIndexDatabase] 数据库初始化完成，已索引文件: ${stats.totalFiles}, 父块: ${stats.totalParents}`);
     } catch (error) {
       console.error('[WorkspaceIndexDatabase] 初始化失败:', error);
       throw error;
@@ -149,9 +161,17 @@ export class WorkspaceIndexDatabase {
         fileExtension TEXT NOT NULL,
         fileSize INTEGER NOT NULL,
         language TEXT NOT NULL,
-        indexedAt INTEGER NOT NULL
+        indexedAt INTEGER NOT NULL,
+        contentHash TEXT
       )
     `);
+    
+    // 迁移：为旧表添加 contentHash 字段（如果不存在）
+    try {
+      this.db.run('ALTER TABLE files ADD COLUMN contentHash TEXT');
+    } catch {
+      // 字段已存在，忽略错误
+    }
 
     // 父块表
     this.db.run(`
@@ -198,9 +218,12 @@ export class WorkspaceIndexDatabase {
   isFileIndexed(filePath: string): boolean {
     if (!this.db) return false;
     
+    // 规范化路径（统一使用正斜杠）
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    
     const result = this.db.exec(
       'SELECT 1 FROM files WHERE filePath = ?',
-      [filePath]
+      [normalizedPath]
     );
     
     return result.length > 0 && result[0].values.length > 0;
@@ -229,6 +252,7 @@ export class WorkspaceIndexDatabase {
       fileSize: row[3] as number,
       language: row[4] as string,
       indexedAt: row[5] as number,
+      contentHash: row[6] as string | undefined,
     };
   }
 
@@ -238,10 +262,13 @@ export class WorkspaceIndexDatabase {
   addFileIndex(record: FileIndexRecord): void {
     if (!this.db) return;
     
+    // 规范化文件路径（统一使用正斜杠）
+    const normalizedPath = record.filePath.replace(/\\/g, '/');
+    
     this.db.run(
-      `INSERT OR REPLACE INTO files (filePath, fileName, fileExtension, fileSize, language, indexedAt)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [record.filePath, record.fileName, record.fileExtension, record.fileSize, record.language, record.indexedAt]
+      `INSERT OR REPLACE INTO files (filePath, fileName, fileExtension, fileSize, language, indexedAt, contentHash)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [normalizedPath, record.fileName, record.fileExtension, record.fileSize, record.language, record.indexedAt, record.contentHash || null]
     );
     
     this.saveDatabase();
@@ -271,10 +298,13 @@ export class WorkspaceIndexDatabase {
   addParent(record: ParentRecord): void {
     if (!this.db) return;
     
+    // 规范化文件路径（统一使用正斜杠）
+    const normalizedPath = record.filePath.replace(/\\/g, '/');
+    
     this.db.run(
       `INSERT OR REPLACE INTO parents (parentId, filePath, content, chunkIndex, createdAt)
        VALUES (?, ?, ?, ?, ?)`,
-      [record.parentId, record.filePath, record.content, record.chunkIndex, record.createdAt]
+      [record.parentId, normalizedPath, record.content, record.chunkIndex, record.createdAt]
     );
     
     this.saveDatabase();
@@ -292,7 +322,9 @@ export class WorkspaceIndexDatabase {
     );
     
     for (const record of records) {
-      stmt.run([record.parentId, record.filePath, record.content, record.chunkIndex, record.createdAt]);
+      // 规范化文件路径（统一使用正斜杠）
+      const normalizedPath = record.filePath.replace(/\\/g, '/');
+      stmt.run([record.parentId, normalizedPath, record.content, record.chunkIndex, record.createdAt]);
     }
     
     stmt.free();
@@ -334,7 +366,7 @@ export class WorkspaceIndexDatabase {
     if (!this.lanceDb || records.length === 0) return;
     
     try {
-      // 转换为 LanceDB 格式（tags 存储为 JSON 字符串）
+      // 转换为 LanceDB 格式（tags 存储为 JSON 字符串，source 存储文件名）
       const data = records.map(r => ({
         childId: r.childId,
         parentId: r.parentId,
@@ -342,6 +374,7 @@ export class WorkspaceIndexDatabase {
         vector: r.vector,
         chunkIndex: r.chunkIndex,
         tags: r.tags || '[]',
+        source: r.source || '',
       }));
       
       if (!this.childrenTable) {
@@ -425,6 +458,105 @@ export class WorkspaceIndexDatabase {
       console.error('[WorkspaceIndexDatabase] 搜索失败:', error);
       return [];
     }
+  }
+
+  /**
+   * 规范化文件路径（统一使用正斜杠，便于比较）
+   */
+  private normalizePath(filePath: string): string {
+    return filePath.replace(/\\/g, '/');
+  }
+
+  /**
+   * 按文件名进行带条件的向量搜索（Filtered Search）
+   * 使用 source 字段过滤，只在指定文件的子块中搜索
+   * @param fileName 文件名（不含路径）
+   * @param queryVector 查询向量
+   * @param topK 返回前 K 个结果
+   */
+  async searchByFileName(fileName: string, queryVector: number[], topK: number = 3): Promise<SearchResult[]> {
+    console.log(`[WorkspaceIndexDatabase] searchByFileName 开始: ${fileName}`);
+    console.log(`[WorkspaceIndexDatabase] childrenTable: ${!!this.childrenTable}, db: ${!!this.db}`);
+    
+    // 如果 childrenTable 为空，尝试重新打开
+    if (!this.childrenTable && this.lanceDb) {
+      try {
+        const tableNames = await this.lanceDb.tableNames();
+        if (tableNames.includes('children')) {
+          this.childrenTable = await this.lanceDb.openTable('children');
+          console.log('[WorkspaceIndexDatabase] searchByFileName: 成功打开 children 表');
+        }
+      } catch (e) {
+        console.error('[WorkspaceIndexDatabase] searchByFileName: 打开 children 表失败:', e);
+      }
+    }
+    
+    if (!this.childrenTable || !this.db) {
+      console.warn(`[WorkspaceIndexDatabase] 数据库未初始化`);
+      return [];
+    }
+    
+    try {
+      console.log(`[WorkspaceIndexDatabase] 开始带条件向量搜索，source="${fileName}"，查询向量维度: ${queryVector.length}`);
+      
+      // 使用 source 字段进行带条件的向量搜索（Filtered Search）
+      const results = await this.childrenTable
+        .vectorSearch(queryVector)
+        .where(`source = '${fileName}'`)
+        .limit(topK)
+        .toArray();
+      
+      console.log(`[WorkspaceIndexDatabase] LanceDB 带条件搜索返回 ${results.length} 个子块`);
+      
+      if (results.length === 0) {
+        console.log(`[WorkspaceIndexDatabase] 未找到匹配的子块，source="${fileName}"`);
+        return [];
+      }
+      
+      // 回溯父块：拿着子块的 parentId 去 SQLite 获取父块内容
+      const searchResults: SearchResult[] = [];
+      const seenParentIds = new Set<string>(); // 去重，避免同一个父块被多次返回
+      
+      for (const result of results) {
+        const parentId = result.parentId as string;
+        
+        // 去重：如果已经处理过这个父块，跳过
+        if (seenParentIds.has(parentId)) {
+          continue;
+        }
+        seenParentIds.add(parentId);
+        
+        // 从 SQLite 获取父块内容
+        const parent = this.getParent(parentId);
+        if (parent) {
+          searchResults.push({
+            parentId: parentId,
+            parentContent: parent.content,
+            childContent: result.content as string,
+            filePath: parent.filePath,
+            score: (result._distance as number) ?? 0,
+          });
+          console.log(`[WorkspaceIndexDatabase] 找到父块: ${parentId}, 内容长度: ${parent.content.length}`);
+        } else {
+          console.warn(`[WorkspaceIndexDatabase] 未找到父块: ${parentId}`);
+        }
+      }
+      
+      console.log(`[WorkspaceIndexDatabase] 文件 "${fileName}" 搜索到 ${searchResults.length} 个父块`);
+      return searchResults;
+    } catch (error) {
+      console.error('[WorkspaceIndexDatabase] 按文件名搜索失败:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 按文件路径进行向量搜索（兼容旧接口）
+   * 内部调用 searchByFileName
+   */
+  async searchByFilePath(filePath: string, queryVector: number[], topK: number = 3): Promise<SearchResult[]> {
+    const fileName = path.basename(filePath);
+    return this.searchByFileName(fileName, queryVector, topK);
   }
 
   /**
@@ -673,6 +805,7 @@ export class WorkspaceIndexDatabase {
   /**
    * 获取已索引文件的路径和时间戳映射
    * 用于增量索引时快速查找
+   * @deprecated 使用 getIndexedFilesHashMap 替代
    */
   getIndexedFilesMap(): Map<string, number> {
     if (!this.db) return new Map();
@@ -689,23 +822,46 @@ export class WorkspaceIndexDatabase {
   }
 
   /**
+   * 获取已索引文件的路径和 hash 映射
+   * 用于增量索引时快速查找（基于内容 hash）
+   */
+  getIndexedFilesHashMap(): Map<string, string> {
+    if (!this.db) return new Map();
+    
+    const result = this.db.exec('SELECT filePath, contentHash FROM files WHERE contentHash IS NOT NULL');
+    
+    if (result.length === 0) return new Map();
+    
+    const map = new Map<string, string>();
+    for (const row of result[0].values) {
+      if (row[1]) {
+        map.set(row[0] as string, row[1] as string);
+      }
+    }
+    return map;
+  }
+
+  /**
    * 删除文件的所有索引数据（用于重新索引）
    */
   async deleteFileData(filePath: string): Promise<void> {
     if (!this.db) return;
     
+    // 规范化路径（统一使用正斜杠）
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    
     try {
       // 先获取该文件的所有 parentIds（用于删除 LanceDB 中的子块）
       const result = this.db.exec(
         'SELECT parentId FROM parents WHERE filePath = ?',
-        [filePath]
+        [normalizedPath]
       );
       
       const parentIds = result.length > 0 ? result[0].values.map(row => row[0] as string) : [];
       
       // 删除 SQLite 中的记录
-      this.db.run('DELETE FROM files WHERE filePath = ?', [filePath]);
-      this.db.run('DELETE FROM parents WHERE filePath = ?', [filePath]);
+      this.db.run('DELETE FROM files WHERE filePath = ?', [normalizedPath]);
+      this.db.run('DELETE FROM parents WHERE filePath = ?', [normalizedPath]);
       this.saveDatabase();
       
       // 删除 LanceDB 中的子块
