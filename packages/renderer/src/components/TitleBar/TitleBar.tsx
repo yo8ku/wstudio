@@ -210,7 +210,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           ]
         },
         { separator: true },
-        { label: 'LanceDB 数据查看', action: () => window.dispatchEvent(new CustomEvent('open-lancedb-view')) },
+        { label: '查看分块数据', action: () => window.dispatchEvent(new CustomEvent('open-lancedb-view')) },
       ]
     },
     {

@@ -598,9 +598,52 @@
 /* AI 回复完成后的结果操作工具栏（复用选中文件工具栏区域） */
 .ai-zone-result-toolbar {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* 结果工具栏中的引用文件显示区域 */
+.ai-zone-referenced-files {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* 引用文件项 */
+.ai-zone-referenced-file-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--ws-input-background);
+  font-size: 12px;
+  color: var(--ws-foreground);
+  opacity: 0.9;
+}
+
+.ai-zone-referenced-file-icon {
+  display: flex;
+  align-items: center;
+  color: var(--ws-icon-foreground);
+}
+
+.ai-zone-referenced-file-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 结果工具栏操作按钮容器 */
+.ai-zone-result-actions-container {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  width: 100%;
 }
 
 .ai-zone-cancel-toolbar {

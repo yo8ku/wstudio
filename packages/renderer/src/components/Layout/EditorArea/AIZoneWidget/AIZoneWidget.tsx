@@ -86,6 +86,7 @@ interface AIZoneWidgetOptions {
   onClose: () => void;
   onStop?: () => void; // 停止生成的回调
   onAccept?: () => void; // 接受 diff 内容的回调
+  onClearDiff?: () => void; // 清除 diff 内容的回调（不关闭内联聊天）
   onHeightChanged?: (height: number) => void;
   availableModels?: string[]; // 可用的模型列表
 }
@@ -162,6 +163,7 @@ export class AIZoneWidget {
   private recentFilesMap: Map<string, string> = new Map(); // 最近文件映射（index -> filePath）
   private selectedFiles: Array<{ path: string; name: string; type?: 'file' | 'knowledge-base'; kbId?: string }> = []; // 选中的文件列表（支持文件和知识库）- 工具栏@按钮选择的文件
   private inputFileReferences: Array<{ path: string; name: string; startIndex: number; endIndex: number }> = []; // 输入框中的@文件引用（独立于工具栏）
+  private submittedFileReferences: Array<{ path: string; name: string }> = []; // 提交时保存的@文件引用（用于在结果工具栏上方显示）
   private isInputMenuTriggered: boolean = false; // 标记当前@菜单是否由输入框触发
   private inputOverlayElement: HTMLElement | null = null; // 输入框文件引用覆盖层（已禁用）
   private inputFileRefsContainer: HTMLElement | null = null; // 输入框文件引用标签容器（显示在输入框下方）
@@ -2942,6 +2944,19 @@ export class AIZoneWidget {
     const savedFileReferences = [...this.inputFileReferences];
     const savedSelectedFiles = [...this.selectedFiles];
 
+    // 保存提交时的@文件引用（用于在结果工具栏上方显示）
+    this.submittedFileReferences = [
+      ...savedFileReferences.map(ref => ({ path: ref.path, name: ref.name })),
+      ...savedSelectedFiles.filter(f => f.type !== 'knowledge-base').map(f => ({ path: f.path, name: f.name }))
+    ];
+    // 去重（根据 path）
+    const seenPaths = new Set<string>();
+    this.submittedFileReferences = this.submittedFileReferences.filter(ref => {
+      if (seenPaths.has(ref.path)) return false;
+      seenPaths.add(ref.path);
+      return true;
+    });
+
     // 清空输入框文件引用和标签容器（发送后清空，下次输入重新开始）
     this.inputFileReferences = [];
     if (this.inputFileRefsContainer) {
@@ -5040,6 +5055,75 @@ export class AIZoneWidget {
   }
 
   /**
+   * 关闭当前对话（清除 diff 内容并返回默认输入状态，但不关闭内联聊天，保留提问记录和@文件引用）
+   */
+  private closeCurrentConversation(): void {
+    // 调用 onClearDiff 回调清除 diff 内容（不关闭内联聊天）
+    if (this.options.onClearDiff) {
+      this.options.onClearDiff();
+    }
+
+    // 如果正在生成，先停止
+    if (this.isGenerating && this.options.onStop) {
+      this.options.onStop();
+    }
+
+    // 注意：不清空 submittedFileReferences，保留@文件引用的显示
+    // 注意：不清空 selectedFiles，保留选中的文件列表
+
+    // 重置响应完成状态，但保留文件引用显示
+    this.isResponseCompleted = false;
+    this.updateSelectedFilesToolbar();
+
+    // 恢复底部工具栏显示
+    if (this.bottomToolbar) {
+      this.bottomToolbar.style.display = 'flex';
+    }
+
+    // 清空输入框
+    if (this.tiptapInputRef) {
+      this.tiptapInputRef.clear();
+    } else if (this.inputElement) {
+      this.inputElement.value = '';
+    }
+
+    // 注意：不清空 currentUserMessage，保留上一次的提问记录
+    // 注意：不隐藏 messageDisplayElement，保留显示用户的提问
+
+    // 隐藏完成响应区域
+    if (this.completedResponseElement) {
+      this.completedResponseElement.style.display = 'none';
+      this.completedResponseElement.innerHTML = '';
+    }
+
+    // 重置生成状态
+    this.isGenerating = false;
+
+    // 清除思考动画定时器
+    if (this.thinkingAnimationInterval) {
+      clearInterval(this.thinkingAnimationInterval);
+      this.thinkingAnimationInterval = null;
+    }
+
+    // 更新发送按钮状态
+    this.updateSendButton();
+
+    // 调整容器高度并让输入框获得焦点
+    requestAnimationFrame(() => {
+      this.adjustContainerHeightForMessage(false);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (this.tiptapInputRef) {
+            this.tiptapInputRef.focus();
+          } else if (this.inputElement) {
+            this.inputElement.focus();
+          }
+        });
+      });
+    });
+  }
+
+  /**
    * 处理输入框输入事件，检测@符号并自动显示文件引用菜单
    */
   private async handleInputForAtMention(e: Event): Promise<void> {
@@ -6340,7 +6424,8 @@ export class AIZoneWidget {
     // 检查工具栏之前的显示状态和高度
     const wasVisible = this.selectedFilesToolbarWasVisible;
     const hasFiles = this.selectedFiles.length > 0;
-    const willBeVisible = this.isGenerating || this.isResponseCompleted || hasFiles;
+    const hasSubmittedFiles = this.submittedFileReferences.length > 0;
+    const willBeVisible = this.isGenerating || this.isResponseCompleted || hasFiles || hasSubmittedFiles;
     const visibilityChanged = wasVisible !== willBeVisible;
     
     // 保存工具栏之前的高度（在清空内容前，如果工具栏是显示的，获取实际高度）
@@ -6352,7 +6437,7 @@ export class AIZoneWidget {
     this.selectedFilesToolbar.innerHTML = '';
 
     // 如果没有选中文件且当前既不在“生成中”也不在“结果展示”阶段，隐藏工具栏
-    if (!this.isGenerating && !this.isResponseCompleted && !hasFiles) {
+    if (!this.isGenerating && !this.isResponseCompleted && !hasFiles && !hasSubmittedFiles) {
       // 在隐藏工具栏前，保存 view-zone 的当前位置
       const viewZoneElement = this.getViewZoneDomElement();
       if (viewZoneElement && this.borderContainer) {
@@ -6429,6 +6514,42 @@ export class AIZoneWidget {
       this.selectedFilesToolbar.classList.add('ai-zone-result-toolbar');
       this.selectedFilesToolbar.classList.remove('ai-zone-cancel-toolbar');
 
+      // 如果有提交时的@文件引用，在结果工具栏上方显示
+      if (this.submittedFileReferences.length > 0) {
+        const referencedFilesContainer = document.createElement('div');
+        referencedFilesContainer.className = 'ai-zone-referenced-files';
+
+        // 显示所有引用的文件
+        this.submittedFileReferences.forEach((file) => {
+          const fileItem = document.createElement('div');
+          fileItem.className = 'ai-zone-referenced-file-item';
+
+          // 创建文件图标
+          const iconContainer = document.createElement('span');
+          iconContainer.className = 'ai-zone-referenced-file-icon';
+          const iconRoot = createRoot(iconContainer);
+          iconRoot.render(
+            React.createElement(Icon, {
+              iconSet: 'ui',
+              name: 'file',
+              size: 14
+            })
+          );
+          fileItem.appendChild(iconContainer);
+
+          // 创建文件名文本
+          const fileNameText = document.createElement('span');
+          fileNameText.className = 'ai-zone-referenced-file-name';
+          fileNameText.textContent = file.name;
+          fileNameText.title = file.path;
+          fileItem.appendChild(fileNameText);
+
+          referencedFilesContainer.appendChild(fileItem);
+        });
+
+        this.selectedFilesToolbar.appendChild(referencedFilesContainer);
+      }
+
       const leftActions = document.createElement('div');
       leftActions.className = 'ai-zone-result-actions-left';
 
@@ -6475,8 +6596,8 @@ export class AIZoneWidget {
       };
 
       // 左侧：关闭 / 接收 / 重新生成
-      leftActions.appendChild(createTextAction('关闭', '关闭内联聊天', () => {
-        this.hide();
+      leftActions.appendChild(createTextAction('关闭', '关闭当前对话', () => {
+        this.closeCurrentConversation();
       }));
 
       leftActions.appendChild(createTextAction('接收', '接收 AI 生成的代码', () => {
@@ -6502,12 +6623,53 @@ export class AIZoneWidget {
         console.log('[AIZoneWidget] 点踩本次回答');
       }));
 
-      this.selectedFilesToolbar.appendChild(leftActions);
-      this.selectedFilesToolbar.appendChild(rightActions);
+      // 创建操作按钮容器（包含左侧和右侧操作）
+      const actionsContainer = document.createElement('div');
+      actionsContainer.className = 'ai-zone-result-actions-container';
+      actionsContainer.appendChild(leftActions);
+      actionsContainer.appendChild(rightActions);
+
+      this.selectedFilesToolbar.appendChild(actionsContainer);
     } else {
       // ==================== 默认文件工具栏显示 ====================
       this.selectedFilesToolbar.classList.remove('ai-zone-result-toolbar');
       this.selectedFilesToolbar.classList.remove('ai-zone-cancel-toolbar');
+
+      // 如果有提交的文件引用（关闭对话后保留的），先显示它们
+      if (hasSubmittedFiles && !hasFiles) {
+        // 创建引用文件容器
+        const referencedFilesContainer = document.createElement('div');
+        referencedFilesContainer.className = 'ai-zone-referenced-files';
+
+        this.submittedFileReferences.forEach((file) => {
+          const fileItem = document.createElement('div');
+          fileItem.className = 'ai-zone-referenced-file-item';
+
+          // 创建文件图标
+          const iconContainer = document.createElement('span');
+          iconContainer.className = 'ai-zone-referenced-file-icon';
+          const iconRoot = createRoot(iconContainer);
+          iconRoot.render(
+            React.createElement(Icon, {
+              iconSet: 'ui',
+              name: 'file',
+              size: 14
+            })
+          );
+          fileItem.appendChild(iconContainer);
+
+          // 创建文件名文本
+          const fileNameText = document.createElement('span');
+          fileNameText.className = 'ai-zone-referenced-file-name';
+          fileNameText.textContent = file.name;
+          fileNameText.title = file.path;
+          fileItem.appendChild(fileNameText);
+
+          referencedFilesContainer.appendChild(fileItem);
+        });
+
+        this.selectedFilesToolbar.appendChild(referencedFilesContainer);
+      }
 
       // 计算要显示的文件数量（最多5个）
       const maxDisplayCount = 5;

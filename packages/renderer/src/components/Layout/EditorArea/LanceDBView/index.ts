@@ -1,5 +1,5 @@
 /**
- * LanceDB 数据查看器组件导出
+ * 查看分块数据组件导出
  */
 
 export { LanceDBView } from './LanceDBView';

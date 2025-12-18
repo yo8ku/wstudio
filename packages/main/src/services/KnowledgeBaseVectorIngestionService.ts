@@ -127,7 +127,14 @@ export class KnowledgeBaseVectorIngestionService {
       const ingestionService = await this.getIngestionService(knowledgeBaseId, embeddingAPI);
 
       // 步骤4：入库（切分 + 向量化 + 存储）
+      // 默认启用 CPU 控制选项，降低索引时的 CPU 占用
       const ingestionOptions: VectorIngestionOptions = {
+        // CPU 控制默认配置
+        batchSize: 30,           // 每批 30 个子块
+        batchDelayMs: 50,        // 批次间延迟 50ms
+        documentDelayMs: 100,    // 文档间延迟 100ms
+        lowPriorityMode: true,   // 启用低优先级模式
+        // 用户传入的选项（可覆盖默认值）
         ...options,
         sourceFile: filePath,
         extraMetadata: {
@@ -193,7 +200,7 @@ export class KnowledgeBaseVectorIngestionService {
           onProgress(filePath, progress);
         }
 
-        // 处理文件
+        // 处理文件（默认 CPU 控制选项已在 processFile 中设置）
         const result = await this.processFile(filePath, knowledgeBaseId, embeddingAPI, options);
         results.push({ filePath, result });
 
@@ -201,6 +208,12 @@ export class KnowledgeBaseVectorIngestionService {
         if (onProgress) {
           const progress = Math.floor(((i + 1) / filePaths.length) * 90); // 0-90%
           onProgress(filePath, progress);
+        }
+
+        // 文件间延迟，降低 CPU 占用（默认 200ms）
+        const fileDelayMs = options?.documentDelayMs ?? 200;
+        if (fileDelayMs > 0) {
+          await new Promise(resolve => setTimeout(resolve, fileDelayMs));
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

@@ -7,11 +7,11 @@
 //颜色-
 .sidebar[data-position="left"] {
   background-color: var(--ws-sideBar-background);
-  color: var(--ws-panel-border);;
+   color: var(--ws-list-inactiveSelectionForeground);
 }
 
 .sidebar-content{
-  color: var(--ws-editor-foreground);
+ 
 }
 
 .sidebar[data-position="right"] {

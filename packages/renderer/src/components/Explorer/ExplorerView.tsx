@@ -119,79 +119,107 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     );
   }, []);
 
+  // 最小文件大小（字节），与后端保持一致
+  const MIN_FILE_SIZE = 2 * 1024; // 2KB
+
   const buildSelectedFileMenuItems = useCallback(
-    (node: FileTreeNode): ContextMenuItem[] => [
-      {
-        id: 'open-to-side',
-        label: '在侧边打开',
-        onClick: () => emitFileAction('open-to-side', node),
-      },
-      {
-        id: 'add-to-chat',
-        label: '添加到聊天',
-        onClick: () => emitFileAction('add-to-chat', node),
-      },
-      {
-        id: 'add-to-new-chat',
-        label: '添加到新的聊天',
-        onClick: () => emitFileAction('add-to-new-chat', node),
-      },
-      {
-        id: 'reveal-in-explorer',
-        label: '在资源管理器中打开',
-        onClick: () => emitFileAction('reveal-in-explorer', node),
-      },
-      {
-        id: 'file-menu-separator-1',
-        label: '',
-        separator: true,
-      },
-      {
-        id: 'open-timeline',
-        label: '打开时间线',
-        onClick: () => emitFileAction('open-timeline', node),
-      },
-      {
-        id: 'file-menu-separator-2',
-        label: '',
-        separator: true,
-      },
-      {
-        id: 'cut-file',
-        label: '剪切',
-        onClick: () => emitFileAction('cut-file', node),
-      },
-      {
-        id: 'copy-file',
-        label: '复制',
-        onClick: () => emitFileAction('copy-file', node),
-      },
-      {
-        id: 'file-menu-separator-3',
-        label: '',
-        separator: true,
-      },
-      {
-        id: 'rename-file',
-        label: '重命名',
-        onClick: () => emitFileAction('rename-file', node),
-      },
-      {
-        id: 'delete-file',
-        label: '删除',
-        onClick: () => emitFileAction('delete-file', node),
-      },
-      {
-        id: 'file-menu-separator-4',
-        label: '',
-        separator: true,
-      },
-      {
-        id: 'index-file',
-        label: '立即索引',
-        onClick: () => emitFileAction('index-file', node),
-      },
-    ],
+    async (node: FileTreeNode): Promise<ContextMenuItem[]> => {
+      // 检查文件是否已索引和文件大小
+      let isIndexed = false;
+      let fileSize = 0;
+      
+      try {
+        const ipcRenderer = window.electron?.ipcRenderer;
+        if (ipcRenderer) {
+          // 检查文件是否已索引
+          const indexResult = await ipcRenderer.invoke('workspace-index-db:is-file-indexed', node.path);
+          isIndexed = indexResult?.success === true && indexResult?.data === true;
+          
+          // 获取文件大小
+          const statsResult = await ipcRenderer.invoke('file-stat', node.path);
+          fileSize = statsResult?.size || 0;
+        }
+      } catch (e) {
+        console.warn('[ExplorerView] 检查文件索引状态失败:', e);
+      }
+
+      // 判断是否禁用立即索引：已索引 或 文件小于2KB
+      const disableIndex = isIndexed || fileSize < MIN_FILE_SIZE;
+
+      return [
+        {
+          id: 'open-to-side',
+          label: '在侧边打开',
+          onClick: () => emitFileAction('open-to-side', node),
+        },
+        {
+          id: 'add-to-chat',
+          label: '添加到聊天',
+          onClick: () => emitFileAction('add-to-chat', node),
+        },
+        {
+          id: 'add-to-new-chat',
+          label: '添加到新的聊天',
+          onClick: () => emitFileAction('add-to-new-chat', node),
+        },
+        {
+          id: 'reveal-in-explorer',
+          label: '在资源管理器中打开',
+          onClick: () => emitFileAction('reveal-in-explorer', node),
+        },
+        {
+          id: 'file-menu-separator-1',
+          label: '',
+          separator: true,
+        },
+        {
+          id: 'open-timeline',
+          label: '打开时间线',
+          onClick: () => emitFileAction('open-timeline', node),
+        },
+        {
+          id: 'file-menu-separator-2',
+          label: '',
+          separator: true,
+        },
+        {
+          id: 'cut-file',
+          label: '剪切',
+          onClick: () => emitFileAction('cut-file', node),
+        },
+        {
+          id: 'copy-file',
+          label: '复制',
+          onClick: () => emitFileAction('copy-file', node),
+        },
+        {
+          id: 'file-menu-separator-3',
+          label: '',
+          separator: true,
+        },
+        {
+          id: 'rename-file',
+          label: '重命名',
+          onClick: () => emitFileAction('rename-file', node),
+        },
+        {
+          id: 'delete-file',
+          label: '删除',
+          onClick: () => emitFileAction('delete-file', node),
+        },
+        {
+          id: 'file-menu-separator-4',
+          label: '',
+          separator: true,
+        },
+        {
+          id: 'index-file',
+          label: '立即索引',
+          disabled: disableIndex,
+          onClick: () => emitFileAction('index-file', node),
+        },
+      ];
+    },
     [emitFileAction]
   );
 
@@ -391,14 +419,14 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     setContextMenuSelectionPath(null);
   }, []);
 
-  const handleFileContextMenu = useCallback((node: FileTreeNode, event: React.MouseEvent) => {
+  const handleFileContextMenu = useCallback(async (node: FileTreeNode, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     setContextMenuSelectionPath(node.path);
 
     if (!node.isDirectory) {
-      // 文件右键菜单
-      const fileItems = buildSelectedFileMenuItems(node);
+      // 文件右键菜单（异步获取菜单项）
+      const fileItems = await buildSelectedFileMenuItems(node);
       setContextMenuState({
         position: { x: event.clientX, y: event.clientY },
         items: fileItems,

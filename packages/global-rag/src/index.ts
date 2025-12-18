@@ -27,7 +27,7 @@ export { ParentChildVectorStore } from './vector-store/ParentChildVectorStore.js
 export { ParentChildVectorStoreOptimized, BatchEmbeddingGenerator, PerformanceMonitor } from './vector-store/ParentChildVectorStoreOptimized.js';
 // 父子索引向量入库服务
 export { ParentChildVectorIngestion } from './vector-store/ParentChildVectorIngestion.js';
-export type { ParentDatabase, VectorIngestionOptions, VectorIngestionResult } from './vector-store/ParentChildVectorIngestion.js';
+export type { ParentDatabase, VectorIngestionOptions, VectorIngestionResult, IngestionProgress } from './vector-store/ParentChildVectorIngestion.js';
 export type {
   ParentDocument,
   ChildDocument,

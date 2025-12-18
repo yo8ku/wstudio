@@ -504,18 +504,18 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         
         if (existingTab) {
           setTimeout(() => setActiveTabId(existingTab.id), 0);
-          console.log('[EditorArea] 激活现有 LanceDB 数据查看标签页');
+          console.log('[EditorArea] 激活现有查看分块数据标签页');
           return currentTabs;
         } else {
           const newTab: EditorTab = {
             id: `lancedb-view-${Date.now()}`,
-            title: 'LanceDB 数据查看',
+            title: '查看分块数据',
             path: 'lancedb-view:/',
             isDirty: false,
             type: 'lancedb-view'
           };
           setTimeout(() => setActiveTabId(newTab.id), 0);
-          console.log('[EditorArea] 创建新的 LanceDB 数据查看标签页');
+          console.log('[EditorArea] 创建新的查看分块数据标签页');
           return [...currentTabs, newTab];
         }
       });

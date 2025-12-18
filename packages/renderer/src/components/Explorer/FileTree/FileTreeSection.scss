@@ -105,6 +105,14 @@
     }
   }
 }
+
+
+.tree-view .item{
+  :hover{
+    background-color:#743c3c;
+  }
+}
+
 .file-tree-node {
   user-select: none;
   position: relative;
@@ -124,19 +132,6 @@
     margin-right: calc(var(--file-tree-scrollbar-width) * -1);
     box-sizing: border-box;
 
-    &::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      right: calc(var(--file-tree-scrollbar-width) * -1);
-      bottom: 0;
-      width: var(--file-tree-scrollbar-width);
-      background: transparent;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.15s ease;
-    }
-    
 
     .file-tree-chevron {
       font-size: 14px;
@@ -177,15 +172,17 @@
       border-color: var(--ws-button-background);
     }
 
+
     // 选中状态（默认 - 鼠标离开后的柔和状态）
     &.selected {
-      background-color: var(--ws-list-inactiveSelectionBackground, rgba(90, 93, 94, 0.31));
-      color: var(--ws-list-inactiveSelectionForeground, var(--ws-foreground, #cccccc));
+      background-color: var(--ws-list-inactiveSelectionBackground);
+      color: var(--ws-list-focusForeground);
+
       &::after {
         background: inherit;
         opacity: 1;
       }
-      
+
       .file-tree-name {
         color: inherit;
       }
@@ -193,8 +190,8 @@
 
     // 选中状态 + 鼠标悬停（高亮激活状态）
     &.selected:hover {
-      background-color: var(--ws-list-activeSelectionBackground, rgba(90, 93, 94, 0.5));
-      color: var(--ws-list-activeSelectionForeground, var(--ws-foreground, #ffffff));
+      color: var(--ws-list-activeSelectionForeground);
+
       &::after {
         background: inherit;
         opacity: 1;
@@ -206,7 +203,7 @@
     display: flex;
     flex-direction: column;
     position: relative;
-    
+
     // 垂直连接线 - 从父节点延伸到最后一个子节点
     // 根据 data-parent-depth 设置位置
     &::before {
@@ -220,33 +217,33 @@
       opacity: 0;
       transition: opacity 0.15s ease;
     }
-    
+
     // 根据 data-parent-depth 设置垂直线的 left 位置
     // 公式: left = 16px + parentDepth * 12px（与箭头居中对齐）
     &[data-parent-depth="0"]::before {
       left: 16px;
     }
-    
+
     &[data-parent-depth="1"]::before {
       left: 28px;
     }
-    
+
     &[data-parent-depth="2"]::before {
       left: 40px;
     }
-    
+
     &[data-parent-depth="3"]::before {
       left: 52px;
     }
-    
+
     &[data-parent-depth="4"]::before {
       left: 64px;
     }
-    
+
     &[data-parent-depth="5"]::before {
       left: 76px;
     }
-    
+
     // 最后一个子节点时，垂直线不延伸到底部（只延伸到该节点的中间）
     .file-tree-node:last-child {
       .file-tree-node-content::after {
@@ -261,24 +258,24 @@
         opacity: 0;
         transition: opacity 0.15s ease;
       }
-      
+
       // 根据层级设置遮罩位置
       .file-tree-node-content[data-depth="2"]::after {
         left: 40px;
       }
-      
+
       .file-tree-node-content[data-depth="3"]::after {
         left: 52px;
       }
-      
+
       .file-tree-node-content[data-depth="4"]::after {
         left: 64px;
       }
-      
+
       .file-tree-node-content[data-depth="5"]::after {
         left: 76px;
       }
-      
+
       .file-tree-node-content[data-depth="6"]::after {
         left: 88px;
       }
@@ -288,6 +285,7 @@
 
 // 悬停时显示缩进线
 .file-tree-content:hover {
+
   .file-tree-children::before,
   .file-tree-node:last-child .file-tree-node-content::after {
     opacity: 1;

@@ -48,6 +48,34 @@ export interface VectorIngestionOptions extends ChunkOptions {
   extraMetadata?: Record<string, unknown>;
   /** 知识库ID（用于过滤） */
   knowledgeBaseId?: string;
+  /** 批次大小（每批向量化和入库的子块数量，默认 50） */
+  batchSize?: number;
+  /** 进度回调 */
+  onProgress?: (progress: IngestionProgress) => void;
+  /** 批次间延迟（毫秒），用于降低 CPU 占用，默认 0 */
+  batchDelayMs?: number;
+  /** 文档间延迟（毫秒），用于降低 CPU 占用，默认 0 */
+  documentDelayMs?: number;
+  /** 并发控制：是否使用低优先级模式（让出 CPU 时间片），默认 false */
+  lowPriorityMode?: boolean;
+}
+
+/**
+ * 入库进度信息
+ */
+export interface IngestionProgress {
+  /** 当前阶段 */
+  stage: 'chunking' | 'storing-parents' | 'embedding' | 'storing-children' | 'completed';
+  /** 当前处理的数量 */
+  current: number;
+  /** 总数量 */
+  total: number;
+  /** 进度百分比 (0-100) */
+  percentage: number;
+  /** 当前批次 */
+  currentBatch?: number;
+  /** 总批次数 */
+  totalBatches?: number;
 }
 
 /**
@@ -371,7 +399,55 @@ export class ParentChildVectorIngestion {
   }
 
   /**
-   * 向量入库主流程
+   * 报告进度
+   */
+  private reportProgress(
+    options: VectorIngestionOptions,
+    stage: IngestionProgress['stage'],
+    current: number,
+    total: number,
+    currentBatch?: number,
+    totalBatches?: number
+  ): void {
+    if (options.onProgress) {
+      const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+      options.onProgress({
+        stage,
+        current,
+        total,
+        percentage,
+        currentBatch,
+        totalBatches,
+      });
+    }
+  }
+
+  /**
+   * 延迟指定毫秒数（用于降低 CPU 占用）
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * 让出 CPU 时间片（使用 setImmediate 或 setTimeout(0)）
+   * 允许其他任务执行，降低 CPU 占用峰值
+   */
+  private yieldCPU(): Promise<void> {
+    return new Promise(resolve => {
+      if (typeof setImmediate !== 'undefined') {
+        setImmediate(resolve);
+      } else {
+        setTimeout(resolve, 0);
+      }
+    });
+  }
+
+  /**
+   * 向量入库主流程（流式批量处理）
+   * 优化策略：切分 → 存父块 → 分批（向量化 + 入库）
+   * 每批处理完立即入库，避免内存积压
+   * 
    * @param text 要入库的文本
    * @param options 入库选项
    * @returns 入库结果
@@ -384,6 +460,8 @@ export class ParentChildVectorIngestion {
       await this.initialize();
     }
 
+    const batchSize = options.batchSize || 50; // 默认每批 50 个子块
+
     const result: VectorIngestionResult = {
       parentCount: 0,
       childCount: 0,
@@ -395,22 +473,30 @@ export class ParentChildVectorIngestion {
     try {
       // 步骤1：切分文档
       console.log('[ParentChildVectorIngestion] 开始切分文档...');
+      this.reportProgress(options, 'chunking', 0, 1);
+      
       const chunkResult: ParentChildChunkResult = await this.chunker.chunkText(text, options);
 
       if (chunkResult.parentChunks.length === 0) {
         console.warn('[ParentChildVectorIngestion] 切分结果为空');
+        this.reportProgress(options, 'completed', 0, 0);
         return result;
       }
 
       console.log(`[ParentChildVectorIngestion] 切分完成: ${chunkResult.totalParentChunks} 个父块, ${chunkResult.totalChildChunks} 个子块`);
+      this.reportProgress(options, 'chunking', 1, 1);
 
       // 步骤2：存储父块到 SQLite
       console.log('[ParentChildVectorIngestion] 开始存储父块...');
-      for (const parentChunk of chunkResult.parentChunks) {
+      const totalParents = chunkResult.parentChunks.length;
+      
+      for (let i = 0; i < totalParents; i++) {
+        const parentChunk = chunkResult.parentChunks[i];
         try {
           await this.storeParent(parentChunk, options);
           result.parentIds.push(parentChunk.id);
           result.parentCount++;
+          this.reportProgress(options, 'storing-parents', i + 1, totalParents);
         } catch (error) {
           const errorMsg = `存储父块失败 (${parentChunk.id}): ${error instanceof Error ? error.message : String(error)}`;
           console.error('[ParentChildVectorIngestion]', errorMsg);
@@ -418,83 +504,96 @@ export class ParentChildVectorIngestion {
         }
       }
 
-      console.log(`[ParentChildVectorIngestion] 父块存储完成: ${result.parentCount}/${chunkResult.parentChunks.length}`);
+      console.log(`[ParentChildVectorIngestion] 父块存储完成: ${result.parentCount}/${totalParents}`);
 
-      // 步骤3：向量化子块
-      console.log('[ParentChildVectorIngestion] 开始向量化子块...');
-      const childTexts = chunkResult.childChunks.map(chunk => chunk.content);
-      let vectors: number[][];
+      // 步骤3：流式批量处理子块（向量化 + 入库）
+      const totalChildren = chunkResult.childChunks.length;
+      const totalBatches = Math.ceil(totalChildren / batchSize);
+      
+      console.log(`[ParentChildVectorIngestion] 开始流式处理子块: ${totalChildren} 个子块, ${totalBatches} 批, 每批 ${batchSize} 个`);
 
-      try {
-        // 批量向量化（如果支持）
-        vectors = await this.embedTexts(childTexts, options.modelName);
-      } catch (error) {
-        // 如果批量向量化失败，尝试逐个向量化
-        console.warn('[ParentChildVectorIngestion] 批量向量化失败，改用逐个向量化:', error);
-        vectors = [];
-        for (const text of childTexts) {
-          try {
-            const vector = await this.embedText(text, options.modelName);
-            vectors.push(vector);
-          } catch (err) {
-            const errorMsg = `向量化失败: ${err instanceof Error ? err.message : String(err)}`;
-            console.error('[ParentChildVectorIngestion]', errorMsg);
-            result.errors?.push(errorMsg);
-            // 添加空向量作为占位符
-            vectors.push([]);
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        const startIdx = batchIndex * batchSize;
+        const endIdx = Math.min(startIdx + batchSize, totalChildren);
+        const batchChunks = chunkResult.childChunks.slice(startIdx, endIdx);
+        const batchTexts = batchChunks.map(chunk => chunk.content);
+
+        console.log(`[ParentChildVectorIngestion] 处理第 ${batchIndex + 1}/${totalBatches} 批: ${batchChunks.length} 个子块`);
+
+        // 3.1 批量向量化当前批次
+        this.reportProgress(options, 'embedding', startIdx, totalChildren, batchIndex + 1, totalBatches);
+        
+        let batchVectors: number[][];
+        try {
+          batchVectors = await this.embedTexts(batchTexts, options.modelName);
+        } catch (error) {
+          // 如果批量向量化失败，尝试逐个向量化
+          console.warn(`[ParentChildVectorIngestion] 第 ${batchIndex + 1} 批批量向量化失败，改用逐个向量化:`, error);
+          batchVectors = [];
+          for (const batchText of batchTexts) {
+            try {
+              const vector = await this.embedText(batchText, options.modelName);
+              batchVectors.push(vector);
+            } catch (err) {
+              const errorMsg = `向量化失败: ${err instanceof Error ? err.message : String(err)}`;
+              console.error('[ParentChildVectorIngestion]', errorMsg);
+              result.errors?.push(errorMsg);
+              batchVectors.push([]); // 空向量作为占位符
+            }
           }
         }
-      }
 
-      console.log(`[ParentChildVectorIngestion] 向量化完成: ${vectors.length} 个向量`);
+        // 3.2 准备当前批次的子块记录
+        const batchRecords: ChildVectorRecord[] = [];
+        
+        for (let i = 0; i < batchChunks.length; i++) {
+          const childChunk = batchChunks[i];
+          const vector = batchVectors[i];
 
-      // 步骤4：存储子块到 LanceDB
-      console.log('[ParentChildVectorIngestion] 开始存储子块...');
-      const childRecords: ChildVectorRecord[] = [];
+          // 跳过向量化失败的子块
+          if (!vector || vector.length === 0) {
+            const errorMsg = `子块 ${childChunk.id} 向量化失败，跳过存储`;
+            console.warn('[ParentChildVectorIngestion]', errorMsg);
+            result.errors?.push(errorMsg);
+            continue;
+          }
 
-      for (let i = 0; i < chunkResult.childChunks.length; i++) {
-        const childChunk = chunkResult.childChunks[i];
-        const vector = vectors[i];
-
-        // 跳过向量化失败的子块
-        if (!vector || vector.length === 0) {
-          const errorMsg = `子块 ${childChunk.id} 向量化失败，跳过存储`;
-          console.warn('[ParentChildVectorIngestion]', errorMsg);
-          result.errors?.push(errorMsg);
-          continue;
-        }
-
-        try {
-          const childRecord: ChildVectorRecord = {
+          batchRecords.push({
             child_id: childChunk.id,
             parent_id: childChunk.parentId,
             content: childChunk.content,
             vector: vector,
             chunk_index: childChunk.metadata.chunk_index,
-          };
-
-          childRecords.push(childRecord);
+          });
           result.childIds.push(childChunk.id);
-        } catch (error) {
-          const errorMsg = `准备子块记录失败 (${childChunk.id}): ${error instanceof Error ? error.message : String(error)}`;
-          console.error('[ParentChildVectorIngestion]', errorMsg);
-          result.errors?.push(errorMsg);
         }
-      }
 
-      // 批量存储子块
-      if (childRecords.length > 0) {
-        try {
-          await this.storeChildrenBatch(childRecords);
-          result.childCount = childRecords.length;
-        } catch (error) {
-          const errorMsg = `批量存储子块失败: ${error instanceof Error ? error.message : String(error)}`;
-          console.error('[ParentChildVectorIngestion]', errorMsg);
-          result.errors?.push(errorMsg);
+        // 3.3 立即入库当前批次（流式处理的关键）
+        if (batchRecords.length > 0) {
+          this.reportProgress(options, 'storing-children', endIdx, totalChildren, batchIndex + 1, totalBatches);
+          
+          try {
+            await this.storeChildrenBatch(batchRecords);
+            result.childCount += batchRecords.length;
+            console.log(`[ParentChildVectorIngestion] 第 ${batchIndex + 1}/${totalBatches} 批入库完成: ${batchRecords.length} 个子块`);
+          } catch (error) {
+            const errorMsg = `第 ${batchIndex + 1} 批存储子块失败: ${error instanceof Error ? error.message : String(error)}`;
+            console.error('[ParentChildVectorIngestion]', errorMsg);
+            result.errors?.push(errorMsg);
+          }
+        }
+
+        // 批次间延迟，降低 CPU 占用
+        if (options.batchDelayMs && options.batchDelayMs > 0) {
+          await this.delay(options.batchDelayMs);
+        } else if (options.lowPriorityMode) {
+          // 低优先级模式：让出 CPU 时间片
+          await this.yieldCPU();
         }
       }
 
       console.log(`[ParentChildVectorIngestion] 入库完成: ${result.parentCount} 个父块, ${result.childCount} 个子块`);
+      this.reportProgress(options, 'completed', totalChildren, totalChildren);
 
       return result;
     } catch (error) {
@@ -506,7 +605,10 @@ export class ParentChildVectorIngestion {
   }
 
   /**
-   * 批量入库多个文档
+   * 批量入库多个文档（真正的流式处理，低内存占用）
+   * 优化策略：逐文件处理，每个文件处理完后立即释放内存
+   * 使用子块缓冲区，达到批次大小后统一向量化并入库
+   * 
    * @param documents 文档列表（包含内容和元数据）
    * @param options 入库选项
    * @returns 入库结果
@@ -519,6 +621,197 @@ export class ParentChildVectorIngestion {
       await this.initialize();
     }
 
+    const batchSize = options.batchSize || 50;
+
+    const result: VectorIngestionResult = {
+      parentCount: 0,
+      childCount: 0,
+      parentIds: [],
+      childIds: [],
+      errors: [],
+    };
+
+    // 子块缓冲区（跨文件收集，达到批次大小后处理）
+    let childBuffer: ChildChunk[] = [];
+    let processedChildCount = 0;
+    let totalChildCount = 0; // 预估总数，用于进度显示
+    let batchNumber = 0;
+
+    // 处理缓冲区中的子块
+    const flushChildBuffer = async (isFinal: boolean = false): Promise<void> => {
+      if (childBuffer.length === 0) return;
+
+      // 如果不是最终刷新，且缓冲区未满，则不处理
+      if (!isFinal && childBuffer.length < batchSize) return;
+
+      // 取出要处理的子块
+      const chunksToProcess = isFinal ? childBuffer : childBuffer.splice(0, batchSize);
+      if (!isFinal) {
+        // 非最终刷新时，已经用 splice 取出了
+      } else {
+        childBuffer = []; // 最终刷新，清空缓冲区
+      }
+
+      batchNumber++;
+      const batchTexts = chunksToProcess.map(chunk => chunk.content);
+
+      console.log(`[ParentChildVectorIngestion] 处理第 ${batchNumber} 批: ${chunksToProcess.length} 个子块`);
+
+      // 批量向量化
+      this.reportProgress(options, 'embedding', processedChildCount, totalChildCount, batchNumber, undefined);
+      
+      let batchVectors: number[][];
+      try {
+        batchVectors = await this.embedTexts(batchTexts, options.modelName);
+      } catch (error) {
+        console.warn(`[ParentChildVectorIngestion] 第 ${batchNumber} 批批量向量化失败，改用逐个向量化:`, error);
+        batchVectors = [];
+        for (const batchText of batchTexts) {
+          try {
+            const vector = await this.embedText(batchText, options.modelName);
+            batchVectors.push(vector);
+          } catch (err) {
+            const errorMsg = `向量化失败: ${err instanceof Error ? err.message : String(err)}`;
+            result.errors?.push(errorMsg);
+            batchVectors.push([]);
+          }
+        }
+      }
+
+      // 准备批次记录
+      const batchRecords: ChildVectorRecord[] = [];
+      
+      for (let i = 0; i < chunksToProcess.length; i++) {
+        const childChunk = chunksToProcess[i];
+        const vector = batchVectors[i];
+
+        if (!vector || vector.length === 0) {
+          result.errors?.push(`子块 ${childChunk.id} 向量化失败，跳过存储`);
+          continue;
+        }
+
+        batchRecords.push({
+          child_id: childChunk.id,
+          parent_id: childChunk.parentId,
+          content: childChunk.content,
+          vector: vector,
+          chunk_index: childChunk.metadata.chunk_index,
+        });
+        result.childIds.push(childChunk.id);
+      }
+
+      // 立即入库
+      if (batchRecords.length > 0) {
+        this.reportProgress(options, 'storing-children', processedChildCount + chunksToProcess.length, totalChildCount, batchNumber, undefined);
+        
+        try {
+          await this.storeChildrenBatch(batchRecords);
+          result.childCount += batchRecords.length;
+          console.log(`[ParentChildVectorIngestion] 第 ${batchNumber} 批入库完成: ${batchRecords.length} 个子块`);
+        } catch (error) {
+          const errorMsg = `第 ${batchNumber} 批存储子块失败: ${error instanceof Error ? error.message : String(error)}`;
+          result.errors?.push(errorMsg);
+        }
+      }
+
+      processedChildCount += chunksToProcess.length;
+
+      // 显式释放内存
+      batchVectors.length = 0;
+      batchRecords.length = 0;
+      chunksToProcess.length = 0;
+
+      // 批次间延迟，降低 CPU 占用
+      if (options.batchDelayMs && options.batchDelayMs > 0) {
+        await this.delay(options.batchDelayMs);
+      } else if (options.lowPriorityMode) {
+        await this.yieldCPU();
+      }
+    };
+
+    // 逐文件处理
+    console.log(`[ParentChildVectorIngestion] 开始流式处理 ${documents.length} 个文档...`);
+
+    for (let docIndex = 0; docIndex < documents.length; docIndex++) {
+      const doc = documents[docIndex];
+      const docOptions: VectorIngestionOptions = {
+        ...options,
+        extraMetadata: {
+          ...options.extraMetadata,
+          ...(doc.metadata || {}),
+        },
+      };
+
+      try {
+        // 切分当前文档
+        this.reportProgress(options, 'chunking', docIndex, documents.length);
+        const chunkResult = await this.chunker.chunkText(doc.content, docOptions);
+        
+        console.log(`[ParentChildVectorIngestion] 文档 ${docIndex + 1}/${documents.length} 切分完成: ${chunkResult.parentChunks.length} 父块, ${chunkResult.childChunks.length} 子块`);
+
+        // 立即存储父块
+        for (const parentChunk of chunkResult.parentChunks) {
+          try {
+            await this.storeParent(parentChunk, docOptions);
+            result.parentIds.push(parentChunk.id);
+            result.parentCount++;
+          } catch (error) {
+            const errorMsg = `存储父块失败 (${parentChunk.id}): ${error instanceof Error ? error.message : String(error)}`;
+            result.errors?.push(errorMsg);
+          }
+        }
+
+        // 将子块添加到缓冲区
+        totalChildCount += chunkResult.childChunks.length;
+        childBuffer.push(...chunkResult.childChunks);
+
+        // 清空当前文档的切分结果引用，帮助 GC
+        chunkResult.parentChunks.length = 0;
+        chunkResult.childChunks.length = 0;
+
+        // 如果缓冲区达到批次大小，处理它
+        while (childBuffer.length >= batchSize) {
+          await flushChildBuffer(false);
+        }
+
+      } catch (error) {
+        const errorMsg = `文档 ${docIndex + 1} 处理失败: ${error instanceof Error ? error.message : String(error)}`;
+        console.error('[ParentChildVectorIngestion]', errorMsg);
+        result.errors?.push(errorMsg);
+      }
+
+      // 每处理完一个文档，尝试触发 GC（如果可用）
+      if (typeof global !== 'undefined' && typeof (global as { gc?: () => void }).gc === 'function') {
+        (global as { gc?: () => void }).gc?.();
+      }
+
+      // 文档间延迟，降低 CPU 占用
+      if (options.documentDelayMs && options.documentDelayMs > 0) {
+        await this.delay(options.documentDelayMs);
+      } else if (options.lowPriorityMode) {
+        await this.yieldCPU();
+      }
+    }
+
+    // 处理剩余的子块
+    if (childBuffer.length > 0) {
+      await flushChildBuffer(true);
+    }
+
+    console.log(`[ParentChildVectorIngestion] 批量入库完成: ${result.parentCount} 个父块, ${result.childCount} 个子块`);
+    this.reportProgress(options, 'completed', processedChildCount, totalChildCount);
+
+    return result;
+  }
+
+  /**
+   * 批量入库多个文档（旧版本，保留兼容性）
+   * @deprecated 请使用 ingestBatch，它有更好的内存管理
+   */
+  async ingestBatchLegacy(
+    documents: Array<{ content: string; metadata?: Record<string, unknown> }>,
+    options: VectorIngestionOptions = {}
+  ): Promise<VectorIngestionResult> {
     const result: VectorIngestionResult = {
       parentCount: 0,
       childCount: 0,
@@ -531,7 +824,6 @@ export class ParentChildVectorIngestion {
       try {
         const docResult = await this.ingest(doc.content, {
           ...options,
-          ...(doc.metadata || {}),
           extraMetadata: {
             ...options.extraMetadata,
             ...(doc.metadata || {}),
@@ -547,7 +839,6 @@ export class ParentChildVectorIngestion {
         }
       } catch (error) {
         const errorMsg = `批量入库文档失败: ${error instanceof Error ? error.message : String(error)}`;
-        console.error('[ParentChildVectorIngestion]', errorMsg);
         result.errors?.push(errorMsg);
       }
     }

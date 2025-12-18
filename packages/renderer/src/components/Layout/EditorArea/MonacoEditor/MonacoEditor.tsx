@@ -1566,6 +1566,24 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           console.warn('[MonacoEditor] 没有可接受的 diff 内容');
         }
       },
+      onClearDiff: () => {
+        // 清除 diff 内容（不关闭内联聊天）
+        console.log('[MonacoEditor] 清除当前对话的 diff 内容');
+        
+        // 取消正在进行的请求
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+        }
+        
+        // 清除改写操作的高亮装饰
+        if (aiRewriteWidgetRef.current) {
+          aiRewriteWidgetRef.current.clearRewriteHighlight();
+        }
+        
+        // 使用统一的清理函数清除 diff 内容和空行
+        cleanupPreviousDiff();
+      },
       onClose: () => {
         console.log('[MonacoEditor] 内联聊天关闭，开始清理 diff 和空行');
         
