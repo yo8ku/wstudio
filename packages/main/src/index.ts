@@ -123,7 +123,10 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   
   // 如果提供了主窗口，设置索引服务的主窗口（用于发送进度事件）
   if (mainWindow) {
+    console.log('[Main] 设置向量索引服务的主窗口');
     setWorkspaceVectorIndexMainWindow(mainWindow);
+  } else {
+    console.log('[Main] mainWindow 为空，跳过设置向量索引服务的主窗口');
   }
 
   // 工作区向量索引由 MainLayout.tsx 在渲染进程启动时触发

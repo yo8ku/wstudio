@@ -1,49 +1,23 @@
 /**
  * 设置内容区域样式
-
+ * 布局：顶部搜索栏 + 滚动内容区
  */
 
 .settings-content {
   display: flex;
   flex-direction: column;
   height: 100%;
+  background-color: var(--ws-editor-background);
 
+  // 顶部工具栏
   .settings-toolbar {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    padding: 12px 24px;
-
-    .search-wrapper {
-      position: relative;
-      flex: 1;
-      max-width: 448px;
-
-      .search-input {
-        width: 100%;
-        padding: 6px 12px 6px 36px;
-        font-size: 13px;
-        border-radius: 4px;
-        outline: none;
-
-        &::placeholder {
-          opacity: 0.5;
-        }
-
-   
-      }
-
-      .search-icon {
-        position: absolute;
-        left: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 16px;
-        height: 16px;
-        opacity: 0.5;
-      }
-    }
+    padding: 16px 24px;
   }
 
+  // 内容区域
   .content-area {
     flex: 1;
     overflow: hidden;
@@ -51,201 +25,372 @@
     .content-scroll {
       height: 100%;
       overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--ws-scrollbar-slider-background) transparent;
 
-      .content-inner {
-        max-width: 896px;
-        margin: 0 auto;
-        padding: 24px;
+      &::-webkit-scrollbar {
+        width: 8px;
+      }
 
-        .error-message {
-          margin-bottom: 16px;
-          padding: 12px 16px;
-          border-radius: 4px;
-          font-size: 13px;
-        }
+      &::-webkit-scrollbar-track {
+        background: transparent;
+      }
 
-        .category-section {
-          margin-bottom: 48px;
+      &::-webkit-scrollbar-thumb {
+        background-color: var(--ws-scrollbar-slider-background);
+        border-radius: 4px;
 
-          .category-title {
-            font-size: 16px;
-            font-weight: 500;
-            margin-bottom: 16px;
-            padding-bottom: 8px;
-          }
-
-          .settings-list {
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-
-            .setting-item {
-              padding-bottom: 24px;
-
-              &:last-child {
-                border-bottom: none;
-              }
-
-              .setting-row {
-                display: flex;
-                align-items: flex-start;
-                justify-content: space-between;
-                gap: 16px;
-
-                .setting-info {
-                  flex: 1;
-                  min-width: 0;
-
-                  .setting-header {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    margin-bottom: 4px;
-
-                    .setting-title {
-                      font-size: 13px;
-                      font-weight: 500;
-                    }
-
-                    .modified-badge {
-                      font-size: 11px;
-                      padding: 2px 6px;
-                      border-radius: 3px;
-                    }
-                  }
-
-                  .setting-description {
-                    font-size: 12px;
-                    margin-bottom: 8px;
-                    opacity: 0.6;
-                  }
-
-                  .setting-key {
-                    font-size: 11px;
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                  }
-                }
-
-                .setting-controls {
-                  display: flex;
-                  align-items: center;
-                  gap: 8px;
-
-                  .control-checkbox {
-                    width: 16px;
-                    height: 16px;
-                    border-radius: 3px;
-                    cursor: pointer;
-                  }
-
-                  .control-input {
-                    padding: 6px 12px;
-                    border-radius: 4px;
-                    font-size: 13px;
-                    outline: none;
-
-                    &[type="number"] {
-                      width: 128px;
-                    }
-
-                    &[type="text"] {
-                      flex: 1;
-                      max-width: 448px;
-                    }
-                  }
-
-                  .reset-button {
-                    padding: 4px 8px;
-                    font-size: 12px;
-                    border-radius: 4px;
-                    border: none;
-                    cursor: pointer;
-                    &:hover {
-                      opacity: 0.8;
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          .extensions-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-
-            .extension-item {
-              padding: 16px;
-              border-radius: 4px;
-              .extension-content {
-                display: flex;
-                align-items: flex-start;
-                justify-content: space-between;
-
-                .extension-info {
-                  flex: 1;
-                  min-width: 0;
-
-                  .extension-header {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    margin-bottom: 4px;
-
-                    .extension-name {
-                      font-size: 13px;
-                      font-weight: 500;
-                    }
-
-                    .extension-version {
-                      font-size: 11px;
-                      padding: 2px 8px;
-                      border-radius: 3px;
-                      opacity: 0.7;
-                    }
-                  }
-
-                  .extension-description {
-                    font-size: 12px;
-                    margin-bottom: 8px;
-                    opacity: 0.6;
-                  }
-
-                  .extension-id {
-                    font-size: 11px;
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                    font-family: monospace;
-                  }
-                }
-
-                .extension-status {
-                  display: flex;
-                  align-items: center;
-                  gap: 8px;
-
-                  .status-badge {
-                    font-size: 12px;
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    &.disabled {
-                      opacity: 0.5;
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          .empty-state {
-            text-align: center;
-            padding: 48px 0;
-            opacity: 0.5;
-          }
+        &:hover {
+          background-color: var(--ws-scrollbar-slider-hover-background);
         }
       }
     }
+
+    .content-inner {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0px 8px 0px;
+    }
+  }
+
+  // 错误提示
+  .error-message {
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    background-color: var(--ws-input-validation-error-background);
+    border: 1px solid var(--ws-input-validation-error-border);
+    color: var(--ws-input-validation-error-foreground);
+  }
+
+  // 分类区块
+  .category-section {
+    margin-bottom: 24px;
+    padding: 16px;
+    border: 1px solid var(--ws-panel-border);
+    border-radius: 8px;
+    background-color: var(--ws-editor-background);
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .category-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ws-foreground);
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--ws-panel-border);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  }
+
+  // 设置列表
+  .settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  // 设置项
+  .setting-item {
+    padding: 12px 16px;
+    border-radius: 6px;
+    background-color: var(--ws-list-hover-background);
+
+    &:hover {
+      background-color: var(--ws-list-inactive-selection-background);
+    }
+
+    // 全宽设置项（如 Embedding 配置）
+    &--full {
+      padding: 0;
+      background-color: transparent;
+      border: 1px solid var(--ws-panel-border);
+
+      &:hover {
+        background-color: transparent;
+      }
+    }
+  }
+
+  // 设置行
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  // 设置信息
+  .setting-info {
+    flex: 1;
+    min-width: 0;
+
+    .setting-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .setting-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ws-foreground);
+    }
+
+    .modified-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background-color: var(--ws-badge-background);
+      color: var(--ws-badge-foreground);
+    }
+
+    .setting-description {
+      font-size: 12px;
+      color: var(--ws-description-foreground);
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+
+    .setting-key {
+      display: inline-block;
+      font-size: 11px;
+      font-family: var(--ws-editor-font-family, monospace);
+      padding: 2px 6px;
+      border-radius: 4px;
+      background-color: var(--ws-text-code-block-background);
+      color: var(--ws-text-preformat-foreground);
+    }
+  }
+
+  // 设置控件
+  .setting-controls {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .control-checkbox {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      cursor: pointer;
+      accent-color: var(--ws-focus-border);
+    }
+
+    .control-input {
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      border: 1px solid var(--ws-input-border);
+      background-color: var(--ws-input-background);
+      color: var(--ws-input-foreground);
+      outline: none;
+
+      &:focus {
+        border-color: var(--ws-focus-border);
+      }
+
+      &::placeholder {
+        color: var(--ws-input-placeholder-foreground);
+      }
+
+      &[type="number"] {
+        width: 100px;
+      }
+
+      &[type="text"] {
+        width: 200px;
+      }
+    }
+
+    .reset-action {
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      background-color: var(--ws-button-secondary-background);
+      color: var(--ws-button-secondary-foreground);
+
+      &:hover {
+        background-color: var(--ws-button-secondary-hover-background);
+      }
+    }
+  }
+
+  // 扩展列表
+  .extensions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .extension-item {
+    padding: 14px 16px;
+    border-radius: 6px;
+    background-color: var(--ws-list-hover-background);
+
+    &:hover {
+      background-color: var(--ws-list-inactive-selection-background);
+    }
+  }
+
+  .extension-content {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .extension-info {
+    flex: 1;
+    min-width: 0;
+
+    .extension-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .extension-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ws-foreground);
+    }
+
+    .extension-version {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background-color: var(--ws-badge-background);
+      color: var(--ws-badge-foreground);
+    }
+
+    .extension-description {
+      font-size: 12px;
+      color: var(--ws-description-foreground);
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .extension-id {
+      display: inline-block;
+      font-size: 11px;
+      font-family: var(--ws-editor-font-family, monospace);
+      padding: 2px 6px;
+      border-radius: 4px;
+      background-color: var(--ws-text-code-block-background);
+      color: var(--ws-text-preformat-foreground);
+    }
+  }
+
+  .extension-status {
+    flex-shrink: 0;
+
+    .status-badge {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background-color: var(--ws-badge-background);
+      color: var(--ws-badge-foreground);
+
+      &.enabled {
+        background-color: var(--ws-testing-icon-passed);
+        color: var(--ws-editor-background);
+      }
+
+      &.disabled {
+        opacity: 0.5;
+      }
+    }
+  }
+
+  // 空状态
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    font-size: 13px;
+    color: var(--ws-description-foreground);
+  }
+
+  // 页脚
+  .settings-footer {
+    margin-top: 48px;
+
+    &__content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    &__brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    &__name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ws-foreground);
+    }
+
+    &__version {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background-color: var(--ws-badge-background);
+      color: var(--ws-badge-foreground);
+    }
+
+    &__slogan {
+      font-size: 13px;
+      color: var(--ws-description-foreground);
+      font-style: italic;
+      letter-spacing: 0.5px;
+    }
+
+    &__links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    &__link {
+      font-size: 12px;
+      color: var(--ws-text-link-foreground);
+      cursor: pointer;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+
+    &__divider {
+      font-size: 12px;
+      color: var(--ws-description-foreground);
+      opacity: 0.5;
+    }
+
+    &__copyright {
+      font-size: 11px;
+      color: var(--ws-description-foreground);
+      opacity: 0.7;
+    }
+
+    &__icp {
+      font-size: 11px;
+      color: var(--ws-description-foreground);
+      opacity: 0.6;
+    }
   }
 }
-

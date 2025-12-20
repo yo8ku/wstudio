@@ -11,7 +11,6 @@ import { CreateKnowledgeDialog, KnowledgeBaseData } from './CreateKnowledgeDialo
 import { KnowledgeBaseSettingsPanel, KnowledgeBaseSettings } from './KnowledgeBaseSettingsPanel';
 import { knowledgeBaseService } from './knowledgeBaseService';
 import { SearchIcon, RefreshIcon } from './KnowledgeBaseIcons';
-import { Input } from '../../../ui/input';
 import { modal } from '../../../../stores/modalStore';
 import { toastService } from '../../../../services/ToastService';
 import { VectorStore } from '@note-studio/global-rag';

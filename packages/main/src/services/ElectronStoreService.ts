@@ -73,6 +73,9 @@ interface StoreSchema {
     fontSize?: number;
     editorSettings?: Record<string, any>;
   };
+  
+  // Embedding 自动索引开关
+  'embedding-auto-index': boolean;
 }
 
 /**
@@ -105,7 +108,8 @@ export class ElectronStoreService {
         },
         'theme-config': {},
         'downloaded-themes': {},
-        'user-preferences': {}
+        'user-preferences': {},
+        'embedding-auto-index': true
       },
       // 启用加密（可选）
       encryptionKey: 'wiseai-secure-key-2024'

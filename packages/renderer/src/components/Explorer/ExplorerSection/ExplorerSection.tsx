@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { Icon } from '../../Icons/Icon';
 import './ExplorerSection.scss';
 
 export interface ActionButton {
@@ -59,7 +59,9 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
       <div className="explorer-section-item">
         <div className="explorer-section-header-wrapper">
           <div className="explorer-section-trigger" onClick={handleToggle}>
-            <ChevronDown
+            <Icon
+              name="chevron-down"
+              size={16}
               className="explorer-section-chevron"
               style={{
                 transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',

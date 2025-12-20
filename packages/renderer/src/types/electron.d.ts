@@ -267,6 +267,9 @@ export interface ElectronIPC {
   knowledgeBase?: {
     openFolder: () => Promise<FileResult>;
   };
+  shell?: {
+    openExternal: (url: string) => Promise<APIResponse>;
+  };
   snippet?: {
     initialize: () => Promise<APIResponse>;
     add: (snippet: Snippet) => Promise<APIResponse<number>>;
@@ -294,7 +297,25 @@ export interface ElectronIPC {
       topK?: number;
       modelName?: string;
       filterMetadata?: Record<string, unknown>;
-    }) => Promise<APIResponse<any[]>>;
+    }) => Promise<APIResponse<unknown[]>>;
+  };
+  embedding?: {
+    generate: (text: string) => Promise<APIResponse<{ vectors: number[] }>>;
+    generateBatch: (texts: string[]) => Promise<APIResponse<{ vectors: number[][] }>>;
+  };
+  cloudEmbedding?: {
+    getProviders: () => Promise<APIResponse<EmbeddingProviderConfig[]>>;
+    getModels: () => Promise<APIResponse<EmbeddingModelConfig[]>>;
+    setApiKey: (providerId: string, apiKey: string) => Promise<APIResponse>;
+    getApiKey: (providerId: string) => Promise<APIResponse<string | undefined>>;
+    setModel: (modelId: string) => Promise<APIResponse>;
+    getCurrentModel: () => Promise<APIResponse<EmbeddingModelConfig | undefined>>;
+    generate: (text: string) => Promise<APIResponse<EmbeddingResult>>;
+    generateBatch: (texts: string[]) => Promise<APIResponse<EmbeddingResult>>;
+    testConnection: (providerId: string, apiKey: string, modelId?: string) => Promise<APIResponse<{ success: boolean; message: string; dimensions?: number }>>;
+    hasValidApiKey: () => Promise<APIResponse<boolean>>;
+    setCustomConfig: (config: CustomEmbeddingConfig) => Promise<APIResponse>;
+    getCustomConfig: () => Promise<APIResponse<CustomEmbeddingConfig | undefined>>;
   };
   workspaceIndex?: {
     initialize: () => Promise<APIResponse>;
@@ -342,6 +363,7 @@ export interface ElectronIPC {
       status: 'idle' | 'scanning' | 'indexing' | 'completed' | 'error';
       errorMessage?: string;
     }>>;
+    checkAutoIndex: (workspacePath: string) => Promise<APIResponse<{ message: string }>>;
     onProgress: (callback: (progress: {
       totalFiles: number;
       processedFiles: number;
@@ -376,10 +398,85 @@ export interface ChatSessionData {
   messageCount?: number;
 }
 
+/**
+ * Embedding 模型配置接口
+ */
+export interface EmbeddingModelConfig {
+  id: string;
+  name: string;
+  displayName: string;
+  providerId: string;
+  apiEndpoint: string;
+  dimensions: number;
+  maxTokens: number;
+  supportsBatch: boolean;
+  maxBatchSize: number;
+  pricePerMillion?: number;
+  currency?: 'USD' | 'CNY';
+  enabled: boolean;
+  description?: string;
+}
+
+/**
+ * Embedding 服务商配置接口
+ */
+export interface EmbeddingProviderConfig {
+  id: string;
+  name: string;
+  apiKey?: string;
+  defaultEndpoint: string;
+  apiKeyUrl: string;
+  models: EmbeddingModelConfig[];
+}
+
+/**
+ * Embedding 结果接口
+ */
+export interface EmbeddingResult {
+  success: boolean;
+  vectors?: number[][];
+  error?: string;
+  tokensUsed?: number;
+  model?: string;
+}
+
+/**
+ * 自定义 Embedding 模型配置接口
+ */
+export interface CustomEmbeddingConfig {
+  apiEndpoint: string;
+  modelName: string;
+  dimensions: number;
+  maxTokens: number;
+}
+
+/**
+ * NoteStudio API 接口（通过 preload 暴露）
+ */
+export interface NoteStudioAPI {
+  embedding: {
+    generate: (text: string) => Promise<APIResponse<{ vectors: number[] }>>;
+    generateBatch: (texts: string[]) => Promise<APIResponse<{ vectors: number[][] }>>;
+  };
+  cloudEmbedding: {
+    getProviders: () => Promise<APIResponse<EmbeddingProviderConfig[]>>;
+    getModels: () => Promise<APIResponse<EmbeddingModelConfig[]>>;
+    setApiKey: (providerId: string, apiKey: string) => Promise<APIResponse>;
+    getApiKey: (providerId: string) => Promise<APIResponse<string | undefined>>;
+    setModel: (modelId: string) => Promise<APIResponse>;
+    getCurrentModel: () => Promise<APIResponse<EmbeddingModelConfig | undefined>>;
+    generate: (text: string) => Promise<APIResponse<EmbeddingResult>>;
+    generateBatch: (texts: string[]) => Promise<APIResponse<EmbeddingResult>>;
+    testConnection: (providerId: string, apiKey: string, modelId?: string) => Promise<APIResponse<{ success: boolean; message: string; dimensions?: number }>>;
+    hasValidApiKey: () => Promise<APIResponse<boolean>>;
+  };
+}
+
 declare global {
   interface Window {
     electronAPI?: ElectronAPI;
     electron?: ElectronIPC;
+    noteStudioAPI?: NoteStudioAPI;
   }
 }
 

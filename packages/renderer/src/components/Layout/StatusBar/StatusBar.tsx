@@ -35,6 +35,12 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     status: 'idle' | 'scanning' | 'indexing' | 'paused' | 'completed' | 'error';
     workspaceTotalFiles?: number;  // 工作区总文件数
     indexedTotalFiles?: number;    // 已索引完成的文件总数
+    vectorization?: {
+      status: 'idle' | 'running' | 'completed';
+      totalFiles: number;
+      processedFiles: number;
+      currentFile: string | null;
+    };
   } | null>(null);
 
   // 索引进度状态（主进程的文件索引）
@@ -292,8 +298,10 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   }, []);
 
-  // 记录上一次的索引状态，用于检测完成
-  const prevIndexStatusRef = useRef<string | null>(null);
+  // 防止重复显示完成通知
+  const hasShownCompletedRef = useRef<boolean>(false);
+  // 记录是否有文件被处理过（用于判断是否需要显示完成通知）
+  const hasProcessedFilesRef = useRef<boolean>(false);
 
   // 监听工作区向量索引服务进度（通过 IPC）
   useEffect(() => {
@@ -312,18 +320,35 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       status: 'idle' | 'scanning' | 'indexing' | 'paused' | 'completed' | 'error';
       workspaceTotalFiles?: number;
       indexedTotalFiles?: number;
+      vectorization?: {
+        status: 'idle' | 'running' | 'completed';
+        totalFiles: number;
+        processedFiles: number;
+        currentFile: string | null;
+      };
     }) => {
-      console.log("[StatusBar] 收到向量索引进度:", progress);
-      
-      // 检测索引完成：从 indexing 状态变为 completed 状态，且本次实际处理了文件
-      if (progress.status === 'completed' && 
-          prevIndexStatusRef.current === 'indexing' &&
-          progress.processedFiles > 0) {
-        notification.success(`向量索引完成，本次索引 ${progress.processedFiles} 个文件`);
+      // 当开始新的索引时，重置完成标志
+      if (progress.status === 'scanning' || progress.status === 'indexing') {
+        hasShownCompletedRef.current = false;
+        hasProcessedFilesRef.current = progress.processedFiles > 0 || progress.totalFiles > 0;
       }
       
-      // 更新上一次状态
-      prevIndexStatusRef.current = progress.status;
+      // 记录是否有文件被处理
+      if (progress.processedFiles > 0 || progress.totalFiles > 0) {
+        hasProcessedFilesRef.current = true;
+      }
+      
+      // 检测完成：索引完成且向量化也完成（或没有向量化任务）
+      const indexCompleted = progress.status === 'completed';
+      const vectorizationCompleted = !progress.vectorization || progress.vectorization.status === 'completed';
+      
+      if (indexCompleted && vectorizationCompleted && 
+          hasProcessedFilesRef.current && 
+          !hasShownCompletedRef.current) {
+        hasShownCompletedRef.current = true;
+        notification.success('索引完成');
+      }
+      
       setVectorIndexingProgress(progress);
     });
 
@@ -476,7 +501,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
               <span className="status-bar-text" style={{ fontSize: '11px', opacity: 0.9 }}>
                 {vectorIndexingProgress.status === 'scanning' ? '扫描中' : '索引'}
               </span>
-              {/* 进度条 - 使用已索引总数/工作区总文件数 */}
+              {/* 进度条 - 使用本次已处理/本次需要索引的数量 */}
               <div style={{ 
                 width: '60px', 
                 height: '4px', 
@@ -485,8 +510,8 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                 overflow: 'hidden'
               }}>
                 <div style={{ 
-                  width: (vectorIndexingProgress.workspaceTotalFiles ?? 0) > 0 
-                    ? `${((vectorIndexingProgress.indexedTotalFiles ?? 0) / (vectorIndexingProgress.workspaceTotalFiles ?? 1)) * 100}%` 
+                  width: (vectorIndexingProgress.totalFiles ?? 0) > 0 
+                    ? `${((vectorIndexingProgress.processedFiles ?? 0) / (vectorIndexingProgress.totalFiles ?? 1)) * 100}%` 
                     : '0%',
                   height: '100%',
                   backgroundColor: 'var(--ws-button-background, #0e639c)',
@@ -494,9 +519,53 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                   transition: 'width 0.3s ease'
                 }} />
               </div>
-              {/* 显示：已索引总数/工作区总文件数 */}
+              {/* 显示：本次已处理/本次需要索引的数量 */}
               <span className="status-bar-text" style={{ fontSize: '10px', opacity: 0.7 }}>
-                {vectorIndexingProgress.indexedTotalFiles ?? 0}/{vectorIndexingProgress.workspaceTotalFiles ?? 0}
+                {vectorIndexingProgress.processedFiles ?? 0}/{vectorIndexingProgress.totalFiles ?? 0}
+              </span>
+            </div>
+          )}
+
+          {/* 索引进度显示 - 后台索引运行时显示 */}
+          {vectorIndexingProgress?.vectorization?.status === 'running' && (
+            <div 
+              className="status-bar-indexing" 
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}
+              title={vectorIndexingProgress.vectorization.currentFile || '正在索引...'}
+            >
+              <Icon
+                name="sync"
+                size={12}
+                style={{
+                  animation: "spin 2s linear infinite",
+                  display: "inline-flex",
+                  opacity: 0.6,
+                }}
+              />
+              <span className="status-bar-text" style={{ fontSize: '11px', opacity: 0.8 }}>
+                索引
+              </span>
+              {/* 索引进度条 */}
+              <div style={{ 
+                width: '50px', 
+                height: '4px', 
+                backgroundColor: 'var(--ws-input-background, rgba(255,255,255,0.1))', 
+                borderRadius: '2px',
+                overflow: 'hidden'
+              }}>
+                <div style={{ 
+                  width: (vectorIndexingProgress.vectorization.totalFiles ?? 0) > 0 
+                    ? `${((vectorIndexingProgress.vectorization.processedFiles ?? 0) / (vectorIndexingProgress.vectorization.totalFiles ?? 1)) * 100}%` 
+                    : '0%',
+                  height: '100%',
+                  backgroundColor: 'var(--ws-statusbar-vectorizing, #4ec9b0)',
+                  borderRadius: '2px',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+              {/* 显示：已索引/总数 */}
+              <span className="status-bar-text" style={{ fontSize: '10px', opacity: 0.6 }}>
+                {vectorIndexingProgress.vectorization.processedFiles ?? 0}/{vectorIndexingProgress.vectorization.totalFiles ?? 0}
               </span>
             </div>
           )}

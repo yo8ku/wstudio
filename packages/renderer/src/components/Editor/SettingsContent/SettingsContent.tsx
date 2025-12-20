@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import MonacoEditor from '@monaco-editor/react';
 import type { SettingsCategory } from '../../Layout/Sidebar/SettingsSidebar';
 import { DropdownMenu } from '@/components/common/DropdownMenu';
+import { SearchInput } from '@/components/common/SearchInput';
+import { EmbeddingConfig } from '@/components/EmbeddingConfig';
 import './SettingsContent.scss';
 
 interface SettingDefinition {
@@ -192,13 +193,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       default: '${activeEditorShort}${separator}${rootName}',
     },
 
-    // 功能
+    // AI
     {
       key: 'files.encoding',
       title: 'Files Encoding',
       description: '读写文件时使用的默认字符集编码',
       type: 'select',
-      category: 'features',
+      category: 'ai',
       options: ['utf8', 'utf8bom', 'utf16le', 'utf16be', 'gbk'],
       default: 'utf8',
     },
@@ -207,8 +208,16 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       title: 'Use Ignore Files',
       description: '控制在搜索中是否使用 .gitignore 和 .ignore 文件',
       type: 'boolean',
-      category: 'features',
+      category: 'ai',
       default: true,
+    },
+    // Embedding 配置（特殊处理，使用自定义组件）
+    {
+      key: 'embedding.config',
+      title: 'Embedding 配置',
+      description: '配置云端 Embedding API，用于知识库向量化',
+      type: 'object',
+      category: 'ai',
     },
   ];
 
@@ -325,7 +334,22 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     'text-editor', 
     'workbench',
     'window',
-    'features',
+    'ai',
+    'shortcuts',
+    'cloud-backup',
+    'cloud-backup-local',
+    'cloud-backup-webdav',
+    'cloud-backup-jianguoyun',
+    'cloud-backup-gitee',
+    'cloud-backup-custom',
+    'data-settings',
+    'data-settings-notion',
+    'data-settings-yuque',
+    'data-settings-joplin',
+    'data-settings-obsidian',
+    'data-settings-siyuan',
+    'data-settings-custom',
+    'document-processing',
     'application',
     'extensions'
   ];
@@ -366,7 +390,6 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   // 渲染设置控件
   const renderSettingControl = (def: SettingDefinition) => {
     const value = settings[def.key] ?? def.default;
-    const isModified = modifiedKeys.has(def.key);
 
     switch (def.type) {
       case 'boolean':
@@ -412,6 +435,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
           />
         );
 
+      case 'object':
+        // 特殊处理：Embedding 配置使用自定义组件
+        if (def.key === 'embedding.config') {
+          return <EmbeddingConfig />;
+        }
+        return null;
+
       default:
         return null;
     }
@@ -422,24 +452,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     <div className="settings-content">
       {/* 顶部工具栏*/}
       <div className="settings-toolbar">
-        {/* 搜索引*/}
-        <div className="search-wrapper">
-          <input
-            type="text"
-            placeholder="搜索设置"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="search-input"
-          />
-          <svg 
-            className="search-icon" 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-        </div>
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="搜索设置"
+          alwaysExpanded={true}
+          expandedWidth="100%"
+        />
       </div>
 
       {/* 内容区域 */}
@@ -496,7 +515,22 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                   'text-editor': '文本编辑器',
                   'workbench': '工作台',
                   'window': '窗口',
-                  'features': '功能',
+                  'ai': 'AI',
+                  'shortcuts': '快捷键',
+                  'cloud-backup': '云端备份',
+                  'cloud-backup-local': '本地备份',
+                  'cloud-backup-webdav': 'WebDav',
+                  'cloud-backup-jianguoyun': '坚果云',
+                  'cloud-backup-gitee': 'Gitee',
+                  'cloud-backup-custom': '自定义备份',
+                  'data-settings': '数据设置',
+                  'data-settings-notion': 'Notion',
+                  'data-settings-yuque': '语雀',
+                  'data-settings-joplin': 'Joplin',
+                  'data-settings-obsidian': 'Obsidian',
+                  'data-settings-siyuan': '思源笔记',
+                  'data-settings-custom': '自定义数据源',
+                  'document-processing': '文档处理',
                   'application': '应用程序',
                   'extensions': '扩展'
                 };
@@ -509,6 +543,16 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                     <div className="settings-list">
                       {categorySettings.map((def) => {
                         const isModified = modifiedKeys.has(def.key);
+                        
+                        // 特殊处理：object 类型（如 Embedding 配置）使用自定义组件，占据整行
+                        if (def.type === 'object') {
+                          return (
+                            <div key={def.key} className="setting-item setting-item--full">
+                              {renderSettingControl(def)}
+                            </div>
+                          );
+                        }
+                        
                         return (
                           <div key={def.key} className="setting-item">
                             <div className="setting-row">
@@ -525,13 +569,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                               <div className="setting-controls">
                                 {renderSettingControl(def)}
                                 {isModified && (
-                                  <button
+                                  <div
                                     onClick={() => handleReset(def.key)}
-                                    className="reset-button"
+                                    className="reset-action"
                                     title="重置为默认值"
                                   >
                                     重置
-                                  </button>
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -542,6 +586,38 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                   </div>
                 );
               })}
+
+              {/* 页脚 */}
+              <footer className="settings-footer">
+                <div className="settings-footer__content">
+                  <div className="settings-footer__brand">
+                    <span className="settings-footer__name">Note WStudio</span>
+                    <span className="settings-footer__version">v1.0.0</span>
+                  </div>
+                  <div className="settings-footer__slogan">
+                    "韦"大的"思"想，从这里开始！
+                  </div>
+                  <div className="settings-footer__links">
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://github.com')}>GitHub</span>
+                    <span className="settings-footer__divider">|</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/docs')}>用户协议</span>
+                    <span className="settings-footer__divider">|</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/privacy')}>隐私政策</span>
+                    <span className="settings-footer__divider">|</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/feedback')}>加入我们</span>
+                    <span className="settings-footer__divider">|</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/changelog')}>联系我们</span>
+                    <span className="settings-footer__divider">|</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com')}>进入官网</span>
+                  </div>
+                  <div className="settings-footer__copyright">
+                    Copyright 2024-2025 Note WStudio. All rights reserved.
+                  </div>
+                  <div className="settings-footer__icp">
+                    粤ICP备2024XXXXXX号-1
+                  </div>
+                </div>
+              </footer>
             </div>
           </div>
       </div>

@@ -100,6 +100,9 @@ interface StoreSchema {
       };
     };
   };
+  
+  // Embedding 自动索引开关
+  'embedding-auto-index': boolean;
 }
 
 /**

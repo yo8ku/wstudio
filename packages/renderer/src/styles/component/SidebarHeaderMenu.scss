@@ -4,18 +4,18 @@
  */
 
 .sidebar-header-menu {
-  background-color: var(--ws-menu-background);
-  border-color: var(--ws-menu-border);
+  background-color: var(--ws-dropdown-background);
+  border-color: var(--ws-dropdown-border);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .sidebar-header-menu-item {
-  color: var(--ws-menu-foreground);
+  color: var(--ws-dropdown-foreground);
 }
 
 .sidebar-header-menu-item:hover {
-  background-color: var(--ws-menu-selectionBackground);
-  color: var(--ws-menu-selectionForeground);
+  background-color: var(--ws-dropdown-hoverBackground);
+  color: var(--ws-dropdown-foreground);
 }
 
 

@@ -1,0 +1,99 @@
+/**
+ * 搜索输入框组件样式
+ * 功能：支持收缩/展开的搜索框
+ */
+
+.search-input-container {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  border-radius: 4px;
+  background-color: var(--ws-input-background);
+  border: 1px solid var(--ws-input-border);
+  overflow: hidden;
+
+  &:focus-within {
+    border-color: var(--ws-focus-border);
+  }
+
+  // 收缩状态
+  &.collapsed {
+    cursor: pointer;
+    justify-content: center;
+
+    .search-input-icon {
+      margin: 0;
+    }
+
+    &:hover {
+      background-color: var(--ws-list-hover-background);
+    }
+  }
+
+  // 展开状态
+  &.expanded {
+    .search-input-icon {
+      margin-left: 8px;
+      cursor: default;
+    }
+  }
+
+  // 放大镜图标
+  .search-input-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--ws-foreground);
+    opacity: 0.6;
+
+    svg {
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  // 输入框
+  .search-input-field {
+    flex: 1;
+    height: 100%;
+    padding: 0 8px;
+    border: none;
+    background: transparent;
+    color: var(--ws-input-foreground);
+    font-size: 13px;
+    outline: none;
+
+    &::placeholder {
+      color: var(--ws-input-placeholder-foreground);
+      opacity: 0.6;
+    }
+  }
+
+  // 清除按钮
+  .search-input-clear {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-right: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ws-foreground);
+    opacity: 0.6;
+
+    &:hover {
+      opacity: 1;
+      background-color: var(--ws-toolbar-hover-background);
+    }
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+}

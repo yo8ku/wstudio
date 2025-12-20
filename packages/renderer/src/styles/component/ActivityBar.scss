@@ -17,12 +17,12 @@
 }
 
 .activity-bar-item:not(.active) {
-  color: var(--ws-activitybar-inactive-foreground);
+  color: var(--ws-activityBar-inactiveForeground);
   opacity: 0.6;
 }
 
 .activity-bar-item:not(.active):hover {
-  color: var(--ws-activitybar-foreground);
+  color: var(--ws-activityBar-foreground);
   opacity: 1;
 }
 

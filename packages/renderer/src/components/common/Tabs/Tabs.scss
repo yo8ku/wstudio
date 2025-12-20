@@ -1,5 +1,6 @@
 /**
  * Tabs 组件样式
+ * 功能：标签页切换组件样式
  */
 
 .tabs {
@@ -11,34 +12,30 @@
   gap: 4px;
   border-bottom: 1px solid var(--ws-border-color);
   margin-bottom: 16px;
-  button{
-    padding: 5px 10px;
-  }
 }
 
 .tabs-trigger {
+  padding: 5px 10px;
   border: none;
   background: transparent;
-  color: var(--ws-text-secondary);
+  color: var(--ws-description-foreground);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  transition: all 0.2s;
   outline: none;
 }
 
 .tabs-trigger:hover {
-  color: var(--ws-text-primary);
+  color: var(--ws-foreground);
   background-color: var(--ws-input-background);
 }
 
 .tabs-trigger-active {
-  color: var(--ws-text-primary);
+  color: var(--ws-foreground);
   border-bottom-color: var(--ws-button-background);
 }
 
 .tabs-content {
   width: 100%;
 }
-

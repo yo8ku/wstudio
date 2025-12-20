@@ -1,0 +1,44 @@
+/**
+ * Sonner Toast 通知组件样式
+ * 覆盖 sonner 库的默认样式
+ */
+
+[data-sonner-toaster] {
+  // Toast 容器
+  [data-sonner-toast] {
+    max-width: 400px !important;
+    width: auto !important;
+    word-break: break-word !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    padding: 16px !important;
+    
+    // Toast 内容区域
+    [data-content] {
+      max-width: 100% !important;
+      overflow: visible !important;
+      word-break: break-word !important;
+      
+      // 标题
+      [data-title] {
+        word-break: break-word !important;
+        white-space: normal !important;
+        line-height: 1.5 !important;
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+      }
+      
+      // 描述
+      [data-description] {
+        word-break: break-word !important;
+        white-space: normal !important;
+        line-height: 1.5 !important;
+      }
+    }
+    
+    // 图标区域
+    [data-icon] {
+      margin-top: 2px !important;
+    }
+  }
+}

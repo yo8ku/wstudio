@@ -2536,6 +2536,12 @@
     // webstorm dark end ----------------
   ],
   "colors": {
+    "notifications.background":"#1e2227",
+    "notifications.error.foreground":"#e78080",
+    "notifications.success.foreground":"#37ad7dde",
+    "notifications.info.foreground":"#538dd9",
+    "notifications.warnings.foreground":"#c98937",
+
     "aiUserBorder.background":"",
     "secondar.foreground":"#666f85",
     "aiThinking.boder":"#707a8c40",
@@ -2568,7 +2574,7 @@
     "button.secondaryForeground": "#c0bdbd",
     "checkbox.border": "#404754",
     "debugToolBar.background": "#1e2227",
-    "descriptionForeground": "#abb2bf",
+    "description.foreground": "#abb2bf",
     "dropdown.background": "#1e2227",
     "dropdown.selectedForeground":"#32c3d3",
     "dropdown.hoverForeground":"#32c3d3",

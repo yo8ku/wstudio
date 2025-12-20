@@ -4,7 +4,6 @@
  */
 
 import React, { useState } from 'react';
-import { Input } from '../../../ui/input';
 import { Icon } from '../../../Icons';
 import { useUserStore } from '../../../../stores/userStore';
 import './UserSidebar.scss';
@@ -96,7 +95,7 @@ export function UserSidebar(): JSX.Element {
       <h2 className="user-sidebar-title">账号登录</h2>
       <div className="user-sidebar-field">
         <label className="user-sidebar-label">用户名（手机号 / 邮箱）</label>
-        <Input
+        <input
           value={form.contact}
           onChange={handleChange('contact')}
           placeholder="请输入手机号或邮箱"
@@ -107,7 +106,7 @@ export function UserSidebar(): JSX.Element {
 
       <div className="user-sidebar-field">
         <label className="user-sidebar-label">密码</label>
-        <Input
+        <input
           type="password"
           value={form.password}
           onChange={handleChange('password')}

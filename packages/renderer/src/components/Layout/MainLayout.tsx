@@ -29,7 +29,7 @@ import { useThemeStore } from '../../stores/themeStore';
 import { useActivityBarStore } from '../../stores/activityBarStore';
 import { snippetService } from '../../services/SnippetService';
 import { shouldMigrateSnippets, migrateSnippetsFromJSON } from '../../utils/migrateSnippets';
-import { toastService } from '../../services/ToastService';
+import { notification } from '../Notification';
 
 export type { ActivityBarItem };
 
@@ -196,49 +196,51 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
         console.log('[MainLayout] 主进程已就绪');
 
-        // 获取工作区路径
-        const workspaceResult = await window.electron?.workspace?.getDir();
-        if (!workspaceResult?.success || !workspaceResult.data) {
-          console.warn('[MainLayout] 无法获取工作区路径，跳过索引');
-          return;
-        }
-
-        const workspacePath = workspaceResult.data;
-        console.log(`[MainLayout] 启动主进程索引服务: ${workspacePath}`);
-
-        // 监听进度更新
-        const unsubscribe = ipcRenderer.on('workspace-vector-index:progress', (_event: any, progress: any) => {
+        // 始终监听进度更新（无论是自动索引还是手动索引）
+        // 使用 preload 暴露的专用 API，回调只接收 progress 参数
+        let lastErrorMessage = ''; // 防止重复显示相同错误
+        const unsubscribe = window.electron?.workspaceVectorIndex?.onProgress((progress: { status: string; processedFiles?: number; totalFiles?: number; errorMessage?: string }) => {
           if (progress.status === 'scanning') {
             console.log('[WorkspaceIndexing] 正在扫描文件...');
           } else if (progress.status === 'indexing') {
             console.log(`[WorkspaceIndexing] 进度: ${progress.processedFiles}/${progress.totalFiles}`);
           } else if (progress.status === 'completed') {
-            console.log('[WorkspaceIndexing] ✓ 索引完成');
-            // 显示成功通知
-            if (progress.totalFiles > 0) {
-              toastService.success('索引完成', {
-                description: `已索引 ${progress.totalFiles} 个文件`,
-                duration: 3000
-              });
-            }
+            console.log('[WorkspaceIndexing] 索引完成');
+            lastErrorMessage = ''; // 重置错误状态
+            // 成功通知由 StatusBar 组件处理，避免重复
           } else if (progress.status === 'error') {
-            console.error('[WorkspaceIndexing] 索引错误:', progress.errorMessage);
-            // 显示错误通知
-            toastService.error('索引失败', {
-              description: progress.errorMessage || '未知错误',
-              duration: 5000
-            });
+            const errorMsg = progress.errorMessage || '未知错误';
+            // 防止重复显示相同错误
+            if (errorMsg !== lastErrorMessage) {
+              lastErrorMessage = errorMsg;
+              console.error('[WorkspaceIndexing] 索引错误:', errorMsg);
+              // 显示错误通知
+              notification.error(errorMsg);
+            }
           }
         });
 
-        // 启动索引（使用双 Worker，不阻塞 UI）
-        const result = await ipcRenderer.invoke('workspace-vector-index:start', workspacePath);
-        if (!result.success) {
-          console.error('[MainLayout] 启动索引失败:', result.error);
+        // 获取工作区路径
+        const workspaceResult = await window.electron?.workspace?.getDir();
+        if (!workspaceResult?.success || !workspaceResult.data) {
+          console.warn('[MainLayout] 无法获取工作区路径，跳过索引');
+          return () => {
+            if (unsubscribe) unsubscribe();
+          };
+        }
+
+        const workspacePath = workspaceResult.data;
+
+        console.log(`[MainLayout] 检查自动索引配置: ${workspacePath}`);
+
+        // 使用自动索引检查（会检查：自索引开关、服务商、模型、API Key）
+        const result = await window.electron?.workspaceVectorIndex?.checkAutoIndex(workspacePath);
+        if (!result?.success) {
+          console.log('[MainLayout] 自动索引检查:', result?.data?.message || result?.error);
         }
 
         return () => {
-          unsubscribe();
+          if (unsubscribe) unsubscribe();
         };
       } catch (error) {
         console.error('[MainLayout] 工作区索引服务初始化失败:', error);
@@ -348,7 +350,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         style={mainLayoutStyle}
       >
         {/* 标题栏（包含菜单栏） */}
-        <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative', backgroundColor:'var(--ws-editor-background)'}}>
+        <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative', backgroundColor:'var(--ws-menu-background)'}}>
           <TitleBar 
             onToggleSidebar={() => setIsSidebarVisible(!isSidebarVisible)}
             onToggleAIPanel={() => setIsAIChatVisible(!isAIChatVisible)}

@@ -19,7 +19,7 @@
     font-size: 13px;
     line-height: 1.6;
     min-height: 29px;
-    color: var(--ws-foreground);
+    color: var(--ws-app-foreground);
 
     .dropdown-menu-text {
       flex: 1;
@@ -121,6 +121,15 @@
     cursor: pointer;
     font-size: 12px;
     transition: background-color 0.15s ease;
+
+    &:hover {
+      background-color: var(--ws-list-hover-background);
+    }
+
+    &.selected {
+      background-color: var(--ws-list-active-selection-background);
+      color: var(--ws-list-active-selection-foreground);
+    }
 
     .dropdown-menu-item-icon {
       display: flex;

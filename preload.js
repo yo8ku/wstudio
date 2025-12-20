@@ -148,6 +148,7 @@ contextBridge.exposeInMainWorld('electron', {
     deleteFile: (filePath) => ipcRenderer.invoke('workspace-vector-index:delete-file', filePath),
     deleteDirectory: (dirPath) => ipcRenderer.invoke('workspace-vector-index:delete-directory', dirPath),
     indexFile: (filePath) => ipcRenderer.invoke('workspace-vector-index:index-file', filePath),
+    checkAutoIndex: (workspacePath) => ipcRenderer.invoke('workspace-vector-index:check-auto-index', workspacePath),
     // 监听索引进度事件
     onProgress: (callback) => {
       const subscription = (event, progress) => callback(progress);
@@ -161,10 +162,31 @@ contextBridge.exposeInMainWorld('electron', {
     getAppPath: () => ipcRenderer.invoke('app:get-app-path')
   },
   
-  // Embedding 服务 API
+  // Shell API
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke('shell:open-external', url)
+  },
+  
+  // Embedding 服务 API（本地）
   embedding: {
     generate: (text) => ipcRenderer.invoke('embedding:generate', text),
     generateBatch: (texts) => ipcRenderer.invoke('embedding:generate-batch', texts)
+  },
+
+  // 云端 Embedding API
+  cloudEmbedding: {
+    getProviders: () => ipcRenderer.invoke('cloud-embedding:get-providers'),
+    getModels: () => ipcRenderer.invoke('cloud-embedding:get-models'),
+    setApiKey: (providerId, apiKey) => ipcRenderer.invoke('cloud-embedding:set-api-key', providerId, apiKey),
+    getApiKey: (providerId) => ipcRenderer.invoke('cloud-embedding:get-api-key', providerId),
+    setModel: (modelId) => ipcRenderer.invoke('cloud-embedding:set-model', modelId),
+    getCurrentModel: () => ipcRenderer.invoke('cloud-embedding:get-current-model'),
+    generate: (text) => ipcRenderer.invoke('cloud-embedding:generate', text),
+    generateBatch: (texts) => ipcRenderer.invoke('cloud-embedding:generate-batch', texts),
+    testConnection: (providerId, apiKey, modelId) => ipcRenderer.invoke('cloud-embedding:test-connection', providerId, apiKey, modelId),
+    hasValidApiKey: () => ipcRenderer.invoke('cloud-embedding:has-valid-api-key'),
+    setCustomConfig: (config) => ipcRenderer.invoke('cloud-embedding:set-custom-config', config),
+    getCustomConfig: () => ipcRenderer.invoke('cloud-embedding:get-custom-config')
   }
 });
 

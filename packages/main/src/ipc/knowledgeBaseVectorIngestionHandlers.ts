@@ -5,8 +5,27 @@
 
 import { ipcMain } from 'electron';
 import { KnowledgeBaseVectorIngestionService } from '../services/KnowledgeBaseVectorIngestionService.js';
-import { EmbeddingService } from '../services/EmbeddingService.js';
 import { VectorIngestionOptions } from '@note-studio/global-rag';
+
+// 使用子进程版本的 Embedding 服务（避免阻塞主进程）
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const embeddingWorkerService = require('../services/EmbeddingWorkerService.js');
+
+/**
+ * 子进程 Embedding API 适配器
+ * 将 EmbeddingWorkerService 的接口适配为 EmbeddingAPI 接口
+ */
+class EmbeddingAPIAdapter {
+  async embedText(text: string): Promise<number[]> {
+    const result = await embeddingWorkerService.generateEmbedding(text);
+    return result.vectors;
+  }
+
+  async embedTexts(texts: string[]): Promise<number[][]> {
+    const results = await embeddingWorkerService.generateBatchEmbeddings(texts);
+    return results.map((r: { vectors: number[] }) => r.vectors);
+  }
+}
 
 // 防止重复注册的标志
 let isRegistered = false;
@@ -53,9 +72,8 @@ export function registerKnowledgeBaseVectorIngestionHandlers(): void {
         const service = getService();
         await service.initialize();
 
-        // 创建 Embedding API 实例
-        // TODO: 根据知识库配置选择不同的 Embedding 服务
-        const embeddingAPI = new EmbeddingService(options?.modelName);
+        // 使用子进程 Embedding API（不阻塞主进程）
+        const embeddingAPI = new EmbeddingAPIAdapter();
 
         // 处理文件
         const result = await service.processFile(
@@ -89,9 +107,8 @@ export function registerKnowledgeBaseVectorIngestionHandlers(): void {
         const service = getService();
         await service.initialize();
 
-        // 创建 Embedding API 实例
-        // TODO: 根据知识库配置选择不同的 Embedding 服务
-        const embeddingAPI = new EmbeddingService(options?.modelName);
+        // 使用子进程 Embedding API（不阻塞主进程）
+        const embeddingAPI = new EmbeddingAPIAdapter();
 
         // 处理文件（注意：进度回调需要通过其他方式传递，例如通过事件）
         const result = await service.processFiles(

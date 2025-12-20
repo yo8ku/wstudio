@@ -2,7 +2,7 @@
  * Electron 主进程启动文件
  */
 
-const { app, BrowserWindow, ipcMain, protocol, dialog, session } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, dialog, session, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
@@ -25,7 +25,11 @@ Module._resolveFilename = function(request, parent, isMain) {
 };
 
 const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
-const embeddingService = require('./packages/main/src/services/EmbeddingService.js');
+// 使用 Worker 线程版本的 Embedding 服务，避免阻塞主进程
+const embeddingService = require('./packages/main/src/services/EmbeddingWorkerService.js');
+// 云端 Embedding 服务
+const { cloudEmbeddingService } = require('./packages/main/dist/main/src/services/CloudEmbeddingService.js');
+const { getAllEmbeddingProviders, getEnabledEmbeddingModels } = require('./packages/main/dist/main/src/services/EmbeddingModelConfig.js');
 
 const logIconPath = path.join(__dirname, 'log', 'log.png');
 if (!fs.existsSync(logIconPath)) {
@@ -99,6 +103,25 @@ function createWindow(backgroundColor = '#1e1e1e') {
  * 应用程序就绪后初始化
  */
 app.whenReady().then(async () => {
+  
+  // 设置应用菜单，启用标准编辑快捷键（Ctrl+X/C/V/A/Z）
+  const template = [
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销', accelerator: 'CmdOrCtrl+Z' },
+        { role: 'redo', label: '重做', accelerator: 'CmdOrCtrl+Y' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切', accelerator: 'CmdOrCtrl+X' },
+        { role: 'copy', label: '复制', accelerator: 'CmdOrCtrl+C' },
+        { role: 'paste', label: '粘贴', accelerator: 'CmdOrCtrl+V' },
+        { role: 'selectAll', label: '全选', accelerator: 'CmdOrCtrl+A' },
+      ]
+    }
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+  console.log('[Electron] 应用菜单已设置，编辑快捷键已启用');
   
   // 全局设置 Content Security Policy (CSP)
   // 必须在创建窗口之前设置，以确保所有请求都应用 CSP
@@ -1389,6 +1412,17 @@ ipcMain.handle('app:get-app-path', async () => {
   }
 });
 
+// 打开外部链接
+ipcMain.handle('shell:open-external', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] 打开外部链接失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 /**
  * Embedding 服务相关 IPC 处理
  */
@@ -1396,11 +1430,12 @@ ipcMain.handle('app:get-app-path', async () => {
 // 生成单个文本的向量
 ipcMain.handle('embedding:generate', async (event, text) => {
   try {
-    console.log('[IPC] 生成向量，文本长度:', text.length);
+    console.log('[IPC-Embedding] 生成向量，文本长度:', text.length, '子进程状态:', embeddingService.isInitialized ? '已初始化' : '未初始化');
     const result = await embeddingService.generateEmbedding(text);
+    console.log('[IPC-Embedding] 向量生成完成，维度:', result.vectors?.length);
     return { success: true, data: result };
   } catch (error) {
-    console.error('[IPC] 生成向量失败:', error);
+    console.error('[IPC-Embedding] 生成向量失败:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1413,6 +1448,149 @@ ipcMain.handle('embedding:generate-batch', async (event, texts) => {
     return { success: true, data: results };
   } catch (error) {
     console.error('[IPC] 批量生成向量失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ========== 云端 Embedding API ==========
+
+// 获取所有 Embedding 服务商
+ipcMain.handle('cloud-embedding:get-providers', async () => {
+  try {
+    const providers = getAllEmbeddingProviders();
+    return { success: true, data: providers };
+  } catch (error) {
+    console.error('[IPC] 获取 Embedding 服务商失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 获取所有启用的 Embedding 模型
+ipcMain.handle('cloud-embedding:get-models', async () => {
+  try {
+    const models = getEnabledEmbeddingModels();
+    return { success: true, data: models };
+  } catch (error) {
+    console.error('[IPC] 获取 Embedding 模型失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 设置 Embedding API Key
+ipcMain.handle('cloud-embedding:set-api-key', async (event, providerId, apiKey) => {
+  try {
+    cloudEmbeddingService.setApiKey(providerId, apiKey);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] 设置 Embedding API Key 失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 获取 Embedding API Key
+ipcMain.handle('cloud-embedding:get-api-key', async (event, providerId) => {
+  try {
+    const apiKey = cloudEmbeddingService.getApiKey(providerId);
+    return { success: true, data: apiKey };
+  } catch (error) {
+    console.error('[IPC] 获取 Embedding API Key 失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 设置当前 Embedding 模型
+ipcMain.handle('cloud-embedding:set-model', async (event, modelId) => {
+  try {
+    cloudEmbeddingService.setModel(modelId);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] 设置 Embedding 模型失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 获取当前 Embedding 模型
+ipcMain.handle('cloud-embedding:get-current-model', async () => {
+  try {
+    const model = cloudEmbeddingService.getCurrentModel();
+    return { success: true, data: model };
+  } catch (error) {
+    console.error('[IPC] 获取当前 Embedding 模型失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 云端生成单个向量
+ipcMain.handle('cloud-embedding:generate', async (event, text) => {
+  try {
+    const result = await cloudEmbeddingService.generateEmbedding(text);
+    if (result.success) {
+      return { success: true, data: result };
+    } else {
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('[IPC] 云端生成向量失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 云端批量生成向量
+ipcMain.handle('cloud-embedding:generate-batch', async (event, texts) => {
+  try {
+    console.log('[IPC] 云端批量生成向量，数量:', texts.length);
+    const result = await cloudEmbeddingService.generateBatchEmbeddings(texts);
+    if (result.success) {
+      return { success: true, data: result };
+    } else {
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('[IPC] 云端批量生成向量失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 测试 Embedding 连接
+ipcMain.handle('cloud-embedding:test-connection', async (event, providerId, apiKey, modelId) => {
+  try {
+    const result = await cloudEmbeddingService.testConnection(providerId, apiKey, modelId);
+    return { success: result.success, data: result };
+  } catch (error) {
+    console.error('[IPC] 测试 Embedding 连接失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 检查是否已配置有效的 API Key
+ipcMain.handle('cloud-embedding:has-valid-api-key', async () => {
+  try {
+    const hasKey = cloudEmbeddingService.hasValidApiKey();
+    return { success: true, data: hasKey };
+  } catch (error) {
+    console.error('[IPC] 检查 API Key 失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 设置自定义 Embedding 模型配置
+ipcMain.handle('cloud-embedding:set-custom-config', async (event, config) => {
+  try {
+    cloudEmbeddingService.setCustomConfig(config);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] 设置自定义配置失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 获取自定义 Embedding 模型配置
+ipcMain.handle('cloud-embedding:get-custom-config', async () => {
+  try {
+    const config = cloudEmbeddingService.getCustomConfig();
+    return { success: true, data: config };
+  } catch (error) {
+    console.error('[IPC] 获取自定义配置失败:', error);
     return { success: false, error: error.message };
   }
 });

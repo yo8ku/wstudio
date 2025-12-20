@@ -1,0 +1,97 @@
+/**
+ * AlertDialog 组件样式
+ * 功能：确认对话框样式
+ */
+
+.alert-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.alert-dialog-content {
+  position: relative;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 400px;
+  padding: 24px;
+  border-radius: 8px;
+  background-color: var(--ws-editor-background);
+  border: 1px solid var(--ws-panel-border);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.alert-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alert-dialog-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ws-foreground);
+}
+
+.alert-dialog-description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ws-description-foreground);
+}
+
+.alert-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.alert-dialog-action,
+.alert-dialog-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 16px;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.alert-dialog-cancel {
+  background-color: var(--ws-button-secondary-background);
+  color: var(--ws-button-secondary-foreground);
+
+  &:hover {
+    background-color: var(--ws-button-secondary-hover-background);
+  }
+}
+
+.alert-dialog-action {
+  background-color: var(--ws-button-background);
+  color: var(--ws-button-foreground);
+
+  &:hover {
+    background-color: var(--ws-button-hover-background);
+  }
+
+  &.danger {
+    background-color: var(--ws-input-validation-error-background);
+    color: var(--ws-input-validation-error-foreground);
+    border: 1px solid var(--ws-input-validation-error-border);
+
+    &:hover {
+      opacity: 0.9;
+    }
+  }
+}

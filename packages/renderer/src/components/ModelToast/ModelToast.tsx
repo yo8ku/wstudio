@@ -1,6 +1,6 @@
 /**
  * 模态对话框组件
- * 使用 shadcn alert-dialog 组件
+ * 使用自定义 AlertDialog 组件
  */
 
 import React from 'react';
@@ -13,11 +13,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
-} from '../ui/alert-dialog';
+} from '../common/AlertDialog';
 
 export interface ModelToastProps {
-  trigger?: React.ReactNode;
   title: string;
   description?: string;
   confirmText?: string;
@@ -29,7 +27,6 @@ export interface ModelToastProps {
 }
 
 export const ModelToast: React.FC<ModelToastProps> = ({
-  trigger,
   title,
   description,
   confirmText = '确定',
@@ -39,14 +36,15 @@ export const ModelToast: React.FC<ModelToastProps> = ({
   open,
   onOpenChange,
 }) => {
+  const handleOpenChange = (isOpen: boolean) => {
+    onOpenChange?.(isOpen);
+  };
+
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      {trigger && <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}
+    <AlertDialog open={open ?? false} onOpenChange={handleOpenChange}>
       <AlertDialogContent 
         onClick={(e: React.MouseEvent) => {
-          // 阻止点击事件冒泡到外部
           e.stopPropagation();
-          console.log('[ModelToast] 模态窗口被点击');
         }}
       >
         <AlertDialogHeader>
@@ -59,7 +57,6 @@ export const ModelToast: React.FC<ModelToastProps> = ({
           <AlertDialogCancel 
             onClick={(e) => {
               e.stopPropagation();
-              console.log('[ModelToast] 取消按钮被点击');
               onCancel?.();
             }}
           >
@@ -68,7 +65,6 @@ export const ModelToast: React.FC<ModelToastProps> = ({
           <AlertDialogAction 
             onClick={(e) => {
               e.stopPropagation();
-              console.log('[ModelToast] 确认按钮被点击');
               onConfirm?.();
             }}
           >

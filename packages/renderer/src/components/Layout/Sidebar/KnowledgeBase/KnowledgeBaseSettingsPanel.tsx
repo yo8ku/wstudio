@@ -6,7 +6,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { KnowledgeItem } from './types';
-import { Input } from '../../../ui/input';
 import { Select, SelectItem } from '../../../common/Select';
 
 interface KnowledgeBaseSettingsPanelProps {
@@ -248,18 +247,14 @@ export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProp
                 <label style={{ color: 'var(--ws-editor-foreground)' }}>
                   分块大小
                 </label>
-                <Input
+                <input
                   type="number"
-                  min="100"
-                  max="10000"
-                  step="100"
+                  min={100}
+                  max={10000}
+                  step={100}
                   value={chunkSize}
                   onChange={(e) => setChunkSize(Number.parseInt(e.target.value) || 1000)}
-                  style={{
-                    backgroundColor: 'var(--ws-input-background)',
-                    color: 'var(--ws-input-foreground)',
-                    borderColor: 'var(--ws-contrast-border)',
-                  }}
+                  className="knowledge-base-settings-panel__input"
                 />
               </div>
               <div className="setting-hint">（字符数，建议 500-2000）</div>
@@ -271,18 +266,14 @@ export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProp
                 <label style={{ color: 'var(--ws-editor-foreground)' }}>
                   分块重叠大小
                 </label>
-                <Input
+                <input
                   type="number"
-                  min="0"
+                  min={0}
                   max={chunkSize}
-                  step="50"
+                  step={50}
                   value={chunkOverlap}
                   onChange={(e) => setChunkOverlap(Number.parseInt(e.target.value) || 0)}
-                  style={{
-                    backgroundColor: 'var(--ws-input-background)',
-                    color: 'var(--ws-input-foreground)',
-                    borderColor: 'var(--ws-contrast-border)',
-                  }}
+                  className="knowledge-base-settings-panel__input"
                 />
               </div>
               <div className="setting-hint">（字符数，建议为分块大小的 10-20%）</div>
@@ -297,7 +288,7 @@ export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProp
               </div>
               <div className="setting-hint" style={{ marginBottom: '8px' }}>按优先级排序，从上到下</div>
               <div className="separators-input-group">
-                <Input
+                <input
                   type="text"
                   placeholder="输入分块符（如：\n\n、。、！等）"
                   value={separatorInput}
@@ -308,11 +299,7 @@ export const KnowledgeBaseSettingsPanel: React.FC<KnowledgeBaseSettingsPanelProp
                       handleAddSeparator();
                     }
                   }}
-                  style={{
-                    backgroundColor: 'var(--ws-input-background)',
-                    color: 'var(--ws-input-foreground)',
-                    borderColor: 'var(--ws-contrast-border)',
-                  }}
+                  className="knowledge-base-settings-panel__input"
                 />
                 <button
                   className="separator-add-button"

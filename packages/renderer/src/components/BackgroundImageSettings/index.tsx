@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useBackgroundStore } from '../../stores/backgroundStore';
 import { Icon } from '../Icons/Icon';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../common/Tabs';
 import './styles.css';
 
 interface BackgroundConfig {

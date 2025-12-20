@@ -55,10 +55,10 @@
 
   //颜色-用户消息
   &.user {
-    border:1px solid var(--ws-aiUserBorder-background);
+    border: 1px solid var(--ws-aiUserBorder-background);
+
     &:hover {
       border-color: var(--ws-aiUserBorder-hoverBackground)
-
     }
   }
 }
@@ -76,7 +76,7 @@
 
 //颜色-深度思考
 .thinking-container {
-  border:1px solid var(--ws-aiThinking-boder);
+  border: 1px solid var(--ws-aiThinking-boder);
 
   &:hover {
     border-color: var(--ws-aiPanle-hoverBorder);
@@ -87,8 +87,7 @@
   }
 
   .model-thinking {
-    &-content {
-    }
+    &-content {}
 
     &:hover {
       border-color: var(--ws-descriptionForeground);
@@ -170,10 +169,13 @@
   }
 
   .dropdown-menu-item {
+    color:var(--ws-dropdown-foreground);
+    
     &:hover {
       background-color: var(--ws-dropdown-hoverBackground);
       color: var(--ws-dropdown-hoverForeground);
     }
+
     &.selected {
       background-color: var(--ws-dropdown-hoverBackground);
       color: var(--ws-dropdown-hoverForeground);

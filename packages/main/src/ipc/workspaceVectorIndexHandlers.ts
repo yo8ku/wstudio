@@ -27,9 +27,9 @@ export function registerWorkspaceVectorIndexHandlers(): void {
   console.log('[WorkspaceVectorIndex IPC] 注册处理器...');
 
   // 开始索引
-  ipcMain.handle('workspace-vector-index:start', async (event, workspacePath: string) => {
+  ipcMain.handle('workspace-vector-index:start', async (event, workspacePath: string, forceReindex: boolean = false) => {
     try {
-      await workspaceVectorIndexService.startIndexing(workspacePath);
+      await workspaceVectorIndexService.startIndexing(workspacePath, forceReindex);
       return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -92,6 +92,18 @@ export function registerWorkspaceVectorIndexHandlers(): void {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[WorkspaceVectorIndex IPC] 单文件索引失败:', errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // 检查并启动自动索引（应用启动时调用）
+  ipcMain.handle('workspace-vector-index:check-auto-index', async (event, workspacePath: string) => {
+    try {
+      const result = await workspaceVectorIndexService.checkAndStartAutoIndex(workspacePath);
+      return { success: result.success, message: result.message };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[WorkspaceVectorIndex IPC] 自动索引检查失败:', errorMessage);
       return { success: false, error: errorMessage };
     }
   });

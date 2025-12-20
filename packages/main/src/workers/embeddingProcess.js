@@ -4,10 +4,19 @@
  */
 
 const path = require('path');
+const os = require('os');
 const Module = require('module');
 
+// ========== ONNX Runtime 线程限制 ==========
+const ONNX_THREADS = Math.min(4, Math.max(1, Math.floor(os.cpus().length / 2)));
+process.env.OMP_NUM_THREADS = String(ONNX_THREADS);
+process.env.ONNX_NUM_THREADS = String(ONNX_THREADS);
+process.env.ORT_NUM_THREADS = String(ONNX_THREADS);
+process.env.MKL_NUM_THREADS = String(ONNX_THREADS);
+process.env.OPENBLAS_NUM_THREADS = String(ONNX_THREADS);
+
 // ========== Sharp Mock ==========
-// @xenova/transformers 会尝试加载 sharp 用于图像处理
+// Transformers.js 会尝试加载 sharp 用于图像处理
 // 我们只需要文本 embedding，不需要 sharp
 
 // 创建 sharp mock 函数
@@ -54,12 +63,13 @@ async function initialize(appPath) {
     env.allowLocalModels = true;
     env.useBrowserCache = false;
     env.useCustomCache = true;
+    
+    console.log(`[EmbeddingProcess] ONNX 线程数: ${ONNX_THREADS}`);
 
-    console.log('[EmbeddingProcess] 模型目录:', env.cacheDir);
-
+    // quantized: true 使用量化模型，更小更快
     pipeline = await createPipeline('feature-extraction', 'bge-base-zh-v1.5', {
       local_files_only: true,
-      quantized: false,
+      quantized: true,
     });
 
     isInitialized = true;

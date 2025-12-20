@@ -84,8 +84,6 @@ export class WorkspaceIndexDatabase {
     const userDataPath = app.getPath('userData');
     this.dbPath = path.join(userDataPath, 'workspace-index.db');
     this.lanceDbPath = path.join(userDataPath, 'workspace-vectors');
-    console.log(`[WorkspaceIndexDatabase] 数据库路径: ${this.dbPath}`);
-    console.log(`[WorkspaceIndexDatabase] 向量库路径: ${this.lanceDbPath}`);
   }
 
   public static getInstance(): WorkspaceIndexDatabase {
@@ -102,20 +100,17 @@ export class WorkspaceIndexDatabase {
     if (this.isInitialized) return;
 
     try {
-      console.log('[WorkspaceIndexDatabase] 初始化数据库...');
-      
       // 初始化 SQLite
       const SQL = await initSqlJs();
       
       // 如果数据库文件存在，加载它
       if (fs.existsSync(this.dbPath)) {
-        console.log(`[WorkspaceIndexDatabase] 加载已有数据库文件: ${this.dbPath}`);
         const fileBuffer = fs.readFileSync(this.dbPath);
-        console.log(`[WorkspaceIndexDatabase] 数据库文件大小: ${fileBuffer.length} bytes`);
         this.db = new SQL.Database(fileBuffer);
+        console.log(`[WorkspaceIndexDatabase] 已加载现有数据库: ${this.dbPath}`);
       } else {
-        console.log(`[WorkspaceIndexDatabase] 创建新数据库`);
         this.db = new SQL.Database();
+        console.log(`[WorkspaceIndexDatabase] 创建新数据库: ${this.dbPath}`);
       }
       
       // 创建表
@@ -136,10 +131,6 @@ export class WorkspaceIndexDatabase {
       }
       
       this.isInitialized = true;
-      
-      // 调试：输出已索引文件数量
-      const stats = this.getStats();
-      console.log(`[WorkspaceIndexDatabase] 数据库初始化完成，已索引文件: ${stats.totalFiles}, 父块: ${stats.totalParents}`);
     } catch (error) {
       console.error('[WorkspaceIndexDatabase] 初始化失败:', error);
       throw error;
@@ -361,8 +352,6 @@ export class WorkspaceIndexDatabase {
    * 添加子块向量到 LanceDB
    */
   async addChildren(records: ChildRecord[]): Promise<void> {
-    console.log(`[WorkspaceIndexDatabase] addChildren: lanceDb=${!!this.lanceDb}, records=${records.length}`);
-    
     if (!this.lanceDb || records.length === 0) return;
     
     try {
@@ -379,19 +368,11 @@ export class WorkspaceIndexDatabase {
       
       if (!this.childrenTable) {
         // 创建表
-        console.log('[WorkspaceIndexDatabase] 创建 children 表...');
         this.childrenTable = await this.lanceDb.createTable('children', data);
-        console.log('[WorkspaceIndexDatabase] children 表创建成功');
       } else {
         // 添加数据
-        console.log('[WorkspaceIndexDatabase] 向 children 表添加数据...');
         await this.childrenTable.add(data);
-        console.log('[WorkspaceIndexDatabase] 数据添加成功');
       }
-      
-      // 验证数据是否添加成功
-      const count = await this.childrenTable.countRows();
-      console.log(`[WorkspaceIndexDatabase] children 表当前行数: ${count}`);
     } catch (error) {
       console.error('[WorkspaceIndexDatabase] 添加子块失败:', error);
       throw error;
@@ -431,6 +412,19 @@ export class WorkspaceIndexDatabase {
     if (!this.childrenTable || !this.db) return [];
     
     try {
+      // 先检查向量维度是否匹配（避免 vectorSearch 报错）
+      const sampleData = await this.childrenTable.query().limit(1).toArray();
+      if (sampleData.length > 0) {
+        const storedVector = sampleData[0].vector as number[];
+        if (storedVector && storedVector.length !== queryVector.length) {
+          console.warn(`[WorkspaceIndexDatabase] 向量维度不匹配: 存储=${storedVector.length}, 查询=${queryVector.length}，需要重新索引`);
+          return [];
+        }
+      } else {
+        // 表为空，无数据可搜索
+        return [];
+      }
+      
       // 在 LanceDB 中搜索
       const results = await this.childrenTable
         .vectorSearch(queryVector)
@@ -455,6 +449,12 @@ export class WorkspaceIndexDatabase {
       
       return searchResults;
     } catch (error) {
+      // 检测向量维度不匹配错误
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.includes('dimension') || errorMsg.includes('vector')) {
+        console.warn(`[WorkspaceIndexDatabase] 向量维度不匹配，需要重新索引: ${errorMsg}`);
+        return [];
+      }
       console.error('[WorkspaceIndexDatabase] 搜索失败:', error);
       return [];
     }
@@ -475,29 +475,35 @@ export class WorkspaceIndexDatabase {
    * @param topK 返回前 K 个结果
    */
   async searchByFileName(fileName: string, queryVector: number[], topK: number = 3): Promise<SearchResult[]> {
-    console.log(`[WorkspaceIndexDatabase] searchByFileName 开始: ${fileName}`);
-    console.log(`[WorkspaceIndexDatabase] childrenTable: ${!!this.childrenTable}, db: ${!!this.db}`);
-    
     // 如果 childrenTable 为空，尝试重新打开
     if (!this.childrenTable && this.lanceDb) {
       try {
         const tableNames = await this.lanceDb.tableNames();
         if (tableNames.includes('children')) {
           this.childrenTable = await this.lanceDb.openTable('children');
-          console.log('[WorkspaceIndexDatabase] searchByFileName: 成功打开 children 表');
         }
-      } catch (e) {
-        console.error('[WorkspaceIndexDatabase] searchByFileName: 打开 children 表失败:', e);
+      } catch {
+        // 打开表失败，忽略
       }
     }
     
     if (!this.childrenTable || !this.db) {
-      console.warn(`[WorkspaceIndexDatabase] 数据库未初始化`);
       return [];
     }
     
     try {
-      console.log(`[WorkspaceIndexDatabase] 开始带条件向量搜索，source="${fileName}"，查询向量维度: ${queryVector.length}`);
+      // 先检查向量维度是否匹配（避免 vectorSearch 报错）
+      const sampleData = await this.childrenTable.query().limit(1).toArray();
+      if (sampleData.length > 0) {
+        const storedVector = sampleData[0].vector as number[];
+        if (storedVector && storedVector.length !== queryVector.length) {
+          console.warn(`[WorkspaceIndexDatabase] 向量维度不匹配: 存储=${storedVector.length}, 查询=${queryVector.length}，需要重新索引`);
+          return [];
+        }
+      } else {
+        // 表为空，无数据可搜索
+        return [];
+      }
       
       // 使用 source 字段进行带条件的向量搜索（Filtered Search）
       const results = await this.childrenTable
@@ -506,10 +512,7 @@ export class WorkspaceIndexDatabase {
         .limit(topK)
         .toArray();
       
-      console.log(`[WorkspaceIndexDatabase] LanceDB 带条件搜索返回 ${results.length} 个子块`);
-      
       if (results.length === 0) {
-        console.log(`[WorkspaceIndexDatabase] 未找到匹配的子块，source="${fileName}"`);
         return [];
       }
       
@@ -536,15 +539,17 @@ export class WorkspaceIndexDatabase {
             filePath: parent.filePath,
             score: (result._distance as number) ?? 0,
           });
-          console.log(`[WorkspaceIndexDatabase] 找到父块: ${parentId}, 内容长度: ${parent.content.length}`);
-        } else {
-          console.warn(`[WorkspaceIndexDatabase] 未找到父块: ${parentId}`);
         }
       }
       
-      console.log(`[WorkspaceIndexDatabase] 文件 "${fileName}" 搜索到 ${searchResults.length} 个父块`);
       return searchResults;
     } catch (error) {
+      // 检测向量维度不匹配错误
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.includes('dimension') || errorMsg.includes('vector')) {
+        console.warn(`[WorkspaceIndexDatabase] 向量维度不匹配，需要重新索引: ${errorMsg}`);
+        return [];
+      }
       console.error('[WorkspaceIndexDatabase] 按文件名搜索失败:', error);
       return [];
     }
@@ -645,9 +650,12 @@ export class WorkspaceIndexDatabase {
   getParentsByFilePath(filePath: string): ParentRecord[] {
     if (!this.db) return [];
     
+    // 规范化路径（统一使用正斜杠），与数据库存储格式一致
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    
     const result = this.db.exec(
       'SELECT * FROM parents WHERE filePath = ? ORDER BY chunkIndex ASC',
-      [filePath]
+      [normalizedPath]
     );
     
     if (result.length === 0) return [];
@@ -673,10 +681,7 @@ export class WorkspaceIndexDatabase {
     parentChunkIndex: number;
     tags: string[];
   }>> {
-    console.log(`[WorkspaceIndexDatabase] getChildrenByFilePath: db=${!!this.db}, childrenTable=${!!this.childrenTable}`);
-    
     if (!this.db) {
-      console.log('[WorkspaceIndexDatabase] getChildrenByFilePath: db 为空');
       return [];
     }
     
@@ -684,22 +689,17 @@ export class WorkspaceIndexDatabase {
     if (!this.childrenTable && this.lanceDb) {
       try {
         const tableNames = await this.lanceDb.tableNames();
-        console.log(`[WorkspaceIndexDatabase] LanceDB 表列表: ${tableNames.join(', ')}`);
         if (tableNames.includes('children')) {
           this.childrenTable = await this.lanceDb.openTable('children');
-          console.log('[WorkspaceIndexDatabase] 成功打开 children 表');
         } else {
-          console.log('[WorkspaceIndexDatabase] children 表不存在');
           return [];
         }
-      } catch (e) {
-        console.error('[WorkspaceIndexDatabase] 打开 children 表失败:', e);
+      } catch {
         return [];
       }
     }
     
     if (!this.childrenTable) {
-      console.log('[WorkspaceIndexDatabase] childrenTable 仍为空');
       return [];
     }
     
@@ -709,8 +709,6 @@ export class WorkspaceIndexDatabase {
         'SELECT parentId, chunkIndex FROM parents WHERE filePath = ? ORDER BY chunkIndex ASC',
         [filePath]
       );
-      
-      console.log(`[WorkspaceIndexDatabase] getChildrenByFilePath: 找到 ${parentResult[0]?.values?.length || 0} 个父块`);
       
       if (parentResult.length === 0 || parentResult[0].values.length === 0) return [];
       
@@ -732,19 +730,10 @@ export class WorkspaceIndexDatabase {
         tags: string[];
       }> = [];
       
-      // 先查询 LanceDB 中所有子块的 parentId，用于调试
-      const allChildrenSample = await this.childrenTable.query().limit(5).toArray();
-      console.log(`[WorkspaceIndexDatabase] LanceDB 子块样本 parentIds:`, allChildrenSample.map(c => c.parentId));
-      console.log(`[WorkspaceIndexDatabase] SQLite 父块 parentIds:`, parentIds.slice(0, 5));
-      
       for (const parentId of parentIds) {
-        console.log(`[WorkspaceIndexDatabase] 查询子块: parentId=${parentId}`);
-        
         // 尝试使用 filter 方式查询
         const allResults = await this.childrenTable.query().toArray();
         const results = allResults.filter(r => r.parentId === parentId);
-        
-        console.log(`[WorkspaceIndexDatabase] 查询结果: ${results.length} 个子块 (总数: ${allResults.length})`);
         
         for (const r of results) {
           let parsedTags: string[] = [];
@@ -912,8 +901,6 @@ export class WorkspaceIndexDatabase {
     this.lanceDb = null;
     this.childrenTable = null;
     this.isInitialized = false;
-    
-    console.log('[WorkspaceIndexDatabase] 数据库已关闭');
   }
 }
 
