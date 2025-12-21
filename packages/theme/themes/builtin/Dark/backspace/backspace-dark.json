@@ -7,6 +7,8 @@
           "name": "Backspace Dark",
 
   "colors": {
+    "aiZoneBorder.background":"#5a8bbf",
+    "input.focusBorder":"#4c6584",
     "app.foreground":"#6f8cb1",
      "dropdown.background": "#111D2D",
     "dropdown.border": "#1F3246",

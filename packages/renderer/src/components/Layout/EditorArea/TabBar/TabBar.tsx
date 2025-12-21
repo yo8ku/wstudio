@@ -346,6 +346,16 @@ export const TabBar: React.FC<TabBarProps> = ({
         </button>
         
         <button 
+          className="tab-bar-action-btn"
+          title="切换编辑器"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('toggle-editor-type'));
+          }}
+        >
+          <Icon name="editor-switch" size={16} />
+        </button>
+        
+        <button 
           ref={moreButtonRef}
           className="tab-bar-action-btn"
           title="更多操作"

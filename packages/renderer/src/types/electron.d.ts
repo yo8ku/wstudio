@@ -480,5 +480,103 @@ declare global {
   }
 }
 
+// ==================== 笔记系统类型定义 ====================
+
+/**
+ * 笔记类型
+ */
+export type NoteType = 'daily' | 'quick' | 'normal';
+
+/**
+ * 笔记数据接口
+ */
+export interface NoteItem {
+  id: string;
+  title: string;
+  content: string;
+  path: string;
+  type: NoteType;
+  isFavorite: boolean;
+  isPinned: boolean;
+  createdAt: number;
+  updatedAt: number;
+  metadata?: string;
+}
+
+/**
+ * 标签数据接口
+ */
+export interface TagItem {
+  id: string;
+  name: string;
+  parentId?: string;
+  noteCount: number;
+  createdAt: number;
+}
+
+/**
+ * 链接数据接口
+ */
+export interface LinkItem {
+  id: string;
+  sourceId: string;
+  targetId?: string;
+  targetTitle: string;
+  context: string;
+  createdAt: number;
+}
+
+/**
+ * 模板数据接口
+ */
+export interface TemplateItem {
+  id: string;
+  name: string;
+  content: string;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * 笔记系统 IPC API 接口
+ */
+export interface NoteSystemAPI {
+  note: {
+    create: (data: Partial<NoteItem>) => Promise<NoteItem>;
+    update: (id: string, updates: Partial<NoteItem>) => Promise<boolean>;
+    delete: (id: string) => Promise<boolean>;
+    get: (id: string) => Promise<NoteItem | null>;
+    getAll: () => Promise<NoteItem[]>;
+    search: (query: string) => Promise<NoteItem[]>;
+    getDailyNote: (date: string) => Promise<NoteItem | null>;
+    createDailyNote: (date: string, template?: string) => Promise<NoteItem>;
+    getFavorites: () => Promise<NoteItem[]>;
+    toggleFavorite: (id: string) => Promise<boolean>;
+    getByTitle: (title: string) => Promise<NoteItem | null>;
+  };
+  tag: {
+    create: (name: string, parentId?: string) => Promise<TagItem>;
+    update: (id: string, name: string) => Promise<boolean>;
+    delete: (id: string) => Promise<boolean>;
+    getAll: () => Promise<TagItem[]>;
+    getNotesByTag: (tagId: string) => Promise<NoteItem[]>;
+  };
+  link: {
+    getOutlinks: (noteId: string) => Promise<LinkItem[]>;
+    getBacklinks: (noteId: string) => Promise<LinkItem[]>;
+    getAllLinks: () => Promise<LinkItem[]>;
+    create: (sourceId: string, targetTitle: string, context?: string) => Promise<LinkItem>;
+    delete: (id: string) => Promise<boolean>;
+  };
+  template: {
+    create: (template: Partial<TemplateItem>) => Promise<TemplateItem>;
+    update: (id: string, updates: Partial<TemplateItem>) => Promise<boolean>;
+    delete: (id: string) => Promise<boolean>;
+    getAll: () => Promise<TemplateItem[]>;
+    get: (id: string) => Promise<TemplateItem | null>;
+  };
+}
+
 
 

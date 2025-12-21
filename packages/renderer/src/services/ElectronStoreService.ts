@@ -103,6 +103,14 @@ interface StoreSchema {
   
   // Embedding 自动索引开关
   'embedding-auto-index': boolean;
+  
+  // 笔记编辑器设置
+  'note-editor-settings': {
+    defaultEditor: 'tiptap' | 'monaco';
+    showEditorSwitch: boolean;
+    autoSave: boolean;
+    autoSaveInterval: number;
+  };
 }
 
 /**

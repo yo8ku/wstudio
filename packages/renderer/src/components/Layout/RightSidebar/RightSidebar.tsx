@@ -27,6 +27,9 @@ export const RightSidebar: React.FC = () => {
   const [isHoveringHandle, setIsHoveringHandle] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
+  // 调试日志
+  console.log('[RightSidebar] 状态:', { isVisible, activeView, width });
+
   const getTitle = () => {
     const titles = {
       'important-files': '重要文件',
@@ -133,13 +136,20 @@ export const RightSidebar: React.FC = () => {
       {/* 头部 */}
       <div className="right-sidebar-header">
         <h3 className="right-sidebar-title">{getTitle()}</h3>
-        <button
+        <div
           className="right-sidebar-close"
           onClick={() => setVisible(false)}
           title="关闭"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              setVisible(false);
+            }
+          }}
         >
           <Icon name="close" size={16} />
-        </button>
+        </div>
       </div>
 
       {/* 内容区域 */}

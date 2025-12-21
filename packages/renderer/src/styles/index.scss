@@ -5,6 +5,9 @@
  * 设计原则：所有颜色通过 CSS 变量管理，变量值由主题插件控制
  */
 
+/* TipTap UI 组件样式 */
+@use './_variables.scss';
+@use './_keyframe-animations.scss';
 
 /* 组件颜色样式管理（按组件拆分） */
 @use './component/_index.scss';
@@ -165,6 +168,8 @@ body.background-image-enabled  .ai-agent-card{
   }
 }
 
+body.background-image-enabled .right-sidebar,
+body.background-image-enabled .tab-bar,
 body.background-image-enabled .user-sidebar,
 body.background-image-enabled .ai-chat-panel-right-border,
 body.background-image-enabled .sidebar,
@@ -193,8 +198,7 @@ body.background-image-enabled button {
 
 
 body.background-image-enabled .titleBar {
-  // opacity: 0.75;
-  // z-index: 100000;
+
   // background-color: var(--ws-editor-background) !important;
 
 

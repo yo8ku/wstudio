@@ -1,5 +1,7 @@
 /**
- * 右侧活动栏样�? */
+ * 右侧活动栏样式
+ * 包含标签、反向链接、章节预览等功能按钮
+ */
 
 .right-activity-bar {
   width: 48px;
@@ -10,6 +12,8 @@
   padding: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  background-color: var(--ws-activityBar-background);
+  border-left: 1px solid var(--ws-panel-border);
   
   &::-webkit-scrollbar {
     width: 6px;
@@ -17,22 +21,39 @@
   
   &::-webkit-scrollbar-thumb {
     border-radius: 3px;
-
+    background-color: var(--ws-scrollbarSlider-background);
   }
 }
 
 .right-activity-bar-item {
   position: relative;
+  width: 32px;
+  height: 32px;
   padding: 5px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 6px !important;
+  border-radius: 6px;
   margin-top: 10px;
   cursor: pointer;
-  transition: background-color 0.1s ease;
   flex-shrink: 0;
+  background-color: transparent;
+  color: var(--ws-activityBar-inactiveForeground);
+  
+  &:hover {
+    background-color: var(--ws-activityBar-activeBackground);
+    color: var(--ws-activityBar-foreground);
+  }
+  
+  &.active {
+    background-color: var(--ws-activityBar-activeBackground);
+    color: var(--ws-activityBar-foreground);
+  }
+  
+  &:focus {
+    outline: none;
+  }
 }
 
 .right-activity-bar-icon {

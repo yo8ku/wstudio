@@ -1,0 +1,41 @@
+{
+  "name": "@note-studio/note-system",
+  "version": "1.0.0",
+  "description": "Note system module for Note WStudio - types, parsers and utilities",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/esm/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "npx tsc -p tsconfig.esm.json && npx tsc -p tsconfig.cjs.json",
+    "build:esm": "npx tsc -p tsconfig.esm.json",
+    "build:cjs": "npx tsc -p tsconfig.cjs.json",
+    "dev": "npx tsc -p tsconfig.esm.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "note",
+    "markdown",
+    "knowledge-graph",
+    "backlinks",
+    "tags",
+    "parser"
+  ],
+  "dependencies": {
+    "@note-studio/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "fast-check": "^3.15.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.2.0"
+  }
+}

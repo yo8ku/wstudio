@@ -1,5 +1,6 @@
 /**
- * 右侧活动栏组件 * 包含标签、反向链接、章节预览、标注、链接、模板、每日笔记等功能
+ * 右侧活动栏组件
+ * 包含标签、反向链接、章节预览、标注、链接、模板、每日笔记等功能
  */
 
 import React from 'react';
@@ -59,21 +60,39 @@ export const RightActivityBar: React.FC = () => {
     },
   ];
 
+  const handleClick = (id: RightSidebarView) => {
+    console.log('[RightActivityBar] 点击:', id);
+    console.log('[RightActivityBar] 点击前状态:', { isVisible, activeView });
+    toggle(id);
+    // 延迟检查状态
+    setTimeout(() => {
+      const state = useRightSidebarStore.getState();
+      console.log('[RightActivityBar] 点击后状态:', { isVisible: state.isVisible, activeView: state.activeView });
+    }, 100);
+  };
+
   return (
     <div className="right-activity-bar">
       {activities.map((activity) => (
-        <button
+        <div
           key={activity.id}
-          onClick={() => toggle(activity.id)}
+          onClick={() => handleClick(activity.id)}
           className={`right-activity-bar-item ${
             activeView === activity.id && isVisible ? 'active' : ''
           }`}
           title={activity.title}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              handleClick(activity.id);
+            }
+          }}
         >
           <span className="right-activity-bar-icon">
             <Icon name={activity.iconName} size={18} />
           </span>
-        </button>
+        </div>
       ))}
     </div>
   );

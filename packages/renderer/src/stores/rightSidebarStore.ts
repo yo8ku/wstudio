@@ -1,5 +1,7 @@
 /**
- * 右侧边栏状态管 * 使用 Zustand 管理右侧边栏的全局状态 */
+ * 右侧边栏状态管理
+ * 使用 Zustand 管理右侧边栏的全局状态
+ */
 
 import { create } from 'zustand';
 
@@ -9,12 +11,12 @@ interface RightSidebarStore {
   isVisible: boolean;
   activeView: RightSidebarView | null;
   width: number;
-  isActivityBarVisible: boolean; // 控制右侧活动栏的显示/隐藏
+  isActivityBarVisible: boolean;
   setVisible: (visible: boolean) => void;
   setActiveView: (view: RightSidebarView | null) => void;
   setWidth: (width: number) => void;
   setActivityBarVisible: (visible: boolean) => void;
-  toggleActivityBar: () => void; // 切换活动栏显示状态
+  toggleActivityBar: () => void;
   toggle: (view?: RightSidebarView) => void;
 }
 
@@ -22,33 +24,46 @@ export const useRightSidebarStore = create<RightSidebarStore>((set, get) => ({
   isVisible: false,
   activeView: null,
   width: 320,
-  isActivityBarVisible: false, // 默认隐藏右侧活动  
-  setVisible: (visible) => set({ isVisible: visible }),
-  
-  setActiveView: (view) => set({ activeView: view }),
-  
-  setWidth: (width) => set({ width }),
-  
-  setActivityBarVisible: (visible) => set({ isActivityBarVisible: visible }),
-  
+  isActivityBarVisible: true,
+
+  setVisible: (visible: boolean) => {
+    console.log('[rightSidebarStore] setVisible:', visible);
+    set({ isVisible: visible });
+  },
+
+  setActiveView: (view: RightSidebarView | null) => {
+    console.log('[rightSidebarStore] setActiveView:', view);
+    set({ activeView: view });
+  },
+
+  setWidth: (width: number) => {
+    set({ width });
+  },
+
+  setActivityBarVisible: (visible: boolean) => {
+    set({ isActivityBarVisible: visible });
+  },
+
   toggleActivityBar: () => {
     const { isActivityBarVisible } = get();
     set({ isActivityBarVisible: !isActivityBarVisible });
   },
-  
-  toggle: (view) => {
+
+  toggle: (view?: RightSidebarView) => {
     const { isVisible, activeView } = get();
-    
+    console.log('[rightSidebarStore] toggle 调用:', { view, currentIsVisible: isVisible, currentActiveView: activeView });
+
     if (!view) {
-      // 如果没有指定视图，只切换可见      set({ isVisible: !isVisible });
+      set({ isVisible: !isVisible });
       return;
     }
-    
+
     if (activeView === view && isVisible) {
-      // 如果点击当前激活的视图，隐藏边      set({ isVisible: false });
+      console.log('[rightSidebarStore] 关闭边栏');
+      set({ isVisible: false });
     } else {
-      // 切换到新视图并显示      set({ activeView: view, isVisible: true });
+      console.log('[rightSidebarStore] 打开边栏:', view);
+      set({ activeView: view, isVisible: true });
     }
   }
 }));
-

@@ -715,6 +715,14 @@ const Edit: IconComponent = ({ style, className }) => (
   </svg>
 );
 
+// 切换编辑器图标
+const EditorSwitch: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <rect width="18" height="14" x="3" y="5" rx="2" ry="2"/>
+    <path d="M7 15h4M15 15h2M7 11h2M13 11h4"/>
+  </svg>
+);
+
 // 停止图标
 const Stop: IconComponent = ({ style, className }) => (
   <svg viewBox="0 0 20 20" fill="currentColor" style={style} className={className}>
@@ -741,6 +749,103 @@ const Notification: IconComponent = ({ style, className }) => (
     className={className}
   >
     <path d="M816 768h-24V428c0-141.1-104.3-257.7-240-277.1V112c0-22.1-17.9-40-40-40s-40 17.9-40 40v38.9c-135.7 19.4-240 136-240 277.1v340h-24c-17.7 0-32 14.3-32 32v32c0 4.4 3.6 8 8 8h216c0 61.8 50.2 112 112 112s112-50.2 112-112h216c4.4 0 8-3.6 8-8v-32c0-17.7-14.3-32-32-32zM512 888c-26.5 0-48-21.5-48-48h96c0 26.5-21.5 48-48 48zM304 768V428c0-55.6 21.6-107.8 60.9-147.1S456.4 220 512 220c55.6 0 107.8 21.6 147.1 60.9S720 372.4 720 428v340H304z" />
+  </svg>
+);
+
+// ==================== 图片工具栏图标 ====================
+
+// 旋转图标
+const ImageRotate: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 1024 1024" fill="currentColor" style={style} className={className}>
+    <path d="M672 418H144c-17.7 0-32 14.3-32 32v414c0 17.7 14.3 32 32 32h528c17.7 0 32-14.3 32-32V450c0-17.7-14.3-32-32-32zm-44 402H188V494h440v326z" />
+    <path d="M819.3 328.5c-78.8-100.7-196-153.6-314.6-154.2l-.2-64c0-6.5-7.6-10.1-12.6-6.1l-128 101c-4 3.1-3.9 9.1 0 12.3L492 318.6c5.1 4 12.7.4 12.6-6.1v-63.9c12.9.1 25.9.9 38.8 2.5c42.1 5.2 82.1 18.2 119 38.7c38.1 21.2 71.2 49.7 98.4 84.3c27.1 34.7 46.7 73.7 58.1 115.8c11 40.7 14 82.7 8.9 124.8c-.7 5.4-1.4 10.8-2.4 16.1h74.9c14.8-103.6-11.3-213-81-302.3z" />
+  </svg>
+);
+
+// 裁剪图标
+const ImageCrop: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M6 2v14a2 2 0 0 0 2 2h14"/>
+    <path d="M18 22V8a2 2 0 0 0-2-2H2"/>
+  </svg>
+);
+
+// 尺寸图标
+const ImageSize: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 16 16" fill="currentColor" style={style} className={className}>
+    <path d="M4.5 3A1.5 1.5 0 0 0 3 4.5v1a.5.5 0 0 1-1 0v-1A2.5 2.5 0 0 1 4.5 2h1a.5.5 0 0 1 0 1h-1zM13 4.5A1.5 1.5 0 0 0 11.5 3h-1a.5.5 0 0 1 0-1h1A2.5 2.5 0 0 1 14 4.5v1a.5.5 0 0 1-1 0v-1zm0 7a1.5 1.5 0 0 1-1.5 1.5h-1a.5.5 0 0 0 0 1h1a2.5 2.5 0 0 0 2.5-2.5v-1a.5.5 0 0 0-1 0v1zm-10 0A1.5 1.5 0 0 0 4.5 13h1.25a.5.5 0 0 1 0 1H4.5A2.5 2.5 0 0 1 2 11.5v-1.25a.5.5 0 0 1 1 0v1.25zM5.5 4A1.5 1.5 0 0 0 4 5.5v5A1.5 1.5 0 0 0 5.5 12h5a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 10.5 4h-5zM5 5.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 .5.5v5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5v-5z" />
+  </svg>
+);
+
+// 对齐方式图标
+const ImageAlign: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M4 6h16"/>
+    <path d="M4 12h16"/>
+    <path d="M4 18h12"/>
+  </svg>
+);
+
+// 左对齐图标
+const AlignLeft: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M4 6h16"/>
+    <path d="M4 12h10"/>
+    <path d="M4 18h14"/>
+  </svg>
+);
+
+// 居中对齐图标
+const AlignCenter: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M4 6h16"/>
+    <path d="M7 12h10"/>
+    <path d="M5 18h14"/>
+  </svg>
+);
+
+// 右对齐图标
+const AlignRight: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M4 6h16"/>
+    <path d="M10 12h10"/>
+    <path d="M6 18h14"/>
+  </svg>
+);
+
+// 图片描述图标
+const ImageCaption: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M21 10.656V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12.344"/>
+    <path d="m9 11 3 3L22 4"/>
+  </svg>
+);
+
+// 链接样式图标
+const ImageLinkStyle: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/>
+    <path d="m8.5 8.5 7 7"/>
+  </svg>
+);
+
+// 卡片样式图标
+const ImageCardStyle: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <rect width="20" height="14" x="2" y="5" rx="2"/>
+    <line x1="2" x2="22" y1="10" y2="10"/>
+  </svg>
+);
+
+// 垂直拖拽手柄图标
+const GripVertical: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <circle cx="9" cy="12" r="1"/>
+    <circle cx="9" cy="5" r="1"/>
+    <circle cx="9" cy="19" r="1"/>
+    <circle cx="15" cy="12" r="1"/>
+    <circle cx="15" cy="5" r="1"/>
+    <circle cx="15" cy="19" r="1"/>
   </svg>
 );
 
@@ -849,6 +954,7 @@ export const uiIconSet: IconSet = {
     
     // 编辑图标
     'edit': Edit,
+    'editor-switch': EditorSwitch,
     
     // 控制图标
     'stop': Stop,
@@ -856,6 +962,21 @@ export const uiIconSet: IconSet = {
     
     // 状态栏图标
     'notification': Notification,
+    
+    // 图片工具栏图标
+    'image-rotate': ImageRotate,
+    'image-crop': ImageCrop,
+    'image-size': ImageSize,
+    'image-align': ImageAlign,
+    'align-left': AlignLeft,
+    'align-center': AlignCenter,
+    'align-right': AlignRight,
+    'image-caption': ImageCaption,
+    'image-link-style': ImageLinkStyle,
+    'image-card-style': ImageCardStyle,
+    
+    // 编辑器装饰器图标
+    'grip-vertical': GripVertical,
   },
 };
 
