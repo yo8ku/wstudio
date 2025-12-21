@@ -700,6 +700,13 @@
     gap: 2px;
   }
 
+  // 只有折叠图标时的布局（用于非当前行的折叠指示器）
+  &.fold-only {
+    width: 16px;
+    left: -32px;
+    opacity: 1;
+  }
+
   &:hover {
     opacity: 1;
   }
@@ -735,34 +742,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   cursor: pointer;
   border-radius: 2px;
   flex-shrink: 0;
 
   svg {
-    width: 12px;
-    height: 12px;
-
-    &.fold-icon-expanded {
-      display: block;
-    }
-
-    &.fold-icon-collapsed {
-      display: none;
-    }
-  }
-
-  // 折叠状态显示向右箭头
-  &[data-folded="true"] {
-    svg.fold-icon-expanded {
-      display: none;
-    }
-
-    svg.fold-icon-collapsed {
-      display: block;
-    }
+    width: 16px;
+    height: 16px;
   }
 
   &:hover {

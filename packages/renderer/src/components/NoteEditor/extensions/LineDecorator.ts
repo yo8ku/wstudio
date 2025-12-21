@@ -118,26 +118,29 @@ function createDecoratorWidget(
   showFoldIcon: boolean,
   nodeStart: number,
   nodeEnd: number,
-  isFolded: boolean
+  isFolded: boolean,
+  showGripIcon: boolean = true
 ): HTMLElement {
   const wrapper = document.createElement('div');
-  wrapper.className = `${className}${showFoldIcon ? ' has-fold-icon' : ''}`;
+  wrapper.className = `${className}${showFoldIcon ? ' has-fold-icon' : ''}${!showGripIcon ? ' fold-only' : ''}`;
 
-  // 拖拽手柄图标
-  const gripIcon = document.createElement('div');
-  gripIcon.className = 'grip-icon';
-  gripIcon.setAttribute('role', 'button');
-  gripIcon.innerHTML = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="9" cy="12" r="1"/>
-      <circle cx="9" cy="5" r="1"/>
-      <circle cx="9" cy="19" r="1"/>
-      <circle cx="15" cy="12" r="1"/>
-      <circle cx="15" cy="5" r="1"/>
-      <circle cx="15" cy="19" r="1"/>
-    </svg>
-  `;
-  wrapper.appendChild(gripIcon);
+  // 拖拽手柄图标（仅在当前行显示）
+  if (showGripIcon) {
+    const gripIcon = document.createElement('div');
+    gripIcon.className = 'grip-icon';
+    gripIcon.setAttribute('role', 'button');
+    gripIcon.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="12" r="1"/>
+        <circle cx="9" cy="5" r="1"/>
+        <circle cx="9" cy="19" r="1"/>
+        <circle cx="15" cy="12" r="1"/>
+        <circle cx="15" cy="5" r="1"/>
+        <circle cx="15" cy="19" r="1"/>
+      </svg>
+    `;
+    wrapper.appendChild(gripIcon);
+  }
 
   // 折叠/展开图标
   if (showFoldIcon) {
@@ -145,14 +148,23 @@ function createDecoratorWidget(
     foldIcon.className = 'fold-icon';
     foldIcon.setAttribute('role', 'button');
     foldIcon.setAttribute('data-folded', String(isFolded));
-    foldIcon.innerHTML = `
-      <svg class="fold-icon-expanded" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M4.427 7.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427z"/>
-      </svg>
-      <svg class="fold-icon-collapsed" viewBox="0 0 16 16" fill="currentColor">
-        <path fill-rule="evenodd" clip-rule="evenodd" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/>
-      </svg>
-    `;
+    
+    // 根据折叠状态显示不同的图标：折叠时向右，展开时向下
+    if (isFolded) {
+      // 向右三角形（折叠状态，点击可展开）
+      foldIcon.innerHTML = `
+        <svg viewBox="0 0 16 16" fill="currentColor">
+          <path d="M6.427 4.427l3.396 3.396a.25.25 0 0 1 0 .354l-3.396 3.396A.25.25 0 0 1 6 11.396V4.604a.25.25 0 0 1 .427-.177z"/>
+        </svg>
+      `;
+    } else {
+      // 向下三角形（展开状态，点击可折叠）
+      foldIcon.innerHTML = `
+        <svg viewBox="0 0 16 16" fill="currentColor">
+          <path d="M4.427 7.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427z"/>
+        </svg>
+      `;
+    }
 
     // 点击折叠/展开
     foldIcon.addEventListener('mousedown', (e) => {
@@ -195,8 +207,23 @@ export const LineDecorator = Extension.create<LineDecoratorOptions>({
           decorations(state) {
             const { selection, doc } = state;
             const decorations: Decoration[] = [];
+            const currentNodeStart = (() => {
+              const $pos = selection.$from;
+              const depth = $pos.depth;
+              if (depth === 0) return -1;
+              let currentDepth = depth;
+              let currentNode = $pos.node(currentDepth);
+              while (currentDepth > 0 && currentNode && !currentNode.isBlock) {
+                currentDepth--;
+                currentNode = $pos.node(currentDepth);
+              }
+              if (currentDepth > 0 && currentNode && currentNode.isBlock) {
+                return $pos.before(currentDepth);
+              }
+              return -1;
+            })();
 
-            // 首先，遍历所有折叠的位置，为其子内容添加隐藏装饰器
+            // 首先，遍历所有折叠的位置，为其子内容添加隐藏装饰器，并为折叠的行添加折叠图标
             foldedNodeEnds.forEach((nodeEnd, nodeStart) => {
               // 检查位置是否有效
               if (nodeEnd > doc.content.size) {
@@ -207,6 +234,7 @@ export const LineDecorator = Extension.create<LineDecoratorOptions>({
               try {
                 const { childPositions } = getFollowingChildContent(doc, nodeEnd);
                 
+                // 为子内容添加隐藏装饰器
                 childPositions.forEach(({ start, end }) => {
                   const hideDecoration = Decoration.node(start, end, {
                     class: 'folded-content',
@@ -214,6 +242,16 @@ export const LineDecorator = Extension.create<LineDecoratorOptions>({
                   });
                   decorations.push(hideDecoration);
                 });
+
+                // 如果不是当前行，为折叠的行添加折叠图标（只显示折叠图标，不显示 grip）
+                if (nodeStart !== currentNodeStart) {
+                  const foldWidgetDecoration = Decoration.widget(
+                    nodeStart + 1,
+                    () => createDecoratorWidget(className, true, nodeStart, nodeEnd, true, false),
+                    { side: -1, key: `fold-indicator-${nodeStart}-folded` }
+                  );
+                  decorations.push(foldWidgetDecoration);
+                }
               } catch {
                 // 位置无效，从折叠列表中移除
                 foldedNodeEnds.delete(nodeStart);
@@ -260,7 +298,7 @@ export const LineDecorator = Extension.create<LineDecoratorOptions>({
               const widgetDecoration = Decoration.widget(
                 nodeStart + 1,
                 () => createDecoratorWidget(className, showFoldIcon, nodeStart, nodeEnd, isFolded),
-                { side: -1, key: `line-decorator-${nodeStart}` }
+                { side: -1, key: `line-decorator-${nodeStart}-${isFolded ? 'folded' : 'expanded'}` }
               );
               decorations.push(widgetDecoration);
             }
