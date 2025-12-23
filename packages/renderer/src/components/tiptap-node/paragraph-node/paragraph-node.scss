@@ -34,27 +34,29 @@
   caret-color: var(--tt-cursor-color);
 
   // Paragraph spacing
-  p:not(:first-child):not(td p):not(th p) {
-    font-size: 1rem;
+  p:not(:first-child):not(td p):not(th p):not(blockquote p) {
+    font-size: inherit;
     line-height: 1.6;
     font-weight: normal;
     margin-top: 20px;
   }
 
-  // Selection styles
-  &:not(.readonly):not(.ProseMirror-hideselection) {
-    ::selection {
-      background-color: var(--tt-selection-color);
-    }
+  // Selection styles - 始终应用选择样式
+  ::selection {
+    background-color: var(--tt-selection-color, #FF7A3D80) !important;
+  }
 
-    .selection::selection {
-      background: transparent;
-    }
+  *::selection {
+    background-color: var(--tt-selection-color, #FF7A3D80) !important;
   }
 
   .selection {
     display: inline;
-    background-color: var(--tt-selection-color);
+    background-color: var(--tt-selection-color, #FF7A3D80);
+  }
+
+  .selection::selection {
+    background: transparent;
   }
 
   // Selected node styles

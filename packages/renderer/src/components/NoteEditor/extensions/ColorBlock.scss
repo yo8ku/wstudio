@@ -1,0 +1,43 @@
+/**
+ * 颜色块样式
+ * 功能：定义颜色块的外观
+ * 描述：使用 CSS 变量控制背景色
+ * 
+ * 注意：TipTap React Node View 会在外层包裹一个 .react-renderer.node-colorBlock div
+ */
+
+// 外层 react-renderer 容器 - 不添加任何样式，让它透明
+.react-renderer.node-colorBlock {
+  // 不添加任何 margin/padding
+}
+
+// 内层 wrapper
+.color-block-wrapper {
+  background-color: var(--color-block-bg);
+  border-radius: 4px;
+  margin-left: -12px;
+  margin-right: -12px;
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+// 强制恢复 colorBlock 内标题的 margin-top（覆盖 heading-node.scss 的 :first-child 规则）
+.tiptap.ProseMirror {
+  // 当 colorBlock 不是编辑器第一个子元素时，第一个标题需要保持 margin-top
+  .react-renderer.node-colorBlock:not(:first-child) h1:first-child {
+    margin-top: 3em !important;
+  }
+
+  .react-renderer.node-colorBlock:not(:first-child) h2:first-child {
+    margin-top: 2.5em !important;
+  }
+
+  .react-renderer.node-colorBlock:not(:first-child) h3:first-child,
+  .react-renderer.node-colorBlock:not(:first-child) h4:first-child {
+    margin-top: 2em !important;
+  }
+}

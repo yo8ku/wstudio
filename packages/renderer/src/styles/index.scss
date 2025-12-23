@@ -457,11 +457,21 @@ div[widgetid="editor.contrib.quickInputWidget"] {
 
 /* ==================== 选择文本样式 ==================== */
 ::selection {
-  background-color: var(--ws-editor-selectionBackground);
+  background-color: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
 }
 
 ::-moz-selection {
-  background-color: var(--ws-editor-selectionBackground);
+  background-color: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
+}
+
+/* TipTap/ProseMirror 编辑器选择样式 */
+.ProseMirror::selection,
+.ProseMirror *::selection,
+.tiptap::selection,
+.tiptap *::selection,
+.simple-editor::selection,
+.simple-editor *::selection {
+  background-color: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
 }
 
 /* ==================== 禁用元素样式 ==================== */

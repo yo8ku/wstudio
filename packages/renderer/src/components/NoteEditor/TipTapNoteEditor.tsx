@@ -117,6 +117,7 @@ export const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     editorProps: {
       attributes: {
         spellcheck: 'false',
+        class: 'tiptap-editor',
       },
       handleDrop: (_view, event, _slice, moved) => {
         if (moved) return false;

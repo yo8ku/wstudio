@@ -186,7 +186,7 @@
   --tt-sidebar-bg-color: var(--ws-sidebar-background, #252526);
   --tt-scrollbar-color: var(--ws-scrollbar-slider-background, rgba(121, 121, 121, 0.4));
   --tt-cursor-color: var(--ws-editor-cursor-foreground, #aeafad);
-  --tt-selection-color: var(--ws-editor-selection-background, rgba(38, 79, 120, 0.5));
+  --tt-selection-color: var(--ws-editor-selectionBackground, #FF7A3D80);
   --tt-card-bg-color: var(--ws-editor-background, #1e1e1e);
   --tt-card-border-color: var(--ws-panel-border, #3c3c3c);
 }

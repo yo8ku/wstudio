@@ -15,9 +15,21 @@
   overflow-y: auto;
   padding: 16px 24px;
 
-  .ProseMirror {
+  .ProseMirror,
+  .tiptap-editor {
     outline: none;
     min-height: 100%;
+    // 确保文本可以被选择
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+
+    // 选中文本样式 - 使用 !important 确保优先级
+    &::selection,
+    *::selection {
+      background-color: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
+      color: inherit;
+    }
 
     // 占位符
     p.is-editor-empty:first-child::before {
@@ -679,37 +691,40 @@
   }
 }
 
-// 行装饰器
+// 行装饰器 - 定位到左侧 padding 区域
 .line-decorator {
   position: absolute;
-  left: -32px;
-  top: 0;
-  width: 16px;
-  height: 100%;
+  left: -44px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 1.6em;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
   color: var(--ws-descriptionForeground);
-  opacity: 0.5;
+  z-index: 10;
+  pointer-events: auto;
+  user-select: none;
 
   // 有折叠图标时的布局
   &.has-fold-icon {
-    width: 32px;
-    left: -48px;
+    width: 40px;
+    left: -44px;
     gap: 2px;
   }
 
   // 只有折叠图标时的布局（用于非当前行的折叠指示器）
   &.fold-only {
-    width: 16px;
-    left: -32px;
-    opacity: 1;
+    width: 20px;
+    left: -24px;
   }
+}
 
-  &:hover {
-    opacity: 1;
-  }
+// 行装饰器包装器 - 使用 display: contents 完全不影响布局
+.line-decorator-wrapper {
+  display: contents !important;
 }
 
 // 拖拽手柄图标
@@ -721,6 +736,7 @@
   height: 14px;
   cursor: grab;
   border-radius: 2px;
+  opacity: 0.5;
 
   svg {
     width: 14px;
@@ -728,6 +744,7 @@
   }
 
   &:hover {
+    opacity: 1;
     color: var(--ws-foreground);
     background-color: var(--ws-list-hoverBackground);
   }
@@ -747,6 +764,7 @@
   cursor: pointer;
   border-radius: 2px;
   flex-shrink: 0;
+  opacity: 0.5;
 
   svg {
     width: 16px;
@@ -754,6 +772,7 @@
   }
 
   &:hover {
+    opacity: 1;
     color: var(--ws-foreground);
     background-color: var(--ws-list-hoverBackground);
   }
@@ -780,11 +799,132 @@
   display: none !important;
 }
 
-// 列表项内的装饰器需要更靠左，避开列表符号
-li.has-line-decorator > .line-decorator {
-  left: -48px;
+// 行装饰器上下文菜单
+.line-decorator-menu {
+  min-width: 160px;
+  padding: 4px 0;
+  background-color: var(--ws-menu-background);
+  border: 1px solid var(--ws-menu-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
 
-  &.has-fold-icon {
-    left: -64px;
+.line-decorator-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--ws-menu-foreground);
+  font-size: 13px;
+  position: relative;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
   }
+
+  .menu-item-label {
+    flex: 1;
+  }
+
+  .menu-item-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 8px;
+    opacity: 0.6;
+  }
+
+  // 有子菜单的项
+  &.has-submenu {
+    .line-decorator-submenu {
+      display: none;
+      position: absolute;
+      left: 100%;
+      top: 0;
+      min-width: 140px;
+      padding: 4px 0;
+      background-color: var(--ws-menu-background);
+      border: 1px solid var(--ws-menu-border);
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    &:hover .line-decorator-submenu {
+      display: block;
+    }
+  }
+}
+
+.line-decorator-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background-color: var(--ws-menu-separatorBackground);
+}
+
+// 拖拽指示器
+.line-decorator-drag-indicator {
+  position: fixed;
+  height: 2px;
+  background-color: var(--ws-focusBorder);
+  pointer-events: none;
+  z-index: 10000;
+  display: none;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--ws-focusBorder);
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  &::before {
+    left: 0;
+  }
+
+  &::after {
+    right: 0;
+  }
+}
+
+// 拖拽文本预览
+.line-decorator-drag-text {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 12px;
+  padding: 4px 10px;
+  background-color: var(--ws-editor-background);
+  border: 1px solid var(--ws-focusBorder);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--ws-foreground);
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+// 拖拽中的编辑器状态
+.ProseMirror.is-dragging {
+  user-select: none;
+}
+
+// 拖拽高亮覆盖图层
+.line-decorator-highlight-overlay {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  border-radius: 4px;
+  border: 2px solid var(--ws-focusBorder);
+  box-shadow: 0 0 8px var(--ws-focusBorder);
 }

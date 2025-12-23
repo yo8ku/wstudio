@@ -16,10 +16,18 @@ import { Typography } from '@tiptap/extension-typography';
 import { Highlight } from '@tiptap/extension-highlight';
 import { Subscript } from '@tiptap/extension-subscript';
 import { Superscript } from '@tiptap/extension-superscript';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
 
 // --- Custom Extensions ---
 import { ResizableImage } from '@/components/NoteEditor/extensions/ResizableImage';
 import { LineDecorator } from '@/components/NoteEditor/extensions/LineDecorator';
+import { TabIndent } from '@/components/NoteEditor/extensions/TabIndent';
+import { BlockBackground } from '@/components/NoteEditor/extensions/BlockBackground';
+import { ColorBlock } from '@/components/NoteEditor/extensions/ColorBlock';
+
+// --- Custom Components ---
+import { EditorOutline } from '@/components/NoteEditor/components/EditorOutline';
 
 // --- UI Primitives ---
 import { Button } from '@/components/tiptap-ui-primitive/button';
@@ -215,6 +223,7 @@ export const SimpleNoteEditor: React.FC<SimpleNoteEditorProps> = ({
         autocomplete: 'off',
         autocorrect: 'off',
         autocapitalize: 'off',
+        spellcheck: 'false',
         'aria-label': 'Main content area, start typing to enter text.',
         class: 'simple-editor',
       },
@@ -335,6 +344,13 @@ export const SimpleNoteEditor: React.FC<SimpleNoteEditorProps> = ({
         }
         return false;
       },
+      // 处理 Tab 键缩进
+      handleKeyDown: (_view, event) => {
+        if (event.key === 'Tab') {
+          return false; // 让 TipTap 扩展处理 Tab 键
+        }
+        return false;
+      },
     },
     extensions: [
       StarterKit.configure({
@@ -355,6 +371,11 @@ export const SimpleNoteEditor: React.FC<SimpleNoteEditorProps> = ({
       Typography,
       Superscript,
       Subscript,
+      TextStyle,
+      Color,
+      BlockBackground.configure({
+        types: ['heading', 'paragraph', 'blockquote', 'codeBlock'],
+      }),
       ImageUploadNode.configure({
         accept: 'image/*',
         maxSize: MAX_FILE_SIZE,
@@ -363,6 +384,8 @@ export const SimpleNoteEditor: React.FC<SimpleNoteEditorProps> = ({
         onError: (error: Error) => console.error('Upload failed:', error),
       }),
       LineDecorator,
+      TabIndent,
+      ColorBlock,
     ],
     content: content || '',
     editable,
@@ -425,11 +448,18 @@ export const SimpleNoteEditor: React.FC<SimpleNoteEditorProps> = ({
           )}
         </Toolbar>
 
-        <EditorContent
-          editor={editor}
-          role="presentation"
-          className="simple-editor-content"
-        />
+        <div className="simple-editor-main">
+          <div className="simple-editor-body">
+            <EditorContent
+              editor={editor}
+              role="presentation"
+              className="simple-editor-content"
+            />
+          </div>
+
+          {/* 右侧大纲 */}
+          <EditorOutline editor={editor} />
+        </div>
       </EditorContext.Provider>
     </div>
   );

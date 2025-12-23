@@ -12,54 +12,84 @@
   flex-direction: column;
   overflow: hidden;
   background-color: var(--ws-editor-background);
-
+ margin-top: 10px;
   // 工具栏样式覆盖 - 适配主题，居中显示
   .tiptap-toolbar {
     background-color: var(--ws-editor-background);
-    border-bottom: 1px solid var(--ws-panel-border);
+    border-top: 1px solid var(--ws-panel-border);
     flex-shrink: 0;
-    width: 80%;
+    // width: 80%;
     margin: 0 auto;
     padding: 0 0.5rem;
 
     &[data-variant="fixed"] {
       background: var(--ws-editor-background);
-      border-bottom-color: var(--ws-panel-border);
+      border-top-color: var(--ws-panel-border);
     }
   }
 }
 
-// 编辑器内容区域 - 填充整个可用空间
+// 编辑器主体区域（包含编辑器和大纲）
+.simple-editor-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+// 编辑器主体区域
+.simple-editor-body {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+}
+
+// 左侧工具栏区域 - 不再需要，隐藏
+.simple-editor-gutter {
+  display: none;
+}
+
+// 编辑器内容区域
 .simple-editor-content {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  flex: 1;
-  overflow: auto;
 }
 
 // ProseMirror 编辑器样式
 .simple-editor-content .tiptap.ProseMirror.simple-editor {
   flex: 1;
-  width: 80%;
-  margin: 0 auto;
-  padding: 1.5rem 0;
+  width: 100%;
+  padding: 1.5rem 0 0 48px;
   outline: none;
   color: var(--ws-editor-foreground);
   font-family: var(--ws-font-family);
   font-size: var(--ws-editor-font-size, 14px);
   line-height: var(--ws-editor-line-height, 1.6);
   min-height: 100%;
+  // 确保文本可以被选择
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+
+  // 底部留出 2 行空间
+  &::after {
+    content: '';
+    display: block;
+    height: 4rem;
+    min-height: 4rem;
+  }
 
   // 占位符样式
   &.is-empty::before {
     color: var(--ws-input-placeholder-foreground);
   }
 
-  // 选中文本样式
-  ::selection {
-    background-color: var(--ws-editor-selection-background);
+  // 选中文本样式 - 使用 !important 确保优先级
+  &::selection,
+  *::selection {
+    background-color: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
   }
 
   // 链接样式
@@ -140,6 +170,12 @@
     &:first-child {
       margin-top: 0;
     }
+
+    // 有背景色时重置 margin - 使用 !important 确保优先级
+    &.has-block-background {
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
   }
 
   h1 { font-size: 1.75rem; }
@@ -156,6 +192,12 @@
     &:first-child {
       margin-top: 0;
     }
+
+    // 有背景色时重置 margin
+    &.has-block-background {
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
   }
 
   // 图片样式
@@ -169,5 +211,384 @@
   mark {
     background-color: var(--ws-editor-find-match-highlight-background, rgba(255, 213, 0, 0.4));
     padding: 0.125rem 0;
+  }
+}
+
+// 拖拽中的编辑器状态
+.simple-editor.is-dragging {
+  user-select: none;
+}
+
+// 被拖动的节点高亮
+.simple-editor-content .is-being-dragged,
+.simple-editor .is-being-dragged {
+  background-color: var(--ws-list-activeSelectionBackground, rgba(255, 122, 61, 0.15)) !important;
+  border-radius: 4px !important;
+  outline: 2px solid var(--ws-focusBorder, #FF7A3D) !important;
+  outline-offset: -1px !important;
+  box-shadow: 0 0 8px var(--ws-focusBorder, #FF7A3D) !important;
+}
+
+// 拖拽指示器
+.line-decorator-drag-indicator {
+  position: fixed;
+  height: 2px;
+  background-color: var(--ws-focusBorder, #FF7A3D);
+  pointer-events: none;
+  z-index: 10000;
+  display: none;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--ws-focusBorder, #FF7A3D);
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  &::before {
+    left: 0;
+  }
+
+  &::after {
+    right: 0;
+  }
+}
+
+// 行装饰器
+.line-decorator {
+  position: absolute;
+  left: -44px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 1.6em;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  color: var(--ws-descriptionForeground);
+  z-index: 10;
+  pointer-events: auto;
+  user-select: none;
+
+  // 有折叠图标时的布局
+  &.has-fold-icon {
+    width: 40px;
+    left: -44px;
+    gap: 2px;
+  }
+
+  // 只有折叠图标时的布局
+  &.fold-only {
+    width: 20px;
+    left: -24px;
+  }
+}
+
+// 行装饰器包装器 - 使用 display: contents 完全不影响文档流
+.line-decorator-wrapper {
+  display: contents !important;
+}
+
+// 拖拽手柄
+.grip-icon {
+  cursor: grab;
+  
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+// 标题折叠样式
+.heading-collapsed {
+  position: relative;
+
+  // 折叠指示器（省略号）
+  &::after {
+    content: '...';
+    margin-left: 8px;
+    color: var(--ws-descriptionForeground);
+    font-size: 0.8em;
+  }
+}
+
+// 被折叠的内容（通用）
+.folded-content,
+.heading-folded-content {
+  display: none !important;
+}
+
+// 行装饰器菜单样式
+.line-decorator-menu {
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.line-decorator-menu-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--ws-dropdown-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+  }
+
+  &.has-submenu {
+    .line-decorator-submenu {
+      display: none;
+      position: absolute;
+      left: 100%;
+      top: 0;
+      background-color: var(--ws-dropdown-background);
+      border: 1px solid var(--ws-dropdown-border);
+      border-radius: 6px;
+      padding: 4px 0;
+      min-width: 140px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    &:hover > .line-decorator-submenu {
+      display: block;
+    }
+  }
+}
+
+.line-decorator-menu-divider {
+  height: 1px;
+  background-color: var(--ws-dropdown-border);
+  margin: 4px 0;
+}
+
+.menu-item-label {
+  flex: 1;
+}
+
+.menu-item-arrow {
+  margin-left: 8px;
+  opacity: 0.6;
+}
+
+// 颜色选择器子菜单
+.line-decorator-color-submenu {
+  min-width: 220px;
+  padding: 12px;
+
+  // 向上显示时的样式
+  &.placement-top {
+    top: auto;
+    bottom: 0;
+  }
+}
+
+// 颜色分组
+.color-group {
+  margin-bottom: 4px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.color-group-label {
+  font-size: 12px;
+  color: var(--ws-descriptionForeground);
+  padding: 4px 0;
+  margin-bottom: 6px;
+}
+
+.color-group-divider {
+  height: 1px;
+  background-color: var(--ws-dropdown-border);
+  margin: 10px 0;
+}
+
+// 颜色预设行（横向排列）
+.color-preset-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.color-preset-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  border-radius: 4px;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+  }
+}
+
+// 文本颜色字母 A
+.color-letter {
+  font-size: 16px;
+  font-weight: 600;
+
+  &.color-letter-default {
+    color: var(--ws-editor-foreground);
+    text-decoration: line-through;
+    opacity: 0.6;
+  }
+}
+
+// 背景颜色圆形
+.color-circle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--ws-dropdown-border);
+
+  &.color-circle-default {
+    background-color: transparent;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -1px;
+      right: -1px;
+      height: 1px;
+      background-color: var(--ws-errorForeground);
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+// 自定义颜色选择器
+.color-custom-item {
+  position: relative;
+}
+
+.color-custom-input {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px dashed var(--ws-dropdown-border);
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+
+  &::-webkit-color-swatch-wrapper {
+    padding: 2px;
+  }
+
+  &::-webkit-color-swatch {
+    border: none;
+    border-radius: 2px;
+  }
+}
+
+
+// 有背景色的块内容 - 简单直接的背景色实现
+// 使用 inline style 的 --block-bg-color 变量来标识背景色块
+// 这样即使类名被短暂移除，样式也不会变化
+.has-block-background {
+  background-color: var(--block-bg-color);
+  margin-left: -8px;
+  margin-right: -8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  // 重置所有 margin，避免空白
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+
+  // 第一个节点 - 顶部圆角和 padding
+  &.block-bg-first {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    padding-top: 8px;
+  }
+
+  // 最后一个节点 - 底部圆角和 padding
+  &.block-bg-last {
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    padding-bottom: 8px;
+  }
+
+  // 单独一个节点 - 四角圆角
+  &.block-bg-first.block-bg-last {
+    border-radius: 4px;
+  }
+}
+
+// 背景色块的标题和段落 - 使用最高优先级重置 margin
+.simple-editor-content .tiptap.ProseMirror.simple-editor {
+  h1.has-block-background,
+  h2.has-block-background,
+  h3.has-block-background,
+  h4.has-block-background,
+  h5.has-block-background,
+  h6.has-block-background,
+  p.has-block-background {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+}
+
+// 覆盖 paragraph-node.scss 中的 margin-top: 20px
+.tiptap.ProseMirror {
+  p.has-block-background:not(:first-child):not(td p):not(th p):not(blockquote p) {
+    margin-top: 0 !important;
+  }
+  
+  // 覆盖 heading-node.scss 中的 margin-top
+  h1.has-block-background,
+  h2.has-block-background,
+  h3.has-block-background,
+  h4.has-block-background {
+    margin-top: 0 !important;
+  }
+}
+
+
+// 颜色块样式 - 包裹多个块级元素的背景色容器
+.color-block {
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  
+  // 内部元素的间距调整
+  > *:first-child {
+    margin-top: 0;
+  }
+  
+  > *:last-child {
+    margin-bottom: 0;
+  }
+  
+  // 段落间距
+  p {
+    margin: 0.25rem 0;
+  }
+  
+  // 标题间距
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+    
+    &:first-child {
+      margin-top: 0;
+    }
   }
 }
