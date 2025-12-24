@@ -1,14 +1,15 @@
 /**
  * 笔记编辑器包装组件
- * 根据设置切换 Monaco/TipTap 编辑器
+ * 根据设置切换 TipTap/CodeMirror/Monaco 编辑器
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { TipTapNoteEditor } from './TipTapNoteEditor';
+import { CodeMirrorEditor } from './CodeMirrorEditor';
 import { Icon } from '../Icons';
 import './NoteEditorWrapper.scss';
 
-export type EditorType = 'tiptap' | 'monaco';
+export type EditorType = 'tiptap' | 'codemirror' | 'monaco';
 
 export interface NoteEditorWrapperProps {
   content: string;
@@ -44,7 +45,11 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
   // 监听全局切换编辑器事件
   useEffect(() => {
     const handleToggleEditor = () => {
-      setEditorType((prev) => (prev === 'tiptap' ? 'monaco' : 'tiptap'));
+      setEditorType((prev) => {
+        if (prev === 'tiptap') return 'codemirror';
+        if (prev === 'codemirror') return 'monaco';
+        return 'tiptap';
+      });
     };
 
     window.addEventListener('toggle-editor-type', handleToggleEditor);
@@ -63,7 +68,11 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
 
   // 切换编辑器
   const toggleEditor = useCallback(() => {
-    setEditorType((prev) => (prev === 'tiptap' ? 'monaco' : 'tiptap'));
+    setEditorType((prev) => {
+      if (prev === 'tiptap') return 'codemirror';
+      if (prev === 'codemirror') return 'monaco';
+      return 'tiptap';
+    });
   }, []);
 
 
@@ -76,6 +85,18 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
           onChange={handleContentChange}
           onWikilinkClick={onWikilinkClick}
           onTagClick={onTagClick}
+          placeholder={placeholder}
+          editable={editable}
+          autoFocus={autoFocus}
+        />
+      );
+    }
+
+    if (editorType === 'codemirror') {
+      return (
+        <CodeMirrorEditor
+          content={internalContent}
+          onChange={handleContentChange}
           placeholder={placeholder}
           editable={editable}
           autoFocus={autoFocus}
@@ -107,7 +128,7 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
             <div
               className={`editor-switch-button ${editorType === 'tiptap' ? 'active' : ''}`}
               onClick={() => setEditorType('tiptap')}
-              title="富文本编辑器"
+              title="富文本编辑器 (TipTap)"
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
@@ -117,12 +138,27 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
               }}
             >
               <Icon name="edit" size={14} />
-              <span>富文本</span>
+              <span>TipTap</span>
+            </div>
+            <div
+              className={`editor-switch-button ${editorType === 'codemirror' ? 'active' : ''}`}
+              onClick={() => setEditorType('codemirror')}
+              title="CodeMirror 编辑器"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  setEditorType('codemirror');
+                }
+              }}
+            >
+              <Icon name="code" size={14} />
+              <span>CodeMirror</span>
             </div>
             <div
               className={`editor-switch-button ${editorType === 'monaco' ? 'active' : ''}`}
               onClick={() => setEditorType('monaco')}
-              title="源码编辑器"
+              title="Monaco 源码编辑器"
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
@@ -132,7 +168,7 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
               }}
             >
               <Icon name="terminal" size={14} />
-              <span>源码</span>
+              <span>Monaco</span>
             </div>
           </div>
         </div>

@@ -1,0 +1,1147 @@
+/**
+ * CodeMirror 编辑器样式
+ * 功能：定义 CodeMirror 编辑器的外观
+ * 描述：使用 CSS 变量适配主题
+ */
+
+.codemirror-editor {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+
+  // 主内容区域
+  .cm-main-content {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  // 编辑器容器
+  .cm-editor-container {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  // 大纲面板
+  .cm-outline-panel {
+    position: relative;
+    min-width: 150px;
+    max-width: 400px;
+    border-left: 1px solid var(--ws-panel-border);
+    background-color: var(--ws-sideBar-background);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+
+    // 收缩状态
+    &.collapsed {
+      min-width: 32px;
+      max-width: 32px;
+
+      .cm-outline-tabs {
+        justify-content: center;
+        padding: 0;
+      }
+    }
+  }
+
+  // 大纲面板拖动手柄
+  .cm-outline-resize-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: ew-resize;
+    z-index: 10;
+
+    &:hover {
+      background-color: var(--ws-focusBorder);
+    }
+  }
+
+  .cm-outline-tabs {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--ws-panel-border);
+    padding: 0 8px;
+  }
+
+  .cm-outline-tab {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--ws-descriptionForeground);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+
+    &:hover {
+      color: var(--ws-foreground);
+    }
+
+    &.active {
+      color: var(--ws-foreground);
+      border-bottom-color: var(--ws-focusBorder);
+    }
+  }
+
+  .cm-outline-tab-spacer {
+    flex: 1;
+  }
+
+  .cm-outline-collapse-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: var(--ws-descriptionForeground);
+    cursor: pointer;
+    border-radius: 4px;
+
+    &:hover {
+      color: var(--ws-foreground);
+      background-color: var(--ws-list-hoverBackground);
+    }
+  }
+
+  .cm-outline-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+
+  .cm-outline-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cm-outline-empty {
+    padding: 16px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--ws-descriptionForeground);
+  }
+
+  .cm-outline-item {
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--ws-foreground);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+    }
+
+    .cm-outline-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  // 大纲层级缩进
+  .cm-outline-level-1 {
+    padding-left: 12px;
+    font-weight: 600;
+  }
+
+  .cm-outline-level-2 {
+    padding-left: 24px;
+  }
+
+  .cm-outline-level-3 {
+    padding-left: 36px;
+  }
+
+  .cm-outline-level-4 {
+    padding-left: 48px;
+  }
+
+  .cm-outline-level-5 {
+    padding-left: 60px;
+  }
+
+  .cm-outline-level-6 {
+    padding-left: 72px;
+  }
+
+  // 色块指示器
+  .cm-color-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    border: 1px solid var(--ws-panel-border);
+  }
+
+  .cm-color-block-item {
+    padding-left: 12px;
+  }
+
+  .cm-editor {
+    height: 100%;
+    background-color: var(--ws-editor-background);
+    color: var(--ws-editor-foreground);
+    font-size: 14px;
+
+    &.cm-focused {
+      outline: none;
+    }
+
+    .cm-content {
+    }
+  }
+
+  .cm-scroller {
+    overflow: auto;
+    padding: 10px 0px 16px 60px;
+  }
+
+  // 让 gutter 和内容一起居中 - 使用包装器
+  .cm-gutters {
+    background-color: transparent;
+    border-right: none;
+    color: var(--ws-editor-lineNumber-foreground);
+    pointer-events: none; // 让鼠标事件穿透到 .cm-line
+  }
+
+  // gutter 内的元素需要恢复鼠标事件
+  .cm-gutter {
+    pointer-events: auto;
+  }
+
+  // 内容区域居中
+  .cm-editor > .cm-scroller {
+    > .cm-sizer {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+  }
+
+  .cm-activeLineGutter {
+    background-color: transparent;
+  }
+
+  .cm-activeLine {
+    background-color: transparent;
+  }
+
+  .cm-selectionBackground {
+    background-color: var(--ws-editor-selectionBackground) !important;
+  }
+
+  .cm-line {
+    padding: 0 4px;
+    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', '微软雅黑');
+    position: relative; // 为子折叠图标绝对定位提供上下文
+    line-height: 1.6; // 增加行高，让行之间有更多间距
+
+    // 扩展 hover 区域到左边，让子折叠图标在 hover 区域内
+    &::before {
+      content: '';
+      position: absolute;
+      left: -30px;
+      top: 0;
+      width: 30px;
+      height: 100%;
+    }
+  }
+
+  // 预览模式 - 隐藏 Markdown 语法
+  .cm-hidden-syntax {
+    display: none;
+  }
+
+  // Markdown 语法高亮（源码模式：纯文本显示，只改变颜色）
+  // 标题样式 - 根据级别设置不同字体大小
+  .cm-header {
+    color: var(--ws-textLink-foreground);
+    font-weight: 700;
+    text-decoration: none !important;
+    font-size: inherit; // 继承行的字体大小
+  }
+
+  // 标题行装饰器 - 通过行级别设置字体大小
+  .cm-heading-line {
+    text-decoration: none !important;
+    padding-bottom: 6px;
+
+    // 确保行内所有元素继承字体大小
+    * {
+      font-size: inherit;
+    }
+  }
+
+  .cm-heading-1 {
+    font-size: 1.8em;
+    line-height: 1.4;
+  }
+
+  .cm-heading-2 {
+    font-size: 1.5em;
+    line-height: 1.4;
+  }
+
+  .cm-heading-3 {
+    font-size: 1.3em;
+    line-height: 1.4;
+  }
+
+  .cm-heading-4 {
+    font-size: 1.15em;
+    line-height: 1.4;
+  }
+
+  .cm-heading-5 {
+    font-size: 1.05em;
+    line-height: 1.4;
+  }
+
+  .cm-heading-6 {
+    font-size: 1em;
+    line-height: 1.4;
+  }
+
+  .cm-strong {
+    font-weight: 700;
+    text-decoration: none !important;
+  }
+
+  .cm-em {
+    font-style: italic;
+    text-decoration: none !important;
+  }
+
+  .cm-link {
+    color: var(--ws-textLink-foreground);
+    text-decoration: none !important;
+  }
+
+  .cm-url {
+    color: var(--ws-textLink-foreground);
+    text-decoration: none !important;
+  }
+
+  .cm-quote {
+    color: var(--ws-descriptionForeground);
+    font-style: italic;
+    text-decoration: none !important;
+
+    // 当有隐藏类时，变透明 - 使用更高优先级
+    &.cm-blockquote-marker-hidden {
+      color: transparent !important;
+      font-style: normal !important;
+    }
+  }
+
+  .cm-comment {
+    color: var(--ws-descriptionForeground);
+    text-decoration: none !important;
+  }
+
+  // 列表标记样式（1. 2. - * 等）
+  .cm-list {
+    color: var(--ws-textLink-foreground);
+    text-decoration: none !important;
+  }
+
+  // 无序列表圆点标记样式
+  .cm-bullet-marker {
+    color: var(--ws-textLink-foreground);
+    font-size: 1.2em;
+    line-height: 1;
+  }
+
+  // 引用块竖线容器样式
+  .cm-blockquote-bar-container {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    position: relative;
+    height: 100%;
+    width: 0; // 不占用宽度，让竖线显示在内容左侧
+  }
+
+  // 引用块行样式 - 确保始终显示斜体和灰色
+  .cm-blockquote-line {
+    font-style: italic !important;
+    color: var(--ws-descriptionForeground) !important;
+
+    // 确保所有子元素也继承样式
+    * {
+      font-style: italic !important;
+      color: var(--ws-descriptionForeground) !important;
+    }
+
+    // 但 > 符号保持原来的颜色
+    .cm-blockquote-marker-widget {
+      color: var(--ws-textLink-foreground) !important;
+      font-style: normal !important;
+    }
+  }
+
+  .cm-blockquote-bar {
+    position: absolute;
+    left: -8px; // 移到 > 符号左侧
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 24px;
+    background-color: var(--ws-textLink-foreground);
+    border-radius: 0;
+    pointer-events: none;
+  }
+
+  // 引用块 > 符号 Widget 样式
+  .cm-blockquote-marker-widget {
+    color: var(--ws-textLink-foreground);
+    font-style: normal;
+  }
+
+  // 代码块标记
+  .cm-monospace {
+    color: var(--ws-textPreformat-foreground, var(--ws-foreground));
+    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
+  }
+
+  // 分隔线
+  .cm-hr {
+    color: var(--ws-descriptionForeground);
+  }
+
+  // 任务列表复选框
+  .cm-taskMarker {
+    color: var(--ws-textLink-foreground);
+  }
+
+  // 源码模式下所有行内元素都不显示下划线
+  &.source-mode {
+    .cm-line * {
+      text-decoration: none !important;
+    }
+  }
+
+  // 预览模式下链接显示下划线，标题不显示下划线
+  &.preview-mode {
+    .cm-link {
+      text-decoration: underline !important;
+      cursor: pointer;
+    }
+
+    // 确保标题在预览模式下不显示下划线
+    .cm-heading-line,
+    .cm-header,
+    .cm-line.cm-heading-line * {
+      text-decoration: none !important;
+    }
+  }
+
+  // 内联图片样式
+  .cm-image-widget {
+    display: block;
+    margin: 0;
+    line-height: 0; // 消除行高导致的空白
+
+    // 对齐方式
+    &[data-align='left'] {
+      text-align: left;
+    }
+
+    &[data-align='center'] {
+      text-align: center;
+    }
+
+    &[data-align='right'] {
+      text-align: right;
+    }
+
+    .cm-image-container {
+      position: relative;
+      display: inline-block;
+
+      // 只在选中时显示调整手柄
+      &.resizing .cm-image-resize-handle {
+        opacity: 1;
+      }
+
+      &.selected {
+        outline: 2px solid var(--ws-focusBorder);
+        outline-offset: 2px;
+
+        .cm-image-toolbar {
+          opacity: 1;
+          pointer-events: auto; // 选中时启用点击
+        }
+
+        .cm-image-resize-handle {
+          opacity: 1;
+        }
+      }
+    }
+
+    .cm-inline-image {
+      max-width: 100%;
+      border-radius: 4px;
+      object-fit: contain;
+      display: block;
+
+      // 当图片被隐藏时（链接/卡片模式），不占用空间
+      &[style*='display: none'] {
+        position: absolute;
+        visibility: hidden;
+      }
+    }
+
+    // 图片工具栏（在图片上方）- 只在选中时显示
+    .cm-image-toolbar {
+      position: absolute;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 2px;
+      opacity: 0;
+      pointer-events: none; // 未选中时禁用点击
+      z-index: 100; // 提高 z-index 确保覆盖上方内容
+      background-color: var(--ws-editor-background);
+      border: 1px solid var(--ws-panel-border);
+      border-radius: 6px;
+      padding: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .cm-image-toolbar-btn {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: transparent;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--ws-foreground);
+
+      &:hover {
+        background-color: var(--ws-list-hoverBackground);
+      }
+
+      svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      &.cm-image-toolbar-btn-danger:hover {
+        background-color: var(--ws-inputValidation-errorBackground);
+        color: var(--ws-inputValidation-errorForeground);
+      }
+    }
+
+    // 工具栏分隔线
+    .cm-image-toolbar-divider {
+      width: 1px;
+      height: 20px;
+      background-color: var(--ws-panel-border);
+      margin: 4px 2px;
+    }
+
+    // 下拉菜单容器
+    .cm-image-toolbar-dropdown {
+      position: relative;
+    }
+
+    // 下拉菜单
+    .cm-image-toolbar-menu {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-top: 4px;
+      background-color: var(--ws-dropdown-background);
+      border: 1px solid var(--ws-panel-border);
+      border-radius: 6px;
+      padding: 4px;
+      min-width: 100px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      z-index: 100;
+    }
+
+    .cm-image-toolbar-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: var(--ws-foreground);
+      cursor: pointer;
+      border-radius: 4px;
+      white-space: nowrap;
+
+      &:hover {
+        background-color: var(--ws-list-hoverBackground);
+      }
+
+      &.active {
+        background-color: var(--ws-list-activeSelectionBackground);
+        color: var(--ws-list-activeSelectionForeground);
+      }
+
+      .cm-menu-icon {
+        width: 14px;
+        height: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        svg {
+          width: 14px;
+          height: 14px;
+        }
+      }
+    }
+
+    // 描述输入容器 - 使用 visibility 而不是 display 来隐藏
+    .cm-image-caption-container {
+      position: absolute;
+      bottom: -36px;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      visibility: hidden;
+      pointer-events: none;
+
+      &[style*='display: block'] {
+        visibility: visible;
+        pointer-events: auto;
+      }
+    }
+
+    .cm-image-caption-input {
+      width: 100%;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: var(--ws-foreground);
+      background-color: var(--ws-input-background);
+      border: 1px solid var(--ws-panel-border);
+      border-radius: 4px;
+      outline: none;
+
+      &:focus {
+        border-color: var(--ws-focusBorder);
+      }
+
+      &::placeholder {
+        color: var(--ws-descriptionForeground);
+      }
+    }
+
+    // 工具栏按钮激活状态
+    .cm-image-toolbar-btn.active {
+      background-color: var(--ws-list-activeSelectionBackground);
+      color: var(--ws-list-activeSelectionForeground);
+    }
+
+    .cm-image-resize-handle {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 16px;
+      height: 16px;
+      background-color: var(--ws-button-background);
+      border: 1px solid var(--ws-panel-border);
+      border-radius: 2px;
+      cursor: se-resize;
+      opacity: 0;
+
+      &::before {
+        content: '';
+        position: absolute;
+        right: 3px;
+        bottom: 3px;
+        width: 8px;
+        height: 8px;
+        border-right: 2px solid var(--ws-foreground);
+        border-bottom: 2px solid var(--ws-foreground);
+      }
+    }
+  }
+}
+
+// 全屏查看遮罩
+.cm-image-fullscreen-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+
+  .cm-image-fullscreen-img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+  }
+
+  .cm-image-fullscreen-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--ws-button-background);
+    border: 1px solid var(--ws-panel-border);
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--ws-foreground);
+
+    &:hover {
+      background-color: var(--ws-button-hoverBackground);
+    }
+
+    svg {
+      width: 24px;
+      height: 24px;
+    }
+  }
+}
+
+// 链接样式显示
+.cm-image-link-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: var(--ws-input-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+    color: var(--ws-descriptionForeground);
+    flex-shrink: 0;
+  }
+
+  .cm-image-link-text {
+    font-size: 13px;
+    color: var(--ws-textLink-foreground);
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+// 卡片样式显示
+.cm-image-card-display {
+  display: inline-flex;
+  align-items: stretch;
+  background-color: var(--ws-input-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  max-width: 320px;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+  }
+
+  .cm-image-card-preview {
+    width: 80px;
+    height: 60px;
+    flex-shrink: 0;
+    overflow: hidden;
+    background-color: var(--ws-editor-background);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+    }
+  }
+
+  .cm-image-card-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8px 12px;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .cm-image-card-name {
+    font-size: 13px;
+    color: var(--ws-foreground);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cm-image-card-type {
+    font-size: 11px;
+    color: var(--ws-descriptionForeground);
+  }
+}
+
+// 当显示样式为链接或卡片时，调整工具栏位置
+.cm-image-widget[data-style='link'],
+.cm-image-widget[data-style='card'] {
+  .cm-image-container {
+    .cm-image-toolbar {
+      top: -44px;
+    }
+  }
+}
+
+// 背景色块样式 - 行背景高亮
+.cm-line-background {
+  display: block; // 确保行背景正常显示
+}
+
+// 裁剪对话框遮罩
+.cm-image-crop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+// 裁剪对话框
+.cm-image-crop-dialog {
+  background-color: var(--ws-editor-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.cm-image-crop-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ws-foreground);
+}
+
+.cm-image-crop-container {
+  position: relative;
+  display: inline-block;
+  max-width: 600px;
+  max-height: 400px;
+  overflow: hidden;
+}
+
+.cm-image-crop-img {
+  display: block;
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+}
+
+.cm-image-crop-box {
+  position: absolute;
+  top: 20%;
+  left: 20%;
+  width: 60%;
+  height: 60%;
+  border: 2px dashed var(--ws-focusBorder);
+  background-color: rgba(255, 255, 255, 0.1);
+  cursor: move;
+  box-sizing: border-box;
+}
+
+.cm-image-crop-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: var(--ws-focusBorder);
+  border-radius: 2px;
+
+  &.nw {
+    top: -5px;
+    left: -5px;
+    cursor: nw-resize;
+  }
+
+  &.ne {
+    top: -5px;
+    right: -5px;
+    cursor: ne-resize;
+  }
+
+  &.sw {
+    bottom: -5px;
+    left: -5px;
+    cursor: sw-resize;
+  }
+
+  &.se {
+    bottom: -5px;
+    right: -5px;
+    cursor: se-resize;
+  }
+}
+
+.cm-image-crop-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cm-image-crop-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+  background-color: var(--ws-button-secondaryBackground);
+  color: var(--ws-button-secondaryForeground);
+  border: 1px solid var(--ws-panel-border);
+
+  &:hover {
+    background-color: var(--ws-button-secondaryHoverBackground);
+  }
+
+  &.cm-image-crop-btn-primary {
+    background-color: var(--ws-button-background);
+    color: var(--ws-button-foreground);
+    border-color: var(--ws-button-background);
+
+    &:hover {
+      background-color: var(--ws-button-hoverBackground);
+    }
+  }
+}
+
+// 颜色选择器
+.cm-color-picker {
+  position: fixed;
+  z-index: 10000;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 160px;
+
+  .cm-color-picker-title {
+    font-size: 12px;
+    color: var(--ws-descriptionForeground);
+    margin-bottom: 8px;
+    padding: 0 4px;
+  }
+
+  .cm-color-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  .cm-color-picker-item {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--ws-panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      border-color: var(--ws-focusBorder);
+      transform: scale(1.1);
+    }
+
+    &.cm-color-picker-item-none {
+      background-color: var(--ws-editor-background);
+
+      svg {
+        width: 16px;
+        height: 16px;
+        color: var(--ws-descriptionForeground);
+      }
+    }
+  }
+}
+
+// 折叠 Gutter 样式（Obsidian 风格）
+.cm-foldGutter {
+  width: auto;
+  min-width: 20px;
+  padding: 0 2px;
+  cursor: pointer;
+
+  .cm-gutterElement {
+    display: flex;
+    align-items: flex-start;
+    padding-top: 2px;
+  }
+}
+
+// 折叠图标样式（在 gutter 中）
+.cm-fold-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--ws-descriptionForeground);
+  cursor: pointer;
+  flex-shrink: 0;
+
+  // 默认隐藏展开状态的图标
+  &.cm-fold-marker-open {
+    opacity: 0;
+  }
+
+  &:hover {
+    opacity: 1;
+    color: var(--ws-foreground);
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.5;
+  }
+
+  // 折叠状态的图标始终显示
+  &.cm-fold-marker-folded {
+    color: var(--ws-textLink-foreground);
+    opacity: 1;
+  }
+}
+
+// 当鼠标悬停在 gutter 元素上时显示折叠图标
+.cm-gutterElement:hover .cm-fold-marker {
+  opacity: 0.6;
+  
+  &:hover {
+    opacity: 1;
+  }
+  
+  &.cm-fold-marker-folded {
+    opacity: 1;
+  }
+}
+
+// 折叠占位符样式
+.cm-foldPlaceholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  margin: 0 4px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ws-descriptionForeground) !important;
+  background-color: transparent !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 4px;
+  cursor: pointer;
+  vertical-align: middle;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground) !important;
+    color: var(--ws-foreground) !important;
+  }
+}
+
+// 子折叠图标样式（绝对定位，不占用文本空间）
+.cm-list-fold-marker {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--ws-descriptionForeground);
+  cursor: pointer;
+  z-index: 100;
+
+  // 默认隐藏展开状态的图标
+  &.cm-list-fold-marker-open {
+    opacity: 0;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.5;
+  }
+
+  // 折叠状态的图标始终显示
+  &.cm-list-fold-marker-folded {
+    color: var(--ws-textLink-foreground);
+    opacity: 1;
+  }
+}
+
+// 当鼠标悬停在行上时显示子折叠图标
+.cm-line:hover .cm-list-fold-marker {
+  opacity: 0.6;
+
+  &:hover {
+    opacity: 1;
+    color: var(--ws-foreground);
+  }
+
+  &.cm-list-fold-marker-folded {
+    opacity: 1;
+  }
+}
+
+// 缩进线容器
+.cm-indent-guides {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+// 单条缩进线
+.cm-indent-guide {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: var(--ws-editorIndentGuide-background, var(--ws-panel-border));
+  opacity: 0.5;
+}

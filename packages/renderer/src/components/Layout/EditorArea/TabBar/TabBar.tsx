@@ -4,7 +4,7 @@
  * 描述：提供文件标签切换、关闭、悬停效果等功能
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { EditorTab } from '../EditorArea';
 import { Icon } from '../../../Icons/Icon';
 import { MonacoContextMenu } from '../MonacoContextMenu/MonacoContextMenu';
@@ -30,8 +30,16 @@ export const TabBar: React.FC<TabBarProps> = ({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [moreMenuPosition, setMoreMenuPosition] = useState({ x: 0, y: 0 });
   const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const [codeMirrorMode, setCodeMirrorMode] = useState<'source' | 'preview'>('source');
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
+
+  // 切换 CodeMirror 模式
+  const toggleCodeMirrorMode = useCallback(() => {
+    const newMode = codeMirrorMode === 'source' ? 'preview' : 'source';
+    setCodeMirrorMode(newMode);
+    window.dispatchEvent(new CustomEvent('set-codemirror-mode', { detail: newMode }));
+  }, [codeMirrorMode]);
   
   // 监听编辑器区域焦点变化
   useEffect(() => {
@@ -163,11 +171,8 @@ export const TabBar: React.FC<TabBarProps> = ({
         },
         {
           id: 'source-mode',
-          label: '源码模式',
-          action: () => {
-            console.log('源码模式');
-            // TODO: 实现源码模式切换
-          },
+          label: codeMirrorMode === 'source' ? '预览模式' : '源码模式',
+          action: toggleCodeMirrorMode,
           disabled: !activeTab
         }
       ]
@@ -347,12 +352,22 @@ export const TabBar: React.FC<TabBarProps> = ({
         
         <button 
           className="tab-bar-action-btn"
-          title="切换编辑器"
+          title="TipTap 富文本编辑器"
           onClick={() => {
-            window.dispatchEvent(new CustomEvent('toggle-editor-type'));
+            window.dispatchEvent(new CustomEvent('set-editor-type', { detail: 'tiptap' }));
           }}
         >
-          <Icon name="editor-switch" size={16} />
+          <Icon name="edit" size={16} />
+        </button>
+        
+        <button 
+          className="tab-bar-action-btn"
+          title="CodeMirror 编辑器"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('set-editor-type', { detail: 'codemirror' }));
+          }}
+        >
+          <Icon name="code" size={16} />
         </button>
         
         <button 

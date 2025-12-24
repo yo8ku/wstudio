@@ -23,6 +23,7 @@ import { ExtensionManagerView } from '../ExtensionManagerView';
 import { ResizableDivider } from '../ResizableDivider';
 import { LanceDBView } from '../LanceDBView';
 import { SimpleNoteEditor } from '../../../NoteEditor/SimpleNoteEditor';
+import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
 import type { KnowledgeItem } from '../../Sidebar/KnowledgeBase/types';
@@ -71,8 +72,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   // 跟踪哪些配置标签页有未保存的更改
   const [unsavedConfigTabs, setUnsavedConfigTabs] = useState<Set<string>>(new Set());
 
-  // 编辑器类型状态：'monaco' | 'tiptap'
-  const [editorType, setEditorType] = useState<'monaco' | 'tiptap'>('monaco');
+  // 编辑器类型状态：'monaco' | 'tiptap' | 'codemirror'
+  const [editorType, setEditorType] = useState<'monaco' | 'tiptap' | 'codemirror'>('monaco');
 
 
   // 处理创建新片段
@@ -549,9 +550,20 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     // 监听切换编辑器类型事件
     const handleToggleEditorType = () => {
-      setEditorType(prev => prev === 'monaco' ? 'tiptap' : 'monaco');
+      setEditorType(prev => {
+        if (prev === 'monaco') return 'tiptap';
+        if (prev === 'tiptap') return 'codemirror';
+        return 'monaco';
+      });
     };
     window.addEventListener('toggle-editor-type', handleToggleEditorType);
+
+    // 监听设置编辑器类型事件
+    const handleSetEditorType = (event: Event) => {
+      const customEvent = event as CustomEvent<'monaco' | 'tiptap' | 'codemirror'>;
+      setEditorType(customEvent.detail);
+    };
+    window.addEventListener('set-editor-type', handleSetEditorType as EventListener);
     
     return () => {
       window.removeEventListener('open-file', handleOpenFile as EventListener);
@@ -562,6 +574,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
       window.removeEventListener('close-all-editors', handleCloseAllEditors);
       window.removeEventListener('toggle-editor-type', handleToggleEditorType);
+      window.removeEventListener('set-editor-type', handleSetEditorType as EventListener);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1671,6 +1684,44 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                         // 如果是当前活动标签页，触发大纲更新事件（转换为 Markdown）
                         if (tab.id === activeTabId) {
                           const markdownContent = htmlToMarkdown(htmlContent);
+                          window.dispatchEvent(new CustomEvent('editor:content-changed', {
+                            detail: {
+                              content: markdownContent,
+                              language: tab.language || 'plaintext',
+                              path: tab.path
+                            }
+                          }));
+                        }
+                      }}
+                      editable={true}
+                    />
+                  )}
+
+                  {tab.type === 'file' && editorType === 'codemirror' && (
+                    <CodeMirrorEditor
+                      content={(() => {
+                        const rawContent = tab.content || '';
+                        // CodeMirror 使用 Markdown 源码
+                        const isHtml = isHtmlContent(rawContent);
+                        return isHtml ? htmlToMarkdown(rawContent) : rawContent;
+                      })()}
+                      onChange={(markdownContent) => {
+                        setTabs(prev => prev.map(t => 
+                          t.id === tab.id 
+                            ? { ...t, content: markdownContent, isDirty: true, isPreview: false }
+                            : t
+                        ));
+                        
+                        // 如果右侧有预览该文件的标签页，实时更新预览内容
+                        const previewTab = rightTabs.find(t => t.sourceTabId === tab.id);
+                        if (previewTab) {
+                          setRightTabs(prev => prev.map(t => 
+                            t.id === previewTab.id ? { ...t, content: markdownContent } : t
+                          ));
+                        }
+
+                        // 如果是当前活动标签页，触发大纲更新事件
+                        if (tab.id === activeTabId) {
                           window.dispatchEvent(new CustomEvent('editor:content-changed', {
                             detail: {
                               content: markdownContent,

@@ -5,6 +5,9 @@
 export { TipTapNoteEditor } from './TipTapNoteEditor';
 export type { TipTapNoteEditorProps } from './TipTapNoteEditor';
 
+export { CodeMirrorEditor } from './CodeMirrorEditor';
+export type { CodeMirrorEditorProps } from './CodeMirrorEditor';
+
 export { TipTapToolbar } from './TipTapToolbar';
 
 export { NoteEditorWrapper } from './NoteEditorWrapper';
