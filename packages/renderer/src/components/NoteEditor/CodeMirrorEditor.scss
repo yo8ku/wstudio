@@ -1110,19 +1110,11 @@
     color: var(--ws-textLink-foreground);
     opacity: 1;
   }
-}
-
-// 当鼠标悬停在行上时显示子折叠图标
-.cm-line:hover .cm-list-fold-marker {
-  opacity: 0.6;
-
+  
+  // 悬停在折叠图标上时的样式
   &:hover {
-    opacity: 1;
+    opacity: 1 !important;
     color: var(--ws-foreground);
-  }
-
-  &.cm-list-fold-marker-folded {
-    opacity: 1;
   }
 }
 
@@ -1136,12 +1128,46 @@
   z-index: 1;
 }
 
-// 单条缩进线
+// 单条缩进线 - 颜色和 top 由 JavaScript 动态设置
 .cm-indent-guide {
   position: absolute;
-  top: 0;
   width: 1px;
   height: 100%;
-  background-color: var(--ws-editorIndentGuide-background, var(--ws-panel-border));
-  opacity: 0.5;
+}
+
+// 单条缩进线 - 默认隐藏
+.cm-indent-guide-single {
+  opacity: 0;
+}
+
+// 父行高亮状态 - 显示折叠图标
+.cm-line.cm-fold-parent-highlighted {
+  .cm-list-fold-marker.cm-list-fold-marker-open {
+    opacity: 0.6 !important;
+  }
+  
+  .cm-list-fold-marker.cm-list-fold-marker-folded {
+    opacity: 1 !important;
+  }
+}
+
+// 子行高亮状态 - 显示缩进线（位置由 CSS 变量 --indent-line-pos 控制）
+.cm-line.cm-fold-child-highlighted {
+  position: relative;
+}
+
+// 折叠组缩进线
+.cm-fold-indent-line {
+  position: absolute;
+  width: 1px;
+  height: 100%;
+  top: 0;
+  background-color: var(--ws-mirrorIndentGuide-background, rgba(255, 255, 255, 0.3));
+  z-index: 1;
+  pointer-events: none;
+}
+
+// 序号高亮样式（如 4.2、4.2.1、4.2.1.1）
+.cm-numbering {
+  color: var(--ws-textLink-foreground);
 }

@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { EditorState, StateField, RangeSet, StateEffect, Prec } from '@codemirror/state';
+import { EditorState, StateField, RangeSet, StateEffect, Prec, RangeSetBuilder } from '@codemirror/state';
 import {
   EditorView,
   keymap,
@@ -16,6 +16,8 @@ import {
   WidgetType,
   gutter,
   GutterMarker,
+  ViewPlugin,
+  ViewUpdate,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
@@ -494,16 +496,21 @@ class ListFoldWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const span = document.createElement('span');
     span.className = `cm-list-fold-marker ${this.isFolded ? 'cm-list-fold-marker-folded' : 'cm-list-fold-marker-open'}`;
-    
+
+    // 获取实际的字符宽度
+    const charWidth = view.defaultCharacterWidth;
+
     // 所有子折叠图标都使用绝对定位
     // 根据缩进计算 left 位置
     // indent=0 时放在 gutter 位置（left: -24px）
-    // indent>0 时放在缩进位置之前
+    // indent>0 时放在缩进空格的左边
     if (this.indent === 0) {
       span.style.left = '-24px';
     } else {
-      // 缩进位置 - 图标放在缩进空格的左边
-      span.style.left = `${(this.indent - 1) * 8 - 8}px`;
+      // 折叠图标放在缩进空格之前，图标宽度 20px
+      // 缩进位置 = indent * charWidth，图标左边 = 缩进位置 - 图标宽度
+      const indentPos = this.indent * charWidth;
+      span.style.left = `${indentPos - 20}px`;
     }
 
     if (this.isFolded) {
@@ -661,12 +668,74 @@ const listFoldDecorations = StateField.define<DecorationSet>({
 });
 
 /**
+ * 序号高亮装饰器 - 匹配各种格式的序号
+ * 为这些序号添加主题颜色
+ */
+const numberingMark = Decoration.mark({ class: 'cm-numbering' });
+
+/**
+ * 构建序号高亮装饰器
+ * 匹配行首（可能有缩进）的序号格式：
+ * - 单个数字加点（如 1.、2.、10.）
+ * - 数字.数字 或更多层级（如 4.2、4.2.1、4.2.1.1）
+ * - 单个大写字母加点（如 A.、B.、C.）
+ * - 单个小写字母加点（如 a.、b.、c.）
+ * - 字母+数字加点（如 A1.、A100.、B2.）
+ * - 中文数字序号（如 一、二、三、）
+ */
+function buildNumberingDecorations(state: EditorState): DecorationSet {
+  const decorations: { from: number; to: number }[] = [];
+  const doc = state.doc;
+
+  // 匹配序号格式：
+  // 1. 单个数字加点（如 1.、2.、10.、100.）
+  // 2. 数字.数字 或更多层级（如 4.2、4.2.1、4.2.1.1）
+  // 3. 单个字母加点（如 A.、B.、a.、b.）
+  // 4. 字母+数字加点（如 A1.、A100.、B2.）
+  // 5. 中文数字序号（如 一、二、三、十、百）
+  // 序号必须在行首（可能有缩进空格），后面跟空格或其他内容
+  const numberingRegex = /^(\s*)(\d+\.|[A-Za-z]\.|[A-Za-z]\d{1,3}\.|[一二三四五六七八九十百千万零]+、|\d+(?:\.\d+)+)\s/;
+
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    const match = line.text.match(numberingRegex);
+    if (match) {
+      const indent = match[1].length;
+      const numbering = match[2];
+      const from = line.from + indent;
+      const to = from + numbering.length;
+      decorations.push({ from, to });
+    }
+  }
+
+  return RangeSet.of(
+    decorations.map(d => numberingMark.range(d.from, d.to)),
+    true
+  );
+}
+
+/**
+ * 序号高亮 StateField
+ */
+const numberingDecorations = StateField.define<DecorationSet>({
+  create(state) {
+    return buildNumberingDecorations(state);
+  },
+  update(decorations, tr) {
+    if (tr.docChanged) {
+      return buildNumberingDecorations(tr.state);
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+/**
  * 缩进线 Widget - 显示缩进层级的垂直线
- * 每4个空格（1个tab）为一级缩进
- * 缩进线位置：从前面2个字符的中间垂直向下显示
+ * 只显示一条缩进线，与父级折叠图标对齐
  */
 class IndentGuideWidget extends WidgetType {
-  constructor(readonly indentLevel: number) {
+  constructor(readonly indentLevel: number, readonly hasFoldIcon: boolean = false) {
     super();
   }
 
@@ -674,22 +743,87 @@ class IndentGuideWidget extends WidgetType {
     const container = document.createElement('span');
     container.className = 'cm-indent-guides';
     
-    // 为每个缩进级别创建一条垂直线
-    // 每个缩进级别 32px（4个空格 * 8px）
-    // 缩进线位置：从前面2个字符的中间，即 8px（2个字符 * 8px / 2 = 8px）
-    for (let i = 0; i < this.indentLevel; i++) {
+    // 获取主题缩进线颜色
+    const themeColor = getComputedStyle(document.documentElement)
+      .getPropertyValue('--ws-mirrorIndentGuide-background')
+      .trim();
+    
+    // 检测是否是暗色主题
+    const isDarkTheme = document.body.classList.contains('ws-theme-dark') ||
+      document.documentElement.getAttribute('data-theme') === 'dark';
+    
+    // 确定最终颜色
+    let finalColor: string;
+    if (themeColor) {
+      // 检测颜色是否已包含透明度
+      const hasAlpha = themeColor.includes('rgba') || 
+        themeColor.includes('hsla') ||
+        (themeColor.startsWith('#') && themeColor.length === 9);
+      
+      if (hasAlpha) {
+        // 已有透明度，直接使用主题颜色
+        finalColor = themeColor;
+      } else {
+        // 没有透明度，尝试解析 RGB 值并添加 0.6 透明度
+        const rgbMatch = themeColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+        const hexMatch = themeColor.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
+        const shortHexMatch = themeColor.match(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/);
+        
+        if (rgbMatch) {
+          finalColor = `rgba(${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}, 0.6)`;
+        } else if (hexMatch) {
+          const r = parseInt(hexMatch[1], 16);
+          const g = parseInt(hexMatch[2], 16);
+          const b = parseInt(hexMatch[3], 16);
+          finalColor = `rgba(${r}, ${g}, ${b}, 0.6)`;
+        } else if (shortHexMatch) {
+          const r = parseInt(shortHexMatch[1] + shortHexMatch[1], 16);
+          const g = parseInt(shortHexMatch[2] + shortHexMatch[2], 16);
+          const b = parseInt(shortHexMatch[3] + shortHexMatch[3], 16);
+          finalColor = `rgba(${r}, ${g}, ${b}, 0.6)`;
+        } else {
+          // 无法解析，使用默认颜色
+          finalColor = isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)';
+        }
+      }
+    } else {
+      // 没有主题颜色，使用默认颜色
+      finalColor = isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)';
+    }
+    
+    // 只创建一条缩进线，位置与父级折叠图标对齐
+    // 折叠图标位置计算（来自 ListFoldWidget）：
+    // - indent=0 时：left = -24px
+    // - indent>0 时：left = (indent - 1) * 8 - 8
+    // 折叠图标宽度 20px，中心在 left + 10
+    // 
+    // 当前行的 indentLevel 表示缩进级别（每级 2 空格）
+    // 父级的缩进级别 = indentLevel - 1
+    // 父级的空格数 = (indentLevel - 1) * 2
+    if (this.indentLevel >= 1) {
       const guide = document.createElement('span');
-      guide.className = 'cm-indent-guide';
-      // 第一条线在 8px 位置，后续每条线间隔 32px
-      guide.style.left = `${i * 32 + 8}px`;
+      guide.className = 'cm-indent-guide cm-indent-guide-single';
+      
+      // 父级的空格数
+      const parentSpaces = (this.indentLevel - 1) * 2;
+      // 父级折叠图标的 left 位置
+      const foldIconLeft = parentSpaces > 0 ? (parentSpaces - 1) * 8 - 8 : -24;
+      // 缩进线位置 = 折叠图标左边 + 5px（折叠图标中心偏左一点）
+      const leftPos = foldIconLeft + 5;
+      
+      guide.style.left = `${leftPos}px`;
+      guide.style.backgroundColor = finalColor;
+      guide.style.top = '0';
+      
       container.appendChild(guide);
     }
     
     return container;
   }
 
-  eq(other: IndentGuideWidget): boolean {
-    return other.indentLevel === this.indentLevel;
+  eq(_other: IndentGuideWidget): boolean {
+    // 强制重新渲染以应用新的位置计算
+    return false;
   }
 
   ignoreEvent(): boolean {
@@ -706,7 +840,7 @@ function buildIndentGuideDecorations(state: EditorState): DecorationSet {
   
   try {
     const doc = state.doc;
-    const TAB_SIZE = 4; // 1个tab = 4个空格
+    const TAB_SIZE = 2; // 1个tab = 2个空格（与编辑器 indentUnit 一致）
 
     for (let i = 1; i <= doc.lines; i++) {
       const line = doc.line(i);
@@ -715,16 +849,32 @@ function buildIndentGuideDecorations(state: EditorState): DecorationSet {
       // 跳过标题行
       if (getHeadingLevel(lineText) > 0) continue;
       
-      // 计算缩进级别（每4个空格或1个tab为一级）
-      const indent = getIndentLevel(lineText);
+      // 计算缩进级别（每2个空格或1个tab为一级）
+      let indent = getIndentLevel(lineText);
+      
+      // 如果是空行，根据上下文确定缩进级别
+      if (lineText.trim().length === 0) {
+        // 向上查找最近的非空行来确定上下文缩进
+        for (let j = i - 1; j >= 1; j--) {
+          const prevLine = doc.line(j);
+          if (prevLine.text.trim().length > 0) {
+            indent = getIndentLevel(prevLine.text);
+            break;
+          }
+        }
+      }
+      
       const indentLevel = Math.floor(indent / TAB_SIZE);
       
-      // 只有缩进达到4个空格（1个tab）以上才显示缩进线
-      if (indentLevel > 0) {
+      // 检测该行是否有子折叠图标（非标题行且有子缩进内容）
+      const hasFoldIcon = computeListFoldRange(state, line.from) !== null;
+      
+      // 只要有缩进就创建缩进线（indentLevel >= 1）
+      if (indentLevel >= 1) {
         decorations.push({
           from: line.from,
           decoration: Decoration.widget({
-            widget: new IndentGuideWidget(indentLevel),
+            widget: new IndentGuideWidget(indentLevel, hasFoldIcon),
             side: -1,
           }),
         });
@@ -760,6 +910,255 @@ const indentGuideDecorations = StateField.define<DecorationSet>({
 });
 
 /**
+ * 查找包含当前行的折叠组（父行 + 所有子行 + 空行）
+ * 父行是缩进比当前行少的最近非空行
+ * 返回 { parentLine: 父行号, childLines: 子行号数组（包含空行） } 或 null
+ */
+function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: number; childLines: number[] } | null {
+  const currentLine = state.doc.line(lineNumber);
+  let currentIndent = getIndentLevel(currentLine.text);
+  const totalLines = state.doc.lines;
+  
+  // 标题行不参与折叠组
+  if (getHeadingLevel(currentLine.text) > 0) return null;
+  
+  // 如果是空行，尝试根据上下文确定缩进级别
+  if (currentLine.text.trim().length === 0) {
+    // 向上查找最近的非空行来确定上下文
+    let contextIndent = -1;
+    let contextIsHeading = false;
+    for (let i = lineNumber - 1; i >= 1; i--) {
+      const line = state.doc.line(i);
+      if (line.text.trim().length > 0) {
+        // 如果上下文是标题行，不显示缩进线
+        if (getHeadingLevel(line.text) > 0) {
+          contextIsHeading = true;
+        }
+        contextIndent = getIndentLevel(line.text);
+        break;
+      }
+    }
+    
+    if (contextIndent < 0 || contextIsHeading) return null;
+    
+    // 使用上下文缩进作为当前缩进
+    currentIndent = contextIndent;
+  }
+  
+  // 情况1：当前行是父行（有子行）
+  // 向下查找是否有缩进比当前行多的行
+  const childLines: number[] = [];
+  let hasRealChild = false;
+  
+  for (let i = lineNumber + 1; i <= totalLines; i++) {
+    const line = state.doc.line(i);
+    const lineIndent = getIndentLevel(line.text);
+    
+    // 空行也收集（如果在子行区域内）
+    if (line.text.trim().length === 0) {
+      childLines.push(i);
+      continue;
+    }
+    
+    // 如果缩进小于等于当前行，说明已经离开了子行区域
+    if (lineIndent <= currentIndent) {
+      break;
+    }
+    
+    // 收集所有缩进比当前行多的行作为子行
+    childLines.push(i);
+    hasRealChild = true;
+  }
+  
+  if (hasRealChild) {
+    return { parentLine: lineNumber, childLines };
+  }
+  
+  // 情况2：当前行是子行，需要找到父行
+  // 父行是缩进比当前行少的最近非空行（且不是标题行）
+  if (currentIndent <= 0) return null;
+  
+  let parentLine: number | null = null;
+  let parentIndent = -1;
+  
+  for (let i = lineNumber - 1; i >= 1; i--) {
+    const line = state.doc.line(i);
+    const lineIndent = getIndentLevel(line.text);
+    
+    if (line.text.trim().length === 0) continue;
+    
+    // 跳过标题行，标题行不能作为折叠组的父行
+    if (getHeadingLevel(line.text) > 0) continue;
+    
+    // 找到缩进比当前行少的行作为父行
+    if (lineIndent < currentIndent) {
+      parentLine = i;
+      parentIndent = lineIndent;
+      break;
+    }
+  }
+  
+  if (parentLine === null) return null;
+  
+  // 验证父行是否真的有子行（即有折叠功能）
+  // 检查父行下面是否有缩进更多的非空行
+  let parentHasRealChildren = false;
+  for (let i = parentLine + 1; i <= totalLines; i++) {
+    const line = state.doc.line(i);
+    const lineIndent = getIndentLevel(line.text);
+    
+    if (line.text.trim().length === 0) continue;
+    
+    if (lineIndent <= parentIndent) break;
+    
+    // 找到了缩进更多的非空行，说明父行有子行
+    parentHasRealChildren = true;
+    break;
+  }
+  
+  if (!parentHasRealChildren) return null;
+  
+  // 找到父行后，收集所有子行和空行
+  const allChildLines: number[] = [];
+  for (let i = parentLine + 1; i <= totalLines; i++) {
+    const line = state.doc.line(i);
+    const lineIndent = getIndentLevel(line.text);
+    
+    // 空行也收集
+    if (line.text.trim().length === 0) {
+      allChildLines.push(i);
+      continue;
+    }
+    
+    // 如果缩进小于等于父行，说明已经离开了子行区域
+    if (lineIndent <= parentIndent) {
+      break;
+    }
+    
+    // 收集所有缩进比父行多的行
+    allChildLines.push(i);
+  }
+  
+  return { parentLine, childLines: allChildLines };
+}
+
+// 折叠组高亮的行装饰器
+const foldParentHighlight = Decoration.line({ class: 'cm-fold-parent-highlighted' });
+
+/**
+ * 折叠组缩进线 Widget
+ * 使用 parentIndent 在 toDOM 中动态计算位置
+ */
+class FoldIndentLineWidget extends WidgetType {
+  constructor(readonly parentIndent: number) {
+    super();
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const line = document.createElement('span');
+    line.className = 'cm-fold-indent-line';
+
+    // 获取实际的字符宽度
+    const charWidth = view.defaultCharacterWidth;
+
+    // 计算缩进线位置（与父级折叠图标对齐）
+    // 折叠图标位置：parentIndent > 0 ? parentIndent * charWidth - 20 : -24
+    // 缩进线应该在折叠图标中心位置（图标宽度 20px，中心在 +10）
+    let linePos: number;
+    if (this.parentIndent > 0) {
+      const foldIconLeft = this.parentIndent * charWidth - 20;
+      linePos = foldIconLeft + 10; // 折叠图标中心
+    } else {
+      linePos = -24 + 10; // -14px
+    }
+
+    line.style.left = `${linePos}px`;
+    return line;
+  }
+
+  eq(other: FoldIndentLineWidget): boolean {
+    return this.parentIndent === other.parentIndent;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+// 创建带有父级缩进信息的子行高亮装饰器
+function createFoldChildDecorations(parentIndent: number): Decoration[] {
+  return [
+    Decoration.line({ class: 'cm-fold-child-highlighted' }),
+    Decoration.widget({
+      widget: new FoldIndentLineWidget(parentIndent),
+      side: -1,
+    }),
+  ];
+}
+
+/**
+ * 构建折叠组高亮装饰器
+ */
+function buildFoldGroupDecorations(state: EditorState): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  
+  // 获取当前光标所在行
+  const selection = state.selection;
+  const cursorLine = state.doc.lineAt(selection.main.head).number;
+  
+  // 查找折叠组
+  const foldGroup = findFoldGroup(state, cursorLine);
+  
+  if (foldGroup) {
+    // 获取父行的缩进（空格数）
+    const parentLineObj = state.doc.line(foldGroup.parentLine);
+    const parentIndent = getIndentLevel(parentLineObj.text);
+    
+    // 收集所有需要高亮的行，按位置排序
+    const allLines: { from: number; decoration: Decoration }[] = [];
+    
+    // 父行高亮
+    allLines.push({ from: parentLineObj.from, decoration: foldParentHighlight });
+    
+    // 子行高亮（带有缩进线 Widget）
+    for (const childLineNum of foldGroup.childLines) {
+      const childLineObj = state.doc.line(childLineNum);
+      const childDecorations = createFoldChildDecorations(parentIndent);
+      for (const dec of childDecorations) {
+        allLines.push({ from: childLineObj.from, decoration: dec });
+      }
+    }
+    
+    // 按位置排序
+    allLines.sort((a, b) => a.from - b.from);
+    
+    // 添加到 builder
+    for (const item of allLines) {
+      builder.add(item.from, item.from, item.decoration);
+    }
+  }
+  
+  return builder.finish();
+}
+
+/**
+ * 折叠组高亮 StateField
+ */
+const foldGroupHighlightField = StateField.define<DecorationSet>({
+  create(state) {
+    return buildFoldGroupDecorations(state);
+  },
+  update(decorations, tr) {
+    // 选择变化或文档变化时重新计算
+    if (tr.selection || tr.docChanged) {
+      return buildFoldGroupDecorations(tr.state);
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+/**
  * 自定义 Markdown 语法高亮样式
  * 覆盖默认高亮，让有序列表数字等使用主题配色
  */
@@ -776,8 +1175,8 @@ const customHighlightStyle = HighlightStyle.define([
   { tag: tags.url, color: 'var(--ws-textLink-foreground)' },
   // 引用
   { tag: tags.quote, color: 'var(--ws-descriptionForeground)', fontStyle: 'italic' },
-  // 代码
-  { tag: tags.monospace, color: 'var(--ws-textPreformat-foreground)' },
+  // 代码 - 使用普通文本颜色，避免缩进超过4空格时颜色变化
+  { tag: tags.monospace, color: 'inherit' },
   // 注释
   { tag: tags.comment, color: 'var(--ws-descriptionForeground)' },
   // 元信息（如 > 引用标记）
@@ -878,58 +1277,274 @@ function handleListEnter(view: EditorView): boolean {
     changes: { from: head, insert: '\n' + prefix },
     selection: { anchor: head + 1 + prefix.length },
   });
+
+  return true;
+}
+
+/**
+ * 获取下一个字母序号
+ * A -> B, Z -> AA, AA -> AB, AZ -> BA
+ */
+function getNextLetter(letter: string): string {
+  const isUpper = letter === letter.toUpperCase();
+  const base = isUpper ? 'A'.charCodeAt(0) : 'a'.charCodeAt(0);
+  const chars = letter.toUpperCase().split('');
+
+  // 从最后一个字符开始进位
+  let carry = true;
+  for (let i = chars.length - 1; i >= 0 && carry; i--) {
+    const code = chars[i].charCodeAt(0) - 'A'.charCodeAt(0);
+    if (code < 25) {
+      chars[i] = String.fromCharCode('A'.charCodeAt(0) + code + 1);
+      carry = false;
+    } else {
+      chars[i] = 'A';
+    }
+  }
+
+  if (carry) {
+    chars.unshift('A');
+  }
+
+  const result = chars.join('');
+  return isUpper ? result : result.toLowerCase();
+}
+
+/**
+ * 自定义回车键处理 - 智能字母序号换行
+ * 1. 在字母序号行末尾按回车时，自动添加下一个字母序号到新行
+ * 2. 如果当前行只有字母序号没有内容，按回车时删除序号并退出序号模式
+ */
+function handleLetterListEnter(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+  const { head } = selection.main;
+
+  const line = state.doc.lineAt(head);
+  const lineText = line.text;
+
+  // 检查是否是字母序号行（如 A. B. a. b.）
+  const letterMatch = lineText.match(/^(\s*)([A-Za-z])\.(\s)/);
+  if (!letterMatch) {
+    return false; // 不是字母序号行，使用默认行为
+  }
+
+  const indent = letterMatch[1];
+  const letter = letterMatch[2];
+  const space = letterMatch[3];
+  const prefix = indent + letter + '.' + space;
+  const content = lineText.slice(prefix.length).trim();
+
+  // 如果序号行只有标记没有内容，删除标记并退出序号模式
+  if (content === '') {
+    view.dispatch({
+      changes: { from: line.from, to: line.to, insert: indent },
+      selection: { anchor: line.from + indent.length },
+    });
+    return true;
+  }
+
+  // 在序号行末尾按回车，自动添加下一个字母序号到新行
+  const nextLetter = getNextLetter(letter);
+  const newPrefix = indent + nextLetter + '. ';
+
+  view.dispatch({
+    changes: { from: head, insert: '\n' + newPrefix },
+    selection: { anchor: head + 1 + newPrefix.length },
+  });
+
+  return true;
+}
+
+/**
+ * 自定义回车键处理 - 保持缩进
+ * 在有缩进的行按回车时，新行保持相同的缩进
+ */
+function handleIndentedEnter(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+  const { head } = selection.main;
+  
+  const line = state.doc.lineAt(head);
+  const lineText = line.text;
+  
+  // 获取当前行的缩进
+  const indentMatch = lineText.match(/^(\s+)/);
+  if (!indentMatch) {
+    return false; // 没有缩进，使用默认行为
+  }
+  
+  const indent = indentMatch[1];
+  
+  // 在当前位置插入换行和缩进
+  view.dispatch({
+    changes: { from: head, insert: '\n' + indent },
+    selection: { anchor: head + 1 + indent.length },
+  });
   
   return true;
 }
 
 /**
- * 自定义 TAB 键处理 - 在引用块行上检测是否会导致换行
+ * 自定义 TAB 键处理 - 检测 TAB 缩进后是否会导致内容超出编辑器宽度
  * 如果 TAB 缩进后行宽度超出编辑器宽度，则禁止 TAB
  */
-function handleBlockquoteTab(view: EditorView): boolean {
+function handleTabBoundary(view: EditorView): boolean {
   const { state } = view;
   const { selection } = state;
   
-  // 检查选区涉及的所有行是否包含引用块
+  // 获取编辑器可用宽度
+  const contentElement = view.dom.querySelector('.cm-content');
+  const editorWidth = contentElement?.clientWidth || 800;
+  const charWidth = 8; // 估算每个字符宽度（等宽字体）
+  const tabWidth = 2 * charWidth; // TAB = 2 空格
+  const maxChars = Math.floor((editorWidth - 40) / charWidth); // 留出一些边距
+  
+  // 检查选区涉及的所有行
   const startLine = state.doc.lineAt(selection.main.from);
   const endLine = state.doc.lineAt(selection.main.to);
   
-  let hasBlockquote = false;
   for (let i = startLine.number; i <= endLine.number; i++) {
     const line = state.doc.line(i);
-    if (line.text.match(/^(\s*)(>+)/)) {
-      hasBlockquote = true;
-      break;
-    }
-  }
-  
-  // 如果没有引用块行，使用默认行为
-  if (!hasBlockquote) {
-    return false;
-  }
-  
-  // 获取编辑器可用宽度
-  const editorWidth = view.dom.querySelector('.cm-content')?.clientWidth || 800;
-  const charWidth = 8; // 估算每个字符宽度
-  const tabWidth = 2 * charWidth; // TAB = 2 空格
-  const maxChars = Math.floor(editorWidth / charWidth);
-  
-  // 检查每个引用块行，TAB 后是否会超出宽度
-  for (let i = startLine.number; i <= endLine.number; i++) {
-    const line = state.doc.line(i);
-    const match = line.text.match(/^(\s*)(>+)/);
-    if (match) {
-      // 计算 TAB 后的行长度
-      const newLength = line.text.length + 2; // TAB = 2 空格
-      if (newLength > maxChars) {
-        // 会导致换行，禁止 TAB
-        return true;
-      }
+    // 计算 TAB 后的行长度（TAB = 2 空格）
+    const newLength = line.text.length + 2;
+    if (newLength > maxChars) {
+      // 会导致换行，禁止 TAB
+      return true;
     }
   }
   
   // 允许 TAB，使用默认行为
   return false;
+}
+
+/**
+ * 自定义 Ctrl+X 处理 - 剪切整行后保持光标在缩进位置
+ * 当剪切整行（无选区）时：
+ * - 如果下面还有行，光标留在下一行的缩进位置
+ * - 如果是最后一行，光标移到上一行的缩进位置
+ */
+function handleCutLine(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+
+  // 只处理无选区的情况（剪切整行）
+  if (!selection.main.empty) {
+    return false; // 有选区，使用默认行为
+  }
+
+  const line = state.doc.lineAt(selection.main.head);
+  const lineText = line.text;
+
+  // 复制当前行内容到剪贴板（包含换行符）
+  const textToCopy = lineText + '\n';
+  navigator.clipboard.writeText(textToCopy);
+
+  // 计算删除范围和光标位置
+  let deleteFrom = line.from;
+  let deleteTo = line.to;
+  let newCursorPos = line.from;
+
+  if (line.number < state.doc.lines) {
+    // 不是最后一行：删除当前行（包含换行符），光标留在下一行的缩进位置
+    deleteTo = line.to + 1;
+    const nextLine = state.doc.line(line.number + 1);
+    const nextIndent = getIndentLevel(nextLine.text);
+    // 删除后，下一行会变成当前位置，光标放在缩进位置
+    newCursorPos = line.from + Math.min(nextIndent, nextLine.text.length);
+  } else if (line.number > 1) {
+    // 是最后一行且不是第一行：删除前面的换行符，光标移到上一行末尾
+    deleteFrom = line.from - 1;
+    const prevLine = state.doc.line(line.number - 1);
+    newCursorPos = prevLine.to;
+  }
+
+  // 执行删除
+  view.dispatch({
+    changes: { from: deleteFrom, to: deleteTo },
+    selection: { anchor: newCursorPos },
+  });
+
+  return true;
+}
+
+/**
+ * 自定义 Ctrl+- 处理 - 减少光标行或选中行的缩进
+ * 每次减少 2 个空格（1 个 TAB 单位）
+ * 边界检查：
+ * - 单行时：如果当前行缩进 < TAB_SIZE，不允许减少
+ * - 多行时：如果任何非空行缩进 < TAB_SIZE，不允许减少
+ */
+function handleDecreaseIndent(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+  const TAB_SIZE = 2;
+
+  // 获取选区涉及的所有行（无选区时是光标所在行）
+  const startLine = state.doc.lineAt(selection.main.from);
+  const endLine = state.doc.lineAt(selection.main.to);
+  const isSingleLine = startLine.number === endLine.number;
+
+  if (isSingleLine) {
+    // 单行模式：只处理当前行
+    const line = startLine;
+    const lineText = line.text;
+    const indent = getIndentLevel(lineText);
+
+    // 如果没有缩进，不做任何改变
+    if (indent < TAB_SIZE) {
+      return true;
+    }
+
+    // 减少缩进
+    const reduceAmount = Math.min(indent, TAB_SIZE);
+    view.dispatch({
+      changes: { from: line.from, to: line.from + reduceAmount, insert: '' },
+    });
+
+    return true;
+  }
+
+  // 多行模式：检查所有行的最小缩进
+  let minIndent = Infinity;
+  for (let i = startLine.number; i <= endLine.number; i++) {
+    const line = state.doc.line(i);
+    const lineText = line.text;
+    // 跳过空行
+    if (lineText.trim().length === 0) continue;
+    const indent = getIndentLevel(lineText);
+    minIndent = Math.min(minIndent, indent);
+  }
+
+  // 如果最小缩进小于 TAB_SIZE，不允许减少
+  if (minIndent < TAB_SIZE) {
+    return true;
+  }
+
+  const changes: { from: number; to: number; insert: string }[] = [];
+
+  for (let i = startLine.number; i <= endLine.number; i++) {
+    const line = state.doc.line(i);
+    const lineText = line.text;
+    const indent = getIndentLevel(lineText);
+
+    // 如果没有缩进或是空行，跳过
+    if (indent === 0 || lineText.trim().length === 0) continue;
+
+    // 减少的空格数
+    const reduceAmount = Math.min(indent, TAB_SIZE);
+    changes.push({
+      from: line.from,
+      to: line.from + reduceAmount,
+      insert: '',
+    });
+  }
+
+  if (changes.length > 0) {
+    view.dispatch({ changes });
+  }
+
+  return true;
 }
 
 /**
@@ -948,6 +1563,14 @@ const customKeymap = Prec.highest(
         if (handleListEnter(view)) {
           return true;
         }
+        // 尝试处理字母序号列表
+        if (handleLetterListEnter(view)) {
+          return true;
+        }
+        // 最后处理普通缩进行，保持缩进
+        if (handleIndentedEnter(view)) {
+          return true;
+        }
         // 使用默认行为
         return false;
       },
@@ -955,12 +1578,26 @@ const customKeymap = Prec.highest(
     {
       key: 'Tab',
       run: (view) => {
-        // 检查引用块行的 TAB 是否会导致换行
-        if (handleBlockquoteTab(view)) {
+        // 检查 TAB 是否会导致内容超出编辑器宽度
+        if (handleTabBoundary(view)) {
           return true; // 禁止 TAB
         }
         // 使用默认行为
         return false;
+      },
+    },
+    {
+      key: 'Mod-x',
+      run: (view) => {
+        // 自定义剪切整行行为，保持光标在缩进位置
+        return handleCutLine(view);
+      },
+    },
+    {
+      key: 'Mod--',
+      run: (view) => {
+        // 减少选中行的缩进
+        return handleDecreaseIndent(view);
       },
     },
   ])
@@ -2917,6 +3554,10 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       lineBackgroundDecorations,
       // 缩进线
       indentGuideDecorations,
+      // 序号高亮（如 4.2、4.2.1、4.2.1.1）
+      numberingDecorations,
+      // 折叠组高亮（光标选中时显示父级的折叠图标和子行的缩进线）
+      foldGroupHighlightField,
       // 折叠功能（不使用 customFoldService，避免与 markdown 解析器冲突）
       headingFoldMarkers,
       headingFoldGutter,

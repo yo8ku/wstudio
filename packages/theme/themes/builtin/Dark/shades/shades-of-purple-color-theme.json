@@ -6,8 +6,8 @@
 	"name": "Shades Purple",
 	"type": "dark",
 	"colors": {
-		
-		
+		"mirrorIndentGuide.background":"#a599e98c",
+		"border":"#ffff0336",
 		"activityBar.background": "#28284E",
 		"activityBar.border": "#222244",
 		"activityBar.dropBackground": "#222145",
