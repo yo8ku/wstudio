@@ -682,6 +682,7 @@ const numberingMark = Decoration.mark({ class: 'cm-numbering' });
  * - 单个小写字母加点（如 a.、b.、c.）
  * - 字母+数字加点（如 A1.、A100.、B2.）
  * - 中文数字序号（如 一、二、三、）
+ * - 圆点无序列表（如 •）
  */
 function buildNumberingDecorations(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number }[] = [];
@@ -693,8 +694,9 @@ function buildNumberingDecorations(state: EditorState): DecorationSet {
   // 3. 单个字母加点（如 A.、B.、a.、b.）
   // 4. 字母+数字加点（如 A1.、A100.、B2.）
   // 5. 中文数字序号（如 一、二、三、十、百）
+  // 6. 圆点无序列表（如 •）
   // 序号必须在行首（可能有缩进空格），后面跟空格或其他内容
-  const numberingRegex = /^(\s*)(\d+\.|[A-Za-z]\.|[A-Za-z]\d{1,3}\.|[一二三四五六七八九十百千万零]+、|\d+(?:\.\d+)+)\s/;
+  const numberingRegex = /^(\s*)(\d+\.|[A-Za-z]\.|[A-Za-z]\d{1,3}\.|[一二三四五六七八九十百千万零]+、|\d+(?:\.\d+)+|•)\s/;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
@@ -1243,35 +1245,36 @@ function handleBlockquoteEnter(view: EditorView): boolean {
  * 自定义回车键处理 - 智能无序列表换行
  * 1. 在列表行末尾按回车时，自动添加列表标记到新行
  * 2. 如果当前行只有列表标记没有内容，按回车时删除标记并退出列表模式
+ * 支持 -、*、+、• 作为列表标记
  */
 function handleListEnter(view: EditorView): boolean {
   const { state } = view;
   const { selection } = state;
   const { head } = selection.main;
-  
+
   const line = state.doc.lineAt(head);
   const lineText = line.text;
-  
-  // 检查是否是无序列表行
-  const listMatch = lineText.match(/^(\s*)([-*+])\s/);
+
+  // 检查是否是无序列表行（支持 -、*、+、• 作为标记）
+  const listMatch = lineText.match(/^(\s*)([-*+•])\s/);
   if (!listMatch) {
     return false; // 不是列表行，使用默认行为
   }
-  
+
   const indent = listMatch[1];
   const marker = listMatch[2];
   const prefix = indent + marker + ' ';
   const content = lineText.slice(prefix.length).trim();
-  
+
   // 如果列表行只有标记没有内容，删除标记并退出列表模式
   if (content === '') {
     view.dispatch({
-      changes: { from: line.from, to: line.to, insert: '' },
-      selection: { anchor: line.from },
+      changes: { from: line.from, to: line.to, insert: indent },
+      selection: { anchor: line.from + indent.length },
     });
     return true;
   }
-  
+
   // 在列表行末尾按回车，自动添加列表标记到新行
   view.dispatch({
     changes: { from: head, insert: '\n' + prefix },
@@ -1598,6 +1601,33 @@ const customKeymap = Prec.highest(
       run: (view) => {
         // 减少选中行的缩进
         return handleDecreaseIndent(view);
+      },
+    },
+    {
+      key: ' ',
+      run: (view) => {
+        // 检查是否需要将 "- " 转换为 "• "
+        const { state } = view;
+        const { selection } = state;
+        const { head } = selection.main;
+
+        // 获取当前行
+        const line = state.doc.lineAt(head);
+        const textBeforeCursor = line.text.slice(0, head - line.from);
+
+        // 检查是否匹配 "缩进 + -" 的模式
+        if (/^\s*-$/.test(textBeforeCursor)) {
+          const dashPos = head - 1;
+          // 替换 "-" 为 "•" 并插入空格
+          view.dispatch({
+            changes: { from: dashPos, to: head, insert: '• ' },
+            selection: { anchor: dashPos + 2 },
+          });
+          return true;
+        }
+
+        // 使用默认行为
+        return false;
       },
     },
   ])
