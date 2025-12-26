@@ -28,6 +28,7 @@ import { Icon } from '../Icons';
 import { CodeMirrorContextMenu, ContextMenuItem } from './components/CodeMirrorContextMenu';
 import './CodeMirrorEditor.scss';
 import { text } from 'stream/consumers';
+import hljs from 'highlight.js';
 
 /**
  * 编辑器模式类型
@@ -3469,6 +3470,138 @@ function parseUnorderedList(state: EditorState): DecorationSet {
 }
 
 /**
+ * 解析粗体文本并创建装饰器
+ * 匹配 **text** 或 __text__ 格式
+ */
+function parseBoldText(state: EditorState): DecorationSet {
+  const decorations: Range<Decoration>[] = [];
+  const doc = state.doc;
+
+  // 获取当前光标所在行
+  const cursorLine = doc.lineAt(state.selection.main.head).number;
+
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    const text = line.text;
+
+    // 匹配 **text** 或 __text__
+    const boldRegex = /(\*\*|__)([^*_]+)\1/g;
+    let match;
+
+    while ((match = boldRegex.exec(text)) !== null) {
+      const from = line.from + match.index;
+      const to = from + match[0].length;
+      const markerLength = match[1].length; // ** 或 __
+      const contentFrom = from + markerLength;
+      const contentTo = to - markerLength;
+
+      // 如果光标在当前行，显示原始语法
+      if (i === cursorLine) {
+        // 只为内容添加粗体样式，不隐藏标记
+        decorations.push(
+          Decoration.mark({ class: 'cm-strong' }).range(contentFrom, contentTo)
+        );
+      } else {
+        // 隐藏前后的 ** 或 __
+        decorations.push(
+          Decoration.mark({ class: 'cm-hidden-syntax' }).range(from, contentFrom)
+        );
+        decorations.push(
+          Decoration.mark({ class: 'cm-strong' }).range(contentFrom, contentTo)
+        );
+        decorations.push(
+          Decoration.mark({ class: 'cm-hidden-syntax' }).range(contentTo, to)
+        );
+      }
+    }
+  }
+
+  return Decoration.set(decorations, true);
+}
+
+/**
+ * 粗体装饰器 StateField
+ */
+const boldDecorations = StateField.define<DecorationSet>({
+  create(state) {
+    return parseBoldText(state);
+  },
+  update(decorations, tr) {
+    if (tr.docChanged || tr.selection) {
+      return parseBoldText(tr.state);
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+/**
+ * 解析斜体文本并创建装饰器
+ * 匹配 *text* 或 _text_ 格式（但不匹配 ** 或 __）
+ */
+function parseItalicText(state: EditorState): DecorationSet {
+  const decorations: Range<Decoration>[] = [];
+  const doc = state.doc;
+
+  // 获取当前光标所在行
+  const cursorLine = doc.lineAt(state.selection.main.head).number;
+
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    const text = line.text;
+
+    // 匹配 *text* 或 _text_（但不匹配 ** 或 __）
+    // 使用负向前瞻和负向后瞻确保不匹配粗体
+    const italicRegex = /(?<!\*)\*(?!\*)([^*]+)\*(?!\*)|(?<!_)_(?!_)([^_]+)_(?!_)/g;
+    let match;
+
+    while ((match = italicRegex.exec(text)) !== null) {
+      const from = line.from + match.index;
+      const to = from + match[0].length;
+      const content = match[1] || match[2];
+      const contentFrom = from + 1;
+      const contentTo = to - 1;
+
+      // 如果光标在当前行，显示原始语法
+      if (i === cursorLine) {
+        decorations.push(
+          Decoration.mark({ class: 'cm-em' }).range(contentFrom, contentTo)
+        );
+      } else {
+        // 隐藏前后的 * 或 _
+        decorations.push(
+          Decoration.mark({ class: 'cm-hidden-syntax' }).range(from, contentFrom)
+        );
+        decorations.push(
+          Decoration.mark({ class: 'cm-em' }).range(contentFrom, contentTo)
+        );
+        decorations.push(
+          Decoration.mark({ class: 'cm-hidden-syntax' }).range(contentTo, to)
+        );
+      }
+    }
+  }
+
+  return Decoration.set(decorations, true);
+}
+
+/**
+ * 斜体装饰器 StateField
+ */
+const italicDecorations = StateField.define<DecorationSet>({
+  create(state) {
+    return parseItalicText(state);
+  },
+  update(decorations, tr) {
+    if (tr.docChanged || tr.selection) {
+      return parseItalicText(tr.state);
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+/**
  * 无序列表装饰器 StateField - 将 - * + 替换为圆点
  */
 const unorderedListDecorations = StateField.define<DecorationSet>({
@@ -3627,6 +3760,251 @@ const blockquoteDecorations = StateField.define<DecorationSet>({
 });
 
 /**
+ * 支持的编程语言列表
+ */
+const SUPPORTED_LANGUAGES = [
+  'javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'csharp', 'go', 'rust',
+  'ruby', 'php', 'swift', 'kotlin', 'scala', 'html', 'css', 'scss', 'less', 'json',
+  'xml', 'yaml', 'markdown', 'sql', 'bash', 'shell', 'powershell', 'dockerfile',
+  'plaintext', 'text'
+];
+
+/**
+ * 代码行高亮 Widget - 使用 highlight.js 渲染单行代码
+ */
+class CodeLineWidget extends WidgetType {
+  constructor(
+    readonly code: string,
+    readonly language: string
+  ) {
+    super();
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement('span');
+    span.className = 'cm-code-highlighted';
+    
+    const lang = this.language || 'plaintext';
+    if (lang && lang !== 'plaintext' && lang !== 'text' && hljs.getLanguage(lang)) {
+      span.innerHTML = hljs.highlight(this.code, { language: lang }).value;
+    } else {
+      span.textContent = this.code;
+    }
+    
+    return span;
+  }
+
+  eq(other: CodeLineWidget): boolean {
+    return this.code === other.code && this.language === other.language;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+/**
+ * 代码块信息接口
+ */
+interface CodeBlockInfo {
+  startLine: number;
+  endLine: number;
+  language: string;
+  code: string;
+  from: number;
+  to: number;
+}
+
+/**
+ * 解析文档中的代码块
+ */
+function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
+  const blocks: CodeBlockInfo[] = [];
+  const doc = state.doc;
+  let inCodeBlock = false;
+  let startLine = 0;
+  let language = '';
+  let codeLines: string[] = [];
+  let blockFrom = 0;
+
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    const text = line.text;
+
+    if (!inCodeBlock && text.match(/^```(\w*)/)) {
+      // 代码块开始
+      inCodeBlock = true;
+      startLine = i;
+      language = text.match(/^```(\w*)/)?.[1] || '';
+      codeLines = [];
+      blockFrom = line.from;
+    } else if (inCodeBlock && text.trim() === '```') {
+      // 代码块结束
+      blocks.push({
+        startLine,
+        endLine: i,
+        language,
+        code: codeLines.join('\n'),
+        from: blockFrom,
+        to: line.to
+      });
+      inCodeBlock = false;
+    } else if (inCodeBlock) {
+      // 代码块内容
+      codeLines.push(text);
+    }
+  }
+
+  return blocks;
+}
+
+/**
+ * 创建代码块装饰器
+ */
+function createCodeBlockDecorations(state: EditorState): DecorationSet {
+  const decorations: Range<Decoration>[] = [];
+  const blocks = parseCodeBlocks(state);
+  
+  // 获取当前光标所在行
+  const cursorLine = state.doc.lineAt(state.selection.main.head).number;
+
+  for (const block of blocks) {
+    // 给所有代码块行添加背景装饰
+    for (let i = block.startLine; i <= block.endLine; i++) {
+      const line = state.doc.line(i);
+      decorations.push(
+        Decoration.line({ class: 'cm-code-block-line' }).range(line.from)
+      );
+    }
+
+    // 如果光标不在代码块内，隐藏 ``` 标记并高亮代码
+    if (cursorLine < block.startLine || cursorLine > block.endLine) {
+      // 隐藏开始的 ```language
+      const startLine = state.doc.line(block.startLine);
+      decorations.push(
+        Decoration.replace({ widget: new class extends WidgetType {
+          toDOM() {
+            const span = document.createElement('span');
+            span.className = 'cm-code-block-lang-label';
+            span.textContent = block.language || 'code';
+            return span;
+          }
+          eq() { return true; }
+        }() }).range(startLine.from, startLine.to)
+      );
+      
+      // 隐藏结束的 ```
+      const endLine = state.doc.line(block.endLine);
+      decorations.push(
+        Decoration.mark({ class: 'cm-hidden-syntax' }).range(endLine.from, endLine.to)
+      );
+
+      // 用 Widget 替换代码内容以实现语法高亮
+      const lang = block.language || 'plaintext';
+      for (let i = block.startLine + 1; i < block.endLine; i++) {
+        const line = state.doc.line(i);
+        if (line.text.length > 0) {
+          decorations.push(
+            Decoration.replace({
+              widget: new CodeLineWidget(line.text, lang)
+            }).range(line.from, line.to)
+          );
+        }
+      }
+    }
+  }
+
+  return Decoration.set(decorations, true);
+}
+
+/**
+ * 代码块装饰器 StateField
+ */
+const codeBlockDecorations = StateField.define<DecorationSet>({
+  create(state) {
+    return createCodeBlockDecorations(state);
+  },
+  update(decorations, tr) {
+    if (tr.docChanged || tr.selection) {
+      return createCodeBlockDecorations(tr.state);
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+/**
+ * 分割线 Widget - 将 --- 或 *** 或 ___ 渲染为水平分割线
+ */
+class HorizontalRuleWidget extends WidgetType {
+  toDOM(): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'cm-horizontal-rule';
+    const hr = document.createElement('hr');
+    container.appendChild(hr);
+    return container;
+  }
+
+  eq(): boolean {
+    return true;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/**
+ * 解析分割线并创建装饰器
+ * 匹配独立行的 ---、***、___ （至少3个字符）
+ */
+function parseHorizontalRules(state: EditorState): DecorationSet {
+  const decorations: Range<Decoration>[] = [];
+  const doc = state.doc;
+
+  // 获取当前光标所在行
+  const cursorLine = doc.lineAt(state.selection.main.head).number;
+
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    const text = line.text.trim();
+
+    // 匹配 ---、***、___ （至少3个相同字符，可以有空格）
+    if (/^[-]{3,}$|^[*]{3,}$|^[_]{3,}$/.test(text)) {
+      // 如果光标在当前行，显示原始文本
+      if (i === cursorLine) {
+        continue;
+      }
+
+      // 用 Widget 替换整行内容
+      decorations.push(
+        Decoration.replace({
+          widget: new HorizontalRuleWidget(),
+        }).range(line.from, line.to)
+      );
+    }
+  }
+
+  return Decoration.set(decorations);
+}
+
+/**
+ * 分割线装饰器 StateField
+ */
+const horizontalRuleDecorations = StateField.define<DecorationSet>({
+  create(state) {
+    return parseHorizontalRules(state);
+  },
+  update(decorations, tr) {
+    if (tr.docChanged || tr.selection) {
+      return parseHorizontalRules(tr.state);
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+/**
  * 解析标题语法并创建隐藏装饰器（源码模式下的所见即所得）
  * 当光标不在标题行时，隐藏 # 符号
  */
@@ -3741,19 +4119,29 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 隐藏删除线的 ~~
+  // 隐藏删除线的 ~~ 并添加删除线样式
   const strikeRegex = /~~([^~]+)~~/g;
   while ((match = strikeRegex.exec(doc)) !== null) {
     const startFrom = match.index;
     const startTo = startFrom + 2;
-    const endFrom = startFrom + match[0].length - 2;
+    const contentFrom = startTo;
+    const contentTo = startFrom + match[0].length - 2;
+    const endFrom = contentTo;
     const endTo = startFrom + match[0].length;
     
+    // 隐藏前面的 ~~
     decorations.push({
       from: startFrom,
       to: startTo,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
+    // 给中间内容添加删除线样式
+    decorations.push({
+      from: contentFrom,
+      to: contentTo,
+      decoration: Decoration.mark({ class: 'cm-strikethrough' }),
+    });
+    // 隐藏后面的 ~~
     decorations.push({
       from: endFrom,
       to: endTo,
@@ -3761,19 +4149,29 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 隐藏行内代码的 `
+  // 隐藏行内代码的 ` 并添加代码块样式
   const codeRegex = /`([^`]+)`/g;
   while ((match = codeRegex.exec(doc)) !== null) {
     const startFrom = match.index;
     const startTo = startFrom + 1;
-    const endFrom = startFrom + match[0].length - 1;
+    const contentFrom = startTo;
+    const contentTo = startFrom + match[0].length - 1;
+    const endFrom = contentTo;
     const endTo = startFrom + match[0].length;
     
+    // 隐藏前面的 `
     decorations.push({
       from: startFrom,
       to: startTo,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
+    // 给中间内容添加代码块样式
+    decorations.push({
+      from: contentFrom,
+      to: contentTo,
+      decoration: Decoration.mark({ class: 'cm-inline-code' }),
+    });
+    // 隐藏后面的 `
     decorations.push({
       from: endFrom,
       to: endTo,
@@ -4002,7 +4400,23 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'text-format-sep', label: '', separator: true },
           {
             id: 'code',
-            label: '代码',
+            label: '代码块',
+            action: () => {
+              if (view) {
+                const { from, to } = view.state.selection.main;
+                const selectedText = view.state.sliceDoc(from, to);
+                const line = view.state.doc.lineAt(from);
+                const isLineStart = from === line.from;
+                const prefix = isLineStart ? '' : '\n';
+                view.dispatch({
+                  changes: { from, to, insert: `${prefix}\`\`\`javascript\n${selectedText || '// 在此输入代码'}\n\`\`\`` },
+                });
+              }
+            },
+          },
+          {
+            id: 'inline-code',
+            label: '行内代码',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
@@ -4069,62 +4483,62 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
         label: '颜色',
         submenu: [
           {
-            id: 'bg-red',
-            label: '红色背景',
-            color: '#ffcccc',
+            id: 'bg-slate',
+            label: '石板蓝',
+            color: 'rgba(100, 116, 139, 0.3)',
             action: () => {
               if (view) {
-                applyColorStyle(view, 'background-color', '#ffcccc');
+                applyColorStyle(view, 'background-color', 'rgba(100, 116, 139, 0.3)');
               }
             },
           },
           {
-            id: 'bg-orange',
-            label: '橙色背景',
-            color: '#ffe6cc',
+            id: 'bg-sky',
+            label: '天空蓝',
+            color: 'rgba(56, 189, 248, 0.25)',
             action: () => {
               if (view) {
-                applyColorStyle(view, 'background-color', '#ffe6cc');
+                applyColorStyle(view, 'background-color', 'rgba(56, 189, 248, 0.25)');
               }
             },
           },
           {
-            id: 'bg-yellow',
-            label: '黄色背景',
-            color: '#ffffcc',
+            id: 'bg-cyan',
+            label: '青色',
+            color: 'rgba(34, 211, 238, 0.25)',
             action: () => {
               if (view) {
-                applyColorStyle(view, 'background-color', '#ffffcc');
+                applyColorStyle(view, 'background-color', 'rgba(34, 211, 238, 0.25)');
               }
             },
           },
           {
-            id: 'bg-green',
-            label: '绿色背景',
-            color: '#ccffcc',
+            id: 'bg-teal',
+            label: '蓝绿色',
+            color: 'rgba(45, 212, 191, 0.25)',
             action: () => {
               if (view) {
-                applyColorStyle(view, 'background-color', '#ccffcc');
+                applyColorStyle(view, 'background-color', 'rgba(45, 212, 191, 0.25)');
               }
             },
           },
           {
-            id: 'bg-blue',
-            label: '蓝色背景',
-            color: '#cce6ff',
+            id: 'bg-indigo',
+            label: '靛蓝色',
+            color: 'rgba(129, 140, 248, 0.3)',
             action: () => {
               if (view) {
-                applyColorStyle(view, 'background-color', '#cce6ff');
+                applyColorStyle(view, 'background-color', 'rgba(129, 140, 248, 0.3)');
               }
             },
           },
           {
-            id: 'bg-purple',
-            label: '紫色背景',
-            color: '#e6ccff',
+            id: 'bg-violet',
+            label: '紫罗兰',
+            color: 'rgba(167, 139, 250, 0.3)',
             action: () => {
               if (view) {
-                applyColorStyle(view, 'background-color', '#e6ccff');
+                applyColorStyle(view, 'background-color', 'rgba(167, 139, 250, 0.3)');
               }
             },
           },
@@ -4544,8 +4958,12 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       updateListener,
       imageDecorations,
       headingDecorations,
+      boldDecorations,
+      italicDecorations,
       unorderedListDecorations,
       blockquoteDecorations,
+      horizontalRuleDecorations,
+      codeBlockDecorations,
       // 缩进线
       indentGuideDecorations,
       // 序号高亮（如 4.2、4.2.1、4.2.1.1）

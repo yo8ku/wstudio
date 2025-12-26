@@ -186,8 +186,19 @@
     padding-left: 12px;
   }
 
+  // 编辑器容器 - 实现内容居中
+  .cm-editor-container {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+  }
+
   .cm-editor {
     height: 100%;
+    width: 100%;
+    max-width: 900px;
+    margin-top:8px;
     background-color: var(--ws-editor-background);
     color: var(--ws-editor-foreground);
     font-size: 14px;
@@ -195,35 +206,24 @@
     &.cm-focused {
       outline: none;
     }
-
-    .cm-content {
-    }
   }
 
   .cm-scroller {
     overflow: auto;
-    padding: 10px 0px 16px 60px;
+    padding: 10px 20px 16px 60px;
   }
 
-  // 让 gutter 和内容一起居中 - 使用包装器
+  // 让 gutter 和内容一起居中
   .cm-gutters {
     background-color: transparent;
     border-right: none;
     color: var(--ws-editor-lineNumber-foreground);
-    pointer-events: none; // 让鼠标事件穿透到 .cm-line
+    pointer-events: none;
   }
 
   // gutter 内的元素需要恢复鼠标事件
   .cm-gutter {
     pointer-events: auto;
-  }
-
-  // 内容区域居中
-  .cm-editor > .cm-scroller {
-    > .cm-sizer {
-      max-width: 900px;
-      margin: 0 auto;
-    }
   }
 
   .cm-activeLineGutter {
@@ -312,12 +312,169 @@
 
   .cm-strong {
     font-weight: 700;
+    font-size: 1.1em;
     text-decoration: none !important;
   }
 
   .cm-em {
     font-style: italic;
     text-decoration: none !important;
+  }
+
+  .cm-strikethrough {
+    text-decoration: line-through !important;
+    color: var(--ws-descriptionForeground);
+  }
+
+  .cm-inline-code {
+    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
+    color: var(--ws-textPreformat-foreground, var(--ws-foreground));
+    font-size: 0.9em;
+  }
+
+  // 代码块样式
+  .cm-code-block {
+    background-color: var(--ws-textCodeBlock-background, rgba(30, 30, 30, 0.8));
+    border-radius: 6px;
+    margin: 8px 0;
+    overflow: hidden;
+  }
+
+  .cm-code-block-header {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    background-color: var(--ws-sideBar-background, rgba(40, 40, 40, 0.9));
+    border-bottom: 1px solid var(--ws-panel-border);
+  }
+
+  .cm-code-block-lang-select {
+    background-color: transparent;
+    color: var(--ws-descriptionForeground);
+    border: 1px solid var(--ws-panel-border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+
+    &:hover {
+      border-color: var(--ws-focusBorder);
+    }
+
+    &:focus {
+      border-color: var(--ws-focusBorder);
+    }
+
+    option {
+      background-color: var(--ws-dropdown-background);
+      color: var(--ws-foreground);
+    }
+  }
+
+  .cm-code-block-content {
+    padding: 12px 16px;
+    overflow-x: auto;
+
+    pre {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+    }
+
+    code {
+      font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--ws-editor-foreground);
+      white-space: pre;
+    }
+  }
+
+  // 代码块行样式（光标在代码块内时）
+  .cm-code-block-line {
+    background-color: var(--ws-textCodeBlock-background, rgba(30, 30, 30, 0.5));
+  }
+
+  // 代码块语言标签
+  .cm-code-block-lang-label {
+    display: inline-block;
+    font-size: 11px;
+    color: var(--ws-descriptionForeground);
+    padding: 2px 8px;
+    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
+  }
+
+  // 高亮代码容器
+  .cm-code-highlighted {
+    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
+
+    // highlight.js 语法高亮
+    .hljs-keyword,
+    .hljs-selector-tag,
+    .hljs-built_in,
+    .hljs-name {
+      color: var(--ws-symbolIcon-keywordForeground, #569cd6);
+    }
+
+    .hljs-string,
+    .hljs-attr {
+      color: var(--ws-symbolIcon-stringForeground, #ce9178);
+    }
+
+    .hljs-number,
+    .hljs-literal {
+      color: var(--ws-symbolIcon-numberForeground, #b5cea8);
+    }
+
+    .hljs-comment {
+      color: var(--ws-descriptionForeground, #6a9955);
+      font-style: italic;
+    }
+
+    .hljs-function,
+    .hljs-title {
+      color: var(--ws-symbolIcon-functionForeground, #dcdcaa);
+    }
+
+    .hljs-variable,
+    .hljs-params {
+      color: var(--ws-symbolIcon-variableForeground, #9cdcfe);
+    }
+
+    .hljs-type,
+    .hljs-class {
+      color: var(--ws-symbolIcon-classForeground, #4ec9b0);
+    }
+
+    .hljs-meta {
+      color: var(--ws-symbolIcon-operatorForeground, #c586c0);
+    }
+
+    .hljs-regexp {
+      color: var(--ws-symbolIcon-colorForeground, #d16969);
+    }
+
+    .hljs-tag {
+      color: var(--ws-symbolIcon-keywordForeground, #569cd6);
+    }
+
+    .hljs-attribute {
+      color: var(--ws-symbolIcon-propertyForeground, #9cdcfe);
+    }
+
+    .hljs-property {
+      color: var(--ws-symbolIcon-propertyForeground, #9cdcfe);
+    }
+
+    .hljs-selector-class,
+    .hljs-selector-id {
+      color: var(--ws-symbolIcon-classForeground, #d7ba7d);
+    }
+
+    .hljs-punctuation {
+      color: var(--ws-foreground);
+    }
   }
 
   .cm-link {
@@ -415,6 +572,19 @@
   // 分隔线
   .cm-hr {
     color: var(--ws-descriptionForeground);
+  }
+
+  // 分割线 Widget 样式
+  .cm-horizontal-rule {
+    display: block;
+    width: 100%;
+    padding: 2px 0;
+    
+    hr {
+      border: none;
+      border-top: 1px solid var(--ws-panel-border);
+      margin: 0;
+    }
   }
 
   // 任务列表复选框
