@@ -3804,6 +3804,34 @@ class CodeLineWidget extends WidgetType {
 }
 
 /**
+ * 行内代码高亮 Widget - 使用 highlight.js 自动检测语言并高亮
+ */
+class InlineCodeWidget extends WidgetType {
+  constructor(readonly code: string) {
+    super();
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement('span');
+    span.className = 'cm-code-highlighted cm-inline-code';
+    
+    // 使用 highlight.js 自动检测语言
+    const result = hljs.highlightAuto(this.code);
+    span.innerHTML = result.value;
+    
+    return span;
+  }
+
+  eq(other: InlineCodeWidget): boolean {
+    return this.code === other.code;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+/**
  * 代码块信息接口
  */
 interface CodeBlockInfo {
@@ -4060,6 +4088,79 @@ const headingSyntaxHideDecorations = StateField.define<DecorationSet>({
 });
 
 /**
+ * 解析行内代码并创建高亮装饰器（源码模式）
+ */
+function parseInlineCodeHighlight(state: EditorState): DecorationSet {
+  const decorations: { from: number; to: number; decoration: Decoration }[] = [];
+  const doc = state.doc.toString();
+  const cursorPos = state.selection.main.head;
+  
+  // 匹配行内代码 `code`（不匹配代码块 ```）
+  const codeRegex = /(?<!`)`([^`]+)`(?!`)/g;
+  let match;
+  
+  while ((match = codeRegex.exec(doc)) !== null) {
+    const startFrom = match.index;
+    const startTo = startFrom + 1;
+    const contentFrom = startTo;
+    const contentTo = startFrom + match[0].length - 1;
+    const endFrom = contentTo;
+    const endTo = startFrom + match[0].length;
+    const codeContent = match[1];
+    
+    // 如果光标在这个行内代码范围内，显示原始语法
+    if (cursorPos >= startFrom && cursorPos <= endTo) {
+      continue;
+    }
+    
+    // 隐藏前面的 `
+    decorations.push({
+      from: startFrom,
+      to: startTo,
+      decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
+    });
+    // 用 Widget 替换代码内容以实现语法高亮
+    decorations.push({
+      from: contentFrom,
+      to: contentTo,
+      decoration: Decoration.replace({
+        widget: new InlineCodeWidget(codeContent)
+      }),
+    });
+    // 隐藏后面的 `
+    decorations.push({
+      from: endFrom,
+      to: endTo,
+      decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
+    });
+  }
+  
+  // 按位置排序
+  decorations.sort((a, b) => a.from - b.from);
+  
+  return RangeSet.of(
+    decorations.map(d => d.decoration.range(d.from, d.to)),
+    true
+  );
+}
+
+/**
+ * 行内代码高亮装饰器 StateField（源码模式）
+ */
+const inlineCodeHighlightDecorations = StateField.define<DecorationSet>({
+  create(state) {
+    return parseInlineCodeHighlight(state);
+  },
+  update(decorations, tr) {
+    if (tr.docChanged || tr.selection) {
+      return parseInlineCodeHighlight(tr.state);
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+/**
  * 解析 Markdown 语法并创建隐藏装饰器（预览模式）
  */
 function parseMarkdownSyntax(doc: string): DecorationSet {
@@ -4149,7 +4250,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 隐藏行内代码的 ` 并添加代码块样式
+  // 隐藏行内代码的 ` 并添加语法高亮
   const codeRegex = /`([^`]+)`/g;
   while ((match = codeRegex.exec(doc)) !== null) {
     const startFrom = match.index;
@@ -4158,6 +4259,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     const contentTo = startFrom + match[0].length - 1;
     const endFrom = contentTo;
     const endTo = startFrom + match[0].length;
+    const codeContent = match[1];
     
     // 隐藏前面的 `
     decorations.push({
@@ -4165,11 +4267,13 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
       to: startTo,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
-    // 给中间内容添加代码块样式
+    // 用 Widget 替换代码内容以实现语法高亮
     decorations.push({
       from: contentFrom,
       to: contentTo,
-      decoration: Decoration.mark({ class: 'cm-inline-code' }),
+      decoration: Decoration.replace({
+        widget: new InlineCodeWidget(codeContent)
+      }),
     });
     // 隐藏后面的 `
     decorations.push({
@@ -4380,19 +4484,6 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
                   changes: { from, to, insert: `~~${selectedText || '删除线文本'}~~` },
-                });
-              }
-            },
-          },
-          {
-            id: 'highlight',
-            label: '高亮',
-            action: () => {
-              if (view) {
-                const { from, to } = view.state.selection.main;
-                const selectedText = view.state.sliceDoc(from, to);
-                view.dispatch({
-                  changes: { from, to, insert: `==${selectedText || '高亮文本'}==` },
                 });
               }
             },
@@ -5021,6 +5112,8 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     } else {
       // 源码模式添加标题语法隐藏装饰器（所见即所得）
       extensions.push(headingSyntaxHideDecorations);
+      // 源码模式添加行内代码高亮装饰器
+      extensions.push(inlineCodeHighlightDecorations);
     }
 
     const state = EditorState.create({
