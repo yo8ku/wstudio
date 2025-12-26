@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { EditorState, StateField, RangeSet, StateEffect, Prec, RangeSetBuilder } from '@codemirror/state';
+import { EditorState, StateField, RangeSet, StateEffect, Prec, RangeSetBuilder, Range } from '@codemirror/state';
 import {
   EditorView,
   keymap,
@@ -21,11 +21,13 @@ import {
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
-import { syntaxHighlighting, HighlightStyle, indentUnit, foldService, codeFolding, foldedRanges } from '@codemirror/language';
+import { syntaxHighlighting, HighlightStyle, indentUnit, foldService, codeFolding, foldedRanges, syntaxTree } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { foldEffect, unfoldEffect } from '@codemirror/language';
 import { Icon } from '../Icons';
+import { CodeMirrorContextMenu, ContextMenuItem } from './components/CodeMirrorContextMenu';
 import './CodeMirrorEditor.scss';
+import { text } from 'stream/consumers';
 
 /**
  * 编辑器模式类型
@@ -148,9 +150,6 @@ function parseColorBlocks(backgrounds: Map<number, string>, doc: string): ColorB
 
 // 存储 EditorView 引用，供 Widget 使用
 let globalEditorView: EditorView | null = null;
-
-// 当前显示的颜色选择器
-let currentColorPicker: HTMLElement | null = null;
 
 // 当前选中的图片 src（用于在 Widget 重建后恢复选中状态）
 let selectedImageSrc: string | null = null;
@@ -726,6 +725,647 @@ const numberingDecorations = StateField.define<DecorationSet>({
   update(decorations, tr) {
     if (tr.docChanged) {
       return buildNumberingDecorations(tr.state);
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+// ============================================================================
+// 文本颜色系统 - 纯 StateField + Decoration 方案（不使用正则）
+// ============================================================================
+
+/**
+ * 颜色标记数据结构
+ */
+interface ColorMark {
+  from: number;
+  to: number;
+  bgColor?: string;
+  textColor?: string;
+}
+
+/**
+ * 添加/更新颜色的 StateEffect
+ */
+const addColorEffect = StateEffect.define<ColorMark>();
+
+/**
+ * 清除颜色的 StateEffect
+ */
+const clearColorEffect = StateEffect.define<{ from: number; to: number }>();
+
+/**
+ * 颜色标记 StateField
+ * 存储所有文本颜色信息，不依赖文档中的 HTML 标签
+ */
+const colorMarksField = StateField.define<ColorMark[]>({
+  create() {
+    return [];
+  },
+  update(marks, tr) {
+    let newMarks = marks;
+
+    // 处理文档变化 - 更新所有标记的位置
+    if (tr.docChanged) {
+      newMarks = marks
+        .map(mark => {
+          // 使用 mapPos 更新位置
+          const newFrom = tr.changes.mapPos(mark.from, 1);
+          const newTo = tr.changes.mapPos(mark.to, -1);
+          // 如果范围无效（被删除），返回 null
+          if (newFrom >= newTo) {
+            return null;
+          }
+          return { ...mark, from: newFrom, to: newTo };
+        })
+        .filter((mark): mark is ColorMark => mark !== null);
+    }
+
+    // 处理颜色效果
+    for (const effect of tr.effects) {
+      if (effect.is(addColorEffect)) {
+        const newMark = effect.value;
+        // 查找所有重叠的标记
+        const overlappingMarks = newMarks.filter(
+          m => !(m.to <= newMark.from || m.from >= newMark.to)
+        );
+
+        if (overlappingMarks.length > 0) {
+          // 移除所有重叠的标记
+          newMarks = newMarks.filter(
+            m => m.to <= newMark.from || m.from >= newMark.to
+          );
+
+          // 处理每个重叠标记，可能需要分割
+          for (const existing of overlappingMarks) {
+            // 如果旧标记在新标记之前有部分
+            if (existing.from < newMark.from) {
+              newMarks.push({
+                from: existing.from,
+                to: newMark.from,
+                bgColor: existing.bgColor,
+                textColor: existing.textColor,
+              });
+            }
+            // 如果旧标记在新标记之后有部分
+            if (existing.to > newMark.to) {
+              newMarks.push({
+                from: newMark.to,
+                to: existing.to,
+                bgColor: existing.bgColor,
+                textColor: existing.textColor,
+              });
+            }
+          }
+
+          // 合并颜色：新标记使用新颜色，保留旧标记中未被覆盖的颜色
+          const firstOverlap = overlappingMarks[0];
+          const merged: ColorMark = {
+            from: newMark.from,
+            to: newMark.to,
+            bgColor: newMark.bgColor !== undefined ? newMark.bgColor : firstOverlap.bgColor,
+            textColor: newMark.textColor !== undefined ? newMark.textColor : firstOverlap.textColor,
+          };
+          newMarks.push(merged);
+        } else {
+          // 添加新标记
+          newMarks = [...newMarks, newMark];
+        }
+      } else if (effect.is(clearColorEffect)) {
+        const { from, to } = effect.value;
+        // 移除范围内的标记
+        newMarks = newMarks.filter(m => m.to <= from || m.from >= to);
+      }
+    }
+
+    return newMarks;
+  },
+});
+
+/**
+ * 预览范围数据 - 用于在预览时暂时隐藏已有背景色
+ */
+interface PreviewRange {
+  from: number;
+  to: number;
+  type: 'color' | 'background-color';
+}
+
+/**
+ * 设置预览范围的 StateEffect
+ */
+const setPreviewRangeEffect = StateEffect.define<PreviewRange | null>();
+
+/**
+ * 预览范围 StateField
+ */
+const previewRangeField = StateField.define<PreviewRange | null>({
+  create() {
+    return null;
+  },
+  update(range, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setPreviewRangeEffect)) {
+        return effect.value;
+      }
+    }
+    return range;
+  },
+});
+
+/**
+ * 从 ColorMark 数组生成 DecorationSet
+ * @param marks 颜色标记数组
+ * @param previewRange 预览范围（如果有，则在该范围内隐藏对应类型的颜色）
+ */
+function buildColorDecorations(
+  marks: ColorMark[],
+  previewRange: PreviewRange | null
+): DecorationSet {
+  const decorations: Range<Decoration>[] = [];
+
+  for (const mark of marks) {
+    // 检查是否与预览范围重叠
+    const overlapsPreview =
+      previewRange &&
+      !(mark.to <= previewRange.from || mark.from >= previewRange.to);
+
+    if (overlapsPreview && previewRange) {
+      // 需要分割标记：预览范围内隐藏对应颜色，范围外保持原样
+      
+      // 1. 预览范围之前的部分（保持原样）
+      if (mark.from < previewRange.from) {
+        const styleAttrs: string[] = [];
+        if (mark.bgColor) {
+          styleAttrs.push(`background-color: ${mark.bgColor}`);
+          styleAttrs.push('border-radius: 3px');
+          styleAttrs.push('padding: 0 2px');
+        }
+        if (mark.textColor) {
+          styleAttrs.push(`color: ${mark.textColor} !important`);
+        }
+        if (styleAttrs.length > 0) {
+          decorations.push(
+            Decoration.mark({
+              tagName: 'span',
+              class: 'cm-text-colored',
+              attributes: { style: styleAttrs.join('; ') },
+            }).range(mark.from, previewRange.from)
+          );
+        }
+      }
+
+      // 2. 预览范围内的部分（隐藏对应类型的颜色）
+      const overlapFrom = Math.max(mark.from, previewRange.from);
+      const overlapTo = Math.min(mark.to, previewRange.to);
+      if (overlapFrom < overlapTo) {
+        const styleAttrs: string[] = [];
+        // 只保留不被预览的颜色类型
+        if (mark.bgColor && previewRange.type !== 'background-color') {
+          styleAttrs.push(`background-color: ${mark.bgColor}`);
+          styleAttrs.push('border-radius: 3px');
+          styleAttrs.push('padding: 0 2px');
+        }
+        if (mark.textColor && previewRange.type !== 'color') {
+          styleAttrs.push(`color: ${mark.textColor} !important`);
+        }
+        if (styleAttrs.length > 0) {
+          decorations.push(
+            Decoration.mark({
+              tagName: 'span',
+              class: 'cm-text-colored',
+              attributes: { style: styleAttrs.join('; ') },
+            }).range(overlapFrom, overlapTo)
+          );
+        }
+      }
+
+      // 3. 预览范围之后的部分（保持原样）
+      if (mark.to > previewRange.to) {
+        const styleAttrs: string[] = [];
+        if (mark.bgColor) {
+          styleAttrs.push(`background-color: ${mark.bgColor}`);
+          styleAttrs.push('border-radius: 3px');
+          styleAttrs.push('padding: 0 2px');
+        }
+        if (mark.textColor) {
+          styleAttrs.push(`color: ${mark.textColor} !important`);
+        }
+        if (styleAttrs.length > 0) {
+          decorations.push(
+            Decoration.mark({
+              tagName: 'span',
+              class: 'cm-text-colored',
+              attributes: { style: styleAttrs.join('; ') },
+            }).range(previewRange.to, mark.to)
+          );
+        }
+      }
+    } else {
+      // 不与预览范围重叠，正常显示
+      const styleAttrs: string[] = [];
+      if (mark.bgColor) {
+        styleAttrs.push(`background-color: ${mark.bgColor}`);
+        styleAttrs.push('border-radius: 3px');
+        styleAttrs.push('padding: 0 2px');
+      }
+      if (mark.textColor) {
+        styleAttrs.push(`color: ${mark.textColor} !important`);
+      }
+
+      if (styleAttrs.length > 0) {
+        decorations.push(
+          Decoration.mark({
+            tagName: 'span',
+            class: 'cm-text-colored',
+            attributes: { style: styleAttrs.join('; ') },
+          }).range(mark.from, mark.to)
+        );
+      }
+    }
+  }
+
+  // 按位置排序
+  decorations.sort((a, b) => a.from - b.from);
+
+  return Decoration.set(decorations);
+}
+
+/**
+ * 颜色装饰器 StateField
+ * 从 colorMarksField 生成装饰器
+ */
+const colorDecorationsField = StateField.define<DecorationSet>({
+  create(state) {
+    return buildColorDecorations(state.field(colorMarksField), null);
+  },
+  update(decorations, tr) {
+    // 如果有颜色相关的效果、文档变化或预览范围变化，重新构建装饰器
+    const hasColorEffect = tr.effects.some(
+      e => e.is(addColorEffect) || e.is(clearColorEffect) || e.is(setPreviewRangeEffect)
+    );
+    if (tr.docChanged || hasColorEffect) {
+      const previewRange = tr.state.field(previewRangeField);
+      return buildColorDecorations(tr.state.field(colorMarksField), previewRange);
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+/**
+ * 利用语法树判断位置是否在 Markdown 标记内（标题、列表标记等）
+ * 这些位置不应该应用颜色
+ */
+function isInMarkdownSyntax(state: EditorState, pos: number): boolean {
+  const tree = syntaxTree(state);
+  let node = tree.resolveInner(pos, 1);
+
+  // 遍历节点及其父节点
+  while (node) {
+    const name = node.type.name;
+    // 检查是否是 Markdown 语法标记
+    if (
+      name === 'HeaderMark' ||      // # ## ### 等
+      name === 'ListMark' ||        // - * + 1. 等
+      name === 'QuoteMark' ||       // >
+      name === 'CodeMark' ||        // ` ```
+      name === 'EmphasisMark' ||    // * _ ** __
+      name === 'LinkMark' ||        // [ ] ( )
+      name === 'URL'                // 链接 URL
+    ) {
+      return true;
+    }
+    if (!node.parent || node.parent === node) break;
+    node = node.parent;
+  }
+
+  return false;
+}
+
+/**
+ * 获取行首的 Markdown 标记结束位置
+ * 返回内容开始的位置（跳过标题符号、列表标记等）
+ * 支持多种序号格式：
+ * - 标准 Markdown：# ## - * + 1. 等
+ * - 多级数字：1.1、1.2.1、4.1 等
+ * - 字母序号：A. B. a. b. A1. B2. 等
+ * - 字母+数字混合：A1、B2、A1.1 等
+ * - 中文序号：一、二、三、等
+ * - 支持任意缩进（空格或 TAB）
+ */
+function getContentStartPos(state: EditorState, lineFrom: number): number {
+  const line = state.doc.lineAt(lineFrom);
+  const tree = syntaxTree(state);
+  const lineText = line.text;
+
+  // 从行首开始查找
+  let contentStart = line.from;
+
+  // 先用语法树检测标准 Markdown 标记
+  // 增加检测范围以支持深度缩进
+  tree.iterate({
+    from: line.from,
+    to: line.to,
+    enter(node) {
+      // 如果是标记节点
+      if (
+        node.type.name === 'HeaderMark' ||
+        node.type.name === 'ListMark' ||
+        node.type.name === 'QuoteMark'
+      ) {
+        // 内容从标记后面开始
+        contentStart = Math.max(contentStart, node.to);
+        // 跳过标记后的空格
+        const text = state.doc.sliceString(node.to, Math.min(node.to + 2, line.to));
+        if (text.startsWith(' ')) {
+          contentStart = node.to + 1;
+        }
+      }
+    },
+  });
+
+  // 额外检测各种序号格式（语法树可能不识别）
+  // 使用 [\t ]* 明确匹配 TAB 和空格
+  const listPatterns = [
+    // 多级数字序号：1.1、1.2.1、4.1.2 等（支持任意缩进）
+    /^([\t ]*)((\d+\.)+\d*\s+)/,
+    // 单个数字序号：1. 2. 10. 等（支持任意缩进）
+    /^([\t ]*)(\d+\.\s+)/,
+    // 字母+数字+多级：A1.1、B2.3 等
+    /^([\t ]*)([A-Za-z]\d+(?:\.\d+)*\.?\s+)/,
+    // 字母+数字序号：A1、B2、A1.、B2. 等
+    /^([\t ]*)([A-Za-z]\d+\.?\s+)/,
+    // 单字母序号：A. B. a. b. 等
+    /^([\t ]*)([A-Za-z]\.\s+)/,
+    // 中文序号：一、二、三、等
+    /^([\t ]*)([一二三四五六七八九十百千万零]+[、.]\s*)/,
+    // 无序列表符号：- * + •
+    /^([\t ]*)([-*+•]\s+)/,
+    // 标题符号：# ## ### 等
+    /^([\t ]*)(#{1,6}\s+)/,
+  ];
+
+  for (const regex of listPatterns) {
+    const match = lineText.match(regex);
+    if (match) {
+      const matchEnd = line.from + match[0].length;
+      contentStart = Math.max(contentStart, matchEnd);
+      break; // 匹配到一个就停止
+    }
+  }
+
+  return contentStart;
+}
+
+/**
+ * 跳过文本首尾的空白字符，返回实际内容的范围
+ */
+function trimTextRange(
+  state: EditorState,
+  from: number,
+  to: number
+): { from: number; to: number } {
+  const text = state.sliceDoc(from, to);
+  
+  // 计算前导空白
+  let leadingSpaces = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === ' ' || text[i] === '\t') {
+      leadingSpaces++;
+    } else {
+      break;
+    }
+  }
+  
+  // 计算尾部空白
+  let trailingSpaces = 0;
+  for (let i = text.length - 1; i >= leadingSpaces; i--) {
+    if (text[i] === ' ' || text[i] === '\t') {
+      trailingSpaces++;
+    } else {
+      break;
+    }
+  }
+  
+  return {
+    from: from + leadingSpaces,
+    to: to - trailingSpaces,
+  };
+}
+
+/**
+ * 应用颜色样式到选中文本（纯 StateField 方案）
+ * @param view EditorView 实例
+ * @param styleType 样式类型：'color' 或 'background-color'
+ * @param newColor 新的颜色值
+ */
+function applyColorStyle(
+  view: EditorView,
+  styleType: 'color' | 'background-color',
+  newColor: string
+): void {
+  const { from, to } = view.state.selection.main;
+  let targetFrom: number;
+  let targetTo: number;
+
+  if (from === to) {
+    // 没有选中文本，选中整行内容（跳过 Markdown 标记）
+    const line = view.state.doc.lineAt(from);
+    targetFrom = getContentStartPos(view.state, line.from);
+    targetTo = line.to;
+  } else {
+    targetFrom = from;
+    targetTo = to;
+
+    // 检查选区起始位置是否在 Markdown 标记内
+    const startLine = view.state.doc.lineAt(from);
+    const contentStart = getContentStartPos(view.state, startLine.from);
+    if (targetFrom < contentStart) {
+      targetFrom = contentStart;
+    }
+  }
+
+  // 跳过首尾空白
+  const trimmed = trimTextRange(view.state, targetFrom, targetTo);
+  targetFrom = trimmed.from;
+  targetTo = trimmed.to;
+
+  // 如果范围无效，直接返回
+  if (targetFrom >= targetTo) {
+    return;
+  }
+
+  // 检查是否包含多行
+  const targetText = view.state.sliceDoc(targetFrom, targetTo);
+  const hasMultipleLines = targetText.includes('\n');
+
+  if (hasMultipleLines) {
+    // 多行处理：对每一行分别应用颜色
+    const doc = view.state.doc;
+    const startLine = doc.lineAt(targetFrom);
+    const endLine = doc.lineAt(targetTo);
+    const effects: StateEffect<ColorMark>[] = [];
+
+    for (let lineNum = startLine.number; lineNum <= endLine.number; lineNum++) {
+      const line = doc.line(lineNum);
+      let lineFrom = line.from;
+      let lineTo = line.to;
+
+      // 如果是第一行，从选中位置开始
+      if (lineNum === startLine.number) {
+        lineFrom = Math.max(targetFrom, line.from);
+      }
+      // 如果是最后一行，到选中位置结束
+      if (lineNum === endLine.number) {
+        lineTo = Math.min(targetTo, line.to);
+      }
+
+      // 跳过 Markdown 标记
+      const contentStart = getContentStartPos(view.state, line.from);
+      if (lineFrom < contentStart) {
+        lineFrom = contentStart;
+      }
+
+      // 跳过首尾空白
+      const lineTrimmed = trimTextRange(view.state, lineFrom, lineTo);
+      lineFrom = lineTrimmed.from;
+      lineTo = lineTrimmed.to;
+
+      // 如果这一行没有内容，跳过
+      if (lineFrom >= lineTo) {
+        continue;
+      }
+
+      // 查找已有的颜色标记（查找与新范围重叠的所有标记，合并它们的颜色）
+      const existingMarks = view.state.field(colorMarksField);
+      const overlappingMarks = existingMarks.filter(
+        m => !(m.to <= lineFrom || m.from >= lineTo)
+      );
+
+      // 从所有重叠标记中收集颜色
+      let existingBgColor: string | undefined;
+      let existingTextColor: string | undefined;
+      for (const m of overlappingMarks) {
+        if (m.bgColor && !existingBgColor) {
+          existingBgColor = m.bgColor;
+        }
+        if (m.textColor && !existingTextColor) {
+          existingTextColor = m.textColor;
+        }
+      }
+
+      // 创建新的颜色标记
+      const newMark: ColorMark = {
+        from: lineFrom,
+        to: lineTo,
+        bgColor: styleType === 'background-color' ? newColor : existingBgColor,
+        textColor: styleType === 'color' ? newColor : existingTextColor,
+      };
+
+      effects.push(addColorEffect.of(newMark));
+    }
+
+    if (effects.length > 0) {
+      view.dispatch({ effects });
+    }
+    return;
+  }
+
+  // 单行处理
+  // 查找已有的颜色标记（查找与新范围重叠的所有标记，合并它们的颜色）
+  const existingMarks = view.state.field(colorMarksField);
+  const overlappingMarks = existingMarks.filter(
+    m => !(m.to <= targetFrom || m.from >= targetTo)
+  );
+
+  // 从所有重叠标记中收集颜色
+  let existingBgColor: string | undefined;
+  let existingTextColor: string | undefined;
+  for (const m of overlappingMarks) {
+    if (m.bgColor && !existingBgColor) {
+      existingBgColor = m.bgColor;
+    }
+    if (m.textColor && !existingTextColor) {
+      existingTextColor = m.textColor;
+    }
+  }
+
+  // 创建新的颜色标记
+  const newMark: ColorMark = {
+    from: targetFrom,
+    to: targetTo,
+    bgColor: styleType === 'background-color' ? newColor : existingBgColor,
+    textColor: styleType === 'color' ? newColor : existingTextColor,
+  };
+
+  view.dispatch({
+    effects: addColorEffect.of(newMark),
+  });
+}
+
+/**
+ * 获取当前选中文本的现有颜色
+ * @param view EditorView 实例
+ * @param styleType 样式类型：'color' 或 'background-color'
+ * @returns 现有颜色值，如果没有则返回 undefined
+ */
+function getExistingColor(
+  view: EditorView,
+  styleType: 'color' | 'background-color'
+): string | undefined {
+  const { from, to } = view.state.selection.main;
+  const marks = view.state.field(colorMarksField);
+
+  // 查找包含选区的颜色标记
+  const mark = marks.find(m => m.from <= from && m.to >= to);
+
+  if (mark) {
+    return styleType === 'background-color' ? mark.bgColor : mark.textColor;
+  }
+
+  return undefined;
+}
+
+/**
+ * 颜色预览 StateEffect - 用于更新预览装饰器
+ */
+interface ColorPreviewData {
+  type: 'color' | 'background-color';
+  color: string;
+  from: number;
+  to: number;
+}
+
+const setColorPreviewEffect = StateEffect.define<ColorPreviewData | null>();
+
+/**
+ * 颜色预览装饰器 StateField
+ * 用于在拖动颜色选择器时显示临时预览效果
+ */
+const colorPreviewDecorations = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none;
+  },
+  update(decorations, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setColorPreviewEffect)) {
+        const data = effect.value;
+        if (data === null) {
+          return Decoration.none;
+        }
+        const { type, color, from, to } = data;
+        const styleAttr =
+          type === 'background-color'
+            ? `background-color: ${color}; border-radius: 3px; padding: 0 2px;`
+            : `color: ${color}`;
+        const previewDecoration = Decoration.mark({
+          class: 'cm-color-preview',
+          attributes: { style: styleAttr },
+        });
+        return Decoration.set([previewDecoration.range(from, to)]);
+      }
     }
     return decorations;
   },
@@ -1634,143 +2274,6 @@ const customKeymap = Prec.highest(
 );
 
 /**
- * 预设背景颜色
- */
-const BACKGROUND_COLORS = [
-  { name: '默认', color: '' },
-  { name: '浅黄', color: 'rgba(253, 224, 71, 0.4)' },
-  { name: '浅绿', color: 'rgba(134, 239, 172, 0.4)' },
-  { name: '浅蓝', color: 'rgba(147, 197, 253, 0.4)' },
-  { name: '浅粉', color: 'rgba(249, 168, 212, 0.4)' },
-  { name: '浅紫', color: 'rgba(196, 181, 253, 0.4)' },
-  { name: '浅橙', color: 'rgba(253, 186, 116, 0.4)' },
-];
-
-/**
- * 设置行背景色的 Effect
- */
-const setLineBackgroundEffect = StateEffect.define<{ from: number; to: number; color: string }>();
-
-/**
- * 清除行背景色的 Effect
- */
-const clearLineBackgroundEffect = StateEffect.define<{ from: number; to: number }>();
-
-/**
- * 行背景色 StateField - 存储每行的背景色信息
- */
-const lineBackgroundField = StateField.define<Map<number, string>>({
-  create() {
-    return new Map();
-  },
-  update(backgrounds, tr) {
-    let newBackgrounds = backgrounds;
-    
-    // 处理文档变化时的行号映射
-    if (tr.docChanged) {
-      const updatedBackgrounds = new Map<number, string>();
-      
-      backgrounds.forEach((color, lineNum) => {
-        // 尝试映射旧行号到新行号
-        try {
-          const oldDoc = tr.startState.doc;
-          if (lineNum <= oldDoc.lines) {
-            const oldLine = oldDoc.line(lineNum);
-            const newPos = tr.changes.mapPos(oldLine.from, 1);
-            const newLineNum = tr.newDoc.lineAt(newPos).number;
-            updatedBackgrounds.set(newLineNum, color);
-          }
-        } catch {
-          // 行已被删除，不保留
-        }
-      });
-      
-      newBackgrounds = updatedBackgrounds;
-    }
-    
-    // 处理设置背景色的 Effect
-    for (const effect of tr.effects) {
-      if (effect.is(setLineBackgroundEffect)) {
-        const { from, to, color } = effect.value;
-        newBackgrounds = new Map(newBackgrounds);
-        
-        const startLine = tr.state.doc.lineAt(from).number;
-        const endLine = tr.state.doc.lineAt(to).number;
-        
-        for (let i = startLine; i <= endLine; i++) {
-          newBackgrounds.set(i, color);
-        }
-      }
-      
-      if (effect.is(clearLineBackgroundEffect)) {
-        const { from, to } = effect.value;
-        newBackgrounds = new Map(newBackgrounds);
-        
-        const startLine = tr.state.doc.lineAt(from).number;
-        const endLine = tr.state.doc.lineAt(to).number;
-        
-        for (let i = startLine; i <= endLine; i++) {
-          newBackgrounds.delete(i);
-        }
-      }
-    }
-    
-    return newBackgrounds;
-  },
-});
-
-/**
- * 根据 lineBackgroundField 生成装饰器
- */
-const lineBackgroundDecorations = StateField.define<DecorationSet>({
-  create(state) {
-    return buildLineDecorations(state);
-  },
-  update(decorations, tr) {
-    // 如果有背景色相关的 Effect 或文档变化，重新构建装饰器
-    const hasBackgroundEffect = tr.effects.some(
-      e => e.is(setLineBackgroundEffect) || e.is(clearLineBackgroundEffect)
-    );
-    
-    if (tr.docChanged || hasBackgroundEffect) {
-      return buildLineDecorations(tr.state);
-    }
-    
-    return decorations;
-  },
-  provide: f => EditorView.decorations.from(f),
-});
-
-/**
- * 构建行背景装饰器
- */
-function buildLineDecorations(state: EditorState): DecorationSet {
-  const backgrounds = state.field(lineBackgroundField);
-  const decorations: { from: number; decoration: Decoration }[] = [];
-  
-  backgrounds.forEach((color, lineNum) => {
-    if (lineNum <= state.doc.lines) {
-      const line = state.doc.line(lineNum);
-      decorations.push({
-        from: line.from,
-        decoration: Decoration.line({
-          class: 'cm-line-background',
-          attributes: { style: `background-color: ${color}` },
-        }),
-      });
-    }
-  });
-  
-  // 按位置排序
-  decorations.sort((a, b) => a.from - b.from);
-  
-  return RangeSet.of(
-    decorations.map(d => d.decoration.range(d.from)),
-    true
-  );
-}
-
-/**
  * 检测 URL 是否为图片链接
  */
 function isImageUrl(url: string): boolean {
@@ -1834,96 +2337,6 @@ function parseImageSize(alt: string): { alt: string; width?: number; height?: nu
     };
   }
   return { alt };
-}
-
-/**
- * 关闭颜色选择器
- */
-function closeColorPicker(): void {
-  if (currentColorPicker) {
-    currentColorPicker.remove();
-    currentColorPicker = null;
-  }
-}
-
-/**
- * 显示背景色选择器
- */
-function showBackgroundColorPicker(view: EditorView, x: number, y: number): void {
-  closeColorPicker();
-
-  const picker = document.createElement('div');
-  picker.className = 'cm-color-picker';
-  picker.style.left = `${x}px`;
-  picker.style.top = `${y}px`;
-
-  // 标题
-  const title = document.createElement('div');
-  title.className = 'cm-color-picker-title';
-  title.textContent = '背景颜色';
-  picker.appendChild(title);
-
-  // 颜色网格
-  const grid = document.createElement('div');
-  grid.className = 'cm-color-picker-grid';
-
-  BACKGROUND_COLORS.forEach(({ name, color }) => {
-    const colorBtn = document.createElement('div');
-    colorBtn.className = 'cm-color-picker-item';
-    colorBtn.title = name;
-    if (color) {
-      colorBtn.style.backgroundColor = color;
-    } else {
-      colorBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="4" x2="20" y2="20"/></svg>`;
-      colorBtn.classList.add('cm-color-picker-item-none');
-    }
-
-    colorBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      applyBackgroundColor(view, color);
-      closeColorPicker();
-    });
-
-    grid.appendChild(colorBtn);
-  });
-
-  picker.appendChild(grid);
-  document.body.appendChild(picker);
-  currentColorPicker = picker;
-
-  // 点击其他地方关闭
-  const handleClickOutside = (e: MouseEvent) => {
-    if (!picker.contains(e.target as Node)) {
-      closeColorPicker();
-      document.removeEventListener('click', handleClickOutside);
-    }
-  };
-  setTimeout(() => {
-    document.addEventListener('click', handleClickOutside);
-  }, 0);
-}
-
-/**
- * 应用背景颜色到当前选中的行
- * 使用 StateEffect 方式，不修改文档内容
- */
-function applyBackgroundColor(view: EditorView, color: string): void {
-  const { state } = view;
-  const { selection } = state;
-  const { from, to } = selection.main;
-
-  if (color) {
-    // 设置背景色
-    view.dispatch({
-      effects: setLineBackgroundEffect.of({ from, to, color }),
-    });
-  } else {
-    // 清除背景色
-    view.dispatch({
-      effects: clearLineBackgroundEffect.of({ from, to }),
-    });
-  }
 }
 
 /**
@@ -3436,6 +3849,564 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
   const [isOutlineCollapsed, setIsOutlineCollapsed] = useState(false);
   const isResizingOutline = useRef(false);
 
+  // 上下文菜单状态
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+  }>({ visible: false, x: 0, y: 0 });
+
+  // 颜色预览状态
+  const [colorPreview, setColorPreview] = useState<{
+    type: 'color' | 'background-color' | null;
+    color: string;
+    from: number;
+    to: number;
+  } | null>(null);
+
+  // 保存打开颜色选择器时的选区范围
+  const colorPickerSelectionRef = useRef<{ from: number; to: number } | null>(null);
+
+  // 关闭上下文菜单
+  const closeContextMenu = useCallback(() => {
+    setContextMenu({ visible: false, x: 0, y: 0 });
+    setColorPreview(null); // 关闭菜单时清除预览
+    colorPickerSelectionRef.current = null; // 清除保存的选区
+  }, []);
+
+  // 颜色预览效果
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    if (colorPreview && colorPreview.type) {
+      // 同时设置预览装饰器和预览范围（用于隐藏已有颜色）
+      view.dispatch({
+        effects: [
+          setColorPreviewEffect.of({
+            type: colorPreview.type,
+            color: colorPreview.color,
+            from: colorPreview.from,
+            to: colorPreview.to,
+          }),
+          setPreviewRangeEffect.of({
+            from: colorPreview.from,
+            to: colorPreview.to,
+            type: colorPreview.type,
+          }),
+        ],
+      });
+    } else {
+      // 清除预览和预览范围
+      view.dispatch({
+        effects: [
+          setColorPreviewEffect.of(null),
+          setPreviewRangeEffect.of(null),
+        ],
+      });
+    }
+  }, [colorPreview]);
+
+  // 上下文菜单项
+  const getContextMenuItems = useCallback((): ContextMenuItem[] => {
+    const view = viewRef.current;
+
+    return [
+      {
+        id: 'new-link',
+        label: '新建链接',
+        action: () => {
+          if (view) {
+            const { from, to } = view.state.selection.main;
+            const selectedText = view.state.sliceDoc(from, to);
+            const linkText = selectedText || '链接文本';
+            view.dispatch({
+              changes: { from, to, insert: `[[${linkText}]]` },
+            });
+          }
+        },
+      },
+      {
+        id: 'external-link',
+        label: '新增外部链接',
+        action: () => {
+          if (view) {
+            const { from, to } = view.state.selection.main;
+            const selectedText = view.state.sliceDoc(from, to);
+            const linkText = selectedText || '链接文本';
+            view.dispatch({
+              changes: { from, to, insert: `[${linkText}](url)` },
+            });
+          }
+        },
+      },
+      { id: 'sep1', label: '', separator: true },
+      {
+        id: 'text-format',
+        label: '文本格式',
+        submenu: [
+          {
+            id: 'bold',
+            label: '加粗',
+            shortcut: 'Ctrl+B',
+            action: () => {
+              if (view) {
+                const { from, to } = view.state.selection.main;
+                const selectedText = view.state.sliceDoc(from, to);
+                view.dispatch({
+                  changes: { from, to, insert: `**${selectedText || '粗体文本'}**` },
+                });
+              }
+            },
+          },
+          {
+            id: 'italic',
+            label: '斜体',
+            shortcut: 'Ctrl+I',
+            action: () => {
+              if (view) {
+                const { from, to } = view.state.selection.main;
+                const selectedText = view.state.sliceDoc(from, to);
+                view.dispatch({
+                  changes: { from, to, insert: `*${selectedText || '斜体文本'}*` },
+                });
+              }
+            },
+          },
+          {
+            id: 'strikethrough',
+            label: '删除线',
+            action: () => {
+              if (view) {
+                const { from, to } = view.state.selection.main;
+                const selectedText = view.state.sliceDoc(from, to);
+                view.dispatch({
+                  changes: { from, to, insert: `~~${selectedText || '删除线文本'}~~` },
+                });
+              }
+            },
+          },
+          {
+            id: 'highlight',
+            label: '高亮',
+            action: () => {
+              if (view) {
+                const { from, to } = view.state.selection.main;
+                const selectedText = view.state.sliceDoc(from, to);
+                view.dispatch({
+                  changes: { from, to, insert: `==${selectedText || '高亮文本'}==` },
+                });
+              }
+            },
+          },
+          { id: 'text-format-sep', label: '', separator: true },
+          {
+            id: 'code',
+            label: '代码',
+            action: () => {
+              if (view) {
+                const { from, to } = view.state.selection.main;
+                const selectedText = view.state.sliceDoc(from, to);
+                view.dispatch({
+                  changes: { from, to, insert: `\`${selectedText || '代码'}\`` },
+                });
+              }
+            },
+          },
+          {
+            id: 'math',
+            label: '数学',
+            action: () => {
+              if (view) {
+                const { from, to } = view.state.selection.main;
+                const selectedText = view.state.sliceDoc(from, to);
+                view.dispatch({
+                  changes: { from, to, insert: `$${selectedText || '公式'}$` },
+                });
+              }
+            },
+          },
+          {
+            id: 'comment',
+            label: '注释',
+            action: () => {
+              if (view) {
+                const { from, to } = view.state.selection.main;
+                const selectedText = view.state.sliceDoc(from, to);
+                view.dispatch({
+                  changes: { from, to, insert: `<!-- ${selectedText || '注释'} -->` },
+                });
+              }
+            },
+          },
+          {
+            id: 'clear-format',
+            label: '清除格式',
+            action: () => {
+              if (view) {
+                const { from, to } = view.state.selection.main;
+                if (from === to) return;
+                const selectedText = view.state.sliceDoc(from, to);
+                // 清除常见格式标记：**粗体**、*斜体*、~~删除线~~、==高亮==、`代码`、$公式$
+                const cleanText = selectedText
+                  .replace(/\*\*(.+?)\*\*/g, '$1')
+                  .replace(/\*(.+?)\*/g, '$1')
+                  .replace(/~~(.+?)~~/g, '$1')
+                  .replace(/==(.+?)==/g, '$1')
+                  .replace(/`(.+?)`/g, '$1')
+                  .replace(/\$(.+?)\$/g, '$1')
+                  .replace(/<!--\s*(.+?)\s*-->/g, '$1');
+                view.dispatch({
+                  changes: { from, to, insert: cleanText },
+                });
+              }
+            },
+          },
+        ],
+      },
+      {
+        id: 'color',
+        label: '颜色',
+        submenu: [
+          {
+            id: 'bg-red',
+            label: '红色背景',
+            color: '#ffcccc',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'background-color', '#ffcccc');
+              }
+            },
+          },
+          {
+            id: 'bg-orange',
+            label: '橙色背景',
+            color: '#ffe6cc',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'background-color', '#ffe6cc');
+              }
+            },
+          },
+          {
+            id: 'bg-yellow',
+            label: '黄色背景',
+            color: '#ffffcc',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'background-color', '#ffffcc');
+              }
+            },
+          },
+          {
+            id: 'bg-green',
+            label: '绿色背景',
+            color: '#ccffcc',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'background-color', '#ccffcc');
+              }
+            },
+          },
+          {
+            id: 'bg-blue',
+            label: '蓝色背景',
+            color: '#cce6ff',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'background-color', '#cce6ff');
+              }
+            },
+          },
+          {
+            id: 'bg-purple',
+            label: '紫色背景',
+            color: '#e6ccff',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'background-color', '#e6ccff');
+              }
+            },
+          },
+          {
+            id: 'bg-custom',
+            label: '自定义背景',
+            isCustomColor: true,
+            onCustomColorPreview: (color: string) => {
+              if (view) {
+                // 第一次调用时保存选区
+                if (!colorPickerSelectionRef.current) {
+                  const { from, to } = view.state.selection.main;
+                  if (from === to) {
+                    const line = view.state.doc.lineAt(from);
+                    colorPickerSelectionRef.current = { from: line.from, to: line.to };
+                  } else {
+                    colorPickerSelectionRef.current = { from, to };
+                  }
+                }
+                // 使用保存的选区
+                const { from, to } = colorPickerSelectionRef.current;
+                setColorPreview({
+                  type: 'background-color',
+                  color,
+                  from,
+                  to,
+                });
+              }
+            },
+            onCustomColor: (color: string) => {
+              setColorPreview(null);
+              if (view && colorPickerSelectionRef.current) {
+                const { from, to } = colorPickerSelectionRef.current;
+                // 恢复选区
+                view.dispatch({
+                  selection: { anchor: from, head: to },
+                });
+                applyColorStyle(view, 'background-color', color);
+              }
+              colorPickerSelectionRef.current = null;
+            },
+            onCustomColorCancel: () => {
+              // 取消时清除预览
+              setColorPreview(null);
+              colorPickerSelectionRef.current = null;
+            },
+          },
+          { id: 'color-sep', label: '', separator: true },
+          {
+            id: 'text-red',
+            label: '红色文字',
+            color: '#ff0000',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'color', '#ff0000');
+              }
+            },
+          },
+          {
+            id: 'text-orange',
+            label: '橙色文字',
+            color: '#ff8000',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'color', '#ff8000');
+              }
+            },
+          },
+          {
+            id: 'text-green',
+            label: '绿色文字',
+            color: '#00cc00',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'color', '#00cc00');
+              }
+            },
+          },
+          {
+            id: 'text-blue',
+            label: '蓝色文字',
+            color: '#0066ff',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'color', '#0066ff');
+              }
+            },
+          },
+          {
+            id: 'text-purple',
+            label: '紫色文字',
+            color: '#9900ff',
+            action: () => {
+              if (view) {
+                applyColorStyle(view, 'color', '#9900ff');
+              }
+            },
+          },
+          {
+            id: 'text-custom',
+            label: '自定义文字',
+            isCustomColor: true,
+            onCustomColorPreview: (color: string) => {
+              if (view) {
+                // 第一次调用时保存选区
+                if (!colorPickerSelectionRef.current) {
+                  const { from, to } = view.state.selection.main;
+                  if (from === to) {
+                    const line = view.state.doc.lineAt(from);
+                    colorPickerSelectionRef.current = { from: line.from, to: line.to };
+                  } else {
+                    colorPickerSelectionRef.current = { from, to };
+                  }
+                }
+                // 使用保存的选区
+                const { from, to } = colorPickerSelectionRef.current;
+                setColorPreview({
+                  type: 'color',
+                  color,
+                  from,
+                  to,
+                });
+              }
+            },
+            onCustomColor: (color: string) => {
+              setColorPreview(null);
+              if (view && colorPickerSelectionRef.current) {
+                const { from, to } = colorPickerSelectionRef.current;
+                // 恢复选区
+                view.dispatch({
+                  selection: { anchor: from, head: to },
+                });
+                applyColorStyle(view, 'color', color);
+              }
+              colorPickerSelectionRef.current = null;
+            },
+            onCustomColorCancel: () => {
+              // 取消时清除预览
+              setColorPreview(null);
+              colorPickerSelectionRef.current = null;
+            },
+          },
+        ],
+      },
+      {
+        id: 'paragraph',
+        label: '段落设置',
+        submenu: [
+          {
+            id: 'h1',
+            label: '标题 1',
+            action: () => {
+              if (view) {
+                const line = view.state.doc.lineAt(view.state.selection.main.head);
+                view.dispatch({
+                  changes: { from: line.from, to: line.from, insert: '# ' },
+                });
+              }
+            },
+          },
+          {
+            id: 'h2',
+            label: '标题 2',
+            action: () => {
+              if (view) {
+                const line = view.state.doc.lineAt(view.state.selection.main.head);
+                view.dispatch({
+                  changes: { from: line.from, to: line.from, insert: '## ' },
+                });
+              }
+            },
+          },
+          {
+            id: 'h3',
+            label: '标题 3',
+            action: () => {
+              if (view) {
+                const line = view.state.doc.lineAt(view.state.selection.main.head);
+                view.dispatch({
+                  changes: { from: line.from, to: line.from, insert: '### ' },
+                });
+              }
+            },
+          },
+          {
+            id: 'quote',
+            label: '引用',
+            action: () => {
+              if (view) {
+                const line = view.state.doc.lineAt(view.state.selection.main.head);
+                view.dispatch({
+                  changes: { from: line.from, to: line.from, insert: '> ' },
+                });
+              }
+            },
+          },
+        ],
+      },
+      {
+        id: 'insert',
+        label: '插入',
+        submenu: [
+          {
+            id: 'code-block',
+            label: '代码块',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                view.dispatch({
+                  changes: { from, insert: '```\n\n```' },
+                  selection: { anchor: from + 4 },
+                });
+              }
+            },
+          },
+          {
+            id: 'table',
+            label: '表格',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const table = '| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |';
+                view.dispatch({
+                  changes: { from, insert: table },
+                });
+              }
+            },
+          },
+          {
+            id: 'hr',
+            label: '分割线',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                view.dispatch({
+                  changes: { from, insert: '\n---\n' },
+                });
+              }
+            },
+          },
+        ],
+      },
+      { id: 'sep2', label: '', separator: true },
+      {
+        id: 'cut',
+        label: '剪切',
+        shortcut: 'Ctrl+X',
+        action: () => {
+          document.execCommand('cut');
+        },
+      },
+      {
+        id: 'copy',
+        label: '复制',
+        shortcut: 'Ctrl+C',
+        action: () => {
+          document.execCommand('copy');
+        },
+      },
+      {
+        id: 'paste',
+        label: '粘贴',
+        shortcut: 'Ctrl+V',
+        action: () => {
+          document.execCommand('paste');
+        },
+      },
+      {
+        id: 'select-all',
+        label: '全选',
+        shortcut: 'Ctrl+A',
+        action: () => {
+          if (view) {
+            view.dispatch({
+              selection: { anchor: 0, head: view.state.doc.length },
+            });
+          }
+        },
+      },
+    ];
+  }, []);
+
   // 更新大纲
   const updateOutline = useCallback(() => {
     const view = viewRef.current;
@@ -3444,13 +4415,8 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     const doc = view.state.doc.toString();
     setOutline(parseOutline(doc));
 
-    // 获取色块信息
-    try {
-      const backgrounds = view.state.field(lineBackgroundField);
-      setColorBlocks(parseColorBlocks(backgrounds, doc));
-    } catch {
-      setColorBlocks([]);
-    }
+    // 色块信息已移至上下文菜单
+    setColorBlocks([]);
   }, []);
 
   // 跳转到指定位置
@@ -3580,12 +4546,16 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       headingDecorations,
       unorderedListDecorations,
       blockquoteDecorations,
-      lineBackgroundField,
-      lineBackgroundDecorations,
       // 缩进线
       indentGuideDecorations,
       // 序号高亮（如 4.2、4.2.1、4.2.1.1）
       numberingDecorations,
+      // 文本颜色系统 - 纯 StateField + Decoration 方案
+      colorMarksField,
+      previewRangeField,
+      Prec.highest(colorDecorationsField),
+      // 颜色预览装饰器
+      colorPreviewDecorations,
       // 折叠组高亮（光标选中时显示父级的折叠图标和子行的缩进线）
       foldGroupHighlightField,
       // 折叠功能（不使用 customFoldService，避免与 markdown 解析器冲突）
@@ -3623,14 +4593,6 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
         },
         '&.cm-focused .cm-cursor': {
           borderLeftColor: 'var(--ws-editor-foreground)',
-        },
-      }),
-      EditorView.domEventHandlers({
-        contextmenu: (event, view) => {
-          if (!editable) return false;
-          event.preventDefault();
-          showBackgroundColorPicker(view, event.clientX, event.clientY);
-          return true;
         },
       }),
     ];
@@ -3685,14 +4647,26 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       event.preventDefault();
     };
 
+    // 右键菜单处理
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      setContextMenu({
+        visible: true,
+        x: event.clientX,
+        y: event.clientY,
+      });
+    };
+
     container.addEventListener('dragover', handleDragOver);
     container.addEventListener('drop', handleDrop);
     container.addEventListener('paste', handlePaste);
+    container.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       container.removeEventListener('dragover', handleDragOver);
       container.removeEventListener('drop', handleDrop);
       container.removeEventListener('paste', handlePaste);
+      container.removeEventListener('contextmenu', handleContextMenu);
     };
   }, [handleDrop, handlePaste]);
 
@@ -3815,6 +4789,13 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           </div>
         )}
       </div>
+      <CodeMirrorContextMenu
+        visible={contextMenu.visible}
+        x={contextMenu.x}
+        y={contextMenu.y}
+        items={getContextMenuItems()}
+        onClose={closeContextMenu}
+      />
     </div>
   );
 };

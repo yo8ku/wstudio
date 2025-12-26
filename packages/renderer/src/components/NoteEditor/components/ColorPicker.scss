@@ -1,0 +1,199 @@
+/**
+ * 自定义颜色选择器样式
+ */
+
+.custom-color-picker {
+  position: fixed;
+  z-index: 10001;
+  width: 220px;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border, transparent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  user-select: none;
+}
+
+// 饱和度/亮度选择区域
+.color-picker-saturation {
+  position: relative;
+  width: 100%;
+  height: 150px;
+  border-radius: 4px;
+  cursor: crosshair;
+  overflow: hidden;
+
+  .saturation-white {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, #fff, transparent);
+  }
+
+  .saturation-black {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, #000, transparent);
+  }
+
+  .saturation-cursor {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+}
+
+// 色相选择条
+.color-picker-hue {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  margin-top: 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  background: linear-gradient(
+    to right,
+    #ff0000 0%,
+    #ffff00 17%,
+    #00ff00 33%,
+    #00ffff 50%,
+    #0000ff 67%,
+    #ff00ff 83%,
+    #ff0000 100%
+  );
+
+  .hue-cursor {
+    position: absolute;
+    top: 50%;
+    width: 6px;
+    height: 18px;
+    background: #fff;
+    border-radius: 3px;
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+}
+
+// 透明度选择条
+.color-picker-alpha {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  margin-top: 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  // 棋盘格背景表示透明
+  background-image: linear-gradient(45deg, #ccc 25%, transparent 25%),
+    linear-gradient(-45deg, #ccc 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ccc 75%),
+    linear-gradient(-45deg, transparent 75%, #ccc 75%);
+  background-size: 8px 8px;
+  background-position:
+    0 0,
+    0 4px,
+    4px -4px,
+    -4px 0;
+  overflow: hidden;
+
+  .alpha-gradient {
+    position: absolute;
+    inset: 0;
+    border-radius: 7px;
+  }
+
+  .alpha-cursor {
+    position: absolute;
+    top: 50%;
+    width: 6px;
+    height: 18px;
+    background: #fff;
+    border-radius: 3px;
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+}
+
+// 底部预览和操作
+.color-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+
+  .color-preview-wrapper {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid var(--ws-panel-border);
+    flex-shrink: 0;
+    // 棋盘格背景表示透明
+    background-image: linear-gradient(45deg, #ccc 25%, transparent 25%),
+      linear-gradient(-45deg, #ccc 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #ccc 75%),
+      linear-gradient(-45deg, transparent 75%, #ccc 75%);
+    background-size: 8px 8px;
+    background-position:
+      0 0,
+      0 4px,
+      4px -4px,
+      -4px 0;
+    overflow: hidden;
+  }
+
+  .color-preview {
+    width: 100%;
+    height: 100%;
+    border-radius: 3px;
+  }
+
+  .color-input {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 6px;
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--ws-foreground);
+    background-color: var(--ws-input-background);
+    border: 1px solid var(--ws-input-border, transparent);
+    border-radius: 4px;
+    outline: none;
+
+    &:focus {
+      border-color: var(--ws-focusBorder);
+    }
+  }
+
+  .color-picker-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .color-picker-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ws-foreground);
+
+    &.cancel {
+      &:hover {
+        background-color: var(--ws-list-hoverBackground);
+      }
+    }
+
+    &.confirm {
+      background-color: var(--ws-button-background);
+      color: var(--ws-button-foreground);
+
+      &:hover {
+        background-color: var(--ws-button-hoverBackground);
+      }
+    }
+  }
+}

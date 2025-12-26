@@ -1171,3 +1171,22 @@
 .cm-numbering {
   color: var(--ws-textLink-foreground);
 }
+
+
+// 颜色标签隐藏样式
+.cm-color-tag-hidden {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  display: inline !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+  position: absolute !important;
+  opacity: 0 !important;
+}
+
+// 文本颜色样式
+.cm-text-styled {
+  // 样式通过 inline style 设置
+}
