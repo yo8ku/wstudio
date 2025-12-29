@@ -23,6 +23,7 @@ import { TerminalService } from './services/terminal/TerminalService';
 import * as path from 'path';
 import { registerSettingsHandlers } from './ipc/settingsHandlers';
 import { registerNoteSystemHandlers } from './note-system';
+import { registerDatabaseConnectorHandlers, cleanupDatabaseConnections } from './ipc/databaseConnectorHandlers';
 
 // 插件系统路径
 // 使用多种方式尝试找到项目根目录，确保路径正确
@@ -111,6 +112,9 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   
   // 注册笔记系统 IPC 处理器
   registerNoteSystemHandlers();
+  
+  // 注册数据库连接器 IPC 处理器
+  registerDatabaseConnectorHandlers();
   
   // 初始化终端服务并注册处理器（只在有 mainWindow 时）
   if (mainWindow && !terminalService) {
@@ -210,3 +214,6 @@ export type { SettingsSchema, SettingsValue } from './config/SettingsManager';
 // 导出文件引用服务
 export { FileReferenceService } from './services/FileReferenceService';
 export type { FileReference } from './services/FileReferenceService';
+
+// 导出数据库连接清理函数
+export { cleanupDatabaseConnections } from './ipc/databaseConnectorHandlers';

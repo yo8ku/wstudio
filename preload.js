@@ -187,6 +187,23 @@ contextBridge.exposeInMainWorld('electron', {
     hasValidApiKey: () => ipcRenderer.invoke('cloud-embedding:has-valid-api-key'),
     setCustomConfig: (config) => ipcRenderer.invoke('cloud-embedding:set-custom-config', config),
     getCustomConfig: () => ipcRenderer.invoke('cloud-embedding:get-custom-config')
+  },
+
+  // 数据库连接器 API
+  dbConnector: {
+    getSupportedTypes: () => ipcRenderer.invoke('db-connector:get-supported-types'),
+    selectDatabaseFile: () => ipcRenderer.invoke('db-connector:select-database-file'),
+    checkFileExists: (filePath) => ipcRenderer.invoke('db-connector:check-file-exists', filePath),
+    testConnection: (config) => ipcRenderer.invoke('db-connector:test-connection', config),
+    createConnection: (id, config, autoConnect) => ipcRenderer.invoke('db-connector:create-connection', id, config, autoConnect),
+    getConnectionStatus: (id) => ipcRenderer.invoke('db-connector:get-connection-status', id),
+    getAllConnections: () => ipcRenderer.invoke('db-connector:get-all-connections'),
+    removeConnection: (id) => ipcRenderer.invoke('db-connector:remove-connection', id),
+    reconnect: (id) => ipcRenderer.invoke('db-connector:reconnect', id),
+    getTables: (id) => ipcRenderer.invoke('db-connector:get-tables', id),
+    getColumns: (id, tableName) => ipcRenderer.invoke('db-connector:get-columns', id, tableName),
+    query: (id, sql, params) => ipcRenderer.invoke('db-connector:query', id, sql, params),
+    execute: (id, sql, params) => ipcRenderer.invoke('db-connector:execute', id, sql, params)
   }
 });
 
@@ -300,5 +317,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onWindowBlur: (callback) => {
     ipcRenderer.on('window-blur', () => callback(false));
+  },
+  
+  // 打开视频文件对话框
+  openVideoFile: async () => {
+    const result = await ipcRenderer.invoke('video:open');
+    if (result.success && result.data) {
+      return { canceled: false, filePath: result.data.path };
+    }
+    return { canceled: true };
   }
 });

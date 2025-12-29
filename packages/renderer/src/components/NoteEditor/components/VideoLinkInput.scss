@@ -1,0 +1,74 @@
+/**
+ * 视频链接输入组件样式
+ * 功能：定义视频链接输入弹窗的外观
+ */
+
+.video-link-input {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  min-width: 480px;
+  border-radius: 6px;
+  border: 1px solid var(--ws-dropdown-border, transparent);
+  background-color: var(--ws-dropdown-background);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  &__field {
+    flex: 1;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 13px;
+    color: var(--ws-foreground);
+    background-color: transparent;
+    border: none;
+    outline: none;
+
+    &::placeholder {
+      color: var(--ws-descriptionForeground);
+    }
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  &__example {
+    font-size: 13px;
+    color: var(--ws-textLink-foreground);
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__confirm {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 16px;
+    font-size: 13px;
+    color: var(--ws-button-foreground);
+    background-color: var(--ws-button-background);
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover:not(.disabled) {
+      background-color: var(--ws-button-hoverBackground);
+    }
+
+    &.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}

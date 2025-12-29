@@ -22,6 +22,7 @@ import { AIAgentView } from '../AIAgentView';
 import { ExtensionManagerView } from '../ExtensionManagerView';
 import { ResizableDivider } from '../ResizableDivider';
 import { LanceDBView } from '../LanceDBView';
+import { DatabaseView } from '../DatabaseView';
 import { SimpleNoteEditor } from '../../../NoteEditor/SimpleNoteEditor';
 import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
@@ -37,10 +38,10 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'ai-agent' | 'extension-manager' | 'lancedb-view';  // 新增：lancedb-view 数据查看类型
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'ai-agent' | 'extension-manager' | 'lancedb-view' | 'database-view';
   isPreview?: boolean;  // 新增：是否为预览模式（单击打开）
   sourceTabId?: string;  // 新增：预览标签页关联的源文件标签页ID
-  knowledgeData?: any;  // 新增：知识库数据（用于 knowledge 类型）
+  knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 知识库数据（用于 knowledge 类型）
   configId?: string;  // 新增：AI配置ID（用于 ai-config 类型，优先使用此字段）
   configIndex?: number;  // 已废弃：AI配置索引（用于 ai-config 类型，保留用于向后兼容）
   agentData?: { categoryId: string; categoryName: string };  // 新增：AI智能体数据（用于 ai-agent 类型）
@@ -180,6 +181,25 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-editor-tab', handleOpenEditorTab);
     };
   }, [handleCreateSnippet, handleInsertSnippet, handleOpenEditorTab]);
+
+  // 监听插入数据库表格事件，跳转到文件编辑器标签页
+  useEffect(() => {
+    const handleInsertDatabaseTable = (event: Event) => {
+      const customEvent = event as CustomEvent<{ focusEditor?: boolean }>;
+      if (customEvent.detail?.focusEditor) {
+        // 找到第一个文件类型的标签页（非设计器）
+        const fileTab = tabs.find(t => t.type === 'file');
+        if (fileTab) {
+          setActiveTabId(fileTab.id);
+        }
+      }
+    };
+
+    window.addEventListener('insert-database-table', handleInsertDatabaseTable as EventListener);
+    return () => {
+      window.removeEventListener('insert-database-table', handleInsertDatabaseTable as EventListener);
+    };
+  }, [tabs]);
 
   // 加载上次打开的文档
   useEffect(() => {
@@ -510,7 +530,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         
         if (existingTab) {
           setTimeout(() => setActiveTabId(existingTab.id), 0);
-          console.log('[EditorArea] 激活现有查看分块数据标签页');
           return currentTabs;
         } else {
           const newTab: EditorTab = {
@@ -521,9 +540,23 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             type: 'lancedb-view'
           };
           setTimeout(() => setActiveTabId(newTab.id), 0);
-          console.log('[EditorArea] 创建新的查看分块数据标签页');
           return [...currentTabs, newTab];
         }
+      });
+    };
+
+    const handleOpenDatabaseView = () => {
+      setTabs(currentTabs => {
+        // 每次都创建新的数据库设计器标签页
+        const newTab: EditorTab = {
+          id: `database-view-${Date.now()}`,
+          title: '数据库设计器',
+          path: `database-view:/${Date.now()}`,
+          isDirty: false,
+          type: 'database-view'
+        };
+        setTimeout(() => setActiveTabId(newTab.id), 0);
+        return [...currentTabs, newTab];
       });
     };
 
@@ -531,6 +564,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('open-settings', handleOpenSettings);
     window.addEventListener('open-extension-manager', handleOpenExtensionManager);
     window.addEventListener('open-lancedb-view', handleOpenLanceDBView);
+    window.addEventListener('open-database-view', handleOpenDatabaseView);
     window.addEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
     
@@ -570,6 +604,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-settings', handleOpenSettings);
       window.removeEventListener('open-extension-manager', handleOpenExtensionManager);
       window.removeEventListener('open-lancedb-view', handleOpenLanceDBView);
+      window.removeEventListener('open-database-view', handleOpenDatabaseView);
       window.removeEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
       window.removeEventListener('close-all-editors', handleCloseAllEditors);
@@ -1567,6 +1602,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   
                   {tab.type === 'lancedb-view' && <LanceDBView />}
                   
+                  {tab.type === 'database-view' && <DatabaseView />}
+                  
                   {tab.type === 'ai-config' && (
                     <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />
                   )}
@@ -1732,6 +1769,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                         }
                       }}
                       editable={true}
+                      isActive={tab.id === activeTabId}
                     />
                   )}
                 </div>
@@ -1787,6 +1825,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     {tab.type === 'extension-manager' && <ExtensionManagerView />}
                     
                     {tab.type === 'lancedb-view' && <LanceDBView />}
+                    
+                    {tab.type === 'database-view' && <DatabaseView />}
                     
                     {tab.type === 'ai-config' && (
                       <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />

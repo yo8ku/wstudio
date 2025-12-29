@@ -40,6 +40,32 @@ if (!fs.existsSync(logIconPath)) {
 app.disableHardwareAcceleration();
 console.log('[Electron] 硬件加速已禁用（避免 GPU 进程崩溃）');
 
+// 注册自定义协议为特权协议（必须在 app.whenReady 之前调用）
+// 这样 local-file:// 协议才能在 <video>、<audio>、<img> 等标签中正常使用
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'local-file',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: false
+    }
+  },
+  {
+    scheme: 'vscode-file',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: false
+    }
+  }
+]);
+console.log('[Electron] 自定义协议已注册为特权协议');
+
 let mainWindow;
 
 /**
@@ -61,7 +87,8 @@ function createWindow(backgroundColor = '#1e1e1e') {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: true,
-      allowRunningInsecureContent: false
+      allowRunningInsecureContent: false,
+      webviewTag: true // 启用 webview 标签，用于嵌入视频播放器
     }
   });
 
@@ -131,9 +158,10 @@ app.whenReady().then(async () => {
   // 注意：移除 unsafe-eval 可能会影响 Vite HMR，如果遇到问题请恢复
   // 生产模式：移除 unsafe-eval，更安全
   // 允许从 jsdelivr CDN 加载 Monaco Editor 脚本
+  // frame-src 允许加载视频平台的嵌入播放器（B站、YouTube、优酷）
   const cspHeader = process.env.NODE_ENV === 'development'
-    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';"
-    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';";
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';"
+    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';";
   
   // 拦截所有响应并添加 CSP 头
   defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -231,28 +259,116 @@ app.whenReady().then(async () => {
     return normalizedPath;
   };
 
+  // 获取文件的 MIME 类型
+  const getMimeType = (filePath) => {
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes = {
+      // 视频
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.ogg': 'video/ogg',
+      '.ogv': 'video/ogg',
+      '.mov': 'video/quicktime',
+      '.avi': 'video/x-msvideo',
+      '.mkv': 'video/x-matroska',
+      // 音频
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.flac': 'audio/flac',
+      // 图片
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml',
+      '.webp': 'image/webp',
+      // 其他
+      '.html': 'text/html',
+      '.css': 'text/css',
+      '.js': 'application/javascript',
+      '.json': 'application/json',
+      '.txt': 'text/plain',
+    };
+    return mimeTypes[ext] || 'application/octet-stream';
+  };
+
   const handleFileProtocol = (protocolName) => (request, callback) => {
+    console.log(`[Electron] ${protocolName} 协议请求:`, request.url);
     
     try {
       let resolvedPath;
-      try {
-        const fileUrl = toFileUrl(request.url, protocolName);
-        resolvedPath = fileURLToPath(fileUrl);
-      } catch (parseError) {
-        resolvedPath = decodePathFromCustomProtocol(request.url, protocolName);
-      }
-
-      const fsPath = ensureExtendedLengthPath(resolvedPath);
-      if (fsPath !== resolvedPath) {
+      
+      // 直接从 URL 中提取路径
+      let urlPath = request.url;
+      
+      // 移除协议前缀 (local-file:// 或 local-file:///)
+      if (protocolName === 'local-file') {
+        urlPath = urlPath.replace(/^local-file:\/\/\/?/, '');
+      } else if (protocolName === 'vscode-file') {
+        urlPath = urlPath.replace(/^vscode-file:\/\/vscode-app\/?/, '');
       }
       
+      // 移除查询参数和哈希
+      const queryIndex = urlPath.indexOf('?');
+      const hashIndex = urlPath.indexOf('#');
+      if (queryIndex !== -1) urlPath = urlPath.substring(0, queryIndex);
+      if (hashIndex !== -1) urlPath = urlPath.substring(0, hashIndex);
+      
+      // URL 解码整个路径
+      try {
+        urlPath = decodeURIComponent(urlPath);
+      } catch (e) {
+        // 如果整体解码失败，尝试逐部分解码
+        const parts = urlPath.split('/');
+        urlPath = parts.map(part => {
+          try {
+            return decodeURIComponent(part);
+          } catch (e) {
+            return part;
+          }
+        }).join('/');
+      }
+      
+      console.log(`[Electron] URL解码后:`, urlPath);
+      
+      // Windows 路径处理
+      if (process.platform === 'win32') {
+        // 处理 /C:/... 格式
+        if (/^\/[A-Za-z]:/.test(urlPath)) {
+          urlPath = urlPath.substring(1);
+        }
+        // 处理 c/Users/... 格式（浏览器可能会移除冒号）
+        // 检测是否是 "盘符/Users" 或 "盘符/..." 的模式
+        else if (/^[A-Za-z]\//.test(urlPath)) {
+          // 在盘符后添加冒号: c/Users -> C:/Users
+          urlPath = urlPath.charAt(0).toUpperCase() + ':' + urlPath.substring(1);
+        }
+        
+        // 确保盘符大写
+        if (/^[a-z]:/.test(urlPath)) {
+          urlPath = urlPath.charAt(0).toUpperCase() + urlPath.substring(1);
+        }
+      }
+      
+      // 转换为系统路径格式
+      resolvedPath = path.normalize(urlPath);
+      
+      console.log(`[Electron] 解析后的文件路径:`, resolvedPath);
+      
       // 检查文件是否存在
-      if (fs.existsSync(fsPath)) {
-        return callback({ path: fsPath });
+      if (fs.existsSync(resolvedPath)) {
+        const mimeType = getMimeType(resolvedPath);
+        console.log(`[Electron] 文件存在，MIME类型:`, mimeType);
+        return callback({ 
+          path: resolvedPath,
+          mimeType: mimeType
+        });
       } else {
+        console.log(`[Electron] 文件不存在:`, resolvedPath);
         return callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
       }
     } catch (error) {
+      console.error(`[Electron] 协议处理错误:`, error);
       return callback({ error: -2 }); // net::ERR_FAILED
     }
   };
@@ -489,6 +605,38 @@ ipcMain.handle('file:open', async () => {
     return { success: false, error: 'User canceled' };
   } catch (error) {
     console.error('[IPC] 打开文件失败:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
+
+// 打开视频文件对话框
+ipcMain.handle('video:open', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Video Files', extensions: ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'] },
+        { name: 'All Files', extensions: ['*'] },
+      ]
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      return {
+        success: true,
+        data: {
+          path: filePath,
+          name: path.basename(filePath),
+        }
+      };
+    }
+
+    return { success: false, error: 'User canceled' };
+  } catch (error) {
+    console.error('[IPC] 打开视频文件失败:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)

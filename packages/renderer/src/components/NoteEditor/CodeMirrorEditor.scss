@@ -29,9 +29,9 @@
   .cm-outline-panel {
     position: relative;
     min-width: 150px;
+    width: 219px;
     max-width: 400px;
     border-left: 1px solid var(--ws-panel-border);
-    background-color: var(--ws-sideBar-background);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -211,6 +211,9 @@
   .cm-scroller {
     overflow: auto;
     padding: 10px 20px 16px 60px;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
   }
 
   // 让 gutter 和内容一起居中
@@ -238,11 +241,19 @@
     background-color: var(--ws-editor-selectionBackground) !important;
   }
 
+  // CodeMirror 内容区域 - 防止内容撑大编辑器
+  .cm-content {
+    max-width: 100%;
+    min-width: 0;
+  }
+
   .cm-line {
     padding: 0 4px;
     font-family: var(--ws-font-mono, 'Consolas', 'Monaco', '微软雅黑');
     position: relative; // 为子折叠图标绝对定位提供上下文
     line-height: 1.6; // 增加行高，让行之间有更多间距
+    max-width: 100%;
+    min-width: 0;
 
     // 扩展 hover 区域到左边，让子折叠图标在 hover 区域内
     &::before {
@@ -517,6 +528,49 @@
     line-height: 1;
   }
 
+  // 待办清单复选框样式
+  .cm-checkbox {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--ws-checkbox-border, var(--ws-descriptionForeground));
+    border-radius: 3px;
+    margin-right: 4px;
+    cursor: pointer;
+    vertical-align: middle;
+    position: relative;
+    line-height: 1;
+    box-sizing: border-box;
+    transform: translateY(-1px);
+
+    &:hover {
+      border-color: var(--ws-focusBorder);
+    }
+
+    &.cm-checkbox-checked {
+      background-color: var(--ws-checkbox-background, var(--ws-textLink-foreground));
+      border-color: var(--ws-checkbox-background, var(--ws-textLink-foreground));
+
+      &::after {
+        content: '';
+        position: absolute;
+        width: 4px;
+        height: 7px;
+        border: solid var(--ws-checkbox-foreground, var(--ws-editor-background));
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+        top: 1px;
+        left: 4px;
+      }
+    }
+  }
+
+  // 已完成的待办清单行样式（删除线）
+  .cm-todo-completed {
+    text-decoration: line-through !important;
+    color: var(--ws-descriptionForeground);
+  }
+
   // 引用块竖线容器样式
   .cm-blockquote-bar-container {
     display: inline-flex;
@@ -592,9 +646,9 @@
     color: var(--ws-textLink-foreground);
   }
 
-  // 源码模式下所有行内元素都不显示下划线
+  // 源码模式下所有行内元素都不显示下划线（除了待办清单删除线）
   &.source-mode {
-    .cm-line * {
+    .cm-line *:not(.cm-todo-completed) {
       text-decoration: none !important;
     }
   }
@@ -611,6 +665,148 @@
     .cm-header,
     .cm-line.cm-heading-line * {
       text-decoration: none !important;
+    }
+  }
+
+  // Markdown 表格样式
+  .cm-table-widget {
+    display: block;
+    margin: 8px 0;
+    padding: 0;
+    cursor: pointer;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    border: 1px solid var(--ws-panel-border);
+    border-radius: 6px;
+
+    // 工具栏
+    .cm-table-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      background-color: var(--ws-sideBar-background);
+      border-bottom: 1px solid var(--ws-panel-border);
+      border-radius: 6px 6px 0 0;
+
+      .cm-table-toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .cm-table-name {
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--ws-editor-foreground);
+        }
+      }
+
+      .cm-table-toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .cm-table-toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        font-size: 12px;
+        color: var(--ws-descriptionForeground);
+        border-radius: 4px;
+        cursor: pointer;
+
+        &:hover {
+          background-color: var(--ws-list-hoverBackground);
+          color: var(--ws-editor-foreground);
+        }
+
+        &.cm-table-toolbar-btn-danger:hover {
+          background-color: var(--ws-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
+          color: var(--ws-errorForeground);
+        }
+      }
+    }
+
+    // 滚动容器
+    .cm-table-scroll-container {
+      overflow-x: auto;
+      overflow-y: hidden;
+      width: 100%;
+      max-width: 100%;
+      padding-bottom: 4px;
+
+      // 自定义滚动条
+      &::-webkit-scrollbar {
+        height: 8px;
+      }
+
+      &::-webkit-scrollbar-track {
+        background-color: transparent;
+        border-radius: 4px;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background-color: var(--ws-scrollbarSlider-background, rgba(128, 128, 128, 0.4));
+        border-radius: 4px;
+
+        &:hover {
+          background-color: var(--ws-scrollbarSlider-hoverBackground, rgba(128, 128, 128, 0.6));
+        }
+      }
+
+      // Firefox
+      scrollbar-width: thin;
+      scrollbar-color: var(--ws-scrollbarSlider-background, rgba(128, 128, 128, 0.4)) transparent;
+    }
+
+    .cm-markdown-table {
+      width: max-content;
+      min-width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      line-height: 1.5;
+
+      th,
+      td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--ws-panel-border);
+        border-right: 1px solid var(--ws-panel-border);
+        vertical-align: top;
+        white-space: nowrap;
+        min-width: 80px;
+
+        &:last-child {
+          border-right: none;
+        }
+      }
+
+      th {
+        background-color: var(--ws-sideBar-background);
+        font-weight: 600;
+        color: var(--ws-editor-foreground);
+      }
+
+      td {
+        background-color: var(--ws-editor-background);
+        color: var(--ws-editor-foreground);
+        min-height: 32px;
+        height: 32px;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      tbody tr:hover td {
+        background-color: var(--ws-list-hoverBackground);
+      }
+    }
+
+    &:hover {
+      border-color: var(--ws-focusBorder);
     }
   }
 
@@ -985,6 +1181,301 @@
   .cm-image-container {
     .cm-image-toolbar {
       top: -44px;
+    }
+  }
+}
+
+// 视频 Widget 样式 - 使用 webview 播放器
+.cm-video-widget {
+  display: inline-block;
+  vertical-align: top;
+  margin: 8px 0;
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+  width: calc(100% - 4px);
+  max-width: 900px;
+
+  &:hover {
+    border-color: var(--ws-focusBorder);
+  }
+
+  .cm-video-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background-color: var(--ws-sideBar-background);
+    border-bottom: 1px solid var(--ws-panel-border);
+  }
+
+  .cm-video-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cm-video-platform-badge {
+    font-size: 11px;
+    color: var(--ws-badge-foreground);
+    background-color: var(--ws-badge-background);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .cm-video-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ws-editor-foreground);
+  }
+
+  .cm-video-title-input {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ws-editor-foreground);
+    background-color: var(--ws-input-background);
+    border: 1px solid var(--ws-focusBorder);
+    border-radius: 4px;
+    padding: 2px 6px;
+    outline: none;
+    min-width: 100px;
+    max-width: 300px;
+  }
+
+  .cm-video-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .cm-video-toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    color: var(--ws-descriptionForeground);
+    border-radius: 4px;
+    cursor: pointer;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+      color: var(--ws-editor-foreground);
+    }
+
+    &.active {
+      background-color: var(--ws-list-activeSelectionBackground);
+      color: var(--ws-list-activeSelectionForeground);
+    }
+  }
+
+  .cm-video-container {
+    position: relative;
+    width: 100%;
+    padding-bottom: 56.25%; // 16:9 比例
+    background-color: var(--ws-editor-background);
+  }
+
+  .cm-video-webview {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+
+  // 卡片模式样式
+  .cm-video-card {
+    display: flex;
+    align-items: stretch;
+    cursor: pointer;
+    background-color: var(--ws-editor-background);
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+    }
+  }
+
+  .cm-video-card-thumb {
+    width: 120px;
+    min-height: 68px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--ws-sideBar-background);
+    color: var(--ws-descriptionForeground);
+    flex-shrink: 0;
+  }
+
+  .cm-video-card-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8px 12px;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .cm-video-card-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ws-editor-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cm-video-card-link {
+    font-size: 12px;
+    color: var(--ws-descriptionForeground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // 链接模式 - 只显示工具栏
+  &.cm-video-mode-link {
+    .cm-video-toolbar {
+      border-bottom: none;
+      border-radius: 6px;
+    }
+  }
+
+  // 增强型内嵌浏览器样式
+  .cm-video-browser {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--ws-editor-background);
+  }
+
+  .cm-video-browser-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    background-color: var(--ws-sideBar-background);
+    border-bottom: 1px solid var(--ws-panel-border);
+  }
+
+  .cm-video-browser-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: var(--ws-descriptionForeground);
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+      color: var(--ws-editor-foreground);
+    }
+
+    &:active {
+      background-color: var(--ws-list-activeSelectionBackground);
+    }
+  }
+
+  .cm-video-browser-address {
+    flex: 1;
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: var(--ws-editor-foreground);
+    background-color: var(--ws-input-background);
+    border: 1px solid var(--ws-input-border);
+    border-radius: 4px;
+    outline: none;
+    min-width: 0;
+
+    &:focus {
+      border-color: var(--ws-focusBorder);
+    }
+
+    &::placeholder {
+      color: var(--ws-input-placeholderForeground);
+    }
+  }
+
+  .cm-video-browser-progress {
+    height: 2px;
+    background-color: var(--ws-panel-border);
+    overflow: hidden;
+
+    &.loading .cm-video-browser-progress-inner {
+      width: 30%;
+      background-color: var(--ws-progressBar-background);
+    }
+  }
+
+  .cm-video-browser-progress-inner {
+    height: 100%;
+    width: 0;
+    background-color: transparent;
+  }
+
+  .cm-video-browser-content {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    background-color: var(--ws-editor-background);
+
+    .cm-video-webview {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+  }
+}
+
+// 本地视频播放器样式
+.cm-video-local-player {
+  width: 100%;
+  background-color: var(--ws-editor-background);
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+
+  .cm-video-local-video {
+    display: block;
+    width: 100%;
+    max-height: 500px;
+    background-color: #000;
+    outline: none;
+  }
+}
+
+// 视频更多菜单样式
+.cm-video-more-menu {
+  min-width: 140px;
+  padding: 4px 0;
+  background-color: var(--ws-menu-background);
+  border: 1px solid var(--ws-menu-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+
+  .cm-video-more-menu-item {
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--ws-menu-foreground);
+    cursor: pointer;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+    }
+
+    &.danger {
+      color: var(--ws-errorForeground);
+
+      &:hover {
+        background-color: var(--ws-inputValidation-errorBackground);
+      }
     }
   }
 }

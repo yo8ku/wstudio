@@ -65,6 +65,7 @@
 // 下拉内容（通过 Portal 渲染到 body）
 .select-content {
   position: fixed !important; // 使用 fixed 定位，确保在 Portal 中正确显示
+  z-index: 10000; // 确保在所有元素之上
   background-color: var(--ws-dropdown-background);
   border-radius: 6px;
   max-height: 430px;

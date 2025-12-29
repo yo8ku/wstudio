@@ -50,13 +50,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     currentFile?: string;
   } | null>(null);
 
-  // 调试：监控状态变量
-  useEffect(() => {
-    console.log(
-      "[StatusBar] showBackgroundSettings 状态变量",
-      showBackgroundSettings
-    );
-  }, [showBackgroundSettings]);
 
   // 监听显示背景图片设置面板的事件（单独处理，避免闭包问题）
   useEffect(() => {
@@ -67,61 +60,27 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       console.error("[StatusBar] 这可能是因为 preload.js 没有正确加载");
       return;
     }
-
-    console.log(
-      "[StatusBar] ========== 注册背景图片设置面板事件监听器 =========="
-    );
-    console.log("[StatusBar] ipcRenderer.on 类型:", typeof ipcRenderer.on);
-    console.log("[StatusBar] ipcRenderer 对象:", ipcRenderer);
-
     // 监听显示背景图片设置面板的事件
     const handleShowBackgroundSettings = (event: any, ...args: any[]) => {
-      console.log(
-        "[StatusBar] ========== 收到显示背景图片设置面板事件 =========="
-      );
-      console.log("[StatusBar] event对象:", event);
-      console.log("[StatusBar] 事件参数:", args);
-      console.log("[StatusBar] 参数数量:", args.length);
-      console.log("[StatusBar] 第一个参数", args[0]);
-      console.log("[StatusBar] 即将设置 showBackgroundSettings 为 true");
       setShowBackgroundSettings(true);
-      console.log("[StatusBar] setShowBackgroundSettings(true) 已调用");
-      console.log(
-        "[StatusBar] ==============================================="
-      );
     };
 
-    console.log("[StatusBar] 准备调用 ipcRenderer.on...");
     try {
       ipcRenderer.on(
         "background-image:show-settings",
         handleShowBackgroundSettings
       );
-      console.log(
-        "[StatusBar] ✅ 已成功监听 background-image:show-settings 事件"
-      );
-      console.log("[StatusBar] 事件监听器已注册，等待事件...");
+
     } catch (error) {
       console.error("[StatusBar] ❌ 注册事件监听器失败:", error);
     }
 
-    // 测试：延迟检查事件监听器是否真的被注册
-    setTimeout(() => {
-      console.log("[StatusBar] [测试] 检查事件监听器状态...");
-      console.log(
-        "[StatusBar] [测试] showBackgroundSettings 当前值:",
-        showBackgroundSettings
-      );
-    }, 1000);
-
     return () => {
-      console.log("[StatusBar] 移除 background-image:show-settings 监听器");
       try {
         ipcRenderer.removeListener(
           "background-image:show-settings",
           handleShowBackgroundSettings
         );
-        console.log("[StatusBar] ✅ 事件监听器已移除");
       } catch (error) {
         console.error("[StatusBar] ❌ 移除事件监听器失败:", error);
       }
@@ -138,20 +97,13 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       return;
     }
 
-    console.log("[StatusBar] ========== 组件已挂载，开始初始化 ==========");
-    console.log("[StatusBar] ipcRenderer 可用");
-
     // 通知主进程渲染进程已准备就绪
-    console.log("[StatusBar] 通知主进程渲染进程已加载");
     ipcRenderer.send("renderer:loaded");
 
     // 初始化：获取所有已注册的状态栏项
     const loadStatusBarItems = async () => {
       try {
-        console.log("[StatusBar] 正在请求状态栏项..");
         const items = await ipcRenderer.invoke("plugin:get-status-bar-items");
-        console.log("[StatusBar] 加载已注册的状态栏项", items);
-        console.log("[StatusBar] 状态栏项数据", items.length);
         setPluginStatusBarItems(items);
       } catch (error) {
         console.error("[StatusBar] 加载状态栏项失败", error);
@@ -160,7 +112,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
 
     // 等待主进程初始化完成后再加载状态栏项
     const handleMainProcessReady = () => {
-      console.log("[StatusBar] 主进程已准备就绪，开始加载状态栏项");
       loadStatusBarItems();
     };
 
@@ -170,21 +121,21 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     // 如果主进程已经就绪（热重载场景），直接加载
     // 设置一个短暂的延迟，给主进程一些初始化时间
     const timeoutId = setTimeout(() => {
-      console.log("[StatusBar] 超时触发，尝试加载状态栏项");
+     
       loadStatusBarItems();
     }, 1000);
 
     const handleStatusBarItem = (event: any, data: any) => {
-      console.log("[StatusBar] 收到状态栏项事件", data);
+    
       setPluginStatusBarItems((prev) => {
         if (data.action === "add") {
           // 检查是否已存在，避免重复添加
           const exists = prev.some((item) => item.id === data.item.id);
           if (exists) {
-            console.log("[StatusBar] 状态栏项已存在，跳过添加", data.item.id);
+          
             return prev;
           }
-          console.log("[StatusBar] 添加新状态栏项", data.item.id);
+      
           return [...prev, data.item];
         } else if (data.action === "update") {
           return prev.map((item) =>
@@ -257,7 +208,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
         path?: string;
       }>;
 
-      console.log("[StatusBar] 活动标签页变量", customEvent.detail);
 
       if (customEvent.detail) {
         const { tabType, language } = customEvent.detail;
@@ -311,7 +261,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       return;
     }
 
-    console.log("[StatusBar] 开始监听工作区向量索引进度");
 
     const unsubscribe = ipcRenderer.on('workspace-vector-index:progress', (_event: unknown, progress: {
       totalFiles: number;
@@ -353,7 +302,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     });
 
     return () => {
-      console.log("[StatusBar] 取消监听向量索引进度");
       unsubscribe();
     };
   }, []);
@@ -366,7 +314,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       return;
     }
 
-    console.log("[StatusBar] 开始监听索引进度事件");
 
     const unsubscribe = electron.workspaceIndex.onProgress(
       (
@@ -376,13 +323,11 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
           currentFile?: string;
         } | null
       ) => {
-        console.log("[StatusBar] 收到索引进度事件:", progress);
         setIndexingProgress(progress);
       }
     );
 
     return () => {
-      console.log("[StatusBar] 取消监听索引进度事件");
       if (unsubscribe) {
         unsubscribe();
       }
@@ -394,9 +339,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     try {
       const ipcRenderer = (window as any).electron?.ipcRenderer;
       if (ipcRenderer) {
-        console.log("[StatusBar] 正在执行命令:", commandId);
         await ipcRenderer.invoke("plugin:execute-command", commandId);
-        console.log("[StatusBar] 命令执行成功:", commandId);
       } else {
         console.error("[StatusBar] 无法执行命令，ipcRenderer 不可用");
       }
@@ -405,16 +348,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     }
   };
 
-  // 调试：输出状态栏项信息
-  React.useEffect(() => {
-    console.log("[StatusBar] ========== 状态栏项更新==========");
-    console.log("[StatusBar] 数量:", pluginStatusBarItems.length);
-    console.log(
-      "[StatusBar] 详情:",
-      JSON.stringify(pluginStatusBarItems, null, 2)
-    );
-    console.log("[StatusBar] ==============================");
-  }, [pluginStatusBarItems]);
 
   // 大纲图标组件
   const OutlineIcon = () => (
@@ -464,7 +397,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
             .filter((item) => item.alignment === "left" || !item.alignment)
             .sort((a, b) => (b.priority || 0) - (a.priority || 0))
             .map((item) => {
-              console.log("[StatusBar] 渲染左侧", item);
               return (
                 <div
                   key={item.id}
@@ -581,7 +513,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                 .filter((item) => item.alignment === "right")
                 .sort((a, b) => (b.priority || 0) - (a.priority || 0))
                 .map((item) => {
-                  console.log("[StatusBar] 渲染右侧", item);
                   return (
                     <div
                       key={item.id}
@@ -657,7 +588,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       <BackgroundImageSettings
         visible={showBackgroundSettings}
         onClose={() => {
-          console.log("[StatusBar] 关闭背景图片设置面板");
           setShowBackgroundSettings(false);
         }}
       />

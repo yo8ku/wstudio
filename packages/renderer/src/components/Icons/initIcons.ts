@@ -85,7 +85,7 @@ function registerCommonAliases(): void {
     'package': 'material:package',
     'components': 'material:components',
     'extension': 'material:extension',
-    'database': 'material:database',
+    'database': 'ui:database',
     'font': 'material:font',
     
     // UI 控制别名（优先使用 material 图标集）
@@ -200,6 +200,9 @@ function registerCommonAliases(): void {
     
     // 编辑图标别名
     'edit': 'ui:edit',
+    
+    // AI 魔法图标别名
+    'sparkles': 'ui:sparkles',
   });
 }
 

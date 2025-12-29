@@ -85,10 +85,6 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
 
   // 构建菜单
   const menuGroups: MenuGroup[] = useMemo(() => {
-    console.log('[useMonacoContextMenu] ========== 构建菜单 ==========');
-    console.log('[useMonacoContextMenu] onOpenInlineChat:', onOpenInlineChat);
-    console.log('[useMonacoContextMenu] typeof onOpenInlineChat:', typeof onOpenInlineChat);
-    
     const hasText = editor ? (() => {
       const selection = editor.getSelection();
       return selection ? !selection.isEmpty() : false;
@@ -115,11 +111,8 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
             ),
             shortcut: 'Ctrl+I',
             action: onOpenInlineChat ? (() => {
-              console.log('[MonacoContextMenu] ========== 右键菜单：打开内联聊天被点击 ==========');
-              console.log('[MonacoContextMenu] onOpenInlineChat:', onOpenInlineChat);
               onOpenInlineChat();
             }) : (() => {
-              console.warn('[MonacoContextMenu] onOpenInlineChat 未定义！');
             }),
             disabled: !onOpenInlineChat
           },
@@ -199,19 +192,11 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
       }
     ];
 
-    console.log('[useMonacoContextMenu] 创建的菜单组:', groups);
-    console.log('[useMonacoContextMenu] inline-chat 菜单项:', groups[0]?.items[0]);
-    console.log('[useMonacoContextMenu] inline-chat action:', groups[0]?.items[0]?.action);
-    console.log('[useMonacoContextMenu] inline-chat disabled:', groups[0]?.items[0]?.disabled);
-
     return groups;
   }, [editor, handleCut, handleCopy, handlePaste, handleSelectAll, onOpenInlineChat, onUploadToKnowledgeBase, tabId]);
 
   // 显示菜单
   const showMenu = useCallback((x: number, y: number) => {
-    console.log('[useMonacoContextMenu] ========== showMenu 被调用 ==========');
-    console.log('[useMonacoContextMenu] 位置:', x, y);
-    console.log('[useMonacoContextMenu] 当前 menuGroups:', menuGroups);
     setPosition({ x, y });
     setVisible(true);
   }, [menuGroups]);

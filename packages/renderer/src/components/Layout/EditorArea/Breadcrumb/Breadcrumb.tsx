@@ -63,12 +63,12 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({ path }) => {
           {segment === '...' ? (
             <span className="breadcrumb-ellipsis">...</span>
           ) : (
-            <button 
+            <div 
               onClick={handleClick}
               title={`${path} - 在文件树中定位`}
             >
               {segment}
-            </button>
+            </div>
           )}
           {index < displaySegments.length - 1 && (
             <svg className="breadcrumb-separator" fill="currentColor" viewBox="0 0 20 20" width="10" height="10">

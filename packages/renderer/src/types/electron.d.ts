@@ -67,12 +67,12 @@ export interface APIResponse<T = any> {
 export interface ElectronAPI {
   extension: {
     list: () => Promise<any[]>;
-    executeCommand: (command: string, ...args: any[]) => Promise<any>;
-    sendMessage: (extensionId: string, message: any) => Promise<any>;
-    onExtensionActivated: (callback: (data: any) => void) => void;
-    onExtensionDeactivated: (callback: (data: any) => void) => void;
-    onMessage: (callback: (data: any) => void) => void;
-    onExtensionInstalled: (callback: (data: { extensionId: string; extension: any }) => void) => void;
+    executeCommand: (command: string, ...args: unknown[]) => Promise<unknown>;
+    sendMessage: (extensionId: string, message: unknown) => Promise<unknown>;
+    onExtensionActivated: (callback: (data: unknown) => void) => void;
+    onExtensionDeactivated: (callback: (data: unknown) => void) => void;
+    onMessage: (callback: (data: unknown) => void) => void;
+    onExtensionInstalled: (callback: (data: { extensionId: string; extension: unknown }) => void) => void;
   };
   marketplace: {
     search: (query: string, pageSize?: number) => Promise<APIResponse<IExtensionInfo[]>>;
@@ -80,17 +80,17 @@ export interface ElectronAPI {
     getDetails: (extensionId: string) => Promise<APIResponse<IExtensionInfo>>;
   };
   settings?: {
-    getAll: () => Promise<APIResponse<Record<string, any>>>;
-    get: (key: string) => Promise<APIResponse<any>>;
-    getPlugin: (key: string) => Promise<APIResponse<any>>;
-    update: (key: string, value: any, target?: 'user' | 'workspace') => Promise<APIResponse>;
-    updateMany: (updates: Record<string, any>, target?: 'user' | 'workspace') => Promise<APIResponse>;
+    getAll: () => Promise<APIResponse<Record<string, unknown>>>;
+    get: (key: string) => Promise<APIResponse<unknown>>;
+    getPlugin: (key: string) => Promise<APIResponse<unknown>>;
+    update: (key: string, value: unknown, target?: 'user' | 'workspace') => Promise<APIResponse>;
+    updateMany: (updates: Record<string, unknown>, target?: 'user' | 'workspace') => Promise<APIResponse>;
     reset: (key?: string) => Promise<APIResponse>;
     getPath: (target?: 'user' | 'workspace') => Promise<APIResponse<string>>;
     openJson: (target?: 'user' | 'workspace') => Promise<APIResponse<FileData>>;
     import: (settingsJson: string, target?: 'user' | 'workspace') => Promise<APIResponse>;
     export: () => Promise<APIResponse<string>>;
-    getDefaults: () => Promise<APIResponse<Record<string, any>>>;
+    getDefaults: () => Promise<APIResponse<Record<string, unknown>>>;
   };
   fs?: {
     readFile: (filePath: string, encoding?: string) => Promise<string>;
@@ -113,6 +113,9 @@ export interface ElectronAPI {
   // 窗口焦点状态监听
   onWindowFocus?: (callback: (focused: boolean) => void) => void;
   onWindowBlur?: (callback: (focused: boolean) => void) => void;
+  
+  // 打开视频文件对话框
+  openVideoFile?: () => Promise<{ canceled: boolean; filePath?: string }>;
   
   chatHistory?: {
     init: () => Promise<APIResponse>;
@@ -245,6 +248,10 @@ export interface ElectronIPC {
   image?: {
     open: () => Promise<FileResult>;
   };
+  video?: {
+    open: () => Promise<FileResult>;
+    saveToCache: (sourcePath: string) => Promise<APIResponse<{ path: string }>>;
+  };
   folder?: {
     open: () => Promise<FileResult>;
     readTree: (folderPath: string) => Promise<APIResponse<any[]>>;
@@ -371,6 +378,21 @@ export interface ElectronIPC {
       status: 'idle' | 'scanning' | 'indexing' | 'completed' | 'error';
       errorMessage?: string;
     }) => void) => () => void;
+  };
+  dbConnector?: {
+    getSupportedTypes: () => Promise<Array<{ type: string; name: string; description: string }>>;
+    selectDatabaseFile: () => Promise<{ success: boolean; canceled?: boolean; path?: string }>;
+    checkFileExists: (filePath: string) => Promise<boolean>;
+    testConnection: (config: Record<string, unknown>) => Promise<{ success: boolean; error?: string; version?: string }>;
+    createConnection: (id: string, config: Record<string, unknown>, autoConnect?: boolean) => Promise<{ success: boolean; error?: string }>;
+    getConnectionStatus: (id: string) => Promise<{ connected: boolean; connectedAt?: Date; error?: string; version?: string } | undefined>;
+    getAllConnections: () => Promise<Array<{ id: string; config: Record<string, unknown>; status: Record<string, unknown> }>>;
+    removeConnection: (id: string) => Promise<boolean>;
+    reconnect: (id: string) => Promise<boolean>;
+    getTables: (id: string) => Promise<{ success: boolean; data?: Array<{ name: string; schema?: string; type: 'table' | 'view'; rowCount?: number }>; error?: string }>;
+    getColumns: (id: string, tableName: string) => Promise<{ success: boolean; data?: Array<{ name: string; dataType: string; nullable: boolean; isPrimaryKey: boolean; defaultValue?: string; comment?: string }>; error?: string }>;
+    query: (id: string, sql: string, params?: unknown[]) => Promise<{ success: boolean; data?: { rows: Record<string, unknown>[]; affectedRows?: number; executionTime?: number }; error?: string }>;
+    execute: (id: string, sql: string, params?: unknown[]) => Promise<{ success: boolean; data?: { rows: Record<string, unknown>[]; affectedRows?: number; executionTime?: number }; error?: string }>;
   };
 }
 

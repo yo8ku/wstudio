@@ -104,12 +104,32 @@
   left: 100%;
   top: 0;
   min-width: 180px;
+  max-height: 400px;
+  overflow-y: auto;
   border-radius: 6px;
   padding: 6px;
   font-size: 13px;
   border: 1px solid var(--ws-dropdown-border, transparent);
   background-color: var(--ws-dropdown-background);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  // 滚动条样式
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--ws-scrollbarSlider-background, rgba(128, 128, 128, 0.4));
+    border-radius: 3px;
+
+    &:hover {
+      background-color: var(--ws-scrollbarSlider-hoverBackground, rgba(128, 128, 128, 0.6));
+    }
+  }
 }
 
 // 颜色圆点

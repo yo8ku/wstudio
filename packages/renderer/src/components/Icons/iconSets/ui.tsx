@@ -558,6 +558,25 @@ const SplitVertical: IconComponent = () => (
   </svg>
 );
 
+// 闪烁/AI魔法图标
+const Sparkles: IconComponent = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
+    <path d="M20 2v4"/>
+    <path d="M22 4h-4"/>
+    <circle cx="4" cy="20" r="2"/>
+  </svg>
+);
+
+// 数据库图标
+const Database: IconComponent = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+    <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
+    <path d="M3 12A9 3 0 0 0 21 12"/>
+  </svg>
+);
+
 // 工具模型图标
 const Wrench: IconComponent = () => (
   <svg viewBox="0 0 32 32" fill="currentColor">
@@ -837,6 +856,22 @@ const ImageCardStyle: IconComponent = ({ style, className }) => (
   </svg>
 );
 
+// 画廊卡片图标（视频卡片样式）
+const GalleryVertical: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M3 2h18"/>
+    <rect width="18" height="12" x="3" y="6" rx="2"/>
+    <path d="M3 22h18"/>
+  </svg>
+);
+
+// 视频嵌入图标
+const VideoEmbed: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" style={style} className={className}>
+    <path d="M21.25 13a.75.75 0 0 1 .743.648l.007.102v5a3.25 3.25 0 0 1-3.066 3.245L18.75 22h-4.668c.536-.385.973-.9 1.265-1.499l3.403-.001a1.75 1.75 0 0 0 1.744-1.607l.006-.143v-5a.75.75 0 0 1 .75-.75zm-9.5-4A3.25 3.25 0 0 1 15 12.25v6.5A3.25 3.25 0 0 1 11.75 22h-6.5A3.25 3.25 0 0 1 2 18.75v-6.5A3.25 3.25 0 0 1 5.25 9h6.5zm0 1.5h-6.5a1.75 1.75 0 0 0-1.75 1.75v6.5c0 .966.783 1.75 1.75 1.75h6.5a1.75 1.75 0 0 0 1.75-1.75v-6.5a1.75 1.75 0 0 0-1.75-1.75zM6.06 13.103a.5.5 0 0 1 .596-.236l.082.036l3.956 2.158a.5.5 0 0 1 .075.828l-.075.05l-3.956 2.158a.5.5 0 0 1-.731-.35L6 17.658v-4.315a.5.5 0 0 1 .061-.24zM18.75 2a3.25 3.25 0 0 1 3.245 3.066L22 5.25v5a.75.75 0 0 1-1.493.102l-.007-.102v-5a1.75 1.75 0 0 0-1.607-1.744L18.75 3.5h-5a.75.75 0 0 1-.102-1.493L13.75 2h5zm-8.5 0a.75.75 0 0 1 .102 1.493l-.102.007h-5a1.75 1.75 0 0 0-1.744 1.606L3.5 5.25v3.402c-.6.292-1.115.73-1.5 1.266V5.25a3.25 3.25 0 0 1 3.065-3.245L5.25 2h5z"/>
+  </svg>
+);
+
 // 垂直拖拽手柄图标
 const GripVertical: IconComponent = ({ style, className }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
@@ -846,6 +881,15 @@ const GripVertical: IconComponent = ({ style, className }) => (
     <circle cx="15" cy="12" r="1"/>
     <circle cx="15" cy="5" r="1"/>
     <circle cx="15" cy="19" r="1"/>
+  </svg>
+);
+
+// 更多菜单图标（省略号）
+const Ellipsis: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <circle cx="12" cy="12" r="1"/>
+    <circle cx="19" cy="12" r="1"/>
+    <circle cx="5" cy="12" r="1"/>
   </svg>
 );
 
@@ -974,9 +1018,18 @@ export const uiIconSet: IconSet = {
     'image-caption': ImageCaption,
     'image-link-style': ImageLinkStyle,
     'image-card-style': ImageCardStyle,
+    'gallery-vertical': GalleryVertical,
+    'video-embed': VideoEmbed,
+    'ellipsis': Ellipsis,
     
     // 编辑器装饰器图标
     'grip-vertical': GripVertical,
+    
+    // AI 魔法图标
+    'sparkles': Sparkles,
+    
+    // 数据库图标
+    'database': Database,
   },
 };
 

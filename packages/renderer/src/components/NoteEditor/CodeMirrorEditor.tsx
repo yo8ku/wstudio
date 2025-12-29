@@ -26,7 +26,10 @@ import { tags } from '@lezer/highlight';
 import { foldEffect, unfoldEffect } from '@codemirror/language';
 import { Icon } from '../Icons';
 import { CodeMirrorContextMenu, ContextMenuItem } from './components/CodeMirrorContextMenu';
+import { VideoLinkInput } from './components/VideoLinkInput';
+import { inlineAIChatField, openInlineAIChat, closeInlineAIChat, isInlineAIChatOpen } from './InlineAIChat';
 import './CodeMirrorEditor.scss';
+import './InlineAIChat/InlineAIChat.scss';
 import { text } from 'stream/consumers';
 import hljs from 'highlight.js';
 
@@ -67,6 +70,8 @@ export interface CodeMirrorEditorProps {
   initialMode?: EditorMode;
   /** 是否显示大纲面板，默认为 true */
   showOutline?: boolean;
+  /** 是否是当前激活的编辑器 */
+  isActive?: boolean;
 }
 
 /**
@@ -697,9 +702,18 @@ function buildNumberingDecorations(state: EditorState): DecorationSet {
   // 6. 圆点无序列表（如 •）
   // 序号必须在行首（可能有缩进空格），后面跟空格或其他内容
   const numberingRegex = /^(\s*)(\d+\.|[A-Za-z]\.|[A-Za-z]\d{1,3}\.|[一二三四五六七八九十百千万零]+、|\d+(?:\.\d+)+|•)\s/;
+  
+  // 待办清单正则：跳过 • [ ] 或 • [x] 格式
+  const todoRegex = /^[\t ]*[-*+•]\s\[[ xX]\](\s|$)/;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
+    
+    // 跳过待办清单行
+    if (todoRegex.test(line.text)) {
+      continue;
+    }
+    
     const match = line.text.match(numberingRegex);
     if (match) {
       const indent = match[1].length;
@@ -1883,6 +1897,50 @@ function handleBlockquoteEnter(view: EditorView): boolean {
 }
 
 /**
+ * 自定义回车键处理 - 智能待办清单换行
+ * 1. 在待办清单行末尾按回车时，自动添加待办清单标记到新行
+ * 2. 如果当前行只有待办清单标记没有内容，按回车时删除标记并退出待办清单模式
+ * 支持 - [ ] 格式
+ */
+function handleTodoListEnter(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+  const { head } = selection.main;
+
+  const line = state.doc.lineAt(head);
+  const lineText = line.text;
+
+  // 检查是否是待办清单行（支持 - [ ] 或 - [x] 或 • [ ] 或 • [x] 格式）
+  const todoMatch = lineText.match(/^(\s*)([-*+•])\s\[[ xX]\]\s?/);
+  if (!todoMatch) {
+    return false; // 不是待办清单行，使用默认行为
+  }
+
+  const indent = todoMatch[1];
+  // 始终使用 - 作为待办清单标记
+  const prefix = indent + '- [ ] ';
+  const matchedPrefix = todoMatch[0];
+  const content = lineText.slice(matchedPrefix.length).trim();
+
+  // 如果待办清单行只有标记没有内容，删除标记并退出待办清单模式
+  if (content === '') {
+    view.dispatch({
+      changes: { from: line.from, to: line.to, insert: indent },
+      selection: { anchor: line.from + indent.length },
+    });
+    return true;
+  }
+
+  // 在待办清单行末尾按回车，自动添加待办清单标记到新行
+  view.dispatch({
+    changes: { from: head, insert: '\n' + prefix },
+    selection: { anchor: head + 1 + prefix.length },
+  });
+
+  return true;
+}
+
+/**
  * 自定义回车键处理 - 智能无序列表换行
  * 1. 在列表行末尾按回车时，自动添加列表标记到新行
  * 2. 如果当前行只有列表标记没有内容，按回车时删除标记并退出列表模式
@@ -2197,10 +2255,85 @@ function handleDecreaseIndent(view: EditorView): boolean {
 const customKeymap = Prec.highest(
   keymap.of([
     {
+      key: 'Backspace',
+      run: (view) => {
+        const { state } = view;
+        const { selection } = state;
+        const { head } = selection.main;
+        
+        // 如果有选区，使用默认行为
+        if (!selection.main.empty) {
+          return false;
+        }
+
+        // 检查光标前面是否是视频语法
+        const doc = state.doc.toString();
+        const videoRegex = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+        let match;
+        while ((match = videoRegex.exec(doc)) !== null) {
+          const videoEnd = match.index + match[0].length;
+          // 如果光标紧邻视频语法后面
+          if (head === videoEnd) {
+            // 检查是否是视频链接
+            const url = match[2];
+            const videoInfo = parseVideoUrl(url);
+            if (videoInfo) {
+              // 删除整个视频语法
+              view.dispatch({
+                changes: { from: match.index, to: videoEnd },
+                selection: { anchor: match.index },
+              });
+              return true;
+            }
+          }
+        }
+        
+        // 获取当前行
+        const line = state.doc.lineAt(head);
+        const text = line.text;
+        const cursorOffset = head - line.from;
+        
+        // 检查是否是待办清单行
+        const todoMatch = text.match(/^([\t ]*)([-*+•])\s\[([ xX])\](\s|$)/);
+        if (!todoMatch) {
+          return false; // 不是待办清单，使用默认行为
+        }
+        
+        const bracketIndex = text.indexOf('[');
+        if (bracketIndex === -1) {
+          return false;
+        }
+        
+        // 计算复选框区域结束位置（包括 ] 后面的空格）
+        const checkboxEndOffset = bracketIndex + 4; // [ ] 加空格共4个字符
+        
+        // 如果光标在复选框区域后面（内容区域），正常删除一个字符
+        if (cursorOffset > checkboxEndOffset) {
+          // 使用默认行为删除一个字符
+          return false;
+        }
+        
+        // 如果光标在复选框区域内或紧邻复选框后面，正常删除一个字符
+        if (cursorOffset > 0) {
+          view.dispatch({
+            changes: { from: head - 1, to: head },
+            selection: { anchor: head - 1 },
+          });
+          return true;
+        }
+        
+        return false;
+      },
+    },
+    {
       key: 'Enter',
       run: (view) => {
         // 先尝试处理引用块
         if (handleBlockquoteEnter(view)) {
+          return true;
+        }
+        // 尝试处理待办清单（优先于普通无序列表）
+        if (handleTodoListEnter(view)) {
           return true;
         }
         // 再尝试处理无序列表
@@ -2255,9 +2388,35 @@ const customKeymap = Prec.highest(
         // 获取当前行
         const line = state.doc.lineAt(head);
         const textBeforeCursor = line.text.slice(0, head - line.from);
+        const textAfterCursor = line.text.slice(head - line.from);
+
+        // 检查是否是待办清单格式 "- [ ]" 或 "• [ ]" 后面输入空格
+        // 由于 ] 后面本身就有空格，所以不需要插入空格，只需要移动光标到空格后面
+        if (/^[\t ]*[-•]\s\[[ xX]\]$/.test(textBeforeCursor)) {
+          // 检查光标后面是否已经有空格
+          if (textAfterCursor.startsWith(' ')) {
+            // 已经有空格，只移动光标
+            view.dispatch({
+              selection: { anchor: head + 1 },
+            });
+          } else {
+            // 没有空格，插入空格
+            view.dispatch({
+              changes: { from: head, insert: ' ' },
+              selection: { anchor: head + 1 },
+            });
+          }
+          return true;
+        }
 
         // 检查是否匹配 "缩进 + -" 的模式
         if (/^\s*-$/.test(textBeforeCursor)) {
+          // 检查光标后面是否是待办清单格式 [ ] 或 [x]
+          // 如果是，不替换 - 为 •，让待办清单解析器处理
+          if (/^\s*\[[ xX]\]/.test(textAfterCursor)) {
+            return false; // 使用默认行为，不替换
+          }
+          
           const dashPos = head - 1;
           // 替换 "-" 为 "•" 并插入空格
           view.dispatch({
@@ -2269,6 +2428,61 @@ const customKeymap = Prec.highest(
 
         // 使用默认行为
         return false;
+      },
+    },
+    {
+      key: ']',
+      run: (view) => {
+        // 检查是否需要将 "• [ " 转换为 "- [ ]"（待办清单格式）
+        const { state } = view;
+        const { selection } = state;
+        const { head } = selection.main;
+
+        // 获取当前行
+        const line = state.doc.lineAt(head);
+        const textBeforeCursor = line.text.slice(0, head - line.from);
+
+        // 检查是否匹配 "- [ " 或 "- [x" 或 "• [ " 或 "• [x" 的模式
+        const todoMatch = textBeforeCursor.match(/^(\s*)([-•])\s\[[ xX]$/);
+        if (todoMatch) {
+          const indent = todoMatch[1];
+          const marker = todoMatch[2];
+          
+          // 如果是 •，替换为 -
+          if (marker === '•') {
+            const bulletPos = line.from + indent.length;
+            view.dispatch({
+              changes: [
+                { from: bulletPos, to: bulletPos + 1, insert: '-' },
+                { from: head, insert: ']' }
+              ],
+              selection: { anchor: head + 1 },
+            });
+            return true;
+          }
+          
+          // 如果已经是 -，只插入 ]
+          view.dispatch({
+            changes: { from: head, insert: ']' },
+            selection: { anchor: head + 1 },
+          });
+          return true;
+        }
+
+        // 使用默认行为
+        return false;
+      },
+    },
+    {
+      // Ctrl+I 或 Cmd+I 打开内联 AI 聊天
+      key: 'Mod-i',
+      run: (view) => {
+        if (isInlineAIChatOpen(view)) {
+          closeInlineAIChat(view);
+        } else {
+          openInlineAIChat(view);
+        }
+        return true;
       },
     },
   ])
@@ -3324,6 +3538,11 @@ function parseImages(doc: string): DecorationSet {
     const from = match.index;
     const to = from + match[0].length;
 
+    // 跳过视频链接，让视频装饰器处理
+    if (isVideoUrl(src)) {
+      continue;
+    }
+
     // 解析尺寸信息
     const { alt, width, height } = parseImageSize(rawAlt);
 
@@ -3344,6 +3563,20 @@ function parseImages(doc: string): DecorationSet {
 }
 
 /**
+ * 检查 URL 是否为视频链接
+ */
+function isVideoUrl(url: string): boolean {
+  // B站
+  if (/bilibili\.com\/video\/(BV[\w]+|av\d+)/i.test(url)) return true;
+  if (/b23\.tv\//i.test(url)) return true;
+  // YouTube
+  if (/(?:youtube\.com\/watch\?v=|youtu\.be\/)/i.test(url)) return true;
+  // 优酷
+  if (/youku\.com\/v_show\/id_/i.test(url)) return true;
+  return false;
+}
+
+/**
  * 图片装饰器 StateField
  */
 const imageDecorations = StateField.define<DecorationSet>({
@@ -3353,6 +3586,1227 @@ const imageDecorations = StateField.define<DecorationSet>({
   update(decorations, tr) {
     if (tr.docChanged) {
       return parseImages(tr.newDoc.toString());
+    }
+    return decorations;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+// ============================================================================
+// 视频嵌入渲染系统
+// ============================================================================
+
+/**
+ * 视频平台类型
+ */
+type VideoPlatform = 'bilibili' | 'youtube' | 'youku' | 'qq' | 'iqiyi' | 'xigua' | 'douyin' | 'local' | 'other';
+
+/**
+ * 视频信息结构
+ */
+interface VideoInfo {
+  platform: VideoPlatform;
+  embedUrl: string;
+  originalUrl: string;
+}
+
+/**
+ * 解析视频链接，转换为嵌入链接
+ */
+function parseVideoUrl(url: string): VideoInfo | null {
+  console.log('[parseVideoUrl] 解析视频链接:', url);
+  
+  // B站链接解析
+  // 支持格式: 
+  // - https://www.bilibili.com/video/BVxxxxxxx
+  // - https://b23.tv/xxxxxxx
+  // - https://www.bilibili.com/video/avxxxxxxx
+  const bilibiliMatch = url.match(/bilibili\.com\/video\/(BV[\w]+|av\d+)/i);
+  if (bilibiliMatch) {
+    const videoId = bilibiliMatch[1];
+    const isBV = videoId.startsWith('BV') || videoId.startsWith('bv');
+    const embedUrl = isBV 
+      ? `https://player.bilibili.com/player.html?bvid=${videoId}&autoplay=0`
+      : `https://player.bilibili.com/player.html?aid=${videoId.slice(2)}&autoplay=0`;
+    return { platform: 'bilibili', embedUrl, originalUrl: url };
+  }
+
+  // B站短链接
+  const b23Match = url.match(/b23\.tv\/([\w]+)/i);
+  if (b23Match) {
+    // 短链接需要重定向，暂时使用原链接
+    return { platform: 'bilibili', embedUrl: url, originalUrl: url };
+  }
+
+  // YouTube 链接解析
+  // 支持格式:
+  // - https://www.youtube.com/watch?v=xxxxxxx
+  // - https://youtu.be/xxxxxxx
+  // 使用 youtube-nocookie.com 隐私增强模式，避免嵌入限制
+  const youtubeMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/i);
+  if (youtubeMatch) {
+    const videoId = youtubeMatch[1];
+    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+    return { platform: 'youtube', embedUrl, originalUrl: url };
+  }
+
+  // 优酷链接解析
+  // 支持格式: https://v.youku.com/v_show/id_xxxxxxx.html
+  const youkuMatch = url.match(/youku\.com\/v_show\/id_([\w=]+)/i);
+  if (youkuMatch) {
+    const videoId = youkuMatch[1];
+    const embedUrl = `https://player.youku.com/embed/${videoId}`;
+    return { platform: 'youku', embedUrl, originalUrl: url };
+  }
+
+  // 腾讯视频链接解析
+  // 支持格式: https://v.qq.com/x/cover/xxx/xxx.html
+  const qqMatch = url.match(/v\.qq\.com/i);
+  if (qqMatch) {
+    return { platform: 'qq', embedUrl: url, originalUrl: url };
+  }
+
+  // 爱奇艺链接解析
+  // 支持格式: https://www.iqiyi.com/v_xxx.html
+  const iqiyiMatch = url.match(/iqiyi\.com/i);
+  if (iqiyiMatch) {
+    return { platform: 'iqiyi', embedUrl: url, originalUrl: url };
+  }
+
+  // 西瓜视频链接解析
+  // 支持格式: https://www.ixigua.com/xxx
+  const xiguaMatch = url.match(/ixigua\.com/i);
+  if (xiguaMatch) {
+    return { platform: 'xigua', embedUrl: url, originalUrl: url };
+  }
+
+  // 抖音链接解析
+  // 支持格式: https://www.douyin.com/video/xxx
+  const douyinMatch = url.match(/douyin\.com/i);
+  if (douyinMatch) {
+    return { platform: 'douyin', embedUrl: url, originalUrl: url };
+  }
+
+  // 本地视频文件
+  // 支持格式: file:///path/to/video.mp4 或 C:\path\to\video.mp4 或 /path/to/video.mp4
+  const localVideoExtensions = /\.(mp4|webm|ogg|mov|avi|mkv)$/i;
+  // 先解码 URL 编码的路径
+  let decodedUrl = url;
+  try {
+    decodedUrl = decodeURIComponent(url);
+  } catch {
+    // 解码失败则使用原始 URL
+  }
+  console.log('[parseVideoUrl] 检查本地视频, url:', url, 'decodedUrl:', decodedUrl);
+  console.log('[parseVideoUrl] file:// 匹配:', url.match(/^file:\/\//i));
+  console.log('[parseVideoUrl] Windows路径匹配:', url.match(/^[A-Za-z]:[\\\/]/));
+  console.log('[parseVideoUrl] 扩展名匹配:', localVideoExtensions.test(decodedUrl));
+  // 检查是否为本地视频路径
+  const isLocalPath = 
+    url.match(/^file:\/\//i) || 
+    decodedUrl.match(/^file:\/\//i) || 
+    url.match(/^[A-Za-z]:[\\\/]/) ||  // Windows 路径: C:\ 或 C:/
+    decodedUrl.match(/^[A-Za-z]:[\\\/]/) ||
+    (url.startsWith('/') && localVideoExtensions.test(decodedUrl));
+  
+  if (isLocalPath) {
+    console.log('[parseVideoUrl] 识别为本地视频');
+    return { platform: 'local', embedUrl: url, originalUrl: url };
+  }
+  // 也支持不带协议的本地路径（有视频扩展名且不是 http/https）
+  if (localVideoExtensions.test(decodedUrl) && !url.match(/^https?:\/\//i)) {
+    console.log('[parseVideoUrl] 识别为本地视频(无协议)');
+    return { platform: 'local', embedUrl: url, originalUrl: url };
+  }
+
+  // 通用视频链接 - 支持任意 http/https 链接
+  // 使用增强型浏览器可以直接加载任意网页
+  if (url.match(/^https?:\/\//i)) {
+    return { platform: 'other', embedUrl: url, originalUrl: url };
+  }
+
+  return null;
+}
+
+// 视频 Widget DOM 缓存，使用 WeakMap 将 widget 实例与 DOM 元素关联
+const videoWidgetDomCache = new WeakMap<VideoWidget, HTMLElement>();
+
+/**
+ * 视频 Widget 类 - 用于在编辑器中渲染视频播放器
+ * 使用 Electron webview 标签绕过 CSP 限制
+ */
+class VideoWidget extends WidgetType {
+  private displayMode: 'embed' | 'card' | 'link' = 'embed';
+  private domElement: HTMLElement | null = null;
+
+  constructor(
+    readonly videoInfo: VideoInfo,
+    readonly alt: string,
+    readonly from: number,
+    readonly to: number,
+    readonly originalMatch: string
+  ) {
+    super();
+    // 解析 alt 中的显示模式
+    this.parseDisplayMode();
+  }
+
+  private parseDisplayMode(): void {
+    // 格式: 标题|mode:card
+    const parts = this.alt.split('|');
+    for (const part of parts) {
+      if (part.startsWith('mode:')) {
+        const mode = part.slice(5);
+        if (['embed', 'card', 'link'].includes(mode)) {
+          this.displayMode = mode as 'embed' | 'card' | 'link';
+        }
+      }
+    }
+  }
+
+  private getCleanTitle(): string {
+    // 移除模式信息，只保留标题
+    const parts = this.alt.split('|');
+    const cleanParts = parts.filter(part => !part.startsWith('mode:'));
+    return cleanParts.join('|') || '视频';
+  }
+
+  toDOM(): HTMLElement {
+    // 如果已有 DOM 元素，直接返回（避免重复创建）
+    if (this.domElement) {
+      // 更新标题（可能已更改）
+      const titleEl = this.domElement.querySelector('.cm-video-title');
+      if (titleEl) {
+        titleEl.textContent = this.getCleanTitle();
+      }
+      return this.domElement;
+    }
+
+    // 检查 WeakMap 缓存
+    const cached = videoWidgetDomCache.get(this);
+    if (cached) {
+      this.domElement = cached;
+      return cached;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = `cm-video-widget cm-video-mode-${this.displayMode}`;
+
+    // 工具栏
+    const toolbar = document.createElement('div');
+    toolbar.className = 'cm-video-toolbar';
+
+    const toolbarLeft = document.createElement('div');
+    toolbarLeft.className = 'cm-video-toolbar-left';
+
+    const platformBadge = document.createElement('span');
+    platformBadge.className = 'cm-video-platform-badge';
+    platformBadge.textContent = this.getPlatformName();
+
+    // 标题显示元素
+    const title = document.createElement('span');
+    title.className = 'cm-video-title';
+    title.textContent = this.getCleanTitle();
+
+    // 标题编辑输入框（默认隐藏）
+    const titleInput = document.createElement('input');
+    titleInput.className = 'cm-video-title-input';
+    titleInput.type = 'text';
+    titleInput.value = this.getCleanTitle();
+    titleInput.style.display = 'none';
+
+    // 阻止输入框事件冒泡
+    titleInput.addEventListener('mousedown', (e) => e.stopPropagation());
+    titleInput.addEventListener('mouseup', (e) => e.stopPropagation());
+    titleInput.addEventListener('click', (e) => e.stopPropagation());
+    titleInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        // 保存标题
+        const newTitle = titleInput.value.trim() || '视频';
+        title.textContent = newTitle;
+        titleInput.style.display = 'none';
+        title.style.display = '';
+        // 触发标题更新事件
+        const event = new CustomEvent('video-title-change', {
+          detail: {
+            from: this.from,
+            to: this.to,
+            title: newTitle,
+            url: this.videoInfo.originalUrl,
+            mode: this.displayMode,
+          },
+        });
+        window.dispatchEvent(event);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        // 取消编辑
+        titleInput.value = this.getCleanTitle();
+        titleInput.style.display = 'none';
+        title.style.display = '';
+      }
+    });
+    titleInput.addEventListener('keyup', (e) => e.stopPropagation());
+    titleInput.addEventListener('keypress', (e) => e.stopPropagation());
+    titleInput.addEventListener('blur', () => {
+      // 失焦时保存
+      const newTitle = titleInput.value.trim() || '视频';
+      title.textContent = newTitle;
+      titleInput.style.display = 'none';
+      title.style.display = '';
+      // 触发标题更新事件
+      const event = new CustomEvent('video-title-change', {
+        detail: {
+          from: this.from,
+          to: this.to,
+          title: newTitle,
+          url: this.videoInfo.originalUrl,
+          mode: this.displayMode,
+        },
+      });
+      window.dispatchEvent(event);
+    });
+
+    toolbarLeft.appendChild(platformBadge);
+    toolbarLeft.appendChild(title);
+    toolbarLeft.appendChild(titleInput);
+
+    const toolbarRight = document.createElement('div');
+    toolbarRight.className = 'cm-video-toolbar-right';
+
+    // 编辑按钮
+    const editBtn = document.createElement('span');
+    editBtn.className = 'cm-video-toolbar-btn';
+    editBtn.title = '编辑';
+    editBtn.innerHTML = `<svg viewBox="0 0 32 32" width="14" height="14" fill="currentColor"><path d="M2 26h28v2H2z"></path><path d="M25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"></path></svg>`;
+    editBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // 切换到编辑模式
+      title.style.display = 'none';
+      titleInput.style.display = '';
+      titleInput.value = title.textContent || '视频';
+      titleInput.focus();
+      titleInput.select();
+    });
+
+    // 卡片模式按钮
+    const cardBtn = document.createElement('span');
+    cardBtn.className = `cm-video-toolbar-btn ${this.displayMode === 'card' ? 'active' : ''}`;
+    cardBtn.title = '卡片';
+    cardBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h18"/><rect width="18" height="12" x="3" y="6" rx="2"/><path d="M3 22h18"/></svg>`;
+    cardBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.changeDisplayMode('card');
+    });
+
+    // 链接模式按钮
+    const linkBtn = document.createElement('span');
+    linkBtn.className = `cm-video-toolbar-btn ${this.displayMode === 'link' ? 'active' : ''}`;
+    linkBtn.title = '链接';
+    linkBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>`;
+    linkBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.changeDisplayMode('link');
+    });
+
+    // 视频嵌入模式按钮
+    const embedBtn = document.createElement('span');
+    embedBtn.className = `cm-video-toolbar-btn ${this.displayMode === 'embed' ? 'active' : ''}`;
+    embedBtn.title = '视频';
+    embedBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21.25 13a.75.75 0 0 1 .743.648l.007.102v5a3.25 3.25 0 0 1-3.066 3.245L18.75 22h-4.668c.536-.385.973-.9 1.265-1.499l3.403-.001a1.75 1.75 0 0 0 1.744-1.607l.006-.143v-5a.75.75 0 0 1 .75-.75zm-9.5-4A3.25 3.25 0 0 1 15 12.25v6.5A3.25 3.25 0 0 1 11.75 22h-6.5A3.25 3.25 0 0 1 2 18.75v-6.5A3.25 3.25 0 0 1 5.25 9h6.5zm0 1.5h-6.5a1.75 1.75 0 0 0-1.75 1.75v6.5c0 .966.783 1.75 1.75 1.75h6.5a1.75 1.75 0 0 0 1.75-1.75v-6.5a1.75 1.75 0 0 0-1.75-1.75zM6.06 13.103a.5.5 0 0 1 .596-.236l.082.036l3.956 2.158a.5.5 0 0 1 .075.828l-.075.05l-3.956 2.158a.5.5 0 0 1-.731-.35L6 17.658v-4.315a.5.5 0 0 1 .061-.24zM18.75 2a3.25 3.25 0 0 1 3.245 3.066L22 5.25v5a.75.75 0 0 1-1.493.102l-.007-.102v-5a1.75 1.75 0 0 0-1.607-1.744L18.75 3.5h-5a.75.75 0 0 1-.102-1.493L13.75 2h5zm-8.5 0a.75.75 0 0 1 .102 1.493l-.102.007h-5a1.75 1.75 0 0 0-1.744 1.606L3.5 5.25v3.402c-.6.292-1.115.73-1.5 1.266V5.25a3.25 3.25 0 0 1 3.065-3.245L5.25 2h5z"/></svg>`;
+    embedBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.changeDisplayMode('embed');
+    });
+
+    // 在浏览器中打开按钮
+    const openBtn = document.createElement('span');
+    openBtn.className = 'cm-video-toolbar-btn';
+    openBtn.title = '在浏览器中打开';
+    openBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+    openBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(this.videoInfo.originalUrl, '_blank');
+    });
+
+    // 更多菜单按钮
+    const moreBtn = document.createElement('span');
+    moreBtn.className = 'cm-video-toolbar-btn';
+    moreBtn.title = '更多';
+    moreBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`;
+    moreBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // 显示更多菜单
+      this.showMoreMenu(moreBtn, wrapper);
+    });
+
+    toolbarRight.appendChild(editBtn);
+    toolbarRight.appendChild(cardBtn);
+    toolbarRight.appendChild(linkBtn);
+    toolbarRight.appendChild(embedBtn);
+    toolbarRight.appendChild(openBtn);
+    toolbarRight.appendChild(moreBtn);
+    toolbar.appendChild(toolbarLeft);
+    toolbar.appendChild(toolbarRight);
+
+    wrapper.appendChild(toolbar);
+
+    // 根据显示模式渲染内容
+    if (this.displayMode === 'embed') {
+      // 本地视频使用 HTML5 video 标签
+      if (this.videoInfo.platform === 'local') {
+        const localContainer = document.createElement('div');
+        localContainer.className = 'cm-video-local-player';
+
+        const video = document.createElement('video');
+        video.className = 'cm-video-local-video';
+        
+        // 将本地文件路径转换为 local-file:// 协议
+        let videoSrc = this.videoInfo.originalUrl;
+        console.log('[VideoWidget] 本地视频原始路径:', videoSrc);
+        if (videoSrc.startsWith('file:///')) {
+          // file:/// 转换为 local-file:///
+          videoSrc = videoSrc.replace('file:///', 'local-file:///');
+        } else if (videoSrc.startsWith('file://')) {
+          // file:// 转换为 local-file://
+          videoSrc = videoSrc.replace('file://', 'local-file://');
+        } else if (!videoSrc.startsWith('local-file://')) {
+          // Windows 路径转换: C:\path\to\video.mp4 -> local-file:///C:/path/to/video.mp4
+          // 需要对路径进行 URL 编码（但保留斜杠和冒号）
+          const normalizedPath = videoSrc.replace(/\\/g, '/');
+          const parts = normalizedPath.split('/');
+          const encodedParts = parts.map((part, index) => {
+            // 第一部分是盘符（如 C:），不编码
+            if (index === 0 && /^[A-Za-z]:$/.test(part)) {
+              return part;
+            }
+            return encodeURIComponent(part);
+          });
+          videoSrc = 'local-file:///' + encodedParts.join('/');
+        }
+        console.log('[VideoWidget] 本地视频转换后路径:', videoSrc);
+        video.src = videoSrc;
+        video.controls = true;
+        video.preload = 'metadata';
+
+        // 添加错误处理
+        video.addEventListener('error', (e) => {
+          console.error('[VideoWidget] 视频加载错误:', e, video.error);
+        });
+
+        // 阻止事件冒泡
+        video.addEventListener('mousedown', (e) => e.stopPropagation());
+        video.addEventListener('click', (e) => e.stopPropagation());
+
+        localContainer.appendChild(video);
+        wrapper.appendChild(localContainer);
+      } else {
+        // 增强型内嵌浏览器
+        const browserContainer = document.createElement('div');
+        browserContainer.className = 'cm-video-browser';
+
+      // 浏览器导航栏
+      const browserNav = document.createElement('div');
+      browserNav.className = 'cm-video-browser-nav';
+
+      // 后退按钮
+      const backBtn = document.createElement('span');
+      backBtn.className = 'cm-video-browser-btn';
+      backBtn.title = '后退';
+      backBtn.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M5.928 7.976l4.357 4.357-.618.62L5 8.284v-.618L9.667 3l.618.619-4.357 4.357z"/></svg>`;
+
+      // 前进按钮
+      const forwardBtn = document.createElement('span');
+      forwardBtn.className = 'cm-video-browser-btn';
+      forwardBtn.title = '前进';
+      forwardBtn.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/></svg>`;
+
+      // 刷新按钮
+      const refreshBtn = document.createElement('span');
+      refreshBtn.className = 'cm-video-browser-btn';
+      refreshBtn.title = '刷新';
+      refreshBtn.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M5.56253 2.51577C6.22874 2.18616 6.96524 2 7.74856 2C9.08973 2 10.347 2.54555 11.2554 3.45393C11.6244 3.82283 11.9297 4.25217 12.1575 4.72382L12.1575 3L13.1575 3V6.74856L9.40897 6.74856V5.74856H11.3161C11.1284 5.27466 10.8435 4.84603 10.4839 4.48638C9.78661 3.78908 8.81981 3.35862 7.74856 3.35862C7.14565 3.35862 6.58195 3.50551 6.08841 3.76641L5.56253 2.51577ZM4.34253 10.2516C4.13064 9.77756 4.01561 9.25774 4.01561 8.71143C4.01561 7.64018 4.44607 6.67338 5.14337 5.97609L6.20399 7.03671C5.71713 7.52357 5.42142 8.18538 5.42142 8.91703C5.42142 9.35023 5.51636 9.76027 5.68652 10.1272L4.34253 10.2516ZM8.03663 12.7916C8.6395 12.632 9.19129 12.3302 9.65221 11.9204L10.7128 12.981C10.0466 13.5904 9.23861 14.0316 8.35253 14.2405L8.03663 12.7916ZM4.15743 6L6.84257 6L6.84257 7L4.93542 7C5.123 7.47391 5.40791 7.90253 5.76756 8.26218C6.46485 8.95948 7.43165 9.38994 8.5029 9.38994C9.10581 9.38994 9.66951 9.24305 10.1631 8.98215L10.6889 10.2328C10.0227 10.5624 9.28622 10.7486 8.5029 10.7486C7.16173 10.7486 5.90447 10.203 4.99609 9.29467C4.62719 8.92577 4.32189 8.49643 4.09412 8.02478L4.09411 9.74856L3.09411 9.74856L3.09412 6L4.15743 6Z"/></svg>`;
+
+      // 地址栏
+      const addressBar = document.createElement('input');
+      addressBar.className = 'cm-video-browser-address';
+      addressBar.type = 'text';
+      addressBar.value = this.videoInfo.originalUrl;
+      addressBar.spellcheck = false;
+
+      // 阻止地址栏鼠标事件冒泡，防止触发编辑器选择
+      addressBar.addEventListener('mousedown', (e) => e.stopPropagation());
+      addressBar.addEventListener('mouseup', (e) => e.stopPropagation());
+      addressBar.addEventListener('click', (e) => e.stopPropagation());
+      addressBar.addEventListener('dblclick', (e) => e.stopPropagation());
+
+      // 阻止键盘事件冒泡，防止 CodeMirror 拦截快捷键
+      addressBar.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        // 回车跳转
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          let url = addressBar.value.trim();
+          if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+            url = 'https://' + url;
+          }
+          if (url) {
+            const wv = webview as HTMLElement & { loadURL: (url: string) => void };
+            if (wv.loadURL) {
+              wv.loadURL(url);
+            }
+          }
+        }
+      });
+      addressBar.addEventListener('keyup', (e) => e.stopPropagation());
+      addressBar.addEventListener('keypress', (e) => e.stopPropagation());
+
+      // 在外部浏览器打开
+      const externalBtn = document.createElement('span');
+      externalBtn.className = 'cm-video-browser-btn';
+      externalBtn.title = '在浏览器中打开';
+      externalBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+
+      browserNav.appendChild(backBtn);
+      browserNav.appendChild(forwardBtn);
+      browserNav.appendChild(refreshBtn);
+      browserNav.appendChild(addressBar);
+      browserNav.appendChild(externalBtn);
+
+      // 加载进度条
+      const progressBar = document.createElement('div');
+      progressBar.className = 'cm-video-browser-progress';
+      const progressInner = document.createElement('div');
+      progressInner.className = 'cm-video-browser-progress-inner';
+      progressBar.appendChild(progressInner);
+
+      // Webview 容器
+      const webviewContainer = document.createElement('div');
+      webviewContainer.className = 'cm-video-browser-content';
+
+      const webview = document.createElement('webview');
+      webview.className = 'cm-video-webview';
+      webview.setAttribute('src', this.videoInfo.originalUrl);
+      webview.setAttribute('allowpopups', 'true');
+      webview.setAttribute('partition', 'persist:video');
+
+      // 绑定导航事件
+      webview.addEventListener('did-start-loading', () => {
+        progressBar.classList.add('loading');
+      });
+
+      webview.addEventListener('did-stop-loading', () => {
+        progressBar.classList.remove('loading');
+      });
+
+      webview.addEventListener('did-navigate', (e: Event) => {
+        const navEvent = e as CustomEvent & { url: string };
+        if (navEvent.url) {
+          addressBar.value = navEvent.url;
+        }
+      });
+
+      webview.addEventListener('did-navigate-in-page', (e: Event) => {
+        const navEvent = e as CustomEvent & { url: string };
+        if (navEvent.url) {
+          addressBar.value = navEvent.url;
+        }
+      });
+
+      // 绑定按钮事件
+      backBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const wv = webview as HTMLElement & {
+          canGoBack: () => boolean;
+          goBack: () => void;
+        };
+        if (wv.canGoBack && wv.canGoBack()) {
+          wv.goBack();
+        }
+      });
+
+      forwardBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const wv = webview as HTMLElement & {
+          canGoForward: () => boolean;
+          goForward: () => void;
+        };
+        if (wv.canGoForward && wv.canGoForward()) {
+          wv.goForward();
+        }
+      });
+
+      refreshBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const wv = webview as HTMLElement & { reload: () => void };
+        if (wv.reload) {
+          wv.reload();
+        }
+      });
+
+      externalBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(addressBar.value || this.videoInfo.originalUrl, '_blank');
+      });
+
+      webviewContainer.appendChild(webview);
+      browserContainer.appendChild(browserNav);
+      browserContainer.appendChild(progressBar);
+      browserContainer.appendChild(webviewContainer);
+      wrapper.appendChild(browserContainer);
+      }
+    } else if (this.displayMode === 'card') {
+      // 卡片模式 - 显示缩略图和信息
+      const cardContainer = document.createElement('div');
+      cardContainer.className = 'cm-video-card';
+      cardContainer.addEventListener('click', () => {
+        window.open(this.videoInfo.originalUrl, '_blank');
+      });
+
+      const cardThumb = document.createElement('div');
+      cardThumb.className = 'cm-video-card-thumb';
+      cardThumb.innerHTML = `<svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+
+      const cardInfo = document.createElement('div');
+      cardInfo.className = 'cm-video-card-info';
+
+      const cardTitle = document.createElement('div');
+      cardTitle.className = 'cm-video-card-title';
+      cardTitle.textContent = this.getCleanTitle();
+
+      const cardLink = document.createElement('div');
+      cardLink.className = 'cm-video-card-link';
+      cardLink.textContent = this.videoInfo.originalUrl;
+
+      cardInfo.appendChild(cardTitle);
+      cardInfo.appendChild(cardLink);
+      cardContainer.appendChild(cardThumb);
+      cardContainer.appendChild(cardInfo);
+      wrapper.appendChild(cardContainer);
+    }
+    // link 模式不显示额外内容，只显示工具栏
+
+    // 存入缓存
+    this.domElement = wrapper;
+    videoWidgetDomCache.set(this, wrapper);
+
+    return wrapper;
+  }
+
+  private showMoreMenu(anchorEl: HTMLElement, wrapperEl: HTMLElement): void {
+    // 移除已存在的菜单
+    const existingMenu = document.querySelector('.cm-video-more-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+
+    // 创建菜单
+    const menu = document.createElement('div');
+    menu.className = 'cm-video-more-menu';
+
+    const menuItems = [
+      { label: '本地视频', action: 'local-video' },
+      { label: '在浏览器中打开', action: 'open-external' },
+      { label: '拷贝原始链接', action: 'copy-url' },
+      { label: '拷贝区块链接', action: 'copy-block' },
+      { label: '移动到...', action: 'move-to' },
+      { label: '删除', action: 'delete', danger: true },
+    ];
+
+    menuItems.forEach(item => {
+      const menuItem = document.createElement('div');
+      menuItem.className = `cm-video-more-menu-item${item.danger ? ' danger' : ''}`;
+      menuItem.textContent = item.label;
+      menuItem.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        menu.remove();
+        this.handleMenuAction(item.action);
+      });
+      menu.appendChild(menuItem);
+    });
+
+    // 先添加到 DOM 以获取菜单高度
+    menu.style.position = 'fixed';
+    menu.style.visibility = 'hidden';
+    document.body.appendChild(menu);
+
+    // 定位菜单
+    const rect = anchorEl.getBoundingClientRect();
+    const menuHeight = menu.offsetHeight;
+    const viewportHeight = window.innerHeight;
+
+    // 检查是否会超出底部
+    let top = rect.bottom + 4;
+    if (top + menuHeight > viewportHeight - 10) {
+      // 向上显示
+      top = rect.top - menuHeight - 4;
+    }
+
+    // 检查左侧位置
+    let left = rect.right - 140;
+    if (left < 10) {
+      left = 10;
+    }
+
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+    menu.style.visibility = 'visible';
+
+    // 点击外部关闭菜单
+    const closeMenu = (e: MouseEvent) => {
+      if (!menu.contains(e.target as Node)) {
+        menu.remove();
+        document.removeEventListener('mousedown', closeMenu);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('mousedown', closeMenu);
+    }, 0);
+  }
+
+  private handleMenuAction(action: string): void {
+    switch (action) {
+      case 'local-video':
+        // 触发本地视频选择事件
+        window.dispatchEvent(new CustomEvent('video-select-local', {
+          detail: { from: this.from, to: this.to, title: this.getCleanTitle() },
+        }));
+        break;
+      case 'open-external':
+        window.open(this.videoInfo.originalUrl, '_blank');
+        break;
+      case 'copy-url':
+        navigator.clipboard.writeText(this.videoInfo.originalUrl);
+        break;
+      case 'copy-block':
+        navigator.clipboard.writeText(this.originalMatch);
+        break;
+      case 'move-to':
+        // 触发移动事件
+        window.dispatchEvent(new CustomEvent('video-move-to', {
+          detail: { from: this.from, to: this.to, content: this.originalMatch },
+        }));
+        break;
+      case 'delete':
+        // 触发删除事件
+        window.dispatchEvent(new CustomEvent('video-delete', {
+          detail: { from: this.from, to: this.to },
+        }));
+        break;
+    }
+  }
+
+  private changeDisplayMode(mode: 'embed' | 'card' | 'link'): void {
+    // 通过自定义事件通知编辑器更新文档
+    const event = new CustomEvent('video-display-mode-change', {
+      detail: {
+        from: this.from,
+        to: this.to,
+        mode: mode,
+        title: this.getCleanTitle(),
+        url: this.videoInfo.originalUrl,
+      },
+    });
+    window.dispatchEvent(event);
+  }
+
+  private getPlatformName(): string {
+    switch (this.videoInfo.platform) {
+      case 'bilibili': return 'B站';
+      case 'youtube': return 'YouTube';
+      case 'youku': return '优酷';
+      case 'qq': return '腾讯';
+      case 'iqiyi': return '爱奇艺';
+      case 'xigua': return '西瓜';
+      case 'douyin': return '抖音';
+      case 'local': return '本地';
+      case 'other': return '网页';
+      default: return '视频';
+    }
+  }
+
+  eq(other: VideoWidget): boolean {
+    // 只比较视频内容，不比较位置，避免文档变化时重建 widget
+    return (
+      other.videoInfo.originalUrl === this.videoInfo.originalUrl &&
+      other.displayMode === this.displayMode
+    );
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/**
+ * 解析文档中的视频语法并创建装饰器
+ * 视频语法: ![视频](视频链接)
+ * 只有当链接是支持的视频平台时才渲染为视频播放器
+ */
+function parseVideos(doc: string): DecorationSet {
+  const decorations: { from: number; to: number; decoration: Decoration }[] = [];
+  // 匹配 Markdown 图片语法，支持 http/https 链接和本地文件路径
+  // 本地路径格式: C:\path\to\file.mp4 或 file:///path/to/file.mp4
+  const videoRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  let match;
+
+  while ((match = videoRegex.exec(doc)) !== null) {
+    const alt = match[1];
+    const url = match[2];
+    const from = match.index;
+    const to = from + match[0].length;
+
+    // 尝试解析为视频链接
+    const videoInfo = parseVideoUrl(url);
+    if (videoInfo) {
+      decorations.push({
+        from,
+        to,
+        decoration: Decoration.replace({
+          widget: new VideoWidget(videoInfo, alt, from, to, match[0]),
+        }),
+      });
+    }
+  }
+
+  // 按位置排序
+  decorations.sort((a, b) => a.from - b.from);
+
+  return RangeSet.of(decorations.map(d => d.decoration.range(d.from, d.to)));
+}
+
+/**
+ * 提取文档中所有视频链接的签名（用于比较是否需要重新解析）
+ */
+function getVideoSignature(doc: string): string {
+  const videoRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const matches: string[] = [];
+  let match;
+  while ((match = videoRegex.exec(doc)) !== null) {
+    const url = match[2];
+    const videoInfo = parseVideoUrl(url);
+    if (videoInfo) {
+      matches.push(`${match[1]}|${url}`);
+    }
+  }
+  return matches.join('|||');
+}
+
+/**
+ * 视频装饰器 StateField
+ * 优化：只在视频内容变化时才重新解析，避免频繁重建 webview
+ */
+const videoDecorations = StateField.define<{ decorations: DecorationSet; signature: string }>({
+  create(state) {
+    const doc = state.doc.toString();
+    return {
+      decorations: parseVideos(doc),
+      signature: getVideoSignature(doc),
+    };
+  },
+  update(value, tr) {
+    // 如果文档没有变化，直接返回原值
+    if (!tr.docChanged) {
+      return value;
+    }
+
+    const newDoc = tr.newDoc.toString();
+    const newSignature = getVideoSignature(newDoc);
+
+    // 只有视频内容变化时才重新解析
+    if (newSignature !== value.signature) {
+      return {
+        decorations: parseVideos(newDoc),
+        signature: newSignature,
+      };
+    }
+
+    // 视频内容未变化，尝试映射位置
+    // 如果映射失败（装饰器数量为0但签名不为空），重新解析
+    const mappedDecorations = value.decorations.map(tr.changes);
+    if (mappedDecorations.size === 0 && newSignature !== '') {
+      return {
+        decorations: parseVideos(newDoc),
+        signature: newSignature,
+      };
+    }
+
+    return {
+      decorations: mappedDecorations,
+      signature: value.signature,
+    };
+  },
+  provide: f => EditorView.decorations.from(f, value => value.decorations),
+});
+
+// ============================================================================
+// Markdown 表格渲染系统
+// ============================================================================
+
+/**
+ * 表格数据结构
+ */
+interface TableData {
+  headers: string[];
+  alignments: ('left' | 'center' | 'right')[];
+  rows: string[][];
+  from: number;
+  to: number;
+}
+
+/**
+ * 解析 Markdown 表格
+ */
+function parseMarkdownTable(doc: string): TableData[] {
+  const tables: TableData[] = [];
+  const lines = doc.split('\n');
+  let position = 0;
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const lineStart = position;
+
+    // 检测表格头部行（包含 | 的行）
+    if (line.includes('|') && i + 1 < lines.length) {
+      const nextLine = lines[i + 1];
+      
+      // 检测分隔行（包含 --- 和 |）
+      if (/^\|?\s*:?-+:?\s*\|/.test(nextLine) || /\|\s*:?-+:?\s*\|?$/.test(nextLine)) {
+        // 解析表头
+        const headers = parseTableRow(line);
+        
+        if (headers.length > 0) {
+          // 解析对齐方式
+          const alignments = parseAlignments(nextLine, headers.length);
+          
+          // 解析数据行
+          const rows: string[][] = [];
+          let j = i + 2;
+          // 计算表格结束位置（包含表头行和分隔行及其换行符）
+          let lastLineEnd = lineStart + line.length + 1 + nextLine.length;
+          
+          while (j < lines.length) {
+            const dataLine = lines[j];
+            
+            // 检测是否是新表格的开始（下一行是分隔行）
+            if (j + 1 < lines.length) {
+              const potentialSeparator = lines[j + 1];
+              if (/^\|?\s*:?-+:?\s*\|/.test(potentialSeparator) || /\|\s*:?-+:?\s*\|?$/.test(potentialSeparator)) {
+                // 这是新表格的表头，结束当前表格
+                break;
+              }
+            }
+            
+            // 检测是否还是表格行（必须包含 | 且不是空行）
+            if (!dataLine.includes('|') || dataLine.trim() === '') {
+              break;
+            }
+            const rowData = parseTableRow(dataLine);
+            // 如果解析出的数据为空，跳过（但允许所有单元格为空字符串的行）
+            if (rowData.length === 0) {
+              break;
+            }
+            // 确保行数据与表头列数一致
+            while (rowData.length < headers.length) {
+              rowData.push('');
+            }
+            rows.push(rowData.slice(0, headers.length));
+            // 更新最后一行的结束位置（加上前一行的换行符和当前行的长度）
+            lastLineEnd += 1 + dataLine.length;
+            j++;
+          }
+          
+          // 添加表格（允许没有数据行的表格）
+          tables.push({
+            headers,
+            alignments,
+            rows,
+            from: lineStart,
+            to: lastLineEnd,
+          });
+          
+          // 跳过已处理的行
+          position = lastLineEnd + (j < lines.length ? 1 : 0);
+          i = j;
+          continue;
+        }
+      }
+    }
+
+    position += line.length + 1;
+    i++;
+  }
+
+  return tables;
+}
+
+/**
+ * 解析表格行
+ */
+function parseTableRow(line: string): string[] {
+  // 移除首尾的 |
+  let trimmed = line.trim();
+  if (trimmed.startsWith('|')) {
+    trimmed = trimmed.slice(1);
+  }
+  if (trimmed.endsWith('|')) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  
+  // 按 | 分割并清理空格
+  return trimmed.split('|').map(cell => cell.trim());
+}
+
+/**
+ * 解析对齐方式
+ */
+function parseAlignments(line: string, columnCount: number): ('left' | 'center' | 'right')[] {
+  const alignments: ('left' | 'center' | 'right')[] = [];
+  const cells = parseTableRow(line);
+  
+  for (let i = 0; i < columnCount; i++) {
+    const cell = cells[i] || '---';
+    const trimmed = cell.trim();
+    
+    if (trimmed.startsWith(':') && trimmed.endsWith(':')) {
+      alignments.push('center');
+    } else if (trimmed.endsWith(':')) {
+      alignments.push('right');
+    } else {
+      alignments.push('left');
+    }
+  }
+  
+  return alignments;
+}
+
+/**
+ * 表格 Widget 类 - 用于在编辑器中渲染可视化表格
+ */
+class TableWidget extends WidgetType {
+  constructor(
+    readonly tableData: TableData
+  ) {
+    super();
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cm-table-widget';
+    
+    // 创建工具栏
+    const toolbar = document.createElement('div');
+    toolbar.className = 'cm-table-toolbar';
+    
+    // 左侧：数据库名称和添加按钮
+    const toolbarLeft = document.createElement('div');
+    toolbarLeft.className = 'cm-table-toolbar-left';
+    
+    const tableName = document.createElement('span');
+    tableName.className = 'cm-table-name';
+    tableName.textContent = '数据表';
+    toolbarLeft.appendChild(tableName);
+    
+    const addBtn = document.createElement('span');
+    addBtn.className = 'cm-table-toolbar-btn';
+    addBtn.title = '添加新表格';
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // 在当前表格后插入新表格模板
+      const newTableTemplate = '\n\n| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n';
+      view.dispatch({
+        changes: { from: this.tableData.to, insert: newTableTemplate },
+      });
+    });
+    toolbarLeft.appendChild(addBtn);
+    
+    toolbar.appendChild(toolbarLeft);
+    
+    // 右侧：筛选、排序、窗口显示、删除
+    const toolbarRight = document.createElement('div');
+    toolbarRight.className = 'cm-table-toolbar-right';
+    
+    const filterBtn = document.createElement('span');
+    filterBtn.className = 'cm-table-toolbar-btn';
+    filterBtn.title = '筛选';
+    filterBtn.textContent = '筛选';
+    filterBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // TODO: 实现筛选功能
+    });
+    toolbarRight.appendChild(filterBtn);
+    
+    const sortBtn = document.createElement('span');
+    sortBtn.className = 'cm-table-toolbar-btn';
+    sortBtn.title = '排序';
+    sortBtn.textContent = '排序';
+    sortBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // TODO: 实现排序功能
+    });
+    toolbarRight.appendChild(sortBtn);
+    
+    const expandBtn = document.createElement('span');
+    expandBtn.className = 'cm-table-toolbar-btn';
+    expandBtn.title = '窗口显示';
+    expandBtn.textContent = '窗口';
+    expandBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // TODO: 实现窗口显示功能
+    });
+    toolbarRight.appendChild(expandBtn);
+    
+    const deleteBtn = document.createElement('span');
+    deleteBtn.className = 'cm-table-toolbar-btn cm-table-toolbar-btn-danger';
+    deleteBtn.title = '删除表格';
+    deleteBtn.textContent = '删除';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // 删除表格（包括前后可能的空行）
+      let deleteFrom = this.tableData.from;
+      let deleteTo = this.tableData.to;
+      
+      // 检查表格后是否有换行符，一并删除
+      const docLength = view.state.doc.length;
+      if (deleteTo < docLength) {
+        const afterChar = view.state.doc.sliceString(deleteTo, deleteTo + 1);
+        if (afterChar === '\n') {
+          deleteTo += 1;
+        }
+      }
+      
+      view.dispatch({
+        changes: { from: deleteFrom, to: deleteTo, insert: '' },
+      });
+    });
+    toolbarRight.appendChild(deleteBtn);
+    
+    toolbar.appendChild(toolbarRight);
+    wrapper.appendChild(toolbar);
+    
+    // 创建滚动容器
+    const scrollContainer = document.createElement('div');
+    scrollContainer.className = 'cm-table-scroll-container';
+    
+    const table = document.createElement('table');
+    table.className = 'cm-markdown-table';
+    
+    // 创建表头
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    
+    this.tableData.headers.forEach((header, index) => {
+      const th = document.createElement('th');
+      th.textContent = header;
+      th.style.textAlign = this.tableData.alignments[index] || 'left';
+      headerRow.appendChild(th);
+    });
+    
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    
+    // 创建表体
+    const tbody = document.createElement('tbody');
+    
+    console.log('[TableWidget] 渲染数据行:', this.tableData.rows);
+    
+    this.tableData.rows.forEach((row) => {
+      const tr = document.createElement('tr');
+      
+      row.forEach((cell, index) => {
+        const td = document.createElement('td');
+        td.textContent = cell;
+        td.style.textAlign = this.tableData.alignments[index] || 'left';
+        tr.appendChild(td);
+      });
+      
+      tbody.appendChild(tr);
+    });
+    
+    table.appendChild(tbody);
+    scrollContainer.appendChild(table);
+    wrapper.appendChild(scrollContainer);
+    
+    // 点击表格时跳转到源码位置
+    wrapper.addEventListener('click', () => {
+      view.dispatch({
+        selection: { anchor: this.tableData.from },
+        scrollIntoView: true,
+      });
+    });
+    
+    return wrapper;
+  }
+
+  eq(other: TableWidget): boolean {
+    return (
+      other.tableData.from === this.tableData.from &&
+      other.tableData.to === this.tableData.to &&
+      JSON.stringify(other.tableData.headers) === JSON.stringify(this.tableData.headers) &&
+      JSON.stringify(other.tableData.rows) === JSON.stringify(this.tableData.rows)
+    );
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/**
+ * 解析文档中的表格并创建装饰器
+ */
+function parseTableDecorations(doc: string): DecorationSet {
+  const tables = parseMarkdownTable(doc);
+  const decorations: { from: number; to: number; decoration: Decoration }[] = [];
+
+  console.log('[parseTableDecorations] 解析到的表格:', tables.map(t => ({
+    headers: t.headers,
+    rows: t.rows,
+    from: t.from,
+    to: t.to
+  })));
+
+  for (const table of tables) {
+    decorations.push({
+      from: table.from,
+      to: table.to,
+      decoration: Decoration.replace({
+        widget: new TableWidget(table),
+        block: true,
+      }),
+    });
+  }
+
+  // 按位置排序
+  decorations.sort((a, b) => a.from - b.from);
+
+  return RangeSet.of(decorations.map(d => d.decoration.range(d.from, d.to)));
+}
+
+/**
+ * 表格装饰器 StateField
+ */
+const tableDecorations = StateField.define<DecorationSet>({
+  create(state) {
+    return parseTableDecorations(state.doc.toString());
+  },
+  update(decorations, tr) {
+    if (tr.docChanged) {
+      return parseTableDecorations(tr.newDoc.toString());
     }
     return decorations;
   },
@@ -3443,6 +4897,13 @@ function parseUnorderedList(state: EditorState): DecorationSet {
     // 匹配无序列表标记：- * + （前面可以有缩进空格）
     const match = line.text.match(/^(\s*)([-*+])\s/);
     if (match) {
+      // 跳过待办清单（- [ ] 或 - [x]）- 在检查光标位置之前先检查
+      // 匹配格式：可选缩进 + 列表标记 + 空格 + [ ] 或 [x]（后面可以有空格或到行尾）
+      const isTodo = /^[\t ]*[-*+]\s\[[ xX]\](\s|$)/.test(line.text);
+      if (isTodo) {
+        continue;
+      }
+      
       // 如果光标在当前行，不替换标记
       if (i === currentLineNumber) {
         continue;
@@ -3617,6 +5078,183 @@ const unorderedListDecorations = StateField.define<DecorationSet>({
   },
   provide: f => EditorView.decorations.from(f),
 });
+
+/**
+ * 待办清单复选框 Widget - 将 [ ] 或 [x] 替换为可点击的复选框
+ */
+class CheckboxWidget extends WidgetType {
+  constructor(
+    readonly checked: boolean,
+    readonly pos: number,
+    readonly length: number,
+    readonly view: EditorView
+  ) {
+    super();
+  }
+
+  toDOM(): HTMLElement {
+    const checkbox = document.createElement('span');
+    checkbox.className = `cm-checkbox ${this.checked ? 'cm-checkbox-checked' : ''}`;
+    checkbox.setAttribute('role', 'checkbox');
+    checkbox.setAttribute('aria-checked', this.checked ? 'true' : 'false');
+    
+    // 点击切换状态
+    checkbox.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // 替换时保留后面的空格
+      const newText = this.checked ? '[ ] ' : '[x] ';
+      // 保存当前选择位置
+      const currentSelection = this.view.state.selection;
+      this.view.dispatch({
+        changes: { from: this.pos, to: this.pos + this.length, insert: newText },
+        // 恢复原来的选择位置
+        selection: currentSelection
+      });
+    });
+    
+    return checkbox;
+  }
+
+  eq(other: CheckboxWidget): boolean {
+    return this.checked === other.checked && this.pos === other.pos && this.length === other.length;
+  }
+
+  ignoreEvent(event: Event): boolean {
+    // 只处理 mousedown 事件，忽略其他事件
+    return event.type !== 'mousedown';
+  }
+}
+
+/**
+ * 解析待办清单并创建复选框装饰器
+ * 匹配格式：- [ ] 或 - [x] 或 • [ ] 或 • [x] 或 1. [ ] 或 1. [x]（后面可以有空格或到行尾）
+ */
+function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
+  const decorations: Range<Decoration>[] = [];
+  const doc = state.doc;
+  
+  // 获取当前光标位置
+  const cursorPos = state.selection.main.head;
+  const cursorLine = doc.lineAt(cursorPos);
+  const cursorLineNumber = cursorLine.number;
+  const cursorOffset = cursorPos - cursorLine.from; // 光标在行内的偏移
+
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    const text = line.text;
+    
+    // 匹配待办清单：
+    // 1. 无序列表格式：- [ ] 或 - [x] 或 • [ ] 或 • [x]
+    // 2. 有序列表格式：1. [ ] 或 1. [x]
+    const unorderedMatch = text.match(/^([\t ]*)([-*+•])\s\[([ xX])\](\s|$)/);
+    const orderedMatch = text.match(/^([\t ]*)(\d+\.)\s\[([ xX])\](\s|$)/);
+    
+    const todoMatch = unorderedMatch || orderedMatch;
+    if (!todoMatch) continue;
+    
+    const isOrderedList = !!orderedMatch;
+    const indent = todoMatch[1].length;
+    const marker = todoMatch[2];
+    const isChecked = todoMatch[3].toLowerCase() === 'x';
+    
+    // 找到 [ 的位置
+    const bracketIndex = text.indexOf('[');
+    if (bracketIndex === -1) continue;
+    
+    // 计算 ] 后面空格的位置（在行内的偏移）
+    const checkboxEndOffset = bracketIndex + 4; // [ ] 加空格共4个字符
+    
+    // 如果光标在当前行，且光标位置在复选框区域内或紧邻复选框后面，不显示复选框
+    if (i === cursorLineNumber && cursorOffset <= checkboxEndOffset) {
+      // 如果是无序列表且标记是 •，替换为 - 显示
+      if (!isOrderedList && marker === '•') {
+        const markerStart = line.from + indent;
+        const markerEnd = markerStart + 1;
+        decorations.push(
+          Decoration.replace({
+            widget: new class extends WidgetType {
+              toDOM(): HTMLElement {
+                const span = document.createElement('span');
+                span.textContent = '-';
+                return span;
+              }
+            }(),
+          }).range(markerStart, markerEnd)
+        );
+      }
+      
+      // 如果已完成，仍然添加删除线样式
+      if (isChecked) {
+        const contentStart = line.from + bracketIndex + 4; // [ ] 后面的内容开始位置
+        if (contentStart < line.to) {
+          decorations.push(
+            Decoration.mark({ class: 'cm-todo-completed' }).range(contentStart, line.to)
+          );
+        }
+      }
+      continue;
+    }
+    
+    const checkboxStart = line.from + bracketIndex;
+    // 替换 [ ] 或 [x] 以及后面的空格（共4个字符）
+    const checkboxEnd = checkboxStart + 4;
+    
+    // 如果是无序列表，替换列表标记为圆点
+    if (!isOrderedList) {
+      const markerStart = line.from + indent;
+      const markerEnd = markerStart + 1;
+      decorations.push(
+        Decoration.replace({
+          widget: new BulletWidget(indent),
+        }).range(markerStart, markerEnd)
+      );
+    }
+    
+    // 替换 [ ] 或 [x] 及后面的空格为复选框
+    decorations.push(
+      Decoration.replace({
+        widget: new CheckboxWidget(isChecked, checkboxStart, 4, view),
+      }).range(checkboxStart, checkboxEnd)
+    );
+    
+    // 如果已完成，为内容添加删除线样式
+    if (isChecked) {
+      const contentStart = checkboxEnd;
+      if (contentStart < line.to) {
+        decorations.push(
+          Decoration.mark({ class: 'cm-todo-completed' }).range(contentStart, line.to)
+        );
+      }
+    }
+  }
+
+  // 按位置排序装饰器
+  decorations.sort((a, b) => a.from - b.from);
+  return Decoration.set(decorations, true);
+}
+
+/**
+ * 待办清单装饰器 ViewPlugin
+ */
+const todoListPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = parseTodoList(view.state, view);
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.selectionSet) {
+        this.decorations = parseTodoList(update.state, update.view);
+      }
+    }
+  },
+  {
+    decorations: v => v.decorations
+  }
+);
 
 /**
  * 引用块竖线 Widget - 在行首显示竖线
@@ -4035,6 +5673,7 @@ const horizontalRuleDecorations = StateField.define<DecorationSet>({
 /**
  * 解析标题语法并创建隐藏装饰器（源码模式下的所见即所得）
  * 当光标不在标题行时，隐藏 # 符号
+ * 如果标题行没有内容（只有 # 符号），不隐藏
  */
 function parseHeadingSyntaxHide(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
@@ -4050,6 +5689,12 @@ function parseHeadingSyntaxHide(state: EditorState): DecorationSet {
     if (match) {
       // 如果光标在当前标题行，不隐藏 # 符号
       if (i === currentLineNumber) {
+        continue;
+      }
+      
+      // 如果标题行没有内容（只有 # 符号和空格），不隐藏
+      const content = line.text.slice(match[0].length);
+      if (content.trim().length === 0) {
         continue;
       }
       
@@ -4093,25 +5738,37 @@ const headingSyntaxHideDecorations = StateField.define<DecorationSet>({
 function parseInlineCodeHighlight(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
   const doc = state.doc.toString();
+  const docLength = doc.length;
   const cursorPos = state.selection.main.head;
   
-  // 匹配行内代码 `code`（不匹配代码块 ```）
-  const codeRegex = /(?<!`)`([^`]+)`(?!`)/g;
+  // 匹配行内代码 `code`
+  const codeRegex = /`([^`\n]+)`/g;
   let match;
   
   while ((match = codeRegex.exec(doc)) !== null) {
     const startFrom = match.index;
+    const endTo = startFrom + match[0].length;
+    
+    // 边界检查
+    if (endTo > docLength) continue;
+    
+    // 跳过代码块的 ``` 标记
+    if (startFrom > 0 && doc[startFrom - 1] === '`') continue;
+    if (endTo < docLength && doc[endTo] === '`') continue;
+    
     const startTo = startFrom + 1;
     const contentFrom = startTo;
-    const contentTo = startFrom + match[0].length - 1;
+    const contentTo = endTo - 1;
     const endFrom = contentTo;
-    const endTo = startFrom + match[0].length;
     const codeContent = match[1];
     
     // 如果光标在这个行内代码范围内，显示原始语法
     if (cursorPos >= startFrom && cursorPos <= endTo) {
       continue;
     }
+    
+    // 确保范围有效
+    if (contentFrom >= contentTo) continue;
     
     // 隐藏前面的 `
     decorations.push({
@@ -4339,6 +5996,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
   autoFocus = false,
   initialMode = 'source',
   showOutline = true,
+  isActive = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -4353,6 +6011,13 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
 
   // 上下文菜单状态
   const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+  }>({ visible: false, x: 0, y: 0 });
+
+  // 视频链接输入状态
+  const [videoLinkInput, setVideoLinkInput] = useState<{
     visible: boolean;
     x: number;
     y: number;
@@ -4488,23 +6153,6 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               }
             },
           },
-          { id: 'text-format-sep', label: '', separator: true },
-          {
-            id: 'code',
-            label: '代码块',
-            action: () => {
-              if (view) {
-                const { from, to } = view.state.selection.main;
-                const selectedText = view.state.sliceDoc(from, to);
-                const line = view.state.doc.lineAt(from);
-                const isLineStart = from === line.from;
-                const prefix = isLineStart ? '' : '\n';
-                view.dispatch({
-                  changes: { from, to, insert: `${prefix}\`\`\`javascript\n${selectedText || '// 在此输入代码'}\n\`\`\`` },
-                });
-              }
-            },
-          },
           {
             id: 'inline-code',
             label: '行内代码',
@@ -4514,19 +6162,6 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
                   changes: { from, to, insert: `\`${selectedText || '代码'}\`` },
-                });
-              }
-            },
-          },
-          {
-            id: 'math',
-            label: '数学',
-            action: () => {
-              if (view) {
-                const { from, to } = view.state.selection.main;
-                const selectedText = view.state.sliceDoc(from, to);
-                view.dispatch({
-                  changes: { from, to, insert: `$${selectedText || '公式'}$` },
                 });
               }
             },
@@ -4786,7 +6421,9 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
                 view.dispatch({
                   changes: { from: line.from, to: line.from, insert: '# ' },
+                  selection: { anchor: line.from + 2 },
                 });
+                view.focus();
               }
             },
           },
@@ -4798,7 +6435,9 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
                 view.dispatch({
                   changes: { from: line.from, to: line.from, insert: '## ' },
+                  selection: { anchor: line.from + 3 },
                 });
+                view.focus();
               }
             },
           },
@@ -4810,7 +6449,9 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
                 view.dispatch({
                   changes: { from: line.from, to: line.from, insert: '### ' },
+                  selection: { anchor: line.from + 4 },
                 });
+                view.focus();
               }
             },
           },
@@ -4822,7 +6463,9 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
                 view.dispatch({
                   changes: { from: line.from, to: line.from, insert: '> ' },
+                  selection: { anchor: line.from + 2 },
                 });
+                view.focus();
               }
             },
           },
@@ -4833,14 +6476,150 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
         label: '插入',
         submenu: [
           {
+            id: 'heading1',
+            label: '标题1',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const line = view.state.doc.lineAt(from);
+                view.dispatch({
+                  changes: { from: line.from, insert: '# ' },
+                  selection: { anchor: line.from + 2 },
+                });
+                view.focus();
+              }
+            },
+          },
+          {
+            id: 'heading2',
+            label: '标题2',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const line = view.state.doc.lineAt(from);
+                view.dispatch({
+                  changes: { from: line.from, insert: '## ' },
+                  selection: { anchor: line.from + 3 },
+                });
+                view.focus();
+              }
+            },
+          },
+          {
+            id: 'heading3',
+            label: '标题3',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const line = view.state.doc.lineAt(from);
+                view.dispatch({
+                  changes: { from: line.from, insert: '### ' },
+                  selection: { anchor: line.from + 4 },
+                });
+                view.focus();
+              }
+            },
+          },
+          { id: 'insert-sep1', label: '', separator: true },
+          {
+            id: 'ordered-list',
+            label: '有序列表',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const line = view.state.doc.lineAt(from);
+                view.dispatch({
+                  changes: { from: line.from, insert: '1. ' },
+                  selection: { anchor: line.from + 3 },
+                });
+                view.focus();
+              }
+            },
+          },
+          {
+            id: 'unordered-list',
+            label: '无序列表',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const line = view.state.doc.lineAt(from);
+                view.dispatch({
+                  changes: { from: line.from, insert: '- ' },
+                  selection: { anchor: line.from + 2 },
+                });
+                view.focus();
+              }
+            },
+          },
+          {
+            id: 'todo-list',
+            label: '待办清单',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const line = view.state.doc.lineAt(from);
+                const text = line.text;
+                
+                // 检查是否是有序列表行（如 1. 2. 等）
+                const orderedMatch = text.match(/^(\s*)(\d+\.)\s*/);
+                if (orderedMatch) {
+                  // 在有序列表后面添加待办清单格式
+                  const prefix = orderedMatch[0]; // 包括缩进、数字和点后的空格
+                  const insertPos = line.from + prefix.length;
+                  view.dispatch({
+                    changes: { from: insertPos, insert: '[ ] ' },
+                    selection: { anchor: insertPos + 4 },
+                  });
+                } else {
+                  // 普通行，在行首插入待办清单
+                  view.dispatch({
+                    changes: { from: line.from, insert: '- [ ] ' },
+                    selection: { anchor: line.from + 6 },
+                  });
+                }
+                view.focus();
+              }
+            },
+          },
+          { id: 'insert-sep2', label: '', separator: true },
+          {
+            id: 'blockquote',
+            label: '引用',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const line = view.state.doc.lineAt(from);
+                view.dispatch({
+                  changes: { from: line.from, insert: '> ' },
+                  selection: { anchor: line.from + 2 },
+                });
+                view.focus();
+              }
+            },
+          },
+          {
+            id: 'callout',
+            label: '标注',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                view.dispatch({
+                  changes: { from, insert: '> [!NOTE]\n> 标注内容' },
+                });
+                view.focus();
+              }
+            },
+          },
+          { id: 'insert-sep3', label: '', separator: true },
+          {
             id: 'code-block',
             label: '代码块',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
                 view.dispatch({
-                  changes: { from, insert: '```\n\n```' },
-                  selection: { anchor: from + 4 },
+                  changes: { from, insert: '```javascript\n\n```' },
+                  selection: { anchor: from + 14 },
                 });
               }
             },
@@ -4858,21 +6637,47 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               }
             },
           },
+          { id: 'insert-sep4', label: '', separator: true },
           {
-            id: 'hr',
-            label: '分割线',
+            id: 'video-link',
+            label: '视频链接',
             action: () => {
+              // 获取光标位置的屏幕坐标
               if (view) {
                 const { from } = view.state.selection.main;
-                view.dispatch({
-                  changes: { from, insert: '\n---\n' },
-                });
+                const coords = view.coordsAtPos(from);
+                if (coords) {
+                  setVideoLinkInput({
+                    visible: true,
+                    x: coords.left,
+                    y: coords.bottom + 4,
+                  });
+                }
               }
+            },
+          },
+          {
+            id: 'database',
+            label: '数据库',
+            action: () => {
+              // 打开数据库设计器标签页
+              window.dispatchEvent(new CustomEvent('open-database-view'));
             },
           },
         ],
       },
       { id: 'sep2', label: '', separator: true },
+      {
+        id: 'ai-inline-chat',
+        label: 'AI 助手',
+        shortcut: 'Ctrl+I',
+        action: () => {
+          if (view) {
+            openInlineAIChat(view);
+          }
+        },
+      },
+      { id: 'sep3', label: '', separator: true },
       {
         id: 'cut',
         label: '剪切',
@@ -5047,11 +6852,14 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       customKeymap, // 自定义键盘映射放在默认键盘映射之前，确保优先处理
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       updateListener,
+      videoDecorations, // 视频装饰器放在图片之前，优先匹配视频链接
       imageDecorations,
+      tableDecorations,
       headingDecorations,
       boldDecorations,
       italicDecorations,
       unorderedListDecorations,
+      todoListPlugin,
       blockquoteDecorations,
       horizontalRuleDecorations,
       codeBlockDecorations,
@@ -5071,6 +6879,8 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       headingFoldMarkers,
       headingFoldGutter,
       listFoldDecorations,
+      // 内联 AI 聊天
+      inlineAIChatField,
       codeFolding({
         placeholderDOM: (_view, onclick) => {
           const span = document.createElement('span');
@@ -5086,19 +6896,16 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       EditorView.lineWrapping,
       EditorView.theme({
         '&': {
-          height: '100%',
-          fontFamily: "'Consolas', 'Monaco', monospace",
+          height: '100%'
         },
         '.cm-scroller': {
-          overflow: 'auto',
-          fontFamily: "'Consolas', 'Monaco', monospace",
+          overflow: 'auto'
         },
         '.cm-content': {
-          caretColor: 'var(--ws-editor-foreground)',
-          fontFamily: "'Consolas', 'Monaco', monospace",
+          caretColor: 'var(--ws-editor-foreground)'
         },
         '.cm-line': {
-          fontFamily: "'Consolas', 'Monaco', monospace",
+        
         },
         '&.cm-focused .cm-cursor': {
           borderLeftColor: 'var(--ws-editor-foreground)',
@@ -5142,6 +6949,86 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       globalEditorView = null;
     };
   }, [editable, mode, updateOutline]);
+
+  // 监听视频标题和显示模式变化事件
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    // 视频标题变化处理
+    const handleVideoTitleChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        from: number;
+        to: number;
+        title: string;
+        url: string;
+        mode: string;
+      }>;
+      const { from, to, title, url, mode } = customEvent.detail;
+      const modeStr = mode !== 'embed' ? `|mode:${mode}` : '';
+      const newMarkdown = `![${title}${modeStr}](${url})`;
+      view.dispatch({
+        changes: { from, to, insert: newMarkdown },
+      });
+    };
+
+    // 视频显示模式变化处理
+    const handleVideoModeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        from: number;
+        to: number;
+        mode: string;
+        title: string;
+        url: string;
+      }>;
+      const { from, to, mode, title, url } = customEvent.detail;
+      const modeStr = mode !== 'embed' ? `|mode:${mode}` : '';
+      const newMarkdown = `![${title}${modeStr}](${url})`;
+      view.dispatch({
+        changes: { from, to, insert: newMarkdown },
+      });
+    };
+
+    // 视频删除处理
+    const handleVideoDelete = (event: Event) => {
+      const customEvent = event as CustomEvent<{ from: number; to: number }>;
+      const { from, to } = customEvent.detail;
+      view.dispatch({
+        changes: { from, to, insert: '' },
+      });
+    };
+
+    // 本地视频选择处理
+    const handleVideoSelectLocal = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ from: number; to: number; title: string }>;
+      const { from, to, title } = customEvent.detail;
+      
+      // 调用 Electron 打开文件对话框
+      const result = await window.electron?.video?.open();
+      console.log('[handleVideoSelectLocal] 选择结果:', result);
+      if (result && result.success && result.data?.path) {
+        const filePath = result.data.path;
+        console.log('[handleVideoSelectLocal] 文件路径:', filePath);
+        const newMarkdown = `![${title}](${filePath})`;
+        console.log('[handleVideoSelectLocal] 插入 markdown:', newMarkdown);
+        view.dispatch({
+          changes: { from, to, insert: newMarkdown },
+        });
+      }
+    };
+
+    window.addEventListener('video-title-change', handleVideoTitleChange);
+    window.addEventListener('video-display-mode-change', handleVideoModeChange);
+    window.addEventListener('video-delete', handleVideoDelete);
+    window.addEventListener('video-select-local', handleVideoSelectLocal);
+
+    return () => {
+      window.removeEventListener('video-title-change', handleVideoTitleChange);
+      window.removeEventListener('video-display-mode-change', handleVideoModeChange);
+      window.removeEventListener('video-delete', handleVideoDelete);
+      window.removeEventListener('video-select-local', handleVideoSelectLocal);
+    };
+  }, []);
 
   // 内容变化时更新大纲
   useEffect(() => {
@@ -5209,6 +7096,35 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     window.addEventListener('set-codemirror-mode', handleModeChange as EventListener);
     return () => {
       window.removeEventListener('set-codemirror-mode', handleModeChange as EventListener);
+    };
+  }, []);
+
+  // 监听插入数据库表格事件
+  useEffect(() => {
+    const handleInsertDatabaseTable = (event: Event) => {
+      const customEvent = event as CustomEvent<{ markdown: string; focusEditor?: boolean; handled?: boolean }>;
+      
+      // 如果事件已被处理，跳过
+      if (customEvent.detail?.handled) return;
+      
+      const { markdown } = customEvent.detail;
+      
+      if (viewRef.current && markdown) {
+        // 标记事件已处理，防止其他编辑器重复处理
+        customEvent.detail.handled = true;
+        
+        const { from } = viewRef.current.state.selection.main;
+        viewRef.current.dispatch({
+          changes: { from, insert: markdown + '\n' },
+          selection: { anchor: from + markdown.length + 1 },
+        });
+        viewRef.current.focus();
+      }
+    };
+
+    window.addEventListener('insert-database-table', handleInsertDatabaseTable as EventListener);
+    return () => {
+      window.removeEventListener('insert-database-table', handleInsertDatabaseTable as EventListener);
     };
   }, []);
 
@@ -5306,6 +7222,23 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
         y={contextMenu.y}
         items={getContextMenuItems()}
         onClose={closeContextMenu}
+      />
+      <VideoLinkInput
+        visible={videoLinkInput.visible}
+        x={videoLinkInput.x}
+        y={videoLinkInput.y}
+        onConfirm={(url) => {
+          const view = viewRef.current;
+          if (view) {
+            const { from } = view.state.selection.main;
+            const videoMarkdown = `![视频](${url})`;
+            view.dispatch({
+              changes: { from, insert: videoMarkdown },
+            });
+            view.focus();
+          }
+        }}
+        onClose={() => setVideoLinkInput({ visible: false, x: 0, y: 0 })}
       />
     </div>
   );
