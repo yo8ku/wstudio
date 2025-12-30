@@ -1185,6 +1185,199 @@
   }
 }
 
+// Mermaid 图表 Widget 样式
+.cm-mermaid-widget {
+  display: block;
+  margin: 12px 0;
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: var(--ws-editor-background);
+
+  &:hover {
+    border-color: var(--ws-focusBorder);
+  }
+
+  .cm-mermaid-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background-color: var(--ws-sideBar-background);
+    border-bottom: 1px solid var(--ws-panel-border);
+  }
+
+  .cm-mermaid-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cm-mermaid-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ws-editor-foreground);
+  }
+
+  .cm-mermaid-title-input {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ws-editor-foreground);
+    background-color: var(--ws-input-background);
+    border: 1px solid var(--ws-focusBorder);
+    border-radius: 4px;
+    padding: 2px 8px;
+    outline: none;
+    min-width: 80px;
+    max-width: 200px;
+    height: 24px;
+  }
+
+  .cm-mermaid-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .cm-mermaid-toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: var(--ws-descriptionForeground);
+    border-radius: 4px;
+    cursor: pointer;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+      color: var(--ws-editor-foreground);
+    }
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    &.cm-mermaid-toolbar-btn-danger:hover {
+      background-color: var(--ws-inputValidation-errorBackground);
+      color: var(--ws-errorForeground);
+    }
+  }
+
+  .cm-mermaid-label {
+    font-size: 12px;
+    color: var(--ws-descriptionForeground);
+    padding: 2px 8px;
+    background-color: var(--ws-badge-background);
+    border-radius: 4px;
+  }
+
+  .cm-mermaid-content {
+    display: flex;
+    flex-direction: row;
+  }
+
+  .cm-mermaid-side-toolbar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px;
+    background-color: var(--ws-sideBar-background);
+    border-right: 1px solid var(--ws-panel-border);
+  }
+
+  .cm-mermaid-side-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: var(--ws-descriptionForeground);
+    border-radius: 4px;
+    cursor: pointer;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+      color: var(--ws-editor-foreground);
+    }
+
+    &.active {
+      background-color: var(--ws-list-activeSelectionBackground);
+      color: var(--ws-list-activeSelectionForeground);
+    }
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  .cm-mermaid-side-divider {
+    width: 20px;
+    height: 1px;
+    background-color: var(--ws-panel-border);
+    margin: 4px 0;
+  }
+
+  .cm-mermaid-zoom-label {
+    font-size: 11px;
+    color: var(--ws-descriptionForeground);
+    padding: 4px 0;
+    text-align: center;
+    min-width: 36px;
+    cursor: pointer;
+    border-radius: 4px;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+      color: var(--ws-editor-foreground);
+    }
+  }
+
+  .cm-mermaid-container {
+    flex: 1;
+    padding: 16px;
+    min-height: 100px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--ws-editor-background);
+    overflow: auto;
+    position: relative;
+
+    &.cm-mermaid-drag-mode {
+      cursor: grab;
+      overflow: hidden;
+    }
+
+    &.cm-mermaid-dragging {
+      cursor: grabbing;
+    }
+  }
+
+  .cm-mermaid-svg-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transform-origin: center center;
+
+    svg {
+      max-width: none;
+      height: auto;
+    }
+  }
+
+  .cm-mermaid-error {
+    color: var(--ws-errorForeground);
+    font-size: 13px;
+    padding: 12px;
+    background-color: var(--ws-inputValidation-errorBackground);
+    border-radius: 4px;
+  }
+}
+
 // 视频 Widget 样式 - 使用 webview 播放器
 .cm-video-widget {
   display: inline-block;
@@ -1848,6 +2041,70 @@
 }
 
 // 文本颜色样式
+
+// Mermaid 缩放菜单样式
+.cm-mermaid-zoom-menu {
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  padding: 4px;
+  min-width: 80px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+
+  .cm-mermaid-zoom-menu-item {
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--ws-foreground);
+    cursor: pointer;
+    border-radius: 4px;
+    text-align: center;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+    }
+
+    &.active {
+      background-color: var(--ws-list-activeSelectionBackground);
+      color: var(--ws-list-activeSelectionForeground);
+    }
+  }
+}
+// Mermaid 底部拖动手柄样式
+.cm-mermaid-resize-handle {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 12px;
+  cursor: ns-resize;
+  background-color: transparent;
+  border-top: 1px solid var(--ws-panel-border);
+  border-radius: 0 0 8px 8px;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+
+    .cm-mermaid-resize-bar {
+      background-color: var(--ws-scrollbarSlider-hoverBackground);
+    }
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+
+    .cm-mermaid-resize-bar {
+      background-color: var(--ws-scrollbarSlider-activeBackground);
+    }
+  }
+}
+
+.cm-mermaid-resize-bar {
+  width: 60px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: var(--ws-scrollbarSlider-background);
+}
+
 .cm-text-styled {
   // 样式通过 inline style 设置
 }

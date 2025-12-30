@@ -32,6 +32,7 @@ import './CodeMirrorEditor.scss';
 import './InlineAIChat/InlineAIChat.scss';
 import { text } from 'stream/consumers';
 import hljs from 'highlight.js';
+import mermaid from 'mermaid';
 
 /**
  * 编辑器模式类型
@@ -3728,6 +3729,585 @@ function parseVideoUrl(url: string): VideoInfo | null {
   return null;
 }
 
+// ============================================================================
+// Mermaid 图表渲染系统
+// ============================================================================
+
+// 初始化 Mermaid
+let mermaidInitialized = false;
+const initMermaid = () => {
+  if (mermaidInitialized) return;
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: {
+      useMaxWidth: true,
+      htmlLabels: true,
+    },
+    sequence: {
+      useMaxWidth: true,
+    },
+  });
+  mermaidInitialized = true;
+};
+
+// Mermaid Widget DOM 缓存
+const mermaidWidgetDomCache = new WeakMap<MermaidWidget, HTMLElement>();
+
+/**
+ * Mermaid 图表 Widget 类
+ */
+class MermaidWidget extends WidgetType {
+  private code: string;
+  private from: number;
+  private to: number;
+  private domElement: HTMLElement | null = null;
+
+  constructor(code: string, from: number, to: number) {
+    super();
+    this.code = code;
+    this.from = from;
+    this.to = to;
+  }
+
+  eq(other: MermaidWidget): boolean {
+    return other.code === this.code;
+  }
+
+  toDOM(): HTMLElement {
+    // 检查缓存
+    if (this.domElement) {
+      return this.domElement;
+    }
+
+    const cached = mermaidWidgetDomCache.get(this);
+    if (cached) {
+      this.domElement = cached;
+      return cached;
+    }
+
+    initMermaid();
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cm-mermaid-widget';
+
+    // 工具栏
+    const toolbar = document.createElement('div');
+    toolbar.className = 'cm-mermaid-toolbar';
+
+    // 左侧：标题
+    const toolbarLeft = document.createElement('div');
+    toolbarLeft.className = 'cm-mermaid-toolbar-left';
+
+    // 标题显示
+    const title = document.createElement('span');
+    title.className = 'cm-mermaid-title';
+    title.textContent = '流程图';
+
+    // 标题编辑输入框
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.className = 'cm-mermaid-title-input';
+    titleInput.value = '流程图';
+    titleInput.style.display = 'none';
+
+    // 编辑状态
+    let isEditing = false;
+
+    // 进入编辑模式
+    const enterEditMode = () => {
+      isEditing = true;
+      title.style.display = 'none';
+      titleInput.style.display = 'block';
+      titleInput.value = title.textContent || '流程图';
+      titleInput.focus();
+      titleInput.select();
+    };
+
+    // 退出编辑模式
+    const exitEditMode = (save: boolean) => {
+      if (!isEditing) return;
+      isEditing = false;
+      title.style.display = 'block';
+      titleInput.style.display = 'none';
+      if (save && titleInput.value.trim()) {
+        title.textContent = titleInput.value.trim();
+      }
+    };
+
+    // 输入框事件
+    titleInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        exitEditMode(true);
+      } else if (e.key === 'Escape') {
+        exitEditMode(false);
+      }
+    });
+
+    titleInput.addEventListener('blur', () => {
+      exitEditMode(true);
+    });
+
+    titleInput.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    toolbarLeft.appendChild(title);
+    toolbarLeft.appendChild(titleInput);
+
+    // 右侧：工具栏按钮
+    const toolbarRight = document.createElement('div');
+    toolbarRight.className = 'cm-mermaid-toolbar-right';
+
+    // 编辑按钮
+    const editBtn = document.createElement('span');
+    editBtn.className = 'cm-mermaid-toolbar-btn';
+    editBtn.title = '编辑';
+    editBtn.innerHTML = `<svg viewBox="0 0 32 32" fill="currentColor" width="16" height="16"><path d="M2 26h28v2H2z"></path><path d="M25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10l3.6 3.6l-10 10H6z"></path></svg>`;
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      enterEditMode();
+    });
+
+    // 卡片按钮
+    const cardBtn = document.createElement('span');
+    cardBtn.className = 'cm-mermaid-toolbar-btn';
+    cardBtn.title = '卡片';
+    cardBtn.innerHTML = `<svg viewBox="0 0 1024 1024" fill="currentColor" width="16" height="16"><path d="M341.333333 106.666667a128 128 0 0 1 128 128v106.666666a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666z m0 85.333333h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L192 234.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L234.666667 384h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L384 341.333333v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L341.333333 192z m0 362.666667a128 128 0 0 1 128 128v106.666666a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666z m0 85.333333h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L192 682.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L234.666667 832h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L384 789.333333v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L341.333333 640z m576-298.666667a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666a128 128 0 0 1 128 128v106.666666z m-85.333333 0v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L789.333333 192h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L640 234.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L682.666667 384h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L832 341.333333z m-42.666667 213.333334a128 128 0 0 1 128 128v106.666666a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666z m0 85.333333h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L640 682.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L682.666667 832h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L832 789.333333v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L789.333333 640z" /></svg>`;
+    cardBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // TODO: 实现卡片视图功能
+      console.log('切换卡片视图');
+    });
+
+    // 设计按钮
+    const designBtn = document.createElement('span');
+    designBtn.className = 'cm-mermaid-toolbar-btn';
+    designBtn.title = '设计';
+    designBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></svg>`;
+    designBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // TODO: 实现设计功能
+      console.log('打开设计视图');
+    });
+
+    // 主题按钮
+    const themeBtn = document.createElement('span');
+    themeBtn.className = 'cm-mermaid-toolbar-btn';
+    themeBtn.title = '主题';
+    themeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>`;
+    themeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // TODO: 实现主题切换功能
+      console.log('切换主题');
+    });
+
+    // 代码按钮
+    const codeBtn = document.createElement('span');
+    codeBtn.className = 'cm-mermaid-toolbar-btn';
+    codeBtn.title = '代码';
+    codeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>`;
+    codeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // TODO: 实现查看代码功能
+      console.log('查看代码');
+    });
+
+    // 扩大按钮
+    const expandBtn = document.createElement('span');
+    expandBtn.className = 'cm-mermaid-toolbar-btn';
+    expandBtn.title = '扩大';
+    expandBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/></svg>`;
+    expandBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // 打开流程图设计器标签页
+      window.dispatchEvent(new CustomEvent('open-mermaid-designer', {
+        detail: {
+          code: this.code,
+          title: title.textContent || '流程图'
+        }
+      }));
+    });
+
+    // 删除按钮
+    const deleteBtn = document.createElement('span');
+    deleteBtn.className = 'cm-mermaid-toolbar-btn cm-mermaid-toolbar-btn-danger';
+    deleteBtn.title = '删除';
+    deleteBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 7v4a.5.5 0 0 0 1 0V7a.5.5 0 0 0-1 0zM9 6.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V7a.5.5 0 0 1 .5-.5zM10 4h3a.5.5 0 0 1 0 1h-.553l-.752 6.776A2.5 2.5 0 0 1 9.21 14H6.79a2.5 2.5 0 0 1-2.485-2.224L3.552 5H3a.5.5 0 0 1 0-1h3a2 2 0 1 1 4 0zM8 3a1 1 0 0 0-1 1h2a1 1 0 0 0-1-1zM4.559 5l.74 6.666A1.5 1.5 0 0 0 6.79 13h2.42a1.5 1.5 0 0 0 1.49-1.334L11.442 5H4.56z" fill="currentColor"/></svg>`;
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // 删除 Mermaid 代码块
+      if (globalEditorView) {
+        globalEditorView.dispatch({
+          changes: { from: this.from, to: this.to, insert: '' }
+        });
+      }
+    });
+
+    toolbarRight.appendChild(editBtn);
+    toolbarRight.appendChild(cardBtn);
+    toolbarRight.appendChild(designBtn);
+    toolbarRight.appendChild(themeBtn);
+    toolbarRight.appendChild(codeBtn);
+    toolbarRight.appendChild(expandBtn);
+    toolbarRight.appendChild(deleteBtn);
+
+    toolbar.appendChild(toolbarLeft);
+    toolbar.appendChild(toolbarRight);
+    wrapper.appendChild(toolbar);
+
+    // 内容区域（包含左侧工具栏和图表）
+    const content = document.createElement('div');
+    content.className = 'cm-mermaid-content';
+
+    // 左侧垂直工具栏
+    const sideToolbar = document.createElement('div');
+    sideToolbar.className = 'cm-mermaid-side-toolbar';
+
+    // 拖拽状态
+    let isDragMode = false;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let translateX = 0;
+    let translateY = 0;
+
+    // 缩放状态
+    let scale = 1;
+    const minScale = 0.2;
+    const maxScale = 2;
+    const scaleStep = 0.25;
+
+    // 更新变换
+    const updateTransform = () => {
+      svgWrapper.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+      zoomLabel.textContent = `${Math.round(scale * 100)}%`;
+    };
+
+    // 拖拽按钮
+    const dragBtn = document.createElement('span');
+    dragBtn.className = 'cm-mermaid-side-btn';
+    dragBtn.title = '拖拽';
+    dragBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`;
+    dragBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      isDragMode = !isDragMode;
+      dragBtn.classList.toggle('active', isDragMode);
+      container.classList.toggle('cm-mermaid-drag-mode', isDragMode);
+    });
+
+    // 百分比显示
+    const zoomLabel = document.createElement('span');
+    zoomLabel.className = 'cm-mermaid-zoom-label';
+    zoomLabel.textContent = '100%';
+
+    // 缩放菜单
+    const zoomPresets = [20, 50, 75, 100, 150, 200];
+    let zoomMenu: HTMLElement | null = null;
+
+    const showZoomMenu = (e: MouseEvent) => {
+      e.stopPropagation();
+      
+      // 如果菜单已存在，先移除
+      if (zoomMenu) {
+        zoomMenu.remove();
+        zoomMenu = null;
+        return;
+      }
+
+      zoomMenu = document.createElement('div');
+      zoomMenu.className = 'cm-mermaid-zoom-menu';
+
+      zoomPresets.forEach(preset => {
+        const item = document.createElement('div');
+        item.className = 'cm-mermaid-zoom-menu-item';
+        if (Math.round(scale * 100) === preset) {
+          item.classList.add('active');
+        }
+        item.textContent = `${preset}%`;
+        item.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          scale = preset / 100;
+          updateTransform();
+          if (zoomMenu) {
+            zoomMenu.remove();
+            zoomMenu = null;
+          }
+        });
+        zoomMenu!.appendChild(item);
+      });
+
+      // 定位菜单
+      const rect = zoomLabel.getBoundingClientRect();
+      zoomMenu.style.position = 'fixed';
+      zoomMenu.style.left = `${rect.right + 4}px`;
+      zoomMenu.style.top = `${rect.top}px`;
+
+      document.body.appendChild(zoomMenu);
+
+      // 点击其他地方关闭菜单
+      const closeMenu = (ev: MouseEvent) => {
+        if (zoomMenu && !zoomMenu.contains(ev.target as Node)) {
+          zoomMenu.remove();
+          zoomMenu = null;
+          document.removeEventListener('click', closeMenu);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    };
+
+    zoomLabel.addEventListener('click', showZoomMenu);
+
+    // 图表内容包装器（用于变换）- 提前声明
+    const svgWrapper = document.createElement('div');
+    svgWrapper.className = 'cm-mermaid-svg-wrapper';
+
+    // 放大按钮
+    const zoomInBtn = document.createElement('span');
+    zoomInBtn.className = 'cm-mermaid-side-btn';
+    zoomInBtn.title = '放大';
+    zoomInBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`;
+    zoomInBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (scale < maxScale) {
+        scale = Math.min(scale + scaleStep, maxScale);
+        updateTransform();
+      }
+    });
+
+    // 缩小按钮
+    const zoomOutBtn = document.createElement('span');
+    zoomOutBtn.className = 'cm-mermaid-side-btn';
+    zoomOutBtn.title = '缩小';
+    zoomOutBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>`;
+    zoomOutBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (scale > minScale) {
+        scale = Math.max(scale - scaleStep, minScale);
+        updateTransform();
+      }
+    });
+
+    // 素材库按钮
+    const materialBtn = document.createElement('span');
+    materialBtn.className = 'cm-mermaid-side-btn';
+    materialBtn.title = '素材库';
+    materialBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3"/><path d="M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4"/><path d="M5 21h14"/></svg>`;
+    materialBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // TODO: 打开素材库面板
+      console.log('打开素材库');
+    });
+
+    // 分隔线
+    const divider = document.createElement('div');
+    divider.className = 'cm-mermaid-side-divider';
+
+    sideToolbar.appendChild(materialBtn);
+    sideToolbar.appendChild(divider);
+    sideToolbar.appendChild(dragBtn);
+    sideToolbar.appendChild(zoomOutBtn);
+    sideToolbar.appendChild(zoomLabel);
+    sideToolbar.appendChild(zoomInBtn);
+
+    // 图表容器
+    const container = document.createElement('div');
+    container.className = 'cm-mermaid-container';
+
+    // 拖拽事件处理
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!isDragMode) return;
+      isDragging = true;
+      startX = e.clientX - translateX;
+      startY = e.clientY - translateY;
+      container.classList.add('cm-mermaid-dragging');
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      translateX = e.clientX - startX;
+      translateY = e.clientY - startY;
+      updateTransform();
+    };
+
+    const handleMouseUp = () => {
+      isDragging = false;
+      container.classList.remove('cm-mermaid-dragging');
+    };
+
+    container.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    // 渲染 Mermaid 图表
+    const id = `mermaid-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    
+    mermaid.render(id, this.code).then(({ svg }) => {
+      svgWrapper.innerHTML = svg;
+    }).catch((error: Error) => {
+      svgWrapper.innerHTML = `<div class="cm-mermaid-error">Mermaid 渲染错误: ${error.message}</div>`;
+    });
+
+    container.appendChild(svgWrapper);
+    content.appendChild(sideToolbar);
+    content.appendChild(container);
+    wrapper.appendChild(content);
+
+    // 底部拖动手柄
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'cm-mermaid-resize-handle';
+    
+    const resizeBar = document.createElement('div');
+    resizeBar.className = 'cm-mermaid-resize-bar';
+    resizeHandle.appendChild(resizeBar);
+
+    // 高度调整状态
+    let isResizing = false;
+    let startResizeY = 0;
+    let startHeight = 0;
+    const minHeight = 100;
+    const maxHeight = 800;
+
+    const handleResizeStart = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isResizing = true;
+      startResizeY = e.clientY;
+      startHeight = content.offsetHeight;
+      document.body.style.cursor = 'ns-resize';
+      resizeHandle.classList.add('active');
+    };
+
+    const handleResizeMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      e.preventDefault();
+      const deltaY = e.clientY - startResizeY;
+      const newHeight = Math.min(Math.max(startHeight + deltaY, minHeight), maxHeight);
+      content.style.height = `${newHeight}px`;
+    };
+
+    const handleResizeEnd = () => {
+      if (!isResizing) return;
+      isResizing = false;
+      document.body.style.cursor = '';
+      resizeHandle.classList.remove('active');
+    };
+
+    resizeHandle.addEventListener('mousedown', handleResizeStart);
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+
+    wrapper.appendChild(resizeHandle);
+
+    // 阻止事件冒泡
+    wrapper.addEventListener('mousedown', (e) => e.stopPropagation());
+
+    this.domElement = wrapper;
+    mermaidWidgetDomCache.set(this, wrapper);
+
+    return wrapper;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+
+  destroy(): void {
+    this.domElement = null;
+  }
+}
+
+/**
+ * 解析文档中的 Mermaid 代码块
+ */
+function parseMermaidBlocks(doc: string): DecorationSet {
+  const decorations: { from: number; to: number; decoration: Decoration }[] = [];
+  // 匹配 ```mermaid ... ``` 代码块
+  const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
+  let match;
+
+  while ((match = mermaidRegex.exec(doc)) !== null) {
+    const code = match[1].trim();
+    const from = match.index;
+    const to = from + match[0].length;
+
+    if (code) {
+      decorations.push({
+        from,
+        to,
+        decoration: Decoration.replace({
+          widget: new MermaidWidget(code, from, to),
+        }),
+      });
+    }
+  }
+
+  decorations.sort((a, b) => a.from - b.from);
+  return RangeSet.of(decorations.map(d => d.decoration.range(d.from, d.to)));
+}
+
+/**
+ * 获取 Mermaid 代码块签名
+ */
+function getMermaidSignature(doc: string): string {
+  const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
+  const matches: string[] = [];
+  let match;
+  while ((match = mermaidRegex.exec(doc)) !== null) {
+    matches.push(match[1].trim());
+  }
+  return matches.join('|||');
+}
+
+/**
+ * Mermaid 装饰器 StateField
+ */
+const mermaidDecorations = StateField.define<{ decorations: DecorationSet; signature: string }>({
+  create(state) {
+    const doc = state.doc.toString();
+    return {
+      decorations: parseMermaidBlocks(doc),
+      signature: getMermaidSignature(doc),
+    };
+  },
+  update(value, tr) {
+    if (!tr.docChanged) {
+      return value;
+    }
+
+    const newDoc = tr.newDoc.toString();
+    const newSignature = getMermaidSignature(newDoc);
+
+    if (newSignature !== value.signature) {
+      return {
+        decorations: parseMermaidBlocks(newDoc),
+        signature: newSignature,
+      };
+    }
+
+    const mappedDecorations = value.decorations.map(tr.changes);
+    if (mappedDecorations.size === 0 && newSignature !== '') {
+      return {
+        decorations: parseMermaidBlocks(newDoc),
+        signature: newSignature,
+      };
+    }
+
+    return {
+      decorations: mappedDecorations,
+      signature: value.signature,
+    };
+  },
+  provide: f => EditorView.decorations.from(f, value => value.decorations),
+});
+
+// ============================================================================
+// 视频渲染系统
+// ============================================================================
+
 // 视频 Widget DOM 缓存，使用 WeakMap 将 widget 实例与 DOM 元素关联
 const videoWidgetDomCache = new WeakMap<VideoWidget, HTMLElement>();
 
@@ -6666,6 +7246,109 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
         ],
       },
+      {
+        id: 'local-embed',
+        label: '本地嵌入',
+        submenu: [
+          {
+            id: 'local-video',
+            label: '本地视频',
+            action: async () => {
+              if (view) {
+                const result = await window.electron?.video?.open();
+                if (result && result.success && result.data?.path) {
+                  const { from } = view.state.selection.main;
+                  const filePath = result.data.path;
+                  view.dispatch({
+                    changes: { from, insert: `![视频](${filePath})` },
+                  });
+                  view.focus();
+                }
+              }
+            },
+          },
+          {
+            id: 'local-audio',
+            label: '本地音频',
+            action: () => {
+              // TODO: 实现本地音频插入
+              console.log('本地音频功能待实现');
+            },
+          },
+          {
+            id: 'local-file',
+            label: '本地文件',
+            action: () => {
+              // TODO: 实现本地文件插入
+              console.log('本地文件功能待实现');
+            },
+          },
+        ],
+      },
+      {
+        id: 'graphics',
+        label: '图形',
+        submenu: [
+          {
+            id: 'canvas',
+            label: '画板',
+            action: () => {
+              // TODO: 实现画板功能
+              console.log('画板功能待实现');
+            },
+          },
+          {
+            id: 'mindmap',
+            label: '思维导图',
+            action: () => {
+              // TODO: 实现思维导图功能
+              console.log('思维导图功能待实现');
+            },
+          },
+          { id: 'graphics-sep', label: '', separator: true },
+          {
+            id: 'flowchart',
+            label: '流程图',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const flowchartTemplate = `\`\`\`mermaid
+flowchart TD
+    A[开始] --> B{判断}
+    B -->|是| C[处理1]
+    B -->|否| D[处理2]
+    C --> E[结束]
+    D --> E
+\`\`\``;
+                view.dispatch({
+                  changes: { from, insert: flowchartTemplate },
+                });
+                view.focus();
+              }
+            },
+          },
+          {
+            id: 'sequence',
+            label: '时序图',
+            action: () => {
+              if (view) {
+                const { from } = view.state.selection.main;
+                const sequenceTemplate = `\`\`\`mermaid
+sequenceDiagram
+    participant A as 用户
+    participant B as 系统
+    A->>B: 请求
+    B-->>A: 响应
+\`\`\``;
+                view.dispatch({
+                  changes: { from, insert: sequenceTemplate },
+                });
+                view.focus();
+              }
+            },
+          },
+        ],
+      },
       { id: 'sep2', label: '', separator: true },
       {
         id: 'ai-inline-chat',
@@ -6852,6 +7535,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       customKeymap, // 自定义键盘映射放在默认键盘映射之前，确保优先处理
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       updateListener,
+      mermaidDecorations, // Mermaid 图表装饰器
       videoDecorations, // 视频装饰器放在图片之前，优先匹配视频链接
       imageDecorations,
       tableDecorations,

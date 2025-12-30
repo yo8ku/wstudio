@@ -83,6 +83,11 @@ clearOldBackgroundCover();
 const removeAbnormalSVGs = () => {
   const allSVGs = document.querySelectorAll('svg');
   allSVGs.forEach(svg => {
+    // 跳过 Mermaid 图表中的 SVG
+    if (svg.closest('.cm-mermaid-svg-wrapper') || svg.closest('.cm-mermaid-container')) {
+      return;
+    }
+
     const rect = svg.getBoundingClientRect();
     
     // 检查是否是异常大小的 SVG（覆盖大部分屏幕）

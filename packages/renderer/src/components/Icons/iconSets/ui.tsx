@@ -734,6 +734,68 @@ const Edit: IconComponent = ({ style, className }) => (
   </svg>
 );
 
+// 设计图标（网络结构）
+const Design: IconComponent = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="16" y="16" width="6" height="6" rx="1"/>
+    <rect x="2" y="16" width="6" height="6" rx="1"/>
+    <rect x="9" y="2" width="6" height="6" rx="1"/>
+    <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/>
+    <path d="M12 12V8"/>
+  </svg>
+);
+
+// 扩大图标（最大化）
+const Maximize2: IconComponent = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 3h6v6"/>
+    <path d="m21 3-7 7"/>
+    <path d="m3 21 7-7"/>
+    <path d="M9 21H3v-6"/>
+  </svg>
+);
+
+// 主题图标（衬衫）
+const Theme: IconComponent = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/>
+  </svg>
+);
+
+// 代码图标（XML代码）
+const CodeXml: IconComponent = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m18 16 4-4-4-4"/>
+    <path d="m6 8-4 4 4 4"/>
+    <path d="m14.5 4-5 16"/>
+  </svg>
+);
+
+// 拖拽图标（手）
+const Hand: IconComponent = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/>
+    <path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/>
+    <path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/>
+    <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
+  </svg>
+);
+
+// 加号图标（放大）
+const ZoomIn: IconComponent = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12h14"/>
+    <path d="M12 5v14"/>
+  </svg>
+);
+
+// 减号图标（缩小）
+const ZoomOut: IconComponent = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12h14"/>
+  </svg>
+);
+
 // 切换编辑器图标
 const EditorSwitch: IconComponent = ({ style, className }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
@@ -893,6 +955,149 @@ const Ellipsis: IconComponent = ({ style, className }) => (
   </svg>
 );
 
+// ==================== Mermaid 设计器工具栏图标 ====================
+
+// 选择工具图标（鼠标指针）
+const MousePointer2: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"/>
+  </svg>
+);
+
+// 画笔图标
+const Pencil: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>
+    <path d="m15 5 4 4"/>
+  </svg>
+);
+
+// 矢量绘图图标（钢笔工具）
+const PenTool: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z"/>
+    <path d="m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18"/>
+    <path d="m2.3 2.3 7.286 7.286"/>
+    <circle cx="11" cy="11" r="2"/>
+  </svg>
+);
+
+// 文本工具图标
+const FileTypeCorner: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M12 22h6a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v6"/>
+    <path d="M14 2v5a1 1 0 0 0 1 1h5"/>
+    <path d="M3 16v-1.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 .5.5V16"/>
+    <path d="M6 22h2"/>
+    <path d="M7 14v8"/>
+  </svg>
+);
+
+// 连线工具图标（钓鱼钩）
+const FishingHook: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="m17.586 11.414-5.93 5.93a1 1 0 0 1-8-8l3.137-3.137a.707.707 0 0 1 1.207.5V10"/>
+    <path d="M20.414 8.586 22 7"/>
+    <circle cx="19" cy="10" r="2"/>
+  </svg>
+);
+
+// 图片工具图标
+const ImageIcon: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+    <circle cx="9" cy="9" r="2"/>
+    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+  </svg>
+);
+
+// 配色工具图标（调色板）
+const Palette: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z"/>
+    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+  </svg>
+);
+
+// 字体工具图标
+const TypeIcon: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M12 4v16"/>
+    <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/>
+    <path d="M9 20h6"/>
+  </svg>
+);
+
+// 分支粗细图标（约等于）
+const EqualApproximately: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M5 15a6.5 6.5 0 0 1 7 0 6.5 6.5 0 0 0 7 0"/>
+    <path d="M5 9a6.5 6.5 0 0 1 7 0 6.5 6.5 0 0 0 7 0"/>
+  </svg>
+);
+
+// 彩虹分支图标（趋势上下）
+const TrendingUpDown: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M14.828 14.828 21 21"/>
+    <path d="M21 16v5h-5"/>
+    <path d="m21 3-9 9-4-4-6 6"/>
+    <path d="M21 8V3h-5"/>
+  </svg>
+);
+
+// 素材库图标（发芽）
+const Sprout: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3"/>
+    <path d="M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4"/>
+    <path d="M5 21h14"/>
+  </svg>
+);
+
+// 连线图标 - 斜线箭头
+const MoveUpRight: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M13 5H19V11"/>
+    <path d="M19 5L5 19"/>
+  </svg>
+);
+
+// 连线图标 - 弯曲箭头
+const Forward: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="m15 17 5-5-5-5"/>
+    <path d="M4 18v-2a4 4 0 0 1 4-4h12"/>
+  </svg>
+);
+
+// 连线图标 - 水平箭头
+const MoveRight: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M18 8L22 12L18 16"/>
+    <path d="M2 12H22"/>
+  </svg>
+);
+
+// 连线图标 - 向下箭头
+const MoveDown: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M8 18L12 22L16 18"/>
+    <path d="M12 2V22"/>
+  </svg>
+);
+
+// 连线图标 - 向上箭头
+const MoveUp: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M8 6L12 2L16 6"/>
+    <path d="M12 2V22"/>
+  </svg>
+);
+
 // ==================== 导出图标 ====================
 
 export const uiIconSet: IconSet = {
@@ -998,6 +1203,13 @@ export const uiIconSet: IconSet = {
     
     // 编辑图标
     'edit': Edit,
+    'design': Design,
+    'maximize-2': Maximize2,
+    'theme': Theme,
+    'code-xml': CodeXml,
+    'hand': Hand,
+    'zoom-in': ZoomIn,
+    'zoom-out': ZoomOut,
     'editor-switch': EditorSwitch,
     
     // 控制图标
@@ -1030,6 +1242,26 @@ export const uiIconSet: IconSet = {
     
     // 数据库图标
     'database': Database,
+    
+    // Mermaid 设计器工具栏图标
+    'mouse-pointer-2': MousePointer2,
+    'pencil': Pencil,
+    'pen-tool': PenTool,
+    'file-type-corner': FileTypeCorner,
+    'fishing-hook': FishingHook,
+    'image-icon': ImageIcon,
+    'palette': Palette,
+    'type-icon': TypeIcon,
+    'equal-approximately': EqualApproximately,
+    'trending-up-down': TrendingUpDown,
+    'sprout': Sprout,
+    
+    // 连线图标
+    'move-up-right': MoveUpRight,
+    'forward': Forward,
+    'move-right': MoveRight,
+    'move-down': MoveDown,
+    'move-up': MoveUp,
   },
 };
 
