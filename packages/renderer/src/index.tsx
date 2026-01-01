@@ -87,6 +87,11 @@ const removeAbnormalSVGs = () => {
     if (svg.closest('.cm-mermaid-svg-wrapper') || svg.closest('.cm-mermaid-container')) {
       return;
     }
+    
+    // 跳过 MermaidDesigner 中的 SVG
+    if (svg.closest('.mermaid-designer') || svg.closest('.mermaid-designer-svg')) {
+      return;
+    }
 
     const rect = svg.getBoundingClientRect();
     

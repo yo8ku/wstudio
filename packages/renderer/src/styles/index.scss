@@ -5,7 +5,7 @@
  * 设计原则：所有颜色通过 CSS 变量管理，变量值由主题插件控制
  */
 
-/* TipTap UI 组件样式 */
+/* 编辑器 UI 组件样式 */
 @use './_variables.scss';
 @use './_keyframe-animations.scss';
 
@@ -464,7 +464,7 @@ div[widgetid="editor.contrib.quickInputWidget"] {
   background-color: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
 }
 
-/* TipTap/ProseMirror 编辑器选择样式 */
+/* ProseMirror 编辑器选择样式 */
 .ProseMirror::selection,
 .ProseMirror *::selection,
 .tiptap::selection,

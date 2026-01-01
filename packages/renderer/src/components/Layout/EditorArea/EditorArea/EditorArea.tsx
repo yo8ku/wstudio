@@ -23,7 +23,6 @@ import { ExtensionManagerView } from '../ExtensionManagerView';
 import { ResizableDivider } from '../ResizableDivider';
 import { LanceDBView } from '../LanceDBView';
 import { DatabaseView } from '../DatabaseView';
-import { SimpleNoteEditor } from '../../../NoteEditor/SimpleNoteEditor';
 import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
@@ -75,8 +74,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   // 跟踪哪些配置标签页有未保存的更改
   const [unsavedConfigTabs, setUnsavedConfigTabs] = useState<Set<string>>(new Set());
 
-  // 编辑器类型状态：'monaco' | 'tiptap' | 'codemirror'
-  const [editorType, setEditorType] = useState<'monaco' | 'tiptap' | 'codemirror'>('monaco');
+  // 编辑器类型状态：'monaco' | 'codemirror'
+  const [editorType, setEditorType] = useState<'monaco' | 'codemirror'>('monaco');
 
 
   // 处理创建新片段
@@ -607,8 +606,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     // 监听切换编辑器类型事件
     const handleToggleEditorType = () => {
       setEditorType(prev => {
-        if (prev === 'monaco') return 'tiptap';
-        if (prev === 'tiptap') return 'codemirror';
+        if (prev === 'monaco') return 'codemirror';
         return 'monaco';
       });
     };
@@ -616,7 +614,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     // 监听设置编辑器类型事件
     const handleSetEditorType = (event: Event) => {
-      const customEvent = event as CustomEvent<'monaco' | 'tiptap' | 'codemirror'>;
+      const customEvent = event as CustomEvent<'monaco' | 'codemirror'>;
       setEditorType(customEvent.detail);
     };
     window.addEventListener('set-editor-type', handleSetEditorType as EventListener);
@@ -1454,7 +1452,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     // 保存文件
     try {
-      // 如果内容是 HTML 格式（TipTap 编辑器产生），转换为 Markdown 保存
+      // 如果内容是 HTML 格式，转换为 Markdown 保存
       let contentToSave = tab.content || '';
       if (isHtmlContent(contentToSave)) {
         contentToSave = htmlToMarkdown(contentToSave);
@@ -1723,47 +1721,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     />
                   )}
                   
-                  {tab.type === 'file' && editorType === 'tiptap' && (
-                    <SimpleNoteEditor
-                      content={(() => {
-                        const rawContent = tab.content || '';
-                        // 如果内容已经是 HTML，直接使用；否则转换为 HTML
-                        const isHtml = isHtmlContent(rawContent);
-                        return isHtml ? rawContent : markdownToHtml(rawContent);
-                      })()}
-                      onChange={(htmlContent) => {
-                        // TipTap 模式下直接保存 HTML 内容，避免循环转换导致光标跳动
-                        setTabs(prev => prev.map(t => 
-                          t.id === tab.id 
-                            ? { ...t, content: htmlContent, isDirty: true, isPreview: false }
-                            : t
-                        ));
-                        
-                        // 如果右侧有预览该文件的标签页，实时更新预览内容（转换为 Markdown）
-                        const previewTab = rightTabs.find(t => t.sourceTabId === tab.id);
-                        if (previewTab) {
-                          const markdownContent = htmlToMarkdown(htmlContent);
-                          setRightTabs(prev => prev.map(t => 
-                            t.id === previewTab.id ? { ...t, content: markdownContent } : t
-                          ));
-                        }
-
-                        // 如果是当前活动标签页，触发大纲更新事件（转换为 Markdown）
-                        if (tab.id === activeTabId) {
-                          const markdownContent = htmlToMarkdown(htmlContent);
-                          window.dispatchEvent(new CustomEvent('editor:content-changed', {
-                            detail: {
-                              content: markdownContent,
-                              language: tab.language || 'plaintext',
-                              path: tab.path
-                            }
-                          }));
-                        }
-                      }}
-                      editable={true}
-                    />
-                  )}
-
                   {tab.type === 'file' && editorType === 'codemirror' && (
                     <CodeMirrorEditor
                       content={(() => {

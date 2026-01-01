@@ -106,7 +106,7 @@ interface StoreSchema {
   
   // 笔记编辑器设置
   'note-editor-settings': {
-    defaultEditor: 'tiptap' | 'monaco';
+    defaultEditor: 'monaco' | 'codemirror';
     showEditorSwitch: boolean;
     autoSave: boolean;
     autoSaveInterval: number;

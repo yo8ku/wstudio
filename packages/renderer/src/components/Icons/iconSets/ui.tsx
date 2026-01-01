@@ -1098,6 +1098,60 @@ const MoveUp: IconComponent = ({ style, className }) => (
   </svg>
 );
 
+// ==================== 形状工具栏图标 ====================
+
+// 粗体图标
+const Bold: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8"/>
+  </svg>
+);
+
+// 斜体图标
+const Italic: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <line x1="19" x2="10" y1="4" y2="4"/>
+    <line x1="14" x2="5" y1="20" y2="20"/>
+    <line x1="15" x2="9" y1="4" y2="20"/>
+  </svg>
+);
+
+// 下划线图标
+const Underline: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M6 4v6a6 6 0 0 0 12 0V4"/>
+    <line x1="4" x2="20" y1="20" y2="20"/>
+  </svg>
+);
+
+// 删除线图标
+const Strikethrough: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M16 4H9a3 3 0 0 0-2.83 4"/>
+    <path d="M14 12a4 4 0 0 1 0 8H6"/>
+    <line x1="4" x2="20" y1="12" y2="12"/>
+  </svg>
+);
+
+// 链接图标（形状工具栏用）
+const Link2: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M9 17H7A5 5 0 0 1 7 7h2"/>
+    <path d="M15 7h2a5 5 0 1 1 0 10h-2"/>
+    <line x1="8" x2="16" y1="12" y2="12"/>
+  </svg>
+);
+
+// 设置图标（形状工具栏用）
+const Settings2: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M20 7h-9"/>
+    <path d="M14 17H5"/>
+    <circle cx="17" cy="17" r="3"/>
+    <circle cx="7" cy="7" r="3"/>
+  </svg>
+);
+
 // ==================== 导出图标 ====================
 
 export const uiIconSet: IconSet = {
@@ -1262,6 +1316,14 @@ export const uiIconSet: IconSet = {
     'move-right': MoveRight,
     'move-down': MoveDown,
     'move-up': MoveUp,
+    
+    // 形状工具栏图标
+    'bold': Bold,
+    'italic': Italic,
+    'underline': Underline,
+    'strikethrough': Strikethrough,
+    'link-2': Link2,
+    'settings-2': Settings2,
   },
 };
 

@@ -352,16 +352,6 @@ export const TabBar: React.FC<TabBarProps> = ({
         
         <button 
           className="tab-bar-action-btn"
-          title="TipTap 富文本编辑器"
-          onClick={() => {
-            window.dispatchEvent(new CustomEvent('set-editor-type', { detail: 'tiptap' }));
-          }}
-        >
-          <Icon name="edit" size={16} />
-        </button>
-        
-        <button 
-          className="tab-bar-action-btn"
           title="CodeMirror 编辑器"
           onClick={() => {
             window.dispatchEvent(new CustomEvent('set-editor-type', { detail: 'codemirror' }));

@@ -285,6 +285,32 @@
       cursor: grabbing;
     }
   }
+
+  // 网格背景
+  &.canvas-bg-grid {
+    background-image: linear-gradient(var(--ws-panel-border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--ws-panel-border) 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-position: -1px -1px;
+  }
+
+  // 点阵背景
+  &.canvas-bg-dots {
+    background-image: radial-gradient(circle, var(--ws-panel-border) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+
+  // 纯色背景
+  &.canvas-bg-solid {
+    background-image: none;
+  }
+}
+
+// 画布背景切换包装器
+.mermaid-designer-canvas-bg-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .mermaid-designer-svg {
@@ -578,6 +604,13 @@
   flex-shrink: 0;
 }
 
+.mermaid-designer-rainbow-btn-ring {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .mermaid-designer-rainbow-name {
   font-size: 11px;
   color: var(--ws-foreground);
@@ -766,4 +799,1595 @@
 
 .mermaid-designer-color-block {
   flex: 1;
+}
+
+
+// 形状选择工具栏
+.mermaid-shape-toolbar {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  transform: translateX(-50%);
+}
+
+.mermaid-shape-toolbar-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  color: var(--ws-foreground);
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    color: var(--ws-list-activeSelectionForeground);
+  }
+}
+
+.mermaid-shape-toolbar-fill-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--ws-foreground);
+  border: 1px solid var(--ws-panel-border);
+  box-sizing: border-box;
+
+  // 无填充状态样式
+  &.no-fill {
+    background-image: linear-gradient(45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--ws-panel-border) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--ws-panel-border) 75%);
+    background-size: 6px 6px;
+    background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
+    background-color: transparent;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -1px;
+      right: -1px;
+      height: 2px;
+      background-color: var(--ws-errorForeground);
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+.mermaid-shape-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background-color: var(--ws-panel-border);
+  margin: 0 4px;
+}
+
+.mermaid-shape-toolbar-font-wrapper {
+  position: relative;
+}
+
+.mermaid-shape-toolbar-font-size {
+  font-size: 12px;
+  margin-right: 2px;
+}
+
+.mermaid-shape-toolbar-font-dropdown {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+}
+
+.mermaid-shape-toolbar-font-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--ws-foreground);
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    color: var(--ws-list-activeSelectionForeground);
+  }
+}
+
+
+// 形状选择工具栏 - 形状下拉菜单
+.mermaid-shape-toolbar-shape-wrapper {
+  position: relative;
+}
+
+.mermaid-shape-toolbar-shape-dropdown {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 8px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1002;
+}
+
+.mermaid-shape-toolbar-shape-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--ws-foreground);
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid transparent;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-color: var(--ws-panel-border);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    color: var(--ws-list-activeSelectionForeground);
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+
+// 形状选择工具栏 - 填充颜色下拉菜单
+.mermaid-shape-toolbar-fill-wrapper {
+  position: relative;
+}
+
+.mermaid-shape-toolbar-fill-dropdown {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  padding: 12px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1002;
+  min-width: 200px;
+}
+
+.mermaid-shape-toolbar-fill-section {
+  margin-bottom: 12px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.mermaid-shape-toolbar-fill-label {
+  display: block;
+  font-size: 11px;
+  color: var(--ws-descriptionForeground);
+  margin-bottom: 6px;
+}
+
+.mermaid-shape-toolbar-fill-presets {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.mermaid-shape-toolbar-fill-gradient {
+  display: flex;
+  gap: 4px;
+}
+
+.mermaid-shape-toolbar-fill-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--ws-panel-border);
+  box-sizing: border-box;
+  position: relative;
+
+  &:hover {
+    border-color: var(--ws-foreground);
+  }
+
+  &.active {
+    border-color: transparent;
+    box-shadow: 0 0 0 1.5px #0078d4, 0 0 0 3px rgba(0, 120, 212, 0.3);
+  }
+
+  // 透明色样式（斜线表示无填充）
+  &.transparent-color {
+    background-image: linear-gradient(45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--ws-panel-border) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--ws-panel-border) 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -2px;
+      right: -2px;
+      height: 2px;
+      background-color: var(--ws-errorForeground);
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+.mermaid-shape-toolbar-fill-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mermaid-shape-toolbar-fill-input {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+
+  &::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+
+  &::-webkit-color-swatch {
+    border: 1px solid var(--ws-panel-border);
+    border-radius: 4px;
+  }
+}
+
+.mermaid-shape-toolbar-fill-hex {
+  font-size: 12px;
+  color: var(--ws-foreground);
+}
+
+
+// 填充颜色 - 透明度和RGBA
+.mermaid-shape-toolbar-fill-opacity {
+  margin-bottom: 8px;
+}
+
+.mermaid-shape-toolbar-fill-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  appearance: none;
+  background: var(--ws-input-background);
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--ws-focusBorder);
+    cursor: pointer;
+  }
+
+  &::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--ws-focusBorder);
+    cursor: pointer;
+    border: none;
+  }
+}
+
+.mermaid-shape-toolbar-fill-rgba {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.mermaid-shape-toolbar-fill-rgba-label {
+  font-size: 11px;
+  color: var(--ws-descriptionForeground);
+}
+
+.mermaid-shape-toolbar-fill-rgba-value {
+  font-size: 11px;
+  color: var(--ws-foreground);
+  background-color: var(--ws-input-background);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.mermaid-shape-toolbar-fill-preview {
+  width: 100%;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--ws-panel-border);
+  background-image: linear-gradient(45deg, var(--ws-panel-border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--ws-panel-border) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--ws-panel-border) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--ws-panel-border) 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 3px;
+    background-color: inherit;
+  }
+}
+
+
+// 自定义颜色按钮
+.mermaid-shape-toolbar-fill-custom-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--ws-panel-border);
+
+  &:hover {
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+
+// 自定义颜色子菜单
+.mermaid-shape-toolbar-fill-custom-section {
+  position: relative;
+}
+
+.mermaid-shape-toolbar-fill-custom {
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-radius: 4px;
+  }
+}
+
+.mermaid-shape-toolbar-fill-colorpicker {
+  position: absolute;
+  left: 100%;
+  bottom: 0;
+  margin-left: 4px;
+  z-index: 1003;
+}
+
+// 形状选择工具栏 - 描边颜色下拉菜单
+.mermaid-shape-toolbar-stroke-wrapper {
+  position: relative;
+}
+
+.mermaid-shape-toolbar-stroke-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--ws-foreground);
+  background-color: transparent;
+  box-sizing: border-box;
+
+  // 无描边状态样式
+  &.no-stroke {
+    border-color: var(--ws-panel-border) !important;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -2px;
+      right: -2px;
+      height: 2px;
+      background-color: var(--ws-errorForeground);
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+.mermaid-shape-toolbar-stroke-dropdown {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  padding: 12px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1002;
+  min-width: 200px;
+}
+
+.mermaid-shape-toolbar-stroke-section {
+  margin-bottom: 12px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.mermaid-shape-toolbar-stroke-label {
+  display: block;
+  font-size: 11px;
+  color: var(--ws-descriptionForeground);
+  margin-bottom: 6px;
+}
+
+.mermaid-shape-toolbar-stroke-presets {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.mermaid-shape-toolbar-stroke-gradient {
+  display: flex;
+  gap: 4px;
+}
+
+.mermaid-shape-toolbar-stroke-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--ws-panel-border);
+  box-sizing: border-box;
+  position: relative;
+
+  &:hover {
+    border-color: var(--ws-foreground);
+  }
+
+  &.active {
+    border-color: transparent;
+    box-shadow: 0 0 0 1.5px #0078d4, 0 0 0 3px rgba(0, 120, 212, 0.3);
+  }
+
+  // 透明色样式（斜线表示无描边）
+  &.transparent-color {
+    background-image: linear-gradient(45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--ws-panel-border) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--ws-panel-border) 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -2px;
+      right: -2px;
+      height: 2px;
+      background-color: var(--ws-errorForeground);
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+.mermaid-shape-toolbar-stroke-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mermaid-shape-toolbar-stroke-hex {
+  font-size: 12px;
+  color: var(--ws-foreground);
+}
+
+.mermaid-shape-toolbar-stroke-custom-section {
+  position: relative;
+}
+
+.mermaid-shape-toolbar-stroke-custom-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--ws-panel-border);
+
+  &:hover {
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+
+// 描边样式选择
+.mermaid-shape-toolbar-stroke-styles {
+  display: flex;
+  gap: 8px;
+}
+
+.mermaid-shape-toolbar-stroke-style-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--ws-panel-border);
+  color: var(--ws-foreground);
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-color: var(--ws-foreground);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+// 描边粗细滑块
+.mermaid-shape-toolbar-stroke-width {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mermaid-shape-toolbar-stroke-slider {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  appearance: none;
+  background: var(--ws-input-background);
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--ws-focusBorder);
+    cursor: pointer;
+  }
+
+  &::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--ws-focusBorder);
+    cursor: pointer;
+    border: none;
+  }
+}
+
+.mermaid-shape-toolbar-stroke-width-value {
+  font-size: 12px;
+  color: var(--ws-foreground);
+  min-width: 36px;
+  text-align: right;
+}
+
+
+// 右侧样式面板
+.mermaid-style-panel {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  width: 280px;
+  height: calc(100% - 50px);
+  background-color: var(--ws-sideBar-background);
+  border-left: 1px solid var(--ws-panel-border);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+.mermaid-style-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ws-panel-border);
+}
+
+.mermaid-style-panel-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ws-foreground);
+}
+
+.mermaid-style-panel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ws-descriptionForeground);
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    color: var(--ws-foreground);
+  }
+}
+
+.mermaid-style-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.mermaid-style-panel-section {
+  margin-bottom: 4px;
+}
+
+.mermaid-style-panel-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  color: var(--ws-foreground);
+}
+
+.mermaid-style-panel-section-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
+.mermaid-style-panel-section-title {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.mermaid-style-panel-section-content {
+  padding: 8px 16px 8px 32px;
+}
+
+.mermaid-style-panel-row {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 12px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.mermaid-style-panel-label {
+  width: 48px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--ws-descriptionForeground);
+  padding-top: 4px;
+}
+
+.mermaid-style-panel-shape-select {
+  flex: 1;
+}
+
+.mermaid-style-panel-shape-current {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 4px;
+  color: var(--ws-foreground);
+  margin-bottom: 8px;
+}
+
+.mermaid-style-panel-shape-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.mermaid-style-panel-shape-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ws-foreground);
+  border: 1px solid transparent;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-color: var(--ws-panel-border);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+.mermaid-style-panel-color-row {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mermaid-style-panel-color-preview {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--ws-panel-border);
+  flex-shrink: 0;
+
+  &.no-fill {
+    background-image: linear-gradient(45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--ws-panel-border) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--ws-panel-border) 75%);
+    background-size: 6px 6px;
+    background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -1px;
+      right: -1px;
+      height: 2px;
+      background-color: var(--ws-errorForeground);
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+.mermaid-style-panel-color-presets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.mermaid-style-panel-color-item {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid var(--ws-panel-border);
+  box-sizing: border-box;
+
+  &:hover {
+    border-color: var(--ws-foreground);
+  }
+
+  &.active {
+    border-color: transparent;
+    box-shadow: 0 0 0 1.5px var(--ws-focusBorder);
+  }
+
+  &.transparent-color {
+    background-image: linear-gradient(45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--ws-panel-border) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--ws-panel-border) 75%);
+    background-size: 6px 6px;
+    background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -1px;
+      right: -1px;
+      height: 2px;
+      background-color: var(--ws-errorForeground);
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+.mermaid-style-panel-stroke-width {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mermaid-style-panel-slider {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  appearance: none;
+  background: var(--ws-input-background);
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--ws-focusBorder);
+    cursor: pointer;
+  }
+
+  &::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--ws-focusBorder);
+    cursor: pointer;
+    border: none;
+  }
+}
+
+.mermaid-style-panel-stroke-value {
+  font-size: 12px;
+  color: var(--ws-foreground);
+  min-width: 32px;
+  text-align: right;
+}
+
+
+// 样式面板 - 形状下拉菜单
+.mermaid-style-panel-shape-menu-wrapper {
+  position: relative;
+}
+
+.mermaid-style-panel-shape-trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ws-foreground);
+  border: 1px solid var(--ws-panel-border);
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+  }
+}
+
+.mermaid-style-panel-shape-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 8px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1003;
+}
+
+.mermaid-style-panel-shape-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ws-foreground);
+  border: 1px solid transparent;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-color: var(--ws-panel-border);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+
+// 样式面板 - 填充行
+.mermaid-style-panel-fill-row {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mermaid-style-panel-fill-color {
+  width: 48px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--ws-panel-border);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--ws-foreground);
+  }
+
+  &.no-fill {
+    background-image: linear-gradient(45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--ws-panel-border) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--ws-panel-border) 75%);
+    background-size: 6px 6px;
+    background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -1px;
+      right: -1px;
+      height: 2px;
+      background-color: var(--ws-errorForeground);
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+
+// 样式面板 - 线条风格
+.mermaid-style-panel-line-styles {
+  display: flex;
+  gap: 8px;
+}
+
+.mermaid-style-panel-line-style-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--ws-panel-border);
+  color: var(--ws-foreground);
+  flex: 1;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-color: var(--ws-foreground);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+.mermaid-style-panel-line-style-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid-style-panel-line-style-name {
+  font-size: 11px;
+  color: var(--ws-descriptionForeground);
+}
+
+
+// 模板工具包装器
+.mermaid-designer-template-wrapper {
+  position: relative;
+}
+
+// 模板面板
+.mermaid-designer-template-panel {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  margin-left: 8px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 8px;
+  width: 300px;
+  max-height: 450px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mermaid-designer-template-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--ws-panel-border);
+  flex-wrap: wrap;
+}
+
+.mermaid-designer-template-tab {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--ws-descriptionForeground);
+  text-align: center;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--ws-editor-foreground);
+    background-color: var(--ws-list-hoverBackground);
+  }
+
+  &.active {
+    color: var(--ws-editor-foreground);
+    border-bottom: 2px solid var(--ws-focusBorder);
+  }
+}
+
+.mermaid-designer-template-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  overflow-y: auto;
+  max-height: 380px;
+}
+
+.mermaid-designer-template-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid transparent;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-color: var(--ws-panel-border);
+  }
+}
+
+.mermaid-designer-template-name {
+  font-size: 13px;
+  color: var(--ws-foreground);
+  font-weight: 500;
+}
+
+.mermaid-designer-template-desc {
+  font-size: 11px;
+  color: var(--ws-descriptionForeground);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+
+// 模板面板主标签（预设模板/我的模板）
+.mermaid-designer-template-main-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--ws-panel-border);
+  background-color: var(--ws-sideBar-background);
+}
+
+.mermaid-designer-template-main-tab {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ws-descriptionForeground);
+  text-align: center;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--ws-editor-foreground);
+    background-color: var(--ws-list-hoverBackground);
+  }
+
+  &.active {
+    color: var(--ws-editor-foreground);
+    background-color: var(--ws-dropdown-background);
+    border-bottom: 2px solid var(--ws-focusBorder);
+  }
+}
+
+// 模板空状态
+.mermaid-designer-template-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 8px;
+}
+
+.mermaid-designer-template-empty-text {
+  font-size: 13px;
+  color: var(--ws-foreground);
+}
+
+.mermaid-designer-template-empty-hint {
+  font-size: 11px;
+  color: var(--ws-descriptionForeground);
+  text-align: center;
+}
+
+
+// 模板弹窗遮罩层
+.mermaid-designer-template-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+// 模板弹窗
+.mermaid-designer-template-modal {
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 12px;
+  width: 800px;
+  max-width: 90vw;
+  height: 600px;
+  max-height: 80vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// 弹窗头部
+.mermaid-designer-template-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ws-panel-border);
+  background-color: var(--ws-sideBar-background);
+}
+
+.mermaid-designer-template-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ws-foreground);
+}
+
+.mermaid-designer-template-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  color: var(--ws-descriptionForeground);
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    color: var(--ws-foreground);
+  }
+}
+
+// 弹窗主体
+.mermaid-designer-template-modal-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+// 模板分类侧边栏
+.mermaid-designer-template-sidebar {
+  width: 160px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--ws-panel-border);
+  background-color: var(--ws-sideBar-background);
+  padding: 12px 0;
+  overflow-y: auto;
+}
+
+.mermaid-designer-template-category {
+  display: block;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--ws-descriptionForeground);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--ws-foreground);
+    background-color: var(--ws-list-hoverBackground);
+  }
+
+  &.active {
+    color: var(--ws-foreground);
+    background-color: var(--ws-list-activeSelectionBackground);
+    border-left: 2px solid var(--ws-focusBorder);
+  }
+}
+
+// 模板列表
+.mermaid-designer-template-list {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 20px;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.mermaid-designer-template-list-full {
+  width: 100%;
+}
+
+// 模板卡片
+.mermaid-designer-template-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 8px;
+  cursor: pointer;
+  background-color: var(--ws-editor-background);
+
+  &:hover {
+    border-color: var(--ws-focusBorder);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+    .mermaid-designer-template-card-use {
+      opacity: 1;
+    }
+  }
+
+  &.selected {
+    border-color: var(--ws-focusBorder);
+    box-shadow: 0 0 0 1px var(--ws-focusBorder);
+
+    .mermaid-designer-template-card-use {
+      opacity: 1;
+    }
+  }
+}
+
+.mermaid-designer-template-card-preview {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--ws-sideBar-background);
+  color: var(--ws-descriptionForeground);
+  border-radius: 8px 8px 0 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.mermaid-designer-template-preview-svg {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+
+  svg {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+  }
+}
+
+.mermaid-designer-template-preview-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ws-descriptionForeground);
+  opacity: 0.5;
+}
+
+.mermaid-designer-template-preview-loading {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ws-descriptionForeground);
+  opacity: 0.3;
+}
+
+.mermaid-designer-template-card-info {
+  padding: 12px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 60px;
+}
+
+.mermaid-designer-template-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mermaid-designer-template-card-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ws-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mermaid-designer-template-card-desc {
+  font-size: 11px;
+  color: var(--ws-descriptionForeground);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.mermaid-designer-template-card-use {
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--ws-foreground);
+  background-color: var(--ws-button-background);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+
+  &:hover {
+    background-color: var(--ws-button-hoverBackground);
+  }
+}
+
+
+// 样式面板 - 结构下拉菜单
+.mermaid-style-panel-structure-menu-wrapper {
+  position: relative;
+}
+
+.mermaid-style-panel-structure-trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ws-foreground);
+  border: 1px solid var(--ws-panel-border);
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+  }
+}
+
+.mermaid-style-panel-structure-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 8px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1003;
+  min-width: 180px;
+}
+
+.mermaid-style-panel-structure-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ws-foreground);
+  border: 1px solid transparent;
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-color: var(--ws-panel-border);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+// 样式面板 - 结构网格
+.mermaid-style-panel-structure-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mermaid-style-panel-structure-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--ws-panel-border);
+  color: var(--ws-foreground);
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-color: var(--ws-foreground);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+.mermaid-style-panel-structure-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid-style-panel-structure-name {
+  font-size: 10px;
+  color: var(--ws-descriptionForeground);
+  text-align: center;
+}
+
+
+// 样式面板 - 背景风格网格
+.mermaid-style-panel-background-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.mermaid-style-panel-background-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--ws-panel-border);
+  color: var(--ws-foreground);
+
+  &:hover {
+    background-color: var(--ws-list-hoverBackground);
+    border-color: var(--ws-foreground);
+  }
+
+  &.active {
+    background-color: var(--ws-list-activeSelectionBackground);
+    border-color: var(--ws-focusBorder);
+  }
+}
+
+.mermaid-style-panel-background-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 32px;
+  border-radius: 4px;
+  background-color: var(--ws-editor-background);
+  border: 1px solid var(--ws-panel-border);
+}
+
+.mermaid-style-panel-background-name {
+  font-size: 11px;
+  color: var(--ws-descriptionForeground);
+  text-align: center;
+}
+
+
+// 样式面板 - 描边颜色选择器
+.mermaid-style-panel-stroke-color-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mermaid-style-panel-stroke-color-block {
+  width: 32px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--ws-panel-border);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--ws-foreground);
+  }
+
+  &.no-fill {
+    background-image: linear-gradient(45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--ws-panel-border) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--ws-panel-border) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--ws-panel-border) 75%);
+    background-size: 6px 6px;
+    background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -1px;
+      right: -1px;
+      height: 2px;
+      background-color: var(--ws-errorForeground);
+      transform: rotate(-45deg);
+    }
+  }
 }

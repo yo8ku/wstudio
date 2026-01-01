@@ -6,7 +6,7 @@
 import { create } from 'zustand';
 import { electronStore } from '../services/ElectronStoreService';
 
-export type EditorType = 'tiptap' | 'monaco';
+export type EditorType = 'monaco' | 'codemirror';
 
 interface NoteEditorSettings {
   defaultEditor: EditorType;
@@ -26,7 +26,7 @@ interface NoteEditorSettingsStore extends NoteEditorSettings {
 }
 
 const DEFAULT_SETTINGS: NoteEditorSettings = {
-  defaultEditor: 'tiptap',
+  defaultEditor: 'codemirror',
   showEditorSwitch: true,
   autoSave: true,
   autoSaveInterval: 3000,

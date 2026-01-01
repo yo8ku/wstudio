@@ -1,7 +1,7 @@
 /**
  * 格式转换工具
  * 功能：在 Markdown 和 HTML 格式之间进行转换
- * 描述：用于在 Monaco 编辑器（Markdown）和 TipTap 编辑器（HTML）之间切换时保持内容格式一致
+ * 描述：用于在不同编辑器之间切换时保持内容格式一致
  */
 
 /**
@@ -17,7 +17,7 @@ export function htmlToMarkdown(html: string): string {
   // 处理预格式化文本块（保留原始格式）
   markdown = markdown.replace(/<pre[^>]*class="preserve-format"[^>]*>([\s\S]*?)<\/pre>/gi, '$1');
   
-  // 处理空段落（TipTap 用 <p></p> 或 <p><br></p> 表示空行）
+  // 处理空段落（富文本编辑器用 <p></p> 或 <p><br></p> 表示空行）
   markdown = markdown.replace(/<p[^>]*><br\s*\/?><\/p>/gi, '\n');
   markdown = markdown.replace(/<p[^>]*><\/p>/gi, '\n');
   
@@ -51,10 +51,10 @@ export function htmlToMarkdown(html: string): string {
   markdown = markdown.replace(/<img[^>]*alt="([^"]*)"[^>]*src="([^"]*)"[^>]*\/?>/gi, '![$1]($2)');
   markdown = markdown.replace(/<img[^>]*src="([^"]*)"[^>]*\/?>/gi, '![]($1)');
   
-  // 双向链接（TipTap 格式）
+  // 双向链接（富文本编辑器格式）
   markdown = markdown.replace(/<span[^>]*data-type="wikilink"[^>]*data-title="([^"]*)"[^>]*>.*?<\/span>/gi, '[[$1]]');
   
-  // 标签（TipTap 格式）
+  // 标签（富文本编辑器格式）
   markdown = markdown.replace(/<span[^>]*data-type="tag"[^>]*data-tag="([^"]*)"[^>]*>.*?<\/span>/gi, '#$1');
   
   // 列表
@@ -160,7 +160,7 @@ export function markdownToHtml(text: string): string {
   html = html.replace(/\[\[([^\]]+)\]\]/g, '<span data-type="wikilink" class="wikilink" data-title="$1">[[$1]]</span>');
   
   // 水平分割线（--- 或 *** 或 ___）- 必须在行首，且整行只有这些字符
-  html = html.replace(/^([-*_])\1{2,}\s*$/gim, '<hr class="tiptap-hr">');
+  html = html.replace(/^([-*_])\1{2,}\s*$/gim, '<hr class="editor-hr">');
   
   // 处理列表、引用和段落
   const lines = html.split('\n');

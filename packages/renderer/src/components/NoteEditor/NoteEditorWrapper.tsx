@@ -1,15 +1,14 @@
 /**
  * 笔记编辑器包装组件
- * 根据设置切换 TipTap/CodeMirror/Monaco 编辑器
+ * 支持 CodeMirror/Monaco 编辑器切换
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { TipTapNoteEditor } from './TipTapNoteEditor';
 import { CodeMirrorEditor } from './CodeMirrorEditor';
 import { Icon } from '../Icons';
 import './NoteEditorWrapper.scss';
 
-export type EditorType = 'tiptap' | 'codemirror' | 'monaco';
+export type EditorType = 'codemirror' | 'monaco';
 
 export interface NoteEditorWrapperProps {
   content: string;
@@ -26,9 +25,7 @@ export interface NoteEditorWrapperProps {
 export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
   content,
   onChange,
-  onWikilinkClick,
-  onTagClick,
-  defaultEditor = 'tiptap',
+  defaultEditor = 'codemirror',
   showEditorSwitch = true,
   placeholder = '开始写作...',
   editable = true,
@@ -45,11 +42,7 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
   // 监听全局切换编辑器事件
   useEffect(() => {
     const handleToggleEditor = () => {
-      setEditorType((prev) => {
-        if (prev === 'tiptap') return 'codemirror';
-        if (prev === 'codemirror') return 'monaco';
-        return 'tiptap';
-      });
+      setEditorType((prev) => (prev === 'codemirror' ? 'monaco' : 'codemirror'));
     };
 
     window.addEventListener('toggle-editor-type', handleToggleEditor);
@@ -59,39 +52,18 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
   }, []);
 
   // 处理内容变化
-  const handleContentChange = useCallback((newContent: string) => {
-    setInternalContent(newContent);
-    if (onChange) {
-      onChange(newContent);
-    }
-  }, [onChange]);
-
-  // 切换编辑器
-  const toggleEditor = useCallback(() => {
-    setEditorType((prev) => {
-      if (prev === 'tiptap') return 'codemirror';
-      if (prev === 'codemirror') return 'monaco';
-      return 'tiptap';
-    });
-  }, []);
-
+  const handleContentChange = useCallback(
+    (newContent: string) => {
+      setInternalContent(newContent);
+      if (onChange) {
+        onChange(newContent);
+      }
+    },
+    [onChange]
+  );
 
   // 渲染编辑器
   const renderEditor = () => {
-    if (editorType === 'tiptap') {
-      return (
-        <TipTapNoteEditor
-          content={internalContent}
-          onChange={handleContentChange}
-          onWikilinkClick={onWikilinkClick}
-          onTagClick={onTagClick}
-          placeholder={placeholder}
-          editable={editable}
-          autoFocus={autoFocus}
-        />
-      );
-    }
-
     if (editorType === 'codemirror') {
       return (
         <CodeMirrorEditor
@@ -105,7 +77,6 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
     }
 
     // Monaco 编辑器 - 使用简单的 textarea 作为占位
-    // 实际项目中应该集成现有的 Monaco 编辑器组件
     return (
       <div className="monaco-editor-placeholder">
         <textarea
@@ -125,21 +96,6 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
       {showEditorSwitch && (
         <div className="editor-switch-bar">
           <div className="editor-switch-buttons">
-            <div
-              className={`editor-switch-button ${editorType === 'tiptap' ? 'active' : ''}`}
-              onClick={() => setEditorType('tiptap')}
-              title="富文本编辑器 (TipTap)"
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  setEditorType('tiptap');
-                }
-              }}
-            >
-              <Icon name="edit" size={14} />
-              <span>TipTap</span>
-            </div>
             <div
               className={`editor-switch-button ${editorType === 'codemirror' ? 'active' : ''}`}
               onClick={() => setEditorType('codemirror')}
@@ -173,9 +129,7 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
           </div>
         </div>
       )}
-      <div className="editor-content">
-        {renderEditor()}
-      </div>
+      <div className="editor-content">{renderEditor()}</div>
     </div>
   );
 };
