@@ -8,11 +8,16 @@ import { ConnectionManager, ConnectorFactory } from '../services/database-connec
 import type { ConnectionConfig } from '../services/database-connector';
 
 const connectionManager = ConnectionManager.getInstance();
+let handlersRegistered = false;
 
 /**
  * 注册数据库连接器 IPC 处理器
  */
 export function registerDatabaseConnectorHandlers(): void {
+  if (handlersRegistered) {
+    return;
+  }
+  
   // 获取支持的数据库类型
   ipcMain.handle('db-connector:get-supported-types', () => {
     return ConnectorFactory.getSupportedTypes();
@@ -137,6 +142,7 @@ export function registerDatabaseConnectorHandlers(): void {
     }
   );
 
+  handlersRegistered = true;
   console.log('[IPC] 数据库连接器处理器已注册');
 }
 

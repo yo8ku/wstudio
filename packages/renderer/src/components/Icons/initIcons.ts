@@ -203,6 +203,29 @@ function registerCommonAliases(): void {
     
     // AI 魔法图标别名
     'sparkles': 'ui:sparkles',
+    
+    // 表格设计器图标别名
+    'type-icon': 'ui:type-icon',
+    'at-sign': 'ui:at-sign',
+    'link-2': 'ui:link-2',
+    'clock': 'ui:clock',
+    'table-properties': 'ui:table-properties',
+    'radio-select': 'ui:radio-select',
+    'checkbox-select': 'ui:checkbox-select',
+    'number-hash': 'ui:number-hash',
+    'calendar-date': 'ui:calendar-date',
+    'list-checks': 'ui:list-checks',
+    'paint-bucket': 'ui:paint-bucket',
+    'arrow-left': 'ui:arrow-left',
+    'arrow-right': 'ui:arrow-right',
+    'info-circle': 'ui:info-circle',
+    'grip-vertical': 'ui:grip-vertical',
+    
+    // 单元格工具栏图标别名
+    'cell-fill': 'ui:cell-fill',
+    'cell-polish': 'ui:cell-polish',
+    'cell-translate': 'ui:cell-translate',
+    'cell-more': 'ui:cell-more',
   });
 }
 

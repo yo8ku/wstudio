@@ -2536,6 +2536,7 @@
     // webstorm dark end ----------------
   ],
   "colors": {
+    "dataView.hoverBackground":"#6b84b336",
     "notifications.background":"#1e2227",
     "notifications.error.foreground":"#e78080",
     "notifications.success.foreground":"#37ad7dde",

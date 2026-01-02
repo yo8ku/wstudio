@@ -23,6 +23,7 @@ import { ExtensionManagerView } from '../ExtensionManagerView';
 import { ResizableDivider } from '../ResizableDivider';
 import { LanceDBView } from '../LanceDBView';
 import { DatabaseView } from '../DatabaseView';
+import { TableDesigner } from '../TableDesigner';
 import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
@@ -38,7 +39,7 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'ai-agent' | 'extension-manager' | 'lancedb-view' | 'database-view' | 'mermaid-designer';
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'ai-agent' | 'extension-manager' | 'lancedb-view' | 'database-view' | 'table-designer' | 'mermaid-designer';
   isPreview?: boolean;  // 新增：是否为预览模式（单击打开）
   sourceTabId?: string;  // 新增：预览标签页关联的源文件标签页ID
   knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 知识库数据（用于 knowledge 类型）
@@ -561,6 +562,21 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
+    // 打开表格设计器
+    const handleOpenTableDesigner = () => {
+      setTabs(currentTabs => {
+        const newTab: EditorTab = {
+          id: `table-designer-${Date.now()}`,
+          title: '表格设计器',
+          path: `table-designer:/${Date.now()}`,
+          isDirty: false,
+          type: 'table-designer'
+        };
+        setTimeout(() => setActiveTabId(newTab.id), 0);
+        return [...currentTabs, newTab];
+      });
+    };
+
     // 打开 Mermaid 流程图设计器
     const handleOpenMermaidDesigner = (event: Event) => {
       const customEvent = event as CustomEvent<{ code: string; title: string }>;
@@ -585,6 +601,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('open-extension-manager', handleOpenExtensionManager);
     window.addEventListener('open-lancedb-view', handleOpenLanceDBView);
     window.addEventListener('open-database-view', handleOpenDatabaseView);
+    window.addEventListener('open-table-designer', handleOpenTableDesigner);
+    window.addEventListener('open-form-view', handleOpenTableDesigner);
     window.addEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
     window.addEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
@@ -625,6 +643,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-extension-manager', handleOpenExtensionManager);
       window.removeEventListener('open-lancedb-view', handleOpenLanceDBView);
       window.removeEventListener('open-database-view', handleOpenDatabaseView);
+      window.removeEventListener('open-table-designer', handleOpenTableDesigner);
+      window.removeEventListener('open-form-view', handleOpenTableDesigner);
       window.removeEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
       window.removeEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
@@ -1625,6 +1645,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   
                   {tab.type === 'database-view' && <DatabaseView />}
                   
+                  {tab.type === 'table-designer' && <TableDesigner />}
+                  
                   {tab.type === 'mermaid-designer' && (
                     <MermaidDesigner
                       initialCode={tab.mermaidData?.code}
@@ -1814,6 +1836,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     {tab.type === 'lancedb-view' && <LanceDBView />}
                     
                     {tab.type === 'database-view' && <DatabaseView />}
+                    
+                    {tab.type === 'table-designer' && <TableDesigner />}
                     
                     {tab.type === 'mermaid-designer' && (
                       <MermaidDesigner

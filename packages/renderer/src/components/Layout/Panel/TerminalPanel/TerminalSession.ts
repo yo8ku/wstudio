@@ -62,6 +62,7 @@ export class TerminalSession {
       },
       cols: options.cols || 80,
       rows: options.rows || 24,
+      scrollback: 5000, // 滚动缓冲区大小（可查看历史行数）
       // 启用右键粘贴
       rightClickSelectsWord: false,
       // 允许写入剪贴板
@@ -154,7 +155,7 @@ export class TerminalSession {
       }
     });
 
-    // 处理粘贴快捷键和上下箭头键
+    // 处理粘贴快捷键（不拦截箭头键，让 shell 自己处理历史）
     this.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
       // 拦截 Ctrl+V / Cmd+V，手动处理粘贴
       if ((event.ctrlKey || event.metaKey) && event.key === 'v' && event.type === 'keydown') {
@@ -163,19 +164,7 @@ export class TerminalSession {
         return false;
       }
       
-      // 拦截上下箭头键，用于浏览历史命令
-      if (event.type === 'keydown') {
-        if (event.key === 'ArrowUp') {
-          event.preventDefault();
-          this.navigateHistory('up');
-          return false;
-        } else if (event.key === 'ArrowDown') {
-          event.preventDefault();
-          this.navigateHistory('down');
-          return false;
-        }
-      }
-      
+      // 让所有其他按键（包括箭头键）正常传递给 PTY
       return true;
     });
   }

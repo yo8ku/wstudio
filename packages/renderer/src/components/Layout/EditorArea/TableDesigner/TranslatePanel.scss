@@ -1,0 +1,255 @@
+/**
+ * 翻译面板样式
+ * 功能：翻译面板的布局和样式
+ */
+
+.translate-panel {
+  position: fixed;
+  z-index: 1000;
+  width: 320px;
+  max-height: calc(100vh - 100px); // 限制最大高度，避免被状态栏遮挡
+  background: var(--ws-editor-background);
+  border: 1px solid var(--ws-border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px var(--ws-shadow-color, rgba(0, 0, 0, 0.15));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  // 头部
+  &-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ws-border-color);
+    background: var(--ws-editor-background);
+    flex-shrink: 0;
+  }
+
+  &-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ws-text-primary);
+  }
+
+  &-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ws-text-secondary);
+
+    &:hover {
+      background: var(--ws-button-hover);
+      color: var(--ws-text-primary);
+    }
+  }
+
+  // 语言选择栏
+  &-lang-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ws-border-color);
+    background: var(--ws-editor-background);
+    flex-shrink: 0;
+  }
+
+  &-lang-select {
+    position: relative;
+    flex: 1;
+  }
+
+  &-lang-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--ws-input-background);
+    border: 1px solid var(--ws-border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--ws-text-primary);
+
+    &:hover {
+      border-color: var(--ws-accent);
+    }
+  }
+
+  &-lang-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background: var(--ws-editor-background);
+    border: 1px solid var(--ws-border-color);
+    border-radius: 4px;
+    box-shadow: 0 4px 8px var(--ws-shadow-color, rgba(0, 0, 0, 0.15));
+    z-index: 10;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  &-lang-option {
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--ws-text-primary);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--ws-list-hover);
+    }
+
+    &.selected {
+      background: var(--ws-list-active);
+      color: var(--ws-accent);
+    }
+  }
+
+  &-swap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ws-text-secondary);
+    flex-shrink: 0;
+
+    &:hover:not(.disabled) {
+      background: var(--ws-button-hover);
+      color: var(--ws-accent);
+    }
+
+    &.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  // 内容滚动区域
+  &-body {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  // 输入区域
+  &-input-area {
+    padding: 12px 16px;
+  }
+
+  &-textarea {
+    width: 100%;
+    min-height: 80px;
+    max-height: 150px; // 限制最大高度
+    padding: 10px;
+    background: var(--ws-input-background);
+    border: 1px solid var(--ws-border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--ws-text-primary);
+    resize: vertical;
+    outline: none;
+
+    &:focus {
+      border-color: var(--ws-accent);
+    }
+
+    &::placeholder {
+      color: var(--ws-text-secondary);
+    }
+  }
+
+  // 操作按钮
+  &-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 16px 12px;
+  }
+
+  &-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 16px;
+    font-size: 13px;
+    border-radius: 4px;
+    cursor: pointer;
+    background: var(--ws-button-background);
+    color: var(--ws-text-primary);
+    border: 1px solid var(--ws-border-color);
+
+    &:hover {
+      background: var(--ws-button-hover);
+    }
+
+    &-primary {
+      background: var(--ws-accent);
+      color: var(--ws-accent-foreground, #fff);
+      border-color: var(--ws-accent);
+
+      &:hover {
+        opacity: 0.9;
+      }
+
+      &.loading {
+        opacity: 0.7;
+        cursor: wait;
+      }
+    }
+  }
+
+  // 错误提示
+  &-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 12px;
+    color: var(--ws-error, #f44336);
+    background: var(--ws-error-background, rgba(244, 67, 54, 0.1));
+    margin: 0 16px 12px;
+    border-radius: 4px;
+  }
+
+  // 翻译结果区域
+  &-result-area {
+    border-top: 1px solid var(--ws-border-color);
+    padding: 12px 16px;
+  }
+
+  &-result-header {
+    font-size: 12px;
+    color: var(--ws-text-secondary);
+    margin-bottom: 8px;
+  }
+
+  &-result {
+    padding: 10px;
+    background: var(--ws-input-background);
+    border: 1px solid var(--ws-border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--ws-text-primary);
+    min-height: 60px;
+    max-height: 200px; // 限制最大高度
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  &-result-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+}

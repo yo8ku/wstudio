@@ -1,31 +1,74 @@
 /**
  * 资源管理器右键菜单样式
+ * 功能：支持钻取式多级菜单的上下文菜单样式
  * 依赖全局 ws 主题变量，保持与 VSCode 风格一致
  */
 
 .explorer-context-menu {
-  min-width: 227px;
-  padding: 4px;
+  min-width: 200px;
   border: 1px solid var(--ws-dropdown-border);
   border-radius: 6px;
   background-color: var(--ws-dropdown-background);
   color: var(--ws-dropdown-foreground);
   font-size: 12px;
-  z-index: 100;
+  z-index: 10000;
   user-select: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+
+  &.hover-submenu {
+    z-index: 10001;
+  }
+}
+
+.explorer-context-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ws-dropdown-border);
+  background-color: var(--ws-editor-widget-background);
+}
+
+.explorer-context-menu-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ws-icon-foreground);
+
+  &:hover {
+    background-color: var(--ws-toolbar-hover-background);
+  }
+}
+
+.explorer-context-menu-title {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-context-menu-content {
+  padding: 4px;
 }
 
 .explorer-context-menu-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 30px;
-  height: 30px;
+  padding: 6px 12px;
+  height: 28px;
   border-radius: 4px;
   cursor: default;
   white-space: nowrap;
 
-  &:hover {
+  &:hover,
+  &.active {
     background-color: var(--ws-dropdown-hoverBackground);
     color: var(--ws-dropdown-hoverForeground);
   }
@@ -38,8 +81,10 @@
 
 .explorer-context-menu-icon {
   width: 16px;
+  min-width: 16px;
   display: inline-flex;
   justify-content: center;
+  align-items: center;
 }
 
 .explorer-context-menu-label {
@@ -48,11 +93,47 @@
 
 .explorer-context-menu-arrow {
   margin-left: 12px;
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.7;
+}
+
+.explorer-context-menu-check {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ws-icon-foreground);
 }
 
 .explorer-context-menu-separator {
   height: 1px;
-  margin: 4px 0;
-  background-color: var(--ws-editor-selectionBackground);
+  margin: 4px 8px;
+  background-color: var(--ws-dropdown-border);
 }
 
+.explorer-context-menu-custom {
+  padding: 8px 12px;
+}
+
+.explorer-context-menu-custom-inline {
+  margin-left: auto;
+}
+
+.explorer-context-menu-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--ws-input-border);
+  border-radius: 4px;
+  background-color: var(--ws-input-background);
+  color: var(--ws-input-foreground);
+  font-size: 12px;
+  outline: none;
+
+  &:focus {
+    border-color: var(--ws-focus-border);
+  }
+
+  &::placeholder {
+    color: var(--ws-input-placeholder-foreground);
+  }
+}

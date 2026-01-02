@@ -18,6 +18,8 @@ interface ExplorerStore {
   isFileTreeExpanded: boolean;
   /** 大纲区域是否展开 */
   isOutlineExpanded: boolean;
+  /** 数据库区域是否展开 */
+  isDatabaseExpanded: boolean;
   /** 文件树数据 */
   fileTreeData: FileTreeNode[] | null;
   /** 工作区路径 */
@@ -35,6 +37,8 @@ interface ExplorerStore {
   setFileTreeExpanded: (expanded: boolean) => void;
   /** 设置大纲区域展开状态 */
   setOutlineExpanded: (expanded: boolean) => void;
+  /** 设置数据库区域展开状态 */
+  setDatabaseExpanded: (expanded: boolean) => void;
   /** 设置文件树数据 */
   setFileTreeData: (data: FileTreeNode[] | null) => void;
   /** 设置工作区路径 */
@@ -49,6 +53,8 @@ interface ExplorerStore {
   toggleFileTree: () => void;
   /** 切换大纲区域展开状态 */
   toggleOutline: () => void;
+  /** 切换数据库区域展开状态 */
+  toggleDatabase: () => void;
 }
 
 export const useExplorerStore = create<ExplorerStore>((set, get) => ({
@@ -57,6 +63,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   isOpenEditorsExpanded: true,
   isFileTreeExpanded: true,
   isOutlineExpanded: false,
+  isDatabaseExpanded: false,
   fileTreeData: null,
   workspacePath: '',
   fileTreeScrollTop: 0,
@@ -70,6 +77,8 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   setFileTreeExpanded: (expanded) => set({ isFileTreeExpanded: expanded }),
   
   setOutlineExpanded: (expanded) => set({ isOutlineExpanded: expanded }),
+  
+  setDatabaseExpanded: (expanded) => set({ isDatabaseExpanded: expanded }),
   
   setFileTreeData: (data) => set({ fileTreeData: data }),
   
@@ -109,6 +118,11 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   toggleOutline: () => {
     const { isOutlineExpanded } = get();
     set({ isOutlineExpanded: !isOutlineExpanded });
+  },
+  
+  toggleDatabase: () => {
+    const { isDatabaseExpanded } = get();
+    set({ isDatabaseExpanded: !isDatabaseExpanded });
   },
 }));
 

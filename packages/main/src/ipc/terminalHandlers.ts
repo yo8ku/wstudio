@@ -4,27 +4,42 @@
  */
 
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
-import { TerminalService, TerminalOptions } from '../services/terminal/TerminalService';
+import { TerminalService } from '../services/terminal';
+import type { TerminalOptions } from '../services/terminal';
 
 let terminalService: TerminalService | null = null;
 let handlersRegistered = false;
 
 /**
- * 注册终端 IPC 处理器
+ * 设置终端服务实例
  */
-export function registerTerminalHandlers(service: TerminalService): void {
+export function setTerminalService(service: TerminalService): void {
+  terminalService = service;
+  console.log('[Terminal IPC] 终端服务已设置');
+}
+
+/**
+ * 注册终端 IPC 处理器（可以在没有 service 的情况下先注册）
+ */
+export function registerTerminalHandlers(service?: TerminalService): void {
   if (handlersRegistered) {
-    console.log('[Terminal IPC] 处理器已注册，跳过重复注册');
+    // 如果已注册但传入了新的 service，更新它
+    if (service) {
+      terminalService = service;
+      console.log('[Terminal IPC] 更新终端服务实例');
+    }
     return;
   }
 
-  terminalService = service;
+  if (service) {
+    terminalService = service;
+  }
 
   // 创建终端
   ipcMain.handle('terminal:create', async (event: IpcMainInvokeEvent, options: TerminalOptions) => {
     try {
       if (!terminalService) {
-        throw new Error('TerminalService 未初始化');
+        throw new Error('TerminalService 未初始化，请稍后重试');
       }
       const terminalId = terminalService.createTerminal(options);
       console.log(`[Terminal IPC] 创建终端: ${terminalId}`);
@@ -92,6 +107,7 @@ export function registerTerminalHandlers(service: TerminalService): void {
   });
 
   handlersRegistered = true;
+  console.log('[Terminal IPC] 处理器已注册');
 }
 
 /**

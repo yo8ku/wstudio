@@ -116,13 +116,10 @@ function createWindow(backgroundColor = '#1e1e1e') {
     mainWindow.webContents.send('window-blur');
   });
   
-  // 窗口加载完成后，通知渲染进程主进程已就绪
+  // 窗口加载完成后的处理
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('[Electron] 渲染进程页面已加载完成');
-    
-    // 🎉 通知渲染进程主进程已就绪（IPC 处理器已全部注册）
-    console.log('[Electron] 通知渲染进程：主进程已就绪');
-    mainWindow.webContents.send('main-process:ready');
+    // 注意：main-process:ready 事件在 initializeExtensions 完成后发送，不在这里发送
   });
 }
 
@@ -385,23 +382,30 @@ app.whenReady().then(async () => {
   // 注意：必须在创建窗口之前注册 IPC 处理器，否则渲染进程会收到 "No handler registered" 错误
   try {
     await initializeExtensions(null); // 暂时不传递窗口，先注册 IPC 处理器
-    console.log('[Electron]  扩展系统初始化成功（IPC 处理器已注册）');
     
     // 使用默认背景色（主题由渲染进程管理）
-    let backgroundColor = '#1e1e1e'; // 默认深色背景
-    console.log(`[Electron] 使用默认背景色: ${backgroundColor}`);
+    let backgroundColor = '#1e1e1e';
     
     // 创建窗口
     createWindow(backgroundColor);
 
-    // 再次初始化扩展系统，这次传入主窗口以创建 PluginAPIAdapter
+    // 再次初始化扩展系统，这次传入主窗口以创建 PluginAPIAdapter 和终端服务
     await initializeExtensions(mainWindow);
+    console.log('[Electron] 扩展系统初始化完成');
     
-    // 检查内置AI服务状态
-    const models = builtinAI.getAvailableModels();
-    console.log('[Electron] 📦 内置AI可用模型数量:', models.length);
+    // 🎉 所有初始化完成，等待页面加载后通知渲染进程
+    const sendReadyEvent = () => {
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('main-process:ready');
+      }
+    };
     
-    // 🎉 所有初始化完成，通知渲染进程
+    // 如果页面已加载完成，立即发送；否则等待加载完成后发送
+    if (mainWindow && mainWindow.webContents.isLoading()) {
+      mainWindow.webContents.once('did-finish-load', sendReadyEvent);
+    } else {
+      sendReadyEvent();
+    }
   } catch (error) {
     console.error('[Electron]  扩展系统初始化失败:', error);
     // 即使失败也创建窗口（避免应用卡住），但避免重复创建

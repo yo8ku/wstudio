@@ -188,8 +188,9 @@ const CloseWindow: IconComponent = () => (
 
 // 加号图标
 const Plus: IconComponent = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 );
 
@@ -574,6 +575,16 @@ const Database: IconComponent = () => (
     <ellipse cx="12" cy="5" rx="9" ry="3"/>
     <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
     <path d="M3 12A9 3 0 0 0 21 12"/>
+  </svg>
+);
+
+// 表单图标
+const TableProperties: IconComponent = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 3v18"/>
+    <rect width="18" height="18" x="3" y="3" rx="2"/>
+    <path d="M21 9H3"/>
+    <path d="M21 15H3"/>
   </svg>
 );
 
@@ -1152,6 +1163,111 @@ const Settings2: IconComponent = ({ style, className }) => (
   </svg>
 );
 
+// 单选图标
+const RadioSelect: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={style} className={className}>
+    <path d="M12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z"/>
+    <path fillRule="evenodd" clipRule="evenodd" d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4C16.4183 4 20 7.58172 20 12Z"/>
+  </svg>
+);
+
+// 多选图标
+const CheckboxSelect: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={style} className={className}>
+    <path d="m10.933 13.519-2.226-2.226-1.414 1.414 3.774 3.774 5.702-6.84-1.538-1.282z"/>
+    <path d="M19 3H5c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h14c1.103 0 2-.897 2-2V5c0-1.103-.897-2-2-2zM5 19V5h14l.002 14H5z"/>
+  </svg>
+);
+
+// 数字图标
+const NumberHash: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={style} className={className}>
+    <path fill="none" d="M0 0h24v24H0z"/>
+    <path d="m20.5 10 .5-2h-4l1-4h-2l-1 4h-4l1-4h-2L9 8H5l-.5 2h4l-1 4h-4L3 16h4l-1 4h2l1-4h4l-1 4h2l1-4h4l.5-2h-4l1-4h4zm-7 4h-4l1-4h4l-1 4z"/>
+  </svg>
+);
+
+// 日期图标
+const CalendarDate: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 512 512" fill="currentColor" stroke="currentColor" strokeWidth="32" style={style} className={className}>
+    <rect width="416" height="384" x="48" y="80" fill="none" strokeLinejoin="round" rx="48"/>
+    <path fill="none" strokeLinecap="round" strokeLinejoin="round" d="M128 48v32m256-32v32m80 80H48m256 100 43.42-32H352v168m-160.13-89.37c9.11 0 25.79-4.28 36.72-15.47a37.9 37.9 0 0 0 11.13-27.26c0-26.12-22.59-39.9-47.89-39.9-21.4 0-33.52 11.61-37.85 18.93M149 374.16c4.88 8.27 19.71 25.84 43.88 25.84 28.59 0 52.12-15.94 52.12-43.82 0-12.62-3.66-24-11.58-32.07-12.36-12.64-31.25-17.48-41.55-17.48"/>
+  </svg>
+);
+
+// 多选列表图标
+const ListChecks: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 256 256" fill="currentColor" style={style} className={className}>
+    <path d="M228,128a12,12,0,0,1-12,12H128a12,12,0,0,1,0-24h88A12,12,0,0,1,228,128ZM128,76h88a12,12,0,0,0,0-24H128a12,12,0,0,0,0,24Zm88,104H128a12,12,0,0,0,0,24h88a12,12,0,0,0,0-24ZM79.51,39.51,56,63l-7.51-7.52a12,12,0,0,0-17,17l16,16a12,12,0,0,0,17,0l32-32a12,12,0,0,0-17-17Zm0,64L56,127l-7.51-7.52a12,12,0,1,0-17,17l16,16a12,12,0,0,0,17,0l32-32a12,12,0,0,0-17-17Zm0,64L56,191l-7.51-7.52a12,12,0,1,0-17,17l16,16a12,12,0,0,0,17,0l32-32a12,12,0,0,0-17-17Z"/>
+  </svg>
+);
+
+// 填充整列图标
+const PaintBucket: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="0" style={style} className={className}>
+    <path d="M20 13.998c-.092.065-2 2.083-2 3.5 0 1.494.949 2.448 2 2.5.906.044 2-.891 2-2.5 0-1.5-1.908-3.435-2-3.5zm-16.586-1c0 .534.208 1.036.586 1.414l5.586 5.586c.378.378.88.586 1.414.586s1.036-.208 1.414-.586l7-7-.707-.707L11 4.584 8.707 2.291 7.293 3.705l2.293 2.293L4 11.584c-.378.378-.586.88-.586 1.414zM11 7.412l5.586 5.586L11 18.584h.001l-.001 1v-1l-5.586-5.586L11 7.412z"/>
+  </svg>
+);
+
+// 向左插入图标
+const ArrowLeft: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 448 512" fill="currentColor" stroke="currentColor" strokeWidth="0" style={style} className={className}>
+    <path d="M134.059 296H436c6.627 0 12-5.373 12-12v-56c0-6.627-5.373-12-12-12H134.059v-46.059c0-21.382-25.851-32.09-40.971-16.971L7.029 239.029c-9.373 9.373-9.373 24.569 0 33.941l86.059 86.059c15.119 15.119 40.971 4.411 40.971-16.971V296z"/>
+  </svg>
+);
+
+// 向右插入图标
+const ArrowRight: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 448 512" fill="currentColor" stroke="currentColor" strokeWidth="0" style={style} className={className}>
+    <path d="M313.941 216H12c-6.627 0-12 5.373-12 12v56c0 6.627 5.373 12 12 12h301.941v46.059c0 21.382 25.851 32.09 40.971 16.971l86.059-86.059c9.373-9.373 9.373-24.569 0-33.941l-86.059-86.059c-15.119-15.119-40.971-4.411-40.971 16.971V216z"/>
+  </svg>
+);
+
+// 字段描述图标
+const InfoCircle: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="12" y1="8" x2="12" y2="12"/>
+    <line x1="12" y1="16" x2="12.01" y2="16"/>
+  </svg>
+);
+
+// ==================== 单元格工具栏图标 ====================
+
+// 填充图标
+const CellFill: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 512 512" fill="currentColor" stroke="currentColor" strokeWidth="32" style={style} className={className}>
+    <rect width="63.03" height="378.2" x="280.48" y="122.9" fill="none" strokeMiterlimit="10" rx="31.52" transform="rotate(-45 312.002 311.994)"/>
+    <path d="M178.38 178.38a31.64 31.64 0 0 0 0 44.75L223.25 268 268 223.25l-44.87-44.87a31.64 31.64 0 0 0-44.75 0z"/>
+    <path strokeLinecap="round" strokeMiterlimit="10" d="M48 192h48M90.18 90.18l33.94 33.94M192 48v48m101.82-5.82-33.94 33.94M124.12 259.88l-33.94 33.94"/>
+  </svg>
+);
+
+// 润色图标
+const CellPolish: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21s-9-3-9-7.56c0-1.25.5-2.4 1-3.44 0 0-1.89-6.42-.5-7 1.39-.58 4.72.23 6.5 2.23A9.04 9.04 0 0 1 12 5Z"/>
+    <path d="M8 14v.5"/>
+    <path d="M16 14v.5"/>
+    <path d="M11.25 16.25h1.5L12 17l-.75-.75Z"/>
+  </svg>
+);
+
+// 翻译图标
+const CellTranslate: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 1024 1024" fill="currentColor" stroke="currentColor" strokeWidth="0" style={style} className={className}>
+    <path d="M140 188h584v164h76V144c0-17.7-14.3-32-32-32H96c-17.7 0-32 14.3-32 32v736c0 17.7 14.3 32 32 32h544v-76H140V188z"/>
+    <path d="M414.3 256h-60.6c-3.4 0-6.4 2.2-7.6 5.4L219 629.4c-0.3 0.8-0.4 1.7-0.4 2.6 0 4.4 3.6 8 8 8h55.1c3.4 0 6.4-2.2 7.6-5.4L322 540h196.2L422 261.4c-1.3-3.2-4.3-5.4-7.7-5.4z m12.4 228h-85.5L384 360.2 426.7 484zM936 528H800v-93c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v93H592c-13.3 0-24 10.7-24 24v176c0 13.3 10.7 24 24 24h136v152c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8V752h136c13.3 0 24-10.7 24-24V552c0-13.3-10.7-24-24-24zM728 680h-88v-80h88v80z m160 0h-88v-80h88v80z"/>
+  </svg>
+);
+
+// 更多图标（水平三点）
+const CellMore: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/>
+  </svg>
+);
+
 // ==================== 导出图标 ====================
 
 export const uiIconSet: IconSet = {
@@ -1297,6 +1413,9 @@ export const uiIconSet: IconSet = {
     // 数据库图标
     'database': Database,
     
+    // 表单图标
+    'table-properties': TableProperties,
+    
     // Mermaid 设计器工具栏图标
     'mouse-pointer-2': MousePointer2,
     'pencil': Pencil,
@@ -1324,6 +1443,21 @@ export const uiIconSet: IconSet = {
     'strikethrough': Strikethrough,
     'link-2': Link2,
     'settings-2': Settings2,
+    'radio-select': RadioSelect,
+    'checkbox-select': CheckboxSelect,
+    'number-hash': NumberHash,
+    'calendar-date': CalendarDate,
+    'list-checks': ListChecks,
+    'paint-bucket': PaintBucket,
+    'arrow-left': ArrowLeft,
+    'arrow-right': ArrowRight,
+    'info-circle': InfoCircle,
+    
+    // 单元格工具栏图标
+    'cell-fill': CellFill,
+    'cell-polish': CellPolish,
+    'cell-translate': CellTranslate,
+    'cell-more': CellMore,
   },
 };
 

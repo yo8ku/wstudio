@@ -30,6 +30,32 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onRefChange, shell
   const [commandHistory, setCommandHistory] = useState<string[]>([]); // 命令历史列表
   const [historyWidth, setHistoryWidth] = useState(231); // 历史侧边栏宽度
   const terminalContainerRef = useRef<HTMLDivElement>(null);
+  const sessionRef = useRef<TerminalSession | null>(null);
+  const pendingCommandRef = useRef<string | null>(null);
+
+  // 同步 session 到 ref
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  // 轮询检查待执行命令（当 session.id 异步设置后执行）
+  useEffect(() => {
+    if (!session) return;
+    
+    const checkPendingCommand = setInterval(() => {
+      if (session.id && pendingCommandRef.current) {
+        const terminalAPI = window.electron?.terminal;
+        if (terminalAPI) {
+          terminalAPI.write(session.id, pendingCommandRef.current + '\r');
+          console.log('[TerminalPanel] 执行待处理命令:', pendingCommandRef.current);
+          pendingCommandRef.current = null;
+        }
+        clearInterval(checkPendingCommand);
+      }
+    }, 200);
+
+    return () => clearInterval(checkPendingCommand);
+  }, [session]);
 
   // 更新命令历史（从 session 获取）
   const updateCommandHistory = useCallback(() => {
@@ -86,14 +112,52 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onRefChange, shell
     createTerminal();
   }, [session, createTerminal]);
 
-  // 初始化：创建终端
+  // 初始化：创建终端（等待主进程就绪）
   useEffect(() => {
-    if (!session) {
-      createTerminal();
+    let mounted = true;
+    let retryCount = 0;
+    const maxRetries = 10;
+    const retryDelay = 500;
+    
+    const tryCreateTerminal = async () => {
+      if (!mounted) return;
+      
+      const terminalAPI = window.electron?.terminal;
+      if (!terminalAPI) {
+        console.error('[TerminalPanel] terminalAPI 未定义');
+        return;
+      }
+      
+      // 尝试创建终端
+      const newSession = createTerminal();
+      
+      // 检查是否创建成功（通过检查 session.id）
+      // 如果失败，等待后重试
+      setTimeout(() => {
+        if (!mounted) return;
+        if (!newSession?.id && retryCount < maxRetries) {
+          retryCount++;
+          console.log(`[TerminalPanel] 终端创建重试 ${retryCount}/${maxRetries}`);
+          tryCreateTerminal();
+        }
+      }, retryDelay);
+    };
+    
+    // 监听主进程就绪事件
+    const ipcRenderer = window.electron?.ipcRenderer;
+    if (ipcRenderer) {
+      ipcRenderer.once('main-process:ready', () => {
+        console.log('[TerminalPanel] 收到 main-process:ready 事件');
+        setTimeout(tryCreateTerminal, 100);
+      });
     }
+    
+    // 延迟尝试（给主进程初始化时间）
+    setTimeout(tryCreateTerminal, 1000);
 
     // 组件卸载时销毁终端
     return () => {
+      mounted = false;
       if (session) {
         session.dispose();
       }
@@ -156,6 +220,30 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onRefChange, shell
       };
     }
   }, [session]);
+
+  // 监听外部命令执行事件
+  useEffect(() => {
+    const handleExecuteCommand = (event: CustomEvent<{ command: string }>) => {
+      const currentSession = sessionRef.current;
+      if (currentSession && currentSession.id) {
+        const terminalAPI = window.electron?.terminal;
+        if (terminalAPI) {
+          // 写入命令并执行（添加回车）
+          terminalAPI.write(currentSession.id, event.detail.command + '\r');
+          console.log('[TerminalPanel] 执行命令:', event.detail.command);
+        }
+      } else {
+        // session 还未就绪，保存命令待后续执行
+        pendingCommandRef.current = event.detail.command;
+        console.log('[TerminalPanel] 终端未就绪，命令已保存待执行:', event.detail.command);
+      }
+    };
+
+    window.addEventListener('terminal:execute-command', handleExecuteCommand as EventListener);
+    return () => {
+      window.removeEventListener('terminal:execute-command', handleExecuteCommand as EventListener);
+    };
+  }, []); // 移除 session 依赖，使用 ref
 
   // 清除当前终端
   const handleClear = useCallback(() => {

@@ -9,9 +9,6 @@ input[type="password"],
 textarea {
   background-color: var(--ws-input-background);
   color: var(--ws-input-foreground);
-  border-color: var(--ws-input-border);
-  border: 1px solid transparent;
-  border-radius: 2px;
 }
 
 
@@ -23,12 +20,6 @@ textarea::placeholder {
   color: var(--ws-input-placeholderForeground);
       // "input.placeholder.foreground":"#525761",
 }
-
-input:focus,
-textarea:focus {
-  border: 1px solid var(--ws-input-focusBorder);
-}
-
 
 input::selection {
   background-color: var(--ws-editor-selectionBackground);

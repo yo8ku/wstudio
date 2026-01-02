@@ -221,7 +221,6 @@
           .value {
             display: block;
             word-break: break-all;
-            font-family: var(--ws-editor-font-family);
             font-size: 12px;
           }
         }
@@ -371,7 +370,6 @@
         max-height: 200px;
         overflow: auto;
         background-color: var(--ws-editor-background);
-        font-family: var(--ws-editor-font-family);
 
         // 默认隐藏滚动条
         &::-webkit-scrollbar {
@@ -438,7 +436,6 @@
         word-break: break-word;
         max-height: 100px;
         overflow: auto;
-        font-family: var(--ws-editor-font-family);
 
         // 默认隐藏滚动条
         &::-webkit-scrollbar {

@@ -7,6 +7,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Icon } from '../../../Icons/Icon';
 import { Select } from '../../../common/Select/Select';
+import { AIInputBar } from '../../../common/AIInputBar';
 import type {
   DatabaseColumn,
   DatabaseRow,
@@ -598,6 +599,81 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
     setEditingCell(null);
     setEditingColumnId(null);
     setTypeMenuColumn(null);
+  }, []);
+
+  // AI 生成表格数据处理
+  const handleAIGenerate = useCallback((content: string) => {
+    try {
+      // 尝试解析 JSON
+      let jsonContent = content.trim();
+      // 移除可能的 markdown 代码块标记
+      if (jsonContent.startsWith('```json')) {
+        jsonContent = jsonContent.slice(7);
+      } else if (jsonContent.startsWith('```')) {
+        jsonContent = jsonContent.slice(3);
+      }
+      if (jsonContent.endsWith('```')) {
+        jsonContent = jsonContent.slice(0, -3);
+      }
+      jsonContent = jsonContent.trim();
+
+      const data = JSON.parse(jsonContent) as {
+        columns: Array<{ name: string; type: string }>;
+        rows: Array<Record<string, CellValue>>;
+      };
+
+      if (data.columns && Array.isArray(data.columns)) {
+        // 创建新列
+        const newColumns: DatabaseColumn[] = data.columns.map((col, index) => ({
+          id: generateId(),
+          name: col.name || `列 ${index + 1}`,
+          type: (col.type as ColumnType) || 'text',
+          width: 150,
+        }));
+
+        // 创建新行
+        const newRows: DatabaseRow[] = [];
+        if (data.rows && Array.isArray(data.rows)) {
+          data.rows.forEach(() => {
+            const row: DatabaseRow = {
+              id: generateId(),
+              cells: {},
+            };
+            newColumns.forEach((col, colIndex) => {
+              const originalColName = data.columns[colIndex]?.name;
+              row.cells[col.id] = originalColName && data.rows ? 
+                (data.rows.find(r => r[originalColName] !== undefined)?.[originalColName] ?? '') : '';
+            });
+            newRows.push(row);
+          });
+
+          // 重新填充数据
+          if (data.rows.length > 0) {
+            data.rows.forEach((rowData, rowIndex) => {
+              if (newRows[rowIndex]) {
+                newColumns.forEach((col, colIndex) => {
+                  const originalColName = data.columns[colIndex]?.name;
+                  if (originalColName && rowData[originalColName] !== undefined) {
+                    newRows[rowIndex].cells[col.id] = rowData[originalColName];
+                  }
+                });
+              }
+            });
+          }
+        }
+
+        // 如果没有行数据，创建一个空行
+        if (newRows.length === 0) {
+          newRows.push(createDefaultRow(newColumns));
+        }
+
+        setColumns(newColumns);
+        setRows(newRows);
+        console.log('[DatabaseView] AI 生成表格成功:', { columns: newColumns.length, rows: newRows.length });
+      }
+    } catch (error) {
+      console.error('[DatabaseView] AI 生成表格解析失败:', error);
+    }
   }, []);
 
   // 更新单元格值
@@ -1411,19 +1487,37 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
                         </td>
                       </tr>
                     ))}
+                    {/* 添加行 - 作为表格最后一行 */}
+                    <tr className="add-row-tr">
+                      <td colSpan={columns.length} className="add-row-cell">
+                        <span className="add-row-btn" onClick={handleAddRow} title="添加行">
+                          <Icon name="plus" size={14} />
+                        </span>
+                      </td>
+                      <td className="row-actions-cell"></td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
-              <div className="add-row-area">
-                <span className="add-row-btn" onClick={handleAddRow}>
-                  <Icon name="plus" size={14} />
-                  <span>添加行</span>
-                </span>
-                <span className="clear-all-btn" onClick={handleClearAll} title="清除全部数据">
-                  <Icon name="trash" size={14} />
-                  <span>清除全部</span>
-                </span>
-              </div>
+              {/* AI 输入栏 */}
+              <AIInputBar
+                placeholder="描述您想要生成的表格内容..."
+                systemPrompt={`你是一个表格数据生成助手。用户会描述他们想要的表格内容，你需要生成符合要求的表格数据。
+请以 JSON 格式返回数据，格式如下：
+{
+  "columns": [
+    { "name": "列名1", "type": "text" },
+    { "name": "列名2", "type": "number" }
+  ],
+  "rows": [
+    { "列名1": "值1", "列名2": 123 },
+    { "列名1": "值2", "列名2": 456 }
+  ]
+}
+支持的列类型：text（文本）、number（数字）、checkbox（复选框）、date（日期）、url（链接）、email（邮箱）、select（选择）
+只返回 JSON 数据，不要添加任何解释或 markdown 代码块标记。`}
+                onGenerate={handleAIGenerate}
+              />
             </>
           )}
         </div>

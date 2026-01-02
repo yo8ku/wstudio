@@ -46,5 +46,17 @@
     overflow: hidden; /* 防止该层滚动 */
     min-height: 0; /* 允许内容滚动的关键设置 */
   }
+
+  /* 数据库包装器 */
+  .database-wrapper {
+    flex: 0 0 auto;
+    overflow: hidden;
+  }
+
+  /* 大纲包装器 */
+  .outline-wrapper {
+    flex: 0 0 auto;
+    overflow: hidden;
+  }
 }
 

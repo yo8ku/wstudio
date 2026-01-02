@@ -1,204 +1,230 @@
 /**
  * 终端服务（主进程）
- * 功能：管理 PTY 进程，处理终端相关的 IPC 请求
+ * 功能：管理 PTY 代理进程，处理终端的创建、销毁和通信
+ * 描述：通过 pty-proxy 二进制工具实现真正的伪终端功能
  */
 
-import * as pty from 'node-pty';
-import * as os from 'os';
+import { spawn, ChildProcess } from 'child_process';
 import { BrowserWindow } from 'electron';
+import * as path from 'path';
+import * as fs from 'fs';
+import { getShellDetector } from './ShellDetector';
+import type { TerminalOptions, TerminalInstance } from './types';
 
-export interface TerminalOptions {
+/** PTY 代理命令 */
+interface PtyCommand {
+  type: 'create' | 'write' | 'resize' | 'close';
   shell?: string;
   cwd?: string;
-  env?: Record<string, string>;
+  data?: string;
   cols?: number;
   rows?: number;
 }
 
-interface TerminalInstance {
-  id: string;
-  ptyProcess: pty.IPty;
-  shell: string;
+/** PTY 代理响应 */
+interface PtyResponse {
+  type: 'created' | 'data' | 'exit' | 'closed' | 'error';
+  data?: string;
+  code?: number;
+  success?: boolean;
+  error?: string;
 }
 
 export class TerminalService {
   private terminals: Map<string, TerminalInstance> = new Map();
   private mainWindow: BrowserWindow | null = null;
+  private shellDetector = getShellDetector();
+  private proxyPath: string;
 
   constructor(mainWindow?: BrowserWindow) {
     if (mainWindow) {
       this.mainWindow = mainWindow;
     }
+    this.proxyPath = this.getProxyPath();
   }
 
+  /** 获取 PTY 代理路径 */
+  private getProxyPath(): string {
+    const platform = process.platform;
+    const isDev = process.env.NODE_ENV === 'development';
+    
+    let basePath: string;
+    if (isDev) {
+      basePath = path.join(process.cwd(), 'resources', 'bin');
+    } else {
+      basePath = path.join(process.resourcesPath, 'bin');
+    }
+
+    const platformDir = platform === 'win32' ? 'win32' : platform === 'darwin' ? 'darwin' : 'linux';
+    const exeName = platform === 'win32' ? 'pty-proxy.exe' : 'pty-proxy';
+    
+    return path.join(basePath, platformDir, exeName);
+  }
+
+  /** 设置主窗口 */
   setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window;
   }
 
-  /**
-   * 检测系统默认 Shell
-   */
-  private detectDefaultShell(): string {
-    const platform = os.platform();
-    
-    if (platform === 'win32') {
-      return process.env.COMSPEC || 'powershell.exe';
-    } else if (platform === 'darwin') {
-      return process.env.SHELL || '/bin/zsh';
-    } else {
-      return process.env.SHELL || '/bin/bash';
-    }
+  /** 生成终端 ID */
+  private generateId(): string {
+    return `terminal-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 
-  /**
-   * 创建新终端
-   */
-  public createTerminal(options: TerminalOptions = {}): string {
-    const id = `terminal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const shell = options.shell || this.detectDefaultShell();
-    const platform = os.platform();
-    const isWindows = platform === 'win32';
-    
+  /** 创建新终端 */
+  createTerminal(options: TerminalOptions = {}): string {
+    const id = this.generateId();
+
+    // 检查代理是否存在
+    if (!fs.existsSync(this.proxyPath)) {
+      console.error(`[TerminalService] PTY 代理不存在: ${this.proxyPath}`);
+      throw new Error('PTY 代理未找到');
+    }
+
     try {
-      // 准备环境变量，启用 ANSI 颜色支持
-      const env = {
-        ...process.env,
-        ...options.env,
-        // 强制启用 ANSI 颜色（Windows）
-        FORCE_COLOR: '1',
-        // 确保终端类型支持颜色
-        TERM: 'xterm-256color',
-        // Windows 10+ 原生支持 ANSI
-        ANSICON: '1',
-      } as { [key: string]: string };
-      
-      // 准备 Shell 参数（禁止版权信息）
-      const shellArgs: string[] = [];
-      if (shell.toLowerCase().includes('powershell')) {
-        // PowerShell: -NoLogo 禁止版权信息
-        shellArgs.push('-NoLogo');
-      }
-      
-      const ptyProcess = pty.spawn(shell, shellArgs, {
-        name: 'xterm-256color',
-        cols: options.cols || 80,
-        rows: options.rows || 24,
-        cwd: options.cwd || process.env.HOME || process.env.USERPROFILE || os.homedir(),
-        env,
-        useConpty: isWindows,
-        // Windows ConPTY 配置
-        conptyInheritCursor: isWindows,
+      const proxyProcess = spawn(this.proxyPath, [], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+        env: { ...process.env }, // 继承系统环境变量
       });
 
-      // PTY 输出 -> 渲染进程
-      ptyProcess.onData((data: string) => {
-        try {
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('terminal:data', id, data);
+      // 保存终端实例
+      this.terminals.set(id, {
+        id,
+        process: proxyProcess,
+        shell: options.shell || 'powershell.exe',
+        createdAt: Date.now(),
+      });
+
+      // 监听代理输出
+      let buffer = '';
+      proxyProcess.stdout?.on('data', (data: Buffer) => {
+        buffer += data.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (line.trim()) {
+            this.handleProxyResponse(id, line.trim());
           }
-        } catch (error) {
-          // 忽略 EPIPE 等管道错误（终端已关闭）
-          console.debug(`[TerminalService] 数据发送失败 (终端可能已关闭): ${id}`, error);
         }
       });
 
-      // PTY 退出
-      ptyProcess.onExit((e: { exitCode: number; signal?: number }) => {
-        console.log(`[TerminalService] PTY 进程退出: id=${id}, code=${e.exitCode}, signal=${e.signal}`);
-        try {
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('terminal:exit', id, e.exitCode);
-          }
-        } catch (error) {
-          console.debug(`[TerminalService] 退出通知发送失败: ${id}`, error);
-        }
+      // 监听错误
+      proxyProcess.stderr?.on('data', (data: Buffer) => {
+        console.error(`[TerminalService] 代理错误: ${data.toString()}`);
+      });
+
+      // 监听退出
+      proxyProcess.on('exit', (code: number | null) => {
+        console.log(`[TerminalService] 代理退出: id=${id}, code=${code}`);
         this.terminals.delete(id);
       });
 
-      this.terminals.set(id, { id, ptyProcess, shell });
-      console.log(`[TerminalService] 创建终端成功: id=${id}, shell=${shell}`);
-      
+      // 发送创建命令
+      const shellConfig = this.shellDetector.getDefaultShell();
+      this.sendCommand(id, {
+        type: 'create',
+        shell: options.shell || shellConfig.path,
+        cwd: options.cwd || this.shellDetector.getHomeDirectory(),
+        cols: options.cols || 80,
+        rows: options.rows || 24,
+      });
+
+      console.log(`[TerminalService] 终端创建成功: id=${id}`);
       return id;
     } catch (error) {
-      console.error(`[TerminalService] 创建终端失败:`, error);
+      console.error('[TerminalService] 创建终端失败:', error);
       throw error;
     }
   }
 
-  /**
-   * 写入数据到终端
-   */
-  public writeToTerminal(id: string, data: string): void {
-    const terminal = this.terminals.get(id);
-    if (terminal) {
-      try {
-        terminal.ptyProcess.write(data);
-      } catch (error) {
-        // 忽略 EPIPE 等管道错误（终端已关闭）
-        console.debug(`[TerminalService] 数据写入失败 (终端可能已关闭): ${id}`, error);
-        // 清理已失效的终端
-        this.terminals.delete(id);
+  /** 处理代理响应 */
+  private handleProxyResponse(id: string, line: string): void {
+    try {
+      const response: PtyResponse = JSON.parse(line);
+      
+      switch (response.type) {
+        case 'data':
+          if (response.data) {
+            this.sendToRenderer('terminal:data', id, response.data);
+          }
+          break;
+        case 'exit':
+          this.sendToRenderer('terminal:exit', id, response.code || 0);
+          this.terminals.delete(id);
+          break;
+        case 'error':
+          console.error(`[TerminalService] 代理错误: ${response.error}`);
+          break;
       }
-    } else {
-      console.warn(`[TerminalService] 终端不存在: ${id}`);
+    } catch (error) {
+      console.debug('[TerminalService] 解析响应失败:', line);
     }
   }
 
-  /**
-   * 调整终端大小
-   */
-  public resizeTerminal(id: string, cols: number, rows: number): void {
+  /** 发送命令到代理 */
+  private sendCommand(id: string, command: PtyCommand): void {
     const terminal = this.terminals.get(id);
-    if (terminal) {
-      try {
-        terminal.ptyProcess.resize(cols, rows);
-      } catch (error) {
-        // 忽略调整大小错误（终端可能已关闭）
-        console.debug(`[TerminalService] 调整大小失败 (终端可能已关闭): ${id}`, error);
-        // 清理已失效的终端
-        this.terminals.delete(id);
+    if (!terminal) return;
+
+    const data = JSON.stringify(command) + '\n';
+    terminal.process.stdin?.write(data);
+  }
+
+  /** 向渲染进程发送消息 */
+  private sendToRenderer(channel: string, ...args: unknown[]): void {
+    try {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send(channel, ...args);
       }
+    } catch (error) {
+      console.debug('[TerminalService] 发送消息失败:', error);
     }
   }
 
-  /**
-   * 销毁终端
-   */
-  public destroyTerminal(id: string): void {
+  /** 写入数据到终端 */
+  writeToTerminal(id: string, data: string): void {
+    this.sendCommand(id, { type: 'write', data });
+  }
+
+  /** 调整终端大小 */
+  resizeTerminal(id: string, cols: number, rows: number): void {
+    this.sendCommand(id, { type: 'resize', cols, rows });
+  }
+
+  /** 销毁终端 */
+  destroyTerminal(id: string): void {
     const terminal = this.terminals.get(id);
-    if (terminal) {
-      try {
-        terminal.ptyProcess.kill();
-      } catch (error) {
-        // 忽略销毁错误（进程可能已退出）
-        console.debug(`[TerminalService] 销毁终端时出错 (进程可能已退出): ${id}`, error);
+    if (!terminal) return;
+
+    this.sendCommand(id, { type: 'close' });
+    
+    setTimeout(() => {
+      if (terminal.process && !terminal.process.killed) {
+        terminal.process.kill();
       }
       this.terminals.delete(id);
-      console.log(`[TerminalService] 终端已销毁: ${id}`);
-    }
+    }, 500);
+
+    console.log(`[TerminalService] 终端已销毁: ${id}`);
   }
 
-  /**
-   * 获取所有终端 ID
-   */
-  public getAllTerminalIds(): string[] {
+  /** 获取所有终端 ID */
+  getAllTerminalIds(): string[] {
     return Array.from(this.terminals.keys());
   }
 
-  /**
-   * 销毁所有终端
-   */
-  public destroyAll(): void {
-    this.terminals.forEach((terminal) => {
-      try {
-        terminal.ptyProcess.kill();
-      } catch (error) {
-        // 忽略销毁错误（进程可能已退出）
-        console.debug(`[TerminalService] 销毁终端时出错: ${terminal.id}`, error);
-      }
-    });
-    this.terminals.clear();
-    console.log(`[TerminalService] 所有终端已销毁`);
+  /** 获取终端数量 */
+  getTerminalCount(): number {
+    return this.terminals.size;
+  }
+
+  /** 销毁所有终端 */
+  destroyAll(): void {
+    for (const [id] of this.terminals) {
+      this.destroyTerminal(id);
+    }
+    console.log('[TerminalService] 所有终端已销毁');
   }
 }
-

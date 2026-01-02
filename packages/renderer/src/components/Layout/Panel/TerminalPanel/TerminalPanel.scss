@@ -80,6 +80,7 @@
       
       .xterm-viewport {
         background: transparent !important;
+        overflow-y: auto !important;
         
         &::-webkit-scrollbar {
           width: 10px;
@@ -92,11 +93,20 @@
         &::-webkit-scrollbar-thumb {
           background: var(--ws-scrollbar-thumb);
           border-radius: 5px;
+          
+          &:hover {
+            background: var(--ws-scrollbar-thumb-hover, var(--ws-scrollbar-thumb));
+          }
         }
       }
 
       .xterm-screen {
         background: transparent !important;
+      }
+
+      // 修复光标边框问题
+      .xterm-cursor-outline {
+        outline: none !important;
       }
     }
   }

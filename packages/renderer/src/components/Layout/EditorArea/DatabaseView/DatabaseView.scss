@@ -445,6 +445,11 @@
         vertical-align: middle;
         min-width: 80px;
 
+        // 第一列添加左边框
+        &:first-child {
+          border-left: 1px solid var(--ws-panel-border);
+        }
+
         // 最后一列（操作列）不显示边框
         &:last-child {
           border-right: none;
@@ -454,6 +459,7 @@
       th {
         background-color: var(--ws-sideBar-background);
         position: relative;
+        border-top: 1px solid var(--ws-panel-border);
 
         .column-header {
           display: flex;
@@ -614,10 +620,13 @@
           height: 100%;
           padding: 8px 10px;
           background: var(--ws-input-background);
-          border: 2px solid var(--ws-focusBorder);
+          border: none;
           color: var(--ws-input-foreground);
           outline: none;
           box-sizing: border-box;
+          &:focus{
+            border: none;
+          }
         }
 
         .cell-checkbox {
@@ -698,41 +707,25 @@
     }
   }
 
-  .add-row-area {
-    padding: 8px 16px;
-    border-top: 1px solid var(--ws-panel-border);
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: 16px;
+  // 添加行 - 表格内最后一行
+  .add-row-tr {
+    .add-row-cell {
+      border-left: 1px solid var(--ws-panel-border);
+      border-bottom: 1px solid var(--ws-panel-border);
+      border-right: 1px solid var(--ws-panel-border);
+      padding: 0 !important;
 
-    .add-row-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      cursor: pointer;
-      color: var(--ws-descriptionForeground);
-      border-radius: 4px;
+      .add-row-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+        color: var(--ws-descriptionForeground);
 
-      &:hover {
-        background-color: var(--ws-list-hoverBackground);
-        color: var(--ws-editor-foreground);
-      }
-    }
-
-    .clear-all-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      cursor: pointer;
-      color: var(--ws-descriptionForeground);
-      border-radius: 4px;
-
-      &:hover {
-        background-color: var(--ws-list-hoverBackground);
-        color: var(--ws-errorForeground);
+        &:hover {
+          color: var(--ws-editor-foreground);
+        }
       }
     }
   }
@@ -757,7 +750,6 @@
     .preview-content {
       padding: 8px 16px;
       margin: 0;
-      font-family: var(--ws-editor-font-family, monospace);
       font-size: 12px;
       line-height: 1.4;
       white-space: pre-wrap;
@@ -1439,8 +1431,6 @@
   .database-table tbody td {
     &.selected-cell {
       background-color: var(--ws-list-activeSelectionBackground);
-      outline: 2px solid var(--ws-focusBorder);
-      outline-offset: -2px;
     }
   }
 }

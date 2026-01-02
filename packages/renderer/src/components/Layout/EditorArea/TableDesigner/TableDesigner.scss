@@ -1,0 +1,827 @@
+/**
+ * 表格设计器样式
+ * 功能：定义表格设计器的布局和样式
+ */
+
+.table-designer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--ws-editor-background);
+  color: var(--ws-editor-foreground);
+}
+
+.table-designer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ws-panel-border);
+  background-color: var(--ws-editor-background);
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .table-name-input {
+    background: transparent;
+    border: none;
+    color: var(--ws-editor-foreground);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: 4px;
+    outline: none;
+
+    &:hover {
+      background-color: var(--ws-input-background);
+    }
+
+    &:focus {
+      background-color: var(--ws-input-background);
+      outline: 1px solid var(--ws-focus-border);
+    }
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .action-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ws-foreground);
+    font-size: 12px;
+
+    &:hover {
+      background-color: var(--ws-toolbar-hover-background);
+    }
+
+    &.active {
+      background-color: var(--ws-toolbar-active-background);
+    }
+  }
+}
+
+.table-designer-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.table-designer-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+// 表格容器
+.table-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.table-wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: 12px;
+  padding-left: 0; // 左侧不需要 padding，固定列会贴边
+  padding-right: 100px; // 右侧额外空间，确保添加列按钮不会紧贴边界
+  padding-bottom: 50px; // 底部额外空间，留出空白区域
+
+  // 自定义滚动条样式
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--ws-scrollbarSlider-background);
+    border-radius: 5px;
+
+    &:hover {
+      background: var(--ws-scrollbarSlider-hoverBackground);
+    }
+
+    &:active {
+      background: var(--ws-scrollbarSlider-activeBackground);
+    }
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+.design-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 13px;
+  cursor: default;
+
+  th, td {
+    border: 1px solid var(--ws-panel-border);
+    border-top: none;
+    border-left: none;
+    padding: 0;
+    text-align: left;
+    vertical-align: top;
+    font-weight: normal;
+    overflow: hidden;
+  }
+
+  th {
+    background-color: var(--ws-editor-widget-background, #252526);
+    font-weight: 500;
+    height: 36px;
+    border-top: 1px solid var(--ws-panel-border);
+    overflow: visible;
+
+    &.column-selected {
+      background-color: rgba(255, 152, 0, 0.15);
+
+      .column-header {
+        background-color: transparent;
+      }
+
+      .column-menu-icon {
+        opacity: 1;
+      }
+    }
+
+    &.add-column-cell {
+      border: none !important;
+      border-top: 1px solid var(--ws-panel-border) !important;
+      background: transparent !important;
+    }
+  }
+
+  td {
+    height: 36px;
+    max-height: 36px;
+    position: relative;
+    font-size: 13px !important;
+
+    // 选中单元格 - 使用伪元素显示边框
+    &.selected-cell {
+      background-color: var(--ws-editor-background) !important;
+      
+      &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border: 1px solid #ff9800;
+        pointer-events: none;
+        z-index: 3;
+      }
+    }
+
+    &.row-actions-cell {
+      border: none !important;
+      background: transparent !important;
+    }
+  }
+}
+
+// tbody 行默认背景色
+.design-table tbody tr {
+  background-color: var(--ws-editor-background);
+}
+
+
+.column-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  height: 100%;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--ws-list-hover-background);
+
+    .column-menu-icon {
+      opacity: 1;
+    }
+  }
+
+  .column-type-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    color: var(--ws-icon-foreground);
+  }
+
+  .column-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .column-menu-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--ws-icon-foreground);
+    opacity: 0;
+  }
+}
+
+.column-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+
+  &:hover,
+  &.resizing {
+    background-color: var(--ws-focus-border);
+  }
+}
+
+.add-column-cell {
+  width: 32px;
+  min-width: 32px;
+  text-align: center;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+
+  .add-column-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin: 0 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ws-icon-foreground);
+
+    svg {
+      stroke-width: 2.5;
+    }
+
+    &:hover {
+      background-color: var(--ws-toolbar-hover-background);
+    }
+  }
+}
+
+.row-actions-cell {
+  width: 28px;
+  min-width: 28px;
+  text-align: center;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+
+  .delete-row-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin: 0 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    color: var(--ws-icon-foreground);
+
+    &:hover {
+      background-color: var(--ws-toolbar-hover-background);
+    }
+  }
+
+  tr:hover & .delete-row-btn {
+    opacity: 1;
+  }
+}
+
+.add-row-tr {
+  .row-selector-cell {
+    border-right: none !important;
+    
+    .add-row-btn {
+      position: absolute;
+      left: 20px;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      margin: 0 auto;
+      cursor: pointer;
+      color: var(--ws-icon-foreground);
+
+      svg {
+        stroke-width: 2.5;
+      }
+
+      &:hover {
+        color: var(--ws-editor-foreground);
+      }
+    }
+  }
+
+  .add-row-cell {
+    border-left: none !important;
+    border-bottom: 1px solid var(--ws-panel-border) !important;
+    border-right: 1px solid var(--ws-panel-border) !important;
+    border-top: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+
+  // 添加行的占位单元格（对应添加列按钮位置）- 底部边框延伸
+  .add-row-placeholder-cell {
+    border: none !important;
+    border-bottom: 1px solid var(--ws-panel-border) !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+}
+
+.cell-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 35px;
+  padding: 0 10px;
+  margin: 0;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  color: var(--ws-editor-foreground);
+  font-size: 13px !important;
+  line-height: 35px;
+  box-sizing: border-box;
+  cursor: default;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+
+  // 编辑状态
+  &.editing {
+    background: var(--ws-input-background);
+    color: var(--ws-input-foreground);
+    cursor: text;
+  }
+}
+
+.cell-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0 auto;
+  border: 1px solid var(--ws-checkbox-border);
+  border-radius: 3px;
+  cursor: pointer;
+  background-color: var(--ws-checkbox-background);
+
+  &.checked {
+    background-color: var(--ws-checkbox-select-background);
+    border-color: var(--ws-checkbox-select-background);
+    color: var(--ws-checkbox-foreground);
+  }
+}
+
+// 行复选框列
+.row-checkbox-cell {
+  width: 32px;
+  min-width: 32px;
+  text-align: center;
+  vertical-align: middle !important;
+
+  .row-checkbox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin: 0 auto;
+    border: 1px solid var(--ws-checkbox-border);
+    border-radius: 3px;
+    cursor: pointer;
+    background-color: var(--ws-checkbox-background);
+
+    &.checked {
+      background-color: var(--ws-checkbox-select-background);
+      border-color: var(--ws-checkbox-select-background);
+      color: var(--ws-checkbox-foreground);
+    }
+  }
+}
+
+// 行序号列
+.row-number-cell {
+  width: 40px;
+  min-width: 40px;
+  text-align: center;
+  vertical-align: middle !important;
+  color: var(--ws-description-foreground);
+  font-size: 12px;
+}
+
+// 行选择器单元格（合并复选框和序号）- 固定在左侧
+.design-table th.row-selector-cell,
+.design-table td.row-selector-cell {
+  width: 56px;
+  min-width: 56px;
+  text-align: center;
+  vertical-align: middle !important;
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 10;
+  height: 36px;
+  border-right: none !important;
+  background-color: var(--ws-editor-background, #1e1e1e);
+}
+
+.design-table th.row-selector-cell {
+  background-color: var(--ws-editor-widget-background, #252526);
+  z-index: 11;
+}
+
+// 第一个数据列也固定在左侧（紧跟行选择器列）
+.design-table th.first-data-column,
+.design-table td.first-data-column {
+  position: sticky !important;
+  left: 56px !important; // 行选择器列的宽度
+  z-index: 10;
+  background-color: var(--ws-editor-background, #1e1e1e) !important;
+  border-left: none !important;
+  box-shadow: 2px 0 4px -2px var(--ws-widget-shadow, rgba(0, 0, 0, 0.3));
+
+  // 确保内部输入框也有背景色
+  .cell-input:not(.editing) {
+    background-color: var(--ws-editor-background, #1e1e1e) !important;
+  }
+}
+
+.design-table th.first-data-column {
+  background-color: var(--ws-editor-widget-background, #252526) !important;
+  z-index: 11;
+
+  .column-header {
+    background-color: var(--ws-editor-widget-background, #252526) !important;
+  }
+}
+
+.row-selector-cell {
+  // 拖拽图标始终占位，默认透明
+  .row-drag-handle {
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    cursor: grab;
+    color: var(--ws-description-foreground);
+    opacity: 0;
+    visibility: hidden;
+
+    &:hover {
+      opacity: 1;
+    }
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+
+  // 序号固定在右侧位置
+  .row-number {
+    position: absolute;
+    left: 20px;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ws-description-foreground);
+    font-size: 12px;
+  }
+
+  // 复选框固定在右侧位置
+  .row-checkbox {
+    position: absolute;
+    left: 20px;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin: 0 auto;
+    border: 1px solid var(--ws-checkbox-border);
+    border-radius: 3px;
+    cursor: pointer;
+    background-color: var(--ws-checkbox-background);
+
+    &.checked {
+      display: flex;
+      background-color: var(--ws-checkbox-select-background);
+      border-color: var(--ws-checkbox-select-background);
+      color: var(--ws-checkbox-foreground);
+    }
+  }
+
+  // 悬停时显示拖拽图标和复选框，隐藏序号
+  &:hover {
+    .row-number {
+      display: none;
+    }
+
+    .row-drag-handle {
+      opacity: 0.6;
+      visibility: visible;
+    }
+
+    .row-checkbox {
+      display: flex;
+    }
+  }
+
+  // 选中行时始终显示拖拽图标和复选框
+  tr.row-selected & {
+    .row-number {
+      display: none;
+    }
+
+    .row-drag-handle {
+      opacity: 0.6;
+      visibility: visible;
+    }
+
+    .row-checkbox {
+      display: flex;
+    }
+  }
+}
+
+// 表头的选择器单元格 - 拖拽图标占位但不显示，复选框居中
+thead .row-selector-cell {
+  .row-drag-handle {
+    visibility: hidden;
+  }
+
+  .row-checkbox {
+    display: flex;
+  }
+}
+
+// 悬停行样式
+.design-table tbody tr:hover:not(.add-row-tr) {
+  background-color: var(--ws-DataView-hoverBackground) !important;
+
+  .row-selector-cell,
+  .first-data-column {
+    background-color: var(--ws-DataView-hoverBackground) !important;
+  }
+}
+
+// 选中行样式
+.design-table tbody tr.row-selected {
+  background-color: var(--ws-list-inactive-selection-background, rgba(100, 149, 237, 0.15)) !important;
+
+  .row-selector-cell,
+  .first-data-column {
+    background-color: var(--ws-list-inactive-selection-background, rgba(100, 149, 237, 0.15)) !important;
+  }
+}
+
+
+// 数据查看器面板
+.data-viewer-panel {
+  width: 280px;
+  border-left: 1px solid var(--ws-panel-border);
+  display: flex;
+  flex-direction: column;
+  background-color: var(--ws-editor-background);
+
+  .data-viewer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--ws-panel-border);
+
+    .data-viewer-title {
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .data-viewer-close {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--ws-icon-foreground);
+
+      &:hover {
+        background-color: var(--ws-toolbar-hover-background);
+      }
+    }
+  }
+
+  .data-viewer-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .data-viewer-cell-info {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--ws-panel-border);
+
+    .cell-column-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ws-foreground);
+    }
+  }
+
+  .data-viewer-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--ws-panel-border);
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+    }
+
+    .format-menu-group {
+      position: relative;
+    }
+
+    .format-menu-trigger {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+
+      &:hover,
+      &.active {
+        background-color: var(--ws-toolbar-hover-background);
+      }
+    }
+
+    .format-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      z-index: 100;
+      min-width: 160px;
+      background-color: var(--ws-dropdown-background);
+      border: 1px solid var(--ws-dropdown-border);
+      border-radius: 4px;
+      box-shadow: 0 2px 8px var(--ws-widget-shadow);
+      padding: 4px 0;
+
+      .format-menu-section {
+        padding: 4px 0;
+
+        .section-title {
+          padding: 4px 12px;
+          font-size: 11px;
+          color: var(--ws-description-foreground);
+        }
+      }
+
+      .format-menu-divider {
+        height: 1px;
+        background-color: var(--ws-panel-border);
+        margin: 4px 0;
+      }
+
+      .format-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 12px;
+
+        &:hover {
+          background-color: var(--ws-list-hover-background);
+        }
+
+        &.selected {
+          background-color: var(--ws-list-active-selection-background);
+          color: var(--ws-list-active-selection-foreground);
+        }
+
+        .item-check {
+          width: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+      }
+    }
+  }
+
+  .data-viewer-value {
+    flex: 1;
+    overflow: auto;
+    padding: 8px 12px;
+
+    pre {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre;
+    }
+
+    &.word-wrap pre {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+  }
+
+  .data-viewer-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--ws-description-foreground);
+
+    p {
+      margin: 0;
+      font-size: 12px;
+    }
+  }
+}
+
+
+// 表头行样式
+.design-table thead tr.header-row {
+  // 延伸线通过单独的元素实现
+}
+
+// 添加行样式
+.design-table .add-row-tr {
+  // 延伸线通过单独的元素实现
+}
+
+// 延伸线样式
+.table-extend-line {
+  position: absolute;
+  height: 1px;
+  background-color: var(--ws-panel-border);
+  pointer-events: none;
+  right: 0;
+  z-index: 1;
+}

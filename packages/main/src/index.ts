@@ -2,6 +2,7 @@
  * 主进程入口
  */
 
+import { BrowserWindow } from 'electron';
 import { ExtensionManager } from './extensions/ExtensionManager';
 import { SettingsManager } from './config/SettingsManager';
 import { WorkspaceManager } from './workspace/WorkspaceManager';
@@ -19,7 +20,7 @@ import { registerFileReferenceHandlers } from './ipc/fileReferenceHandlers';
 import { registerWorkspaceVectorIndexHandlers, setWorkspaceVectorIndexMainWindow } from './ipc/workspaceVectorIndexHandlers';
 import { registerWorkspaceIndexDbHandlers } from './ipc/workspaceIndexDbHandlers';
 import { ThemeService } from './services/ThemeService';
-import { TerminalService } from './services/terminal/TerminalService';
+import { TerminalService } from './services/terminal';
 import * as path from 'path';
 import { registerSettingsHandlers } from './ipc/settingsHandlers';
 import { registerNoteSystemHandlers } from './note-system';
@@ -74,9 +75,7 @@ let sharedAPIAdapter: PluginAPIAdapter | null = null;
 // ⭐ 终端服务实例
 let terminalService: TerminalService | null = null;
 
-export async function initializeExtensions(mainWindow?: any): Promise<void> {
-  console.log('[Main] ========== initializeExtensions 开始执行 ==========');
-  
+export async function initializeExtensions(mainWindow?: BrowserWindow | null): Promise<void> {
   // 注册 electron-store IPC 处理器
   registerStoreHandlers();
   
@@ -116,10 +115,14 @@ export async function initializeExtensions(mainWindow?: any): Promise<void> {
   // 注册数据库连接器 IPC 处理器
   registerDatabaseConnectorHandlers();
   
-  // 初始化终端服务并注册处理器（只在有 mainWindow 时）
+  // 注册终端 IPC 处理器
+  registerTerminalHandlers();
+  
+  // 初始化终端服务（只在有 mainWindow 时）
   if (mainWindow && !terminalService) {
     terminalService = new TerminalService(mainWindow);
     registerTerminalHandlers(terminalService);
+    console.log('[Main] 终端服务已初始化');
   }
   
   // 初始化主题服务

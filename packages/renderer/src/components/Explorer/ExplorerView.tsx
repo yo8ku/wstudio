@@ -2,6 +2,8 @@ import React, { useCallback, useState } from 'react';
 import { OpenEditorsSection } from './OpenEditors/OpenEditorsSection';
 import { FileTreeSection } from './FileTree/FileTreeSection';
 import { TimelineSection } from './Timeline/TimelineSection';
+import { DatabaseSection } from './Database';
+import { FormSection } from './Form';
 import { FileTreeNode, EditorInfo } from './FileTree/types';
 import { TimelineItem } from './Timeline/types';
 import { ContextMenu, ContextMenuItem } from './Common/ContextMenu';
@@ -81,6 +83,8 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   // 追踪展开/折叠状态
   const [isFileTreeExpanded, setIsFileTreeExpanded] = useState(true);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(false);
+  const [isDatabaseExpanded, setIsDatabaseExpanded] = useState(false);
+  const [isFormExpanded, setIsFormExpanded] = useState(false);
 
   // 处理文件点击
   const handleFileClick = (node: FileTreeNode) => {
@@ -698,6 +702,24 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         onExpandedChange={setIsFileTreeExpanded}
         onBlankAreaClick={onBlankAreaClick}
         onContainerContextMenu={handleTreeBackgroundContextMenu}
+      />
+
+      {/* 数据库 */}
+      <DatabaseSection
+        databases={[]}
+        onNewDatabase={() => {
+          window.dispatchEvent(new CustomEvent('open-database-view'));
+        }}
+        onExpandedChange={setIsDatabaseExpanded}
+      />
+
+      {/* 表单 */}
+      <FormSection
+        forms={[]}
+        onNewForm={() => {
+          window.dispatchEvent(new CustomEvent('open-form-view'));
+        }}
+        onExpandedChange={setIsFormExpanded}
       />
 
       {/* 时间线 */}

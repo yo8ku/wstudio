@@ -1,0 +1,145 @@
+/**
+ * AI 输入栏样式
+ * 功能：通用 AI 输入组件的样式定义
+ */
+
+.ai-input-bar {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ws-panel-border);
+  background-color: var(--ws-editor-background);
+  flex-shrink: 0;
+
+  .ai-input-bar-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    min-height: 40px;
+    background-color: var(--ws-input-background);
+    border: 1px solid var(--ws-panel-border);
+    border-radius: 6px;
+
+    &:focus-within {
+      border-color: var(--ws-focusBorder);
+    }
+  }
+
+  .ai-input-bar-model-select {
+    position: relative;
+    flex-shrink: 0;
+
+    .ai-input-bar-model-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--ws-descriptionForeground);
+      font-size: 12px;
+
+      .ai-input-bar-model-name {
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .ai-input-bar-model-dropdown {
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      margin-bottom: 4px;
+      min-width: 180px;
+      max-height: 200px;
+      overflow-y: auto;
+      background-color: var(--ws-dropdown-background);
+      border: 1px solid var(--ws-dropdown-border);
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 100;
+
+      .ai-input-bar-model-option {
+        padding: 8px 12px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--ws-dropdown-foreground);
+
+        &:hover {
+          background-color: var(--ws-list-hoverBackground);
+        }
+
+        &.selected {
+          background-color: var(--ws-list-activeSelectionBackground);
+          color: var(--ws-list-activeSelectionForeground);
+        }
+      }
+
+      .ai-input-bar-model-empty {
+        padding: 12px;
+        text-align: center;
+        color: var(--ws-descriptionForeground);
+        font-size: 13px;
+      }
+    }
+  }
+
+  .ai-input-bar-input {
+    flex: 1;
+    min-width: 0;
+    min-height: 21px;
+    background: transparent;
+    border: none;
+    color: var(--ws-input-foreground);
+    font-size: 13px;
+    line-height: 21px;
+    resize: none;
+    outline: none;
+
+    &::placeholder {
+      color: var(--ws-input-placeholderForeground);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+    }
+  }
+
+  .ai-input-bar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+
+    &.ai-input-bar-btn-send {
+      color: var(--ws-button-foreground);
+      background-color: var(--ws-button-background);
+
+      &:hover:not(.disabled) {
+        background-color: var(--ws-button-hoverBackground);
+      }
+
+      &.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+
+    &.ai-input-bar-btn-stop {
+      color: var(--ws-errorForeground);
+      background-color: var(--ws-inputValidation-errorBackground);
+
+      &:hover {
+        opacity: 0.8;
+      }
+    }
+  }
+}
