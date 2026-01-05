@@ -4,7 +4,7 @@
  * 描述：支持创建和编辑表格，可将结果插入到编辑器中
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Icon } from '../../../Icons/Icon';
 import { AIInputBar } from '../../../common/AIInputBar';
 import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
@@ -21,6 +21,17 @@ import {
   AlertDialogCancel,
 } from '../../../common/AlertDialog/AlertDialog';
 import { getOllamaTranslateService } from '../../../../services/translate';
+import { getTableDesignerSystemPrompt } from '../../../../services/ai/SystemPrompt';
+import { aiService } from '../../../../services/ai/AIService';
+import { getCachedModels, getModelConfig } from '../../../../services/ModelCacheService';
+import { isModelEnabled } from '../../../../services/ai';
+import { TableOperations, type QueryCondition } from './TableOperations';
+import { QueryConditionPanel } from './QueryConditionPanel';
+import { BatchTableGenerator } from './BatchTableGenerator';
+import { HierarchyTableManager } from './HierarchyTableManager';
+import { TanStackTableCore } from './TanStackTableCore';
+import { getTableImportService } from '../../../../services/tableImport';
+import { notification } from '../../../../stores/notificationStore';
 import type {
   TableColumn,
   TableRow,
@@ -33,7 +44,6 @@ import './TableDesigner.scss';
 
 interface TableDesignerProps {
   initialConfig?: TableConfig;
-  onInsert?: (config: TableConfig) => void;
 }
 
 /** 生成唯一ID */
@@ -60,7 +70,6 @@ const createDefaultRow = (columns: TableColumn[]): TableRow => {
 
 export const TableDesigner: React.FC<TableDesignerProps> = ({
   initialConfig,
-  onInsert,
 }) => {
   // 表格设计器状态
   const [name, setName] = useState(initialConfig?.name || '未命名表格');
@@ -72,6 +81,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   );
   const [editingCell, setEditingCell] = useState<{ rowId: string; colId: string } | null>(null);
   const [columnMenu, setColumnMenu] = useState<{ columnId: string; position: { x: number; y: number } } | null>(null);
+  const [cellContextMenu, setCellContextMenu] = useState<{ rowId: string; colId: string; position: { x: number; y: number } } | null>(null);
   const [selectedCell, setSelectedCell] = useState<{ rowId: string; colId: string } | null>(null);
   const [cellToolbar, setCellToolbar] = useState<{ rowId: string; colId: string; position: { x: number; y: number } } | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
@@ -91,30 +101,105 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   const tableWrapperRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [extendLineStyle, setExtendLineStyle] = useState({ top: 0, bottom: 0, left: 0 });
+  const [needStickyColumn, setNeedStickyColumn] = useState(false);
+
+  // 查询结果状态
+  const [queryResult, setQueryResult] = useState<{ success: boolean; message: string; data: Record<string, CellValue>[] } | null>(null);
+  const [originalQueryResult, setOriginalQueryResult] = useState<Record<string, CellValue>[]>([]); // 保存原始查询结果用于搜索过滤
+  const [isQuerying, setIsQuerying] = useState(false);
+  const [isQueryPanelFullscreen, setIsQueryPanelFullscreen] = useState(false);
+  const [showQueryConditionPanel, setShowQueryConditionPanel] = useState(false);
+
+  // 查询结果编辑状态
+  const [editingQueryCell, setEditingQueryCell] = useState<{ rowIndex: number; columnName: string } | null>(null);
+  const [editingQueryValue, setEditingQueryValue] = useState<string>('');
+
+  // 搜索状态
+  const [searchKeyword, setSearchKeyword] = useState<string>('');
+
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 100;
+
+  // 当前命令类型状态
+  const [currentCommandType, setCurrentCommandType] = useState<string | null>(null);
+
+  // AI 生成状态
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [showDiscardButton, setShowDiscardButton] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState<string>('');
+  const generatorRef = useRef<BatchTableGenerator | null>(null);
+  const preGenerateDataRef = useRef<{ columns: TableColumn[]; rows: TableRow[] } | null>(null);
+
+  // 拖动选择多行状态
+  const [isDraggingSelect, setIsDraggingSelect] = useState(false);
+  const dragStartRowIndex = useRef<number>(-1);
+  const hasDraggedRef = useRef<boolean>(false); // 跟踪是否真正发生了拖拽
+
+  // 拖动行排序状态
+  const [isDraggingRow, setIsDraggingRow] = useState(false);
+  const [dragRowIndex, setDragRowIndex] = useState<number>(-1);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number>(-1);
+  const dragRowIndexRef = useRef<number>(-1);
+  const dropTargetIndexRef = useRef<number>(-1);
+
+  // 查询结果面板宽度拖动状态
+  const [queryPanelWidth, setQueryPanelWidth] = useState(400);
+  const [isResizingQueryPanel, setIsResizingQueryPanel] = useState(false);
+  const queryPanelResizeStartX = useRef<number>(0);
+  const queryPanelResizeStartWidth = useRef<number>(0);
+  const QUERY_PANEL_MIN_WIDTH = 300;
+  const QUERY_PANEL_MAX_WIDTH = 800;
 
   // 列宽拖动状态
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
   const resizeStartX = useRef<number>(0);
   const resizeStartWidth = useRef<number>(0);
 
+  // 计算扁平化的层级行数据
+  const flattenedRows = useMemo(() => {
+    return HierarchyTableManager.flattenRows(rows);
+  }, [rows]);
+
+  // 检测是否需要固定列（有横向滚动条且已滚动）
+  useEffect(() => {
+    const checkNeedStickyColumn = () => {
+      if (!tableWrapperRef.current) return;
+      const wrapper = tableWrapperRef.current;
+      // 有横向滚动条且已滚动时才需要固定列
+      const hasHorizontalScroll = wrapper.scrollWidth > wrapper.clientWidth;
+      const hasScrolled = wrapper.scrollLeft > 0;
+      setNeedStickyColumn(hasHorizontalScroll && hasScrolled);
+    };
+
+    const wrapper = tableWrapperRef.current;
+    wrapper?.addEventListener('scroll', checkNeedStickyColumn);
+    window.addEventListener('resize', checkNeedStickyColumn);
+    
+    // 初始检测
+    checkNeedStickyColumn();
+
+    return () => {
+      wrapper?.removeEventListener('scroll', checkNeedStickyColumn);
+      window.removeEventListener('resize', checkNeedStickyColumn);
+    };
+  }, [columns]);
+
   // 计算延伸线位置
   useEffect(() => {
     const updateExtendLinePosition = () => {
       if (!tableRef.current || !tableContainerRef.current || !tableWrapperRef.current) return;
       
-      const tableRect = tableRef.current.getBoundingClientRect();
       const scrollLeft = tableWrapperRef.current.scrollLeft;
       const scrollTop = tableWrapperRef.current.scrollTop;
       
-      // 计算表格右边界相对于 wrapper 的位置
-      const tableRightInWrapper = tableRect.width + 12 - scrollLeft; // 12 是 padding
+      // 计算表格右边界相对于 wrapper 的位置（不包括添加列按钮的宽度40px）
+      const tableWidth = tableRef.current.offsetWidth;
+      const tableRightInWrapper = tableWidth + 12 - scrollLeft - 40; // 12 是 padding，40 是添加列按钮宽度
       
-      // 获取添加行的位置（表格底部）- 考虑滚动偏移
-      const addRowTr = tableRef.current.querySelector('.add-row-tr');
+      // 获取添加行的位置（表格底部）- 考虑滚动偏移，减1避免与边框重叠
       const tableHeight = tableRef.current.offsetHeight;
-      const addRowBottom = addRowTr 
-        ? 12 + tableHeight - scrollTop // padding + 表格高度 - 滚动偏移
-        : 12 + tableHeight - scrollTop;
+      const addRowBottom = 12 + tableHeight - scrollTop - 1; // padding + 表格高度 - 滚动偏移 - 1px避免重叠
       
       setExtendLineStyle({
         top: 12 - scrollTop, // padding - 滚动偏移
@@ -165,6 +250,19 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     }
   }, [selectedCell]);
 
+  // 点击表格外部取消多行选中
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tableRef.current && !tableRef.current.contains(event.target as Node)) {
+        setSelectedRows(new Set());
+      }
+    };
+    if (selectedRows.size > 0) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [selectedRows.size]);
+
 
   // 开始拖动调整列宽
   const handleResizeStart = useCallback((columnId: string, event: React.MouseEvent) => {
@@ -177,6 +275,13 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       resizeStartWidth.current = column.width || 150;
     }
   }, [columns]);
+
+  // 列宽变化回调（供 TanStackTableCore 使用）
+  const handleColumnWidthChange = useCallback((columnId: string, width: number) => {
+    setColumns(prev =>
+      prev.map(col => (col.id === columnId ? { ...col, width } : col))
+    );
+  }, []);
 
   // 监听鼠标移动和释放事件
   useEffect(() => {
@@ -202,6 +307,40 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       document.removeEventListener('mouseup', handleResizeEnd);
     };
   }, [resizingColumn]);
+
+  // 查询结果面板拖动开始
+  const handleQueryPanelResizeStart = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    setIsResizingQueryPanel(true);
+    queryPanelResizeStartX.current = event.clientX;
+    queryPanelResizeStartWidth.current = queryPanelWidth;
+  }, [queryPanelWidth]);
+
+  // 查询结果面板拖动处理
+  useEffect(() => {
+    if (!isResizingQueryPanel) return;
+
+    const handleResizeMove = (event: MouseEvent) => {
+      const delta = queryPanelResizeStartX.current - event.clientX;
+      const newWidth = Math.min(
+        QUERY_PANEL_MAX_WIDTH,
+        Math.max(QUERY_PANEL_MIN_WIDTH, queryPanelResizeStartWidth.current + delta)
+      );
+      setQueryPanelWidth(newWidth);
+    };
+
+    const handleResizeEnd = () => {
+      setIsResizingQueryPanel(false);
+    };
+
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, [isResizingQueryPanel]);
 
   // 添加列
   const handleAddColumn = useCallback(() => {
@@ -323,17 +462,83 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     }, 0);
   }, [columns]);
 
-  // 删除行
+  // 删除行（包括子行）
   const handleDeleteRow = useCallback((rowId: string) => {
     if (rows.length <= 1) return;
-    setRows(prev => prev.filter(row => row.id !== rowId));
+    // 使用 HierarchyTableManager 删除行及其所有子行
+    setRows(prev => HierarchyTableManager.deleteRowWithChildren(prev, rowId));
     // 同时从选中行中移除
     setSelectedRows(prev => {
       const next = new Set(prev);
       next.delete(rowId);
+      // 也移除被删除的子行
+      const childIds = HierarchyTableManager.getChildRowIds(rows, rowId);
+      childIds.forEach(id => next.delete(id));
       return next;
     });
-  }, [rows.length]);
+  }, [rows]);
+
+  // 添加子记录
+  const handleAddChildRow = useCallback((parentId: string) => {
+    const { rows: newRows, newRow } = HierarchyTableManager.addChildRow(rows, columns, parentId);
+    setRows(newRows);
+    
+    // 自动聚焦到新行的第一个可编辑列
+    setTimeout(() => {
+      const firstEditableCol = columns.find(col => col.type !== 'checkbox');
+      if (firstEditableCol) {
+        setEditingCell({ rowId: newRow.id, colId: firstEditableCol.id });
+        setSelectedCell({ rowId: newRow.id, colId: firstEditableCol.id });
+      }
+    }, 0);
+  }, [rows, columns]);
+
+  // 切换行展开/折叠
+  const handleToggleRowExpanded = useCallback((rowId: string) => {
+    setRows(prev => HierarchyTableManager.toggleRowExpanded(prev, rowId));
+  }, []);
+
+  // 向上插入行（支持多行，继承父行关系）
+  const handleInsertRowAbove = useCallback((rowId: string, count: number = 1) => {
+    const rowIndex = rows.findIndex(r => r.id === rowId);
+    if (rowIndex === -1) return;
+    const currentRow = rows[rowIndex];
+    const newRows: TableRow[] = [];
+    for (let i = 0; i < count; i++) {
+      const newRow = createDefaultRow(columns);
+      // 如果当前行是子记录，新行也继承相同的父行
+      if (currentRow.parentId) {
+        newRow.parentId = currentRow.parentId;
+      }
+      newRows.push(newRow);
+    }
+    setRows(prev => {
+      const result = [...prev];
+      result.splice(rowIndex, 0, ...newRows);
+      return result;
+    });
+  }, [rows, columns]);
+
+  // 向下插入行（支持多行，继承父行关系）
+  const handleInsertRowBelow = useCallback((rowId: string, count: number = 1) => {
+    const rowIndex = rows.findIndex(r => r.id === rowId);
+    if (rowIndex === -1) return;
+    const currentRow = rows[rowIndex];
+    const newRows: TableRow[] = [];
+    for (let i = 0; i < count; i++) {
+      const newRow = createDefaultRow(columns);
+      // 如果当前行是子记录，新行也继承相同的父行
+      if (currentRow.parentId) {
+        newRow.parentId = currentRow.parentId;
+      }
+      newRows.push(newRow);
+    }
+    setRows(prev => {
+      const result = [...prev];
+      result.splice(rowIndex + 1, 0, ...newRows);
+      return result;
+    });
+  }, [rows, columns]);
 
   // 切换行选中状态
   const handleToggleRowSelect = useCallback((rowId: string) => {
@@ -357,6 +562,154 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     }
   }, [rows, selectedRows.size]);
 
+  // 拖动选择开始
+  const handleRowDragSelectStart = useCallback((rowIndex: number, event: React.MouseEvent) => {
+    // 只响应左键
+    if (event.button !== 0) return;
+    // 如果正在编辑单元格，不触发拖拽选择
+    if (editingCell) {
+      return;
+    }
+    // 如果点击的是正在编辑的输入框，不触发拖拽选择
+    const target = event.target as HTMLElement;
+    if (target.tagName === 'INPUT' && target.classList.contains('editing')) {
+      return;
+    }
+    event.preventDefault();
+    setIsDraggingSelect(true);
+    dragStartRowIndex.current = rowIndex;
+    hasDraggedRef.current = false; // 重置拖拽标记
+    // 开始拖动时，先选中当前行
+    const rowId = rows[rowIndex]?.id;
+    if (rowId) {
+      setSelectedRows(new Set([rowId]));
+    }
+  }, [rows, editingCell]);
+
+  // 拖动选择移动（通过行索引）
+  const updateDragSelection = useCallback((rowIndex: number) => {
+    if (dragStartRowIndex.current === -1) return;
+    // 标记已经发生了拖拽
+    if (rowIndex !== dragStartRowIndex.current) {
+      hasDraggedRef.current = true;
+    }
+    const startIndex = Math.min(dragStartRowIndex.current, rowIndex);
+    const endIndex = Math.max(dragStartRowIndex.current, rowIndex);
+    const selectedIds = new Set<string>();
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (rows[i]) {
+        selectedIds.add(rows[i].id);
+      }
+    }
+    setSelectedRows(selectedIds);
+  }, [rows]);
+
+  // 拖动选择：监听 document 的 mousemove 和 mouseup
+  useEffect(() => {
+    if (!isDraggingSelect) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      // 找到鼠标所在的行
+      const target = event.target as HTMLElement;
+      const tr = target.closest('tr');
+      if (!tr || !tableRef.current?.contains(tr)) return;
+      
+      // 获取行索引
+      const tbody = tableRef.current.querySelector('tbody');
+      if (!tbody) return;
+      const allRows = Array.from(tbody.querySelectorAll('tr:not(.add-row-tr)'));
+      const rowIndex = allRows.indexOf(tr);
+      if (rowIndex >= 0) {
+        updateDragSelection(rowIndex);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingSelect(false);
+      dragStartRowIndex.current = -1;
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingSelect, updateDragSelection]);
+
+  // 拖动行排序：开始拖动
+  const handleRowDragStart = useCallback((flatIndex: number, event: React.MouseEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDraggingRow(true);
+    setDragRowIndex(flatIndex);
+    setDropTargetIndex(flatIndex);
+    dragRowIndexRef.current = flatIndex;
+    dropTargetIndexRef.current = flatIndex;
+  }, []);
+
+  // 拖动行排序：监听 document 的 mousemove 和 mouseup
+  useEffect(() => {
+    if (!isDraggingRow) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const tr = target.closest('tr');
+      if (!tr || !tableRef.current?.contains(tr)) return;
+      
+      const tbody = tableRef.current.querySelector('tbody');
+      if (!tbody) return;
+      const allRows = Array.from(tbody.querySelectorAll('tr:not(.add-row-tr)'));
+      const flatIndex = allRows.indexOf(tr);
+      if (flatIndex >= 0 && flatIndex !== dropTargetIndexRef.current) {
+        dropTargetIndexRef.current = flatIndex;
+        setDropTargetIndex(flatIndex);
+      }
+    };
+
+    const handleMouseUp = () => {
+      // 执行行位置交换（基于扁平化索引）
+      const fromFlatIndex = dragRowIndexRef.current;
+      const toFlatIndex = dropTargetIndexRef.current;
+      if (fromFlatIndex !== -1 && toFlatIndex !== -1 && fromFlatIndex !== toFlatIndex) {
+        // 获取扁平化列表中对应的行
+        const currentFlattenedRows = HierarchyTableManager.flattenRows(rows);
+        const fromRow = currentFlattenedRows[fromFlatIndex]?.row;
+        const toRow = currentFlattenedRows[toFlatIndex]?.row;
+        
+        if (fromRow && toRow) {
+          // 在原始 rows 数组中找到对应的索引
+          const fromOriginalIndex = rows.findIndex(r => r.id === fromRow.id);
+          const toOriginalIndex = rows.findIndex(r => r.id === toRow.id);
+          
+          if (fromOriginalIndex !== -1 && toOriginalIndex !== -1) {
+            setRows(prev => {
+              const newRows = [...prev];
+              const [movedRow] = newRows.splice(fromOriginalIndex, 1);
+              // 如果目标位置在源位置之后，需要调整索引
+              const adjustedToIndex = toOriginalIndex > fromOriginalIndex ? toOriginalIndex : toOriginalIndex;
+              newRows.splice(adjustedToIndex, 0, movedRow);
+              return newRows;
+            });
+          }
+        }
+      }
+      setIsDraggingRow(false);
+      setDragRowIndex(-1);
+      setDropTargetIndex(-1);
+      dragRowIndexRef.current = -1;
+      dropTargetIndexRef.current = -1;
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingRow, rows]);
+
   // 更新单元格值
   const handleUpdateCell = useCallback((rowId: string, colId: string, value: CellValue) => {
     setRows(prev => prev.map(row =>
@@ -366,10 +719,89 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     ));
   }, []);
 
+  // 根据数据内容推断列类型
+  const inferTypeFromData = useCallback((sampleValues: CellValue[]): ColumnType | null => {
+    const nonEmptyValues = sampleValues.filter(val => val !== null && val !== undefined && val !== '');
+    if (nonEmptyValues.length === 0) return null;
+
+    // 检查是否全部是时间格式 (HH:MM 或 HH:MM:SS)
+    const allTime = nonEmptyValues.every(val => 
+      typeof val === 'string' && /^\d{1,2}:\d{2}(:\d{2})?$/.test(val)
+    );
+    if (allTime) return 'time';
+
+    // 检查是否全部是日期格式 (YYYY-MM-DD 或 YYYY/MM/DD)
+    const allDate = nonEmptyValues.every(val => 
+      typeof val === 'string' && /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(val)
+    );
+    if (allDate) return 'date';
+
+    // 检查是否全部是数字
+    const allNumber = nonEmptyValues.every(val => 
+      typeof val === 'number' || (typeof val === 'string' && /^-?\d+\.?\d*$/.test(val))
+    );
+    if (allNumber) return 'number';
+
+    // 检查是否全部是布尔值
+    const allBoolean = nonEmptyValues.every(val => 
+      typeof val === 'boolean' || val === 'true' || val === 'false'
+    );
+    if (allBoolean) return 'checkbox';
+
+    // 检查是否全部是邮箱
+    const allEmail = nonEmptyValues.every(val => 
+      typeof val === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)
+    );
+    if (allEmail) return 'email';
+
+    // 检查是否全部是 URL
+    const allUrl = nonEmptyValues.every(val => 
+      typeof val === 'string' && /^https?:\/\//.test(val)
+    );
+    if (allUrl) return 'url';
+
+    return null;
+  }, []);
+
+  // 验证并转换列类型（结合 AI 返回类型和数据内容）
+  const validateColumnType = useCallback((
+    colType: string, 
+    colName: string,
+    sampleValues: CellValue[]
+  ): ColumnType => {
+    const validTypes: ColumnType[] = ['text', 'number', 'date', 'time', 'checkbox', 'select', 'multiselect', 'tag', 'url', 'email'];
+    
+    // 先根据数据内容推断类型
+    const inferredType = inferTypeFromData(sampleValues);
+    
+    // 如果 AI 返回的类型有效
+    if (validTypes.includes(colType as ColumnType)) {
+      const aiType = colType as ColumnType;
+      
+      // 如果推断出的类型与 AI 类型不同，且推断类型更具体，使用推断类型
+      if (inferredType && inferredType !== aiType) {
+        // 时间/日期类型优先级高于 text
+        if ((inferredType === 'time' || inferredType === 'date') && aiType === 'text') {
+          return inferredType;
+        }
+        // 数字类型优先级高于 text
+        if (inferredType === 'number' && aiType === 'text') {
+          return inferredType;
+        }
+      }
+      
+      return aiType;
+    }
+    
+    // AI 返回的类型无效，使用推断类型或默认 text
+    return inferredType || 'text';
+  }, [inferTypeFromData]);
+
   // AI 生成表格数据处理
   const handleAIGenerate = useCallback((content: string) => {
     try {
       let jsonContent = content.trim();
+      // 移除 markdown 代码块标记
       if (jsonContent.startsWith('```json')) {
         jsonContent = jsonContent.slice(7);
       } else if (jsonContent.startsWith('```')) {
@@ -380,16 +812,107 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       }
       jsonContent = jsonContent.trim();
 
-      const data = JSON.parse(jsonContent) as {
+      // 尝试提取有效的 JSON 对象
+      const jsonStartIndex = jsonContent.indexOf('{');
+      const jsonEndIndex = jsonContent.lastIndexOf('}');
+      
+      if (jsonStartIndex === -1 || jsonEndIndex === -1 || jsonEndIndex <= jsonStartIndex) {
+        console.error('[TableDesigner] AI 生成表格解析失败: 未找到有效的 JSON 对象');
+        return;
+      }
+      
+      jsonContent = jsonContent.slice(jsonStartIndex, jsonEndIndex + 1);
+
+      // 尝试直接解析
+      let data: {
         columns: Array<{ name: string; type: string }>;
         rows: Array<Record<string, CellValue>>;
-      };
+      } | null = null;
 
-      if (data.columns && Array.isArray(data.columns)) {
+      try {
+        data = JSON.parse(jsonContent);
+      } catch {
+        // 如果解析失败，尝试修复常见问题
+        // 1. 移除尾部不完整的内容（找到最后一个完整的对象或数组）
+        let fixedJson = jsonContent;
+        
+        // 尝试找到 rows 数组的结束位置
+        const rowsMatch = fixedJson.match(/"rows"\s*:\s*\[/);
+        if (rowsMatch) {
+          const rowsStartIndex = fixedJson.indexOf(rowsMatch[0]);
+          const afterRows = fixedJson.slice(rowsStartIndex);
+          
+          // 找到最后一个完整的 } 后跟 , 或 ]
+          let lastValidIndex = -1;
+          let depth = 0;
+          let inString = false;
+          let escapeNext = false;
+          
+          for (let i = 0; i < afterRows.length; i++) {
+            const char = afterRows[i];
+            
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+            
+            if (char === '\\') {
+              escapeNext = true;
+              continue;
+            }
+            
+            if (char === '"' && !escapeNext) {
+              inString = !inString;
+              continue;
+            }
+            
+            if (inString) continue;
+            
+            if (char === '{' || char === '[') depth++;
+            if (char === '}' || char === ']') {
+              depth--;
+              if (depth === 1) {
+                // 找到一个完整的行对象
+                lastValidIndex = rowsStartIndex + i;
+              }
+            }
+          }
+          
+          if (lastValidIndex > 0) {
+            // 截断到最后一个完整对象，并补全结构
+            fixedJson = fixedJson.slice(0, lastValidIndex + 1) + ']}';
+            try {
+              data = JSON.parse(fixedJson);
+              console.log('[TableDesigner] JSON 修复成功');
+            } catch {
+              console.error('[TableDesigner] AI 生成表格解析失败: JSON 修复失败');
+              return;
+            }
+          }
+        }
+        
+        if (!data) {
+          console.error('[TableDesigner] AI 生成表格解析失败: 无法解析 JSON');
+          return;
+        }
+      }
+
+      if (data && data.columns && Array.isArray(data.columns)) {
+        // 收集每列的样本数据用于类型验证
+        const sampleDataByColumn: Record<string, CellValue[]> = {};
+        if (data.rows && Array.isArray(data.rows)) {
+          data.columns.forEach((col) => {
+            sampleDataByColumn[col.name] = data.rows
+              .slice(0, 10)
+              .map(row => row[col.name])
+              .filter(val => val !== undefined);
+          });
+        }
+
         const newColumns: TableColumn[] = data.columns.map((col, index) => ({
           id: generateId(),
           name: col.name || `列 ${index + 1}`,
-          type: (col.type as ColumnType) || 'text',
+          type: validateColumnType(col.type || 'text', col.name, sampleDataByColumn[col.name] || []),
           width: 150,
         }));
 
@@ -423,7 +946,304 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     } catch (error) {
       console.error('[TableDesigner] AI 生成表格解析失败:', error);
     }
+  }, [validateColumnType]);
+
+  // 处理分批生成的表格数据
+  const handleBatchGenerateData = useCallback((data: { columns: Array<{ name: string; type: string }>; rows: Array<Record<string, CellValue>> }) => {
+    if (!data.columns || !Array.isArray(data.columns)) return;
+
+    // 收集每列的样本数据用于类型验证
+    const sampleDataByColumn: Record<string, CellValue[]> = {};
+    if (data.rows && Array.isArray(data.rows)) {
+      data.columns.forEach((col) => {
+        sampleDataByColumn[col.name] = data.rows
+          .slice(0, 10)
+          .map(row => row[col.name])
+          .filter(val => val !== undefined);
+      });
+    }
+
+    const newColumns: TableColumn[] = data.columns.map((col, index) => ({
+      id: generateId(),
+      name: col.name || `列 ${index + 1}`,
+      type: validateColumnType(col.type || 'text', col.name, sampleDataByColumn[col.name] || []),
+      width: 150,
+    }));
+
+    const newRows: TableRow[] = [];
+    if (data.rows && Array.isArray(data.rows)) {
+      data.rows.forEach((rowData) => {
+        const row: TableRow = {
+          id: generateId(),
+          cells: {},
+        };
+        newColumns.forEach((col, colIndex) => {
+          const originalColName = data.columns[colIndex]?.name;
+          if (originalColName && rowData[originalColName] !== undefined) {
+            row.cells[col.id] = rowData[originalColName];
+          } else {
+            row.cells[col.id] = '';
+          }
+        });
+        newRows.push(row);
+      });
+    }
+
+    if (newRows.length === 0) {
+      newRows.push(createDefaultRow(newColumns));
+    }
+
+    setColumns(newColumns);
+    setRows(newRows);
+    console.log('[TableDesigner] 分批生成表格成功:', { columns: newColumns.length, rows: newRows.length });
+  }, [validateColumnType]);
+
+  // 自定义生成函数（支持分批生成和流式更新）
+  const customGenerateFunction = useCallback(async (
+    input: string,
+    modelId: string,
+    callbacks: {
+      onProgress?: (message: string) => void;
+      onComplete: (content: string) => void;
+      onError?: (error: Error) => void;
+    }
+  ) => {
+    const generator = new BatchTableGenerator(modelId);
+    generatorRef.current = generator;
+    
+    // 保存生成前的数据
+    preGenerateDataRef.current = {
+      columns: [...columns],
+      rows: [...rows],
+    };
+    
+    setIsGenerating(true);
+    setShowDiscardButton(false);
+    setGenerateProgress('正在生成数据...');
+    
+    try {
+      await generator.generate(input, {
+        onProgress: (message) => {
+          setGenerateProgress(message);
+          callbacks.onProgress?.(message);
+        },
+        onStreamData: (data) => {
+          // 流式更新表格显示
+          handleBatchGenerateData(data);
+        },
+        onBatchComplete: (_batchIndex, _totalBatches, data) => {
+          // 每批完成时更新表格显示
+          handleBatchGenerateData(data);
+        },
+        onComplete: (data) => {
+          console.log('[TableDesigner] 生成完成，显示放弃按钮');
+          handleBatchGenerateData(data);
+          setIsGenerating(false);
+          setGenerateProgress('');
+          setShowDiscardButton(true); // 生成完成后显示放弃按钮
+          generatorRef.current = null;
+          // 返回空字符串，因为我们已经直接处理了数据
+          callbacks.onComplete('');
+        },
+        onError: (error) => {
+          setIsGenerating(false);
+          setGenerateProgress('');
+          generatorRef.current = null;
+          preGenerateDataRef.current = null;
+          callbacks.onError?.(error);
+        },
+      });
+    } catch (error) {
+      setIsGenerating(false);
+      generatorRef.current = null;
+      preGenerateDataRef.current = null;
+      callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
+    }
+  }, [handleBatchGenerateData, columns, rows]);
+
+  // 取消生成
+  const handleCancelGenerate = useCallback(() => {
+    if (generatorRef.current) {
+      generatorRef.current.stop();
+      generatorRef.current = null;
+    }
+    // 恢复生成前的数据
+    if (preGenerateDataRef.current) {
+      setColumns(preGenerateDataRef.current.columns);
+      setRows(preGenerateDataRef.current.rows);
+      preGenerateDataRef.current = null;
+    }
+    setIsGenerating(false);
+    setShowDiscardButton(false);
+    setGenerateProgress('');
   }, []);
+
+  // 放弃生成的数据
+  const handleDiscardGenerate = useCallback(() => {
+    if (preGenerateDataRef.current) {
+      setColumns(preGenerateDataRef.current.columns);
+      setRows(preGenerateDataRef.current.rows);
+      preGenerateDataRef.current = null;
+    }
+    setShowDiscardButton(false);
+  }, []);
+
+  // 确认保留生成的数据
+  const handleAcceptGenerate = useCallback(() => {
+    preGenerateDataRef.current = null;
+    setShowDiscardButton(false);
+  }, []);
+
+  // 获取当前表格数据的 JSON 表示（用于 AI 查询）
+  const getTableDataForAI = useCallback((): string => {
+    const tableData = {
+      columns: columns.map(col => ({ name: col.name, type: col.type })),
+      rows: rows.map((row, index) => {
+        const rowData: Record<string, CellValue> = { _rowIndex: index };
+        columns.forEach(col => {
+          rowData[col.name] = row.cells[col.id];
+        });
+        return rowData;
+      }),
+    };
+    return JSON.stringify(tableData, null, 2);
+  }, [columns, rows]);
+
+  // 创建表格操作实例
+  const tableOperations = useRef(new TableOperations(columns, rows));
+
+  // 更新表格操作实例的数据源
+  useEffect(() => {
+    tableOperations.current.updateDataSource(columns, rows);
+  }, [columns, rows]);
+
+  // 处理查询命令（使用代码实现，不调用 AI）
+  const handleQueryCommand = useCallback((queryContent: string) => {
+    console.log('[TableDesigner] 执行查询命令:', queryContent);
+    // 显示查询条件面板
+    setShowQueryConditionPanel(true);
+  }, []);
+
+  // 处理查询条件面板的查询
+  const handleQueryWithConditions = useCallback((conditions: QueryCondition[], logic: 'and' | 'or') => {
+    const result = tableOperations.current.query({ conditions, conditionLogic: logic });
+    setOriginalQueryResult(result.data); // 保存原始查询结果
+    setSearchKeyword(''); // 清空搜索关键词
+    setCurrentPage(1); // 重置分页
+    setQueryResult({
+      success: result.success,
+      message: result.message,
+      data: result.data,
+    });
+  }, []);
+
+  // 处理搜索（在查询结果中搜索关键词）
+  const handleSearch = useCallback(() => {
+    setCurrentPage(1); // 搜索时重置分页
+    if (!searchKeyword.trim()) {
+      // 空关键词返回原始查询结果
+      setQueryResult(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          message: `查询到 ${originalQueryResult.length} 条数据`,
+          data: originalQueryResult,
+        };
+      });
+      return;
+    }
+
+    // 在原始查询结果中搜索
+    const keyword = searchKeyword.trim().toLowerCase();
+    const filteredData = originalQueryResult.filter(row => {
+      return Object.entries(row).some(([key, value]) => {
+        if (key === '_rowIndex' || key === '_rowId') return false;
+        return String(value ?? '').toLowerCase().includes(keyword);
+      });
+    });
+
+    setQueryResult(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        message: `查询到 ${filteredData.length} 条数据`,
+        data: filteredData,
+      };
+    });
+  }, [searchKeyword, originalQueryResult]);
+
+  // 搜索框回车处理
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  }, [handleSearch]);
+
+  // 处理查询结果单元格双击编辑
+  const handleQueryCellDoubleClick = useCallback((rowIndex: number, columnName: string, value: CellValue) => {
+    setEditingQueryCell({ rowIndex, columnName });
+    setEditingQueryValue(String(value ?? ''));
+  }, []);
+
+  // 处理查询结果单元格编辑完成
+  const handleQueryCellEditComplete = useCallback(() => {
+    if (!editingQueryCell || !queryResult) return;
+
+    const { rowIndex, columnName } = editingQueryCell;
+    const rowData = queryResult.data[rowIndex];
+    const originalRowIndex = rowData._rowIndex as number;
+    const originalRowId = rowData._rowId as string;
+
+    // 找到对应的列
+    const column = columns.find(col => col.name === columnName);
+    if (!column) {
+      setEditingQueryCell(null);
+      return;
+    }
+
+    // 更新原始数据
+    setRows(prev => {
+      const newRows = [...prev];
+      const targetRowIndex = newRows.findIndex(r => r.id === originalRowId);
+      if (targetRowIndex !== -1) {
+        newRows[targetRowIndex] = {
+          ...newRows[targetRowIndex],
+          cells: {
+            ...newRows[targetRowIndex].cells,
+            [column.id]: editingQueryValue,
+          },
+        };
+      }
+      return newRows;
+    });
+
+    // 更新查询结果显示
+    setQueryResult(prev => {
+      if (!prev) return prev;
+      const newData = [...prev.data];
+      newData[rowIndex] = {
+        ...newData[rowIndex],
+        [columnName]: editingQueryValue,
+      };
+      return { ...prev, data: newData };
+    });
+
+    setEditingQueryCell(null);
+  }, [editingQueryCell, queryResult, columns, editingQueryValue]);
+
+  // 处理查询结果单元格编辑取消
+  const handleQueryCellEditCancel = useCallback(() => {
+    setEditingQueryCell(null);
+  }, []);
+
+  // 处理查询结果单元格编辑键盘事件
+  const handleQueryCellKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleQueryCellEditComplete();
+    } else if (e.key === 'Escape') {
+      handleQueryCellEditCancel();
+    }
+  }, [handleQueryCellEditComplete, handleQueryCellEditCancel]);
 
 
   // 格式化数据为指定格式
@@ -507,26 +1327,6 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     return lines.join('\n');
   }, [columns, rows]);
 
-  // 插入到编辑器
-  const handleInsert = useCallback(() => {
-    const config: TableConfig = {
-      id: initialConfig?.id || generateId(),
-      name,
-      columns,
-      rows,
-      createdAt: initialConfig?.createdAt || Date.now(),
-      updatedAt: Date.now(),
-    };
-    if (onInsert) {
-      onInsert(config);
-    }
-    const markdown = generateMarkdown();
-    console.log('[TableDesigner] 生成的Markdown:\n', markdown);
-    window.dispatchEvent(new CustomEvent('insert-database-table', {
-      detail: { markdown, config, focusEditor: true },
-    }));
-  }, [name, columns, rows, initialConfig, onInsert, generateMarkdown]);
-
   // 获取列类型图标
   const getColumnTypeIcon = (type: ColumnType): string => {
     const typeInfo = COLUMN_TYPES.find(t => t.type === type);
@@ -591,6 +1391,9 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     const column = columns.find(c => c.id === columnId);
     if (!column) return [];
 
+    const columnIndex = columns.findIndex(c => c.id === columnId);
+    const isFirstColumn = columnIndex === 0;
+
     // 字段类型子菜单
     const typeSubmenu: ContextMenuItem[] = COLUMN_TYPES.map(typeInfo => ({
       id: `type-${typeInfo.type}`,
@@ -600,7 +1403,8 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       onClick: () => handleUpdateColumnType(columnId, typeInfo.type),
     }));
 
-    return [
+    // 基础菜单项
+    const menuItems: ContextMenuItem[] = [
       {
         id: 'modify-field',
         label: '修改字段',
@@ -645,13 +1449,15 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         },
       },
       { id: 'sep-1', label: '', separator: true },
-      {
+      // 第一列不显示复制字段
+      ...(!isFirstColumn ? [{
         id: 'duplicate-field',
         label: '复制字段',
         icon: 'copy',
         onClick: () => handleDuplicateColumn(columnId),
-      },
-      {
+      }] : []),
+      // 第一列不显示隐藏字段
+      ...(!isFirstColumn ? [{
         id: 'hide-field',
         label: '隐藏字段',
         icon: 'eye-off',
@@ -659,29 +1465,35 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
           // TODO: 实现隐藏字段
           console.log('隐藏字段:', columnId);
         },
-      },
+      }] : []),
       { id: 'sep-2', label: '', separator: true },
-      {
+      // 第一列不显示向左插入字段
+      ...(!isFirstColumn ? [{
         id: 'insert-left',
         label: '向左插入字段',
         icon: 'arrow-left',
         onClick: () => handleInsertColumnLeft(columnId),
-      },
+      }] : []),
       {
         id: 'insert-right',
         label: '向右插入字段',
         icon: 'arrow-right',
         onClick: () => handleInsertColumnRight(columnId),
       },
-      { id: 'sep-3', label: '', separator: true },
-      {
-        id: 'delete-field',
-        label: '删除字段',
-        icon: 'delete',
-        disabled: columns.length <= 1,
-        onClick: () => handleDeleteColumn(columnId),
-      },
+      // 第一列不显示删除字段
+      ...(!isFirstColumn ? [
+        { id: 'sep-3', label: '', separator: true },
+        {
+          id: 'delete-field',
+          label: '删除字段',
+          icon: 'delete',
+          disabled: columns.length <= 1,
+          onClick: () => handleDeleteColumn(columnId),
+        },
+      ] : []),
     ];
+
+    return menuItems;
   }, [columns, handleUpdateColumnType, handleUpdateColumnName, handleDuplicateColumn, handleInsertColumnLeft, handleInsertColumnRight, handleDeleteColumn, handleCloseColumnMenu]);
 
   // 打开列菜单
@@ -699,6 +1511,186 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       },
     });
   }, []);
+
+  // 打开列菜单（供 TanStackTableCore 使用，接收位置参数）
+  const handleColumnMenuOpen = useCallback((columnId: string, position: { x: number; y: number }) => {
+    setColumnMenu({
+      columnId,
+      position,
+    });
+  }, []);
+
+  // 关闭单元格右键菜单
+  const handleCloseCellContextMenu = useCallback(() => {
+    setCellContextMenu(null);
+  }, []);
+
+  // 打开单元格右键菜单
+  const handleOpenCellContextMenu = useCallback((rowId: string, colId: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setCellContextMenu({
+      rowId,
+      colId,
+      position: { x: event.clientX, y: event.clientY },
+    });
+  }, []);
+
+  // 打开单元格右键菜单（供 TanStackTableCore 使用，接收位置参数）
+  const handleCellContextMenu = useCallback((rowId: string, colId: string, position: { x: number; y: number }) => {
+    setCellContextMenu({
+      rowId,
+      colId,
+      position,
+    });
+  }, []);
+
+  // 插入行数输入组件
+  const InsertRowInput: React.FC<{ 
+    direction: 'above' | 'below'; 
+    rowId: string;
+    onInsert: (rowId: string, count: number) => void;
+    onClose: () => void;
+  }> = ({ direction, rowId, onInsert, onClose }) => {
+    const [value, setValue] = useState('1');
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, []);
+
+    const handleSubmit = () => {
+      const count = parseInt(value, 10);
+      if (!isNaN(count) && count >= 1 && count <= 100) {
+        onInsert(rowId, count);
+        onClose();
+      }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        handleSubmit();
+      }
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+      }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const inputValue = e.target.value;
+      // 不允许空字符串
+      if (inputValue === '') {
+        setValue('1');
+        return;
+      }
+      // 只允许输入数字
+      if (!/^\d+$/.test(inputValue)) {
+        return;
+      }
+      const num = parseInt(inputValue, 10);
+      // 限制范围为1-100
+      if (num > 100) {
+        setValue('100');
+      } else if (num < 1) {
+        setValue('1');
+      } else {
+        setValue(String(num)); // 移除前导零
+      }
+    };
+
+    return (
+      <div className="insert-row-input-wrapper" onClick={(e) => e.stopPropagation()}>
+        <span className="insert-row-label">向{direction === 'above' ? '上' : '下'}插入</span>
+        <input
+          ref={inputRef}
+          type="text"
+          className="insert-row-input"
+          value={value}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onClick={(e) => e.stopPropagation()}
+        />
+        <span className="insert-row-label">行</span>
+      </div>
+    );
+  };
+
+  // 构建单元格右键菜单项
+  const buildCellContextMenuItems = useCallback((rowId: string): ContextMenuItem[] => {
+    return [
+      {
+        id: 'insert-row-above',
+        label: '向上插入',
+        icon: 'arrow-up',
+        customOnly: true,
+        customContent: (
+          <InsertRowInput 
+            direction="above" 
+            rowId={rowId} 
+            onInsert={handleInsertRowAbove}
+            onClose={handleCloseCellContextMenu}
+          />
+        ),
+      },
+      {
+        id: 'insert-row-below',
+        label: '向下插入',
+        icon: 'arrow-down',
+        customOnly: true,
+        customContent: (
+          <InsertRowInput 
+            direction="below" 
+            rowId={rowId} 
+            onInsert={handleInsertRowBelow}
+            onClose={handleCloseCellContextMenu}
+          />
+        ),
+      },
+      { id: 'sep-1', label: '', separator: true },
+      {
+        id: 'add-child-record',
+        label: '添加子记录',
+        icon: 'plus',
+        onClick: () => {
+          handleAddChildRow(rowId);
+          handleCloseCellContextMenu();
+        },
+      },
+      {
+        id: 'add-description',
+        label: '添加描述',
+        icon: 'file-text',
+        onClick: () => {
+          // TODO: 实现添加描述
+          console.log('添加描述:', rowId);
+          handleCloseCellContextMenu();
+        },
+      },
+      { id: 'sep-2', label: '', separator: true },
+      {
+        id: 'delete-record',
+        label: '删除记录',
+        icon: 'delete',
+        disabled: rows.length <= 1,
+        onClick: () => {
+          handleDeleteRow(rowId);
+          handleCloseCellContextMenu();
+        },
+      },
+      { id: 'sep-3', label: '', separator: true },
+      {
+        id: 'smart-summary',
+        label: '智能总结',
+        icon: 'sparkles',
+        onClick: () => {
+          // TODO: 实现智能总结
+          console.log('智能总结:', rowId);
+          handleCloseCellContextMenu();
+        },
+      },
+    ];
+  }, [rows.length, handleInsertRowAbove, handleInsertRowBelow, handleDeleteRow, handleAddChildRow, handleCloseCellContextMenu]);
 
   // 渲染单元格
   const renderCell = (row: TableRow, column: TableColumn) => {
@@ -792,6 +1784,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
           className="cell-input"
           value={String(value || '')}
           readOnly
+          style={{ pointerEvents: 'none' }}
         />
       );
     }
@@ -804,6 +1797,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         value={String(value || '')}
         readOnly={!isEditing}
         autoFocus={isEditing}
+        style={!isEditing ? { pointerEvents: 'none' } : undefined}
         onChange={(e) => {
           const newValue = column.type === 'number' 
             ? (e.target.value ? Number(e.target.value) : '')
@@ -816,8 +1810,19 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     );
   };
 
+  // 渲染单元格内容（供 TanStackTableCore 使用的适配器）
+  const renderCellContent = useCallback((row: TableRow, column: TableColumn, isEditing: boolean): React.ReactNode => {
+    return renderCell(row, column);
+  }, [renderCell]);
+
   // 处理单元格单击 - 选中单元格并显示工具栏
   const handleCellClick = useCallback((rowId: string, colId: string, event: React.MouseEvent<HTMLTableCellElement>) => {
+    // 如果发生了拖拽选择，不触发单元格选中
+    if (hasDraggedRef.current) {
+      hasDraggedRef.current = false;
+      return;
+    }
+    
     const column = columns.find(c => c.id === colId);
     if (column?.type === 'checkbox') return;
     
@@ -951,6 +1956,50 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     setCellToolbar(null);
   }, []);
 
+  // 导入表格文件
+  const handleImportTable = useCallback(async () => {
+    const importService = getTableImportService();
+    const result = await importService.openAndImport();
+
+    if (!result.success) {
+      if (result.error !== '用户取消选择') {
+        notification.error(`导入失败: ${result.error}`);
+      }
+      return;
+    }
+
+    if (result.columns.length === 0 || result.rows.length === 0) {
+      notification.error('导入失败: 文件为空或格式不正确');
+      return;
+    }
+
+    // 转换列信息
+    const newColumns: TableColumn[] = result.columns.map(col => ({
+      id: generateId(),
+      name: col.name,
+      type: col.type as ColumnType,
+      width: 150,
+    }));
+
+    // 转换行数据
+    const newRows: TableRow[] = result.rows.map(row => {
+      const cells: Record<string, CellValue> = {};
+      result.columns.forEach((col, index) => {
+        const newColId = newColumns[index].id;
+        const value = row[col.name];
+        cells[newColId] = value as CellValue;
+      });
+      return {
+        id: generateId(),
+        cells,
+      };
+    });
+
+    setColumns(newColumns);
+    setRows(newRows);
+    notification.success(`导入成功: 共 ${result.totalRows} 行数据`);
+  }, []);
+
 
   return (
     <div className="table-designer">
@@ -967,15 +2016,11 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         </div>
         <div className="header-actions">
           <span 
-            className={`action-btn ${showDataViewer ? 'active' : ''}`}
-            onClick={() => setShowDataViewer(!showDataViewer)} 
-            title={showDataViewer ? '隐藏数据查看器' : '显示数据查看器'}
+            className={`action-btn ${(isGenerating || showDiscardButton) ? 'disabled' : ''}`} 
+            onClick={() => !(isGenerating || showDiscardButton) && handleImportTable()} 
+            title="导入表格文件 (CSV, Excel)"
           >
-            <Icon name="eye" size={16} />
-          </span>
-          <span className="action-btn" onClick={handleInsert} title="插入到编辑器">
-            <Icon name="check" size={16} />
-            <span>插入</span>
+            <Icon name="import" iconSet="ui" size={16} />
           </span>
         </div>
       </div>
@@ -1000,116 +2045,231 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
                 left: extendLineStyle.left,
               }} 
             />
-            <div className="table-wrapper" ref={tableWrapperRef}>
-              <table ref={tableRef} className="design-table" style={{ width: columns.reduce((sum, col) => sum + (col.width || 150), 0) + 56 + 40 }}>
-                <colgroup>
-                  <col style={{ width: 56 }} />
-                  {columns.map((column) => (
-                    <col key={column.id} style={{ width: column.width }} />
-                  ))}
-                  <col style={{ width: 40 }} />
-                </colgroup>
-                <thead>
-                  <tr className="header-row">
-                    <th className="row-selector-cell">
-                    <span 
-                      className={`row-checkbox ${selectedRows.size === rows.length && rows.length > 0 ? 'checked' : ''}`}
-                      onClick={handleToggleSelectAll}
-                    >
-                      {selectedRows.size === rows.length && rows.length > 0 && <Icon name="check" size={12} />}
-                    </span>
-                  </th>
-                  {columns.map((column, colIndex) => (
-                    <th 
-                      key={column.id} 
-                      className={`${columnMenu?.columnId === column.id ? 'column-selected' : ''} ${colIndex === 0 ? 'first-data-column' : ''}`}
-                      onContextMenu={(e) => handleOpenColumnMenu(column.id, e)}
-                    >
-                      <div className="column-header" onClick={(e) => handleOpenColumnMenu(column.id, e)}>
-                        <span className="column-type-icon">
-                          <Icon name={getColumnTypeIcon(column.type)} size={14} />
-                        </span>
-                        <span className="column-name">
-                          {column.name}
-                        </span>
-                        <span className="column-menu-icon">
-                          <Icon name="chevron-down" size={12} />
-                        </span>
-                      </div>
-                      <span
-                        className={`column-resize-handle ${resizingColumn === column.id ? 'resizing' : ''}`}
-                        onMouseDown={(e) => handleResizeStart(column.id, e)}
-                      />
-                    </th>
-                  ))}
-                  <th className="add-column-cell">
-                    <span className="add-column-btn" onClick={handleAddColumn} title="添加列">
-                      <Icon name="plus" size={16} />
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, rowIndex) => (
-                  <tr key={row.id} className={selectedRows.has(row.id) ? 'row-selected' : ''}>
-                    <td className="row-selector-cell">
-                      <span className="row-drag-handle">
-                        <Icon name="grip-vertical" size={12} />
-                      </span>
-                      <span className="row-number">{rowIndex + 1}</span>
-                      <span 
-                        className={`row-checkbox ${selectedRows.has(row.id) ? 'checked' : ''}`}
-                        onClick={() => handleToggleRowSelect(row.id)}
-                      >
-                        {selectedRows.has(row.id) && <Icon name="check" size={12} />}
-                      </span>
-                    </td>
-                    {columns.map((column, colIndex) => (
-                      <td 
-                        key={column.id}
-                        className={`${selectedCell?.rowId === row.id && selectedCell?.colId === column.id ? 'selected-cell' : ''} ${colIndex === 0 ? 'first-data-column' : ''}`}
-                        onClick={(e) => handleCellClick(row.id, column.id, e)}
-                        onDoubleClick={() => handleCellDoubleClick(row.id, column.id)}
-                      >
-                        {renderCell(row, column)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-                <tr className="add-row-tr">
-                  <td className="row-selector-cell">
-                    <span className="add-row-btn" onClick={handleAddRow} title="添加行">
-                      <Icon name="plus" size={14} />
-                    </span>
-                  </td>
-                  <td colSpan={columns.length} className="add-row-cell" />
-                  <td className="add-row-placeholder-cell" />
-                </tr>
-              </tbody>
-            </table>
-            </div>
+            <TanStackTableCore
+              columns={columns}
+              rows={rows}
+              selectedRows={selectedRows}
+              selectedCell={selectedCell}
+              editingCell={editingCell}
+              isGenerating={isGenerating}
+              onRowsChange={setRows}
+              onSelectedRowsChange={setSelectedRows}
+              onSelectedCellChange={setSelectedCell}
+              onEditingCellChange={setEditingCell}
+              onCellUpdate={handleUpdateCell}
+              onAddRow={handleAddRow}
+              onAddColumn={handleAddColumn}
+              onColumnMenuOpen={handleColumnMenuOpen}
+              onCellContextMenu={handleCellContextMenu}
+              onAddChildRow={handleAddChildRow}
+              onToggleRowExpanded={handleToggleRowExpanded}
+              onColumnWidthChange={handleColumnWidthChange}
+              renderCellContent={renderCellContent}
+            />
           </div>
+          {/* 查询条件面板 */}
+          {showQueryConditionPanel && (
+            <QueryConditionPanel
+              columns={columns}
+              onQuery={handleQueryWithConditions}
+              onClose={() => setShowQueryConditionPanel(false)}
+            />
+          )}
+          {/* 生成操作栏：生成中显示进度和取消，生成完成显示放弃/保留 */}
+          {(isGenerating || showDiscardButton) && (
+            <div className="generate-action-bar">
+              {isGenerating ? (
+                <>
+                  <span className="generate-progress-text">{generateProgress}</span>
+                  <span className="generate-action-btn cancel" onClick={handleCancelGenerate}>
+                    取消
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="generate-action-btn discard" onClick={handleDiscardGenerate}>
+                    放弃
+                  </span>
+                  <span className="generate-action-btn accept" onClick={handleAcceptGenerate}>
+                    保留
+                  </span>
+                </>
+              )}
+            </div>
+          )}
           {/* AI 输入栏 */}
           <AIInputBar
-            placeholder="描述您想要生成的表格内容..."
-            systemPrompt={`你是一个表格数据生成助手。用户会描述他们想要的表格内容，你需要生成符合要求的表格数据。
-请以 JSON 格式返回数据，格式如下：
-{
-  "columns": [
-    { "name": "列名1", "type": "text" },
-    { "name": "列名2", "type": "number" }
-  ],
-  "rows": [
-    { "列名1": "值1", "列名2": 123 },
-    { "列名1": "值2", "列名2": 456 }
-  ]
-}
-支持的列类型：text（文本）、number（数字）、checkbox（复选框）、date（日期）、url（链接）、email（邮箱）、select（选择）
-只返回 JSON 数据，不要添加任何解释或 markdown 代码块标记。`}
+            placeholder="描述您想要的内容..."
+            systemPrompt={getTableDesignerSystemPrompt()}
             onGenerate={handleAIGenerate}
+            customGenerate={customGenerateFunction}
+            onCancel={handleCancelGenerate}
+            enableCommands={true}
+            disabled={currentCommandType === 'query'}
+            hideLoadingIndicator={true}
+            externalLoading={isGenerating}
+            onCommand={(command) => {
+              console.log('[TableDesigner] 收到命令:', command.type, command.content);
+              if (command.type === 'query') {
+                handleQueryCommand(command.content);
+              }
+            }}
+            onCommandChange={(commandType) => {
+              // 保存当前命令类型
+              setCurrentCommandType(commandType);
+              // 当切换到查询命令时，显示查询条件面板
+              if (commandType === 'query') {
+                setShowQueryConditionPanel(true);
+              } else {
+                setShowQueryConditionPanel(false);
+              }
+            }}
+            suggestions={[
+              // 生成表格建议
+              { id: 'g1', label: '生成用户信息表', prompt: '生成一个用户信息表，包含姓名、年龄、邮箱、电话、地址字段，生成5条示例数据', commandType: 'generate' },
+              { id: 'g2', label: '生成产品列表', prompt: '生成一个产品列表表格，包含产品名称、价格、库存、分类、上架状态字段，生成5条示例数据', commandType: 'generate' },
+              { id: 'g3', label: '生成任务清单', prompt: '生成一个任务清单表格，包含任务名称、负责人、截止日期、优先级、完成状态字段，生成5条示例数据', commandType: 'generate' },
+              { id: 'g4', label: '生成订单记录', prompt: '生成一个订单记录表格，包含订单号、客户名称、商品、金额、下单时间、状态字段，生成5条示例数据', commandType: 'generate' },
+              { id: 'g5', label: '生成员工考勤表', prompt: '生成一个员工考勤表，包含员工姓名、部门、日期、上班时间、下班时间、工时字段，生成5条示例数据', commandType: 'generate' },
+            ]}
           />
         </div>
 
+
+        {/* 查询结果面板 */}
+        {(queryResult || isQuerying) && (
+          <div 
+            className={`query-result-panel ${isQueryPanelFullscreen ? 'fullscreen' : ''}`}
+            style={!isQueryPanelFullscreen ? { width: queryPanelWidth } : undefined}
+          >
+            <div 
+              className={`query-panel-resize-handle ${isResizingQueryPanel ? 'resizing' : ''}`}
+              onMouseDown={handleQueryPanelResizeStart}
+            />
+            <div className="query-result-header">
+              <span className="query-result-title">查询结果</span>
+              <div className="query-result-actions">
+                <span 
+                  className="query-result-fullscreen"
+                  onClick={() => setIsQueryPanelFullscreen(!isQueryPanelFullscreen)}
+                  title={isQueryPanelFullscreen ? '退出全屏' : '全屏'}
+                >
+                  <Icon iconSet="ui" name={isQueryPanelFullscreen ? 'minimize-2' : 'maximize-2'} size={14} />
+                </span>
+                <span 
+                  className="query-result-close"
+                  onClick={() => { setQueryResult(null); setIsQueryPanelFullscreen(false); }}
+                  title="关闭"
+                >
+                  <Icon name="close" size={14} />
+                </span>
+              </div>
+            </div>
+            <div className="query-result-content">
+              {isQuerying ? (
+                <div className="query-result-loading">
+                  <Icon name="loader" size={24} />
+                  <p>正在查询...</p>
+                </div>
+              ) : queryResult ? (
+                <>
+                  <div className={`query-result-status ${queryResult.success ? 'success' : 'error'}`}>
+                    <div className="query-result-status-left">
+                      <Icon name={queryResult.success ? 'check' : 'error'} iconSet="ui" size={16} />
+                      <span>{queryResult.message}</span>
+                    </div>
+                    <div className="query-result-search">
+                      <input
+                        type="text"
+                        className="query-search-input"
+                        placeholder="搜索..."
+                        value={searchKeyword}
+                        onChange={e => setSearchKeyword(e.target.value)}
+                        onKeyDown={handleSearchKeyDown}
+                      />
+                      <span className="query-search-btn" onClick={handleSearch} title="搜索">
+                        <Icon name="search" iconSet="ui" size={14} />
+                      </span>
+                    </div>
+                  </div>
+                  {queryResult.data && queryResult.data.length > 0 ? (
+                    <div className="query-result-data">
+                      <div className="query-result-table-wrapper">
+                        <table className="query-result-table">
+                          <thead>
+                            <tr>
+                              {Object.keys(queryResult.data[0]).filter(key => key !== '_rowIndex' && key !== '_rowId').map(key => (
+                                <th key={key}>{key}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {queryResult.data
+                              .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+                              .map((row, rowIndex) => {
+                                const actualIndex = (currentPage - 1) * PAGE_SIZE + rowIndex;
+                                return (
+                                  <tr key={actualIndex}>
+                                    {Object.entries(row).filter(([key]) => key !== '_rowIndex' && key !== '_rowId').map(([key, value]) => (
+                                      <td 
+                                        key={key}
+                                        className={editingQueryCell?.rowIndex === actualIndex && editingQueryCell?.columnName === key ? 'editing' : ''}
+                                        onDoubleClick={() => handleQueryCellDoubleClick(actualIndex, key, value)}
+                                      >
+                                        {editingQueryCell?.rowIndex === actualIndex && editingQueryCell?.columnName === key ? (
+                                          <input
+                                            type="text"
+                                            className="query-cell-input"
+                                            value={editingQueryValue}
+                                            onChange={e => setEditingQueryValue(e.target.value)}
+                                            onBlur={handleQueryCellEditComplete}
+                                            onKeyDown={handleQueryCellKeyDown}
+                                            autoFocus
+                                          />
+                                        ) : (
+                                          String(value ?? '')
+                                        )}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                      {/* 分页控件 */}
+                      {queryResult.data.length > PAGE_SIZE && (
+                        <div className="query-result-pagination">
+                          <span 
+                            className={`pagination-btn ${currentPage === 1 ? 'disabled' : ''}`}
+                            onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
+                            title="上一页"
+                          >
+                            <Icon name="chevron-left" size={14} />
+                          </span>
+                          <span className="pagination-info">
+                            {currentPage} / {Math.ceil(queryResult.data.length / PAGE_SIZE)}
+                          </span>
+                          <span 
+                            className={`pagination-btn ${currentPage >= Math.ceil(queryResult.data.length / PAGE_SIZE) ? 'disabled' : ''}`}
+                            onClick={() => currentPage < Math.ceil(queryResult.data.length / PAGE_SIZE) && setCurrentPage(currentPage + 1)}
+                            title="下一页"
+                          >
+                            <Icon name="chevron-right" size={14} />
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="query-result-empty">
+                      暂无数据
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
+          </div>
+        )}
 
         {/* 数据查看器面板 */}
         {showDataViewer && (
@@ -1222,6 +2382,15 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
           items={buildColumnMenuItems(columnMenu.columnId)}
           position={columnMenu.position}
           onClose={handleCloseColumnMenu}
+        />
+      )}
+
+      {/* 单元格右键菜单 */}
+      {cellContextMenu && (
+        <ContextMenu
+          items={buildCellContextMenuItems(cellContextMenu.rowId)}
+          position={cellContextMenu.position}
+          onClose={handleCloseCellContextMenu}
         />
       )}
 

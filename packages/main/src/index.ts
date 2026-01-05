@@ -25,6 +25,7 @@ import * as path from 'path';
 import { registerSettingsHandlers } from './ipc/settingsHandlers';
 import { registerNoteSystemHandlers } from './note-system';
 import { registerDatabaseConnectorHandlers, cleanupDatabaseConnections } from './ipc/databaseConnectorHandlers';
+import { registerFormHandlers } from './ipc/formHandlers';
 
 // 插件系统路径
 // 使用多种方式尝试找到项目根目录，确保路径正确
@@ -114,6 +115,9 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   
   // 注册数据库连接器 IPC 处理器
   registerDatabaseConnectorHandlers();
+  
+  // 注册表单 IPC 处理器
+  registerFormHandlers();
   
   // 注册终端 IPC 处理器
   registerTerminalHandlers();

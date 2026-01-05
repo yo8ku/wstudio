@@ -226,6 +226,9 @@ function registerCommonAliases(): void {
     'cell-polish': 'ui:cell-polish',
     'cell-translate': 'ui:cell-translate',
     'cell-more': 'ui:cell-more',
+    
+    // 发送图标别名
+    'send': 'ui:send',
   });
 }
 

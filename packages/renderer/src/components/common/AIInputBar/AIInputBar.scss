@@ -12,6 +12,7 @@
   flex-shrink: 0;
 
   .ai-input-bar-content {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -88,6 +89,62 @@
     }
   }
 
+  // 命令选择器
+  .ai-input-bar-command-select {
+    position: relative;
+    flex-shrink: 0;
+
+    .ai-input-bar-command-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--ws-textLink-foreground);
+      font-size: 12px;
+      background-color: var(--ws-textLink-foreground, rgba(0, 122, 204, 0.1));
+      background-color: rgba(0, 122, 204, 0.1);
+
+      &:hover {
+        background-color: rgba(0, 122, 204, 0.2);
+      }
+
+      .ai-input-bar-command-label {
+        font-weight: 500;
+      }
+    }
+
+    .ai-input-bar-command-menu {
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      margin-bottom: 4px;
+      min-width: 120px;
+      background-color: var(--ws-dropdown-background);
+      border: 1px solid var(--ws-dropdown-border);
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 100;
+
+      .ai-input-bar-command-option {
+        padding: 8px 12px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--ws-dropdown-foreground);
+
+        &:hover {
+          background-color: var(--ws-list-hoverBackground);
+        }
+
+        &.selected {
+          background-color: var(--ws-list-activeSelectionBackground);
+          color: var(--ws-list-activeSelectionForeground);
+        }
+      }
+    }
+  }
+
   .ai-input-bar-input {
     flex: 1;
     min-width: 0;
@@ -143,3 +200,87 @@
     }
   }
 }
+
+  // 提示词建议列表
+  .ai-input-bar-suggestions {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin-bottom: 8px;
+    background-color: var(--ws-dropdown-background);
+    border: 1px solid var(--ws-dropdown-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px var(--ws-widget-shadow);
+    z-index: 100;
+    max-height: 200px;
+    overflow-y: auto;
+
+    .ai-input-bar-suggestion-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--ws-dropdown-foreground);
+
+      &:hover {
+        background-color: var(--ws-list-hoverBackground);
+      }
+
+      &:first-child {
+        border-radius: 6px 6px 0 0;
+      }
+
+      &:last-child {
+        border-radius: 0 0 6px 6px;
+      }
+
+      &:only-child {
+        border-radius: 6px;
+      }
+    }
+  }
+
+  // 生成状态提示
+  .ai-input-bar-loading {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background-color: var(--ws-dropdown-background);
+    border: 1px solid var(--ws-dropdown-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px var(--ws-widget-shadow);
+    font-size: 13px;
+    color: var(--ws-descriptionForeground);
+
+    .ai-input-bar-loading-icon {
+      color: var(--ws-progressBar-background);
+    }
+  }
+
+  // 命令错误提示
+  .ai-input-bar-error {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    background-color: var(--ws-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
+    border: 1px solid var(--ws-inputValidation-errorBorder, rgba(255, 0, 0, 0.3));
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--ws-errorForeground);
+  }

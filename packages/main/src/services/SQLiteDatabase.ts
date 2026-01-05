@@ -402,10 +402,13 @@ export class SQLiteDatabase {
         }
       }
 
+      console.log('[SQLiteDatabase] 执行删除 SQL:', sql, '参数:', values);
       this.db.run(sql, toSqlValues(values));
+      const rowsModified = this.db.getRowsModified();
+      console.log('[SQLiteDatabase] 删除影响行数:', rowsModified);
       this.save();
 
-      return this.db.getRowsModified();
+      return rowsModified;
     } catch (error) {
       console.error('[SQLiteDatabase] 删除数据失败:', error);
       throw error;

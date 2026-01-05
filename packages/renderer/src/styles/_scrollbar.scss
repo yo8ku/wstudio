@@ -1,0 +1,97 @@
+/**
+ * 滚动条样式 Mixin
+ * 功能：提供可复用的滚动条样式，支持淡入淡出效果
+ * 描述：默认滚动条透明，hover 时显示，适用于侧边栏、面板等区域
+ * 使用：配合 useScrollbarFade hook 实现淡入淡出效果
+ */
+
+// 滚动条默认配置
+$scrollbar-width: 10px !default;
+$scrollbar-thumb-color: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.6));
+$scrollbar-thumb-hover-color: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.8));
+$scrollbar-thumb-active-color: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.6));
+
+// 基础滚动条样式（始终显示）
+@mixin scrollbar-base {
+  // WebKit 滚动条
+  &::-webkit-scrollbar {
+    width: $scrollbar-width;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: $scrollbar-thumb-color;
+    border-radius: 0;
+
+    &:hover {
+      background-color: $scrollbar-thumb-hover-color;
+    }
+
+    &:active {
+      background-color: $scrollbar-thumb-active-color;
+    }
+  }
+
+  // Firefox 滚动条
+  scrollbar-width: thin;
+  scrollbar-color: $scrollbar-thumb-color transparent;
+}
+
+// 淡入淡出滚动条样式（配合 useScrollbarFade hook 使用）
+// 默认透明，通过 data-hovered 属性控制显示
+@mixin scrollbar-fade {
+  overflow: auto !important;
+  
+  // Firefox 滚动条样式 - 默认透明
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+  
+  // WebKit 滚动条样式 - 默认透明
+  &::-webkit-scrollbar {
+    width: $scrollbar-width !important;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent !important;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: transparent !important;
+    border-radius: 0 !important;
+  }
+
+  // 鼠标悬停时显示滚动条（通过 data 属性）
+  &[data-hovered='true'] {
+    // Firefox - 立即显示
+    scrollbar-color: $scrollbar-thumb-color transparent !important;
+    
+    // WebKit - 立即显示
+    &::-webkit-scrollbar-thumb {
+      background-color: $scrollbar-thumb-color !important;
+
+      &:hover {
+        background-color: $scrollbar-thumb-hover-color !important;
+      }
+
+      &:active {
+        background-color: $scrollbar-thumb-active-color !important;
+      }
+    }
+  }
+  
+  // 鼠标离开后平滑淡出（仅 Firefox 支持 scrollbar-color 的 transition）
+  transition: scrollbar-color 0.3s ease !important;
+}
+
+// 隐藏滚动条但保留滚动功能
+@mixin scrollbar-hidden {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}

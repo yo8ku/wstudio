@@ -34,7 +34,9 @@ contextBridge.exposeInMainWorld('electron', {
     open: () => ipcRenderer.invoke('file:open'),
     read: (filePath) => ipcRenderer.invoke('file:read', filePath),
     save: (filePath, content) => ipcRenderer.invoke('file:save', filePath, content),
-    saveAs: (content) => ipcRenderer.invoke('file:save-as', content)
+    saveAs: (content) => ipcRenderer.invoke('file:save-as', content),
+    showOpenDialog: (options) => ipcRenderer.invoke('file:show-open-dialog', options),
+    readBinary: (filePath) => ipcRenderer.invoke('file:read-binary', filePath)
   },
   
   // 图片操作 API
@@ -165,6 +167,24 @@ contextBridge.exposeInMainWorld('electron', {
   // Shell API
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell:open-external', url)
+  },
+  
+  // 表单 API
+  form: {
+    initialize: () => ipcRenderer.invoke('form:initialize'),
+    // 分组操作
+    createGroup: (name, parentId) => ipcRenderer.invoke('form:createGroup', name, parentId),
+    getAllGroups: () => ipcRenderer.invoke('form:getAllGroups'),
+    getGroupsByParent: (parentId) => ipcRenderer.invoke('form:getGroupsByParent', parentId),
+    updateGroup: (id, updates) => ipcRenderer.invoke('form:updateGroup', id, updates),
+    deleteGroup: (id) => ipcRenderer.invoke('form:deleteGroup', id),
+    // 表单操作
+    createForm: (name, groupId, data) => ipcRenderer.invoke('form:createForm', name, groupId, data),
+    getAllForms: () => ipcRenderer.invoke('form:getAllForms'),
+    getFormsByGroup: (groupId) => ipcRenderer.invoke('form:getFormsByGroup', groupId),
+    getFormById: (id) => ipcRenderer.invoke('form:getFormById', id),
+    updateForm: (id, updates) => ipcRenderer.invoke('form:updateForm', id, updates),
+    deleteForm: (id) => ipcRenderer.invoke('form:deleteForm', id),
   },
   
   // Embedding 服务 API（本地）

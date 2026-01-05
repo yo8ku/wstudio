@@ -1,0 +1,68 @@
+/**
+ * CustomScrollbar 自定义滚动条样式
+ * 功能：提供统一的滚动条视觉效果
+ * 描述：隐藏原生滚动条，使用自定义滚动条实现淡入淡出效果
+ */
+
+.custom-scrollbar-wrapper {
+  --custom-scrollbar-width: 6px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.custom-scrollbar-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+
+  // 隐藏原生滚动条
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  &::-webkit-scrollbar-track,
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+  }
+}
+
+.custom-scrollbar-track {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  bottom: 2px;
+  width: var(--custom-scrollbar-width);
+  border-radius: 999px;
+  background: var(--ws-scrollbarSlider-trackBackground, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.custom-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  border-radius: 999px;
+  background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  opacity: 1;
+  pointer-events: auto;
+  cursor: grab;
+
+  &:hover {
+    background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+  }
+
+  &.is-dragging {
+    background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+    cursor: grabbing;
+  }
+}

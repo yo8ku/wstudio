@@ -12,7 +12,7 @@ export interface ActionButton {
   id: string;
   icon: React.ReactNode;
   tooltip?: string;
-  onClick: () => void;
+  onClick: (event?: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
 }
 
@@ -84,7 +84,7 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
                     e.stopPropagation();
                     e.preventDefault();
                     if (!action.disabled) {
-                      action.onClick();
+                      action.onClick(e);
                     }
                   }}
                   disabled={action.disabled}

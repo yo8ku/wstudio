@@ -3,10 +3,30 @@
  * 处理文件读取、写入等操作
  */
 
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, dialog, BrowserWindow } from 'electron';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { workspaceVectorIndexService } from '../services/WorkspaceVectorIndexService';
+
+/** 文件过滤器类型 */
+interface FileFilter {
+  name: string;
+  extensions: string[];
+}
+
+/** 打开文件对话框选项 */
+interface OpenDialogOptions {
+  title?: string;
+  defaultPath?: string;
+  filters?: FileFilter[];
+  properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>;
+}
+
+/** 打开文件对话框结果 */
+interface OpenDialogResult {
+  canceled: boolean;
+  filePaths: string[];
+}
 
 // 防止重复注册的标志
 let isRegistered = false;
@@ -18,7 +38,7 @@ export function registerFileHandlers(): void {
   
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = [
-    'read-file', 'write-file', 'file-exists', 'file-stat', 'folder:rename', 'folder:delete', 'folder:reveal-in-explorer', 'delete-file'
+    'read-file', 'write-file', 'file-exists', 'file-stat', 'folder:rename', 'folder:delete', 'folder:reveal-in-explorer', 'delete-file', 'file:show-open-dialog', 'file:read-binary'
   ];
   
   for (const handler of handlersToRemove) {
@@ -28,6 +48,45 @@ export function registerFileHandlers(): void {
       // 忽略未注册的处理器
     }
   }
+
+  /**
+   * 显示打开文件对话框
+   */
+  ipcMain.handle('file:show-open-dialog', async (event, options: OpenDialogOptions): Promise<OpenDialogResult> => {
+    try {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showOpenDialog(win!, {
+        title: options.title,
+        defaultPath: options.defaultPath,
+        filters: options.filters,
+        properties: options.properties || ['openFile'],
+      });
+      
+      return {
+        canceled: result.canceled,
+        filePaths: result.filePaths,
+      };
+    } catch (error) {
+      console.error('[FileHandlers] 显示打开文件对话框失败:', error);
+      return {
+        canceled: true,
+        filePaths: [],
+      };
+    }
+  });
+
+  /**
+   * 读取文件为二进制数据
+   */
+  ipcMain.handle('file:read-binary', async (event, filePath: string): Promise<Uint8Array> => {
+    try {
+      const buffer = await fs.readFile(filePath);
+      return new Uint8Array(buffer);
+    } catch (error) {
+      console.error('[FileHandlers] 读取二进制文件失败:', error);
+      throw error;
+    }
+  });
   
 
   /**

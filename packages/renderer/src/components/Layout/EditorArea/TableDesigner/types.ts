@@ -8,6 +8,7 @@ export type ColumnType =
   | 'text' // 文本
   | 'number' // 数字
   | 'date' // 日期
+  | 'time' // 时间
   | 'checkbox' // 复选框
   | 'select' // 单选
   | 'multiselect' // 多选
@@ -31,6 +32,10 @@ export type CellValue = string | number | boolean | string[] | null;
 export interface TableRow {
   id: string;
   cells: Record<string, CellValue>;
+  /** 父行ID，null表示顶级行 */
+  parentId?: string | null;
+  /** 是否展开子行 */
+  expanded?: boolean;
 }
 
 /** 表格配置 */
@@ -55,6 +60,7 @@ export const COLUMN_TYPES: ColumnTypeInfo[] = [
   { type: 'text', label: '文本', icon: 'type-icon' },
   { type: 'number', label: '数字', icon: 'number-hash' },
   { type: 'date', label: '日期', icon: 'calendar-date' },
+  { type: 'time', label: '时间', icon: 'clock' },
   { type: 'checkbox', label: '复选框', icon: 'checkbox-select' },
   { type: 'select', label: '单选', icon: 'radio-select' },
   { type: 'multiselect', label: '多选', icon: 'list-checks' },

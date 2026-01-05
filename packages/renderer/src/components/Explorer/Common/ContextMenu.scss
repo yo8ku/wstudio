@@ -112,7 +112,13 @@
 }
 
 .explorer-context-menu-custom {
-  padding: 8px 12px;
+  padding: 6px 12px;
+  border-radius: 4px;
+
+  &:hover {
+    background-color: var(--ws-dropdown-hoverBackground);
+    color: var(--ws-dropdown-hoverForeground);
+  }
 }
 
 .explorer-context-menu-custom-inline {

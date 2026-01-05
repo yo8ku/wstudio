@@ -6,6 +6,8 @@
 .form-section {
   display: flex;
   flex-direction: column;
+  position: relative;
+  border-top: 1px solid var(--ws-panel-border);
 
   &--expanded {
     flex: 0 0 auto;
@@ -16,10 +18,38 @@
   }
 }
 
+// 拖动手柄样式
+.form-resize-handle {
+  height: 4px;
+  cursor: ns-resize;
+  position: relative;
+  background-color: transparent;
+  z-index: 10;
+
+  &:hover,
+  &.resizing {
+    background-color: var(--ws-sash-hover-border, var(--ws-focus-border));
+    opacity: 0.6;
+  }
+}
+
+// 拖动时的全局遮罩层
+.form-resize-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  cursor: ns-resize;
+}
+
+// 表单内容区域（使用 CustomScrollbar 组件）
 .form-content {
-  display: flex;
-  flex-direction: column;
-  padding: 4px 0;
+  // CustomScrollbar 内部的 content 区域样式
+  .custom-scrollbar-content {
+    padding: 4px 0 24px 0;
+  }
 }
 
 .form-empty {
@@ -41,6 +71,56 @@
 }
 
 .form-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    background-color: var(--ws-list-hover-background);
+  }
+
+  &.selected {
+    background-color: var(--ws-list-active-selection-background);
+    color: var(--ws-list-active-selection-foreground);
+  }
+
+  .group-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  .item-icon {
+    flex-shrink: 0;
+    color: var(--ws-icon-foreground);
+  }
+
+  .item-name {
+    flex: 1;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.form-group-children {
   display: flex;
   flex-direction: column;
 }
@@ -73,5 +153,27 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+// 内联编辑输入框
+.inline-edit-input {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 22px;
+  border: 1px solid var(--ws-focus-border);
+  background-color: var(--ws-input-background);
+  color: var(--ws-input-foreground);
+  outline: none;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+
+  &:focus {
+    border-color: var(--ws-focus-border);
   }
 }

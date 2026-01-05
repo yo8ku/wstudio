@@ -322,7 +322,7 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
         {/* 错误提示 */}
         {error && (
           <div className="translate-panel-error">
-            <Icon name="alert-circle" size={14} />
+            <Icon name="error" iconSet="ui" size={14} />
             <span>{error}</span>
           </div>
         )}

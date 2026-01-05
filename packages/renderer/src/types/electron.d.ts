@@ -227,6 +227,30 @@ export interface SnippetQuery {
   limit?: number;
 }
 
+/**
+ * 表单分组数据接口
+ */
+export interface FormGroupData {
+  id: string;
+  name: string;
+  parentId: string | null;
+  sortOrder: number;
+  createdAt: number;
+}
+
+/**
+ * 表单数据接口
+ */
+export interface FormTableData {
+  id: string;
+  name: string;
+  groupId: string | null;
+  data: string; // JSON 字符串，包含 columns 和 rows
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ElectronIPC {
   ipcRenderer: {
     send: (channel: string, ...args: any[]) => void;
@@ -245,6 +269,13 @@ export interface ElectronIPC {
     read: (filePath: string) => Promise<FileResult>;
     save: (filePath: string, content: string) => Promise<APIResponse>;
     saveAs: (content: string) => Promise<FileResult>;
+    showOpenDialog: (options: {
+      title?: string;
+      defaultPath?: string;
+      filters?: Array<{ name: string; extensions: string[] }>;
+      properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>;
+    }) => Promise<{ canceled: boolean; filePaths: string[] }>;
+    readBinary: (filePath: string) => Promise<Uint8Array>;
   };
   image?: {
     open: () => Promise<FileResult>;
@@ -277,6 +308,22 @@ export interface ElectronIPC {
   };
   shell?: {
     openExternal: (url: string) => Promise<APIResponse>;
+  };
+  form?: {
+    initialize: () => Promise<APIResponse>;
+    // 分组操作
+    createGroup: (name: string, parentId: string | null) => Promise<APIResponse<FormGroupData>>;
+    getAllGroups: () => Promise<APIResponse<FormGroupData[]>>;
+    getGroupsByParent: (parentId: string | null) => Promise<APIResponse<FormGroupData[]>>;
+    updateGroup: (id: string, updates: Partial<FormGroupData>) => Promise<APIResponse>;
+    deleteGroup: (id: string) => Promise<APIResponse>;
+    // 表单操作
+    createForm: (name: string, groupId: string | null, data?: string) => Promise<APIResponse<FormTableData>>;
+    getAllForms: () => Promise<APIResponse<FormTableData[]>>;
+    getFormsByGroup: (groupId: string | null) => Promise<APIResponse<FormTableData[]>>;
+    getFormById: (id: string) => Promise<APIResponse<FormTableData | null>>;
+    updateForm: (id: string, updates: Partial<FormTableData>) => Promise<APIResponse>;
+    deleteForm: (id: string) => Promise<APIResponse>;
   };
   snippet?: {
     initialize: () => Promise<APIResponse>;

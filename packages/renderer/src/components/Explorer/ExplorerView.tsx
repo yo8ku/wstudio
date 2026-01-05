@@ -7,6 +7,16 @@ import { FormSection } from './Form';
 import { FileTreeNode, EditorInfo } from './FileTree/types';
 import { TimelineItem } from './Timeline/types';
 import { ContextMenu, ContextMenuItem } from './Common/ContextMenu';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '../common/AlertDialog/AlertDialog';
 import './ExplorerView.scss';
 
 export interface ExplorerViewProps {
@@ -85,6 +95,214 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(false);
   const [isDatabaseExpanded, setIsDatabaseExpanded] = useState(false);
   const [isFormExpanded, setIsFormExpanded] = useState(false);
+
+  // 表单状态
+  const [formGroups, setFormGroups] = useState<import('./Form/types').FormGroupItem[]>([]);
+  const [forms, setForms] = useState<import('./Form/types').FormItem[]>([]);
+  const [selectedFormId, setSelectedFormId] = useState<string | undefined>();
+  const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>();
+
+  // 删除分组确认对话框状态
+  const [deleteGroupDialogOpen, setDeleteGroupDialogOpen] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<import('./Form/types').FormGroupItem | null>(null);
+
+  // 加载表单数据
+  const loadFormData = useCallback(async () => {
+    try {
+      // 初始化数据库
+      await window.electron?.form?.initialize();
+      
+      // 加载分组
+      const groupsResult = await window.electron?.form?.getAllGroups();
+      if (groupsResult?.success && groupsResult.data) {
+        const groupsData = groupsResult.data;
+        setFormGroups(prev => {
+          // 保留现有分组的展开状态
+          const expandedMap = new Map(prev.map(g => [g.id, g.isExpanded]));
+          return groupsData.map(g => ({
+            ...g,
+            isExpanded: expandedMap.get(g.id) ?? true,
+          }));
+        });
+      }
+      
+      // 加载表单
+      const formsResult = await window.electron?.form?.getAllForms();
+      if (formsResult?.success && formsResult.data) {
+        setForms(formsResult.data);
+      }
+    } catch (error) {
+      console.error('[ExplorerView] 加载表单数据失败:', error);
+    }
+  }, []);
+
+  // 初始化时加载表单数据
+  React.useEffect(() => {
+    loadFormData();
+  }, [loadFormData]);
+
+  // 新建表单
+  const handleNewForm = useCallback(async (groupId?: string | null) => {
+    try {
+      const result = await window.electron?.form?.createForm('未命名表单', groupId ?? null);
+      if (result?.success && result.data) {
+        // 直接将新表单添加到状态中
+        setForms(prev => [...prev, result.data]);
+        // 打开新建的表单
+        window.dispatchEvent(new CustomEvent('open-form-editor', {
+          detail: { formId: result.data.id, formName: result.data.name }
+        }));
+      }
+    } catch (error) {
+      console.error('[ExplorerView] 新建表单失败:', error);
+    }
+  }, []);
+
+  // 新建分组
+  const handleNewGroup = useCallback(async (name: string) => {
+    try {
+      const result = await window.electron?.form?.createGroup(name, null);
+      if (result?.success && result.data) {
+        // 直接将新分组添加到状态中
+        setFormGroups(prev => [...prev, { ...result.data, isExpanded: true }]);
+      }
+    } catch (error) {
+      console.error('[ExplorerView] 新建分组失败:', error);
+    }
+  }, []);
+
+  // 点击表单
+  const handleFormClick = useCallback((item: import('./Form/types').FormItem) => {
+    setSelectedFormId(item.id);
+    setSelectedGroupId(undefined);
+  }, []);
+
+  // 双击表单打开编辑器
+  const handleFormDoubleClick = useCallback((item: import('./Form/types').FormItem) => {
+    window.dispatchEvent(new CustomEvent('open-form-editor', {
+      detail: { formId: item.id, formName: item.name }
+    }));
+  }, []);
+
+  // 点击分组
+  const handleGroupClick = useCallback((item: import('./Form/types').FormGroupItem) => {
+    setSelectedGroupId(item.id);
+    setSelectedFormId(undefined);
+  }, []);
+
+  // 切换分组展开状态
+  const handleGroupToggle = useCallback((item: import('./Form/types').FormGroupItem) => {
+    setFormGroups(prev => prev.map(g => 
+      g.id === item.id ? { ...g, isExpanded: !g.isExpanded } : g
+    ));
+  }, []);
+
+  // 打开表单（打开表格设计器）
+  const handleOpenForm = useCallback((item: import('./Form/types').FormItem) => {
+    window.dispatchEvent(new CustomEvent('open-table-designer', {
+      detail: { formId: item.id, formName: item.name }
+    }));
+  }, []);
+
+  // 在新选项卡打开表单
+  const handleOpenFormInNewTab = useCallback((item: import('./Form/types').FormItem) => {
+    window.dispatchEvent(new CustomEvent('open-table-designer', {
+      detail: { formId: item.id, formName: item.name, newTab: true }
+    }));
+  }, []);
+
+  // 重命名表单
+  const handleRenameForm = useCallback(async (item: import('./Form/types').FormItem, newName: string) => {
+    try {
+      const result = await window.electron?.form?.updateForm(item.id, { name: newName });
+      if (result?.success) {
+        // 直接更新状态中的表单名称
+        setForms(prev => prev.map(f => 
+          f.id === item.id ? { ...f, name: newName } : f
+        ));
+      }
+    } catch (error) {
+      console.error('[ExplorerView] 重命名表单失败:', error);
+    }
+  }, []);
+
+  // 删除表单
+  const handleDeleteForm = useCallback(async (item: import('./Form/types').FormItem) => {
+    try {
+      const result = await window.electron?.form?.deleteForm(item.id);
+      console.log('[ExplorerView] 删除表单结果:', result);
+      if (result?.success) {
+        // 直接从状态中移除该表单，不重新加载
+        setForms(prev => prev.filter(f => f.id !== item.id));
+        // 如果删除的是当前选中的表单，清除选中状态
+        if (selectedFormId === item.id) {
+          setSelectedFormId(undefined);
+        }
+      }
+    } catch (error) {
+      console.error('[ExplorerView] 删除表单失败:', error);
+    }
+  }, [selectedFormId]);
+
+  // 重命名分组
+  const handleRenameGroup = useCallback(async (item: import('./Form/types').FormGroupItem, newName: string) => {
+    try {
+      const result = await window.electron?.form?.updateGroup(item.id, { name: newName });
+      if (result?.success) {
+        // 直接更新状态中的分组名称
+        setFormGroups(prev => prev.map(g => 
+          g.id === item.id ? { ...g, name: newName } : g
+        ));
+      }
+    } catch (error) {
+      console.error('[ExplorerView] 重命名分组失败:', error);
+    }
+  }, []);
+
+  // 删除分组（同时删除分组中的表单）
+  const handleDeleteGroup = useCallback((item: import('./Form/types').FormGroupItem) => {
+    // 显示确认对话框
+    setGroupToDelete(item);
+    setDeleteGroupDialogOpen(true);
+  }, []);
+
+  // 确认删除分组
+  const confirmDeleteGroup = useCallback(async () => {
+    if (!groupToDelete) return;
+    
+    try {
+      const result = await window.electron?.form?.deleteGroup(groupToDelete.id);
+      if (result?.success) {
+        // 递归获取所有要删除的分组ID（包括子分组）
+        const getGroupIdsToDelete = (groupId: string, allGroups: import('./Form/types').FormGroupItem[]): string[] => {
+          const ids = [groupId];
+          const children = allGroups.filter(g => g.parentId === groupId);
+          for (const child of children) {
+            ids.push(...getGroupIdsToDelete(child.id, allGroups));
+          }
+          return ids;
+        };
+        
+        setFormGroups(prev => {
+          const idsToDelete = getGroupIdsToDelete(groupToDelete.id, prev);
+          return prev.filter(g => !idsToDelete.includes(g.id));
+        });
+        
+        // 删除该分组及子分组下的所有表单
+        setForms(prev => {
+          const groupIdsToDelete = getGroupIdsToDelete(groupToDelete.id, formGroups);
+          return prev.filter(f => !f.groupId || !groupIdsToDelete.includes(f.groupId));
+        });
+        
+        // 如果删除的是当前选中的分组，清除选中状态
+        if (selectedGroupId === groupToDelete.id) {
+          setSelectedGroupId(undefined);
+        }
+      }
+    } catch (error) {
+      console.error('[ExplorerView] 删除分组失败:', error);
+    }
+  }, [groupToDelete, selectedGroupId, formGroups]);
 
   // 处理文件点击
   const handleFileClick = (node: FileTreeNode) => {
@@ -715,11 +933,23 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
       {/* 表单 */}
       <FormSection
-        forms={[]}
-        onNewForm={() => {
-          window.dispatchEvent(new CustomEvent('open-form-view'));
-        }}
+        forms={forms}
+        groups={formGroups}
+        selectedFormId={selectedFormId}
+        selectedGroupId={selectedGroupId}
+        onFormClick={handleFormClick}
+        onFormDoubleClick={handleFormDoubleClick}
+        onGroupClick={handleGroupClick}
+        onGroupToggle={handleGroupToggle}
+        onNewForm={handleNewForm}
+        onNewGroup={handleNewGroup}
         onExpandedChange={setIsFormExpanded}
+        onOpenForm={handleOpenForm}
+        onOpenFormInNewTab={handleOpenFormInNewTab}
+        onRenameForm={handleRenameForm}
+        onDeleteForm={handleDeleteForm}
+        onRenameGroup={handleRenameGroup}
+        onDeleteGroup={handleDeleteGroup}
       />
 
       {/* 时间线 */}
@@ -744,6 +974,22 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
           onClose={closeContextMenu}
         />
       )}
+
+      {/* 删除分组确认对话框 */}
+      <AlertDialog open={deleteGroupDialogOpen} onOpenChange={setDeleteGroupDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除分组</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除分组 "{groupToDelete?.name}" 吗？该分组下的所有表单和子分组也将被删除，此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteGroup}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

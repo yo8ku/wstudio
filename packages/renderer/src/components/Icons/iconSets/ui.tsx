@@ -609,6 +609,13 @@ const FilesFolder: IconComponent = () => (
   </svg>
 );
 
+// 表单分组文件夹图标
+const FormFolder: IconComponent = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+  </svg>
+);
+
 // AI面板最大化图标
 const AIPanelMaximize: IconComponent = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
@@ -763,6 +770,16 @@ const Maximize2: IconComponent = () => (
     <path d="m21 3-7 7"/>
     <path d="m3 21 7-7"/>
     <path d="M9 21H3v-6"/>
+  </svg>
+);
+
+// 缩小图标（最小化/退出全屏）
+const Minimize2: IconComponent = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m14 10 7-7"/>
+    <path d="M20 10h-6V4"/>
+    <path d="m3 21 7-7"/>
+    <path d="M4 14h6v6"/>
   </svg>
 );
 
@@ -1268,6 +1285,14 @@ const CellMore: IconComponent = ({ style, className }) => (
   </svg>
 );
 
+// 发送图标
+const Send: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M10 14L21 3"/>
+    <path d="M21 3l-6.5 18a.55.55 0 0 1-1 0L10 14l-7-3.5a.55.55 0 0 1 0-1L21 3"/>
+  </svg>
+);
+
 // ==================== 导出图标 ====================
 
 export const uiIconSet: IconSet = {
@@ -1375,6 +1400,7 @@ export const uiIconSet: IconSet = {
     'edit': Edit,
     'design': Design,
     'maximize-2': Maximize2,
+    'minimize-2': Minimize2,
     'theme': Theme,
     'code-xml': CodeXml,
     'hand': Hand,
@@ -1415,6 +1441,7 @@ export const uiIconSet: IconSet = {
     
     // 表单图标
     'table-properties': TableProperties,
+    'form-folder': FormFolder,
     
     // Mermaid 设计器工具栏图标
     'mouse-pointer-2': MousePointer2,
@@ -1458,6 +1485,9 @@ export const uiIconSet: IconSet = {
     'cell-polish': CellPolish,
     'cell-translate': CellTranslate,
     'cell-more': CellMore,
+    
+    // 发送图标
+    'send': Send,
   },
 };
 

@@ -92,10 +92,10 @@ export class OllamaTranslateService {
     const targetLangName = LANGUAGE_NAMES[targetLang] || targetLang;
     const sourceLangName = sourceLang ? LANGUAGE_NAMES[sourceLang] || sourceLang : '';
 
-    // 构建翻译提示词
+    // 构建翻译提示词 - 完整翻译所有内容
     const prompt = sourceLang && sourceLang !== 'auto'
-      ? `将以下${sourceLangName}文本翻译成${targetLangName}，只返回翻译结果，不要添加任何解释：\n\n${text}`
-      : `将以下文本翻译成${targetLangName}，只返回翻译结果，不要添加任何解释：\n\n${text}`;
+      ? `将以下${sourceLangName}内容完整翻译成${targetLangName}，翻译所有文本（包括键名、值、人名等），保持原有格式，只返回翻译结果：\n\n${text}`
+      : `将以下内容完整翻译成${targetLangName}，翻译所有文本（包括键名、值、人名等），保持原有格式，只返回翻译结果：\n\n${text}`;
 
     const response = await fetch(`${this.config.apiUrl}/api/generate`, {
       method: 'POST',
