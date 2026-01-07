@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../../Icons/Icon';
 import { AIInputBar } from '../../../common/AIInputBar';
 import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
@@ -30,6 +31,7 @@ import { QueryConditionPanel } from './QueryConditionPanel';
 import { BatchTableGenerator } from './BatchTableGenerator';
 import { HierarchyTableManager } from './HierarchyTableManager';
 import { TanStackTableCore } from './TanStackTableCore';
+import { FloatingCellEditor } from './FloatingCellEditor';
 import { getTableImportService } from '../../../../services/tableImport';
 import { notification } from '../../../../stores/notificationStore';
 import type {
@@ -40,10 +42,12 @@ import type {
   CellValue,
 } from './types';
 import { COLUMN_TYPES } from './types';
+import { getTableDataService } from '../../../../services/tableData';
 import './TableDesigner.scss';
 
 interface TableDesignerProps {
   initialConfig?: TableConfig;
+  formId?: string;
 }
 
 /** 生成唯一ID */
@@ -70,7 +74,12 @@ const createDefaultRow = (columns: TableColumn[]): TableRow => {
 
 export const TableDesigner: React.FC<TableDesignerProps> = ({
   initialConfig,
+  formId,
 }) => {
+  // 表格数据服务
+  const tableDataServiceRef = useRef(formId ? getTableDataService(formId) : null);
+  const [isDataLoading, setIsDataLoading] = useState(!!formId);
+  
   // 表格设计器状态
   const [name, setName] = useState(initialConfig?.name || '未命名表格');
   const [columns, setColumns] = useState<TableColumn[]>(
@@ -80,11 +89,32 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     initialConfig?.rows || [createDefaultRow(columns)]
   );
   const [editingCell, setEditingCell] = useState<{ rowId: string; colId: string } | null>(null);
+  const [floatingEditorPosition, setFloatingEditorPosition] = useState({ top: 0, left: 0, width: 150, height: 35 });
   const [columnMenu, setColumnMenu] = useState<{ columnId: string; position: { x: number; y: number } } | null>(null);
+
+  // 处理表格名称变更
+  const handleNameChange = useCallback((newName: string) => {
+    setName(newName);
+    // 如果有 formId，触发事件通知标签页更新标题
+    if (formId) {
+      window.dispatchEvent(new CustomEvent('table-name-change', {
+        detail: { formId, newName }
+      }));
+    }
+  }, [formId]);
   const [cellContextMenu, setCellContextMenu] = useState<{ rowId: string; colId: string; position: { x: number; y: number } } | null>(null);
   const [selectedCell, setSelectedCell] = useState<{ rowId: string; colId: string } | null>(null);
-  const [cellToolbar, setCellToolbar] = useState<{ rowId: string; colId: string; position: { x: number; y: number } } | null>(null);
+  const [cellToolbar, setCellToolbar] = useState<{ rowId: string; colId: string; position: { x: number; y: number }; cellWidth: number } | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  // 单元格区域选择状态
+  const [selectedCellRange, setSelectedCellRange] = useState<{
+    startRowId: string;
+    startColId: string;
+    endRowId: string;
+    endColId: string;
+  } | null>(null);
+  const [isDraggingCellSelect, setIsDraggingCellSelect] = useState(false);
+  const cellDragStartRef = useRef<{ rowId: string; colId: string } | null>(null);
   const [showDataViewer, setShowDataViewer] = useState(false);
   const [dataViewerFormat, setDataViewerFormat] = useState<'text' | 'json' | 'xml'>('json');
   const [dataViewerWordWrap, setDataViewerWordWrap] = useState(true);
@@ -100,7 +130,8 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   const tableRef = useRef<HTMLTableElement>(null);
   const tableWrapperRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
-  const [extendLineStyle, setExtendLineStyle] = useState({ top: 0, bottom: 0, left: 0 });
+  const tableDesignerContentRef = useRef<HTMLDivElement>(null);
+  const prevEditingCellRef = useRef<{ rowId: string; colId: string } | null>(null);
   const [needStickyColumn, setNeedStickyColumn] = useState(false);
 
   // 查询结果状态
@@ -161,6 +192,58 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     return HierarchyTableManager.flattenRows(rows);
   }, [rows]);
 
+  // 加载表格数据（如果有 formId）
+  useEffect(() => {
+    if (!formId || !tableDataServiceRef.current) {
+      setIsDataLoading(false);
+      return;
+    }
+
+    const loadData = async () => {
+      const service = tableDataServiceRef.current;
+      if (!service) return;
+
+      const snapshot = await service.initialize(formId);
+      if (snapshot) {
+        if (snapshot.name) setName(snapshot.name);
+        if (snapshot.columns.length > 0) {
+          setColumns(snapshot.columns);
+        }
+        if (snapshot.rows.length > 0) {
+          setRows(snapshot.rows);
+        }
+      }
+      setIsDataLoading(false);
+    };
+
+    loadData();
+  }, [formId]);
+
+  // 同步数据变更到服务（用于关闭时保存）
+  useEffect(() => {
+    if (!tableDataServiceRef.current) return;
+    
+    tableDataServiceRef.current.updateCurrentData({
+      name,
+      columns,
+      rows,
+    });
+  }, [name, columns, rows]);
+
+  // 自动保存（防抖，数据变更后 1 秒自动保存）
+  useEffect(() => {
+    if (!tableDataServiceRef.current || !formId || isDataLoading) return;
+    
+    const saveTimer = setTimeout(() => {
+      const service = tableDataServiceRef.current;
+      if (service && service.hasChanges()) {
+        service.save();
+      }
+    }, 1000);
+    
+    return () => clearTimeout(saveTimer);
+  }, [name, columns, rows, formId, isDataLoading]);
+
   // 检测是否需要固定列（有横向滚动条且已滚动）
   useEffect(() => {
     const checkNeedStickyColumn = () => {
@@ -172,40 +255,68 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       setNeedStickyColumn(hasHorizontalScroll && hasScrolled);
     };
 
+    // 滚动时关闭编辑器和工具栏
+    const handleScroll = () => {
+      checkNeedStickyColumn();
+      // 滚动时关闭浮动编辑器
+      if (editingCell) {
+        setEditingCell(null);
+      }
+      // 滚动时关闭单元格工具栏
+      if (cellToolbar) {
+        setCellToolbar(null);
+      }
+    };
+
     const wrapper = tableWrapperRef.current;
-    wrapper?.addEventListener('scroll', checkNeedStickyColumn);
+    wrapper?.addEventListener('scroll', handleScroll);
     window.addEventListener('resize', checkNeedStickyColumn);
     
     // 初始检测
     checkNeedStickyColumn();
 
     return () => {
-      wrapper?.removeEventListener('scroll', checkNeedStickyColumn);
+      wrapper?.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', checkNeedStickyColumn);
     };
-  }, [columns]);
+  }, [columns, editingCell, cellToolbar]);
 
-  // 计算延伸线位置
+  // 延伸线元素引用
+  const topExtendLineRef = useRef<HTMLDivElement>(null);
+  const bottomExtendLineRef = useRef<HTMLDivElement>(null);
+
+  // 计算延伸线位置（直接操作 DOM 避免频繁 state 更新）
   useEffect(() => {
     const updateExtendLinePosition = () => {
-      if (!tableRef.current || !tableContainerRef.current || !tableWrapperRef.current) return;
+      if (!tableRef.current || !tableDesignerContentRef.current || !tableWrapperRef.current) return;
+      if (!topExtendLineRef.current || !bottomExtendLineRef.current) return;
       
       const scrollLeft = tableWrapperRef.current.scrollLeft;
       const scrollTop = tableWrapperRef.current.scrollTop;
       
-      // 计算表格右边界相对于 wrapper 的位置（不包括添加列按钮的宽度40px）
+      // 获取 table-designer-content 的宽度
+      const contentWidth = tableDesignerContentRef.current.offsetWidth;
+      
+      // 计算表格右边界相对于 content 的位置（不包括添加列按钮的宽度40px）
       const tableWidth = tableRef.current.offsetWidth;
-      const tableRightInWrapper = tableWidth + 12 - scrollLeft - 40; // 12 是 padding，40 是添加列按钮宽度
+      const tableRightInContent = tableWidth + 12 - scrollLeft - 40; // 12 是 padding，40 是添加列按钮宽度
+      
+      // 计算延伸线宽度：从表格右边界到 content 右边界
+      const extendLineWidth = contentWidth - tableRightInContent;
       
       // 获取添加行的位置（表格底部）- 考虑滚动偏移，减1避免与边框重叠
       const tableHeight = tableRef.current.offsetHeight;
       const addRowBottom = 12 + tableHeight - scrollTop - 1; // padding + 表格高度 - 滚动偏移 - 1px避免重叠
       
-      setExtendLineStyle({
-        top: 12 - scrollTop, // padding - 滚动偏移
-        bottom: addRowBottom,
-        left: tableRightInWrapper,
-      });
+      // 直接操作 DOM 样式，避免 React 重新渲染
+      const width = extendLineWidth > 0 ? extendLineWidth : 0;
+      topExtendLineRef.current.style.top = `${12 - scrollTop}px`;
+      topExtendLineRef.current.style.left = `${tableRightInContent}px`;
+      topExtendLineRef.current.style.width = `${width}px`;
+      
+      bottomExtendLineRef.current.style.top = `${addRowBottom}px`;
+      bottomExtendLineRef.current.style.left = `${tableRightInContent}px`;
+      bottomExtendLineRef.current.style.width = `${width}px`;
     };
 
     // 使用 requestAnimationFrame 确保 DOM 渲染完成
@@ -263,6 +374,19 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     }
   }, [selectedRows.size]);
 
+  // 点击表格外部取消单元格区域选中
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tableRef.current && !tableRef.current.contains(event.target as Node)) {
+        setSelectedCellRange(null);
+      }
+    };
+    if (selectedCellRange) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [selectedCellRange]);
+
 
   // 开始拖动调整列宽
   const handleResizeStart = useCallback((columnId: string, event: React.MouseEvent) => {
@@ -278,6 +402,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
   // 列宽变化回调（供 TanStackTableCore 使用）
   const handleColumnWidthChange = useCallback((columnId: string, width: number) => {
+    console.log('[handleColumnWidthChange] columnId:', columnId, 'width:', width);
     setColumns(prev =>
       prev.map(col => (col.id === columnId ? { ...col, width } : col))
     );
@@ -477,6 +602,170 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       return next;
     });
   }, [rows]);
+
+  // 批量删除选中的行
+  const handleDeleteSelectedRows = useCallback(() => {
+    if (selectedRows.size === 0) return;
+    // 至少保留一行
+    if (selectedRows.size >= rows.length) {
+      notification.warning('至少保留一行数据');
+      return;
+    }
+    
+    // 收集所有要删除的行ID（包括子行）
+    const idsToDelete = new Set<string>();
+    selectedRows.forEach(rowId => {
+      idsToDelete.add(rowId);
+      const childIds = HierarchyTableManager.getChildRowIds(rows, rowId);
+      childIds.forEach(id => idsToDelete.add(id));
+    });
+    
+    // 删除行
+    setRows(prev => prev.filter(row => !idsToDelete.has(row.id)));
+    // 清空选中状态
+    setSelectedRows(new Set());
+  }, [selectedRows, rows]);
+
+  // 获取选中单元格区域内的所有单元格
+  const getSelectedCells = useCallback((): Array<{ rowId: string; colId: string }> => {
+    if (!selectedCellRange) return [];
+    
+    const { startRowId, startColId, endRowId, endColId } = selectedCellRange;
+    
+    // 使用 flattenedRows 获取行索引范围（因为表格显示的是扁平化后的数据）
+    const startRowIndex = flattenedRows.findIndex(fr => fr.row.id === startRowId);
+    const endRowIndex = flattenedRows.findIndex(fr => fr.row.id === endRowId);
+    const minRowIndex = Math.min(startRowIndex, endRowIndex);
+    const maxRowIndex = Math.max(startRowIndex, endRowIndex);
+    
+    // 获取列索引范围
+    const startColIndex = columns.findIndex(c => c.id === startColId);
+    const endColIndex = columns.findIndex(c => c.id === endColId);
+    const minColIndex = Math.min(startColIndex, endColIndex);
+    const maxColIndex = Math.max(startColIndex, endColIndex);
+    
+    const cells: Array<{ rowId: string; colId: string }> = [];
+    
+    for (let rowIdx = minRowIndex; rowIdx <= maxRowIndex; rowIdx++) {
+      const flatRow = flattenedRows[rowIdx];
+      if (!flatRow) continue;
+      for (let colIdx = minColIndex; colIdx <= maxColIndex; colIdx++) {
+        const col = columns[colIdx];
+        if (!col) continue;
+        cells.push({ rowId: flatRow.row.id, colId: col.id });
+      }
+    }
+    
+    return cells;
+  }, [selectedCellRange, flattenedRows, columns]);
+
+  // 清空选中单元格的内容
+  const handleClearSelectedCells = useCallback(() => {
+    const cells = getSelectedCells();
+    if (cells.length === 0) return;
+    
+    setRows(prev => {
+      const newRows = [...prev];
+      for (const { rowId, colId } of cells) {
+        const rowIndex = newRows.findIndex(r => r.id === rowId);
+        if (rowIndex === -1) continue;
+        const col = columns.find(c => c.id === colId);
+        if (!col) continue;
+        
+        // 根据列类型设置默认值
+        const defaultValue = col.type === 'checkbox' ? false : '';
+        newRows[rowIndex] = {
+          ...newRows[rowIndex],
+          cells: {
+            ...newRows[rowIndex].cells,
+            [colId]: defaultValue,
+          },
+        };
+      }
+      return newRows;
+    });
+    
+    // 清空选中区域
+    setSelectedCellRange(null);
+  }, [getSelectedCells, columns]);
+
+  // 监听键盘事件，支持 Delete/Backspace 删除选中行或清空选中单元格
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // 如果正在编辑单元格，不处理删除
+      if (editingCell) return;
+      // 如果焦点在输入框中，不处理
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        // 优先处理单元格区域选择
+        if (selectedCellRange) {
+          handleClearSelectedCells();
+        } else if (selectedRows.size > 0) {
+          handleDeleteSelectedRows();
+        }
+      }
+      
+      // Tab 键：当有选中单元格但没有编辑时，移动选中单元格到下一列
+      if (event.key === 'Tab' && selectedCell && !editingCell) {
+        event.preventDefault();
+        // 清空工具栏、单元格区域选择和翻译面板
+        setCellToolbar(null);
+        setSelectedCellRange(null);
+        setShowTranslatePanel(false);
+        
+        const currentColIndex = columns.findIndex(c => c.id === selectedCell.colId);
+        const currentRowIndex = flattenedRows.findIndex(fr => fr.row.id === selectedCell.rowId);
+        
+        // 辅助函数：设置选中单元格并滚动使其可见
+        const selectAndScrollToCell = (rowId: string, colId: string) => {
+          // 先查找目标单元格并滚动
+          const cellElement = document.querySelector(`td[data-row-id="${rowId}"][data-col-id="${colId}"]`) as HTMLElement;
+          if (cellElement && tableWrapperRef.current) {
+            const cellRect = cellElement.getBoundingClientRect();
+            const wrapperRect = tableWrapperRef.current.getBoundingClientRect();
+            
+            // 获取固定列的宽度
+            const firstDataColumn = document.querySelector('.design-table td.first-data-column') as HTMLElement;
+            const stickyWidth = firstDataColumn 
+              ? 56 + firstDataColumn.getBoundingClientRect().width 
+              : 56;
+            const stickyRightEdge = wrapperRect.left + stickyWidth;
+            
+            // 如果单元格被固定列遮挡，立即滚动
+            if (cellRect.left < stickyRightEdge + 5) {
+              const scrollAmount = stickyRightEdge - cellRect.left + 20;
+              tableWrapperRef.current.scrollLeft -= scrollAmount;
+            }
+          }
+          setSelectedCell({ rowId, colId });
+        };
+        
+        if (event.shiftKey) {
+          // Shift+Tab: 向前移动
+          if (currentColIndex > 0) {
+            selectAndScrollToCell(selectedCell.rowId, columns[currentColIndex - 1].id);
+          } else if (currentRowIndex > 0) {
+            // 移动到上一行最后一列
+            selectAndScrollToCell(flattenedRows[currentRowIndex - 1].row.id, columns[columns.length - 1].id);
+          }
+        } else {
+          // Tab: 向后移动
+          if (currentColIndex < columns.length - 1) {
+            selectAndScrollToCell(selectedCell.rowId, columns[currentColIndex + 1].id);
+          } else if (currentRowIndex < flattenedRows.length - 1) {
+            // 移动到下一行第一列
+            selectAndScrollToCell(flattenedRows[currentRowIndex + 1].row.id, columns[0].id);
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [editingCell, selectedRows.size, selectedCellRange, selectedCell, columns, flattenedRows, handleDeleteSelectedRows, handleClearSelectedCells]);
 
   // 添加子记录
   const handleAddChildRow = useCallback((parentId: string) => {
@@ -1695,75 +1984,6 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   // 渲染单元格
   const renderCell = (row: TableRow, column: TableColumn) => {
     const value = row.cells[column.id];
-    const isEditing = editingCell?.rowId === row.id && editingCell?.colId === column.id;
-
-    const handleKeyNavigation = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      const currentColIndex = columns.findIndex(c => c.id === column.id);
-      const currentRowIndex = rows.findIndex(r => r.id === row.id);
-      const isLastColumn = currentColIndex === columns.length - 1 || 
-        columns.slice(currentColIndex + 1).every(c => c.type === 'checkbox');
-      const isLastRow = currentRowIndex === rows.length - 1;
-
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        
-        if (e.shiftKey) {
-          if (currentColIndex > 0) {
-            let prevColIndex = currentColIndex - 1;
-            while (prevColIndex >= 0 && columns[prevColIndex].type === 'checkbox') {
-              prevColIndex--;
-            }
-            if (prevColIndex >= 0) {
-              setEditingCell({ rowId: row.id, colId: columns[prevColIndex].id });
-            }
-          } else if (currentRowIndex > 0) {
-            let lastColIndex = columns.length - 1;
-            while (lastColIndex >= 0 && columns[lastColIndex].type === 'checkbox') {
-              lastColIndex--;
-            }
-            if (lastColIndex >= 0) {
-              setEditingCell({ rowId: rows[currentRowIndex - 1].id, colId: columns[lastColIndex].id });
-            }
-          }
-        } else {
-          if (!isLastColumn) {
-            let nextColIndex = currentColIndex + 1;
-            while (nextColIndex < columns.length && columns[nextColIndex].type === 'checkbox') {
-              nextColIndex++;
-            }
-            if (nextColIndex < columns.length) {
-              setEditingCell({ rowId: row.id, colId: columns[nextColIndex].id });
-            }
-          } else if (currentRowIndex < rows.length - 1) {
-            let firstColIndex = 0;
-            while (firstColIndex < columns.length && columns[firstColIndex].type === 'checkbox') {
-              firstColIndex++;
-            }
-            if (firstColIndex < columns.length) {
-              setEditingCell({ rowId: rows[currentRowIndex + 1].id, colId: columns[firstColIndex].id });
-            }
-          }
-        }
-      } else if (e.key === 'Enter') {
-        if (isLastColumn && isLastRow) {
-          const newRow = createDefaultRow(columns);
-          setRows(prev => [...prev, newRow]);
-          let firstColIndex = 0;
-          while (firstColIndex < columns.length && columns[firstColIndex].type === 'checkbox') {
-            firstColIndex++;
-          }
-          if (firstColIndex < columns.length) {
-            setTimeout(() => {
-              setEditingCell({ rowId: newRow.id, colId: columns[firstColIndex].id });
-            }, 0);
-          }
-        } else {
-          setEditingCell(null);
-        }
-      } else if (e.key === 'Escape') {
-        setEditingCell(null);
-      }
-    };
 
     if (column.type === 'checkbox') {
       return (
@@ -1776,36 +1996,27 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       );
     }
 
-    // 单选类型不支持内联编辑
+    // 单选类型显示文本
     if (column.type === 'select') {
       return (
         <input
           type="text"
-          className="cell-input"
+          className="cell-text-input"
           value={String(value || '')}
           readOnly
-          style={{ pointerEvents: 'none' }}
+          tabIndex={-1}
         />
       );
     }
 
-    // 统一使用 input，编辑时可编辑，非编辑时只读
+    // 其他类型显示文本，编辑由 FloatingCellEditor 处理
     return (
       <input
-        type={column.type === 'number' ? 'number' : column.type === 'date' ? 'date' : 'text'}
-        className={`cell-input ${isEditing ? 'editing' : ''}`}
+        type="text"
+        className="cell-text-input"
         value={String(value || '')}
-        readOnly={!isEditing}
-        autoFocus={isEditing}
-        style={!isEditing ? { pointerEvents: 'none' } : undefined}
-        onChange={(e) => {
-          const newValue = column.type === 'number' 
-            ? (e.target.value ? Number(e.target.value) : '')
-            : e.target.value;
-          handleUpdateCell(row.id, column.id, newValue);
-        }}
-        onBlur={() => setEditingCell(null)}
-        onKeyDown={isEditing ? handleKeyNavigation : undefined}
+        readOnly
+        tabIndex={-1}
       />
     );
   };
@@ -1814,6 +2025,30 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   const renderCellContent = useCallback((row: TableRow, column: TableColumn, isEditing: boolean): React.ReactNode => {
     return renderCell(row, column);
   }, [renderCell]);
+
+  // 通用函数：滚动使单元格完全可见（避免被固定列遮挡）
+  const scrollCellToVisible = useCallback((cellElement: HTMLElement) => {
+    if (!tableWrapperRef.current) return;
+    
+    const cellRect = cellElement.getBoundingClientRect();
+    const wrapperRect = tableWrapperRef.current.getBoundingClientRect();
+    
+    // 获取固定列的宽度（行选择器列 56px + 第一数据列宽度）
+    const firstDataColumn = document.querySelector('.design-table td.first-data-column') as HTMLElement;
+    const stickyWidth = firstDataColumn 
+      ? 56 + firstDataColumn.getBoundingClientRect().width 
+      : 56;
+    
+    // 计算固定列右边缘的绝对位置
+    const stickyRightEdge = wrapperRect.left + stickyWidth;
+    
+    // 只处理被固定列遮挡的情况：向右滚动使单元格完全显示
+    // 不处理右边缘超出视口的情况，避免选择列时自动向左移动
+    if (cellRect.left < stickyRightEdge + 5) {
+      const scrollAmount = stickyRightEdge - cellRect.left + 15;
+      tableWrapperRef.current.scrollLeft -= scrollAmount;
+    }
+  }, []);
 
   // 处理单元格单击 - 选中单元格并显示工具栏
   const handleCellClick = useCallback((rowId: string, colId: string, event: React.MouseEvent<HTMLTableCellElement>) => {
@@ -1829,7 +2064,8 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     const colIndex = columns.findIndex(c => c.id === colId);
     const cellElement = event.currentTarget;
     
-    // 如果不是第一列，检查是否被固定列遮挡
+    // 只有非固定列（colIndex > 0）且被固定列遮挡时才需要滚动
+    let needScroll = false;
     if (colIndex > 0 && tableWrapperRef.current) {
       const cellRect = cellElement.getBoundingClientRect();
       const wrapperRect = tableWrapperRef.current.getBoundingClientRect();
@@ -1838,34 +2074,279 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       const stickyWidth = 56 + firstColumnWidth;
       const stickyRight = wrapperRect.left + stickyWidth;
       
-      // 如果单元格左边界在固定列右边界之前，说明被遮挡了
+      // 只处理被固定列遮挡的情况
       if (cellRect.left < stickyRight) {
-        // 计算需要滚动的距离，让单元格完整显示
-        const scrollOffset = stickyRight - cellRect.left + 4; // 4px 额外间距
+        needScroll = true;
+        const scrollOffset = stickyRight - cellRect.left + 4;
+        console.log('[handleCellClick] 滚动调整:', { cellLeft: cellRect.left, stickyRight, scrollOffset });
         tableWrapperRef.current.scrollLeft -= scrollOffset;
       }
     }
     
+    // 如果点击的是其他单元格，关闭当前编辑状态
+    if (editingCell && (editingCell.rowId !== rowId || editingCell.colId !== colId)) {
+      setEditingCell(null);
+    }
+    
+    // 关闭翻译面板
+    setShowTranslatePanel(false);
+    
+    // 清空单元格区域选择（单击选中和拖拽选中互斥）
+    setSelectedCellRange(null);
     setSelectedCell({ rowId, colId });
-    setCellToolbar({
-      rowId,
-      colId,
-      position: {
-        x: event.currentTarget.getBoundingClientRect().left,
-        y: event.currentTarget.getBoundingClientRect().top,
-      },
-    });
-  }, [columns]);
+    
+    // 延迟设置工具栏位置，等待滚动完成后获取正确的位置
+    setTimeout(() => {
+      const updatedCellRect = cellElement.getBoundingClientRect();
+      setCellToolbar({
+        rowId,
+        colId,
+        position: {
+          x: updatedCellRect.left,
+          y: updatedCellRect.top,
+        },
+        cellWidth: updatedCellRect.width,
+      });
+    }, needScroll ? 50 : 0);
+  }, [columns, editingCell]);
 
   // 处理单元格双击 - 进入编辑模式
-  const handleCellDoubleClick = useCallback((rowId: string, colId: string) => {
+  const handleCellDoubleClick = useCallback((rowId: string, colId: string, event?: React.MouseEvent<HTMLTableCellElement>) => {
     const column = columns.find(c => c.id === colId);
     if (column?.type === 'checkbox' || column?.type === 'select') return;
     
-    setSelectedCell({ rowId, colId });
-    setEditingCell({ rowId, colId });
-    setCellToolbar(null);
-  }, [columns]);
+    const colIndex = columns.findIndex(c => c.id === colId);
+    const row = rows.find(r => r.id === rowId);
+    const isChildRowFirstColumn = colIndex === 0 && row?.parentId;
+    
+    // 计算浮动编辑器位置（相对于 table-container）
+    if (event && tableContainerRef.current) {
+      const cell = event.currentTarget as HTMLTableCellElement;
+      
+      // 双击时不需要再滚动，因为第一次点击已经处理过了
+      // 直接计算位置和设置编辑状态
+      const cellRect = cell.getBoundingClientRect();
+      const containerRect = tableContainerRef.current.getBoundingClientRect();
+      
+      if (colIndex === 0) {
+        // 固定列（第一数据列）
+        // 子记录第一列有左边框，需要调整位置
+        const leftOffset = isChildRowFirstColumn ? 1 : 0;
+        setFloatingEditorPosition({
+          top: cellRect.top - containerRect.top,
+          left: cellRect.left - containerRect.left + leftOffset,
+          width: cellRect.width - 1 - leftOffset,
+          height: cellRect.height - 1,
+        });
+      } else {
+        // 非固定列
+        setFloatingEditorPosition({
+          top: cellRect.top - containerRect.top,
+          left: cellRect.left - containerRect.left,
+          width: cellRect.width - 1,
+          height: cellRect.height - 1,
+        });
+      }
+      setSelectedCell({ rowId, colId });
+      setEditingCell({ rowId, colId });
+      setCellToolbar(null);
+      // 更新 prevEditingCellRef，防止 useEffect 重复执行滚动
+      prevEditingCellRef.current = { rowId, colId };
+    } else {
+      // 没有event时直接设置编辑状态
+      setSelectedCell({ rowId, colId });
+      setEditingCell({ rowId, colId });
+      setCellToolbar(null);
+      // 更新 prevEditingCellRef，防止 useEffect 重复执行滚动
+      prevEditingCellRef.current = { rowId, colId };
+    }
+  }, [columns, scrollCellToVisible]);
+
+  // 处理浮动编辑器关闭
+  const handleFloatingEditorClose = useCallback(() => {
+    setEditingCell(null);
+  }, []);
+
+  // 处理浮动编辑器键盘导航
+  const handleFloatingEditorKeyNavigation = useCallback((key: string, shiftKey: boolean) => {
+    if (!editingCell) return;
+    
+    const currentColIndex = columns.findIndex(c => c.id === editingCell.colId);
+    const currentRowIndex = flattenedRows.findIndex(fr => fr.row.id === editingCell.rowId);
+    
+    // 辅助函数：同时更新 editingCell 和 selectedCell，并滚动使单元格可见
+    const navigateToCell = (rowId: string, colId: string) => {
+      // 先查找当前单元格，立即滚动（在状态更新前）
+      const cellElement = document.querySelector(`td[data-row-id="${rowId}"][data-col-id="${colId}"]`) as HTMLElement;
+      
+      if (cellElement && tableWrapperRef.current) {
+        const cellRect = cellElement.getBoundingClientRect();
+        const wrapperRect = tableWrapperRef.current.getBoundingClientRect();
+        
+        // 获取固定列的宽度
+        const firstDataColumn = document.querySelector('.design-table td.first-data-column') as HTMLElement;
+        const stickyWidth = firstDataColumn 
+          ? 56 + firstDataColumn.getBoundingClientRect().width 
+          : 56;
+        const stickyRightEdge = wrapperRect.left + stickyWidth;
+        
+        // 如果单元格被固定列遮挡，立即滚动
+        if (cellRect.left < stickyRightEdge + 5) {
+          const scrollAmount = stickyRightEdge - cellRect.left + 20;
+          tableWrapperRef.current.scrollLeft -= scrollAmount;
+        }
+      }
+      
+      setEditingCell({ rowId, colId });
+      setSelectedCell({ rowId, colId });
+      // 清空工具栏、区域选择和翻译面板
+      setCellToolbar(null);
+      setSelectedCellRange(null);
+      setShowTranslatePanel(false);
+    };
+    
+    if (key === 'Tab') {
+      if (shiftKey) {
+        // Shift+Tab: 向前移动
+        if (currentColIndex > 0) {
+          let prevColIndex = currentColIndex - 1;
+          while (prevColIndex >= 0 && (columns[prevColIndex].type === 'checkbox' || columns[prevColIndex].type === 'select')) {
+            prevColIndex--;
+          }
+          if (prevColIndex >= 0) {
+            navigateToCell(editingCell.rowId, columns[prevColIndex].id);
+            return;
+          }
+        }
+        // 移动到上一行最后一列
+        if (currentRowIndex > 0) {
+          let lastColIndex = columns.length - 1;
+          while (lastColIndex >= 0 && (columns[lastColIndex].type === 'checkbox' || columns[lastColIndex].type === 'select')) {
+            lastColIndex--;
+          }
+          if (lastColIndex >= 0) {
+            navigateToCell(flattenedRows[currentRowIndex - 1].row.id, columns[lastColIndex].id);
+            return;
+          }
+        }
+        // 已经是第一行第一列，保持当前编辑状态
+      } else {
+        // Tab: 向后移动到下一列
+        let nextColIndex = currentColIndex + 1;
+        while (nextColIndex < columns.length && (columns[nextColIndex].type === 'checkbox' || columns[nextColIndex].type === 'select')) {
+          nextColIndex++;
+        }
+        if (nextColIndex < columns.length) {
+          navigateToCell(editingCell.rowId, columns[nextColIndex].id);
+          return;
+        }
+        // 如果是最后一列，移动到下一行第一列
+        if (currentRowIndex < flattenedRows.length - 1) {
+          let firstColIndex = 0;
+          while (firstColIndex < columns.length && (columns[firstColIndex].type === 'checkbox' || columns[firstColIndex].type === 'select')) {
+            firstColIndex++;
+          }
+          if (firstColIndex < columns.length) {
+            navigateToCell(flattenedRows[currentRowIndex + 1].row.id, columns[firstColIndex].id);
+            return;
+          }
+        }
+        // 是最后一行最后一列，添加新行
+        const newRow = createDefaultRow(columns);
+        setRows(prev => [...prev, newRow]);
+        
+        setTimeout(() => {
+          const firstEditableCol = columns.find(col => col.type !== 'checkbox' && col.type !== 'select');
+          if (firstEditableCol) {
+            navigateToCell(newRow.id, firstEditableCol.id);
+          }
+          if (tableWrapperRef.current) {
+            tableWrapperRef.current.scrollTop = tableWrapperRef.current.scrollHeight;
+          }
+        }, 0);
+      }
+    } else if (key === 'Enter') {
+      // 找到第一个可编辑列
+      const firstEditableCol = columns.find(col => col.type !== 'checkbox' && col.type !== 'select');
+      
+      // 检查是否是最后一行最后一个可编辑列
+      const isLastRow = currentRowIndex === flattenedRows.length - 1;
+      // 找到最后一个可编辑列的索引
+      let lastEditableColIndex = columns.length - 1;
+      while (lastEditableColIndex >= 0 && (columns[lastEditableColIndex].type === 'checkbox' || columns[lastEditableColIndex].type === 'select')) {
+        lastEditableColIndex--;
+      }
+      const isLastEditableCol = currentColIndex === lastEditableColIndex;
+      
+      if (isLastRow && isLastEditableCol) {
+        // 最后一行最后一个可编辑单元格，添加新行并进入编辑状态
+        const newRow = createDefaultRow(columns);
+        setRows(prev => [...prev, newRow]);
+        
+        // 自动聚焦到新行的第一个可编辑列
+        setTimeout(() => {
+          if (firstEditableCol) {
+            navigateToCell(newRow.id, firstEditableCol.id);
+          }
+          // 滚动到底部
+          if (tableWrapperRef.current) {
+            tableWrapperRef.current.scrollTop = tableWrapperRef.current.scrollHeight;
+          }
+        }, 0);
+      } else if (!isLastRow) {
+        // 不是最后一行，移动到下一行的同一列
+        navigateToCell(flattenedRows[currentRowIndex + 1].row.id, editingCell.colId);
+      } else {
+        // 是最后一行但不是最后一个可编辑单元格，退出编辑状态
+        setEditingCell(null);
+      }
+    }
+  }, [editingCell, columns, flattenedRows, scrollCellToVisible]);
+
+  // 当 editingCell 变化时（Tab 键导航），更新浮动编辑器位置
+  // 注意：双击进入编辑模式时，handleCellDoubleClick 已经设置了位置和 prevEditingCellRef
+  useEffect(() => {
+    if (!editingCell || !tableContainerRef.current) {
+      prevEditingCellRef.current = null;
+      return;
+    }
+    
+    // 如果是同一个单元格，不需要重新计算位置（双击时会触发）
+    if (prevEditingCellRef.current?.rowId === editingCell.rowId && 
+        prevEditingCellRef.current?.colId === editingCell.colId) {
+      return;
+    }
+    prevEditingCellRef.current = editingCell;
+    
+    // 查找对应的单元格 DOM 元素
+    const cellSelector = `td[data-row-id="${editingCell.rowId}"][data-col-id="${editingCell.colId}"]`;
+    const cell = tableContainerRef.current.querySelector(cellSelector) as HTMLElement;
+    if (cell) {
+      // 只有非固定列（colIndex > 0）才需要滚动使单元格完全可见
+      const colIndex = columns.findIndex(c => c.id === editingCell.colId);
+      const row = rows.find(r => r.id === editingCell.rowId);
+      const isChildRowFirstColumn = colIndex === 0 && row?.parentId;
+      
+      if (colIndex > 0) {
+        scrollCellToVisible(cell);
+      }
+      
+      // 延迟更新位置，等待滚动完成
+      setTimeout(() => {
+        const cellRect = cell.getBoundingClientRect();
+        const containerRect = tableContainerRef.current!.getBoundingClientRect();
+        // 子记录第一列有左边框，需要调整位置
+        const leftOffset = isChildRowFirstColumn ? 1 : 0;
+        // 编辑框完全覆盖单元格内容区域
+        setFloatingEditorPosition({
+          top: cellRect.top - containerRect.top,
+          left: cellRect.left - containerRect.left + leftOffset,
+          width: cellRect.width - 1 - leftOffset,
+          height: cellRect.height - 1,
+        });
+      }, colIndex > 0 ? 50 : 0);
+    }
+  }, [editingCell, columns, rows, scrollCellToVisible]);
 
   // 关闭单元格工具栏
   const handleCloseCellToolbar = useCallback(() => {
@@ -1896,11 +2377,24 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   const handleCellTranslate = useCallback((value: string) => {
     if (!selectedCell || !cellToolbar) return;
     
-    // 设置翻译面板位置（在单元格工具栏右侧）
-    setTranslatePanelPosition({
-      x: cellToolbar.position.x + 200,
-      y: cellToolbar.position.y - 40,
-    });
+    // 翻译面板宽度
+    const panelWidth = 320;
+    const viewportWidth = window.innerWidth;
+    
+    // 默认位置：紧贴单元格右侧
+    let panelX = cellToolbar.position.x + cellToolbar.cellWidth + 4;
+    const panelY = cellToolbar.position.y;
+    
+    // 如果面板会溢出视口右边界，显示在单元格左侧
+    if (panelX + panelWidth + 20 > viewportWidth) {
+      panelX = cellToolbar.position.x - panelWidth - 4;
+      // 如果左侧也放不下，就贴着右边界显示
+      if (panelX < 10) {
+        panelX = viewportWidth - panelWidth - 20;
+      }
+    }
+    
+    setTranslatePanelPosition({ x: panelX, y: panelY });
     setTranslateInitialText(value);
     setShowTranslatePanel(true);
     setCellToolbar(null); // 关闭单元格工具栏
@@ -2010,7 +2504,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
             type="text"
             className="table-name-input"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => handleNameChange(e.target.value)}
             placeholder="表格名称"
           />
         </div>
@@ -2027,24 +2521,18 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
       {/* 主体内容 */}
       <div className="table-designer-body">
-        <div className="table-designer-content">
+        <div className="table-designer-content" ref={tableDesignerContentRef}>
+          {/* 顶部延伸线 - 放在 table-designer-content 层级 */}
+          <div 
+            ref={topExtendLineRef}
+            className="table-extend-line top-line" 
+          />
+          {/* 底部延伸线 */}
+          <div 
+            ref={bottomExtendLineRef}
+            className="table-extend-line bottom-line" 
+          />
           <div className="table-container" ref={tableContainerRef}>
-            {/* 顶部延伸线 */}
-            <div 
-              className="table-extend-line top-line" 
-              style={{ 
-                top: extendLineStyle.top, 
-                left: extendLineStyle.left,
-              }} 
-            />
-            {/* 底部延伸线 */}
-            <div 
-              className="table-extend-line bottom-line" 
-              style={{ 
-                top: extendLineStyle.bottom, 
-                left: extendLineStyle.left,
-              }} 
-            />
             <TanStackTableCore
               columns={columns}
               rows={rows}
@@ -2052,20 +2540,62 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
               selectedCell={selectedCell}
               editingCell={editingCell}
               isGenerating={isGenerating}
+              tableWrapperRef={tableWrapperRef}
+              tableRef={tableRef}
+              selectedCellRange={selectedCellRange}
+              onSelectedCellRangeChange={setSelectedCellRange}
               onRowsChange={setRows}
               onSelectedRowsChange={setSelectedRows}
-              onSelectedCellChange={setSelectedCell}
-              onEditingCellChange={setEditingCell}
+              onSelectedCellChange={(cell) => {
+                setSelectedCell(cell);
+                if (!cell) {
+                  setCellToolbar(null);
+                }
+              }}
+              onEditingCellChange={(cell, event) => {
+                if (cell && event) {
+                  handleCellDoubleClick(cell.rowId, cell.colId, event);
+                } else if (cell) {
+                  setEditingCell(cell);
+                } else {
+                  setEditingCell(null);
+                }
+              }}
               onCellUpdate={handleUpdateCell}
               onAddRow={handleAddRow}
               onAddColumn={handleAddColumn}
               onColumnMenuOpen={handleColumnMenuOpen}
               onCellContextMenu={handleCellContextMenu}
+              onCellClick={handleCellClick}
               onAddChildRow={handleAddChildRow}
               onToggleRowExpanded={handleToggleRowExpanded}
               onColumnWidthChange={handleColumnWidthChange}
               renderCellContent={renderCellContent}
             />
+            {/* 浮动单元格编辑器 - 渲染在 table-container 内 */}
+            {editingCell && (() => {
+              // 计算子记录第一列的额外内边距
+              const colIndex = columns.findIndex(c => c.id === editingCell.colId);
+              const row = rows.find(r => r.id === editingCell.rowId);
+              const isChildRowFirstColumn = colIndex === 0 && row?.parentId;
+              const extraPaddingLeft = isChildRowFirstColumn ? 12 : 0;
+              
+              return (
+                <FloatingCellEditor
+                  key={`${editingCell.rowId}-${editingCell.colId}`}
+                  visible={true}
+                  position={floatingEditorPosition}
+                  value={getCellValue(editingCell.rowId, editingCell.colId)}
+                  columnType={columns.find(c => c.id === editingCell.colId)?.type || 'text'}
+                  extraPaddingLeft={extraPaddingLeft}
+                  onValueChange={(value) => {
+                    handleUpdateCell(editingCell.rowId, editingCell.colId, value);
+                  }}
+                  onClose={handleFloatingEditorClose}
+                  onKeyNavigation={handleFloatingEditorKeyNavigation}
+                />
+              );
+            })()}
           </div>
           {/* 查询条件面板 */}
           {showQueryConditionPanel && (

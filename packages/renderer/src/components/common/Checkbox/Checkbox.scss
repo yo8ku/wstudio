@@ -1,0 +1,40 @@
+/**
+ * Checkbox 复选框样式
+ * 功能：定义复选框的视觉样式
+ * 描述：继承主题配色，支持选中、未选中、半选、禁用状态
+ */
+
+.ws-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ws-checkbox-border);
+  border-radius: 3px;
+  cursor: pointer;
+  background-color: var(--ws-checkbox-background);
+  color: var(--ws-checkbox-foreground);
+  flex-shrink: 0;
+
+  // 选中状态
+  &.checked {
+    background-color: var(--ws-checkbox-select-background);
+    border-color: var(--ws-checkbox-select-background);
+  }
+
+  // 半选状态
+  &.indeterminate {
+    background-color: var(--ws-checkbox-select-background);
+    border-color: var(--ws-checkbox-select-background);
+  }
+
+  // 禁用状态
+  &.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  // 悬停状态（非禁用）
+  &:not(.disabled):hover {
+    border-color: var(--ws-checkbox-select-background);
+  }
+}

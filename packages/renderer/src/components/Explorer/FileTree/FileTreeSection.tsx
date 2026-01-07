@@ -3,10 +3,11 @@
  * 显示工作区的文件和文件夹结构
  */
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import ExplorerSection from '../ExplorerSection';
 import { FileTreeNode, FileTreeCallbacks } from './types';
 import { InlineInput } from '../Common/InlineInput';
+import { CustomScrollbar, CustomScrollbarRef } from '../../common/CustomScrollbar';
 import { useExplorerStore } from '../../../stores/explorerStore';
 import './FileTreeSection.scss';
 
@@ -41,258 +42,22 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   onBlankAreaClick,
   onContainerContextMenu,
 }) => {
-  const contentRef = useRef<HTMLDivElement>(null);
-  const DEFAULT_OPACITY = 0.5; // 默认透明度
-  const [scrollbarOpacity, setScrollbarOpacity] = useState(0.5); // 初始为0.5，始终显示
-  const fadeTimerRef = useRef<number | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const scrollbarRef = useRef<CustomScrollbarRef>(null);
   const isRestoringScrollRef = useRef<boolean>(false);
-  const scrollbarTrackRef = useRef<HTMLDivElement>(null);
-  const scrollbarThumbRef = useRef<HTMLDivElement>(null);
-  const scrollbarUpdateFrameRef = useRef<number | null>(null);
-  const isThumbDraggingRef = useRef(false);
-  const dragStartYRef = useRef(0);
-  const dragStartScrollTopRef = useRef(0);
-  const [hasScrollableContent, setHasScrollableContent] = useState(false);
-  const hasScrollableContentRef = useRef(false);
-  const [isThumbDragging, setIsThumbDragging] = useState(false);
   
   // 从 store 获取滚动位置
   const { fileTreeScrollTop, setFileTreeScrollTop, workspacePath } = useExplorerStore();
 
-  // 淡入：立即中断所有动画并显示滚动条（鼠标悬停时显示默认透明度）
-  const fadeIn = () => {
-    // 取消所有进行中的动画
-    if (fadeTimerRef.current) {
-      clearTimeout(fadeTimerRef.current);
-      fadeTimerRef.current = null;
+  // 处理滚动事件，保存滚动位置
+  const handleScroll = useCallback((scrollTop: number) => {
+    if (!isRestoringScrollRef.current) {
+      setFileTreeScrollTop(scrollTop);
     }
-    if (animationFrameRef.current) {
-      clearTimeout(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-    // 立即设置为默认透明度
-    setScrollbarOpacity(DEFAULT_OPACITY);
-  };
-
-  // 淡出：从默认透明度逐步降低到完全消失（每次减少 1%）
-  const fadeOut = () => {
-    const step = 0.01; // 每次减少 1%
-    const interval = 10; // 10ms 减少一次
-    let currentOpacity = DEFAULT_OPACITY;
-    
-    const animate = () => {
-      currentOpacity -= step;
-      
-      // 降低到 0 时完全消失
-      if (currentOpacity <= 0) {
-        setScrollbarOpacity(0);
-        return;
-      }
-      
-      setScrollbarOpacity(currentOpacity);
-      animationFrameRef.current = window.setTimeout(() => {
-        animate();
-      }, interval) as unknown as number;
-    };
-
-    animate();
-  };
-
-  // 处理鼠标进入
-  const handleMouseEnter = () => {
-    fadeIn();
-  };
-
-  // 处理鼠标离开
-  const handleMouseLeave = () => {
-    if (isThumbDraggingRef.current) {
-      return;
-    }
-    fadeOut();
-  };
-
-  // 清理定时器和动画
-  useEffect(() => {
-    return () => {
-      if (fadeTimerRef.current) {
-        clearTimeout(fadeTimerRef.current);
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, []);
-
-  const updateHasScrollableContent = useCallback((value: boolean) => {
-    if (hasScrollableContentRef.current !== value) {
-      hasScrollableContentRef.current = value;
-      setHasScrollableContent(value);
-    }
-  }, []);
-
-  const scheduleScrollbarUpdate = useCallback(() => {
-    if (scrollbarUpdateFrameRef.current !== null) {
-      window.cancelAnimationFrame(scrollbarUpdateFrameRef.current);
-    }
-
-    scrollbarUpdateFrameRef.current = window.requestAnimationFrame(() => {
-      scrollbarUpdateFrameRef.current = null;
-
-      const contentElement = contentRef.current;
-      const thumbElement = scrollbarThumbRef.current;
-      const trackElement = scrollbarTrackRef.current;
-
-      if (!contentElement || !thumbElement) {
-        updateHasScrollableContent(false);
-        return;
-      }
-
-      const { scrollHeight, clientHeight, scrollTop } = contentElement;
-      const hasScroll = scrollHeight - clientHeight > 1;
-
-      updateHasScrollableContent(hasScroll);
-
-      if (!hasScroll) {
-        thumbElement.style.height = '0px';
-        thumbElement.style.top = '0px';
-        thumbElement.style.opacity = '0';
-        return;
-      }
-
-      const trackHeight = trackElement?.clientHeight ?? clientHeight;
-      const availableTrack = Math.max(trackHeight, 0);
-      const ratio = scrollHeight > 0 ? clientHeight / scrollHeight : 0;
-      const minThumbHeight = 24;
-      const thumbHeight = Math.max(Math.round(availableTrack * ratio), minThumbHeight);
-      const maxScrollTop = scrollHeight - clientHeight;
-      const maxThumbOffset = Math.max(availableTrack - thumbHeight, 0);
-      const thumbOffset = maxScrollTop > 0 ? (scrollTop / maxScrollTop) * maxThumbOffset : 0;
-
-      thumbElement.style.height = `${thumbHeight}px`;
-      thumbElement.style.top = `${thumbOffset}px`;
-      thumbElement.style.opacity = '1';
-    });
-  }, [updateHasScrollableContent]);
-
-  const handleThumbMouseMove = useCallback((event: MouseEvent) => {
-    if (!isThumbDraggingRef.current) {
-      return;
-    }
-
-    event.preventDefault();
-    const contentElement = contentRef.current;
-    const thumbElement = scrollbarThumbRef.current;
-    const trackElement = scrollbarTrackRef.current;
-
-    if (!contentElement || !thumbElement) {
-      return;
-    }
-
-    const { clientHeight, scrollHeight } = contentElement;
-    const maxScrollTop = scrollHeight - clientHeight;
-
-    if (maxScrollTop <= 0) {
-      return;
-    }
-
-    const thumbHeight = parseFloat(thumbElement.style.height || '0');
-    const trackHeight = trackElement?.clientHeight ?? clientHeight;
-    const availableTrack = Math.max(trackHeight - thumbHeight, 0);
-
-    if (availableTrack <= 0) {
-      return;
-    }
-
-    const delta = event.clientY - dragStartYRef.current;
-    const scrollRatio = maxScrollTop / availableTrack;
-    const nextScrollTop = Math.min(
-      Math.max(dragStartScrollTopRef.current + delta * scrollRatio, 0),
-      maxScrollTop
-    );
-
-    contentElement.scrollTop = nextScrollTop;
-    scheduleScrollbarUpdate();
-  }, [scheduleScrollbarUpdate]);
-
-  const handleThumbMouseUp = useCallback(() => {
-    if (!isThumbDraggingRef.current) {
-      return;
-    }
-
-    isThumbDraggingRef.current = false;
-    setIsThumbDragging(false);
-    window.removeEventListener('mousemove', handleThumbMouseMove);
-    window.removeEventListener('mouseup', handleThumbMouseUp);
-    const wrapperElement = scrollbarTrackRef.current?.parentElement;
-    if (!wrapperElement || !wrapperElement.matches(':hover')) {
-      fadeOut();
-    } else {
-      fadeIn();
-    }
-  }, [handleThumbMouseMove]);
-
-  const handleThumbMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (!contentRef.current) {
-      return;
-    }
-
-    isThumbDraggingRef.current = true;
-    setIsThumbDragging(true);
-    fadeIn();
-    dragStartYRef.current = event.clientY;
-    dragStartScrollTopRef.current = contentRef.current.scrollTop;
-
-    window.addEventListener('mousemove', handleThumbMouseMove);
-    window.addEventListener('mouseup', handleThumbMouseUp);
-  }, [handleThumbMouseMove, handleThumbMouseUp]);
-
-  useEffect(() => {
-    return () => {
-      if (scrollbarUpdateFrameRef.current !== null) {
-        window.cancelAnimationFrame(scrollbarUpdateFrameRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      window.removeEventListener('mousemove', handleThumbMouseMove);
-      window.removeEventListener('mouseup', handleThumbMouseUp);
-    };
-  }, [handleThumbMouseMove, handleThumbMouseUp]);
-
-  // 监听滚动事件，保存滚动位置并同步自定义滚动条
-  useEffect(() => {
-    const contentElement = contentRef.current;
-    if (!contentElement) return;
-
-    const handleScroll = () => {
-      if (!contentElement) {
-        return;
-      }
-
-      if (!isRestoringScrollRef.current) {
-        setFileTreeScrollTop(contentElement.scrollTop);
-      }
-
-      scheduleScrollbarUpdate();
-    };
-
-    contentElement.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      contentElement.removeEventListener('scroll', handleScroll);
-    };
-  }, [scheduleScrollbarUpdate, setFileTreeScrollTop]);
+  }, [setFileTreeScrollTop]);
 
   // 恢复滚动位置（当路径匹配时）
   useEffect(() => {
-    const contentElement = contentRef.current;
-    if (!contentElement || !rootPath) return;
+    if (!rootPath) return;
     
     // 只有当路径匹配时才恢复滚动位置
     if (rootPath === workspacePath) {
@@ -301,8 +66,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
         
         // 使用 requestAnimationFrame 确保 DOM 已更新
         requestAnimationFrame(() => {
-          contentElement.scrollTop = fileTreeScrollTop;
-          scheduleScrollbarUpdate();
+          scrollbarRef.current?.setScrollTop(fileTreeScrollTop);
           // 延迟重置标志，避免立即触发滚动事件
           setTimeout(() => {
             isRestoringScrollRef.current = false;
@@ -311,37 +75,14 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
       }
     } else {
       // 路径不匹配时，重置滚动位置
-      contentElement.scrollTop = 0;
-      scheduleScrollbarUpdate();
+      scrollbarRef.current?.setScrollTop(0);
     }
-  }, [rootPath, workspacePath, fileTreeScrollTop, scheduleScrollbarUpdate]);
+  }, [rootPath, workspacePath, fileTreeScrollTop]);
 
+  // 节点变化时更新滚动条
   useEffect(() => {
-    scheduleScrollbarUpdate();
-  }, [nodes, scheduleScrollbarUpdate]);
-
-  useEffect(() => {
-    const contentElement = contentRef.current;
-    if (!contentElement) {
-      return;
-    }
-
-    scheduleScrollbarUpdate();
-
-    if (typeof ResizeObserver === 'undefined') {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      scheduleScrollbarUpdate();
-    });
-
-    observer.observe(contentElement);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [scheduleScrollbarUpdate]);
+    scrollbarRef.current?.updateScrollbar();
+  }, [nodes]);
 
   // 构建操作按钮
   const actions = [];
@@ -517,7 +258,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   };
 
   // 处理空白区域点击
-  const handleContentClick = (e: React.MouseEvent) => {
+  const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // 只有当点击的是容器本身（空白区域），而不是子元素时才触发
     if (e.target === e.currentTarget && onBlankAreaClick) {
       onBlankAreaClick();
@@ -532,48 +273,26 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
         actions={actions}
         onExpandChange={onExpandedChange}
       >
-        <div
-          className="file-tree-content-wrapper"
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+        <CustomScrollbar
+          ref={scrollbarRef}
+          className="file-tree-content"
+          onScroll={handleScroll}
+          onClick={handleContentClick}
+          onContextMenu={onContainerContextMenu}
         >
-          <div 
-            ref={contentRef}
-            className="file-tree-content"
-            onClick={handleContentClick}
-            onContextMenu={(event) => {
-              if (onContainerContextMenu) {
-                onContainerContextMenu(event);
-              }
-            }}
-          >
-            {nodes.length === 0 ? (
-              <div className="file-tree-empty">
-                {rootPath ? '文件夹为空' : '尚未打开文件夹'}
-              </div>
-            ) : (
-              <div className="tree-view">
-                {nodes.map((node) => renderNode(node))}
-              </div>
-            )}
-          </div>
-          <div
-            className="file-tree-custom-scrollbar"
-            ref={scrollbarTrackRef}
-            aria-hidden="true"
-            style={{ opacity: hasScrollableContent ? scrollbarOpacity : 0 }}
-          >
-            <div
-              className={`file-tree-custom-scrollbar-thumb${isThumbDragging ? ' is-dragging' : ''}`}
-              ref={scrollbarThumbRef}
-              onMouseDown={handleThumbMouseDown}
-            />
-          </div>
-        </div>
+          {nodes.length === 0 ? (
+            <div className="file-tree-empty">
+              {rootPath ? '文件夹为空' : '尚未打开文件夹'}
+            </div>
+          ) : (
+            <div className="tree-view">
+              {nodes.map((node) => renderNode(node))}
+            </div>
+          )}
+        </CustomScrollbar>
       </ExplorerSection>
     </div>
   );
 };
 
 export default FileTreeSection;
-

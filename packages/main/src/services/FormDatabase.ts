@@ -176,11 +176,18 @@ export class FormDatabase {
   async updateGroup(id: string, updates: Partial<Pick<FormGroup, 'name' | 'parentId' | 'sortOrder'>>): Promise<boolean> {
     await this.ensureInitialized();
 
-    const affected = await this.db.update('form_groups', updates, [
-      { field: 'id', operator: '=', value: id },
-    ]);
+    // 构建 SET 子句
+    const fields = Object.keys(updates);
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    const values = [...Object.values(updates), id];
 
-    return affected > 0;
+    // 使用 execute 直接执行 SQL
+    await this.db.execute(
+      `UPDATE form_groups SET ${setClause} WHERE id = ?`,
+      values
+    );
+
+    return true;
   }
 
   /**
@@ -298,11 +305,18 @@ export class FormDatabase {
       updatedAt: Date.now(),
     };
 
-    const affected = await this.db.update('forms', updateData, [
-      { field: 'id', operator: '=', value: id },
-    ]);
+    // 构建 SET 子句
+    const fields = Object.keys(updateData);
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    const values = [...Object.values(updateData), id];
 
-    return affected > 0;
+    // 使用 execute 直接执行 SQL
+    await this.db.execute(
+      `UPDATE forms SET ${setClause} WHERE id = ?`,
+      values
+    );
+
+    return true;
   }
 
   /**

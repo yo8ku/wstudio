@@ -28,6 +28,7 @@ import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
+import { saveAndRemoveTableDataService } from '../../../../services/tableData';
 import type { KnowledgeItem } from '../../Sidebar/KnowledgeBase/types';
 import { toastService } from '../../../../services/ToastService';
 import './EditorArea.scss';
@@ -47,6 +48,7 @@ export interface EditorTab {
   configIndex?: number;  // 已废弃：AI配置索引（用于 ai-config 类型，保留用于向后兼容）
   agentData?: { categoryId: string; categoryName: string };  // 新增：AI智能体数据（用于 ai-agent 类型）
   mermaidData?: { code: string; title: string };  // Mermaid 流程图数据（用于 mermaid-designer 类型）
+  formId?: string;  // 表单ID（用于 table-designer 类型）
 }
 
 interface EditorAreaProps {
@@ -563,17 +565,32 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
 
     // 打开表格设计器
-    const handleOpenTableDesigner = () => {
+    const handleOpenTableDesigner = (event: Event) => {
+      const customEvent = event as CustomEvent<{ formId?: string; formName?: string; newTab?: boolean }>;
+      const { formId, formName, newTab } = customEvent.detail || {};
+      
       setTabs(currentTabs => {
-        const newTab: EditorTab = {
-          id: `table-designer-${Date.now()}`,
-          title: '表格设计器',
-          path: `table-designer:/${Date.now()}`,
+        // 如果有 formId，检查是否已经打开
+        if (formId && !newTab) {
+          const existingTab = currentTabs.find(tab => tab.formId === formId);
+          if (existingTab) {
+            setTimeout(() => setActiveTabId(existingTab.id), 0);
+            return currentTabs;
+          }
+        }
+        
+        const tabId = `table-designer-${formId || Date.now()}`;
+        const tabTitle = formName ? `表格 - ${formName}` : '表格设计器';
+        const newTabItem: EditorTab = {
+          id: tabId,
+          title: tabTitle,
+          path: `table-designer:/${formId || Date.now()}`,
           isDirty: false,
-          type: 'table-designer'
+          type: 'table-designer',
+          formId: formId,
         };
-        setTimeout(() => setActiveTabId(newTab.id), 0);
-        return [...currentTabs, newTab];
+        setTimeout(() => setActiveTabId(newTabItem.id), 0);
+        return [...currentTabs, newTabItem];
       });
     };
 
@@ -601,8 +618,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('open-extension-manager', handleOpenExtensionManager);
     window.addEventListener('open-lancedb-view', handleOpenLanceDBView);
     window.addEventListener('open-database-view', handleOpenDatabaseView);
-    window.addEventListener('open-table-designer', handleOpenTableDesigner);
-    window.addEventListener('open-form-view', handleOpenTableDesigner);
+    window.addEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
+    window.addEventListener('open-form-view', handleOpenTableDesigner as EventListener);
     window.addEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
     window.addEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
@@ -643,8 +660,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-extension-manager', handleOpenExtensionManager);
       window.removeEventListener('open-lancedb-view', handleOpenLanceDBView);
       window.removeEventListener('open-database-view', handleOpenDatabaseView);
-      window.removeEventListener('open-table-designer', handleOpenTableDesigner);
-      window.removeEventListener('open-form-view', handleOpenTableDesigner);
+      window.removeEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
+      window.removeEventListener('open-form-view', handleOpenTableDesigner as EventListener);
       window.removeEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
       window.removeEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
@@ -653,6 +670,30 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('set-editor-type', handleSetEditorType as EventListener);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 监听表格名称变更事件（独立的 useEffect）
+  useEffect(() => {
+    const handleTableNameChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ formId: string; newName: string }>;
+      const { formId, newName } = customEvent.detail || {};
+      
+      if (formId && newName) {
+        setTabs(currentTabs => 
+          currentTabs.map(tab => 
+            tab.formId === formId 
+              ? { ...tab, title: `表格 - ${newName}` }
+              : tab
+          )
+        );
+      }
+    };
+
+    window.addEventListener('table-name-change', handleTableNameChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('table-name-change', handleTableNameChange as EventListener);
+    };
   }, []);
 
   // 监听打开知识库事件（独立的 useEffect，无依赖）
@@ -1296,6 +1337,17 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }
     }
     
+    // 如果是表格设计器标签页，自动保存数据
+    if (closingTab?.type === 'table-designer' && closingTab.formId) {
+      saveAndRemoveTableDataService(closingTab.formId).then(success => {
+        if (success) {
+          console.log('[EditorArea] 表格数据自动保存成功:', closingTab.formId);
+        } else {
+          console.warn('[EditorArea] 表格数据自动保存失败:', closingTab.formId);
+        }
+      });
+    }
+    
     const newTabs = tabs.filter(tab => tab.id !== tabId);
     setTabs(newTabs);
     
@@ -1645,7 +1697,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   
                   {tab.type === 'database-view' && <DatabaseView />}
                   
-                  {tab.type === 'table-designer' && <TableDesigner />}
+                  {tab.type === 'table-designer' && <TableDesigner formId={tab.formId} />}
                   
                   {tab.type === 'mermaid-designer' && (
                     <MermaidDesigner
@@ -1837,7 +1889,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     
                     {tab.type === 'database-view' && <DatabaseView />}
                     
-                    {tab.type === 'table-designer' && <TableDesigner />}
+                    {tab.type === 'table-designer' && <TableDesigner formId={tab.formId} />}
                     
                     {tab.type === 'mermaid-designer' && (
                       <MermaidDesigner

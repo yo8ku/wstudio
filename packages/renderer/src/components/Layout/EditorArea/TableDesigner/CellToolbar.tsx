@@ -58,12 +58,30 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
 }) => {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState<'right' | 'bottom'>('right');
+  const moreButtonRef = useRef<HTMLSpanElement>(null);
+  const prevPositionRef = useRef(position);
 
-  // 点击外部关闭工具栏
+  // 当位置变化时（选中了新单元格），关闭更多菜单
+  useEffect(() => {
+    if (prevPositionRef.current.x !== position.x || prevPositionRef.current.y !== position.y) {
+      setShowMoreMenu(false);
+      prevPositionRef.current = position;
+    }
+  }, [position]);
+
+  // 点击外部关闭工具栏和更多菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      // 检查点击是否在工具栏内容或更多菜单上
+      const toolbarContent = toolbarRef.current?.querySelector('.cell-toolbar-content');
+      const moreMenu = toolbarRef.current?.querySelector('.cell-toolbar-more-menu');
+      
+      const isInsideToolbar = toolbarContent?.contains(target) || moreMenu?.contains(target);
+      
+      if (!isInsideToolbar) {
+        setShowMoreMenu(false);
         onClose();
       }
     };
@@ -72,19 +90,23 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose]);
 
-  // 点击外部关闭更多菜单
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
-        setShowMoreMenu(false);
+  // 点击更多按钮，检测菜单位置
+  const handleMoreClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!showMoreMenu && moreButtonRef.current) {
+      const buttonRect = moreButtonRef.current.getBoundingClientRect();
+      const menuWidth = 150;
+      const viewportWidth = window.innerWidth;
+      
+      // 如果菜单会溢出视口右边界，显示在下方
+      if (buttonRect.right + menuWidth + 10 > viewportWidth) {
+        setMenuPosition('bottom');
+      } else {
+        setMenuPosition('right');
       }
-    };
-
-    if (showMoreMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showMoreMenu]);
+    setShowMoreMenu(!showMoreMenu);
+  };
 
   // 处理填充
   const handleFill = () => {
@@ -143,13 +165,12 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
   return (
     <div
       ref={toolbarRef}
-      className="cell-toolbar"
+      className={`cell-toolbar ${menuPosition === 'bottom' ? 'menu-bottom' : ''}`}
       style={{
         left: position.x,
         top: position.y - 48,
       }}
       onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="cell-toolbar-content">
         <span className="cell-toolbar-item" onClick={handleFill} title="填充">
@@ -166,8 +187,9 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
         </span>
         <span className="cell-toolbar-divider" />
         <span
+          ref={moreButtonRef}
           className={`cell-toolbar-item ${showMoreMenu ? 'active' : ''}`}
-          onClick={() => setShowMoreMenu(!showMoreMenu)}
+          onClick={handleMoreClick}
           title="更多"
         >
           <Icon name="cell-more" size={20} />
@@ -175,7 +197,7 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
       </div>
 
       {showMoreMenu && (
-        <div ref={moreMenuRef} className="cell-toolbar-more-menu">
+        <div className={`cell-toolbar-more-menu ${menuPosition}`}>
           {moreMenuItems.map((item) =>
             item.id === 'separator' ? (
               <div key={item.id} className="cell-toolbar-menu-separator" />

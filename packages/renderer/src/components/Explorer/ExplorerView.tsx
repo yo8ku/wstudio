@@ -146,11 +146,12 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     try {
       const result = await window.electron?.form?.createForm('未命名表单', groupId ?? null);
       if (result?.success && result.data) {
+        const newForm = result.data;
         // 直接将新表单添加到状态中
-        setForms(prev => [...prev, result.data]);
+        setForms(prev => [...prev, newForm]);
         // 打开新建的表单
         window.dispatchEvent(new CustomEvent('open-form-editor', {
-          detail: { formId: result.data.id, formName: result.data.name }
+          detail: { formId: newForm.id, formName: newForm.name }
         }));
       }
     } catch (error) {
@@ -163,8 +164,9 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     try {
       const result = await window.electron?.form?.createGroup(name, null);
       if (result?.success && result.data) {
+        const newGroup = result.data;
         // 直接将新分组添加到状态中
-        setFormGroups(prev => [...prev, { ...result.data, isExpanded: true }]);
+        setFormGroups(prev => [...prev, { ...newGroup, isExpanded: true }]);
       }
     } catch (error) {
       console.error('[ExplorerView] 新建分组失败:', error);
@@ -220,6 +222,10 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         setForms(prev => prev.map(f => 
           f.id === item.id ? { ...f, name: newName } : f
         ));
+        // 触发事件更新标签页标题
+        window.dispatchEvent(new CustomEvent('table-name-change', {
+          detail: { formId: item.id, newName }
+        }));
       }
     } catch (error) {
       console.error('[ExplorerView] 重命名表单失败:', error);
@@ -230,7 +236,6 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   const handleDeleteForm = useCallback(async (item: import('./Form/types').FormItem) => {
     try {
       const result = await window.electron?.form?.deleteForm(item.id);
-      console.log('[ExplorerView] 删除表单结果:', result);
       if (result?.success) {
         // 直接从状态中移除该表单，不重新加载
         setForms(prev => prev.filter(f => f.id !== item.id));

@@ -87,6 +87,7 @@
   flex-direction: column;
   flex: 1;
   overflow: hidden;
+  position: relative;
 }
 
 // 生成完成后的操作栏
@@ -149,9 +150,11 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+  isolation: isolate; // 创建新的层叠上下文，防止 z-index 影响其他表格
 }
 
 .table-wrapper {
+  position: relative;
   width: 100%;
   height: 100%;
   overflow: auto;
@@ -160,6 +163,14 @@
   padding-right: 100px; // 右侧额外空间，确保添加列按钮不会紧贴边界
   padding-bottom: 50px; // 底部额外空间，留出空白区域
   margin-bottom: 10px; // 确保横向滚动条不被遮挡
+
+  // 选中区域覆盖层
+  .cell-selection-overlay {
+    position: absolute;
+    border: 2px solid var(--ws-focus-border);
+    pointer-events: none;
+    z-index: 10;
+  }
 
   // 自定义滚动条样式
   &::-webkit-scrollbar {
@@ -192,7 +203,6 @@
 .design-table {
   border-collapse: separate;
   border-spacing: 0;
-  table-layout: fixed;
   font-size: 13px;
   cursor: default;
   user-select: none; // 禁止文本选择，支持拖拽选择多行
@@ -244,6 +254,11 @@
     // 选中单元格 - 使用伪元素显示边框
     &.selected-cell {
       background-color: var(--ws-editor-background) !important;
+      // 固定列选中时需要更高的 z-index
+      &.row-selector-cell,
+      &.first-data-column {
+        z-index: 12 !important;
+      }
       
       &::after {
         content: '';
@@ -252,9 +267,19 @@
         left: 0;
         right: 0;
         bottom: 0;
-        border: 1px solid #ff9800;
+        border: 2px solid var(--ws-focus-border);
         pointer-events: none;
         z-index: 3;
+      }
+    }
+
+    // 编辑状态单元格 - 保持背景色
+    &.editing-cell {
+      background-color: var(--ws-editor-background) !important;
+      // 固定列编辑时需要更高的 z-index
+      &.row-selector-cell,
+      &.first-data-column {
+        z-index: 12 !important;
       }
     }
 
@@ -265,20 +290,25 @@
   }
 }
 
-// tbody 行默认背景色
+// tbody 行默认背景色 - 不在 tr 上设置背景色，避免覆盖 add-column-cell
 .design-table tbody tr {
-  background-color: var(--ws-editor-background);
+  background-color: transparent;
 }
 
-// 非滚动状态下，所有 td 都设置背景色
-.design-table:not(.sticky-enabled) tbody tr td {
-  background-color: var(--ws-editor-background);
+// 非滚动状态下，td 默认透明背景
+.design-table:not(.sticky-enabled) tbody tr td:not(.add-column-cell) {
+  background-color: transparent;
+}
+
+// 非滚动状态下，编辑行使用悬停背景色
+.design-table:not(.sticky-enabled) tbody tr.row-editing td:not(.add-column-cell) {
+  background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
 }
 
 // 滚动状态下，非固定列的 td 背景色透明，固定列的 td 有不透明背景色
 .design-table.sticky-enabled tbody tr {
   // 非固定列的 td 背景色透明，继承 tr 的背景色
-  td {
+  td:not(.row-selector-cell):not(.first-data-column) {
     background-color: transparent;
   }
 
@@ -286,6 +316,39 @@
   td.row-selector-cell,
   td.first-data-column {
     background-color: var(--ws-editor-background);
+  }
+  
+  // 选中单元格所在行 - 只有固定列需要背景色（遮挡滚动内容）
+  // 非固定列保持透明，让悬停效果可见
+  &.row-cell-selected {
+    td.row-selector-cell,
+    td.first-data-column {
+      background-color: var(--ws-editor-background) !important;
+    }
+  }
+  
+  // 编辑行 - 所有列都需要悬停背景色
+  &.row-editing {
+    td:not(.add-column-cell):not(.row-selector-cell):not(.first-data-column) {
+      background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
+    }
+    
+    td.row-selector-cell,
+    td.first-data-column {
+      position: relative;
+      background-color: var(--ws-editor-background) !important;
+      
+      &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05));
+        pointer-events: none;
+      }
+    }
   }
 }
 
@@ -295,6 +358,7 @@
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
+  padding-right: 12px; // 给resize handle留出空间
   height: 100%;
   cursor: pointer;
 
@@ -338,9 +402,10 @@
   right: 0;
   top: 0;
   bottom: 0;
-  width: 4px;
+  width: 6px;
   cursor: col-resize;
   background: transparent;
+  z-index: 10;
 
   &:hover,
   &.resizing {
@@ -349,8 +414,8 @@
 }
 
 .add-column-cell {
-  width: 32px;
-  min-width: 32px;
+  width: 40px;
+  min-width: 40px;
   text-align: center;
   border: none !important;
   background: transparent !important;
@@ -362,7 +427,7 @@
     justify-content: center;
     width: 24px;
     height: 24px;
-    margin: 0 4px;
+    margin: 0 8px;
     border-radius: 4px;
     cursor: pointer;
     color: var(--ws-icon-foreground);
@@ -380,6 +445,12 @@
       cursor: not-allowed;
     }
   }
+}
+
+// 数据行中的添加列单元格
+.design-table td.add-column-cell {
+  border: none !important;
+  background: transparent !important;
 }
 
 .row-actions-cell {
@@ -419,7 +490,7 @@
     .add-row-btn {
       position: absolute;
       left: 20px;
-      right: 0;
+      right: 18px;
       top: 50%;
       transform: translateY(-50%);
       display: flex;
@@ -449,7 +520,7 @@
   .add-row-cell {
     border-left: none !important;
     border-bottom: 1px solid var(--ws-panel-border) !important;
-    border-right: 1px solid var(--ws-panel-border) !important;
+    border-right: none !important;
     border-top: none !important;
     background: transparent !important;
     padding: 0 !important;
@@ -489,6 +560,137 @@
     background: var(--ws-input-background);
     color: var(--ws-input-foreground);
     cursor: text;
+  }
+}
+
+// 单元格文本显示（使用 input 元素，与编辑状态保持一致）
+.cell-text-input {
+  display: block;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  margin: 0;
+  border: none;
+  outline: none;
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--ws-editor-foreground);
+  font-size: 13px;
+  line-height: 36px;
+  box-sizing: border-box;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  pointer-events: none; // 让点击事件穿透到 td
+}
+
+// 单元格文本显示（旧版 span 元素，保留兼容）
+.cell-text {
+  display: block;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  margin: 0;
+  color: var(--ws-editor-foreground);
+  font-size: 13px;
+  line-height: 36px;
+  box-sizing: border-box;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  pointer-events: none; // 让点击事件穿透到 td
+}
+
+// Tiptap 单元格编辑器样式
+.cell-tiptap-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 35px;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  cursor: default;
+  overflow: hidden;
+
+  &.editing {
+    cursor: text;
+    
+    .cell-tiptap-editor {
+      background: var(--ws-input-background);
+    }
+  }
+
+  .tiptap {
+    height: 100%;
+    padding: 0 10px;
+    margin: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--ws-editor-foreground);
+    font-size: 13px;
+    line-height: 35px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+
+    p {
+      margin: 0;
+      padding: 0;
+      line-height: 35px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    &.cell-tiptap-empty p::before {
+      content: attr(data-placeholder);
+      color: var(--ws-input-placeholder-foreground);
+      pointer-events: none;
+      float: left;
+      height: 0;
+    }
+  }
+}
+
+// 浮动单元格编辑器样式
+.floating-cell-editor {
+  box-sizing: border-box;
+  background: var(--ws-input-background);
+  position: relative;
+
+  // 使用伪元素显示边框，与选中状态完全一致
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 2px solid var(--ws-focus-border);
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .floating-cell-input {
+    display: block;
+    width: 100%;
+    height: 36px;
+    box-sizing: border-box;
+    padding: 0 10px;
+    margin: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--ws-editor-foreground);
+    font-size: 13px;
+    line-height: 36px;
   }
 }
 
@@ -580,6 +782,11 @@
 // 子记录行的所有单元格 - 取消上边框
 .design-table tr.child-row td {
   border-top: none !important;
+}
+
+// 子记录行的序号列 - 取消所有边框
+.design-table tr.child-row td.row-selector-cell {
+  border: none !important;
 }
 
 .design-table th.first-data-column {
@@ -694,22 +901,7 @@
     top: 50%;
     transform: translateY(-50%);
     display: none;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
     margin: 0 auto;
-    border: 1px solid var(--ws-checkbox-border);
-    border-radius: 3px;
-    cursor: pointer;
-    background-color: var(--ws-checkbox-background);
-
-    &.checked {
-      display: flex;
-      background-color: var(--ws-checkbox-select-background);
-      border-color: var(--ws-checkbox-select-background);
-      color: var(--ws-checkbox-foreground);
-    }
   }
 
   // 悬停时显示拖拽图标和复选框，隐藏序号
@@ -724,7 +916,7 @@
     }
 
     .row-checkbox {
-      display: flex;
+      display: inline-flex;
     }
   }
 
@@ -740,16 +932,14 @@
     }
 
     .row-checkbox {
-      display: flex;
+      display: inline-flex;
     }
   }
 
   // 子记录行的样式
   &.child-row-cell {
-    // 子记录不显示序号，取消边框
-    border-top: none !important;
-    border-bottom: none !important;
-    border-right: none !important;
+    // 子记录不显示序号，取消所有边框
+    border: none !important;
   }
 }
 
@@ -764,51 +954,84 @@ thead .row-selector-cell {
   .row-checkbox {
     position: absolute;
     left: 20px;
-    right: 0;
+    right: 18px;
     top: 50%;
     transform: translateY(-50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
+    display: inline-flex;
     margin: 0 auto;
   }
 }
 
-// 悬停行样式（拖拽行排序时禁用）
+// 悬停行样式（拖拽行排序时禁用）- 不在 tr 上设置背景色
 .design-table:not(.row-reordering) tbody tr:hover:not(.add-row-tr) {
-  background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
+  background-color: transparent !important;
 }
 
 // 悬停行样式 - 非滚动状态（拖拽行排序时禁用）
-.design-table:not(.sticky-enabled):not(.row-reordering) tbody tr:hover:not(.add-row-tr) td {
+.design-table:not(.sticky-enabled):not(.row-reordering) tbody tr:hover:not(.add-row-tr) td:not(.add-column-cell) {
   background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
 }
 
-// 悬停行样式 - 滚动状态，只有固定列需要设置背景色（拖拽行排序时禁用）
+// 悬停行样式 - 滚动状态（拖拽行排序时禁用）
 .design-table.sticky-enabled:not(.row-reordering) tbody tr:hover:not(.add-row-tr) {
+  // 非固定列的悬停背景色
+  td:not(.add-column-cell):not(.row-selector-cell):not(.first-data-column) {
+    background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
+  }
+  
+  // 固定列悬停时使用编辑器背景色作为基础，确保不透明
+  // 通过伪元素叠加悬停效果
   td.row-selector-cell,
   td.first-data-column {
-    background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
+    position: relative;
+    background-color: var(--ws-editor-background) !important;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05));
+      pointer-events: none;
+    }
   }
 }
 
-// 选中行样式
+// 选中行样式 - 不在 tr 上设置背景色
 .design-table tbody tr.row-selected {
-  background-color: var(--ws-list-inactive-selection-background, rgba(100, 149, 237, 0.15)) !important;
+  background-color: transparent !important;
 }
 
 // 选中行样式 - 非滚动状态
-.design-table:not(.sticky-enabled) tbody tr.row-selected td {
+.design-table:not(.sticky-enabled) tbody tr.row-selected td:not(.add-column-cell) {
   background-color: var(--ws-list-inactive-selection-background, rgba(100, 149, 237, 0.15)) !important;
 }
 
-// 选中行样式 - 滚动状态，只有固定列需要设置背景色
+// 选中行样式 - 滚动状态
 .design-table.sticky-enabled tbody tr.row-selected {
+  // 非固定列的背景色
+  td:not(.add-column-cell):not(.row-selector-cell):not(.first-data-column) {
+    background-color: var(--ws-list-inactive-selection-background, rgba(100, 149, 237, 0.15)) !important;
+  }
+  
+  // 固定列使用不透明背景色 + 伪元素叠加选中效果
   td.row-selector-cell,
   td.first-data-column {
-    background-color: var(--ws-list-inactive-selection-background, rgba(100, 149, 237, 0.15)) !important;
+    position: relative;
+    background-color: var(--ws-editor-background) !important;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--ws-list-inactive-selection-background, rgba(100, 149, 237, 0.15));
+      pointer-events: none;
+    }
   }
 }
 
@@ -833,7 +1056,15 @@ thead .row-selector-cell {
   }
 }
 
-// row-drop-target 样式由内联样式控制（指示线）
+// 拖拽放置目标指示线 - 顶部（使用 box-shadow 避免影响布局）
+.design-table tbody tr.drop-target-top td {
+  box-shadow: inset 0 3px 0 0 var(--ws-focus-border);
+}
+
+// 拖拽放置目标指示线 - 底部
+.design-table tbody tr.drop-target-bottom td {
+  box-shadow: inset 0 -3px 0 0 var(--ws-focus-border);
+}
 
 
 // 数据查看器面板
@@ -1026,7 +1257,6 @@ thead .row-selector-cell {
   height: 1px;
   background-color: var(--ws-panel-border);
   pointer-events: none;
-  right: 0;
   z-index: 1;
 }
 
@@ -1577,8 +1807,13 @@ thead .row-selector-cell {
   display: flex;
   align-items: center;
   position: relative;
-  height: 100%;
-  min-height: 35px;
+  height: 36px;
+  pointer-events: none; // 让点击事件穿透到 td
+
+  // 子记录缩进样式
+  &.child-row-indent .cell-content-wrapper .cell-text-input {
+    padding-left: 22px; // 10px 基础 + 12px 缩进
+  }
 
   .hierarchy-toggle {
     display: flex;
@@ -1590,6 +1825,7 @@ thead .row-selector-cell {
     cursor: pointer;
     color: var(--ws-icon-foreground);
     border-radius: 3px;
+    pointer-events: auto; // 恢复点击事件
 
     &:hover {
       background-color: var(--ws-toolbar-hover-background);
@@ -1606,7 +1842,7 @@ thead .row-selector-cell {
     flex: 1;
     min-width: 0;
     position: relative;
-    height: 35px;
+    height: 36px;
   }
 }
 
@@ -1615,28 +1851,30 @@ thead .row-selector-cell {
   display: flex;
   align-items: center;
   position: relative;
-  height: 100%;
-  min-height: 35px;
+  height: 36px;
+  pointer-events: none; // 让点击事件穿透到 td
 
   .cell-content-wrapper {
-    flex: 1;
-    min-width: 0;
+    width: 100%;
     position: relative;
-    height: 35px;
+    height: 36px;
   }
 
   .add-child-btn {
+    position: absolute;
+    right: 26px;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
     width: 18px;
     height: 18px;
-    margin-right: 4px;
     cursor: pointer;
     color: var(--ws-icon-foreground);
     border-radius: 3px;
-    flex-shrink: 0;
     opacity: 0.5;
+    pointer-events: auto; // 恢复点击事件
 
     &:hover {
       background-color: var(--ws-toolbar-hover-background);
@@ -1645,17 +1883,19 @@ thead .row-selector-cell {
   }
 
   .child-count-badge {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
     min-width: 18px;
     padding: 0 5px;
-    margin-right: 8px;
     height: 18px;
     font-size: 11px;
     color: var(--ws-description-foreground);
     background-color: var(--ws-badge-background, rgba(255, 255, 255, 0.1));
     border-radius: 9px;
-    flex-shrink: 0;
   }
 }

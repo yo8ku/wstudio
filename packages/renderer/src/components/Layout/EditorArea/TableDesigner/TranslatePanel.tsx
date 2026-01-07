@@ -60,41 +60,6 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const sourceDropdownRef = useRef<HTMLDivElement>(null);
   const targetDropdownRef = useRef<HTMLDivElement>(null);
-  const [adjustedPosition, setAdjustedPosition] = useState(position);
-
-  // 计算调整后的位置，确保面板不超出视口
-  useEffect(() => {
-    if (visible && panelRef.current) {
-      const panelWidth = 320; // 面板宽度
-      const panelHeight = panelRef.current.offsetHeight || 400;
-      const padding = 20; // 边距
-      
-      let newX = position.x;
-      let newY = position.y;
-      
-      // 检查右边界
-      if (newX + panelWidth > window.innerWidth - padding) {
-        newX = window.innerWidth - panelWidth - padding;
-      }
-      
-      // 检查左边界
-      if (newX < padding) {
-        newX = padding;
-      }
-      
-      // 检查下边界
-      if (newY + panelHeight > window.innerHeight - padding) {
-        newY = window.innerHeight - panelHeight - padding;
-      }
-      
-      // 检查上边界
-      if (newY < padding) {
-        newY = padding;
-      }
-      
-      setAdjustedPosition({ x: newX, y: newY });
-    }
-  }, [visible, position]);
 
   // 初始化文本
   useEffect(() => {
@@ -218,8 +183,8 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
       ref={panelRef}
       className="translate-panel"
       style={{
-        left: adjustedPosition.x,
-        top: adjustedPosition.y,
+        left: position.x,
+        top: position.y,
       }}
       onClick={(e) => e.stopPropagation()}
     >

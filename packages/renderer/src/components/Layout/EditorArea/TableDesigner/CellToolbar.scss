@@ -10,6 +10,13 @@
   flex-direction: row;
   align-items: flex-start;
   gap: 4px;
+  pointer-events: none; // 容器不响应点击，让点击穿透到下面的单元格
+
+  // 菜单显示在下方时，改为纵向布局
+  &.menu-bottom {
+    flex-direction: column;
+    align-items: flex-end;
+  }
 }
 
 .cell-toolbar-content {
@@ -21,6 +28,7 @@
   border: 1px solid var(--ws-dropdown-border);
   border-radius: 6px;
   box-shadow: 0 2px 8px var(--ws-widget-shadow);
+  pointer-events: auto; // 工具栏内容响应点击
 }
 
 .cell-toolbar-item {
@@ -57,6 +65,7 @@
   border: 1px solid var(--ws-dropdown-border);
   border-radius: 6px;
   box-shadow: 0 2px 8px var(--ws-widget-shadow);
+  pointer-events: auto; // 更多菜单响应点击
 }
 
 .cell-toolbar-menu-item {

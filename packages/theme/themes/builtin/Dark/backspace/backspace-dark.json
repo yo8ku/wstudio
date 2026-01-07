@@ -7,6 +7,9 @@
           "name": "Backspace Dark",
 
   "colors": {
+    "checkbox.background":"#0d1725",
+    "checkbox.border":"#7a6a00",
+    "checkbox.selectBackground":"#0f1c2d",
     "aiZoneBorder.background":"#5a8bbf",
     "input.focusBorder":"#4c6584",
     "app.foreground":"#6f8cb1",
