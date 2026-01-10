@@ -11,14 +11,14 @@
   border: 1px solid var(--ws-checkbox-border);
   border-radius: 3px;
   cursor: pointer;
-  background-color: var(--ws-checkbox-background);
+  background-color: var(--ws-checkbox-selectBackground);
   color: var(--ws-checkbox-foreground);
   flex-shrink: 0;
 
   // 选中状态
   &.checked {
-    background-color: var(--ws-checkbox-select-background);
-    border-color: var(--ws-checkbox-select-background);
+    background-color:var(--ws-checkbox-selectBackground);;
+    border-color: var(--ws-checkbox-selectBorder);
   }
 
   // 半选状态
@@ -33,8 +33,4 @@
     cursor: not-allowed;
   }
 
-  // 悬停状态（非禁用）
-  &:not(.disabled):hover {
-    border-color: var(--ws-checkbox-select-background);
-  }
 }

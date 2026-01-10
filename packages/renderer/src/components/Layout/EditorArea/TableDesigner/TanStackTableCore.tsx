@@ -17,12 +17,19 @@ import { Checkbox } from '../../../common/Checkbox';
 import { HierarchyTableManager, type FlattenedRow } from './HierarchyTableManager';
 import type { TableColumn, TableRow, CellValue, ColumnType } from './types';
 
+/** 行高类型 */
+export type RowHeightType = 'low' | 'medium' | 'high' | 'extra-high';
+
 interface TanStackTableCoreProps {
   columns: TableColumn[];
   rows: TableRow[];
+  hiddenColumns?: Set<string>; // 隐藏的列
+  rowHeight?: RowHeightType; // 行高
   selectedRows: Set<string>;
   selectedCell: { rowId: string; colId: string } | null;
+  selectedColumn: string | null; // 选中的列ID
   editingCell: { rowId: string; colId: string } | null;
+  contextMenuRowId?: string | null; // 右键菜单打开的行ID
   isGenerating?: boolean;
   tableWrapperRef?: React.RefObject<HTMLDivElement>;
   tableRef?: React.RefObject<HTMLTableElement>;
@@ -42,6 +49,7 @@ interface TanStackTableCoreProps {
   onRowsChange: (rows: TableRow[]) => void;
   onSelectedRowsChange: (selectedRows: Set<string>) => void;
   onSelectedCellChange: (cell: { rowId: string; colId: string } | null) => void;
+  onSelectedColumnChange: (columnId: string | null) => void; // 选中列变化回调
   onEditingCellChange: (cell: { rowId: string; colId: string } | null, event?: React.MouseEvent<HTMLTableCellElement>) => void;
   onCellUpdate: (rowId: string, colId: string, value: CellValue) => void;
   onAddRow: () => void;
@@ -68,6 +76,7 @@ const getColumnTypeIcon = (type: ColumnType): string => {
     tag: 'tag',
     url: 'link-2',
     email: 'at-sign',
+    password: 'eye-off',
   };
   return iconMap[type] || 'type-icon';
 };
@@ -76,9 +85,13 @@ const getColumnTypeIcon = (type: ColumnType): string => {
 export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
   columns,
   rows,
+  hiddenColumns = new Set(),
+  rowHeight = 'medium',
   selectedRows,
   selectedCell,
+  selectedColumn,
   editingCell,
+  contextMenuRowId,
   isGenerating = false,
   tableWrapperRef: externalTableWrapperRef,
   tableRef: externalTableRef,
@@ -87,6 +100,7 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
   onRowsChange,
   onSelectedRowsChange,
   onSelectedCellChange,
+  onSelectedColumnChange,
   onEditingCellChange,
   onAddRow,
   onAddColumn,
@@ -103,6 +117,16 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
   const internalTableWrapperRef = useRef<HTMLDivElement>(null);
   const tableWrapperRef = externalTableWrapperRef || internalTableWrapperRef;
   
+  // 使用 ref 保持 editingCell 的最新值，避免 useMemo 依赖导致重渲染
+  const editingCellRef = useRef(editingCell);
+  editingCellRef.current = editingCell;
+  
+  // 强制更新计数器，用于在 editingCell 变化时触发单元格重渲染
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    forceUpdate(n => n + 1);
+  }, [editingCell]);
+  
   // 拖动选择行状态
   const [isDraggingSelect, setIsDraggingSelect] = useState(false);
   const dragStartRowIndex = useRef<number>(-1);
@@ -115,8 +139,10 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
   const [isDraggingRow, setIsDraggingRow] = useState(false);
   const [dragRowIndex, setDragRowIndex] = useState<number>(-1);
   const [dropTargetIndex, setDropTargetIndex] = useState<number>(-1);
+  const [dropIndicatorPosition, setDropIndicatorPosition] = useState<'top' | 'bottom'>('top');
   const dragRowIndexRef = useRef<number>(-1);
   const dropTargetIndexRef = useRef<number>(-1);
+  const dropIndicatorPositionRef = useRef<'top' | 'bottom'>('top');
   
   // 列宽拖动状态
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
@@ -138,6 +164,12 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
   const flattenedRows = useMemo(() => {
     return HierarchyTableManager.flattenRows(rows);
   }, [rows]);
+
+  // 使用 ref 存储 flattenedRows，以便在事件处理器中访问最新值
+  const flattenedRowsRef = useRef(flattenedRows);
+  useEffect(() => {
+    flattenedRowsRef.current = flattenedRows;
+  }, [flattenedRows]);
 
   // 判断单元格是否在选中区域内（用于清空内容时）
   const isCellInRange = useCallback((rowId: string, colId: string): boolean => {
@@ -223,6 +255,27 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
     };
   }, [columns]);
 
+  // 监听链接单元格的双击自定义事件
+  useEffect(() => {
+    const handleLinkDoubleClick = (e: Event) => {
+      const customEvent = e as CustomEvent<{ rowId: string; colId: string }>;
+      const { rowId, colId } = customEvent.detail;
+      if (rowId && colId) {
+        const column = columns.find(c => c.id === colId);
+        if (column?.type !== 'checkbox') {
+          onEditingCellChange({ rowId, colId });
+        }
+      }
+    };
+
+    const wrapper = tableWrapperRef.current;
+    wrapper?.addEventListener('cell-double-click', handleLinkDoubleClick);
+
+    return () => {
+      wrapper?.removeEventListener('cell-double-click', handleLinkDoubleClick);
+    };
+  }, [columns, onEditingCellChange]);
+
   // 列宽拖动处理
   const handleResizeStart = useCallback((columnId: string, event: React.MouseEvent) => {
     console.log('[handleResizeStart] columnId:', columnId);
@@ -263,13 +316,49 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
   // 行选择处理
   const handleToggleRowSelect = useCallback((rowId: string) => {
     const next = new Set(selectedRows);
-    if (next.has(rowId)) {
-      next.delete(rowId);
-    } else {
+    const isSelecting = !next.has(rowId);
+    
+    if (isSelecting) {
       next.add(rowId);
+    } else {
+      next.delete(rowId);
     }
+    
+    // 找到当前行
+    const currentRow = rows.find(r => r.id === rowId);
+    
+    // 检查当前行是否有子记录
+    const children = rows.filter(r => r.parentId === rowId);
+    if (children.length > 0) {
+      if (isSelecting) {
+        // 当前行是父行且被选中，同时选中所有子记录
+        children.forEach(child => {
+          next.add(child.id);
+        });
+      } else {
+        // 当前行是父行且被取消选中，同时取消所有子记录的选中
+        children.forEach(child => {
+          next.delete(child.id);
+        });
+      }
+    }
+    
+    // 检查是否需要自动选中父行
+    if (currentRow?.parentId) {
+      // 当前行是子记录，检查同一父行的所有子记录是否都被选中
+      const siblings = rows.filter(r => r.parentId === currentRow.parentId);
+      const allSiblingsSelected = siblings.every(sibling => next.has(sibling.id));
+      if (allSiblingsSelected) {
+        // 所有子记录都被选中，自动选中父行
+        next.add(currentRow.parentId);
+      } else {
+        // 有子记录未选中，取消父行选中
+        next.delete(currentRow.parentId);
+      }
+    }
+    
     onSelectedRowsChange(next);
-  }, [selectedRows, onSelectedRowsChange]);
+  }, [selectedRows, rows, onSelectedRowsChange]);
 
   // 全选/取消全选
   const handleToggleSelectAll = useCallback(() => {
@@ -420,18 +509,39 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    
+    // 如果当前拖拽的行有子记录且已展开，自动折叠
+    const flatRow = flattenedRows[flatIndex];
+    if (flatRow) {
+      const hasChildren = rows.some(r => r.parentId === flatRow.row.id);
+      if (hasChildren && flatRow.expanded) {
+        onToggleRowExpanded(flatRow.row.id);
+      }
+    }
+    
     setIsDraggingRow(true);
     setDragRowIndex(flatIndex);
     setDropTargetIndex(flatIndex);
     dragRowIndexRef.current = flatIndex;
     dropTargetIndexRef.current = flatIndex;
-  }, []);
+  }, [flattenedRows, rows, onToggleRowExpanded]);
 
   // 行拖拽排序监听
   useEffect(() => {
     if (!isDraggingRow) return;
+    
+    // 获取被拖拽行的信息（使用 ref 获取最新数据）
+    const currentFlattenedRows = flattenedRowsRef.current;
+    const fromFlatRow = currentFlattenedRows[dragRowIndexRef.current];
+    const fromRowHasChildren = fromFlatRow ? rows.some(r => r.parentId === fromFlatRow.row.id) : false;
+    
+    // 记录上一次鼠标Y坐标，用于判断拖拽方向（初始化为 -1 表示未设置）
+    let lastMouseY = -1;
 
     const handleMouseMove = (event: MouseEvent) => {
+      // 每次移动时获取最新的 flattenedRows
+      const latestFlattenedRows = flattenedRowsRef.current;
+      
       const target = event.target as HTMLElement;
       const tr = target.closest('tr');
       if (!tr || !tableRef.current?.contains(tr)) return;
@@ -439,24 +549,144 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
       const tbody = tableRef.current.querySelector('tbody');
       if (!tbody) return;
       const allRows = Array.from(tbody.querySelectorAll('tr:not(.add-row-tr)'));
-      const flatIndex = allRows.indexOf(tr);
-      if (flatIndex >= 0 && flatIndex !== dropTargetIndexRef.current) {
-        dropTargetIndexRef.current = flatIndex;
-        setDropTargetIndex(flatIndex);
+      let flatIndex = allRows.indexOf(tr);
+      
+      // 判断拖拽方向（第一次移动时根据目标位置与起始位置判断）
+      let isDraggingDown: boolean;
+      if (lastMouseY === -1) {
+        // 第一次移动，根据目标索引与起始索引判断方向
+        isDraggingDown = flatIndex > dragRowIndexRef.current;
+      } else {
+        isDraggingDown = event.clientY > lastMouseY;
+      }
+      lastMouseY = event.clientY;
+      
+      if (flatIndex >= 0 && flatIndex < latestFlattenedRows.length) {
+        const targetFlatRow = latestFlattenedRows[flatIndex];
+        // 默认指示线位置：向下拖拽显示在下方，向上拖拽显示在上方
+        let indicatorPos: 'top' | 'bottom' = isDraggingDown ? 'bottom' : 'top';
+        
+        // 如果被拖拽的行有子记录
+        if (fromRowHasChildren && targetFlatRow) {
+          // 情况1: 目标是子记录（depth > 0）
+          if (targetFlatRow.depth > 0) {
+            // 向上查找父行
+            let parentIndex = flatIndex - 1;
+            while (parentIndex >= 0 && latestFlattenedRows[parentIndex].depth > 0) {
+              parentIndex--;
+            }
+            
+            if (parentIndex >= 0) {
+              // 找到该父行组的最后一个子记录
+              let lastChildIndex = parentIndex;
+              for (let i = parentIndex + 1; i < latestFlattenedRows.length; i++) {
+                if (latestFlattenedRows[i].depth > 0) {
+                  lastChildIndex = i;
+                } else {
+                  break;
+                }
+              }
+              
+              if (isDraggingDown) {
+                // 向下拖拽，跳到下一个父行，指示线显示在该行上方
+                const nextParentIndex = lastChildIndex + 1;
+                if (nextParentIndex < latestFlattenedRows.length) {
+                  flatIndex = nextParentIndex;
+                  indicatorPos = 'top'; // 显示在下一个父行的上方
+                } else {
+                  // 没有下一个父行，保持在当前父行
+                  flatIndex = parentIndex;
+                  indicatorPos = 'bottom';
+                }
+              } else {
+                // 向上拖拽，跳到父行
+                flatIndex = parentIndex;
+                indicatorPos = 'top';
+              }
+            }
+          }
+          // 情况2: 目标是有展开子记录的父行（向下拖拽时跳过子记录区域）
+          else if (isDraggingDown && targetFlatRow.depth === 0 && targetFlatRow.hasChildren && targetFlatRow.expanded) {
+            // 找到该父行的最后一个子记录
+            let lastChildIndex = flatIndex;
+            for (let i = flatIndex + 1; i < latestFlattenedRows.length; i++) {
+              if (latestFlattenedRows[i].depth > 0) {
+                lastChildIndex = i;
+              } else {
+                break;
+              }
+            }
+            // 跳到下一个父行，指示线显示在该行上方
+            const nextParentIndex = lastChildIndex + 1;
+            if (nextParentIndex < latestFlattenedRows.length) {
+              flatIndex = nextParentIndex;
+              indicatorPos = 'top';
+            } else {
+              // 没有下一个父行，保持在最后一个子记录，显示在下方
+              flatIndex = lastChildIndex;
+              indicatorPos = 'bottom';
+            }
+          }
+        }
+        
+        if (flatIndex !== dropTargetIndexRef.current || indicatorPos !== dropIndicatorPositionRef.current) {
+          dropTargetIndexRef.current = flatIndex;
+          dropIndicatorPositionRef.current = indicatorPos;
+          setDropTargetIndex(flatIndex);
+          setDropIndicatorPosition(indicatorPos);
+        }
       }
     };
 
     const handleMouseUp = () => {
+      // 使用 ref 获取最新的 flattenedRows
+      const latestFlattenedRows = flattenedRowsRef.current;
       const fromFlatIndex = dragRowIndexRef.current;
       const toFlatIndex = dropTargetIndexRef.current;
-      if (fromFlatIndex !== -1 && toFlatIndex !== -1 && fromFlatIndex !== toFlatIndex) {
-        const currentFlattenedRows = HierarchyTableManager.flattenRows(rows);
-        const fromFlatRow = currentFlattenedRows[fromFlatIndex];
-        const toFlatRow = currentFlattenedRows[toFlatIndex];
+      const indicatorPos = dropIndicatorPositionRef.current;
+      
+      // 判断是否需要执行移动操作
+      // 1. 如果目标索引等于起始索引，不移动
+      // 2. 如果指示线在拖拽行正下方（toFlatIndex === fromFlatIndex + 1 且 indicatorPos === 'top'），不移动
+      const isNoOp = fromFlatIndex === toFlatIndex || 
+        (toFlatIndex === fromFlatIndex + 1 && indicatorPos === 'top');
+      
+      if (fromFlatIndex !== -1 && toFlatIndex !== -1 && !isNoOp) {
+        const fromFlatRow = latestFlattenedRows[fromFlatIndex];
+        const toFlatRow = latestFlattenedRows[toFlatIndex];
         
         if (fromFlatRow && toFlatRow) {
           const fromRow = fromFlatRow.row;
           const toRow = toFlatRow.row;
+          
+          // 检查被拖拽的行是否有子记录
+          const fromRowHasChildren = rows.some(r => r.parentId === fromRow.id);
+          
+          // 限制1: 有子记录的行不能拖拽到子记录位置（不能成为其他行的子记录）
+          if (fromRowHasChildren && toRow.parentId) {
+            // 不允许拖拽，直接返回
+            setIsDraggingRow(false);
+            setDragRowIndex(-1);
+            setDropTargetIndex(-1);
+            dragRowIndexRef.current = -1;
+            dropTargetIndexRef.current = -1;
+            dropIndicatorPositionRef.current = 'top';
+            return;
+          }
+          
+          // 限制2: 有子记录的行不能拖拽到有子记录的行中（目标行有子记录时）
+          const toRowHasChildren = rows.some(r => r.parentId === toRow.id);
+          if (fromRowHasChildren && toRowHasChildren && toRow.parentId) {
+            // 不允许拖拽，直接返回
+            setIsDraggingRow(false);
+            setDragRowIndex(-1);
+            setDropTargetIndex(-1);
+            dragRowIndexRef.current = -1;
+            dropTargetIndexRef.current = -1;
+            dropIndicatorPositionRef.current = 'top';
+            return;
+          }
+          
           const fromOriginalIndex = rows.findIndex(r => r.id === fromRow.id);
           const toOriginalIndex = rows.findIndex(r => r.id === toRow.id);
           
@@ -465,10 +695,11 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
             const [movedRow] = newRows.splice(fromOriginalIndex, 1);
             
             // 如果目标行是子记录，将被拖拽的行也变成同一父行的子记录
-            if (toRow.parentId) {
+            // 但如果被拖拽的行有子记录，则不能变成子记录（保持为父行）
+            if (toRow.parentId && !fromRowHasChildren) {
               movedRow.parentId = toRow.parentId;
             } else {
-              // 如果目标行不是子记录，清除被拖拽行的父行关系
+              // 如果目标行不是子记录，或者被拖拽的行有子记录，清除被拖拽行的父行关系
               delete movedRow.parentId;
             }
             
@@ -483,6 +714,7 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
       setDropTargetIndex(-1);
       dragRowIndexRef.current = -1;
       dropTargetIndexRef.current = -1;
+      dropIndicatorPositionRef.current = 'top';
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -519,8 +751,17 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
     onCellContextMenu(rowId, colId, { x: event.clientX, y: event.clientY });
   }, [onCellContextMenu]);
 
-  // 列头点击
+  // 列头点击 - 选中列
   const handleColumnHeaderClick = useCallback((columnId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    // 清除单元格选中状态
+    onSelectedCellChange(null);
+    // 选中该列
+    onSelectedColumnChange(columnId);
+  }, [onSelectedCellChange, onSelectedColumnChange]);
+
+  // 列头下拉箭头点击 - 打开菜单
+  const handleColumnMenuClick = useCallback((columnId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     onColumnMenuOpen(columnId, { x: event.clientX, y: event.clientY });
   }, [onColumnMenuOpen]);
@@ -541,7 +782,6 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
           </span>
           <Checkbox
             checked={selectedRows.size === rows.length && rows.length > 0}
-            indeterminate={selectedRows.size > 0 && selectedRows.size < rows.length}
             onChange={handleToggleSelectAll}
             className="row-checkbox"
           />
@@ -553,15 +793,19 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
         const topLevelIndex = depth === 0 
           ? flattenedRows.slice(0, flatIndex + 1).filter(r => r.depth === 0).length
           : 0;
+        // 拖拽时只显示被拖拽行的拖拽图标
+        const showDragHandle = !isDraggingRow || dragRowIndex === flatIndex;
         
         return (
           <div className={`row-selector-cell ${hasChildren ? 'has-children' : ''} ${depth > 0 ? 'child-row-cell' : ''}`}>
-            <span 
-              className="row-drag-handle"
-              onMouseDown={(e) => handleRowDragStart(flatIndex, e)}
-            >
-              <Icon name="grip-vertical" size={12} />
-            </span>
+            {showDragHandle && (
+              <span 
+                className="row-drag-handle"
+                onMouseDown={(e) => handleRowDragStart(flatIndex, e)}
+              >
+                <Icon name="grip-vertical" size={12} />
+              </span>
+            )}
             {depth === 0 && (
               <span className="row-number">{topLevelIndex}</span>
             )}
@@ -570,7 +814,7 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
                 className="hierarchy-toggle"
                 onClick={(e) => { e.stopPropagation(); onToggleRowExpanded(dataRow.id); }}
               >
-                <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={14} />
+                <i className={`codicon ${isExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
               </span>
             )}
             <Checkbox
@@ -583,8 +827,9 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
       },
     };
 
-    // 数据列
-    const dataColumns: ColumnDef<FlattenedRow>[] = columns.map((col, colIndex) => ({
+    // 数据列（过滤掉隐藏的列）
+    const visibleColumns = columns.filter(col => !hiddenColumns.has(col.id));
+    const dataColumns: ColumnDef<FlattenedRow>[] = visibleColumns.map((col, colIndex) => ({
       id: col.id,
       accessorFn: (flatRow: FlattenedRow) => flatRow.row.cells[col.id],
       size: col.width || 150,
@@ -598,7 +843,10 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
             <Icon name={getColumnTypeIcon(col.type)} size={14} />
           </span>
           <span className="column-name">{col.name}</span>
-          <span className="column-menu-icon">
+          <span 
+            className="column-menu-icon"
+            onClick={(e) => handleColumnMenuClick(col.id, e)}
+          >
             <Icon name="chevron-down" size={12} />
           </span>
         </div>
@@ -606,7 +854,9 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
       cell: ({ row }) => {
         const flatRow = row.original;
         const { row: dataRow, depth, hasChildren } = flatRow;
-        const isEditing = editingCell?.rowId === dataRow.id && editingCell?.colId === col.id;
+        // 使用 ref 获取最新的 editingCell，避免 useMemo 依赖导致重渲染
+        const currentEditingCell = editingCellRef.current;
+        const isEditing = currentEditingCell?.rowId === dataRow.id && currentEditingCell?.colId === col.id;
         const childCount = colIndex === 0 && hasChildren 
           ? HierarchyTableManager.getDirectChildren(rows, dataRow.id).length 
           : 0;
@@ -669,9 +919,9 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
 
     return [selectorColumn, ...dataColumns, addColumnCol];
   }, [
-    columns, rows, flattenedRows, selectedRows, editingCell, isGenerating,
+    columns, rows, flattenedRows, selectedRows, selectedColumn, hiddenColumns, isGenerating,
     handleToggleSelectAll, handleToggleRowSelect, handleRowDragStart,
-    handleColumnHeaderClick, onToggleRowExpanded, onAddChildRow, onAddColumn, renderCellContent
+    handleColumnHeaderClick, handleColumnMenuClick, onToggleRowExpanded, onAddChildRow, onAddColumn, renderCellContent
   ]);
 
 
@@ -690,6 +940,10 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
     const classes = ['design-table'];
     if (needStickyColumn) classes.push('sticky-enabled');
     if (isDraggingRow) classes.push('row-reordering');
+    // 只有全选时才添加 has-selected-rows 类
+    if (selectedRows.size === rows.length && rows.length > 0) classes.push('has-selected-rows');
+    // 添加行高类名
+    classes.push(`row-height-${rowHeight}`);
     return classes.join(' ');
   };
 
@@ -703,19 +957,76 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
     if (editingCell?.rowId === flatRow.row.id) classes.push('row-editing');
     // 选中单元格所在的行
     if (selectedCell?.rowId === flatRow.row.id) classes.push('row-cell-selected');
+    // 右键菜单打开的行
+    if (contextMenuRowId === flatRow.row.id) classes.push('row-context-menu');
+    // 整行填色的行（只有行背景色时才禁用悬停效果）
+    if (flatRow.row.backgroundColor) {
+      classes.push('row-filled');
+    }
+    // 有单元格填色的行（不禁用悬停效果）
+    if (flatRow.row.cellColors && Object.keys(flatRow.row.cellColors).length > 0) {
+      classes.push('row-has-cell-colors');
+    }
     return classes.join(' ');
   };
 
   // 获取行样式
-  const getRowStyle = (_flatIndex: number): React.CSSProperties => {
-    return {};
+  const getRowStyle = (flatRow: FlattenedRow): React.CSSProperties => {
+    const style: React.CSSProperties = {};
+    // 如果行有背景色，设置背景色
+    if (flatRow.row.backgroundColor) {
+      style.backgroundColor = flatRow.row.backgroundColor;
+    }
+    return style;
+  };
+
+  // 获取单元格样式
+  // 固定列（selector 和第一数据列）需要单独设置背景色，否则滚动时会被遮挡
+  // 支持：行背景色、单元格颜色、列背景色
+  const getCellStyle = (
+    flatRow: FlattenedRow,
+    cellWidth: number,
+    isSelector: boolean,
+    isFirstDataColumn: boolean,
+    column?: TableColumn
+  ): React.CSSProperties => {
+    const style: Record<string, string> = {
+      width: `${cellWidth}px`,
+      minWidth: `${cellWidth}px`,
+      maxWidth: `${cellWidth}px`,
+    };
+    
+    // 确定单元格的背景色（优先级：单元格颜色 > 行背景色 > 列背景色）
+    let cellBgColor: string | undefined;
+    
+    // 1. 单元格颜色（最高优先级）
+    if (column && flatRow.row.cellColors && flatRow.row.cellColors[column.name]) {
+      cellBgColor = flatRow.row.cellColors[column.name];
+    }
+    // 2. 行背景色
+    else if (flatRow.row.backgroundColor) {
+      cellBgColor = flatRow.row.backgroundColor;
+    }
+    // 3. 列背景色（最低优先级）
+    else if (column?.backgroundColor) {
+      cellBgColor = column.backgroundColor;
+    }
+    
+    // 设置背景色
+    if (cellBgColor) {
+      // 所有列都使用 CSS 变量，通过伪元素显示填色
+      // 这样可以确保所有列的颜色一致
+      style['--cell-fill-color'] = cellBgColor;
+    }
+    
+    return style as React.CSSProperties;
   };
 
   // 判断是否显示拖拽指示线
   const shouldShowDropIndicator = (flatIndex: number): 'top' | 'bottom' | null => {
     if (!isDraggingRow || dropTargetIndex === -1 || dragRowIndex === -1) return null;
     if (flatIndex === dropTargetIndex && flatIndex !== dragRowIndex) {
-      return dropTargetIndex < dragRowIndex ? 'top' : 'bottom';
+      return dropIndicatorPosition;
     }
     return null;
   };
@@ -739,6 +1050,15 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
       if (selectedCell?.rowId === rowId && selectedCell?.colId === colId && !isEditing) {
         classes.push('selected-cell');
       }
+      // 选中列状态
+      if (selectedColumn === colId) {
+        classes.push('column-selected-cell');
+      }
+      // 链接列添加 url-cell 类名
+      const column = columns.find(c => c.id === colId);
+      if (column?.type === 'url') {
+        classes.push('url-cell');
+      }
     }
     return classes.join(' ');
   };
@@ -757,11 +1077,13 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
                 const headerWidth = isSelector ? 56 : isAddColumn ? 40 : (column?.width || 150);
                 // 第一数据列是索引1（selector=0, first-data=1）
                 const isFirstDataColumn = headerIndex === 1;
+                // 是否选中该列
+                const isColumnSelected = selectedColumn === header.id;
                 
                 return (
                   <th
                     key={header.id}
-                    className={`${isSelector ? 'row-selector-cell' : ''} ${isAddColumn ? 'add-column-cell' : ''} ${isFirstDataColumn ? 'first-data-column' : ''}`}
+                    className={`${isSelector ? 'row-selector-cell' : ''} ${isAddColumn ? 'add-column-cell' : ''} ${isFirstDataColumn ? 'first-data-column' : ''} ${isColumnSelected ? 'column-selected' : ''}`}
                     style={{ width: `${headerWidth}px`, minWidth: `${headerWidth}px`, maxWidth: `${headerWidth}px` }}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
@@ -785,7 +1107,7 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
               <tr
                 key={row.id}
                 className={`${getRowClassName(flatRow, rowIndex)} ${dropIndicator ? 'drop-target-' + dropIndicator : ''}`}
-                style={getRowStyle(rowIndex)}
+                style={getRowStyle(flatRow)}
                 onMouseDown={(e) => handleRowDragSelectStart(rowIndex, e)}
               >
                 {row.getVisibleCells().map((cell, cellIndex) => {
@@ -796,15 +1118,22 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
                   const canInteract = !isSelector && !isAddColumn && column;
                   // 使用columns中的宽度，而不是TanStack Table的getSize()
                   const cellWidth = isSelector ? 56 : isAddColumn ? 40 : (column?.width || 150);
-                  
+                  // 第一数据列是索引1（selector=0, first-data=1）
+                  const isFirstDataColumn = cellIndex === 1;
+
                   return (
                     <td
                       key={cell.id}
                       className={getCellClassName(colId, flatRow.row.id, cellIndex)}
-                      style={{ width: `${cellWidth}px`, minWidth: `${cellWidth}px`, maxWidth: `${cellWidth}px` }}
+                      style={getCellStyle(flatRow, cellWidth, isSelector, isFirstDataColumn, column)}
                       data-row-id={flatRow.row.id}
                       data-col-id={colId}
                       onMouseDown={canInteract ? (e) => {
+                        // 如果点击的是链接元素，不处理拖拽选择
+                        const target = e.target as HTMLElement;
+                        if (target.classList.contains('cell-url-link') || target.classList.contains('cell-url-link-input')) {
+                          return;
+                        }
                         e.stopPropagation(); // 阻止冒泡到 tr 的行选择
                         handleCellDragSelectStart(flatRow.row.id, colId, e);
                       } : undefined}
@@ -816,12 +1145,13 @@ export const TanStackTableCore: React.FC<TanStackTableCoreProps> = ({
                           const lastClickTime = lastClick ? parseInt(lastClick, 10) : 0;
                           (e.currentTarget as HTMLElement).dataset.lastClick = String(now);
                           
-                          if (now - lastClickTime < 300) {
-                            // 双击
-                            console.log('[TD double click detected] colId:', colId);
+                          const isDoubleClick = now - lastClickTime < 300;
+                          
+                          if (isDoubleClick) {
+                            // 双击 - 进入编辑状态
                             handleCellDoubleClick(flatRow.row.id, colId, e);
                           } else {
-                            // 单击
+                            // 单击 - 选中单元格
                             handleCellClick(flatRow.row.id, colId, e);
                           }
                         }

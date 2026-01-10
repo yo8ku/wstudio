@@ -14,7 +14,8 @@ export type ColumnType =
   | 'multiselect' // 多选
   | 'tag' // 标签
   | 'url' // 链接
-  | 'email'; // 邮箱
+  | 'email' // 邮箱
+  | 'password'; // 密码
 
 /** 列配置 */
 export interface TableColumn {
@@ -23,6 +24,8 @@ export interface TableColumn {
   type: ColumnType;
   width?: number;
   options?: string[]; // 用于 select 和 multiselect 类型
+  /** 列背景色 */
+  backgroundColor?: string;
 }
 
 /** 单元格值类型 */
@@ -36,6 +39,10 @@ export interface TableRow {
   parentId?: string | null;
   /** 是否展开子行 */
   expanded?: boolean;
+  /** 行背景色 */
+  backgroundColor?: string | null;
+  /** 单元格背景色 Map<columnName, color> */
+  cellColors?: Record<string, string>;
 }
 
 /** 表格配置 */
@@ -67,4 +74,5 @@ export const COLUMN_TYPES: ColumnTypeInfo[] = [
   { type: 'tag', label: '标签', icon: 'tag' },
   { type: 'url', label: '链接', icon: 'link-2' },
   { type: 'email', label: '邮箱', icon: 'at-sign' },
+  { type: 'password', label: '密码', icon: 'eye-off' },
 ];

@@ -1285,11 +1285,80 @@ const CellMore: IconComponent = ({ style, className }) => (
   </svg>
 );
 
+// 双向下箭头图标
+const ChevronsDown: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="m7 6 5 5 5-5"/>
+    <path d="m7 13 5 5 5-5"/>
+  </svg>
+);
+
 // 发送图标
 const Send: IconComponent = ({ style, className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
     <path d="M10 14L21 3"/>
     <path d="M21 3l-6.5 18a.55.55 0 0 1-1 0L10 14l-7-3.5a.55.55 0 0 1 0-1L21 3"/>
+  </svg>
+);
+
+// 排序图标
+const SortAZ: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="m3 8 4-4 4 4"/>
+    <path d="M7 4v16"/>
+    <path d="M15 4h5l-5 6h5"/>
+    <path d="M15 20v-3.5a2.5 2.5 0 0 1 5 0V20"/>
+    <path d="M20 18h-5"/>
+  </svg>
+);
+
+// 行高图标
+const RowHeight: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M3 5h8"/>
+    <path d="M3 12h8"/>
+    <path d="M3 19h8"/>
+    <path d="m15 8 3-3 3 3"/>
+    <path d="m15 16 3 3 3-3"/>
+  </svg>
+);
+
+// 行高-低图标
+const RowHeightLow: IconComponent = ({ style, className }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+    <path d="M19 2.5a1 1 0 0 1 .76.35l3 3.5a1 1 0 0 1-1.52 1.3L20 6.204v11.594l1.24-1.448a1 1 0 1 1 1.52 1.302l-3 3.5a1 1 0 0 1-1.52 0l-3-3.5a1 1 0 1 1 1.52-1.302L18 17.797V6.203l-1.24 1.448a1 1 0 0 1-1.52-1.302l3-3.5A1 1 0 0 1 19 2.5ZM2 4a1 1 0 0 0 0 2h9a1 1 0 1 0 0-2H2Zm0 7a1 1 0 1 0 0 2h9a1 1 0 1 0 0-2H2Zm-1 8a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H2a1 1 0 0 1-1-1Z" />
+  </svg>
+);
+
+// 行高-中等图标
+const RowHeightMedium: IconComponent = ({ style, className }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+    <path d="M19.76 2.85a1 1 0 0 0-1.52 0l-3 3.5a1 1 0 1 0 1.52 1.3L18 6.204v11.594l-1.24-1.448a1 1 0 0 0-1.52 1.302l3 3.5a1 1 0 0 0 1.52 0l3-3.5a1 1 0 0 0-1.52-1.302L20 17.797V6.203l1.24 1.448a1 1 0 1 0 1.52-1.302l-3-3.5ZM2 3a1 1 0 0 0-1 1v2.76a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H2Zm0 9a1 1 0 1 0 0 2h9a1 1 0 1 0 0-2H2Zm-1 8a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H2a1 1 0 0 1-1-1Z" />
+  </svg>
+);
+
+// 行高-高图标
+const RowHeightHigh: IconComponent = ({ style, className }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+    <path d="M19.76 2.85a1 1 0 0 0-1.52 0l-3 3.5a1 1 0 1 0 1.52 1.3L18 6.204v11.594l-1.24-1.448a1 1 0 0 0-1.52 1.302l3 3.5a1 1 0 0 0 1.52 0l3-3.5a1 1 0 0 0-1.52-1.302L20 17.797V6.203l1.24 1.448a1 1 0 1 0 1.52-1.302l-3-3.5ZM1 4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4Zm0 16a1 1 0 0 1 1-1h9a1 1 0 1 1 0 2H2a1 1 0 0 1-1-1Z" />
+  </svg>
+);
+
+// 行高-超高图标
+const RowHeightExtraHigh: IconComponent = ({ style, className }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+    <path d="M19.76 2.85a1 1 0 0 0-1.52 0l-3 3.5a1 1 0 1 0 1.52 1.3L18 6.204v11.594l-1.24-1.448a1 1 0 0 0-1.52 1.302l3 3.5a1 1 0 0 0 1.52 0l3-3.5a1 1 0 0 0-1.52-1.302L20 17.797V6.203l1.24 1.448a1 1 0 1 0 1.52-1.302l-3-3.5ZM2 3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H2Z" />
+  </svg>
+);
+
+// 文本搜索图标
+const TextSearch: IconComponent = ({ style, className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M21 5H3"/>
+    <path d="M10 12H3"/>
+    <path d="M10 19H3"/>
+    <circle cx="17" cy="15" r="3"/>
+    <path d="m21 19-1.9-1.9"/>
   </svg>
 );
 
@@ -1485,9 +1554,19 @@ export const uiIconSet: IconSet = {
     'cell-polish': CellPolish,
     'cell-translate': CellTranslate,
     'cell-more': CellMore,
+    'chevrons-down': ChevronsDown,
     
     // 发送图标
     'send': Send,
+    
+    // 表格工具栏图标
+    'sort-az': SortAZ,
+    'row-height': RowHeight,
+    'row-height-low': RowHeightLow,
+    'row-height-medium': RowHeightMedium,
+    'row-height-high': RowHeightHigh,
+    'row-height-extra-high': RowHeightExtraHigh,
+    'text-search': TextSearch,
   },
 };
 

@@ -9,6 +9,10 @@
   height: 100%;
   background-color: var(--ws-editor-background);
   color: var(--ws-editor-foreground);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate; // 创建新的层叠上下文
+  contain: paint; // 确保子元素不会绘制到容器外部
 }
 
 .table-designer-header {
@@ -98,7 +102,7 @@
   gap: 8px;
   padding: 8px 16px;
   margin-top: 8px;
-  background-color: var(--ws-editor-widget-background, #252526);
+  background-color: var(--ws-sideBarSectionHeader-background);
   border-top: 1px solid var(--ws-panel-border);
   flex-shrink: 0;
 
@@ -151,6 +155,8 @@
   overflow: hidden;
   position: relative;
   isolation: isolate; // 创建新的层叠上下文，防止 z-index 影响其他表格
+  contain: paint; // 确保子元素不会绘制到容器外部
+  user-select: none; // 禁止文本选择
 }
 
 .table-wrapper {
@@ -208,21 +214,21 @@
   user-select: none; // 禁止文本选择，支持拖拽选择多行
 
   th, td {
-    border: 1px solid var(--ws-panel-border);
+    border: 1px solid var(--ws-data-rowCellBorder);
     border-top: none;
     border-left: none;
     padding: 0;
     text-align: left;
-    vertical-align: top;
+    vertical-align: middle;
     font-weight: normal;
     overflow: hidden;
   }
 
   th {
-    background-color: var(--ws-editor-widget-background, #252526);
+    background-color: var(--ws-sideBarSectionHeader-background);
     font-weight: 500;
     height: 36px;
-    border-top: 1px solid var(--ws-panel-border);
+    border-top: 1px solid var(--ws-data-rowCellBorder);
     overflow: visible;
     position: relative;
 
@@ -240,7 +246,7 @@
 
     &.add-column-cell {
       border: none !important;
-      border-top: 1px solid var(--ws-panel-border) !important;
+      border-top: 1px solid var(--ws-data-rowCellBorder) !important;
       background: transparent !important;
     }
   }
@@ -270,6 +276,7 @@
         border: 2px solid var(--ws-focus-border);
         pointer-events: none;
         z-index: 3;
+        will-change: transform; // 强制创建新的合成层，确保位置正确更新
       }
     }
 
@@ -281,6 +288,11 @@
       &.first-data-column {
         z-index: 12 !important;
       }
+    }
+
+    // 选中列的单元格 - 透明背景色高亮
+    &.column-selected-cell {
+      background-color: var(--ws-list-activeSelectionBackground) !important;
     }
 
     &.row-actions-cell {
@@ -295,29 +307,18 @@
   background-color: transparent;
 }
 
-// 非滚动状态下，td 默认透明背景
-.design-table:not(.sticky-enabled) tbody tr td:not(.add-column-cell) {
-  background-color: transparent;
+// 所有单元格都使用不透明背景色，确保填色效果一致
+.design-table tbody tr td:not(.add-column-cell) {
+  background-color: var(--ws-editor-background);
 }
 
-// 非滚动状态下，编辑行使用悬停背景色
-.design-table:not(.sticky-enabled) tbody tr.row-editing td:not(.add-column-cell) {
-  background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
+// 编辑行使用悬停背景色（排除有填色的行）
+.design-table tbody tr.row-editing:not(.row-filled):not(.row-has-cell-colors) td:not(.add-column-cell) {
+  background-color: var(--ws-list-hoverBackground) !important;
 }
 
-// 滚动状态下，非固定列的 td 背景色透明，固定列的 td 有不透明背景色
+// 滚动状态下的特殊样式
 .design-table.sticky-enabled tbody tr {
-  // 非固定列的 td 背景色透明，继承 tr 的背景色
-  td:not(.row-selector-cell):not(.first-data-column) {
-    background-color: transparent;
-  }
-
-  // 固定列的 td 需要不透明背景色来遮挡后面的内容
-  td.row-selector-cell,
-  td.first-data-column {
-    background-color: var(--ws-editor-background);
-  }
-  
   // 选中单元格所在行 - 只有固定列需要背景色（遮挡滚动内容）
   // 非固定列保持透明，让悬停效果可见
   &.row-cell-selected {
@@ -330,7 +331,7 @@
   // 编辑行 - 所有列都需要悬停背景色
   &.row-editing {
     td:not(.add-column-cell):not(.row-selector-cell):not(.first-data-column) {
-      background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
+      background-color: var(--ws-list-hoverBackground) !important;
     }
     
     td.row-selector-cell,
@@ -345,7 +346,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05));
+        background-color: var(--ws-list-hoverBackground);
         pointer-events: none;
       }
     }
@@ -450,7 +451,7 @@
 // 数据行中的添加列单元格
 .design-table td.add-column-cell {
   border: none !important;
-  background: transparent !important;
+  background-color: var(--ws-editor-background) !important;
 }
 
 .row-actions-cell {
@@ -519,7 +520,7 @@
 
   .add-row-cell {
     border-left: none !important;
-    border-bottom: 1px solid var(--ws-panel-border) !important;
+    border-bottom: 1px solid var(--ws-data-rowCellBorder) !important;
     border-right: none !important;
     border-top: none !important;
     background: transparent !important;
@@ -529,7 +530,7 @@
   // 添加行的占位单元格（对应添加列按钮位置）- 底部边框延伸
   .add-row-placeholder-cell {
     border: none !important;
-    border-bottom: 1px solid var(--ws-panel-border) !important;
+    border-bottom: 1px solid var(--ws-data-rowCellBorder) !important;
     background: transparent !important;
     padding: 0 !important;
   }
@@ -584,6 +585,42 @@
   cursor: default;
   user-select: none;
   pointer-events: none; // 让点击事件穿透到 td
+  
+  // 编辑状态
+  &.cell-editing {
+    pointer-events: auto;
+    cursor: text;
+    user-select: text;
+    background: var(--ws-input-background) !important;
+  }
+}
+
+// 链接类型单元格样式
+.cell-url-wrapper {
+  display: block;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  line-height: 36px;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none; // 让点击事件穿透到 td
+}
+
+.cell-url-link {
+  color: var(--ws-textLink-foreground, #3794ff);
+  cursor: pointer;
+  
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// 空链接单元格不显示手型光标
+.design-table td.url-cell {
+  cursor: default;
 }
 
 // 单元格文本显示（旧版 span 元素，保留兼容）
@@ -662,35 +699,28 @@
 // 浮动单元格编辑器样式
 .floating-cell-editor {
   box-sizing: border-box;
-  background: var(--ws-input-background);
+  background: var(--ws-editor-background); // 容器使用编辑器背景色
   position: relative;
-
-  // 使用伪元素显示边框，与选中状态完全一致
-  &::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    border: 2px solid var(--ws-focus-border);
-    pointer-events: none;
-    z-index: 3;
-  }
+  will-change: transform;
+  // 使用 box-shadow 显示选中边框
+  box-shadow: inset 0 0 0 2px var(--ws-focus-border);
+  display: flex;
+  align-items: center; // 使用 flexbox 垂直居中
+  padding: 0 3px; // 左右3px，上下不需要
 
   .floating-cell-input {
     display: block;
     width: 100%;
-    height: 36px;
+    height: 20px;
     box-sizing: border-box;
-    padding: 0 10px;
+    padding: 0 7px; // 3px(容器) + 7px = 10px，与 .cell-text-input 一致
     margin: 0;
     border: none;
     outline: none;
-    background: transparent;
+    background: transparent; // 输入框背景透明，继承容器背景
     color: var(--ws-editor-foreground);
     font-size: 13px;
-    line-height: 36px;
+    line-height: 20px;
   }
 }
 
@@ -708,8 +738,8 @@
   background-color: var(--ws-checkbox-background);
 
   &.checked {
-    background-color: var(--ws-checkbox-select-background);
-    border-color: var(--ws-checkbox-select-background);
+    background-color:var(--ws-checkbox-selectBackground);
+    border: 1px solid var(--ws-checkbox-selectBorder);
     color: var(--ws-checkbox-foreground);
   }
 }
@@ -734,9 +764,8 @@
     background-color: var(--ws-checkbox-background);
 
     &.checked {
-      background-color: var(--ws-checkbox-select-background);
-      border-color: var(--ws-checkbox-select-background);
-      color: var(--ws-checkbox-foreground);
+      background-color: var(--ws-checkbox-selectBackground);
+      border-color: var(--ws-checkbox-selectBorder);
     }
   }
 }
@@ -758,13 +787,19 @@
   min-width: 56px;
   text-align: center;
   vertical-align: middle !important;
-  height: 36px;
   border-right: none !important;
   position: relative;
+
+  // 内部容器需要继承高度，确保绝对定位元素能正确居中
+  > div {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
 }
 
 .design-table th.row-selector-cell {
-  background-color: var(--ws-editor-widget-background, #252526);
+  background-color: var(--ws-sideBarSectionHeader-background);
 }
 
 // 第一个数据列 - 非滚动状态下不设置背景色，继承行的背景色
@@ -776,7 +811,7 @@
 // 子记录行的第一数据列 - 取消上边框，与父行视觉连接
 .design-table tr.child-row td.first-data-column {
   border-top: none !important;
-  border-left: 1px solid var(--ws-panel-border) !important;
+  border-left: 1px solid var(--ws-data-rowCellBorder) !important;
 }
 
 // 子记录行的所有单元格 - 取消上边框
@@ -790,33 +825,39 @@
 }
 
 .design-table th.first-data-column {
-  background-color: var(--ws-editor-widget-background, #252526);
+  background-color: var(--ws-sideBarSectionHeader-background);
 
   .column-header {
-    background-color: var(--ws-editor-widget-background, #252526);
+    background-color: var(--ws-sideBarSectionHeader-background);
   }
 }
 
-// 只有在滚动时才固定列
-.design-table.sticky-enabled {
+// 固定列基础样式 - 始终保持 sticky，避免切换时抖动
+.design-table {
+  // 非固定列：使用 contain: paint 限制内容绘制范围，防止穿透固定列
+  td:not(.row-selector-cell):not(.first-data-column):not(.add-column-cell) {
+    contain: paint;
+  }
+
   th.row-selector-cell,
   td.row-selector-cell {
-    position: sticky !important;
-    left: 0 !important;
-    z-index: 10;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background-color: var(--ws-editor-background);
   }
 
   th.row-selector-cell {
-    background-color: var(--ws-editor-widget-background, #252526) !important;
-    z-index: 11;
+    background-color: var(--ws-sideBarSectionHeader-background);
+    z-index: 3;
   }
 
   th.first-data-column,
   td.first-data-column {
-    position: sticky !important;
-    left: 56px !important;
-    z-index: 10;
-    box-shadow: 2px 0 4px -2px var(--ws-widget-shadow, rgba(0, 0, 0, 0.3));
+    position: sticky;
+    left: 56px;
+    z-index: 2;
+    background-color: var(--ws-editor-background);
 
     .cell-input {
       background-color: transparent !important;
@@ -824,12 +865,47 @@
   }
 
   th.first-data-column {
-    background-color: var(--ws-editor-widget-background, #252526) !important;
-    z-index: 11;
+    background-color: var(--ws-sideBarSectionHeader-background);
+    z-index: 3;
 
     .column-header {
-      background-color: var(--ws-editor-widget-background, #252526) !important;
+      background-color: var(--ws-sideBarSectionHeader-background);
     }
+  }
+
+  // 添加行的固定列
+  .add-row-tr td.first-data-column,
+  .add-row-tr td.row-selector-cell {
+    box-shadow: none !important;
+  }
+}
+
+// 滚动时固定列的额外样式（阴影、不透明背景）
+.design-table.sticky-enabled {
+  td.first-data-column {
+    box-shadow: 2px 0 4px -2px var(--ws-widget-shadow, rgba(0, 0, 0, 0.3));
+  }
+}
+
+// 所有单元格的填色样式 - 使用伪元素显示填色，确保颜色一致
+.design-table tbody tr td:not(.add-column-cell) {
+  // 伪元素用于显示填色
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--cell-fill-color, transparent);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  // 确保内容在填色层上面
+  > * {
+    position: relative;
+    z-index: 2;
   }
 }
 
@@ -904,8 +980,8 @@
     margin: 0 auto;
   }
 
-  // 悬停时显示拖拽图标和复选框，隐藏序号
-  &:hover {
+  // 悬停时显示拖拽图标和复选框，隐藏序号（拖拽行排序时禁用）
+  .design-table:not(.row-reordering) &:hover {
     .row-number {
       display: none;
     }
@@ -920,8 +996,8 @@
     }
   }
 
-  // 选中行时始终显示拖拽图标和复选框，隐藏序号
-  tr.row-selected & {
+  // 选中行时始终显示拖拽图标和复选框，隐藏序号（拖拽行排序时禁用）
+  .design-table:not(.row-reordering) tr.row-selected & {
     .row-number {
       display: none;
     }
@@ -943,7 +1019,19 @@
   }
 }
 
-// 表头的选择器单元格 - 拖拽图标占位但不显示，复选框与数据行对齐
+// 拖拽行排序时隐藏所有复选框
+.design-table.row-reordering {
+  .row-selector-cell .row-checkbox {
+    display: none !important;
+  }
+  
+  // 表头复选框也隐藏
+  thead .row-selector-cell .row-checkbox {
+    display: none !important;
+  }
+}
+
+// 表头的选择器单元格 - 拖拽图标占位但不显示，复选框默认隐藏
 thead .row-selector-cell {
   position: relative;
 
@@ -957,34 +1045,98 @@ thead .row-selector-cell {
     right: 18px;
     top: 50%;
     transform: translateY(-50%);
-    display: inline-flex;
+    display: none; // 默认隐藏
     margin: 0 auto;
+  }
+
+  // 悬停时显示全选复选框
+  &:hover .row-checkbox {
+    display: inline-flex;
   }
 }
 
-// 悬停行样式（拖拽行排序时禁用）- 不在 tr 上设置背景色
-.design-table:not(.row-reordering) tbody tr:hover:not(.add-row-tr) {
+// 有行被选中时，表头全选复选框始终显示
+.design-table.has-selected-rows thead .row-selector-cell .row-checkbox {
+  display: inline-flex;
+}
+
+// 悬停行样式（拖拽行排序时禁用）- 不在 tr 上设置背景色（排除有填色的行）
+.design-table:not(.row-reordering) tbody tr:hover:not(.add-row-tr):not(.row-filled) {
   background-color: transparent !important;
 }
 
 // 悬停行样式 - 非滚动状态（拖拽行排序时禁用）
-.design-table:not(.sticky-enabled):not(.row-reordering) tbody tr:hover:not(.add-row-tr) td:not(.add-column-cell) {
-  background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
+// 排除固定列和有填色的行
+.design-table:not(.sticky-enabled):not(.row-reordering) tbody tr:hover:not(.add-row-tr):not(.row-filled) td:not(.add-column-cell):not(.row-selector-cell):not(.first-data-column) {
+  background-color: var(--ws-list-hoverBackground) !important;
 }
 
-// 悬停行样式 - 滚动状态（拖拽行排序时禁用）
-.design-table.sticky-enabled:not(.row-reordering) tbody tr:hover:not(.add-row-tr) {
+// 非滚动状态下固定列的悬停效果 - 使用伪元素叠加（排除有填色的行）
+.design-table:not(.sticky-enabled):not(.row-reordering) tbody tr:hover:not(.add-row-tr):not(.row-filled) {
+  td.row-selector-cell,
+  td.first-data-column {
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--ws-list-hoverBackground);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    > * {
+      position: relative;
+      z-index: 2;
+    }
+  }
+}
+
+// 右键菜单打开的行样式 - 非滚动状态（保持悬停背景色）
+// 排除固定列
+.design-table:not(.sticky-enabled) tbody tr.row-context-menu td:not(.add-column-cell):not(.row-selector-cell):not(.first-data-column) {
+  background-color: var(--ws-list-hoverBackground) !important;
+}
+
+// 非滚动状态下固定列的右键菜单效果 - 使用伪元素叠加
+.design-table:not(.sticky-enabled) tbody tr.row-context-menu {
+  td.row-selector-cell,
+  td.first-data-column {
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--ws-list-hoverBackground);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    > * {
+      position: relative;
+      z-index: 2;
+    }
+  }
+}
+
+// 悬停行样式 - 滚动状态（拖拽行排序时禁用，排除有填色的行）
+.design-table.sticky-enabled:not(.row-reordering) tbody tr:hover:not(.add-row-tr):not(.row-filled) {
   // 非固定列的悬停背景色
   td:not(.add-column-cell):not(.row-selector-cell):not(.first-data-column) {
-    background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05)) !important;
+    background-color: var(--ws-list-hoverBackground) !important;
   }
   
   // 固定列悬停时使用编辑器背景色作为基础，确保不透明
   // 通过伪元素叠加悬停效果
   td.row-selector-cell,
   td.first-data-column {
-    position: relative;
+    position: sticky;
     background-color: var(--ws-editor-background) !important;
+    z-index: 10;
     
     &::after {
       content: '';
@@ -993,8 +1145,37 @@ thead .row-selector-cell {
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: var(--ws-DataView-hoverBackground, rgba(255, 255, 255, 0.05));
+      background-color: var(--ws-list-hoverBackground);
       pointer-events: none;
+      z-index: -1;
+    }
+  }
+}
+
+// 右键菜单打开的行样式 - 滚动状态（保持悬停背景色）
+.design-table.sticky-enabled tbody tr.row-context-menu {
+  // 非固定列的背景色
+  td:not(.add-column-cell):not(.row-selector-cell):not(.first-data-column) {
+    background-color: var(--ws-list-hoverBackground) !important;
+  }
+  
+  // 固定列使用编辑器背景色 + 伪元素叠加悬停效果
+  td.row-selector-cell,
+  td.first-data-column {
+    position: sticky;
+    background-color: var(--ws-editor-background) !important;
+    z-index: 10;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--ws-list-hoverBackground);
+      pointer-events: none;
+      z-index: -1;
     }
   }
 }
@@ -1056,7 +1237,7 @@ thead .row-selector-cell {
   }
 }
 
-// 拖拽放置目标指示线 - 顶部（使用 box-shadow 避免影响布局）
+// 拖拽放置目标指示线 - 顶部
 .design-table tbody tr.drop-target-top td {
   box-shadow: inset 0 3px 0 0 var(--ws-focus-border);
 }
@@ -1255,7 +1436,7 @@ thead .row-selector-cell {
 .table-extend-line {
   position: absolute;
   height: 1px;
-  background-color: var(--ws-panel-border);
+  background-color: var(--ws-data-rowCellBorder);
   pointer-events: none;
   z-index: 1;
 }
@@ -1462,7 +1643,7 @@ thead .row-selector-cell {
       td {
         padding: 6px 8px;
         text-align: left;
-        border: 1px solid var(--ws-panel-border);
+        border: 1px solid var(--ws-data-rowCellBorder);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1470,7 +1651,7 @@ thead .row-selector-cell {
       }
 
       th {
-        background-color: var(--ws-editor-widget-background, #252526);
+        background-color: var(--ws-sideBarSectionHeader-background);
         font-weight: 500;
       }
 
@@ -1544,7 +1725,7 @@ thead .row-selector-cell {
   border: 1px solid var(--ws-panel-border);
   border-radius: 4px;
   margin: 8px 12px;
-  overflow: hidden;
+  overflow: visible;
 
   .query-condition-header {
     display: flex;
@@ -1603,7 +1784,7 @@ thead .row-selector-cell {
 
   .query-condition-body {
     padding: 8px 12px;
-    overflow-x: auto;
+    overflow: visible;
   }
 
   .query-condition-row {
@@ -1632,6 +1813,19 @@ thead .row-selector-cell {
 
     .condition-operator {
       width: 150px;
+    }
+
+    .condition-scope {
+      width: 80px;
+      flex-shrink: 0;
+
+      .select-trigger {
+        padding: 4px 8px;
+        font-size: 12px;
+        background-color: var(--ws-input-background);
+        border: 1px solid var(--ws-input-border);
+        border-radius: 4px;
+      }
     }
 
     .condition-value-select {
@@ -1704,6 +1898,78 @@ thead .row-selector-cell {
     }
   }
 
+  // 颜色选择器占位元素（非第一行条件）
+  .color-picker-placeholder {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    border: 2px dashed var(--ws-input-border);
+    opacity: 0.3;
+  }
+
+  // 颜色选择器包装器（在条件行内）
+  .color-picker-wrapper {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+
+    .color-picker-trigger {
+      display: block;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 2px solid var(--ws-input-border);
+
+      &:hover {
+        border-color: var(--ws-focus-border);
+      }
+    }
+
+    .color-picker-dropdown {
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      z-index: 100;
+      background-color: var(--ws-dropdown-background);
+      border: 1px solid var(--ws-dropdown-border);
+      border-radius: 6px;
+      padding: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      margin-bottom: 4px;
+
+      .color-picker-colors {
+        display: flex;
+        align-items: flex-start;
+        gap: 4px;
+
+        .color-picker-group {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+
+          .color-picker-item {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            cursor: pointer;
+            border: 2px solid transparent;
+
+            &:hover {
+              opacity: 0.8;
+            }
+
+            &.selected {
+              border-color: var(--ws-focus-border);
+            }
+          }
+        }
+      }
+    }
+  }
+
   .query-condition-footer {
     display: flex;
     align-items: center;
@@ -1744,7 +2010,8 @@ thead .row-selector-cell {
 .query-condition-logic-select-content,
 .condition-column-content,
 .condition-operator-content,
-.condition-value-select-content {
+.condition-value-select-content,
+.condition-scope-content {
   width: auto !important;
   min-width: 80px !important;
 
@@ -1807,7 +2074,7 @@ thead .row-selector-cell {
   display: flex;
   align-items: center;
   position: relative;
-  height: 36px;
+  height: 100%;
   pointer-events: none; // 让点击事件穿透到 td
 
   // 子记录缩进样式
@@ -1842,7 +2109,9 @@ thead .row-selector-cell {
     flex: 1;
     min-width: 0;
     position: relative;
-    height: 36px;
+    display: flex;
+    align-items: center;
+    height: 100%;
   }
 }
 
@@ -1851,13 +2120,16 @@ thead .row-selector-cell {
   display: flex;
   align-items: center;
   position: relative;
-  height: 36px;
+  height: 100%;
   pointer-events: none; // 让点击事件穿透到 td
 
   .cell-content-wrapper {
     width: 100%;
     position: relative;
-    height: 36px;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    pointer-events: none; // 让点击事件穿透到 td
   }
 
   .add-child-btn {
@@ -1897,5 +2169,143 @@ thead .row-selector-cell {
     color: var(--ws-description-foreground);
     background-color: var(--ws-badge-background, rgba(255, 255, 255, 0.1));
     border-radius: 9px;
+    pointer-events: none; // 让点击事件穿透
+  }
+}
+
+// ==================== 行高样式 ====================
+
+// 行高 - 低 (28px)
+.design-table.row-height-low {
+  th {
+    height: 28px;
+  }
+
+  td {
+    height: 28px;
+    max-height: 28px;
+  }
+
+  .cell-text-input,
+  .cell-text-display,
+  .cell-link-display,
+  .cell-password-display,
+  .cell-url-wrapper,
+  .cell-text {
+    height: 28px;
+    line-height: 28px;
+  }
+
+  .floating-cell-editor {
+    .floating-cell-input {
+      height: 16px;
+      line-height: 16px;
+    }
+  }
+
+  .cell-tiptap-editor .tiptap {
+    line-height: 27px;
+
+    p {
+      line-height: 27px;
+    }
+  }
+
+  .cell-checkbox-wrapper {
+    margin-top: 4px;
+  }
+}
+
+// 行高 - 中等 (36px) - 默认
+.design-table.row-height-medium {
+  th {
+    height: 36px;
+  }
+
+  td {
+    height: 36px;
+    max-height: 36px;
+  }
+}
+
+// 行高 - 高 (48px)
+.design-table.row-height-high {
+  th {
+    height: 48px;
+  }
+
+  td {
+    height: 48px;
+    max-height: 48px;
+  }
+
+  .cell-text-input,
+  .cell-text-display,
+  .cell-link-display,
+  .cell-password-display,
+  .cell-url-wrapper,
+  .cell-text {
+    height: 48px;
+    line-height: 48px;
+  }
+
+  .floating-cell-editor {
+    .floating-cell-input {
+      height: 32px;
+      line-height: 32px;
+    }
+  }
+
+  .cell-tiptap-editor .tiptap {
+    line-height: 47px;
+
+    p {
+      line-height: 47px;
+    }
+  }
+
+  .cell-checkbox-wrapper {
+    margin-top: 14px;
+  }
+}
+
+// 行高 - 超高 (64px)
+.design-table.row-height-extra-high {
+  th {
+    height: 64px;
+  }
+
+  td {
+    height: 64px;
+    max-height: 64px;
+  }
+
+  .cell-text-input,
+  .cell-text-display,
+  .cell-link-display,
+  .cell-password-display,
+  .cell-url-wrapper,
+  .cell-text {
+    height: 64px;
+    line-height: 64px;
+  }
+
+  .floating-cell-editor {
+    .floating-cell-input {
+      height: 48px;
+      line-height: 48px;
+    }
+  }
+
+  .cell-tiptap-editor .tiptap {
+    line-height: 63px;
+
+    p {
+      line-height: 63px;
+    }
+  }
+
+  .cell-checkbox-wrapper {
+    margin-top: 22px;
   }
 }

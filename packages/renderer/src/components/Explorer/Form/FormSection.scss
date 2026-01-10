@@ -7,7 +7,7 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  border-top: 1px solid var(--ws-panel-border);
+  border-top: 1px solid var(--ws-border-background);
 
   &--expanded {
     flex: 0 0 auto;
@@ -87,14 +87,20 @@
   padding: 4px 8px;
   cursor: pointer;
   user-select: none;
+  border-radius: 4px;
+  margin: 0 4px;
 
   &:hover {
-    background-color: var(--ws-list-hover-background);
+    background-color: var(--ws-list-hoverBackground);
   }
 
   &.selected {
-    background-color: var(--ws-list-active-selection-background);
-    color: var(--ws-list-active-selection-foreground);
+    background-color: var(--ws-list-activeSelectionBackground);
+    color: var(--ws-list-activeSelectionForeground);
+
+    .item-icon {
+      color: var(--ws-list-activeSelectionForeground);
+    }
   }
 
   .group-toggle {
@@ -132,14 +138,20 @@
   padding: 4px 8px 4px 20px;
   cursor: pointer;
   user-select: none;
+  border-radius: 4px;
+  margin: 0 4px;
 
   &:hover {
-    background-color: var(--ws-list-hover-background);
+    background-color: var(--ws-list-hoverBackground);
   }
 
   &.selected {
-    background-color: var(--ws-list-active-selection-background);
-    color: var(--ws-list-active-selection-foreground);
+    background-color: var(--ws-list-activeSelectionBackground);
+    color: var(--ws-list-activeSelectionForeground);
+
+    .item-icon {
+      color: var(--ws-list-activeSelectionForeground);
+    }
   }
 
   .item-icon {

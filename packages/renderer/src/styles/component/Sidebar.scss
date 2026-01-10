@@ -4,10 +4,16 @@
  */
 
 
-//颜色-
+//颜色-侧边栏
 .sidebar[data-position="left"] {
   background-color: var(--ws-sideBar-background);
-   color: var(--ws-list-inactiveSelectionForeground);
+  border-right:1px solid var(--ws-border-background);
+}
+
+
+// 侧边栏
+[data-theme-mode='light'] .sidebar[data-position=right] {
+  border-left:1px solid var(--ws-border-background);
 }
 
 .sidebar-content{

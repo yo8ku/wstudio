@@ -12,6 +12,10 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+
+  &--horizontal {
+    min-width: 0;
+  }
 }
 
 .custom-scrollbar-content {
@@ -44,6 +48,16 @@
   background: var(--ws-scrollbarSlider-trackBackground, transparent);
   pointer-events: none;
   z-index: 2;
+
+  // 横向滚动条轨道
+  &--horizontal {
+    top: auto;
+    right: 2px;
+    bottom: 2px;
+    left: 2px;
+    width: auto;
+    height: var(--custom-scrollbar-width);
+  }
 }
 
 .custom-scrollbar-thumb {
@@ -64,5 +78,13 @@
   &.is-dragging {
     background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
     cursor: grabbing;
+  }
+
+  // 横向滚动条滑块
+  .custom-scrollbar-track--horizontal & {
+    top: 0;
+    left: 0;
+    width: auto;
+    height: 100%;
   }
 }

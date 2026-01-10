@@ -27,11 +27,12 @@ import { aiService } from '../../../../services/ai/AIService';
 import { getCachedModels, getModelConfig } from '../../../../services/ModelCacheService';
 import { isModelEnabled } from '../../../../services/ai';
 import { TableOperations, type QueryCondition } from './TableOperations';
-import { QueryConditionPanel } from './QueryConditionPanel';
+import { QueryConditionPanel, type FillColorScope } from './QueryConditionPanel';
 import { BatchTableGenerator } from './BatchTableGenerator';
 import { HierarchyTableManager } from './HierarchyTableManager';
 import { TanStackTableCore } from './TanStackTableCore';
 import { FloatingCellEditor } from './FloatingCellEditor';
+import { TableToolbar, type RowHeightType } from './TableToolbar';
 import { getTableImportService } from '../../../../services/tableImport';
 import { notification } from '../../../../stores/notificationStore';
 import type {
@@ -104,6 +105,15 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   }, [formId]);
   const [cellContextMenu, setCellContextMenu] = useState<{ rowId: string; colId: string; position: { x: number; y: number } } | null>(null);
   const [selectedCell, setSelectedCell] = useState<{ rowId: string; colId: string } | null>(null);
+  // 固定位置的选择状态（添加行时使用，不跟随单元格移动）
+  const [fixedSelectedCell, setFixedSelectedCell] = useState<{
+    rowId: string;
+    colId: string;
+    position: { top: number; left: number; width: number; height: number };
+  } | null>(null);
+  const [selectedColumn, setSelectedColumn] = useState<string | null>(null); // 选中的列
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set()); // 隐藏的列
+  const [rowHeight, setRowHeight] = useState<RowHeightType>('medium'); // 行高
   const [cellToolbar, setCellToolbar] = useState<{ rowId: string; colId: string; position: { x: number; y: number }; cellWidth: number } | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   // 单元格区域选择状态
@@ -116,6 +126,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   const [isDraggingCellSelect, setIsDraggingCellSelect] = useState(false);
   const cellDragStartRef = useRef<{ rowId: string; colId: string } | null>(null);
   const [showDataViewer, setShowDataViewer] = useState(false);
+  const [showAIInputBar, setShowAIInputBar] = useState(false);
   const [dataViewerFormat, setDataViewerFormat] = useState<'text' | 'json' | 'xml'>('json');
   const [dataViewerWordWrap, setDataViewerWordWrap] = useState(true);
   const [dataViewerAutoFormat, setDataViewerAutoFormat] = useState(true);
@@ -131,6 +142,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   const tableWrapperRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const tableDesignerContentRef = useRef<HTMLDivElement>(null);
+  const tableDesignerRef = useRef<HTMLDivElement>(null);
   const prevEditingCellRef = useRef<{ rowId: string; colId: string } | null>(null);
   const [needStickyColumn, setNeedStickyColumn] = useState(false);
 
@@ -140,6 +152,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   const [isQuerying, setIsQuerying] = useState(false);
   const [isQueryPanelFullscreen, setIsQueryPanelFullscreen] = useState(false);
   const [showQueryConditionPanel, setShowQueryConditionPanel] = useState(false);
+  const [showFillColorPanel, setShowFillColorPanel] = useState(false);
 
   // 查询结果编辑状态
   const [editingQueryCell, setEditingQueryCell] = useState<{ rowIndex: number; columnName: string } | null>(null);
@@ -245,6 +258,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   }, [name, columns, rows, formId, isDataLoading]);
 
   // 检测是否需要固定列（有横向滚动条且已滚动）
+  const needStickyColumnRef = useRef(false);
   useEffect(() => {
     const checkNeedStickyColumn = () => {
       if (!tableWrapperRef.current) return;
@@ -252,7 +266,12 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       // 有横向滚动条且已滚动时才需要固定列
       const hasHorizontalScroll = wrapper.scrollWidth > wrapper.clientWidth;
       const hasScrolled = wrapper.scrollLeft > 0;
-      setNeedStickyColumn(hasHorizontalScroll && hasScrolled);
+      const shouldSticky = hasHorizontalScroll && hasScrolled;
+      // 只在状态真正变化时才更新，避免频繁重渲染导致抖动
+      if (needStickyColumnRef.current !== shouldSticky) {
+        needStickyColumnRef.current = shouldSticky;
+        setNeedStickyColumn(shouldSticky);
+      }
     };
 
     // 滚动时关闭编辑器和工具栏
@@ -334,6 +353,25 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     };
   }, [columns, rows]);
 
+  // 滚动时清除固定选择状态，恢复普通选择状态（不显示工具栏）
+  useEffect(() => {
+    const handleScroll = () => {
+      if (fixedSelectedCell) {
+        const { rowId, colId } = fixedSelectedCell;
+        setFixedSelectedCell(null);
+        // 恢复普通选择状态，但不显示工具栏（用户需要再次点击才能显示）
+        setSelectedCell({ rowId, colId });
+      }
+    };
+    
+    const wrapper = tableWrapperRef.current;
+    wrapper?.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      wrapper?.removeEventListener('scroll', handleScroll);
+    };
+  }, [fixedSelectedCell]);
+
   // 点击外部关闭数据查看器设置菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -350,9 +388,15 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   // 点击表格外部取消单元格选中
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      // 如果点击的是数据查看面板内部，不清除选中
+      if (target.closest('.data-viewer-panel')) {
+        return;
+      }
       if (tableRef.current && !tableRef.current.contains(event.target as Node)) {
         setSelectedCell(null);
         setCellToolbar(null);
+        setSelectedColumn(null); // 同时清除列选中
       }
     };
     if (selectedCell) {
@@ -360,6 +404,24 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [selectedCell]);
+
+  // 点击表格外部取消编辑状态
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      // 如果点击的是浮动编辑器内部，不关闭
+      if (target.closest('.floating-cell-editor')) {
+        return;
+      }
+      if (tableRef.current && !tableRef.current.contains(event.target as Node)) {
+        setEditingCell(null);
+      }
+    };
+    if (editingCell) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [editingCell]);
 
   // 点击表格外部取消多行选中
   useEffect(() => {
@@ -406,6 +468,9 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     setColumns(prev =>
       prev.map(col => (col.id === columnId ? { ...col, width } : col))
     );
+    // 清除固定选择状态和工具栏，因为列宽变化后位置不再准确
+    setFixedSelectedCell(null);
+    setCellToolbar(null);
   }, []);
 
   // 监听鼠标移动和释放事件
@@ -547,6 +612,19 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     }));
   }, [columns.length]);
 
+  // 切换列可见性
+  const handleToggleColumnVisibility = useCallback((columnId: string) => {
+    setHiddenColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(columnId)) {
+        next.delete(columnId);
+      } else {
+        next.add(columnId);
+      }
+      return next;
+    });
+  }, []);
+
   // 更新列名
   const handleUpdateColumnName = useCallback((columnId: string, newName: string) => {
     setColumns(prev => prev.map(col =>
@@ -559,13 +637,16 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     setColumns(prev => prev.map(col =>
       col.id === columnId ? { ...col, type: newType } : col
     ));
-    setRows(prev => prev.map(row => ({
-      ...row,
-      cells: {
-        ...row.cells,
-        [columnId]: newType === 'checkbox' ? false : '',
-      },
-    })));
+    // 只有切换到 checkbox 类型时才需要转换值，其他类型保留原值
+    if (newType === 'checkbox') {
+      setRows(prev => prev.map(row => ({
+        ...row,
+        cells: {
+          ...row.cells,
+          [columnId]: Boolean(row.cells[columnId]),
+        },
+      })));
+    }
   }, []);
 
   // 添加行
@@ -578,11 +659,43 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       const firstEditableCol = columns.find(col => col.type !== 'checkbox');
       if (firstEditableCol) {
         setEditingCell({ rowId: newRow.id, colId: firstEditableCol.id });
+        // 先设置普通选择状态（用于编辑器定位）
         setSelectedCell({ rowId: newRow.id, colId: firstEditableCol.id });
-      }
-      // 滚动到底部
-      if (tableWrapperRef.current) {
-        tableWrapperRef.current.scrollTop = tableWrapperRef.current.scrollHeight;
+        
+        // 滚动到底部
+        if (tableWrapperRef.current) {
+          tableWrapperRef.current.scrollTop = tableWrapperRef.current.scrollHeight;
+        }
+        
+        // 延迟计算固定位置（等待滚动和渲染完成）
+        setTimeout(() => {
+          if (tableRef.current && tableContainerRef.current) {
+            const cell = tableRef.current.querySelector(`td[data-row-id="${newRow.id}"][data-col-id="${firstEditableCol.id}"]`) as HTMLTableCellElement;
+            if (cell) {
+              const containerRect = tableContainerRef.current.getBoundingClientRect();
+              const cellRect = cell.getBoundingClientRect();
+              // 设置固定选择状态
+              setFixedSelectedCell({
+                rowId: newRow.id,
+                colId: firstEditableCol.id,
+                position: {
+                  top: cellRect.top - containerRect.top,
+                  left: cellRect.left - containerRect.left,
+                  width: cellRect.width,
+                  height: cellRect.height,
+                },
+              });
+              // 清除普通选择状态和工具栏，避免两个边框和工具栏位置错误
+              setSelectedCell(null);
+              setCellToolbar(null);
+            }
+          }
+        }, 50);
+      } else {
+        // 滚动到底部
+        if (tableWrapperRef.current) {
+          tableWrapperRef.current.scrollTop = tableWrapperRef.current.scrollHeight;
+        }
       }
     }, 0);
   }, [columns]);
@@ -1426,6 +1539,122 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     });
   }, []);
 
+  // 处理填色条件面板的填色 - 每个条件单独填色，支持不同范围
+  const handleFillColorCondition = useCallback(
+    (conditionsWithColor: Array<{ condition: QueryCondition; color: string; scope: FillColorScope }>) => {
+      // 没有条件时不执行填色
+      if (conditionsWithColor.length === 0) {
+        return;
+      }
+
+      // 收集所有匹配的填色信息
+      // rowColorMap: 整行填色
+      // cellColorMap: 单元格填色 Map<rowId, Map<columnName, color>>
+      // columnColorMap: 整列填色 Map<columnName, color>
+      const rowColorMap = new Map<string, string>();
+      const cellColorMap = new Map<string, Map<string, string>>();
+      const columnColorMap = new Map<string, string>();
+
+      // 遍历每个条件，查询匹配的行并设置颜色
+      conditionsWithColor.forEach(({ condition, color, scope }) => {
+        const result = tableOperations.current.query({
+          conditions: [condition],
+          conditionLogic: 'and',
+        });
+        
+        result.data.forEach(row => {
+          const rowId = row._rowId as string;
+          
+          switch (scope) {
+            case 'row':
+              // 整行填色
+              rowColorMap.set(rowId, color);
+              break;
+            case 'cell':
+              // 单元格填色
+              if (!cellColorMap.has(rowId)) {
+                cellColorMap.set(rowId, new Map());
+              }
+              cellColorMap.get(rowId)?.set(condition.columnName, color);
+              break;
+            case 'column':
+              // 整列填色
+              columnColorMap.set(condition.columnName, color);
+              break;
+          }
+        });
+      });
+
+      // 更新行的背景色和单元格颜色（先清除旧的填色，再应用新的）
+      setRows(prev =>
+        prev.map(row => {
+          // 先清除旧的填色
+          const updatedRow = { ...row };
+          delete updatedRow.backgroundColor;
+          delete updatedRow.cellColors;
+          
+          // 整行填色
+          const rowColor = rowColorMap.get(row.id);
+          if (rowColor) {
+            updatedRow.backgroundColor = rowColor;
+          }
+          
+          // 单元格填色
+          const cellColors = cellColorMap.get(row.id);
+          if (cellColors && cellColors.size > 0) {
+            updatedRow.cellColors = Object.fromEntries(cellColors);
+          }
+          
+          return updatedRow;
+        })
+      );
+
+      // 更新列的背景色（先清除旧的，再应用新的）
+      setColumns(prev =>
+        prev.map(col => {
+          // 先清除旧的列背景色
+          const { backgroundColor, ...rest } = col;
+          const colColor = columnColorMap.get(col.name);
+          if (colColor) {
+            return { ...rest, backgroundColor: colColor };
+          }
+          return rest as TableColumn;
+        })
+      );
+      // 填色后不关闭面板，方便用户继续操作
+    },
+    []
+  );
+
+  // 清除所有填色（行背景色、单元格颜色、列背景色）
+  const handleClearAllFillColor = useCallback(() => {
+    // 清除行的背景色和单元格颜色
+    setRows(prev =>
+      prev.map(row => {
+        const updatedRow = { ...row };
+        // 清除行背景色
+        if (updatedRow.backgroundColor) {
+          delete updatedRow.backgroundColor;
+        }
+        // 清除单元格颜色
+        if (updatedRow.cellColors) {
+          delete updatedRow.cellColors;
+        }
+        return updatedRow;
+      })
+    );
+    // 清除列的背景色
+    setColumns(prev =>
+      prev.map(col => {
+        if (col.backgroundColor) {
+          const { backgroundColor, ...rest } = col;
+          return rest as TableColumn;
+        }
+        return col;
+      })
+    );
+  }, []);
+
   // 处理搜索（在查询结果中搜索关键词）
   const handleSearch = useCallback(() => {
     setCurrentPage(1); // 搜索时重置分页
@@ -1751,8 +1980,8 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         label: '隐藏字段',
         icon: 'eye-off',
         onClick: () => {
-          // TODO: 实现隐藏字段
-          console.log('隐藏字段:', columnId);
+          handleToggleColumnVisibility(columnId);
+          handleCloseColumnMenu();
         },
       }] : []),
       { id: 'sep-2', label: '', separator: true },
@@ -1783,7 +2012,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     ];
 
     return menuItems;
-  }, [columns, handleUpdateColumnType, handleUpdateColumnName, handleDuplicateColumn, handleInsertColumnLeft, handleInsertColumnRight, handleDeleteColumn, handleCloseColumnMenu]);
+  }, [columns, handleUpdateColumnType, handleUpdateColumnName, handleDuplicateColumn, handleInsertColumnLeft, handleInsertColumnRight, handleDeleteColumn, handleToggleColumnVisibility, handleCloseColumnMenu]);
 
   // 打开列菜单
   const handleOpenColumnMenu = useCallback((columnId: string, event: React.MouseEvent) => {
@@ -1818,6 +2047,10 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   const handleOpenCellContextMenu = useCallback((rowId: string, colId: string, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
+    // 关闭单元格工具栏
+    setCellToolbar(null);
+    // 自动选中对应的单元格
+    setSelectedCell({ rowId, colId });
     setCellContextMenu({
       rowId,
       colId,
@@ -1827,6 +2060,12 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
   // 打开单元格右键菜单（供 TanStackTableCore 使用，接收位置参数）
   const handleCellContextMenu = useCallback((rowId: string, colId: string, position: { x: number; y: number }) => {
+    // 关闭单元格工具栏
+    setCellToolbar(null);
+    // 关闭列菜单
+    setColumnMenu(null);
+    // 自动选中对应的单元格
+    setSelectedCell({ rowId, colId });
     setCellContextMenu({
       rowId,
       colId,
@@ -1907,7 +2146,11 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
   // 构建单元格右键菜单项
   const buildCellContextMenuItems = useCallback((rowId: string): ContextMenuItem[] => {
-    return [
+    // 检查当前行是否是子记录
+    const currentRow = rows.find(r => r.id === rowId);
+    const isChildRow = !!currentRow?.parentId;
+    
+    const menuItems: ContextMenuItem[] = [
       {
         id: 'insert-row-above',
         label: '向上插入',
@@ -1937,7 +2180,8 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         ),
       },
       { id: 'sep-1', label: '', separator: true },
-      {
+      // 只有非子记录行才显示"添加子记录"选项
+      ...(isChildRow ? [] : [{
         id: 'add-child-record',
         label: '添加子记录',
         icon: 'plus',
@@ -1945,7 +2189,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
           handleAddChildRow(rowId);
           handleCloseCellContextMenu();
         },
-      },
+      }]),
       {
         id: 'add-description',
         label: '添加描述',
@@ -1956,18 +2200,17 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
           handleCloseCellContextMenu();
         },
       },
-      { id: 'sep-2', label: '', separator: true },
       {
-        id: 'delete-record',
-        label: '删除记录',
-        icon: 'delete',
-        disabled: rows.length <= 1,
+        id: 'row-fill-color',
+        label: '整行填色',
+        icon: 'paint-bucket',
         onClick: () => {
-          handleDeleteRow(rowId);
+          // TODO: 实现整行填色
+          console.log('整行填色:', rowId);
           handleCloseCellContextMenu();
         },
       },
-      { id: 'sep-3', label: '', separator: true },
+      { id: 'sep-2', label: '', separator: true },
       {
         id: 'smart-summary',
         label: '智能总结',
@@ -1978,8 +2221,21 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
           handleCloseCellContextMenu();
         },
       },
+      { id: 'sep-3', label: '', separator: true },
+      {
+        id: 'delete-record',
+        label: '删除记录',
+        icon: 'delete',
+        disabled: rows.length <= 1,
+        onClick: () => {
+          handleDeleteRow(rowId);
+          handleCloseCellContextMenu();
+        },
+      },
     ];
-  }, [rows.length, handleInsertRowAbove, handleInsertRowBelow, handleDeleteRow, handleAddChildRow, handleCloseCellContextMenu]);
+    
+    return menuItems;
+  }, [rows, handleInsertRowAbove, handleInsertRowBelow, handleDeleteRow, handleAddChildRow, handleCloseCellContextMenu]);
 
   // 渲染单元格
   const renderCell = (row: TableRow, column: TableColumn) => {
@@ -2009,6 +2265,74 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       );
     }
 
+    // 密码类型显示星号遮盖
+    if (column.type === 'password') {
+      const displayValue = value ? '••••••••' : '';
+      return (
+        <input
+          type="text"
+          className="cell-text-input"
+          value={displayValue}
+          readOnly
+          tabIndex={-1}
+        />
+      );
+    }
+
+    // 链接类型显示为可点击链接样式
+    if (column.type === 'url') {
+      const urlValue = String(value || '');
+      const handleLinkClick = (e: React.MouseEvent) => {
+        // 阻止事件冒泡，由链接元素自己处理
+        e.stopPropagation();
+        
+        // 使用 td 元素存储点击时间（更稳定）
+        const td = (e.currentTarget as HTMLElement).closest('td');
+        if (!td) return;
+        
+        // 检测双击
+        const now = Date.now();
+        const lastClick = td.dataset.linkLastClick;
+        const lastClickTime = lastClick ? parseInt(lastClick, 10) : 0;
+        td.dataset.linkLastClick = String(now);
+        
+        if (now - lastClickTime < 300) {
+          // 双击 - 进入编辑模式
+          const rowId = td.dataset.rowId;
+          const colId = td.dataset.colId;
+          if (rowId && colId) {
+            // 触发自定义事件通知父组件进入编辑模式
+            td.dispatchEvent(new CustomEvent('cell-double-click', { 
+              bubbles: true, 
+              detail: { rowId, colId } 
+            }));
+          }
+        } else {
+          // 单击 - 打开链接
+          if (urlValue) {
+            let url = urlValue;
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+              url = 'https://' + url;
+            }
+            window.electron?.shell?.openExternal(url);
+          }
+        }
+      };
+      
+      return (
+        <span className="cell-url-wrapper">
+          <span 
+            className="cell-url-link" 
+            title={urlValue}
+            onClick={urlValue ? handleLinkClick : undefined}
+            style={{ pointerEvents: urlValue ? 'auto' : 'none' }}
+          >
+            {urlValue}
+          </span>
+        </span>
+      );
+    }
+
     // 其他类型显示文本，编辑由 FloatingCellEditor 处理
     return (
       <input
@@ -2021,8 +2345,62 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     );
   };
 
+  // 处理编辑状态的键盘事件
+  const handleEditingKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, rowId: string, colId: string) => {
+    const column = columns.find(c => c.id === colId);
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const newValue = column?.type === 'number'
+        ? ((e.target as HTMLInputElement).value ? Number((e.target as HTMLInputElement).value) : '')
+        : (e.target as HTMLInputElement).value;
+      handleUpdateCell(rowId, colId, newValue);
+      // 移动到下一行
+      const currentRowIndex = flattenedRows.findIndex(fr => fr.row.id === rowId);
+      if (currentRowIndex < flattenedRows.length - 1) {
+        setEditingCell({ rowId: flattenedRows[currentRowIndex + 1].row.id, colId });
+        setSelectedCell({ rowId: flattenedRows[currentRowIndex + 1].row.id, colId });
+      } else {
+        setEditingCell(null);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingCell(null);
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      const newValue = column?.type === 'number'
+        ? ((e.target as HTMLInputElement).value ? Number((e.target as HTMLInputElement).value) : '')
+        : (e.target as HTMLInputElement).value;
+      handleUpdateCell(rowId, colId, newValue);
+      // 移动到下一列或下一行
+      const currentColIndex = columns.findIndex(c => c.id === colId);
+      let nextColIndex = e.shiftKey ? currentColIndex - 1 : currentColIndex + 1;
+      while (nextColIndex >= 0 && nextColIndex < columns.length && 
+             (columns[nextColIndex].type === 'checkbox' || columns[nextColIndex].type === 'select')) {
+        nextColIndex = e.shiftKey ? nextColIndex - 1 : nextColIndex + 1;
+      }
+      if (nextColIndex >= 0 && nextColIndex < columns.length) {
+        setEditingCell({ rowId, colId: columns[nextColIndex].id });
+        setSelectedCell({ rowId, colId: columns[nextColIndex].id });
+      } else if (!e.shiftKey) {
+        const currentRowIndex = flattenedRows.findIndex(fr => fr.row.id === rowId);
+        if (currentRowIndex < flattenedRows.length - 1) {
+          const firstEditableCol = columns.find(c => c.type !== 'checkbox' && c.type !== 'select');
+          if (firstEditableCol) {
+            setEditingCell({ rowId: flattenedRows[currentRowIndex + 1].row.id, colId: firstEditableCol.id });
+            setSelectedCell({ rowId: flattenedRows[currentRowIndex + 1].row.id, colId: firstEditableCol.id });
+          }
+        } else {
+          setEditingCell(null);
+        }
+      } else {
+        setEditingCell(null);
+      }
+    }
+  }, [columns, flattenedRows, handleUpdateCell]);
+
   // 渲染单元格内容（供 TanStackTableCore 使用的适配器）
   const renderCellContent = useCallback((row: TableRow, column: TableColumn, isEditing: boolean): React.ReactNode => {
+    // 始终显示只读内容，编辑由 FloatingCellEditor 处理
     return renderCell(row, column);
   }, [renderCell]);
 
@@ -2064,6 +2442,9 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     const colIndex = columns.findIndex(c => c.id === colId);
     const cellElement = event.currentTarget;
     
+    // 清除固定选择状态
+    setFixedSelectedCell(null);
+    
     // 只有非固定列（colIndex > 0）且被固定列遮挡时才需要滚动
     let needScroll = false;
     if (colIndex > 0 && tableWrapperRef.current) {
@@ -2091,6 +2472,9 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     // 关闭翻译面板
     setShowTranslatePanel(false);
     
+    // 关闭右键菜单
+    setCellContextMenu(null);
+    
     // 清空单元格区域选择（单击选中和拖拽选中互斥）
     setSelectedCellRange(null);
     setSelectedCell({ rowId, colId });
@@ -2098,12 +2482,16 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     // 延迟设置工具栏位置，等待滚动完成后获取正确的位置
     setTimeout(() => {
       const updatedCellRect = cellElement.getBoundingClientRect();
+      // 获取容器位置，计算相对坐标（因为 contain: paint 会影响 fixed 定位）
+      const containerRect = tableDesignerRef.current?.getBoundingClientRect();
+      const offsetX = containerRect?.left || 0;
+      const offsetY = containerRect?.top || 0;
       setCellToolbar({
         rowId,
         colId,
         position: {
-          x: updatedCellRect.left,
-          y: updatedCellRect.top,
+          x: updatedCellRect.left - offsetX,
+          y: updatedCellRect.top - offsetY,
         },
         cellWidth: updatedCellRect.width,
       });
@@ -2119,48 +2507,29 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     const row = rows.find(r => r.id === rowId);
     const isChildRowFirstColumn = colIndex === 0 && row?.parentId;
     
-    // 计算浮动编辑器位置（相对于 table-container）
+    // 计算浮动编辑器位置
     if (event && tableContainerRef.current) {
       const cell = event.currentTarget as HTMLTableCellElement;
-      
-      // 双击时不需要再滚动，因为第一次点击已经处理过了
-      // 直接计算位置和设置编辑状态
       const cellRect = cell.getBoundingClientRect();
       const containerRect = tableContainerRef.current.getBoundingClientRect();
       
-      if (colIndex === 0) {
-        // 固定列（第一数据列）
-        // 子记录第一列有左边框，需要调整位置
-        const leftOffset = isChildRowFirstColumn ? 1 : 0;
-        setFloatingEditorPosition({
-          top: cellRect.top - containerRect.top,
-          left: cellRect.left - containerRect.left + leftOffset,
-          width: cellRect.width - 1 - leftOffset,
-          height: cellRect.height - 1,
-        });
-      } else {
-        // 非固定列
-        setFloatingEditorPosition({
-          top: cellRect.top - containerRect.top,
-          left: cellRect.left - containerRect.left,
-          width: cellRect.width - 1,
-          height: cellRect.height - 1,
-        });
-      }
-      setSelectedCell({ rowId, colId });
-      setEditingCell({ rowId, colId });
-      setCellToolbar(null);
-      // 更新 prevEditingCellRef，防止 useEffect 重复执行滚动
-      prevEditingCellRef.current = { rowId, colId };
-    } else {
-      // 没有event时直接设置编辑状态
-      setSelectedCell({ rowId, colId });
-      setEditingCell({ rowId, colId });
-      setCellToolbar(null);
-      // 更新 prevEditingCellRef，防止 useEffect 重复执行滚动
+      const leftOffset = isChildRowFirstColumn ? 1 : 0;
+      // 向上偏移 1px，补偿文本位置差异
+      setFloatingEditorPosition({
+        top: cellRect.top - containerRect.top - 1,
+        left: cellRect.left - containerRect.left + leftOffset,
+        width: cellRect.width - leftOffset,
+        height: cellRect.height,
+      });
+      
+      // 更新 prevEditingCellRef，防止 useEffect 重复执行
       prevEditingCellRef.current = { rowId, colId };
     }
-  }, [columns, scrollCellToVisible]);
+    
+    setSelectedCell({ rowId, colId });
+    setEditingCell({ rowId, colId });
+    setCellToolbar(null);
+  }, [columns, rows]);
 
   // 处理浮动编辑器关闭
   const handleFloatingEditorClose = useCallback(() => {
@@ -2337,12 +2706,12 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         const containerRect = tableContainerRef.current!.getBoundingClientRect();
         // 子记录第一列有左边框，需要调整位置
         const leftOffset = isChildRowFirstColumn ? 1 : 0;
-        // 编辑框完全覆盖单元格内容区域
+        // 编辑框完全覆盖单元格内容区域，向上偏移 1px 补偿文本位置差异
         setFloatingEditorPosition({
-          top: cellRect.top - containerRect.top,
+          top: cellRect.top - containerRect.top - 1,
           left: cellRect.left - containerRect.left + leftOffset,
-          width: cellRect.width - 1 - leftOffset,
-          height: cellRect.height - 1,
+          width: cellRect.width - leftOffset,
+          height: cellRect.height,
         });
       }, colIndex > 0 ? 50 : 0);
     }
@@ -2369,8 +2738,9 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     console.log('[TableDesigner] 填充:', value);
   }, []);
 
-  const handleCellPolish = useCallback((value: string) => {
-    console.log('[TableDesigner] 润色:', value);
+  const handleCellPolish = useCallback((value: string, type: string) => {
+    console.log('[TableDesigner] 润色:', value, '类型:', type);
+    // TODO: 根据类型调用不同的润色 API
   }, []);
 
   // 打开翻译面板
@@ -2379,18 +2749,21 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     
     // 翻译面板宽度
     const panelWidth = 320;
-    const viewportWidth = window.innerWidth;
     
-    // 默认位置：紧贴单元格右侧
+    // 获取容器位置，用于计算相对坐标
+    const containerRect = tableDesignerRef.current?.getBoundingClientRect();
+    const containerWidth = containerRect?.width || window.innerWidth;
+    
+    // 默认位置：紧贴单元格右侧（相对于容器的坐标）
     let panelX = cellToolbar.position.x + cellToolbar.cellWidth + 4;
     const panelY = cellToolbar.position.y;
     
-    // 如果面板会溢出视口右边界，显示在单元格左侧
-    if (panelX + panelWidth + 20 > viewportWidth) {
+    // 如果面板会溢出容器右边界，显示在单元格左侧
+    if (panelX + panelWidth + 20 > containerWidth) {
       panelX = cellToolbar.position.x - panelWidth - 4;
       // 如果左侧也放不下，就贴着右边界显示
       if (panelX < 10) {
-        panelX = viewportWidth - panelWidth - 20;
+        panelX = containerWidth - panelWidth - 20;
       }
     }
     
@@ -2496,7 +2869,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
 
   return (
-    <div className="table-designer">
+    <div className="table-designer" ref={tableDesignerRef}>
       {/* 头部 */}
       <div className="table-designer-header">
         <div className="header-left">
@@ -2519,6 +2892,40 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         </div>
       </div>
 
+      {/* 表格工具栏 */}
+      <TableToolbar
+        columns={columns}
+        hiddenColumns={hiddenColumns}
+        rowHeight={rowHeight}
+        onToggleColumnVisibility={handleToggleColumnVisibility}
+        onFieldSettings={() => {
+          // 字段设置菜单由 TableToolbar 内部管理
+        }}
+        onFilter={() => {
+          // TODO: 筛选功能
+        }}
+        onSort={() => {
+          // TODO: 排序功能
+        }}
+        onRowHeightChange={setRowHeight}
+        onFillColor={() => {
+          setShowFillColorPanel(!showFillColorPanel);
+          // 打开填色面板时关闭查询条件面板
+          if (!showFillColorPanel) {
+            setShowQueryConditionPanel(false);
+          }
+        }}
+        onAI={() => {
+          const newShowAIInputBar = !showAIInputBar;
+          setShowAIInputBar(newShowAIInputBar);
+          // 关闭 AI 输入框时，同时关闭查询条件面板并重置命令类型
+          if (!newShowAIInputBar) {
+            setShowQueryConditionPanel(false);
+            setCurrentCommandType(null);
+          }
+        }}
+      />
+
       {/* 主体内容 */}
       <div className="table-designer-body">
         <div className="table-designer-content" ref={tableDesignerContentRef}>
@@ -2536,9 +2943,13 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
             <TanStackTableCore
               columns={columns}
               rows={rows}
+              hiddenColumns={hiddenColumns}
+              rowHeight={rowHeight}
               selectedRows={selectedRows}
               selectedCell={selectedCell}
+              selectedColumn={selectedColumn}
               editingCell={editingCell}
+              contextMenuRowId={cellContextMenu?.rowId}
               isGenerating={isGenerating}
               tableWrapperRef={tableWrapperRef}
               tableRef={tableRef}
@@ -2548,10 +2959,12 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
               onSelectedRowsChange={setSelectedRows}
               onSelectedCellChange={(cell) => {
                 setSelectedCell(cell);
+                setSelectedColumn(null); // 选中单元格时清除列选中
                 if (!cell) {
                   setCellToolbar(null);
                 }
               }}
+              onSelectedColumnChange={setSelectedColumn}
               onEditingCellChange={(cell, event) => {
                 if (cell && event) {
                   handleCellDoubleClick(cell.rowId, cell.colId, event);
@@ -2572,6 +2985,23 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
               onColumnWidthChange={handleColumnWidthChange}
               renderCellContent={renderCellContent}
             />
+            {/* 固定位置的选择边框 - 添加行时使用 */}
+            {fixedSelectedCell && !editingCell && (
+              <div
+                className="fixed-cell-selection"
+                style={{
+                  position: 'absolute',
+                  top: fixedSelectedCell.position.top,
+                  left: fixedSelectedCell.position.left,
+                  width: fixedSelectedCell.position.width,
+                  height: fixedSelectedCell.position.height,
+                  border: '2px solid var(--ws-focus-border)',
+                  pointerEvents: 'none',
+                  zIndex: 15,
+                  boxSizing: 'border-box',
+                }}
+              />
+            )}
             {/* 浮动单元格编辑器 - 渲染在 table-container 内 */}
             {editingCell && (() => {
               // 计算子记录第一列的额外内边距
@@ -2605,6 +3035,17 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
               onClose={() => setShowQueryConditionPanel(false)}
             />
           )}
+          {/* 填色条件面板 */}
+          {showFillColorPanel && (
+            <QueryConditionPanel
+              columns={columns}
+              mode="fillColor"
+              onQuery={() => {}}
+              onFillColor={handleFillColorCondition}
+              onClearAllFillColor={handleClearAllFillColor}
+              onClose={() => setShowFillColorPanel(false)}
+            />
+          )}
           {/* 生成操作栏：生成中显示进度和取消，生成完成显示放弃/保留 */}
           {(isGenerating || showDiscardButton) && (
             <div className="generate-action-bar">
@@ -2628,41 +3069,43 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
             </div>
           )}
           {/* AI 输入栏 */}
-          <AIInputBar
-            placeholder="描述您想要的内容..."
-            systemPrompt={getTableDesignerSystemPrompt()}
-            onGenerate={handleAIGenerate}
-            customGenerate={customGenerateFunction}
-            onCancel={handleCancelGenerate}
-            enableCommands={true}
-            disabled={currentCommandType === 'query'}
-            hideLoadingIndicator={true}
-            externalLoading={isGenerating}
-            onCommand={(command) => {
-              console.log('[TableDesigner] 收到命令:', command.type, command.content);
-              if (command.type === 'query') {
-                handleQueryCommand(command.content);
-              }
-            }}
-            onCommandChange={(commandType) => {
-              // 保存当前命令类型
-              setCurrentCommandType(commandType);
-              // 当切换到查询命令时，显示查询条件面板
-              if (commandType === 'query') {
-                setShowQueryConditionPanel(true);
-              } else {
-                setShowQueryConditionPanel(false);
-              }
-            }}
-            suggestions={[
-              // 生成表格建议
-              { id: 'g1', label: '生成用户信息表', prompt: '生成一个用户信息表，包含姓名、年龄、邮箱、电话、地址字段，生成5条示例数据', commandType: 'generate' },
-              { id: 'g2', label: '生成产品列表', prompt: '生成一个产品列表表格，包含产品名称、价格、库存、分类、上架状态字段，生成5条示例数据', commandType: 'generate' },
-              { id: 'g3', label: '生成任务清单', prompt: '生成一个任务清单表格，包含任务名称、负责人、截止日期、优先级、完成状态字段，生成5条示例数据', commandType: 'generate' },
-              { id: 'g4', label: '生成订单记录', prompt: '生成一个订单记录表格，包含订单号、客户名称、商品、金额、下单时间、状态字段，生成5条示例数据', commandType: 'generate' },
-              { id: 'g5', label: '生成员工考勤表', prompt: '生成一个员工考勤表，包含员工姓名、部门、日期、上班时间、下班时间、工时字段，生成5条示例数据', commandType: 'generate' },
-            ]}
-          />
+          {showAIInputBar && (
+            <AIInputBar
+              placeholder="描述您想要的内容..."
+              systemPrompt={getTableDesignerSystemPrompt()}
+              onGenerate={handleAIGenerate}
+              customGenerate={customGenerateFunction}
+              onCancel={handleCancelGenerate}
+              enableCommands={true}
+              disabled={currentCommandType === 'query'}
+              hideLoadingIndicator={true}
+              externalLoading={isGenerating}
+              onCommand={(command) => {
+                console.log('[TableDesigner] 收到命令:', command.type, command.content);
+                if (command.type === 'query') {
+                  handleQueryCommand(command.content);
+                }
+              }}
+              onCommandChange={(commandType) => {
+                // 保存当前命令类型
+                setCurrentCommandType(commandType);
+                // 当切换到查询命令时，显示查询条件面板
+                if (commandType === 'query') {
+                  setShowQueryConditionPanel(true);
+                } else {
+                  setShowQueryConditionPanel(false);
+                }
+              }}
+              suggestions={[
+                // 生成表格建议
+                { id: 'g1', label: '生成用户信息表', prompt: '生成一个用户信息表，包含姓名、年龄、邮箱、电话、地址字段，生成5条示例数据', commandType: 'generate' },
+                { id: 'g2', label: '生成产品列表', prompt: '生成一个产品列表表格，包含产品名称、价格、库存、分类、上架状态字段，生成5条示例数据', commandType: 'generate' },
+                { id: 'g3', label: '生成任务清单', prompt: '生成一个任务清单表格，包含任务名称、负责人、截止日期、优先级、完成状态字段，生成5条示例数据', commandType: 'generate' },
+                { id: 'g4', label: '生成订单记录', prompt: '生成一个订单记录表格，包含订单号、客户名称、商品、金额、下单时间、状态字段，生成5条示例数据', commandType: 'generate' },
+                { id: 'g5', label: '生成员工考勤表', prompt: '生成一个员工考勤表，包含员工姓名、部门、日期、上班时间、下班时间、工时字段，生成5条示例数据', commandType: 'generate' },
+              ]}
+            />
+          )}
         </div>
 
 
@@ -2803,7 +3246,11 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
         {/* 数据查看器面板 */}
         {showDataViewer && (
-          <div className="data-viewer-panel">
+          <div 
+            className="data-viewer-panel"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="data-viewer-header">
               <span className="data-viewer-title">数据查看器</span>
               <span 

@@ -31,9 +31,11 @@ const NotificationItemComponent: React.FC<NotificationItemProps> = ({ item, onCl
 };
 
 export const NotificationContainer: React.FC = () => {
-  const { removeNotification, getVisibleNotifications } = useNotificationStore();
+  const notifications = useNotificationStore((state) => state.notifications);
+  const removeNotification = useNotificationStore((state) => state.removeNotification);
   
-  const visibleNotifications = getVisibleNotifications();
+  // 只显示前3个通知
+  const visibleNotifications = notifications.slice(0, 3);
 
   if (visibleNotifications.length === 0) {
     return null;

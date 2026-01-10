@@ -10,6 +10,9 @@ import { Icon } from '../../Icons/Icon';
 import { getCachedModels, getModelConfig } from '../../../services/ModelCacheService';
 import { aiService } from '../../../services/ai/AIService';
 import { isModelEnabled } from '../../../services/ai';
+import { Select, type SelectGroup } from '../../common/Select/Select';
+import { buildLevel1MenuItems, buildLevel2MenuItems } from '../../Layout/EditorArea/AIZoneWidget/buildContextMenuItems';
+import { TipTapInput, type TipTapInputRef } from '../../Layout/EditorArea/AIZoneWidget/TipTapInput';
 import type { AIRequestParams, StreamCallback, AIResponse } from '../../../types/aiProvider';
 import './InlineAIChat.scss';
 
@@ -48,7 +51,6 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
   initialSelection,
   view,
 }) => {
-  const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -56,10 +58,18 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [dropdownDirection, setDropdownDirection] = useState<'up' | 'down'>('down');
   const [isAtMenuOpen, setIsAtMenuOpen] = useState(false);
+  const [atMenuLevel, setAtMenuLevel] = useState<'main' | 'form'>('main');
+  const [atMenuGroups, setAtMenuGroups] = useState<SelectGroup[]>([]);
+  const [currentCategory, setCurrentCategory] = useState<string>('');
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [expandedForms, setExpandedForms] = useState<Set<string>>(new Set());
+  const [atMenuHeight, setAtMenuHeight] = useState<number | undefined>(undefined);
+  const [atMenuHighlightIndex, setAtMenuHighlightIndex] = useState(0);
   const [isSparklesMenuOpen, setIsSparklesMenuOpen] = useState(false);
   const [isToneSubmenuOpen, setIsToneSubmenuOpen] = useState(false);
   const [currentSelection, setCurrentSelection] = useState(initialSelection || '');
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [fileReferences, setFileReferences] = useState<Array<{ path: string; name: string }>>([]);
+  const tiptapInputRef = useRef<TipTapInputRef>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const modelTriggerRef = useRef<HTMLSpanElement>(null);
@@ -75,6 +85,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
   const closeAllMenus = useCallback(() => {
     setIsModelDropdownOpen(false);
     setIsAtMenuOpen(false);
+    setAtMenuLevel('main');
     setIsSparklesMenuOpen(false);
     setIsToneSubmenuOpen(false);
   }, []);
@@ -94,17 +105,29 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
   }, [isModelDropdownOpen, availableModels.length]);
 
   // 切换 @ 菜单
-  const toggleAtMenu = useCallback(() => {
+  const toggleAtMenu = useCallback(async () => {
     setIsModelDropdownOpen(false);
     setIsSparklesMenuOpen(false);
     setIsToneSubmenuOpen(false);
-    setIsAtMenuOpen(!isAtMenuOpen);
+    if (isAtMenuOpen) {
+      setIsAtMenuOpen(false);
+      setAtMenuLevel('main');
+      setCurrentCategory('');
+      setExpandedFolders(new Set());
+    } else {
+      // 加载一级菜单
+      const groups = await buildLevel1MenuItems();
+      setAtMenuGroups(groups);
+      setIsAtMenuOpen(true);
+      setAtMenuLevel('main');
+    }
   }, [isAtMenuOpen]);
 
   // 切换 sparkles 菜单
   const toggleSparklesMenu = useCallback(() => {
     setIsModelDropdownOpen(false);
     setIsAtMenuOpen(false);
+    setAtMenuLevel('main');
     setIsToneSubmenuOpen(false);
     setIsSparklesMenuOpen(!isSparklesMenuOpen);
   }, [isSparklesMenuOpen]);
@@ -120,7 +143,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
       // 检查点击是否在下拉菜单内部
       const isInDropdown = target.closest('.cm-inline-ai-model-dropdown') ||
                           target.closest('.cm-inline-ai-sparkles-dropdown') ||
-                          target.closest('.cm-inline-ai-at-dropdown') ||
+                          target.closest('.select-content') || // Select 组件的下拉菜单
                           target.closest('.cm-inline-ai-tone-submenu');
       
       // 检查点击是否在触发器上
@@ -140,6 +163,27 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
       document.removeEventListener('mousedown', handleClickOutside, true);
     };
   }, [closeAllMenus, isModelDropdownOpen, isAtMenuOpen, isSparklesMenuOpen]);
+
+  // 监听编辑器滚动，关闭 @ 菜单
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isAtMenuOpen) {
+        setIsAtMenuOpen(false);
+        setAtMenuLevel('main');
+        setCurrentCategory('');
+        setExpandedFolders(new Set());
+        setExpandedForms(new Set());
+      }
+    };
+
+    // 监听 CodeMirror 编辑器的滚动事件
+    const scrollDOM = view.scrollDOM;
+    scrollDOM.addEventListener('scroll', handleScroll);
+
+    return () => {
+      scrollDOM.removeEventListener('scroll', handleScroll);
+    };
+  }, [view, isAtMenuOpen]);
 
   // 加载可用模型
   useEffect(() => {
@@ -174,23 +218,13 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
 
   // 自动聚焦输入框
   useEffect(() => {
-    inputRef.current?.focus();
+    tiptapInputRef.current?.focus();
   }, []);
 
   // 滚动到最新消息
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  // 自动调整输入框高度
-  useEffect(() => {
-    const textarea = inputRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      const newHeight = Math.min(textarea.scrollHeight, 150);
-      textarea.style.height = `${newHeight}px`;
-    }
-  }, [input]);
 
   // 监听编辑器选择变化
   useEffect(() => {
@@ -216,17 +250,18 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
 
   // 发送消息
   const handleSend = useCallback(async () => {
-    if (!input.trim() || isLoading || !selectedModel) return;
+    const inputText = tiptapInputRef.current?.getText() || '';
+    if (!inputText.trim() || isLoading || !selectedModel) return;
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: inputText.trim(),
       timestamp: Date.now(),
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInput('');
+    tiptapInputRef.current?.clear();
     setIsLoading(true);
 
     // 创建助手消息占位
@@ -332,7 +367,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
       );
       setIsLoading(false);
     }
-  }, [input, isLoading, selectedModel, messages, initialSelection]);
+  }, [isLoading, selectedModel, messages, currentSelection]);
 
   // 停止生成
   const handleStop = useCallback(() => {
@@ -356,16 +391,6 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
     }
   }, [messages, onInsert]);
 
-  // 键盘事件处理
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    } else if (e.key === 'Escape') {
-      onClose();
-    }
-  }, [handleSend, onClose]);
-
   // 获取模型显示名称
   const getModelDisplayName = (modelId: string): string => {
     const model = availableModels.find(m => m.modelId === modelId);
@@ -374,11 +399,274 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
     return colonIndex > 0 ? modelId.substring(colonIndex + 1) : modelId;
   };
 
-  // @ 菜单项点击处理
-  const handleAtMenuClick = useCallback((type: 'file' | 'folder' | 'knowledge') => {
+  // @ 菜单项选择处理
+  const handleAtMenuSelect = useCallback(async (value: string) => {
+    // 处理分类选项 - 切换到二级菜单
+    if (value.startsWith('category-')) {
+      setCurrentCategory(value);
+      const groups = await buildLevel2MenuItems(
+        value,
+        (filePath: string) => handleFileSelect(filePath),
+        (promptId: string) => handlePromptSelect(promptId),
+        (kbId: string) => handleKnowledgeBaseSelect(kbId),
+        (snippetId: number) => handleSnippetSelect(snippetId),
+        (agentId: string) => handleAgentSelect(agentId),
+        expandedFolders,
+        undefined,
+        (formId: string) => handleFormSelect(formId),
+        expandedForms
+      );
+      setAtMenuGroups(groups);
+      setAtMenuLevel('form');
+      return; // 不关闭菜单，直接返回
+    }
+
+    // 处理文件夹展开/折叠
+    if (value.startsWith('folder-')) {
+      const folderPath = value.replace('folder-', '');
+      const newExpanded = new Set(expandedFolders);
+      if (newExpanded.has(folderPath)) {
+        newExpanded.delete(folderPath);
+      } else {
+        newExpanded.add(folderPath);
+      }
+      setExpandedFolders(newExpanded);
+      
+      // 重新加载二级菜单
+      const groups = await buildLevel2MenuItems(
+        currentCategory,
+        (filePath: string) => handleFileSelect(filePath),
+        (promptId: string) => handlePromptSelect(promptId),
+        (kbId: string) => handleKnowledgeBaseSelect(kbId),
+        (snippetId: number) => handleSnippetSelect(snippetId),
+        (agentId: string) => handleAgentSelect(agentId),
+        newExpanded,
+        undefined,
+        (formId: string) => handleFormSelect(formId),
+        expandedForms
+      );
+      setAtMenuGroups(groups);
+      return; // 不关闭菜单，直接返回
+    }
+
+    // 处理表单展开/折叠
+    if (value.startsWith('form-expand-')) {
+      const formId = value.replace('form-expand-', '');
+      const newExpanded = new Set(expandedForms);
+      if (newExpanded.has(formId)) {
+        newExpanded.delete(formId);
+      } else {
+        newExpanded.add(formId);
+      }
+      setExpandedForms(newExpanded);
+      
+      // 重新加载二级菜单
+      const groups = await buildLevel2MenuItems(
+        currentCategory,
+        (filePath: string) => handleFileSelect(filePath),
+        (promptId: string) => handlePromptSelect(promptId),
+        (kbId: string) => handleKnowledgeBaseSelect(kbId),
+        (snippetId: number) => handleSnippetSelect(snippetId),
+        (agentId: string) => handleAgentSelect(agentId),
+        expandedFolders,
+        undefined,
+        (formId: string) => handleFormSelect(formId),
+        newExpanded
+      );
+      setAtMenuGroups(groups);
+      return; // 不关闭菜单，直接返回
+    }
+
+    // 处理表单字段选择
+    if (value.startsWith('form-column|')) {
+      // 格式: form-column|{encodedFormName}|{encodedColumnName}
+      const parts = value.split('|');
+      // parts: ['form-column', encodedFormName, encodedColumnName]
+      if (parts.length >= 3) {
+        const formName = decodeURIComponent(parts[1]);
+        const columnName = decodeURIComponent(parts[2]);
+        handleFormColumnSelect(formName, columnName);
+      }
+      return;
+    }
+
+    // 处理最近文件选择
+    if (value.startsWith('recent-file-')) {
+      // TODO: 获取实际文件路径并处理
+      console.log('[InlineAIChat] 选择最近文件:', value);
+    }
+
+    // 处理文件选择
+    if (value.startsWith('file-')) {
+      const filePath = value.replace('file-', '');
+      handleFileSelect(filePath);
+    }
+
+    // 处理表单选择（直接选择表单，不是展开）
+    if (value.startsWith('form|')) {
+      // 格式: form|{encodedFormName}
+      const parts = value.split('|');
+      if (parts.length >= 2) {
+        const formName = decodeURIComponent(parts[1]);
+        handleFormSelect(formName);
+      }
+    }
+
+    // 处理知识库选择
+    if (value.startsWith('kb-')) {
+      const kbId = value.replace('kb-', '');
+      handleKnowledgeBaseSelect(kbId);
+    }
+
+    // 处理提示词选择
+    if (value.startsWith('prompt-')) {
+      handlePromptSelect(value);
+    }
+
+    // 处理片段选择
+    if (value.startsWith('snippet-')) {
+      const snippetId = parseInt(value.replace('snippet-', ''), 10);
+      handleSnippetSelect(snippetId);
+    }
+
+    // 处理智能体选择
+    if (value.startsWith('agent-')) {
+      const agentId = value.replace('agent-', '');
+      handleAgentSelect(agentId);
+    }
+
+    // 只有在选择具体项目时才关闭菜单（由 onItemClick 控制）
+  }, [expandedFolders, expandedForms, currentCategory]);
+
+  // 文件选择处理
+  const handleFileSelect = useCallback((filePath: string) => {
+    const fileName = filePath.split(/[/\\]/).pop() || filePath;
+    tiptapInputRef.current?.insertFileReference(filePath, fileName);
     setIsAtMenuOpen(false);
-    // TODO: 根据类型打开对应的选择器
-    console.log('[InlineAIChat] @ 菜单选择:', type);
+    setAtMenuLevel('main');
+    setCurrentCategory('');
+    setExpandedFolders(new Set());
+    setExpandedForms(new Set());
+  }, []);
+
+  // 表单选择处理
+  const handleFormSelect = useCallback((formName: string) => {
+    tiptapInputRef.current?.insertFileReference(`form:${formName}`, formName);
+    setIsAtMenuOpen(false);
+    setAtMenuLevel('main');
+    setCurrentCategory('');
+    setExpandedFolders(new Set());
+    setExpandedForms(new Set());
+  }, []);
+
+  // 表单字段选择处理
+  const handleFormColumnSelect = useCallback((formName: string, columnName: string) => {
+    // 显示格式: @表单名称（字段名称）
+    const displayName = `${formName}（${columnName}）`;
+    tiptapInputRef.current?.insertFileReference(`column:${formName}:${columnName}`, displayName);
+    setIsAtMenuOpen(false);
+    setAtMenuLevel('main');
+    setCurrentCategory('');
+    setExpandedFolders(new Set());
+    setExpandedForms(new Set());
+  }, []);
+
+  // 知识库选择处理
+  const handleKnowledgeBaseSelect = useCallback((kbId: string) => {
+    tiptapInputRef.current?.insertFileReference(`kb:${kbId}`, kbId);
+    setIsAtMenuOpen(false);
+    setAtMenuLevel('main');
+    setCurrentCategory('');
+    setExpandedFolders(new Set());
+    setExpandedForms(new Set());
+  }, []);
+
+  // 提示词选择处理
+  const handlePromptSelect = useCallback((promptId: string) => {
+    tiptapInputRef.current?.insertFileReference(`prompt:${promptId}`, promptId);
+    setIsAtMenuOpen(false);
+    setAtMenuLevel('main');
+    setCurrentCategory('');
+    setExpandedFolders(new Set());
+    setExpandedForms(new Set());
+  }, []);
+
+  // 片段选择处理
+  const handleSnippetSelect = useCallback((snippetId: number) => {
+    tiptapInputRef.current?.insertFileReference(`snippet:${snippetId}`, `片段${snippetId}`);
+    setIsAtMenuOpen(false);
+    setAtMenuLevel('main');
+    setCurrentCategory('');
+    setExpandedFolders(new Set());
+    setExpandedForms(new Set());
+  }, []);
+
+  // 智能体选择处理
+  const handleAgentSelect = useCallback((agentId: string) => {
+    tiptapInputRef.current?.insertFileReference(`agent:${agentId}`, `智能体:${agentId}`);
+    setIsAtMenuOpen(false);
+    setAtMenuLevel('main');
+    setCurrentCategory('');
+    setExpandedFolders(new Set());
+    setExpandedForms(new Set());
+  }, []);
+
+  // 返回一级菜单
+  const handleBackToMainMenu = useCallback(async () => {
+    setExpandedFolders(new Set());
+    setCurrentCategory('');
+    const groups = await buildLevel1MenuItems();
+    setAtMenuGroups(groups);
+    setAtMenuLevel('main');
+  }, []);
+
+  // @ 菜单键盘导航 - 向上/向下
+  const handleAtMenuNavigate = useCallback((direction: 'up' | 'down') => {
+    // 计算所有可选项的总数
+    let totalItems = 0;
+    atMenuGroups.forEach(group => {
+      totalItems += group.items.length;
+    });
+    
+    if (totalItems === 0) return;
+    
+    setAtMenuHighlightIndex(prev => {
+      if (direction === 'up') {
+        return prev <= 0 ? totalItems - 1 : prev - 1;
+      } else {
+        return prev >= totalItems - 1 ? 0 : prev + 1;
+      }
+    });
+  }, [atMenuGroups]);
+
+  // @ 菜单键盘导航 - 选择当前高亮项
+  const handleAtMenuSelectHighlighted = useCallback(() => {
+    // 找到当前高亮的项
+    let currentIndex = 0;
+    for (const group of atMenuGroups) {
+      for (const item of group.items) {
+        if (currentIndex === atMenuHighlightIndex) {
+          handleAtMenuSelect(item.value);
+          return;
+        }
+        currentIndex++;
+      }
+    }
+  }, [atMenuGroups, atMenuHighlightIndex, handleAtMenuSelect]);
+
+  // 处理 TipTap 输入变化
+  const handleTipTapChange = useCallback(() => {
+    // 输入变化时的处理（如果需要）
+  }, []);
+
+  // 处理 TipTap 提交
+  const handleTipTapSubmit = useCallback(() => {
+    handleSend();
+  }, [handleSend]);
+
+  // 处理文件引用变化
+  const handleFileReferencesChange = useCallback((refs: Array<{ path: string; name: string }>) => {
+    setFileReferences(refs);
   }, []);
 
   // AI 能力菜单点击处理
@@ -388,7 +676,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
     
     if (!currentSelection) {
       // 没有选中文本时提示
-      setInput('请先选中需要处理的文本');
+      tiptapInputRef.current?.setText('请先选中需要处理的文本');
       return;
     }
 
@@ -421,10 +709,10 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
     }
 
     if (prompt) {
-      setInput(prompt);
-      // 自动发送
+      tiptapInputRef.current?.setText(prompt);
+      // 自动聚焦
       setTimeout(() => {
-        inputRef.current?.focus();
+        tiptapInputRef.current?.focus();
       }, 100);
     }
   }, [currentSelection]);
@@ -544,29 +832,37 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
               @
             </span>
             {isAtMenuOpen && (
-              <div className="cm-inline-ai-at-dropdown">
-                <div
-                  className="cm-inline-ai-at-option"
-                  onClick={() => handleAtMenuClick('file')}
-                >
-                  <Icon name="file" size={14} />
-                  <span>文件</span>
-                </div>
-                <div
-                  className="cm-inline-ai-at-option"
-                  onClick={() => handleAtMenuClick('folder')}
-                >
-                  <Icon name="folder" size={14} />
-                  <span>文件夹</span>
-                </div>
-                <div
-                  className="cm-inline-ai-at-option"
-                  onClick={() => handleAtMenuClick('knowledge')}
-                >
-                  <Icon name="database" size={14} />
-                  <span>知识库</span>
-                </div>
-              </div>
+              <Select
+                value=""
+                onChange={handleAtMenuSelect}
+                groups={atMenuGroups}
+                placeholder="选择上下文..."
+                className="cm-inline-ai-at-select"
+                showSearch={true}
+                open={true}
+                align="right"
+                headerLeftIcon={atMenuLevel === 'form' ? <Icon name="chevron-left" size={16} /> : undefined}
+                onHeaderLeftClick={atMenuLevel === 'form' ? handleBackToMainMenu : undefined}
+                fixedHeight={atMenuLevel === 'form' ? atMenuHeight : undefined}
+                onHeightChange={atMenuLevel === 'main' ? setAtMenuHeight : undefined}
+                onItemClick={(value: string) => {
+                  // 分类选项、文件夹和表单展开不关闭菜单
+                  if (value.startsWith('category-') || value.startsWith('folder-') || value.startsWith('form-expand-')) {
+                    return false;
+                  }
+                  return true;
+                }}
+                onOpenChange={(isOpen: boolean) => {
+                  if (!isOpen) {
+                    setIsAtMenuOpen(false);
+                    setAtMenuLevel('main');
+                    setCurrentCategory('');
+                    setExpandedFolders(new Set());
+                    setExpandedForms(new Set());
+                    setAtMenuHeight(undefined);
+                  }
+                }}
+              />
             )}
           </div>
           <span 
@@ -599,21 +895,24 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
 
       {/* 输入区域 */}
       <div className="cm-inline-ai-input-area">
-        <textarea
-          ref={inputRef}
-          className="cm-inline-ai-input"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
+        <TipTapInput
+          ref={tiptapInputRef}
+          className="cm-inline-ai-tiptap-input"
           placeholder="向 AI 描述您想要做什么..."
-          rows={1}
-          disabled={isLoading}
+          onSubmit={handleTipTapSubmit}
+          onEscape={onClose}
+          onChange={handleTipTapChange}
+          onFileReferencesChange={handleFileReferencesChange}
+          isAtMenuOpen={isAtMenuOpen}
+          onAtMenuNavigate={handleAtMenuNavigate}
+          onAtMenuSelect={handleAtMenuSelectHighlighted}
+          onAtMenuBack={handleBackToMainMenu}
         />
         
         {/* 底部工具栏 */}
         <div className="cm-inline-ai-toolbar">
           {/* 模型选择 */}
-          <div className="cm-inline-ai-model-select">
+          <div className={`cm-inline-ai-model-select ${isModelDropdownOpen ? 'open' : ''}`}>
             <span 
               ref={modelTriggerRef}
               className="cm-inline-ai-model-trigger"
@@ -668,11 +967,11 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
               </span>
             ) : (
               <span 
-                className={`cm-inline-ai-btn cm-inline-ai-btn-send ${!input.trim() || !selectedModel ? 'disabled' : ''}`}
+                className={`cm-inline-ai-btn cm-inline-ai-btn-send ${!selectedModel ? 'disabled' : ''}`}
                 onClick={handleSend}
                 title="发送 (Enter)"
               >
-                <Icon name="play" size={14} />
+                <Icon name="send" size={14} />
                 发送
               </span>
             )}

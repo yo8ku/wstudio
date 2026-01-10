@@ -44,6 +44,7 @@ export const FloatingCellEditor: React.FC<FloatingCellEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [internalValue, setInternalValue] = useState(value);
   const internalValueRef = useRef(value);
+  const initialValueRef = useRef(value); // 保存初始值用于比较
   const onValueChangeRef = useRef(onValueChange);
   const onCloseRef = useRef(onClose);
   const onKeyNavigationRef = useRef(onKeyNavigation);
@@ -56,6 +57,19 @@ export const FloatingCellEditor: React.FC<FloatingCellEditorProps> = ({
     onKeyNavigationRef.current = onKeyNavigation;
     columnTypeRef.current = columnType;
   }, [onValueChange, onClose, onKeyNavigation, columnType]);
+
+  // 组件卸载时自动保存值
+  useEffect(() => {
+    return () => {
+      // 组件卸载时，如果值有变化则保存
+      if (internalValueRef.current !== initialValueRef.current) {
+        const finalValue = columnTypeRef.current === 'number'
+          ? (internalValueRef.current ? Number(internalValueRef.current) : '')
+          : internalValueRef.current;
+        onValueChangeRef.current(finalValue);
+      }
+    };
+  }, []); // 空依赖，只在卸载时执行
 
   // 提交值并关闭
   const commitAndClose = useCallback(() => {
@@ -93,12 +107,25 @@ export const FloatingCellEditor: React.FC<FloatingCellEditorProps> = ({
 
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      // 如果点击的是表格单元格，不关闭（让双击事件处理）
-      if (target.closest('td') || target.closest('.floating-cell-editor')) {
+      // 如果点击的是当前编辑器内部，不处理
+      if (target.closest('.floating-cell-editor')) {
         return;
       }
       if (containerRef.current && !containerRef.current.contains(target)) {
+        // 点击外部时保存值并关闭
         commitAndClose();
+        
+        // 如果点击的是链接元素，直接打开链接
+        if (target.classList.contains('cell-url-link')) {
+          const urlValue = target.textContent || '';
+          if (urlValue) {
+            let url = urlValue;
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+              url = 'https://' + url;
+            }
+            window.electron?.shell?.openExternal(url);
+          }
+        }
       }
     };
 
@@ -156,7 +183,7 @@ export const FloatingCellEditor: React.FC<FloatingCellEditorProps> = ({
         left: position.left,
         width: position.width,
         height: position.height,
-        zIndex: 1000,
+        zIndex: 20, // 降低 z-index，只需要高于表格单元格即可
       }}
       onMouseDown={handleMouseDown}
     >
@@ -168,7 +195,7 @@ export const FloatingCellEditor: React.FC<FloatingCellEditorProps> = ({
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         style={{
-          paddingLeft: 10 + extraPaddingLeft, // 与 .cell-text 一致
+          paddingLeft: extraPaddingLeft > 0 ? 7 + extraPaddingLeft : undefined, // 只有子记录才需要额外内边距
         }}
         spellCheck={false}
         autoComplete="off"

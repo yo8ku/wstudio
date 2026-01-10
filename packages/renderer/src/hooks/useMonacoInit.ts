@@ -6,6 +6,7 @@
 import { useEffect } from 'react';
 import type { Monaco } from '@monaco-editor/react';
 import { registerUniversalColorProvider } from '../utils/monaco-color-provider';
+import { registerMonacoTableReferenceProvider } from '../services/tableReference';
 
 // 全局标记，确保只初始化一次
 let monacoInitialized = false;
@@ -135,6 +136,10 @@ export const initializeMonaco = async (monaco: Monaco) => {
   // 配置 Markdown 语言的内嵌代码块高亮
   setupMarkdownEmbeddedLanguages(monaco);
   console.log('[Monaco] Markdown 内嵌语言高亮已配置');
+
+  // 注册表格引用自动补全提供器
+  registerMonacoTableReferenceProvider(monaco as unknown as typeof import('monaco-editor'), ['markdown', 'plaintext']);
+  console.log('[Monaco] 表格引用自动补全已注册');
 
   // 标记已初始化
   monacoInitialized = true;

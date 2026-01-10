@@ -8,6 +8,9 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Icon } from '../../../Icons/Icon';
 import './CellToolbar.scss';
 
+/** 润色类型 */
+export type PolishType = 'polish' | 'imitate' | 'expand' | 'shorten' | 'improve' | 'grammar';
+
 /** 工具栏菜单项 */
 export interface CellToolbarMenuItem {
   id: string;
@@ -28,7 +31,7 @@ export interface CellToolbarProps {
   /** 填充回调 */
   onFill?: (value: string) => void;
   /** 润色回调 */
-  onPolish?: (value: string) => void;
+  onPolish?: (value: string, type: PolishType) => void;
   /** 翻译回调 */
   onTranslate?: (value: string) => void;
   /** 数据查看回调 */
@@ -58,30 +61,35 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
 }) => {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showPolishMenu, setShowPolishMenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState<'right' | 'bottom'>('right');
   const moreButtonRef = useRef<HTMLSpanElement>(null);
+  const polishButtonRef = useRef<HTMLSpanElement>(null);
   const prevPositionRef = useRef(position);
 
-  // 当位置变化时（选中了新单元格），关闭更多菜单
+  // 当位置变化时（选中了新单元格），关闭所有菜单
   useEffect(() => {
     if (prevPositionRef.current.x !== position.x || prevPositionRef.current.y !== position.y) {
       setShowMoreMenu(false);
+      setShowPolishMenu(false);
       prevPositionRef.current = position;
     }
   }, [position]);
 
-  // 点击外部关闭工具栏和更多菜单
+  // 点击外部关闭工具栏和菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      // 检查点击是否在工具栏内容或更多菜单上
+      // 检查点击是否在工具栏内容或菜单上
       const toolbarContent = toolbarRef.current?.querySelector('.cell-toolbar-content');
       const moreMenu = toolbarRef.current?.querySelector('.cell-toolbar-more-menu');
+      const polishMenu = toolbarRef.current?.querySelector('.cell-toolbar-polish-menu');
       
-      const isInsideToolbar = toolbarContent?.contains(target) || moreMenu?.contains(target);
+      const isInsideToolbar = toolbarContent?.contains(target) || moreMenu?.contains(target) || polishMenu?.contains(target);
       
       if (!isInsideToolbar) {
         setShowMoreMenu(false);
+        setShowPolishMenu(false);
         onClose();
       }
     };
@@ -93,6 +101,7 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
   // 点击更多按钮，检测菜单位置
   const handleMoreClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setShowPolishMenu(false); // 关闭润色菜单
     if (!showMoreMenu && moreButtonRef.current) {
       const buttonRect = moreButtonRef.current.getBoundingClientRect();
       const menuWidth = 150;
@@ -108,14 +117,22 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
     setShowMoreMenu(!showMoreMenu);
   };
 
+  // 点击润色按钮
+  const handlePolishClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowMoreMenu(false); // 关闭更多菜单
+    setShowPolishMenu(!showPolishMenu);
+  };
+
+  // 处理润色选项点击
+  const handlePolishOption = (type: PolishType) => {
+    onPolish?.(cellValue, type);
+    setShowPolishMenu(false);
+  };
+
   // 处理填充
   const handleFill = () => {
     onFill?.(cellValue);
-  };
-
-  // 处理润色
-  const handlePolish = () => {
-    onPolish?.(cellValue);
   };
 
   // 处理翻译
@@ -152,6 +169,16 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
     setShowMoreMenu(false);
   };
 
+  // 润色菜单项
+  const polishMenuItems: { id: PolishType; label: string }[] = [
+    { id: 'polish', label: '润色' },
+    { id: 'imitate', label: '仿写' },
+    { id: 'expand', label: '扩写' },
+    { id: 'shorten', label: '缩写' },
+    { id: 'improve', label: '写作改进' },
+    { id: 'grammar', label: '语法修正' },
+  ];
+
   // 更多菜单项
   const moreMenuItems: CellToolbarMenuItem[] = [
     { id: 'summarize', label: '总结', icon: 'sparkles', onClick: handleSummarize },
@@ -176,7 +203,12 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
         <span className="cell-toolbar-item" onClick={handleFill} title="填充">
           <Icon name="cell-fill" size={20} />
         </span>
-        <span className="cell-toolbar-item" onClick={handlePolish} title="润色">
+        <span 
+          ref={polishButtonRef}
+          className={`cell-toolbar-item ${showPolishMenu ? 'active' : ''}`} 
+          onClick={handlePolishClick} 
+          title="润色"
+        >
           <Icon name="cell-polish" size={20} />
         </span>
         <span className="cell-toolbar-item" onClick={handleTranslate} title="翻译">
@@ -195,6 +227,20 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
           <Icon name="cell-more" size={20} />
         </span>
       </div>
+
+      {showPolishMenu && (
+        <div className="cell-toolbar-polish-menu">
+          {polishMenuItems.map((item) => (
+            <div
+              key={item.id}
+              className="cell-toolbar-menu-item"
+              onClick={() => handlePolishOption(item.id)}
+            >
+              <span className="menu-item-label">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {showMoreMenu && (
         <div className={`cell-toolbar-more-menu ${menuPosition}`}>

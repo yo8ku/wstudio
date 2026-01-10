@@ -68,6 +68,20 @@
   pointer-events: auto; // 更多菜单响应点击
 }
 
+.cell-toolbar-polish-menu {
+  position: absolute;
+  top: 100%;
+  left: 38px; // 对齐润色按钮
+  margin-top: 4px;
+  min-width: 100px;
+  padding: 4px 0;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px var(--ws-widget-shadow);
+  pointer-events: auto;
+}
+
 .cell-toolbar-menu-item {
   display: flex;
   align-items: center;
@@ -75,7 +89,7 @@
   padding: 6px 12px;
   cursor: pointer;
   color: var(--ws-foreground);
-  font-size: 12px;
+  font-size: 13px;
 
   &:hover {
     background-color: var(--ws-list-hover-background);

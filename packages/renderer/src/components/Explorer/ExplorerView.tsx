@@ -141,6 +141,42 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     loadFormData();
   }, [loadFormData]);
 
+  // 监听表格设计器标签页关闭事件，清除表单选中状态
+  React.useEffect(() => {
+    const handleFormTabClosed = (event: Event) => {
+      const customEvent = event as CustomEvent<{ formId?: string }>;
+      const { formId } = customEvent.detail || {};
+      // 如果关闭的是当前选中的表单，清除选中状态
+      if (formId && formId === selectedFormId) {
+        setSelectedFormId(undefined);
+      }
+    };
+
+    // 监听表格设计器标签页激活事件，更新表单选中状态
+    const handleFormTabActivated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ formId?: string }>;
+      const { formId } = customEvent.detail || {};
+      if (formId) {
+        setSelectedFormId(formId);
+        setSelectedGroupId(undefined);
+      }
+    };
+
+    // 监听非表格设计器标签页激活事件，清除表单选中状态
+    const handleFormTabDeactivated = () => {
+      setSelectedFormId(undefined);
+    };
+
+    window.addEventListener('form-tab-closed', handleFormTabClosed);
+    window.addEventListener('form-tab-activated', handleFormTabActivated);
+    window.addEventListener('form-tab-deactivated', handleFormTabDeactivated);
+    return () => {
+      window.removeEventListener('form-tab-closed', handleFormTabClosed);
+      window.removeEventListener('form-tab-activated', handleFormTabActivated);
+      window.removeEventListener('form-tab-deactivated', handleFormTabDeactivated);
+    };
+  }, [selectedFormId]);
+
   // 新建表单
   const handleNewForm = useCallback(async (groupId?: string | null) => {
     try {
@@ -150,7 +186,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         // 直接将新表单添加到状态中
         setForms(prev => [...prev, newForm]);
         // 打开新建的表单
-        window.dispatchEvent(new CustomEvent('open-form-editor', {
+        window.dispatchEvent(new CustomEvent('open-form-view', {
           detail: { formId: newForm.id, formName: newForm.name }
         }));
       }
@@ -181,7 +217,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
   // 双击表单打开编辑器
   const handleFormDoubleClick = useCallback((item: import('./Form/types').FormItem) => {
-    window.dispatchEvent(new CustomEvent('open-form-editor', {
+    window.dispatchEvent(new CustomEvent('open-form-view', {
       detail: { formId: item.id, formName: item.name }
     }));
   }, []);

@@ -20,11 +20,11 @@
     padding: 8px 12px;
     min-height: 40px;
     background-color: var(--ws-input-background);
-    border: 1px solid var(--ws-panel-border);
+    border: 1px solid var(--ws-border-background);
     border-radius: 6px;
 
     &:focus-within {
-      border-color: var(--ws-focusBorder);
+      border-color: var(--ws-border-activeBackground);
     }
   }
 
@@ -178,10 +178,10 @@
 
     &.ai-input-bar-btn-send {
       color: var(--ws-button-foreground);
-      background-color: var(--ws-button-background);
 
       &:hover:not(.disabled) {
-        background-color: var(--ws-button-hoverBackground);
+        background-color: var(--ws-button-secondaryBackground);
+        color:var(--ws-button-secondaryForeground)
       }
 
       &.disabled {

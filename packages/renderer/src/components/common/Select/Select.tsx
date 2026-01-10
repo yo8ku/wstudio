@@ -19,6 +19,8 @@ export interface SelectItem {
   dataType?: string;
   /** 深度层级，用于文件树缩进（从0开始） */
   depth?: number;
+  /** 展开/折叠时使用的值（用于表单等可展开项，点击图标时触发） */
+  expandValue?: string;
 }
 
 export interface SelectGroup {
@@ -61,6 +63,10 @@ export interface SelectProps {
   align?: 'left' | 'right' | 'parent';
   /** 菜单与触发器之间的间距（像素），默认为4 */
   menuGap?: number;
+  /** 固定高度（像素），用于保持菜单高度一致 */
+  fixedHeight?: number;
+  /** 菜单高度变化回调，用于记录一级菜单高度 */
+  onHeightChange?: (height: number) => void;
 }
 
 /**
@@ -83,6 +89,8 @@ export const Select: React.FC<SelectProps> = ({
   onItemClick,
   align = 'left',
   menuGap = 4,
+  fixedHeight,
+  onHeightChange,
 }) => {
   // 如果提供了 open 属性，使用受控模式；否则使用内部状态
   const [internalIsOpen, setInternalIsOpen] = useState(false);
@@ -244,6 +252,26 @@ export const Select: React.FC<SelectProps> = ({
       });
     }
   }, [value, updatePosition]);
+
+  // 当菜单内容（groups 或 items）变化时，重新计算位置
+  // 这对于二级菜单切换时保持正确的位置很重要
+  useEffect(() => {
+    if (isOpen && contentRef.current) {
+      // 使用双重 requestAnimationFrame 确保 DOM 完全更新后再计算位置
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          updatePosition();
+          // 报告菜单高度（仅在没有固定高度时）
+          if (!fixedHeight && contentRef.current && onHeightChange) {
+            const height = contentRef.current.offsetHeight;
+            if (height > 0) {
+              onHeightChange(height);
+            }
+          }
+        });
+      });
+    }
+  }, [isOpen, groups, items, updatePosition, fixedHeight, onHeightChange]);
 
   // 追踪触发器位置变化（例如内联容器随编辑器移动）
   useEffect(() => {
@@ -427,6 +455,15 @@ export const Select: React.FC<SelectProps> = ({
   // 渲染菜单项
   const renderItem = (item: SelectItem) => {
     const isSelected = item.value === value;
+    
+    // 处理图标点击（用于展开/折叠）
+    const handleIconClick = (e: React.MouseEvent) => {
+      if (item.expandValue) {
+        e.stopPropagation();
+        handleItemClick(item.expandValue, item.disabled);
+      }
+    };
+    
     return (
       <div
         key={item.value}
@@ -437,7 +474,14 @@ export const Select: React.FC<SelectProps> = ({
         data-depth={item.depth !== undefined ? item.depth : undefined}
       >
         <span className="select-item-check">{isSelected && <Icon name="check" size={14} />}</span>
-        {item.icon && <span className="select-item-icon">{item.icon}</span>}
+        {item.icon && (
+          <span 
+            className={`select-item-icon ${item.expandValue ? 'expandable' : ''}`}
+            onClick={item.expandValue ? handleIconClick : undefined}
+          >
+            {item.icon}
+          </span>
+        )}
         <span className="select-item-label">{item.label}</span>
         {item.rightIcon && <span className="select-item-right-icon">{item.rightIcon}</span>}
       </div>
@@ -487,6 +531,7 @@ export const Select: React.FC<SelectProps> = ({
           '--select-content-width': `${position.width}px`,
           opacity: isPositionReady ? 1 : 0,
           visibility: isPositionReady ? 'visible' : 'hidden',
+          ...(fixedHeight ? { height: `${fixedHeight}px` } : {}),
         } as React.CSSProperties}
       >
         {headerLeftIcon && (

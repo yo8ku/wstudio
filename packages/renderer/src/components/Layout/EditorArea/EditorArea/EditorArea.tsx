@@ -1310,6 +1310,16 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }));
       console.log('[EditorArea] 标签页切换:', clickedTab.path);
     }
+    
+    // 如果是表格设计器标签页，通知侧边栏更新表单选中状态
+    if (clickedTab?.type === 'table-designer' && clickedTab?.formId) {
+      window.dispatchEvent(new CustomEvent('form-tab-activated', {
+        detail: { formId: clickedTab.formId }
+      }));
+    } else {
+      // 非表格设计器标签页，清除表单选中状态
+      window.dispatchEvent(new Event('form-tab-deactivated'));
+    }
   };
 
   const handleTabClose = (tabId: string) => {
@@ -1363,6 +1373,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     if (closingTab?.type === 'ai-config') {
       window.dispatchEvent(new Event('ai-config-tab-closed'));
       console.log('[EditorArea] AI 配置标签页已关闭');
+    }
+    
+    // 如果关闭的是表格设计器标签页，通知侧边栏清除表单选中状态
+    if (closingTab?.type === 'table-designer') {
+      window.dispatchEvent(new CustomEvent('form-tab-closed', {
+        detail: { formId: closingTab.formId }
+      }));
     }
     
     if (activeTabId === tabId && newTabs.length > 0) {

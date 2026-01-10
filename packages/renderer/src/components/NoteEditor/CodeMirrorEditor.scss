@@ -214,6 +214,7 @@
     box-sizing: border-box;
     max-width: 100%;
     min-width: 0;
+    font-family: inherit; // 覆盖 CodeMirror 默认的 monospace 字体
   }
 
   // 让 gutter 和内容一起居中
@@ -2107,4 +2108,73 @@
 
 .cm-text-styled {
   // 样式通过 inline style 设置
+}
+
+
+// CodeMirror 自动补全样式
+.cm-tooltip {
+  z-index: 10000 !important;
+}
+
+.cm-tooltip-autocomplete {
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000 !important;
+  max-height: 300px;
+  overflow-y: auto;
+  position: fixed !important;
+
+  > ul {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+    max-height: 280px;
+    overflow-y: auto;
+
+    > li {
+      padding: 4px 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--ws-foreground);
+
+      &:hover,
+      &[aria-selected="true"] {
+        background-color: var(--ws-list-hoverBackground);
+      }
+
+      .cm-completionLabel {
+        flex: 1;
+      }
+
+      .cm-completionDetail {
+        color: var(--ws-descriptionForeground);
+        font-size: 12px;
+      }
+
+      .cm-completionIcon {
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+  }
+}
+
+// 补全信息提示框
+.cm-tooltip.cm-completionInfo {
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--ws-foreground);
+  max-width: 300px;
+  z-index: 10001 !important;
 }

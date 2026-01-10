@@ -161,7 +161,7 @@ export class AIZoneWidget {
   private contextMenuHighlightedIndex: number = 0; // 当前高亮的菜单项索引
   private contextMenuFlatItems: Array<{ value: string; disabled?: boolean }> = []; // 扁平化的菜单项列表（用于键盘导航）
   private recentFilesMap: Map<string, string> = new Map(); // 最近文件映射（index -> filePath）
-  private selectedFiles: Array<{ path: string; name: string; type?: 'file' | 'knowledge-base'; kbId?: string }> = []; // 选中的文件列表（支持文件和知识库）- 工具栏@按钮选择的文件
+  private selectedFiles: Array<{ path: string; name: string; type?: 'file' | 'knowledge-base' | 'form'; kbId?: string; formId?: string }> = []; // 选中的文件列表（支持文件、知识库和表单）- 工具栏@按钮选择的文件
   private inputFileReferences: Array<{ path: string; name: string; startIndex: number; endIndex: number }> = []; // 输入框中的@文件引用（独立于工具栏）
   private submittedFileReferences: Array<{ path: string; name: string }> = []; // 提交时保存的@文件引用（用于在结果工具栏上方显示）
   private isInputMenuTriggered: boolean = false; // 标记当前@菜单是否由输入框触发
@@ -5691,7 +5691,9 @@ export class AIZoneWidget {
       (kbId: string) => this.handleKnowledgeBaseSelect(kbId),
       (snippetId: number) => this.handleSnippetSelect(snippetId),
       (agentId: string) => this.handleAgentSelect(agentId),
-      this.expandedFolders
+      this.expandedFolders,
+      undefined,
+      (formId: string) => this.handleFormSelect(formId)
     );
 
     // 渲染Select组件（使用受控模式）
@@ -5858,6 +5860,11 @@ export class AIZoneWidget {
       this.closeContextMenu();
       const kbId = value.replace('kb-', '');
       await this.handleKnowledgeBaseSelect(kbId);
+    } else if (value.startsWith('form-')) {
+      // 表单选项（从二级菜单选择）
+      this.closeContextMenu();
+      const formId = value.replace('form-', '');
+      await this.handleFormSelect(formId);
     } else if (value.startsWith('prompt-')) {
       // 提取提示词ID（去掉prompt-前缀）
       this.closeContextMenu();
@@ -6341,10 +6348,10 @@ export class AIZoneWidget {
   }
 
   /**
-   * 获取选中的文件列表（支持文件和知识库）
+   * 获取选中的文件列表（支持文件、知识库和表单）
    * 包括工具栏选中的文件和输入框中的@文件引用
    */
-  getSelectedFiles(): Array<{ path: string; name: string; type?: 'file' | 'knowledge-base'; kbId?: string }> {
+  getSelectedFiles(): Array<{ path: string; name: string; type?: 'file' | 'knowledge-base' | 'form'; kbId?: string; formId?: string }> {
     // 合并工具栏选中的文件和输入框中的文件引用
     const allFiles = [...this.selectedFiles];
     
@@ -6940,6 +6947,49 @@ export class AIZoneWidget {
       }
     } catch (error) {
       console.error(`[AIZoneWidget] 处理知识库选择失败: ${kbId}`, error);
+    }
+  }
+
+  /**
+   * 处理表单选择
+   */
+  private async handleFormSelect(formId: string): Promise<void> {
+    try {
+      // 获取表单信息
+      const result = await window.electron?.form?.getFormById(formId);
+      if (!result?.success || !result.data) {
+        console.warn(`[AIZoneWidget] 表单不存在: ${formId}`);
+        return;
+      }
+
+      const form = result.data;
+
+      // 清空文件工具栏
+      this.selectedFiles = [];
+
+      // 添加表单到工具栏
+      this.selectedFiles.push({
+        path: formId, // 使用表单ID作为路径标识
+        name: form.name,
+        type: 'form',
+        formId: formId
+      });
+
+      // 更新工具栏显示
+      this.updateSelectedFilesToolbar();
+
+      // 在输入框中插入表单名称
+      if (this.inputElement) {
+        const currentValue = this.inputElement.value;
+        const cursorPos = this.inputElement.selectionStart || currentValue.length;
+        const formReference = `@${form.name} `;
+        const newValue = currentValue.slice(0, cursorPos) + formReference + currentValue.slice(cursorPos);
+        this.inputElement.value = newValue;
+        this.inputElement.focus();
+        this.inputElement.setSelectionRange(cursorPos + formReference.length, cursorPos + formReference.length);
+      }
+    } catch (error) {
+      console.error(`[AIZoneWidget] 处理表单选择失败: ${formId}`, error);
     }
   }
 

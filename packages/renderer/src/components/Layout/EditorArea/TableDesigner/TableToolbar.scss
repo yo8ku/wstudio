@@ -1,0 +1,214 @@
+/**
+ * 表格工具栏样式
+ * 功能：定义表格工具栏的布局和样式
+ */
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ws-panel-border);
+  background-color: var(--ws-editor-background);
+  flex-shrink: 0;
+
+  .table-toolbar-left,
+  .table-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .toolbar-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ws-foreground);
+    font-size: 13px;
+
+    &:hover {
+      background-color: var(--ws-toolbar-hover-background);
+    }
+
+    &.active {
+      background-color: var(--ws-toolbar-active-background);
+    }
+
+    &.disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .codicon {
+      font-size: 16px;
+    }
+
+    .toolbar-item-label {
+      white-space: nowrap;
+    }
+  }
+}
+
+// 字段设置菜单样式
+.field-settings-menu {
+  z-index: 10000;
+  min-width: 200px;
+  max-width: 300px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+
+  .field-settings-menu-header {
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ws-descriptionForeground);
+    border-bottom: 1px solid var(--ws-dropdown-border);
+  }
+
+  .field-settings-menu-list {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 4px;
+  }
+
+  .field-settings-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: default;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+    }
+
+    &.hidden-column {
+      opacity: 0.5;
+    }
+
+    .field-type-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      color: var(--ws-descriptionForeground);
+    }
+
+    .field-name {
+      flex: 1;
+      font-size: 13px;
+      color: var(--ws-foreground);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .field-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .field-lock-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+      color: var(--ws-descriptionForeground);
+    }
+
+    .field-action-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--ws-descriptionForeground);
+
+      &:hover {
+        background-color: var(--ws-toolbar-hoverBackground);
+        color: var(--ws-foreground);
+      }
+    }
+  }
+}
+
+[data-theme-mode='dark'] .field-settings-menu {
+  border: 1px solid #8f8f8f47;
+  box-shadow: 0 0 30px rgb(0 0 0 / 24%);
+}
+
+// 行高菜单样式
+.row-height-menu {
+  z-index: 10000;
+  min-width: 120px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  padding: 4px;
+
+  .row-height-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ws-foreground);
+    font-size: 13px;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+    }
+
+    &.active {
+      background-color: var(--ws-list-activeSelectionBackground);
+    }
+
+    .row-height-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      color: var(--ws-descriptionForeground);
+    }
+
+    .row-height-label {
+      flex: 1;
+    }
+
+    .row-height-check {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      color: var(--ws-foreground);
+    }
+  }
+}
+
+[data-theme-mode='dark'] .row-height-menu {
+  border: 1px solid #8f8f8f47;
+  box-shadow: 0 0 30px rgb(0 0 0 / 24%);
+}

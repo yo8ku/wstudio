@@ -118,8 +118,6 @@ export const AIInputBar: React.FC<AIInputBarProps> = ({
   const commandConfigs: Array<{ type: CommandType; label: string; prefix: string }> = [
     { type: 'generate', label: '生成表格', prefix: '' },
     { type: 'query', label: '查询数据', prefix: '/query:' },
-    { type: 'update', label: '更新数据', prefix: '/update:' },
-    { type: 'delete', label: '删除数据', prefix: '/delete:' },
   ];
 
   // 获取当前命令配置

@@ -27,6 +27,8 @@ export interface CustomScrollbarProps {
   defaultOpacity?: number;
   /** 淡出延迟时间（毫秒），默认 0 */
   fadeOutDelay?: number;
+  /** 滚动方向，默认 vertical */
+  direction?: 'vertical' | 'horizontal' | 'both';
   /** 滚动事件回调 */
   onScroll?: (scrollTop: number) => void;
   /** 右键菜单事件 */
@@ -38,10 +40,14 @@ export interface CustomScrollbarProps {
 export interface CustomScrollbarRef {
   /** 获取滚动容器元素 */
   getContentElement: () => HTMLDivElement | null;
-  /** 设置滚动位置 */
+  /** 设置垂直滚动位置 */
   setScrollTop: (scrollTop: number) => void;
-  /** 获取滚动位置 */
+  /** 获取垂直滚动位置 */
   getScrollTop: () => number;
+  /** 设置横向滚动位置 */
+  setScrollLeft: (scrollLeft: number) => void;
+  /** 获取横向滚动位置 */
+  getScrollLeft: () => number;
   /** 更新滚动条 */
   updateScrollbar: () => void;
 }
@@ -59,6 +65,7 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
       scrollbarWidth = 6,
       defaultOpacity = 0.5,
       fadeOutDelay = 0,
+      direction = 'vertical',
       onScroll,
       onContextMenu,
       onClick,
@@ -68,17 +75,28 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
     const contentRef = useRef<HTMLDivElement>(null);
     const trackRef = useRef<HTMLDivElement>(null);
     const thumbRef = useRef<HTMLDivElement>(null);
+    const hTrackRef = useRef<HTMLDivElement>(null);
+    const hThumbRef = useRef<HTMLDivElement>(null);
     const scrollbarUpdateFrameRef = useRef<number | null>(null);
     const fadeTimerRef = useRef<number | null>(null);
     const animationFrameRef = useRef<number | null>(null);
     const isThumbDraggingRef = useRef(false);
+    const isHThumbDraggingRef = useRef(false);
     const dragStartYRef = useRef(0);
+    const dragStartXRef = useRef(0);
     const dragStartScrollTopRef = useRef(0);
+    const dragStartScrollLeftRef = useRef(0);
 
     const [scrollbarOpacity, setScrollbarOpacity] = useState(0);
     const [hasScrollableContent, setHasScrollableContent] = useState(false);
+    const [hasHScrollableContent, setHasHScrollableContent] = useState(false);
     const [isThumbDragging, setIsThumbDragging] = useState(false);
+    const [isHThumbDragging, setIsHThumbDragging] = useState(false);
     const hasScrollableContentRef = useRef(false);
+    const hasHScrollableContentRef = useRef(false);
+    
+    const showVertical = direction === 'vertical' || direction === 'both';
+    const showHorizontal = direction === 'horizontal' || direction === 'both';
 
     // 淡入：立即显示滚动条
     const fadeIn = useCallback(() => {
@@ -130,6 +148,14 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
       }
     }, []);
 
+    // 更新是否有横向可滚动内容
+    const updateHasHScrollableContent = useCallback((value: boolean) => {
+      if (hasHScrollableContentRef.current !== value) {
+        hasHScrollableContentRef.current = value;
+        setHasHScrollableContent(value);
+      }
+    }, []);
+
     // 更新滚动条位置和大小
     const scheduleScrollbarUpdate = useCallback(() => {
       if (scrollbarUpdateFrameRef.current !== null) {
@@ -142,38 +168,68 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
         const contentElement = contentRef.current;
         const thumbElement = thumbRef.current;
         const trackElement = trackRef.current;
+        const hThumbElement = hThumbRef.current;
+        const hTrackElement = hTrackRef.current;
 
-        if (!contentElement || !thumbElement) {
+        if (!contentElement) {
           updateHasScrollableContent(false);
+          updateHasHScrollableContent(false);
           return;
         }
 
-        const { scrollHeight, clientHeight, scrollTop } = contentElement;
-        const hasScroll = scrollHeight - clientHeight > 1;
+        const { scrollHeight, clientHeight, scrollTop, scrollWidth, clientWidth, scrollLeft } = contentElement;
+        
+        // 垂直滚动条
+        if (showVertical && thumbElement) {
+          const hasScroll = scrollHeight - clientHeight > 1;
+          updateHasScrollableContent(hasScroll);
 
-        updateHasScrollableContent(hasScroll);
+          if (!hasScroll) {
+            thumbElement.style.height = '0px';
+            thumbElement.style.top = '0px';
+            thumbElement.style.opacity = '0';
+          } else {
+            const trackHeight = trackElement?.clientHeight ?? clientHeight;
+            const availableTrack = Math.max(trackHeight, 0);
+            const ratio = scrollHeight > 0 ? clientHeight / scrollHeight : 0;
+            const minThumbHeight = 24;
+            const thumbHeight = Math.max(Math.round(availableTrack * ratio), minThumbHeight);
+            const maxScrollTop = scrollHeight - clientHeight;
+            const maxThumbOffset = Math.max(availableTrack - thumbHeight, 0);
+            const thumbOffset = maxScrollTop > 0 ? (scrollTop / maxScrollTop) * maxThumbOffset : 0;
 
-        if (!hasScroll) {
-          thumbElement.style.height = '0px';
-          thumbElement.style.top = '0px';
-          thumbElement.style.opacity = '0';
-          return;
+            thumbElement.style.height = `${thumbHeight}px`;
+            thumbElement.style.top = `${thumbOffset}px`;
+            thumbElement.style.opacity = '1';
+          }
         }
 
-        const trackHeight = trackElement?.clientHeight ?? clientHeight;
-        const availableTrack = Math.max(trackHeight, 0);
-        const ratio = scrollHeight > 0 ? clientHeight / scrollHeight : 0;
-        const minThumbHeight = 24;
-        const thumbHeight = Math.max(Math.round(availableTrack * ratio), minThumbHeight);
-        const maxScrollTop = scrollHeight - clientHeight;
-        const maxThumbOffset = Math.max(availableTrack - thumbHeight, 0);
-        const thumbOffset = maxScrollTop > 0 ? (scrollTop / maxScrollTop) * maxThumbOffset : 0;
+        // 横向滚动条
+        if (showHorizontal && hThumbElement) {
+          const hasHScroll = scrollWidth - clientWidth > 1;
+          updateHasHScrollableContent(hasHScroll);
 
-        thumbElement.style.height = `${thumbHeight}px`;
-        thumbElement.style.top = `${thumbOffset}px`;
-        thumbElement.style.opacity = '1';
+          if (!hasHScroll) {
+            hThumbElement.style.width = '0px';
+            hThumbElement.style.left = '0px';
+            hThumbElement.style.opacity = '0';
+          } else {
+            const trackWidth = hTrackElement?.clientWidth ?? clientWidth;
+            const availableTrack = Math.max(trackWidth, 0);
+            const ratio = scrollWidth > 0 ? clientWidth / scrollWidth : 0;
+            const minThumbWidth = 24;
+            const thumbWidth = Math.max(Math.round(availableTrack * ratio), minThumbWidth);
+            const maxScrollLeft = scrollWidth - clientWidth;
+            const maxThumbOffset = Math.max(availableTrack - thumbWidth, 0);
+            const thumbOffset = maxScrollLeft > 0 ? (scrollLeft / maxScrollLeft) * maxThumbOffset : 0;
+
+            hThumbElement.style.width = `${thumbWidth}px`;
+            hThumbElement.style.left = `${thumbOffset}px`;
+            hThumbElement.style.opacity = '1';
+          }
+        }
       });
-    }, [updateHasScrollableContent]);
+    }, [updateHasScrollableContent, updateHasHScrollableContent, showVertical, showHorizontal]);
 
     // 鼠标进入
     const handleMouseEnter = useCallback(() => {
@@ -182,7 +238,7 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
 
     // 鼠标离开
     const handleMouseLeave = useCallback(() => {
-      if (isThumbDraggingRef.current) {
+      if (isThumbDraggingRef.current || isHThumbDraggingRef.current) {
         return;
       }
       fadeOut();
@@ -271,6 +327,89 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
       [handleThumbMouseMove, handleThumbMouseUp, fadeIn]
     );
 
+    // 横向滚动条拖动
+    const handleHThumbMouseMove = useCallback(
+      (event: MouseEvent) => {
+        if (!isHThumbDraggingRef.current) {
+          return;
+        }
+
+        event.preventDefault();
+        const contentElement = contentRef.current;
+        const hThumbElement = hThumbRef.current;
+        const hTrackElement = hTrackRef.current;
+
+        if (!contentElement || !hThumbElement) {
+          return;
+        }
+
+        const { clientWidth, scrollWidth } = contentElement;
+        const maxScrollLeft = scrollWidth - clientWidth;
+
+        if (maxScrollLeft <= 0) {
+          return;
+        }
+
+        const thumbWidth = parseFloat(hThumbElement.style.width || '0');
+        const trackWidth = hTrackElement?.clientWidth ?? clientWidth;
+        const availableTrack = Math.max(trackWidth - thumbWidth, 0);
+
+        if (availableTrack <= 0) {
+          return;
+        }
+
+        const delta = event.clientX - dragStartXRef.current;
+        const scrollRatio = maxScrollLeft / availableTrack;
+        const nextScrollLeft = Math.min(
+          Math.max(dragStartScrollLeftRef.current + delta * scrollRatio, 0),
+          maxScrollLeft
+        );
+
+        contentElement.scrollLeft = nextScrollLeft;
+        scheduleScrollbarUpdate();
+      },
+      [scheduleScrollbarUpdate]
+    );
+
+    const handleHThumbMouseUp = useCallback(() => {
+      if (!isHThumbDraggingRef.current) {
+        return;
+      }
+
+      isHThumbDraggingRef.current = false;
+      setIsHThumbDragging(false);
+      window.removeEventListener('mousemove', handleHThumbMouseMove);
+      window.removeEventListener('mouseup', handleHThumbMouseUp);
+
+      const wrapperElement = hTrackRef.current?.parentElement;
+      if (!wrapperElement || !wrapperElement.matches(':hover')) {
+        fadeOut();
+      } else {
+        fadeIn();
+      }
+    }, [handleHThumbMouseMove, fadeOut, fadeIn]);
+
+    const handleHThumbMouseDown = useCallback(
+      (event: React.MouseEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!contentRef.current) {
+          return;
+        }
+
+        isHThumbDraggingRef.current = true;
+        setIsHThumbDragging(true);
+        fadeIn();
+        dragStartXRef.current = event.clientX;
+        dragStartScrollLeftRef.current = contentRef.current.scrollLeft;
+
+        window.addEventListener('mousemove', handleHThumbMouseMove);
+        window.addEventListener('mouseup', handleHThumbMouseUp);
+      },
+      [handleHThumbMouseMove, handleHThumbMouseUp, fadeIn]
+    );
+
     // 监听滚动事件
     useEffect(() => {
       const contentElement = contentRef.current;
@@ -334,8 +473,10 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
       return () => {
         window.removeEventListener('mousemove', handleThumbMouseMove);
         window.removeEventListener('mouseup', handleThumbMouseUp);
+        window.removeEventListener('mousemove', handleHThumbMouseMove);
+        window.removeEventListener('mouseup', handleHThumbMouseUp);
       };
-    }, [handleThumbMouseMove, handleThumbMouseUp]);
+    }, [handleThumbMouseMove, handleThumbMouseUp, handleHThumbMouseMove, handleHThumbMouseUp]);
 
     // 暴露方法给父组件
     useImperativeHandle(
@@ -349,14 +490,27 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
           }
         },
         getScrollTop: () => contentRef.current?.scrollTop ?? 0,
+        setScrollLeft: (scrollLeft: number) => {
+          if (contentRef.current) {
+            contentRef.current.scrollLeft = scrollLeft;
+            scheduleScrollbarUpdate();
+          }
+        },
+        getScrollLeft: () => contentRef.current?.scrollLeft ?? 0,
         updateScrollbar: scheduleScrollbarUpdate,
       }),
       [scheduleScrollbarUpdate]
     );
 
+    // 根据方向确定 overflow 样式
+    const contentOverflowStyle: React.CSSProperties = {
+      overflowY: showVertical ? 'auto' : 'hidden',
+      overflowX: showHorizontal ? 'auto' : 'hidden',
+    };
+
     return (
       <div
-        className={`custom-scrollbar-wrapper ${className}`}
+        className={`custom-scrollbar-wrapper ${className} ${showHorizontal ? 'custom-scrollbar-wrapper--horizontal' : ''}`}
         style={
           {
             ...style,
@@ -369,23 +523,40 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
         <div
           ref={contentRef}
           className="custom-scrollbar-content"
+          style={contentOverflowStyle}
           onContextMenu={onContextMenu}
           onClick={onClick}
         >
           {children}
         </div>
-        <div
-          className="custom-scrollbar-track"
-          ref={trackRef}
-          aria-hidden="true"
-          style={{ opacity: hasScrollableContent ? scrollbarOpacity : 0 }}
-        >
+        {showVertical && (
           <div
-            className={`custom-scrollbar-thumb ${isThumbDragging ? 'is-dragging' : ''}`}
-            ref={thumbRef}
-            onMouseDown={handleThumbMouseDown}
-          />
-        </div>
+            className="custom-scrollbar-track"
+            ref={trackRef}
+            aria-hidden="true"
+            style={{ opacity: hasScrollableContent ? scrollbarOpacity : 0 }}
+          >
+            <div
+              className={`custom-scrollbar-thumb ${isThumbDragging ? 'is-dragging' : ''}`}
+              ref={thumbRef}
+              onMouseDown={handleThumbMouseDown}
+            />
+          </div>
+        )}
+        {showHorizontal && (
+          <div
+            className="custom-scrollbar-track custom-scrollbar-track--horizontal"
+            ref={hTrackRef}
+            aria-hidden="true"
+            style={{ opacity: hasHScrollableContent ? scrollbarOpacity : 0 }}
+          >
+            <div
+              className={`custom-scrollbar-thumb ${isHThumbDragging ? 'is-dragging' : ''}`}
+              ref={hThumbRef}
+              onMouseDown={handleHThumbMouseDown}
+            />
+          </div>
+        )}
       </div>
     );
   }

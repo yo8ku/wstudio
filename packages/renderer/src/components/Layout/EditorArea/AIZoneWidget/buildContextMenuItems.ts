@@ -8,6 +8,7 @@ import type { SelectGroup, SelectItem } from '../../../common/Select/Select';
 import { snippetService } from '../../../../services/SnippetService';
 import { knowledgeBaseService } from '../../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
 import { aiAgentService } from '../../../../services/AIAgentService';
+import { tableReferenceService } from '../../../../services/tableReference/TableReferenceService';
 import { Icon } from '../../../Icons/Icon';
 import React from 'react';
 
@@ -164,7 +165,20 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
     showDivider: true, // 在知识库下方显示分割线
   });
 
-  // 4. 提示词（始终显示）
+  // 4. 表单（始终显示分类，即使没有数据）
+  groups.push({
+    groupName: '',
+    items: [
+      {
+        value: 'category-forms',
+        label: '表单',
+        icon: React.createElement(Icon, { iconSet: 'ui', name: 'table-properties', size: 14 }),
+        rightIcon: React.createElement(Icon, { iconSet: 'ui', name: 'chevron-right', size: 14 }),
+      },
+    ],
+  });
+
+  // 5. 提示词（始终显示）
   groups.push({
     groupName: '',
     items: [
@@ -177,7 +191,7 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
     ],
   });
 
-  // 5. 规则（始终显示分类，即使没有数据）
+  // 6. 规则（始终显示分类，即使没有数据）
   groups.push({
     groupName: '',
     items: [
@@ -190,7 +204,7 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
     ],
   });
 
-  // 6. 常用片段（始终显示分类，即使没有数据）
+  // 7. 常用片段（始终显示分类，即使没有数据）
   groups.push({
     groupName: '',
     items: [
@@ -217,7 +231,9 @@ export async function buildLevel2MenuItems(
   onSnippetSelect: (snippetId: number) => void,
   onAgentSelect: (agentId: string) => void,
   expandedFolders?: Set<string>,
-  parentPath?: string
+  parentPath?: string,
+  onFormSelect?: (formId: string) => void,
+  expandedForms?: Set<string>
 ): Promise<SelectGroup[]> {
   const groups: SelectGroup[] = [];
 
@@ -508,6 +524,107 @@ export async function buildLevel2MenuItems(
             value: 'error',
             label: '获取知识库失败',
             icon: React.createElement(Icon, { iconSet: 'ui', name: 'book-open', size: 14 }),
+            disabled: true,
+          },
+        ],
+      });
+    }
+  } else if (category === 'category-forms') {
+    // 表单二级菜单
+    try {
+      const forms = await tableReferenceService.getAllForms();
+      
+      if (forms.length > 0) {
+        const formItems: SelectItem[] = [];
+        
+        for (const form of forms) {
+          const isExpanded = expandedForms?.has(form.id) || false;
+          
+          // 创建左侧图标（箭头 + 表单图标）
+          const leftIcon = React.createElement(
+            'span',
+            { 
+              style: { 
+                display: 'flex', 
+                alignItems: 'center',
+                gap: '6px'
+              } 
+            },
+            React.createElement(
+              'span',
+              {
+                className: 'form-expand-icon',
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                  cursor: 'pointer',
+                }
+              },
+              React.createElement(Icon, { 
+                iconSet: 'ui', 
+                name: 'chevron-right', 
+                size: 14 
+              })
+            ),
+            React.createElement(Icon, { iconSet: 'ui', name: 'table-properties', size: 14 })
+          );
+          
+          // value 格式: form|{encodedFormName}
+          // 使用 | 作为分隔符，避免与 ID 中的 - 冲突
+          formItems.push({
+            value: `form|${encodeURIComponent(form.name)}`,
+            label: form.name,
+            icon: leftIcon,
+            dataType: 'form',
+            expandValue: `form-expand-${form.id}`,
+          });
+          
+          // 如果表单已展开，添加字段列
+          if (isExpanded) {
+            const columns = await tableReferenceService.getFormColumns(form.id);
+            for (const column of columns) {
+              // value 格式: form-column|{encodedFormName}|{encodedColumnName}
+              // 使用 | 作为分隔符，避免与 ID 中的 - 冲突
+              // 使用 encodeURIComponent 编码名称，避免特殊字符问题
+              formItems.push({
+                value: `form-column|${encodeURIComponent(form.name)}|${encodeURIComponent(column.name)}`,
+                label: column.name,
+                icon: React.createElement(Icon, { iconSet: 'ui', name: 'type-icon', size: 14 }),
+                dataType: 'form-column',
+                depth: 1,
+              });
+            }
+          }
+        }
+
+        groups.push({
+          groupName: '表单',
+          items: formItems,
+        });
+      } else {
+        // 如果没有表单，显示提示
+        groups.push({
+          groupName: '表单',
+          items: [
+            {
+              value: 'no-forms',
+              label: '暂无表单',
+              icon: React.createElement(Icon, { iconSet: 'ui', name: 'table-properties', size: 14 }),
+              disabled: true,
+            },
+          ],
+        });
+      }
+    } catch (error) {
+      console.error('[buildContextMenuItems] 获取表单失败:', error);
+      groups.push({
+        groupName: '表单',
+        items: [
+          {
+            value: 'error',
+            label: '获取表单失败',
+            icon: React.createElement(Icon, { iconSet: 'ui', name: 'table-properties', size: 14 }),
             disabled: true,
           },
         ],

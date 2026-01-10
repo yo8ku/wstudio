@@ -28,7 +28,11 @@ import { Icon } from '../Icons';
 import { CodeMirrorContextMenu, ContextMenuItem } from './components/CodeMirrorContextMenu';
 import { VideoLinkInput } from './components/VideoLinkInput';
 import { inlineAIChatField, openInlineAIChat, closeInlineAIChat, isInlineAIChatOpen } from './InlineAIChat';
+import { AtReferenceMenu } from './AtReferenceMenu';
+import { tableReferenceService, type FormInfo } from '../../services/tableReference/TableReferenceService';
+import { createTableReferenceExtension } from './TableReferenceWidget';
 import './CodeMirrorEditor.scss';
+import './TableReferenceWidget/InlineTablePreview.scss';
 import './InlineAIChat/InlineAIChat.scss';
 import { text } from 'stream/consumers';
 import hljs from 'highlight.js';
@@ -6603,6 +6607,14 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     y: number;
   }>({ visible: false, x: 0, y: 0 });
 
+  // @ 引用菜单状态
+  const [atReferenceMenu, setAtReferenceMenu] = useState<{
+    visible: boolean;
+    position: { top: number; left: number };
+    searchQuery: string;
+    triggerPos: number; // @ 符号在文档中的位置
+  }>({ visible: false, position: { top: 0, left: 0 }, searchQuery: '', triggerPos: 0 });
+
   // 颜色预览状态
   const [colorPreview, setColorPreview] = useState<{
     type: 'color' | 'background-color' | null;
@@ -6620,6 +6632,36 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     setColorPreview(null); // 关闭菜单时清除预览
     colorPickerSelectionRef.current = null; // 清除保存的选区
   }, []);
+
+  // 关闭 @ 引用菜单
+  const closeAtReferenceMenu = useCallback(() => {
+    setAtReferenceMenu(prev => ({ ...prev, visible: false }));
+  }, []);
+
+  // 处理表单选择
+  const handleFormSelect = useCallback((form: FormInfo) => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    // 生成引用文本
+    const referenceText = tableReferenceService.formatReference('form', form.id, form.name);
+    
+    // 替换 @ 及其后面的搜索文本
+    const { triggerPos, searchQuery } = atReferenceMenu;
+    const replaceFrom = triggerPos;
+    const replaceTo = triggerPos + 1 + searchQuery.length; // @ + 搜索文本
+
+    view.dispatch({
+      changes: { from: replaceFrom, to: replaceTo, insert: referenceText },
+      selection: { anchor: replaceFrom + referenceText.length },
+    });
+
+    // 关闭菜单
+    closeAtReferenceMenu();
+    
+    // 聚焦编辑器
+    view.focus();
+  }, [atReferenceMenu, closeAtReferenceMenu]);
 
   // 颜色预览效果
   useEffect(() => {
@@ -7523,6 +7565,37 @@ sequenceDiagram
         const newContent = update.state.doc.toString();
         onChange(newContent);
       }
+
+      // 检测 @ 引用输入
+      if (update.docChanged) {
+        const { state } = update;
+        const pos = state.selection.main.head;
+        const line = state.doc.lineAt(pos);
+        const textBefore = line.text.slice(0, pos - line.from);
+        
+        // 检查是否输入了 @ 或者正在输入 @ 后的内容
+        const atMatch = textBefore.match(/@([^\s@]*)$/);
+        
+        if (atMatch) {
+          // 获取光标位置的屏幕坐标
+          const coords = update.view.coordsAtPos(pos);
+          if (coords) {
+            const triggerPos = pos - atMatch[1].length - 1; // @ 符号的位置
+            setAtReferenceMenu({
+              visible: true,
+              position: {
+                top: coords.bottom + 4,
+                left: coords.left,
+              },
+              searchQuery: atMatch[1],
+              triggerPos,
+            });
+          }
+        } else if (atReferenceMenu.visible) {
+          // 如果没有匹配到 @ 模式，关闭菜单
+          setAtReferenceMenu(prev => ({ ...prev, visible: false }));
+        }
+      }
     });
 
     // 根据模式决定是否使用预览装饰器
@@ -7565,6 +7638,8 @@ sequenceDiagram
       listFoldDecorations,
       // 内联 AI 聊天
       inlineAIChatField,
+      // 表格引用内联预览
+      ...createTableReferenceExtension(),
       codeFolding({
         placeholderDOM: (_view, onclick) => {
           const span = document.createElement('span');
@@ -7923,6 +7998,13 @@ sequenceDiagram
           }
         }}
         onClose={() => setVideoLinkInput({ visible: false, x: 0, y: 0 })}
+      />
+      <AtReferenceMenu
+        visible={atReferenceMenu.visible}
+        position={atReferenceMenu.position}
+        searchQuery={atReferenceMenu.searchQuery}
+        onSelect={handleFormSelect}
+        onClose={closeAtReferenceMenu}
       />
     </div>
   );

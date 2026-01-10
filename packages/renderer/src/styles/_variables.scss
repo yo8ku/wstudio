@@ -180,6 +180,13 @@
       Global colors - 适配应用主题
   **************************************************/
 
+  // 默认边框颜色（主题加载前的回退值）
+  --ws-panel-border: #3c3c3c;
+  // 表格单元格边框颜色（默认使用 panel-border 的值）
+  --ws-data-rowCellBorder: var(--ws-panel-border, #3c3c3c);
+  // 焦点边框颜色（选中状态）
+  --ws-focus-border: #007acc;
+
   --tt-bg-color: var(--ws-editor-background, #1e1e1e);
   --tt-border-color: var(--ws-panel-border, #3c3c3c);
   --tt-border-color-tint: var(--ws-panel-border, #3c3c3c);
