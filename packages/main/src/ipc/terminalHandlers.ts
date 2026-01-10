@@ -26,7 +26,6 @@ export function registerTerminalHandlers(service?: TerminalService): void {
     // 如果已注册但传入了新的 service，更新它
     if (service) {
       terminalService = service;
-      console.log('[Terminal IPC] 更新终端服务实例');
     }
     return;
   }

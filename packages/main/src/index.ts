@@ -122,13 +122,6 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   // 注册终端 IPC 处理器
   registerTerminalHandlers();
   
-  // 初始化终端服务（只在有 mainWindow 时）
-  if (mainWindow && !terminalService) {
-    terminalService = new TerminalService(mainWindow);
-    registerTerminalHandlers(terminalService);
-    console.log('[Main] 终端服务已初始化');
-  }
-  
   // 初始化主题服务
   const themeService = ThemeService.getInstance();
   await themeService.initialize();

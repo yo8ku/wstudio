@@ -112,14 +112,11 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onRefChange, shell
     createTerminal();
   }, [session, createTerminal]);
 
-  // 初始化：创建终端（等待主进程就绪）
+  // 初始化：创建终端
   useEffect(() => {
     let mounted = true;
-    let retryCount = 0;
-    const maxRetries = 10;
-    const retryDelay = 500;
     
-    const tryCreateTerminal = async () => {
+    const tryCreateTerminal = () => {
       if (!mounted) return;
       
       const terminalAPI = window.electron?.terminal;
@@ -128,32 +125,12 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onRefChange, shell
         return;
       }
       
-      // 尝试创建终端
-      const newSession = createTerminal();
-      
-      // 检查是否创建成功（通过检查 session.id）
-      // 如果失败，等待后重试
-      setTimeout(() => {
-        if (!mounted) return;
-        if (!newSession?.id && retryCount < maxRetries) {
-          retryCount++;
-          console.log(`[TerminalPanel] 终端创建重试 ${retryCount}/${maxRetries}`);
-          tryCreateTerminal();
-        }
-      }, retryDelay);
+      // 创建终端
+      createTerminal();
     };
     
-    // 监听主进程就绪事件
-    const ipcRenderer = window.electron?.ipcRenderer;
-    if (ipcRenderer) {
-      ipcRenderer.once('main-process:ready', () => {
-        console.log('[TerminalPanel] 收到 main-process:ready 事件');
-        setTimeout(tryCreateTerminal, 100);
-      });
-    }
-    
-    // 延迟尝试（给主进程初始化时间）
-    setTimeout(tryCreateTerminal, 1000);
+    // 延迟一小段时间确保 DOM 准备好
+    setTimeout(tryCreateTerminal, 100);
 
     // 组件卸载时销毁终端
     return () => {

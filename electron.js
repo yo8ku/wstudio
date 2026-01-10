@@ -25,6 +25,9 @@ Module._resolveFilename = function(request, parent, isMain) {
 };
 
 const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
+// 导入终端服务相关模块
+const { TerminalService } = require('./packages/main/dist/main/src/services/terminal/index.js');
+const { setTerminalService } = require('./packages/main/dist/main/src/ipc/terminalHandlers.js');
 // 使用 Worker 线程版本的 Embedding 服务，避免阻塞主进程
 const embeddingService = require('./packages/main/src/services/EmbeddingWorkerService.js');
 // 云端 Embedding 服务
@@ -388,6 +391,17 @@ app.whenReady().then(async () => {
     
     // 创建窗口
     createWindow(backgroundColor);
+
+    // 初始化终端服务（在创建窗口后立即初始化）
+    if (mainWindow) {
+      try {
+        const terminalService = new TerminalService(mainWindow);
+        setTerminalService(terminalService);
+        console.log('[Electron] 终端服务已初始化');
+      } catch (error) {
+        console.error('[Electron] 终端服务初始化失败:', error);
+      }
+    }
 
     // 再次初始化扩展系统，这次传入主窗口以创建 PluginAPIAdapter 和终端服务
     await initializeExtensions(mainWindow);
