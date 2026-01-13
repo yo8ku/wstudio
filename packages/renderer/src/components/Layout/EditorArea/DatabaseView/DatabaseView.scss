@@ -565,22 +565,9 @@
           }
         }
 
-        // 列宽拖动手柄
+        // 列宽拖动手柄（样式已统一到 styles/component/ResizeHandle.scss）
         .column-resize-handle {
-          position: absolute;
-          top: 0;
-          right: 0;
-          bottom: 0;
-          width: 8px;
-          cursor: col-resize;
-          background-color: transparent;
-          z-index: 10;
           user-select: none;
-
-          &:hover,
-          &.resizing {
-            background-color: var(--ws-focusBorder);
-          }
         }
 
         &.add-column-cell {

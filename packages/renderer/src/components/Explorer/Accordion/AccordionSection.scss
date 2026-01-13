@@ -28,49 +28,9 @@
     min-height: 100px; // 降低最小高度，因为有拖动调整功能
   }
   
-  // 拖动手柄样式
+  // 拖动手柄样式（样式已统一到 styles/component/ResizeHandle.scss）
   .accordion-resize-handle {
-    height: 6px;
-    cursor: ns-resize;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: transparent;
-    z-index: 10;
-    transition: background-color 0.1s ease;
-    
-    // 默认状态下手柄线条稍微可见
-    .accordion-resize-line {
-      width: 48px;
-      height: 2px;
-      background-color: var(--vscode-icon-foreground, rgba(197, 197, 197, 0.2));
-      border-radius: 1px;
-      opacity: 0.3;
-      transition: all 0.1s ease;
-    }
-    
-    // hover 状态：手柄更明显
-    &:hover {
-      background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.31));
-      
-      .accordion-resize-line {
-        opacity: 1;
-        background-color: var(--vscode-focusBorder, #007acc);
-        height: 2px;
-      }
-    }
-    
-    // 拖动状态：手柄高亮
-    &.resizing {
-      background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.31));
-      
-      .accordion-resize-line {
-        opacity: 1;
-        background-color: var(--vscode-focusBorder, #007acc);
-        height: 3px;
-      }
-    }
+    // 布局样式已统一
   }
   
   .accordion-header {
@@ -85,11 +45,11 @@
     background-color: transparent;
     
     &:hover {
-      background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.31));
+      background-color: var(--ws-list-hoverBackground);
     }
 
     &:active {
-      background-color: var(--vscode-toolbar-activeBackground, rgba(99, 102, 103, 0.31));
+      background-color: var(--ws-toolbar-activeBackground);
     }
 
     .accordion-header-left {
@@ -99,12 +59,12 @@
       flex: 1;
       min-width: 0;
       
-      // VSCode section title 样式
+      // section title 样式
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.3px;
-      color: var(--vscode-sideBarTitle-foreground, #bbbbbb);
+      color: var(--ws-sideBarTitle-foreground);
     }
 
     // 折叠箭头
@@ -116,7 +76,7 @@
       justify-content: center;
       flex-shrink: 0;
       font-size: 16px;
-      color: var(--vscode-icon-foreground, #c5c5c5);
+      color: var(--ws-icon-foreground);
     }
 
     // Section 图标
@@ -128,7 +88,7 @@
       justify-content: center;
       flex-shrink: 0;
       font-size: 16px;
-      color: var(--vscode-icon-foreground, #c5c5c5);
+      color: var(--ws-icon-foreground);
     }
 
     .accordion-title {
@@ -142,14 +102,14 @@
     // 操作按钮容器
     .accordion-actions {
       display: flex;
-      gap: 4px; // 增加按钮之间的间距，从 2px 到 4px
+      gap: 4px;
       opacity: 0;
       margin-left: 4px;
 
       .accordion-action-button {
         background: none;
         border: none;
-        color: var(--vscode-icon-foreground, #c5c5c5);
+        color: var(--ws-icon-foreground);
         cursor: pointer;
         width: 20px;
         height: 20px;
@@ -161,11 +121,11 @@
         border-radius: 5px;
         
         &:hover {
-          background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+          background-color: var(--ws-toolbar-hoverBackground);
         }
 
         &:active {
-          background-color: var(--vscode-toolbar-activeBackground, rgba(99, 102, 103, 0.31));
+          background-color: var(--ws-toolbar-activeBackground);
         }
 
         // 禁用状态
@@ -186,17 +146,15 @@
     }
   }
 
-  // 内容包装器，使用 Grid 动画实现流畅效果
+  // 内容包装器，使用 Grid 实现流畅效果
   .accordion-content-wrapper {
     display: grid;
-    // 缩短动画时间到 0.12s，更接近 VSCode
-    transition: grid-template-rows 0.12s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    flex: 1 1 0; // 在 flex 容器中占据剩余空间
-    min-height: 0; // 重要：允许内容收缩
+    flex: 1 1 0;
+    min-height: 0;
     
     &.collapsed {
       grid-template-rows: 0fr;
-      flex: 0 0 auto; // 折叠时不占空间
+      flex: 0 0 auto;
     }
     
     &.expanded {
@@ -207,22 +165,21 @@
   .accordion-content {
     padding: 0;
     min-height: 0;
-    overflow: hidden; // 关键：防止内容溢出导致闪烁
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    // 使用 contain 隔离渲染，防止动画时内部内容闪烁
     contain: layout style paint;
     
     &.accordion-content-flex-grow {
       flex: 1 1 0;
       min-height: 0;
-      overflow: auto !important; // flexGrow 模式时需要滚动，!important 确保不被全局样式覆盖
+      overflow: auto !important;
       
-      // Firefox 滚动条样式 - 默认透明
+      // Firefox 滚动条样式
       scrollbar-width: thin !important;
       scrollbar-color: transparent transparent !important;
       
-      // WebKit 滚动条样式 - 默认透明
+      // WebKit 滚动条样式
       &::-webkit-scrollbar {
         width: 10px !important;
       }
@@ -236,37 +193,28 @@
         border-radius: 0 !important;
       }
 
-      // 鼠标悬停时显示滚动条（通过 data 属性）
+      // 鼠标悬停时显示滚动条
       &[data-hovered="true"] {
-        // Firefox - 立即显示（CSS transition 会在移除 data 属性时生效）
-        scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.6)) transparent !important;
+        scrollbar-color: var(--ws-scrollbar-thumb) transparent !important;
         
-        // WebKit - 立即显示
         &::-webkit-scrollbar-thumb {
-          background-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.6)) !important;
+          background-color: var(--ws-scrollbar-thumb) !important;
 
           &:hover {
-            background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.8)) !important;
-          }
-
-          &:active {
-            background-color: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.6)) !important;
+            background-color: var(--ws-scrollbar-thumb-hover) !important;
           }
         }
       }
-      
-      // 鼠标离开后平滑淡出（仅 Firefox 支持 scrollbar-color 的 transition）
-      transition: scrollbar-color 0.3s ease !important;
     }
     
     &.resizable {
-      overflow: auto !important; // 可调整大小时需要独立滚动，!important 确保不被全局样式覆盖
+      overflow: auto !important;
       
-      // Firefox 滚动条样式 - 默认透明
+      // Firefox 滚动条样式
       scrollbar-width: thin !important;
       scrollbar-color: transparent transparent !important;
       
-      // WebKit 滚动条样式 - 默认透明
+      // WebKit 滚动条样式
       &::-webkit-scrollbar {
         width: 10px !important;
       }
@@ -280,32 +228,18 @@
         border-radius: 0 !important;
       }
 
-      // 鼠标悬停时显示滚动条（通过 data 属性）
+      // 鼠标悬停时显示滚动条
       &[data-hovered="true"] {
-        // Firefox - 立即显示（CSS transition 会在移除 data 属性时生效）
-        scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.6)) transparent !important;
+        scrollbar-color: var(--ws-scrollbar-thumb) transparent !important;
         
-        // WebKit - 立即显示
         &::-webkit-scrollbar-thumb {
-          background-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.6)) !important;
+          background-color: var(--ws-scrollbar-thumb) !important;
 
           &:hover {
-            background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.8)) !important;
-          }
-
-          &:active {
-            background-color: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.6)) !important;
+            background-color: var(--ws-scrollbar-thumb-hover) !important;
           }
         }
       }
-      
-      // 鼠标离开后平滑淡出（仅 Firefox 支持 scrollbar-color 的 transition）
-      transition: scrollbar-color 0.3s ease !important;
     }
   }
 }
-
-// 注意：所有 VSCode 颜色变量现在由 ThemeContext 在全局管理
-// 这里不再定义本地变量，避免覆盖主题颜色
-
-

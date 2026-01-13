@@ -48,19 +48,9 @@
     }
   }
 
-  // 大纲面板拖动手柄
+  // 大纲面板拖动手柄（样式已统一到 styles/component/ResizeHandle.scss）
   .cm-outline-resize-handle {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    cursor: ew-resize;
-    z-index: 10;
-
-    &:hover {
-      background-color: var(--ws-focusBorder);
-    }
+    // 布局样式已统一
   }
 
   .cm-outline-tabs {
@@ -344,31 +334,138 @@
     font-size: 0.9em;
   }
 
-  // 代码块样式
-  .cm-code-block {
-    background-color: var(--ws-textCodeBlock-background, rgba(30, 30, 30, 0.8));
-    border-radius: 6px;
+  // 完整代码块 Widget 样式
+  .cm-code-block-widget {
+    display: block;
     margin: 8px 0;
-    overflow: hidden;
+    border: 1px solid var(--ws-panel-border);
+    border-radius: 6px;
+    background-color: var(--ws-textCodeBlock-background);
+    // 不使用 overflow: hidden，让下拉菜单能够正常显示
+
+    // 折叠状态
+    &.collapsed {
+      .cm-code-block-header {
+        border-bottom: none;
+        border-radius: 6px;
+      }
+
+      // 折叠时隐藏右侧大部分元素，只保留删除按钮
+      .cm-code-block-header-right {
+        .cm-code-block-dropdown,
+        .cm-code-block-divider,
+        .cm-code-block-action-btn:not(.cm-code-block-delete-btn) {
+          display: none;
+        }
+      }
+    }
   }
 
   .cm-code-block-header {
     display: flex;
     align-items: center;
-    padding: 6px 12px;
-    background-color: var(--ws-sideBar-background, rgba(40, 40, 40, 0.9));
+    justify-content: space-between;
+    padding: 8px 12px;
+    background-color: var(--ws-editorWidget-background);
     border-bottom: 1px solid var(--ws-panel-border);
+    border-radius: 6px 6px 0 0;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .cm-code-block-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 40px;
+    overflow: hidden;
+  }
+
+  .cm-code-block-header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 1;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .cm-code-block-collapse-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    color: var(--ws-descriptionForeground);
+    border-radius: 4px;
+    flex-shrink: 0;
+
+    &:hover {
+      background-color: var(--ws-list-hover-background);
+      color: var(--ws-foreground);
+    }
+  }
+
+  .cm-code-block-name-input {
+    flex: 1 1 auto;
+    min-width: 40px;
+    max-width: 200px;
+    background-color: transparent;
+    color: var(--ws-foreground);
+    border: none;
+    padding: 2px 4px;
+    font-size: 12px;
+    outline: none;
+    text-overflow: ellipsis;
+    overflow: hidden;
+
+    &::placeholder {
+      color: var(--ws-descriptionForeground);
+      opacity: 0.6;
+    }
+
+    &:focus {
+      background-color: var(--ws-input-background);
+      border-radius: 2px;
+    }
+  }
+
+  .cm-code-block-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    color: var(--ws-descriptionForeground);
+    border-radius: 4px;
+
+    &:hover {
+      background-color: var(--ws-list-hover-background);
+      color: var(--ws-foreground);
+    }
+  }
+
+  // 删除按钮特殊样式
+  .cm-code-block-delete-btn {
+    &:hover {
+      background-color: var(--ws-inputValidation-errorBackground);
+      color: var(--ws-inputValidation-errorForeground);
+    }
   }
 
   .cm-code-block-lang-select {
-    background-color: transparent;
-    color: var(--ws-descriptionForeground);
+    background-color: var(--ws-dropdown-background);
+    color: var(--ws-foreground);
     border: 1px solid var(--ws-panel-border);
     border-radius: 4px;
     padding: 2px 8px;
     font-size: 12px;
     cursor: pointer;
     outline: none;
+    flex-shrink: 0;
 
     &:hover {
       border-color: var(--ws-focusBorder);
@@ -384,28 +481,135 @@
     }
   }
 
-  .cm-code-block-content {
-    padding: 12px 16px;
-    overflow-x: auto;
+  // 自定义下拉菜单
+  .cm-code-block-dropdown {
+    position: relative;
+    flex-shrink: 0;
 
-    pre {
-      margin: 0;
-      padding: 0;
-      background: transparent;
+    .cm-code-block-dropdown-trigger {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--ws-foreground);
+      background-color: var(--ws-dropdown-background);
+      border: 1px solid var(--ws-panel-border);
+
+      &:hover {
+        border-color: var(--ws-focusBorder);
+      }
     }
 
-    code {
-      font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
-      font-size: 13px;
-      line-height: 1.5;
-      color: var(--ws-editor-foreground);
-      white-space: pre;
+    .cm-code-block-dropdown-text {
+      min-width: 60px;
+    }
+
+    .cm-code-block-dropdown-arrow {
+      display: flex;
+      align-items: center;
+      opacity: 0.6;
+    }
+
+    &.open .cm-code-block-dropdown-arrow {
+      transform: rotate(180deg);
+    }
+
+    .cm-code-block-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      z-index: 99999;
+      min-width: 150px;
+      max-height: 300px;
+      background-color: var(--ws-dropdown-background);
+      border: 1px solid var(--ws-dropdown-border);
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .cm-code-block-dropdown-search {
+      padding: 8px;
+      border-bottom: 1px solid var(--ws-panel-border);
+
+      input {
+        width: 100%;
+        padding: 4px 8px;
+        border: 1px solid var(--ws-panel-border);
+        border-radius: 4px;
+        background-color: var(--ws-input-background);
+        color: var(--ws-foreground);
+        font-size: 12px;
+        outline: none;
+
+        &:focus {
+          border-color: var(--ws-focusBorder);
+        }
+
+        &::placeholder {
+          color: var(--ws-descriptionForeground);
+        }
+      }
+    }
+
+    .cm-code-block-dropdown-list {
+      max-height: 240px;
+      overflow-y: auto;
+      padding: 4px;
+    }
+
+    .cm-code-block-dropdown-item {
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--ws-foreground);
+
+      &:hover {
+        background-color: var(--ws-list-hover-background);
+      }
+
+      &.selected {
+        background-color: var(--ws-list-active-selection-background);
+        color: var(--ws-list-active-selection-foreground);
+      }
     }
   }
 
-  // 代码块行样式（光标在代码块内时）
-  .cm-code-block-line {
-    background-color: var(--ws-textCodeBlock-background, rgba(30, 30, 30, 0.5));
+  // 分隔符
+  .cm-code-block-divider {
+    width: 1px;
+    height: 16px;
+    background-color: var(--ws-panel-border);
+    margin: 0 4px;
+  }
+
+  // 代码区域
+  .cm-code-block-content {
+    display: block;
+    background-color: var(--ws-textCodeBlock-background);
+    border-radius: 0 0 6px 6px;
+    min-height: 60px;
+    overflow: visible;
+  }
+
+  // Monaco 编辑器容器
+  .cm-code-block-monaco-container {
+    min-height: 60px;
+  }
+
+  // 加载占位符
+  .cm-code-block-placeholder {
+    padding: 12px 16px;
+    margin: 0;
+    color: var(--ws-editor-foreground);
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 
   // 代码块语言标签
@@ -414,78 +618,64 @@
     font-size: 11px;
     color: var(--ws-descriptionForeground);
     padding: 2px 8px;
-    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
   }
 
-  // 高亮代码容器
-  .cm-code-highlighted {
-    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
+  // 代码运行输出面板
+  .cm-code-block-output {
+    border-top: 1px solid var(--ws-panel-border);
+    background-color: var(--ws-editor-background);
+    border-radius: 0 0 6px 6px;
 
-    // highlight.js 语法高亮
-    .hljs-keyword,
-    .hljs-selector-tag,
-    .hljs-built_in,
-    .hljs-name {
-      color: var(--ws-symbolIcon-keywordForeground, #569cd6);
+    .cm-code-block-output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--ws-panel-border);
+      background-color: var(--ws-sideBar-background);
     }
 
-    .hljs-string,
-    .hljs-attr {
-      color: var(--ws-symbolIcon-stringForeground, #ce9178);
-    }
-
-    .hljs-number,
-    .hljs-literal {
-      color: var(--ws-symbolIcon-numberForeground, #b5cea8);
-    }
-
-    .hljs-comment {
-      color: var(--ws-descriptionForeground, #6a9955);
-      font-style: italic;
-    }
-
-    .hljs-function,
-    .hljs-title {
-      color: var(--ws-symbolIcon-functionForeground, #dcdcaa);
-    }
-
-    .hljs-variable,
-    .hljs-params {
-      color: var(--ws-symbolIcon-variableForeground, #9cdcfe);
-    }
-
-    .hljs-type,
-    .hljs-class {
-      color: var(--ws-symbolIcon-classForeground, #4ec9b0);
-    }
-
-    .hljs-meta {
-      color: var(--ws-symbolIcon-operatorForeground, #c586c0);
-    }
-
-    .hljs-regexp {
-      color: var(--ws-symbolIcon-colorForeground, #d16969);
-    }
-
-    .hljs-tag {
-      color: var(--ws-symbolIcon-keywordForeground, #569cd6);
-    }
-
-    .hljs-attribute {
-      color: var(--ws-symbolIcon-propertyForeground, #9cdcfe);
-    }
-
-    .hljs-property {
-      color: var(--ws-symbolIcon-propertyForeground, #9cdcfe);
-    }
-
-    .hljs-selector-class,
-    .hljs-selector-id {
-      color: var(--ws-symbolIcon-classForeground, #d7ba7d);
-    }
-
-    .hljs-punctuation {
+    .cm-code-block-output-title {
+      font-size: 12px;
       color: var(--ws-foreground);
+      font-weight: 500;
+    }
+
+    .cm-code-block-output-close {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--ws-descriptionForeground);
+
+      &:hover {
+        background-color: var(--ws-list-hover-background);
+        color: var(--ws-foreground);
+      }
+    }
+
+    .cm-code-block-output-content {
+      margin: 0;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--ws-foreground);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .cm-code-block-output-error {
+      color: var(--ws-inputValidation-errorForeground);
+    }
+
+    .cm-code-block-output-loading {
+      color: var(--ws-descriptionForeground);
+      font-style: italic;
     }
   }
 
@@ -1083,6 +1273,65 @@
     svg {
       width: 24px;
       height: 24px;
+    }
+  }
+}
+
+// 代码块下拉菜单 Portal（渲染到 body 层级）
+.cm-code-block-dropdown-portal {
+  position: fixed;
+  z-index: 99999;
+  min-width: 150px;
+  max-height: 300px;
+  background-color: var(--ws-dropdown-background);
+  border: 1px solid var(--ws-dropdown-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+  .cm-code-block-dropdown-search {
+    padding: 8px;
+    border-bottom: 1px solid var(--ws-panel-border);
+
+    input {
+      width: 100%;
+      padding: 4px 8px;
+      border: 1px solid var(--ws-panel-border);
+      border-radius: 4px;
+      background-color: var(--ws-input-background);
+      color: var(--ws-foreground);
+      font-size: 12px;
+      outline: none;
+
+      &:focus {
+        border-color: var(--ws-focusBorder);
+      }
+
+      &::placeholder {
+        color: var(--ws-descriptionForeground);
+      }
+    }
+  }
+
+  .cm-code-block-dropdown-list {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px;
+  }
+
+  .cm-code-block-dropdown-item {
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--ws-foreground);
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground);
+    }
+
+    &.selected {
+      background-color: var(--ws-list-activeSelectionBackground);
+      color: var(--ws-list-activeSelectionForeground);
     }
   }
 }

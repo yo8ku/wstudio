@@ -1,14 +1,130 @@
 /**
- * ResizeHandle 调整大小手柄颜色样式
- * 功能：定义调整大小手柄的颜色主题
+ * ResizeHandle 调整大小手柄统一样式
+ * 功能：定义所有拖动手柄的通用样式（布局 + 颜色）
  */
 
-.resize-handle {
+// 通用拖动手柄基础样式
+%resize-handle-base {
+  position: absolute;
+  z-index: 10;
   background-color: transparent;
+
+  &:hover,
+  &.resizing {
+    background-color: var(--ws-resize-hoverBorder);
+  }
 }
 
-.resize-handle:hover,
-.resize-handle.resizing {
-  background-color: var(--ws-sash-hover-border);
-  opacity: 0.6 !important;
+// 水平方向拖动手柄（左右拖动，调整宽度）
+%resize-handle-horizontal {
+  @extend %resize-handle-base;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: ew-resize;
+}
+
+// 垂直方向拖动手柄（上下拖动，调整高度）
+%resize-handle-vertical {
+  @extend %resize-handle-base;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: ns-resize;
+}
+
+// 通用 ResizeHandle 组件
+.resize-handle {
+  @extend %resize-handle-base;
+
+  &--vertical {
+    left: 0;
+    right: 0;
+    height: 4px;
+    cursor: ns-resize;
+  }
+
+  &--horizontal {
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: ew-resize;
+  }
+}
+
+// 表单区域拖动手柄（垂直）
+.form-resize-handle {
+  @extend %resize-handle-vertical;
+}
+
+// 侧边栏拖动手柄（水平，右侧）
+.sidebar-resize-handle {
+  @extend %resize-handle-horizontal;
+  right: 0;
+  left: auto;
+
+  // 侧边栏在右侧时，手柄在左边
+  &--left {
+    right: auto;
+    left: 0;
+  }
+}
+
+// 右侧边栏拖动手柄（水平，左侧）
+.right-sidebar-resize-handle {
+  @extend %resize-handle-horizontal;
+  left: 0;
+}
+
+// AI 聊天面板拖动手柄（水平）
+.ai-chat-panel-resize-handle {
+  @extend %resize-handle-horizontal;
+}
+
+// 查询面板拖动手柄（水平，左侧）
+.query-panel-resize-handle {
+  @extend %resize-handle-horizontal;
+  left: 0;
+}
+
+// 列宽拖动手柄（水平，右侧）
+.column-resize-handle {
+  @extend %resize-handle-horizontal;
+  right: 0;
+  left: auto;
+}
+
+// 大纲面板拖动手柄（水平，左侧）
+.cm-outline-resize-handle {
+  @extend %resize-handle-horizontal;
+  left: 0;
+}
+
+// 手风琴拖动手柄（垂直，带线条样式）
+.accordion-resize-handle {
+  position: relative;
+  height: 6px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+
+  .accordion-resize-line {
+    width: 48px;
+    height: 2px;
+    background-color: var(--ws-icon-foreground);
+    border-radius: 1px;
+    opacity: 0.2;
+  }
+
+  &:hover .accordion-resize-line,
+  &.resizing .accordion-resize-line {
+    opacity: 1;
+    background-color: var(--ws-resize-hoverBorder);
+  }
+
+  &.resizing .accordion-resize-line {
+    height: 3px;
+  }
 }

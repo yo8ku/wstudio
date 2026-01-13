@@ -44,12 +44,6 @@
   }
 
   &-resize-handle {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    right: -2px;
-    width: 4px;
-    z-index: 10;
-    cursor: col-resize;
+    // 样式已统一到 styles/component/ResizeHandle.scss
   }
 }

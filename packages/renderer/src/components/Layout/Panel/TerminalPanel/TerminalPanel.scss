@@ -74,6 +74,15 @@
     height: 100%;
     padding: 4px 8px;
 
+    // 输入法编辑时隐藏光标层
+    &.ime-composing .xterm .xterm-screen {
+      // 隐藏除第一个 canvas（文本层）外的所有 canvas
+      canvas:nth-child(n+2) {
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+    }
+
     // xterm.js 样式覆盖
     .xterm {
       height: 100%;
@@ -102,11 +111,6 @@
 
       .xterm-screen {
         background: transparent !important;
-      }
-
-      // 修复光标边框问题
-      .xterm-cursor-outline {
-        outline: none !important;
       }
     }
   }

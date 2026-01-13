@@ -91,7 +91,8 @@ function createWindow(backgroundColor = '#1e1e1e') {
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: true,
       allowRunningInsecureContent: false,
-      webviewTag: true // 启用 webview 标签，用于嵌入视频播放器
+      webviewTag: true, // 启用 webview 标签，用于嵌入视频播放器
+      backgroundThrottling: false // 禁用后台节流，确保终端光标闪烁正常
     }
   });
 

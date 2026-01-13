@@ -18,19 +18,9 @@
   }
 }
 
-// 拖动手柄样式
+// 拖动手柄样式（布局样式在 ResizeHandle.scss 中统一定义）
 .form-resize-handle {
-  height: 4px;
-  cursor: ns-resize;
-  position: relative;
-  background-color: transparent;
-  z-index: 10;
-
-  &:hover,
-  &.resizing {
-    background-color: var(--ws-sash-hover-border, var(--ws-focus-border));
-    opacity: 0.6;
-  }
+  // 样式已统一到 styles/component/ResizeHandle.scss
 }
 
 // 拖动时的全局遮罩层

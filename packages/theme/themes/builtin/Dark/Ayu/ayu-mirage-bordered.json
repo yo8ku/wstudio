@@ -6,6 +6,7 @@
 	"description": "一个安静舒适的浅色主题，带有柔和的颜色和优雅的对比度，专为长时间编码设计。",
 	"version": "1.0.0",
 	"colors": {
+		"resize.hoverBorder":"#80bfff80",
 		"checkbox.selectBackground":"#171b24",
 		"checkbox-selectBorder":"#c3c3c382",
 		"checkbox-border":"#93939382",

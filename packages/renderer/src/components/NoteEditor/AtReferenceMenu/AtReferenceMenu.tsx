@@ -148,6 +148,21 @@ export const AtReferenceMenu: React.FC<AtReferenceMenuProps> = ({
     };
   }, [visible, onClose]);
 
+  // 滚动时关闭菜单
+  useEffect(() => {
+    if (!visible) return;
+
+    const handleScroll = () => {
+      onClose();
+    };
+
+    // 监听所有滚动事件（捕获阶段）
+    document.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [visible, onClose]);
+
   // 处理选项点击
   const handleItemClick = (form: FormInfo) => {
     onSelect(form);

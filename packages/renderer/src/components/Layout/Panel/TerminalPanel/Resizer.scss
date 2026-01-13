@@ -1,5 +1,6 @@
 /**
  * 可拖动分隔条样式
+ * 终端面板专用的分隔条，带有中间线条
  */
 
 .resizer {
@@ -20,11 +21,10 @@
       width: 1px;
       height: 100%;
       background: var(--ws-panel-border);
-      transition: background 0.15s ease, width 0.15s ease;
     }
 
     &:hover .resizer-handle {
-      background: var(--ws-focusBorder);
+      background: var(--ws-resize-hoverBorder);
       width: 2px;
     }
   }
@@ -41,23 +41,22 @@
       height: 1px;
       width: 100%;
       background: var(--ws-panel-border);
-      transition: background 0.15s ease, height 0.15s ease;
     }
 
     &:hover .resizer-handle {
-      background: var(--ws-focusBorder);
+      background: var(--ws-resize-hoverBorder);
       height: 2px;
     }
   }
 
   &-dragging {
     &.resizer-vertical .resizer-handle {
-      background: var(--ws-focusBorder);
+      background: var(--ws-resize-hoverBorder);
       width: 2px;
     }
 
     &.resizer-horizontal .resizer-handle {
-      background: var(--ws-focusBorder);
+      background: var(--ws-resize-hoverBorder);
       height: 2px;
     }
   }

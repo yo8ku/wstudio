@@ -12,22 +12,9 @@
   background-color: var(--ws-sideBar-background);
 
 
-  // 拖拽手柄
+  // 拖拽手柄（样式已统一到 styles/component/ResizeHandle.scss）
   &-resize-handle {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    cursor: col-resize;
-    z-index: 10;
-    background-color: var(--ws-sash-hoverBorder);
-    opacity: 0;
-
-    &:hover,
-    &.resizing {
-      opacity: 1;
-    }
+    // 布局样式已统一
   }
 
   // 头部

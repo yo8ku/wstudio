@@ -123,9 +123,15 @@ export class TerminalService {
 
       // 发送创建命令
       const shellConfig = this.shellDetector.getDefaultShell();
+      // 将 shell 路径和参数合并（PowerShell 需要 -NoLogo 参数）
+      let shellCommand = options.shell || shellConfig.path;
+      if (shellConfig.args && shellConfig.args.length > 0 && !options.shell) {
+        shellCommand = `${shellConfig.path} ${shellConfig.args.join(' ')}`;
+      }
+      
       this.sendCommand(id, {
         type: 'create',
-        shell: options.shell || shellConfig.path,
+        shell: shellCommand,
         cwd: options.cwd || this.shellDetector.getHomeDirectory(),
         cols: options.cols || 80,
         rows: options.rows || 24,

@@ -31,10 +31,16 @@ import { inlineAIChatField, openInlineAIChat, closeInlineAIChat, isInlineAIChatO
 import { AtReferenceMenu } from './AtReferenceMenu';
 import { tableReferenceService, type FormInfo } from '../../services/tableReference/TableReferenceService';
 import { createTableReferenceExtension } from './TableReferenceWidget';
+import { renderMonacoToElement, unmountMonacoFromElement, updateMonacoTheme, updateMonacoLanguage, getMonacoScrollPosition } from './CodeBlockMonaco';
+import { useThemeStore } from '../../stores/themeStore';
+import { useCodeBlockStore, applyPendingUpdatesToContent } from '../../stores/codeBlockStore';
+import { themeService } from '../../services/ThemeService';
+import { codeRunnerService } from '../../services/CodeRunnerService';
+import type { SupportedLanguage } from '../../services/CodeRunnerService';
 import './CodeMirrorEditor.scss';
 import './TableReferenceWidget/InlineTablePreview.scss';
 import './InlineAIChat/InlineAIChat.scss';
-import { text } from 'stream/consumers';
+import './CodeBlockMonaco/CodeBlockMonaco.scss';
 import hljs from 'highlight.js';
 import mermaid from 'mermaid';
 
@@ -6021,6 +6027,7 @@ class CodeLineWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
+    // 忽略事件，防止点击代码内容时进入原始文本状态
     return true;
   }
 }
@@ -6060,6 +6067,7 @@ interface CodeBlockInfo {
   startLine: number;
   endLine: number;
   language: string;
+  customName: string;
   code: string;
   from: number;
   to: number;
@@ -6074,6 +6082,7 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
   let inCodeBlock = false;
   let startLine = 0;
   let language = '';
+  let customName = '';
   let codeLines: string[] = [];
   let blockFrom = 0;
 
@@ -6081,19 +6090,26 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
     const line = doc.line(i);
     const text = line.text;
 
-    if (!inCodeBlock && text.match(/^```(\w*)/)) {
+    // 匹配 ```language // name 格式（开始标记）
+    const startMatch = text.match(/^```(\w*)(\s*\/\/\s*(.*))?$/);
+    // 匹配结束标记 ```（可能有空格）
+    const isEndMark = /^```\s*$/.test(text);
+
+    if (!inCodeBlock && startMatch) {
       // 代码块开始
       inCodeBlock = true;
       startLine = i;
-      language = text.match(/^```(\w*)/)?.[1] || '';
+      language = startMatch[1] || '';
+      customName = startMatch[3] || '';
       codeLines = [];
       blockFrom = line.from;
-    } else if (inCodeBlock && text.trim() === '```') {
+    } else if (inCodeBlock && isEndMark) {
       // 代码块结束
       blocks.push({
         startLine,
         endLine: i,
         language,
+        customName,
         code: codeLines.join('\n'),
         from: blockFrom,
         to: line.to
@@ -6108,63 +6124,933 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
   return blocks;
 }
 
-/**
- * 创建代码块装饰器
- */
-function createCodeBlockDecorations(state: EditorState): DecorationSet {
-  const decorations: Range<Decoration>[] = [];
-  const blocks = parseCodeBlocks(state);
-  
-  // 获取当前光标所在行
-  const cursorLine = state.doc.lineAt(state.selection.main.head).number;
+/** 代码块输出状态存储（按代码块位置索引） */
+interface CodeBlockOutputState {
+  content: string;
+  isError: boolean;
+  isClosed: boolean;
+}
+const codeBlockOutputStates = new Map<number, CodeBlockOutputState>();
 
-  for (const block of blocks) {
-    // 给所有代码块行添加背景装饰
-    for (let i = block.startLine; i <= block.endLine; i++) {
-      const line = state.doc.line(i);
-      decorations.push(
-        Decoration.line({ class: 'cm-code-block-line' }).range(line.from)
-      );
+/**
+ * 完整代码块 Widget - 将整个代码块渲染为一个卡片组件
+ */
+class CodeBlockWidget extends WidgetType {
+  private monacoContainer: HTMLElement | null = null;
+  private headerElement: HTMLElement | null = null;
+  private containerElement: HTMLElement | null = null;
+  private codeAreaElement: HTMLElement | null = null;
+  private collapseBtnElement: HTMLElement | null = null;
+  private outputPanelElement: HTMLElement | null = null;
+  private pendingLanguage: string | null = null;
+  private viewRef: EditorView | null = null;
+  private isCollapsed: boolean = false;
+
+  constructor(readonly block: CodeBlockInfo) {
+    super();
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    this.viewRef = view;
+    
+    // 从 Store 恢复状态
+    const savedState = useCodeBlockStore.getState().getBlockState(this.block.language, this.block.code);
+    this.isCollapsed = savedState.isCollapsed;
+    
+    const container = document.createElement('div');
+    container.className = 'cm-code-block-widget';
+    this.containerElement = container;
+
+    // 代码区域（带行号）- 先创建以获取 monacoContainer 引用
+    const codeArea = this.createCodeArea(view);
+    this.codeAreaElement = codeArea;
+
+    // 头部 - 后创建以便访问 monacoContainer
+    const header = this.createHeader(view);
+    this.headerElement = header;
+    container.appendChild(header);
+
+    // 代码区域（带行号）
+    container.appendChild(codeArea);
+    
+    // 恢复折叠状态
+    if (this.isCollapsed) {
+      container.classList.add('collapsed');
+      if (this.collapseBtnElement) {
+        this.collapseBtnElement.style.transform = 'rotate(0deg)';
+        this.collapseBtnElement.title = '展开';
+      }
+      if (this.codeAreaElement) {
+        this.codeAreaElement.style.display = 'none';
+      }
     }
 
-    // 如果光标不在代码块内，隐藏 ``` 标记并高亮代码
-    if (cursorLine < block.startLine || cursorLine > block.endLine) {
-      // 隐藏开始的 ```language
-      const startLine = state.doc.line(block.startLine);
-      decorations.push(
-        Decoration.replace({ widget: new class extends WidgetType {
-          toDOM() {
-            const span = document.createElement('span');
-            span.className = 'cm-code-block-lang-label';
-            span.textContent = block.language || 'code';
-            return span;
-          }
-          eq() { return true; }
-        }() }).range(startLine.from, startLine.to)
-      );
-      
-      // 隐藏结束的 ```
-      const endLine = state.doc.line(block.endLine);
-      decorations.push(
-        Decoration.mark({ class: 'cm-hidden-syntax' }).range(endLine.from, endLine.to)
-      );
+    return container;
+  }
 
-      // 用 Widget 替换代码内容以实现语法高亮
-      const lang = block.language || 'plaintext';
-      for (let i = block.startLine + 1; i < block.endLine; i++) {
-        const line = state.doc.line(i);
-        if (line.text.length > 0) {
-          decorations.push(
-            Decoration.replace({
-              widget: new CodeLineWidget(line.text, lang)
-            }).range(line.from, line.to)
-          );
+  createHeader(view: EditorView): HTMLElement {
+    const header = document.createElement('div');
+    header.className = 'cm-code-block-header';
+
+    // 左侧区域：折叠箭头 + 名称输入框
+    const leftSection = document.createElement('div');
+    leftSection.className = 'cm-code-block-header-left';
+
+    // 折叠箭头
+    const collapseBtn = document.createElement('span');
+    collapseBtn.className = 'cm-code-block-collapse-btn';
+    collapseBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4V4z"/></svg>';
+    collapseBtn.style.transform = 'rotate(90deg)';
+    collapseBtn.title = '折叠';
+    this.collapseBtnElement = collapseBtn;
+
+    // 折叠点击事件
+    collapseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleCollapse();
+    });
+
+    // 名称输入框
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'cm-code-block-name-input';
+    nameInput.placeholder = '请输入代码块名称';
+    
+    // 从 Store 恢复名称，如果没有则使用文档中的名称
+    const savedState = useCodeBlockStore.getState().getBlockState(this.block.language, this.block.code);
+    const displayName = savedState.name || this.block.customName;
+    nameInput.value = displayName;
+    const originalName = displayName;
+    
+    nameInput.addEventListener('mousedown', (e) => e.stopPropagation());
+    nameInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      
+      // 处理被 Electron 菜单拦截的快捷键
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      if (isCtrlOrMeta) {
+        const key = e.key.toLowerCase();
+        if (key === 'x' || key === 'c' || key === 'v' || key === 'a' || key === 'z') {
+          // 阻止事件冒泡和默认行为
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          
+          const input = nameInput;
+          const start = input.selectionStart ?? 0;
+          const end = input.selectionEnd ?? 0;
+          const selectedText = input.value.substring(start, end);
+          
+          if (key === 'x' && selectedText) {
+            // 剪切：复制选中文本到剪贴板，然后删除
+            navigator.clipboard.writeText(selectedText).then(() => {
+              input.value = input.value.substring(0, start) + input.value.substring(end);
+              input.setSelectionRange(start, start);
+            });
+          } else if (key === 'c' && selectedText) {
+            // 复制：复制选中文本到剪贴板
+            navigator.clipboard.writeText(selectedText);
+          } else if (key === 'v') {
+            // 粘贴：从剪贴板读取并插入
+            navigator.clipboard.readText().then((text) => {
+              input.value = input.value.substring(0, start) + text + input.value.substring(end);
+              const newPos = start + text.length;
+              input.setSelectionRange(newPos, newPos);
+            });
+          } else if (key === 'a') {
+            // 全选
+            input.select();
+          } else if (key === 'z') {
+            // 撤销 - 使用 execCommand 因为没有其他方式
+            document.execCommand('undo');
+          }
+          return;
         }
+      }
+      
+      if (e.key === 'Enter') {
+        nameInput.blur();
+      }
+    }, true);
+    nameInput.addEventListener('blur', () => {
+      // 只有当名称真正改变时才保存到 Store
+      // 不触发文档更新，避免 CodeMirror 内部错误
+      // 名称会在文档保存时同步到文件内容
+      const newName = nameInput.value;
+      if (newName !== originalName) {
+        useCodeBlockStore.getState().setBlockName(this.block.language, this.block.code, this.block.from, newName);
+      }
+    });
+
+    leftSection.appendChild(collapseBtn);
+    leftSection.appendChild(nameInput);
+
+    // 右侧区域
+    const rightSection = document.createElement('div');
+    rightSection.className = 'cm-code-block-header-right';
+
+    // 从 Store 恢复语言（如果有保存的话）
+    const savedLangState = useCodeBlockStore.getState().getBlockState(this.block.language, this.block.code);
+    const displayLanguage = savedLangState.language !== 'plaintext' ? savedLangState.language : (this.block.language || 'plaintext');
+
+    // 语言选择
+    const langDropdown = this.createDropdown(view, displayLanguage, SUPPORTED_LANGUAGES, (lang) => this.updateLanguage(view, lang), '搜索语言...');
+
+    // 分隔符
+    const divider1 = document.createElement('span');
+    divider1.className = 'cm-code-block-divider';
+
+    // 主题选择 - 只更新当前代码块主题
+    const { themeList, currentTheme } = useThemeStore.getState();
+    const themeNames = themeList.map((t) => t.name || t.id);
+    const currentThemeName = currentTheme?.name || currentTheme?.id || 'vs-dark';
+    const themeDropdown = this.createDropdown(
+      view,
+      currentThemeName,
+      themeNames,
+      async (themeName) => {
+        const theme = themeList.find((t) => t.name === themeName || t.id === themeName);
+        if (theme && this.monacoContainer) {
+          // 更新 Monaco 编辑器主题
+          updateMonacoTheme(this.monacoContainer, theme.id);
+
+          // 获取主题颜色并更新样式
+          const themeData = await themeService.getTheme(theme.id);
+          if (themeData) {
+            const bgColor = themeData.colors['editor.background'] || themeData.colors['editorWidget.background'];
+            const borderColor = themeData.colors['panel.border'] || themeData.colors['editorWidget.border'];
+            const fgColor = themeData.colors['editor.foreground'] || themeData.colors['foreground'];
+
+            // 更新头部样式
+            if (this.headerElement) {
+              if (bgColor) {
+                this.headerElement.style.backgroundColor = bgColor;
+              }
+              if (borderColor) {
+                this.headerElement.style.borderBottomColor = borderColor;
+              }
+              if (fgColor) {
+                this.headerElement.style.color = fgColor;
+              }
+
+              // 更新头部内所有下拉框触发器的样式
+              const dropdownTriggers = this.headerElement.querySelectorAll('.cm-code-block-dropdown-trigger');
+              dropdownTriggers.forEach((trigger) => {
+                if (bgColor) {
+                  (trigger as HTMLElement).style.backgroundColor = bgColor;
+                }
+                if (borderColor) {
+                  (trigger as HTMLElement).style.borderColor = borderColor;
+                }
+                if (fgColor) {
+                  (trigger as HTMLElement).style.color = fgColor;
+                }
+              });
+
+              // 更新头部内所有按钮的样式
+              const actionBtns = this.headerElement.querySelectorAll('.cm-code-block-action-btn');
+              actionBtns.forEach((btn) => {
+                if (fgColor) {
+                  (btn as HTMLElement).style.color = fgColor;
+                }
+              });
+
+              // 更新分隔符样式
+              const dividers = this.headerElement.querySelectorAll('.cm-code-block-divider');
+              dividers.forEach((divider) => {
+                if (borderColor) {
+                  (divider as HTMLElement).style.backgroundColor = borderColor;
+                }
+              });
+            }
+
+            // 更新整个容器的边框
+            if (this.containerElement && borderColor) {
+              this.containerElement.style.borderColor = borderColor;
+            }
+
+            // 更新输出面板样式
+            if (this.outputPanelElement) {
+              if (bgColor) {
+                this.outputPanelElement.style.backgroundColor = bgColor;
+              }
+              if (borderColor) {
+                this.outputPanelElement.style.borderTopColor = borderColor;
+              }
+              const outputHeader = this.outputPanelElement.querySelector('.cm-code-block-output-header') as HTMLElement;
+              if (outputHeader) {
+                if (bgColor) {
+                  outputHeader.style.backgroundColor = bgColor;
+                }
+                if (borderColor) {
+                  outputHeader.style.borderBottomColor = borderColor;
+                }
+              }
+              const outputTitle = this.outputPanelElement.querySelector('.cm-code-block-output-title') as HTMLElement;
+              if (outputTitle && fgColor) {
+                outputTitle.style.color = fgColor;
+              }
+              const outputContent = this.outputPanelElement.querySelector('.cm-code-block-output-content') as HTMLElement;
+              if (outputContent && fgColor) {
+                outputContent.style.color = fgColor;
+              }
+            }
+          }
+          
+          // 保存主题到 Store
+          useCodeBlockStore.getState().setBlockTheme(this.block.language, this.block.code, theme.id);
+        }
+      },
+      '搜索主题...'
+    );
+
+    // 分隔符
+    const divider2 = document.createElement('span');
+    divider2.className = 'cm-code-block-divider';
+
+    // 复制按钮
+    const copyBtn = document.createElement('span');
+    copyBtn.className = 'cm-code-block-action-btn';
+    copyBtn.title = '复制代码';
+    copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z"/><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1"/></svg>';
+    copyBtn.addEventListener('click', () => navigator.clipboard.writeText(this.block.code));
+
+    // 运行按钮
+    const runBtn = document.createElement('span');
+    runBtn.className = 'cm-code-block-action-btn';
+    runBtn.title = '运行代码';
+    runBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"/><circle cx="12" cy="12" r="10"/></svg>';
+    runBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.runCode();
+    });
+
+    // 更多菜单
+    const moreBtn = document.createElement('span');
+    moreBtn.className = 'cm-code-block-action-btn';
+    moreBtn.title = '更多操作';
+    moreBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>';
+
+    // 删除按钮
+    const deleteBtn = document.createElement('span');
+    deleteBtn.className = 'cm-code-block-action-btn cm-code-block-delete-btn';
+    deleteBtn.title = '删除代码块';
+    deleteBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.deleteCodeBlock(view);
+    });
+
+    rightSection.appendChild(langDropdown);
+    rightSection.appendChild(divider1);
+    rightSection.appendChild(themeDropdown);
+    rightSection.appendChild(divider2);
+    rightSection.appendChild(copyBtn);
+    rightSection.appendChild(runBtn);
+    rightSection.appendChild(deleteBtn);
+    rightSection.appendChild(moreBtn);
+
+    header.appendChild(leftSection);
+    header.appendChild(rightSection);
+    return header;
+  }
+
+  createCodeArea(view: EditorView): HTMLElement {
+    const codeArea = document.createElement('div');
+    codeArea.className = 'cm-code-block-content';
+
+    // 禁用代码块区域的右键菜单
+    codeArea.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    // 阻止键盘事件冒泡到 CodeMirror
+    codeArea.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+    }, false);
+
+    const blockInfo = this.block;
+    const lang = this.block.language || 'plaintext';
+    const initialCode = this.block.code || '';
+
+    // Monaco Editor 容器
+    const monacoContainer = document.createElement('div');
+    monacoContainer.className = 'cm-code-block-monaco-container';
+    this.monacoContainer = monacoContainer;
+
+    // 更新源码标记
+    let isUpdating = false;
+
+    const updateSource = (newCode: string) => {
+      if (isUpdating) return;
+
+      // 验证编辑器是否仍然有效
+      if (!view.dom || !view.dom.isConnected) {
+        return;
+      }
+
+      isUpdating = true;
+
+      try {
+        const docLength = view.state.doc.length;
+
+        // 验证起始位置是否有效
+        if (blockInfo.from >= docLength) {
+          isUpdating = false;
+          return;
+        }
+
+        const startLine = view.state.doc.lineAt(blockInfo.from);
+
+        // 验证起始行是否仍然是代码块开始标记
+        if (!startLine.text.startsWith('```')) {
+          isUpdating = false;
+          return;
+        }
+
+        // 从起始行开始，查找代码块的实际结束位置
+        let endLineNum = startLine.number + 1;
+        let endPos = startLine.to;
+        const totalLines = view.state.doc.lines;
+
+        while (endLineNum <= totalLines) {
+          const line = view.state.doc.line(endLineNum);
+          if (/^```\s*$/.test(line.text)) {
+            endPos = line.to;
+            break;
+          }
+          endLineNum++;
+        }
+
+        // 构建新的代码块文本
+        const langLine = startLine.text;
+        const newCodeBlock = langLine + '\n' + newCode + '\n```';
+
+        view.dispatch({
+          changes: { from: startLine.from, to: endPos, insert: newCodeBlock }
+        });
+
+        isUpdating = false;
+      } catch (e) {
+        console.error('更新代码块失败:', e);
+        isUpdating = false;
+      }
+    };
+
+    // 延迟渲染 Monaco，避免阻塞
+    let pendingCode: string | null = null;
+    const blockLanguage = this.block.language;
+    const blockCode = this.block.code;
+
+    requestAnimationFrame(() => {
+      if (!monacoContainer.isConnected) return;
+
+      // 从 Store 获取保存的状态（包括滚动位置）
+      const savedState = useCodeBlockStore.getState().getBlockState(blockLanguage, blockCode);
+      console.log('[CodeMirrorEditor] 从 Store 获取滚动位置:', savedState.scrollTop);
+
+      renderMonacoToElement(monacoContainer, {
+        code: initialCode,
+        language: lang,
+        onChange: (value: string) => {
+          // 只记录最新的代码，不立即更新源码
+          pendingCode = value;
+        },
+        onFocus: () => {
+          // 阻止 CodeMirror 获取焦点
+        },
+        onBlur: () => {
+          // 失去焦点时才更新源码
+          if (pendingCode !== null && pendingCode !== initialCode) {
+            const codeToUpdate = pendingCode;
+            pendingCode = null;
+            // 使用 setTimeout 确保在 CodeMirror 完成当前更新后再执行
+            setTimeout(() => {
+              // 再次验证编辑器是否有效
+              if (view.dom && view.dom.isConnected) {
+                try {
+                  updateSource(codeToUpdate);
+                } catch (e) {
+                  console.warn('更新代码块失败，可能是编辑器状态已改变:', e);
+                }
+              }
+            }, 50);
+          } else {
+            pendingCode = null;
+          }
+        },
+        onEditorMount: (editorInstance) => {
+          // 监听滚动事件，实时保存滚动位置到 Store
+          editorInstance.onDidScrollChange(() => {
+            const scrollTop = editorInstance.getScrollTop();
+            useCodeBlockStore.getState().setBlockScrollPosition(blockLanguage, blockCode, scrollTop, null);
+          });
+        },
+        minHeight: 60,
+        maxHeight: 800,
+        initialScrollTop: savedState.scrollTop
+      });
+      
+      // 从 Store 恢复主题
+      if (savedState.themeId && monacoContainer) {
+        updateMonacoTheme(monacoContainer, savedState.themeId);
+        // 同时更新头部样式
+        this.applyThemeToHeader(savedState.themeId);
+      }
+    });
+
+    codeArea.appendChild(monacoContainer);
+
+    return codeArea;
+  }
+
+  createDropdown(view: EditorView, currentValue: string, options: string[], onChange: (value: string) => void, searchPlaceholder: string): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'cm-code-block-dropdown';
+
+    // 跟踪当前选中的值
+    let selectedValue = currentValue;
+
+    const trigger = document.createElement('div');
+    trigger.className = 'cm-code-block-dropdown-trigger';
+
+    const text = document.createElement('span');
+    text.className = 'cm-code-block-dropdown-text';
+    text.textContent = currentValue;
+
+    const arrow = document.createElement('span');
+    arrow.className = 'cm-code-block-dropdown-arrow';
+    arrow.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M4.5 5.5L8 9l3.5-3.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>';
+
+    trigger.appendChild(text);
+    trigger.appendChild(arrow);
+
+    // 将菜单渲染到 body 层级，避免被父元素裁剪
+    const menu = document.createElement('div');
+    menu.className = 'cm-code-block-dropdown-menu cm-code-block-dropdown-portal';
+    menu.style.display = 'none';
+    menu.style.position = 'fixed';
+
+    const searchWrapper = document.createElement('div');
+    searchWrapper.className = 'cm-code-block-dropdown-search';
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = searchPlaceholder;
+    searchInput.addEventListener('mousedown', (e) => e.stopPropagation());
+    searchInput.addEventListener('keydown', (e) => e.stopPropagation());
+    searchWrapper.appendChild(searchInput);
+    menu.appendChild(searchWrapper);
+
+    const list = document.createElement('div');
+    list.className = 'cm-code-block-dropdown-list';
+
+    const renderList = (filter: string = '') => {
+      list.innerHTML = '';
+      const filteredOptions = options.filter((opt) => opt.toLowerCase().includes(filter.toLowerCase()));
+      for (const opt of filteredOptions) {
+        const item = document.createElement('div');
+        item.className = 'cm-code-block-dropdown-item';
+        if (opt === selectedValue) item.classList.add('selected');
+        item.textContent = opt;
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectedValue = opt;
+          onChange(opt);
+          text.textContent = opt;
+          hideMenu();
+        });
+        list.appendChild(item);
+      }
+    };
+
+    renderList();
+    menu.appendChild(list);
+    searchInput.addEventListener('input', () => renderList(searchInput.value));
+
+    // 更新菜单位置
+    const updateMenuPosition = () => {
+      const rect = trigger.getBoundingClientRect();
+      menu.style.top = `${rect.bottom + 4}px`;
+      menu.style.left = `${rect.right - menu.offsetWidth}px`;
+    };
+
+    // 隐藏菜单
+    const hideMenu = () => {
+      menu.style.display = 'none';
+      container.classList.remove('open');
+      if (menu.parentNode === document.body) {
+        document.body.removeChild(menu);
+      }
+    };
+
+    // 显示菜单
+    const showMenu = () => {
+      document.body.appendChild(menu);
+      menu.style.display = 'block';
+      container.classList.add('open');
+      updateMenuPosition();
+      searchInput.value = '';
+      renderList();
+      searchInput.focus();
+    };
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const isOpen = menu.style.display !== 'none';
+      if (isOpen) {
+        hideMenu();
+      } else {
+        showMenu();
+      }
+    });
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!container.contains(e.target as Node) && !menu.contains(e.target as Node)) {
+        hideMenu();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+
+    // 滚动时更新菜单位置或关闭
+    const handleScroll = (e: Event) => {
+      if (menu.style.display !== 'none') {
+        // 检查触发器是否仍在视口内
+        const rect = trigger.getBoundingClientRect();
+        const isInViewport = rect.top >= 0 && rect.bottom <= window.innerHeight;
+
+        if (isInViewport) {
+          // 更新菜单位置
+          updateMenuPosition();
+        } else {
+          // 触发器不在视口内，关闭菜单
+          hideMenu();
+        }
+      }
+    };
+
+    // 监听所有滚动事件（包括编辑器内部滚动）
+    document.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleScroll);
+
+    container.appendChild(trigger);
+    return container;
+  }
+
+  updateLanguage(_view: EditorView, newLang: string): void {
+    // 更新 Store 中的语言状态
+    useCodeBlockStore.getState().setBlockLanguage(this.block.language, this.block.code, newLang);
+    
+    // 更新 Monaco 编辑器的语言显示
+    if (this.monacoContainer) {
+      updateMonacoLanguage(this.monacoContainer, newLang);
+    }
+  }
+
+  // 切换折叠状态
+  toggleCollapse(): void {
+    this.isCollapsed = !this.isCollapsed;
+    
+    // 保存折叠状态到 Store
+    useCodeBlockStore.getState().setBlockCollapsed(this.block.language, this.block.code, this.isCollapsed);
+    
+    const blockKey = this.block.from;
+    const savedState = codeBlockOutputStates.get(blockKey);
+
+    if (this.codeAreaElement && this.collapseBtnElement) {
+      if (this.isCollapsed) {
+        // 折叠：隐藏代码区域和输出面板
+        this.codeAreaElement.style.display = 'none';
+        if (this.outputPanelElement) {
+          this.outputPanelElement.style.display = 'none';
+        }
+        this.collapseBtnElement.style.transform = 'rotate(0deg)';
+        this.collapseBtnElement.title = '展开';
+        this.containerElement?.classList.add('collapsed');
+      } else {
+        // 展开：显示代码区域，如果有输出且未被关闭则显示输出面板
+        this.codeAreaElement.style.display = 'block';
+        if (this.outputPanelElement && savedState && !savedState.isClosed) {
+          this.outputPanelElement.style.display = 'block';
+        }
+        this.collapseBtnElement.style.transform = 'rotate(90deg)';
+        this.collapseBtnElement.title = '折叠';
+        this.containerElement?.classList.remove('collapsed');
       }
     }
   }
 
-  return Decoration.set(decorations, true);
+  // 应用主题到头部样式
+  async applyThemeToHeader(themeId: string): Promise<void> {
+    const themeData = await themeService.getTheme(themeId);
+    if (!themeData) return;
+    
+    const bgColor = themeData.colors['editor.background'] || themeData.colors['editorWidget.background'];
+    const borderColor = themeData.colors['panel.border'] || themeData.colors['editorWidget.border'];
+    const fgColor = themeData.colors['editor.foreground'] || themeData.colors['foreground'];
+
+    // 更新头部样式
+    if (this.headerElement) {
+      if (bgColor) {
+        this.headerElement.style.backgroundColor = bgColor;
+      }
+      if (borderColor) {
+        this.headerElement.style.borderBottomColor = borderColor;
+      }
+      if (fgColor) {
+        this.headerElement.style.color = fgColor;
+      }
+
+      // 更新头部内所有下拉框触发器的样式
+      const dropdownTriggers = this.headerElement.querySelectorAll('.cm-code-block-dropdown-trigger');
+      dropdownTriggers.forEach((trigger) => {
+        if (bgColor) {
+          (trigger as HTMLElement).style.backgroundColor = bgColor;
+        }
+        if (borderColor) {
+          (trigger as HTMLElement).style.borderColor = borderColor;
+        }
+        if (fgColor) {
+          (trigger as HTMLElement).style.color = fgColor;
+        }
+      });
+
+      // 更新头部内所有按钮的样式
+      const actionBtns = this.headerElement.querySelectorAll('.cm-code-block-action-btn');
+      actionBtns.forEach((btn) => {
+        if (fgColor) {
+          (btn as HTMLElement).style.color = fgColor;
+        }
+      });
+
+      // 更新分隔符样式
+      const dividers = this.headerElement.querySelectorAll('.cm-code-block-divider');
+      dividers.forEach((divider) => {
+        if (borderColor) {
+          (divider as HTMLElement).style.backgroundColor = borderColor;
+        }
+      });
+    }
+
+    // 更新整个容器的边框
+    if (this.containerElement && borderColor) {
+      this.containerElement.style.borderColor = borderColor;
+    }
+
+    // 更新输出面板样式
+    if (this.outputPanelElement) {
+      if (bgColor) {
+        this.outputPanelElement.style.backgroundColor = bgColor;
+      }
+      if (borderColor) {
+        this.outputPanelElement.style.borderTopColor = borderColor;
+      }
+      const outputHeader = this.outputPanelElement.querySelector('.cm-code-block-output-header') as HTMLElement;
+      if (outputHeader) {
+        if (bgColor) {
+          outputHeader.style.backgroundColor = bgColor;
+        }
+        if (borderColor) {
+          outputHeader.style.borderBottomColor = borderColor;
+        }
+      }
+      const outputTitle = this.outputPanelElement.querySelector('.cm-code-block-output-title') as HTMLElement;
+      if (outputTitle && fgColor) {
+        outputTitle.style.color = fgColor;
+      }
+      const outputContent = this.outputPanelElement.querySelector('.cm-code-block-output-content') as HTMLElement;
+      if (outputContent && fgColor) {
+        outputContent.style.color = fgColor;
+      }
+    }
+  }
+
+  // 删除代码块
+  deleteCodeBlock(view: EditorView): void {
+    try {
+      if (!view.dom || !view.dom.isConnected) return;
+      if (this.block.from > view.state.doc.length) return;
+
+      // 删除整个代码块（从开始标记到结束标记）
+      view.dispatch({
+        changes: { from: this.block.from, to: this.block.to }
+      });
+    } catch (e) {
+      console.error('删除代码块失败:', e);
+    }
+  }
+
+  // 运行代码
+  async runCode(): Promise<void> {
+    const language = this.block.language || 'plaintext';
+    
+    // 检查语言是否支持运行
+    if (!codeRunnerService.isSupportedLanguage(language)) {
+      this.showOutput(`不支持运行 ${language} 代码`, true);
+      return;
+    }
+
+    // 获取当前代码
+    const code = this.block.code;
+    if (!code.trim()) {
+      this.showOutput('代码为空', true);
+      return;
+    }
+
+    // 显示运行中状态
+    this.showOutput('运行中...', false, true);
+
+    try {
+      const result = await codeRunnerService.runCode({
+        code,
+        language: language as SupportedLanguage,
+        timeout: 30000
+      });
+
+      if (result.success) {
+        const output = result.stdout || '(无输出)';
+        this.showOutput(output, false);
+      } else {
+        const errorMsg = result.error || result.stderr || '执行失败';
+        this.showOutput(errorMsg, true);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.showOutput(errorMsg, true);
+    }
+  }
+
+  // 显示输出面板
+  private showOutput(content: string, isError: boolean, isLoading = false): void {
+    if (!this.containerElement) return;
+
+    const blockKey = this.block.from;
+    const savedState = codeBlockOutputStates.get(blockKey);
+
+    // 如果用户已关闭输出面板且不是新的运行请求（loading），则不显示
+    if (savedState?.isClosed && !isLoading) return;
+
+    // 新的运行请求时重置关闭状态
+    if (isLoading) {
+      codeBlockOutputStates.set(blockKey, {
+        content: '',
+        isError: false,
+        isClosed: false
+      });
+    }
+
+    // 保存输出内容（非 loading 状态时）
+    if (!isLoading) {
+      codeBlockOutputStates.set(blockKey, {
+        content,
+        isError,
+        isClosed: false
+      });
+    }
+
+    // 查找或创建输出面板
+    let outputPanel = this.containerElement.querySelector('.cm-code-block-output') as HTMLElement;
+    
+    if (!outputPanel) {
+      outputPanel = document.createElement('div');
+      outputPanel.className = 'cm-code-block-output';
+      this.containerElement.appendChild(outputPanel);
+    }
+    this.outputPanelElement = outputPanel;
+
+    // 清空并设置内容
+    outputPanel.innerHTML = '';
+    
+    // 输出头部
+    const header = document.createElement('div');
+    header.className = 'cm-code-block-output-header';
+    
+    const title = document.createElement('span');
+    title.className = 'cm-code-block-output-title';
+    title.textContent = isLoading ? '运行中' : (isError ? '错误' : '输出');
+    
+    const closeBtn = document.createElement('span');
+    closeBtn.className = 'cm-code-block-output-close';
+    closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+    closeBtn.addEventListener('click', () => {
+      const currentState = codeBlockOutputStates.get(blockKey);
+      if (currentState) {
+        codeBlockOutputStates.set(blockKey, { ...currentState, isClosed: true });
+      }
+      this.outputPanelElement = null;
+      outputPanel.remove();
+    });
+    
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    outputPanel.appendChild(header);
+    
+    // 输出内容
+    const contentEl = document.createElement('pre');
+    contentEl.className = 'cm-code-block-output-content';
+    if (isError) {
+      contentEl.classList.add('cm-code-block-output-error');
+    }
+    if (isLoading) {
+      contentEl.classList.add('cm-code-block-output-loading');
+    }
+    contentEl.textContent = content;
+    outputPanel.appendChild(contentEl);
+  }
+
+  // Widget 销毁时保存滚动位置
+  destroy(): void {
+    // 保存 Monaco 编辑器的滚动位置到 Store
+    if (this.monacoContainer) {
+      const scrollPosition = getMonacoScrollPosition(this.monacoContainer);
+      if (scrollPosition) {
+        useCodeBlockStore.getState().setBlockScrollPosition(
+          this.block.language,
+          this.block.code,
+          scrollPosition.scrollTop,
+          null
+        );
+      }
+      // 卸载 Monaco 编辑器
+      unmountMonacoFromElement(this.monacoContainer);
+    }
+  }
+
+  eq(other: CodeBlockWidget): boolean {
+    // 不比较 from 位置，因为在代码块上方插入内容时位置会变化
+    // 只比较语言和代码内容，这样可以避免位置变化导致的 Widget 重建
+    return (
+      this.block.language === other.block.language &&
+      this.block.code === other.block.code
+    );
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/**
+ * 解析代码块并创建装饰器
+ */
+function parseCodeBlockDecorations(state: EditorState): DecorationSet {
+  const blocks = parseCodeBlocks(state);
+  const decorations: { from: number; to: number; decoration: Decoration }[] = [];
+
+  for (const block of blocks) {
+    decorations.push({
+      from: block.from,
+      to: block.to,
+      decoration: Decoration.replace({
+        widget: new CodeBlockWidget(block),
+        block: true
+      })
+    });
+  }
+
+  decorations.sort((a, b) => a.from - b.from);
+  return RangeSet.of(decorations.map((d) => d.decoration.range(d.from, d.to)));
 }
 
 /**
@@ -6172,15 +7058,15 @@ function createCodeBlockDecorations(state: EditorState): DecorationSet {
  */
 const codeBlockDecorations = StateField.define<DecorationSet>({
   create(state) {
-    return createCodeBlockDecorations(state);
+    return parseCodeBlockDecorations(state);
   },
   update(decorations, tr) {
-    if (tr.docChanged || tr.selection) {
-      return createCodeBlockDecorations(tr.state);
+    if (tr.docChanged) {
+      return parseCodeBlockDecorations(tr.state);
     }
     return decorations;
   },
-  provide: f => EditorView.decorations.from(f),
+  provide: (f) => EditorView.decorations.from(f)
 });
 
 /**
@@ -7562,7 +8448,9 @@ sequenceDiagram
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged && onChange && !isInternalChange.current) {
-        const newContent = update.state.doc.toString();
+        // 获取文档内容并应用待同步的代码块名称更新
+        let newContent = update.state.doc.toString();
+        newContent = applyPendingUpdatesToContent(newContent);
         onChange(newContent);
       }
 
@@ -7709,10 +8597,55 @@ sequenceDiagram
     };
   }, [editable, mode, updateOutline]);
 
+  // 注意：代码块名称的同步已移至文档保存时处理
+  // 这样可以避免在 Widget 更新过程中触发 CodeMirror 内部错误
+
   // 监听视频标题和显示模式变化事件
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
+
+    // 代码块名称变化处理
+    const handleCodeBlockNameChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        language: string;
+        oldName: string;
+        newName: string;
+      }>;
+      const { language, oldName, newName } = customEvent.detail;
+      
+      // 使用 setTimeout 延迟执行，确保在 CodeMirror 完成当前更新周期后再执行
+      setTimeout(() => {
+        const currentView = viewRef.current;
+        if (!currentView || !currentView.dom || !currentView.dom.isConnected) return;
+        
+        // 在文档中查找匹配的代码块开始行并更新
+        const doc = currentView.state.doc;
+        for (let i = 1; i <= doc.lines; i++) {
+          const line = doc.line(i);
+          const lineText = line.text;
+          
+          // 匹配 ```language // oldName 格式
+          const oldPattern = oldName 
+            ? new RegExp(`^\`\`\`${language}\\s*\\/\\/\\s*${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
+            : new RegExp(`^\`\`\`${language}$`);
+          
+          if (oldPattern.test(lineText)) {
+            const newLineText = newName ? '```' + language + ' // ' + newName : '```' + language;
+            if (lineText !== newLineText) {
+              currentView.dispatch({
+                changes: {
+                  from: line.from,
+                  to: line.to,
+                  insert: newLineText
+                }
+              });
+            }
+            break;
+          }
+        }
+      }, 50);
+    };
 
     // 视频标题变化处理
     const handleVideoTitleChange = (event: Event) => {
@@ -7776,12 +8709,14 @@ sequenceDiagram
       }
     };
 
+    window.addEventListener('codeblock-name-change', handleCodeBlockNameChange);
     window.addEventListener('video-title-change', handleVideoTitleChange);
     window.addEventListener('video-display-mode-change', handleVideoModeChange);
     window.addEventListener('video-delete', handleVideoDelete);
     window.addEventListener('video-select-local', handleVideoSelectLocal);
 
     return () => {
+      window.removeEventListener('codeblock-name-change', handleCodeBlockNameChange);
       window.removeEventListener('video-title-change', handleVideoTitleChange);
       window.removeEventListener('video-display-mode-change', handleVideoModeChange);
       window.removeEventListener('video-delete', handleVideoDelete);

@@ -102,16 +102,7 @@
   flex-direction: column;
 }
 
-.accordion-resize-handle {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  cursor: ns-resize;
-  z-index: 10;
-}
-
+// 拖动手柄样式已统一到 styles/component/ResizeHandle.scss
 .accordion-resize-line {
   position: absolute;
   bottom: 0;

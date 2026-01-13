@@ -37,9 +37,3 @@
 .sidebar-header button:hover {
   opacity: 1;
 }
-
-.sidebar-resize-handle.resizing,
-.sidebar-resize-handle:hover {
-  background-color: var(--ws-sash-hover-border, var(--ws-focus-border));
-  opacity: 0.6;
-}

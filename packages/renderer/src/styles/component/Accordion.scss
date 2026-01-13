@@ -26,7 +26,4 @@
   overflow: auto;
 }
 
-.accordion-resize-handle:hover .accordion-resize-line,
-.accordion-resize-handle.resizing .accordion-resize-line {
-  background-color: var(--ws-focus-border);
-}
+// 拖动手柄样式已统一到 styles/component/ResizeHandle.scss

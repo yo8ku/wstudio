@@ -723,6 +723,23 @@ const Copy: IconComponent = ({ style, className }) => (
   </svg>
 );
 
+// 运行代码图标
+const CirclePlay: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"/>
+    <circle cx="12" cy="12" r="10"/>
+  </svg>
+);
+
+// 复制文件图标
+const FilesCopy: IconComponent = ({ style, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/>
+    <path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z"/>
+    <path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1"/>
+  </svg>
+);
+
 // 添加到聊天图标
 const AddToChat: IconComponent = ({ style, className }) => (
   <svg viewBox="0 0 1186 1024" fill="currentColor" style={style} className={className}>
@@ -1451,6 +1468,8 @@ export const uiIconSet: IconSet = {
     'thumb-down': ThumbDown,
     'regenerate': Regenerate,
     'copy': Copy,
+    'circle-play': CirclePlay,
+    'files-copy': FilesCopy,
     'add-to-chat': AddToChat,
     
     // 搜索引擎图标

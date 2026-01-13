@@ -26,18 +26,8 @@
   }
 
   &-resize-handle {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    z-index: 10;
-    cursor: col-resize;
+    // 样式已统一到 styles/component/ResizeHandle.scss
     // left/right 由内联样式动态控制
-
-    &.resizing,
-    &:hover {
-      opacity: 0.6;
-    }
   }
 
   &-header {

@@ -399,19 +399,7 @@
 }
 
 .column-resize-handle {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  background: transparent;
-  z-index: 10;
-
-  &:hover,
-  &.resizing {
-    background-color: var(--ws-focus-border);
-  }
+  // 样式已统一到 styles/component/ResizeHandle.scss
 }
 
 .add-column-cell {
@@ -1453,20 +1441,9 @@ thead .row-selector-cell {
   flex-direction: column;
   background-color: var(--ws-editor-background);
 
-  // 拖动手柄
+  // 拖动手柄（样式已统一到 styles/component/ResizeHandle.scss）
   .query-panel-resize-handle {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    cursor: ew-resize;
-    z-index: 10;
-
-    &:hover,
-    &.resizing {
-      background-color: var(--ws-focus-border);
-    }
+    // 布局样式已统一
   }
 
   // 全屏模式

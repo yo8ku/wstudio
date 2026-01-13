@@ -29,7 +29,6 @@ const COLLAPSE_THRESHOLD = 150; // 小于此宽度时自动收缩
 export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
-  const [isHoveringHandle, setIsHoveringHandle] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -519,16 +518,8 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
       </div>
 
       <div
-        className={`sidebar-resize-handle ${isResizing ? 'resizing' : ''}`}
-        style={{
-          backgroundColor: (isResizing || isHoveringHandle) ? '#7e57c2cc' : 'transparent',
-          opacity: (isResizing || isHoveringHandle) ? undefined : 0,
-          right: sidebarPosition === 'left' ? '-2px' : 'auto',
-          left: sidebarPosition === 'right' ? '-2px' : 'auto',
-        }}
+        className={`sidebar-resize-handle ${isResizing ? 'resizing' : ''} ${sidebarPosition === 'right' ? 'sidebar-resize-handle--left' : ''}`}
         onMouseDown={handleMouseDown}
-        onMouseEnter={() => setIsHoveringHandle(true)}
-        onMouseLeave={() => setIsHoveringHandle(false)}
       />
 
       {/* 下拉菜单 */}

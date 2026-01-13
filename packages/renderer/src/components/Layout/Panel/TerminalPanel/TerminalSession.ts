@@ -22,6 +22,8 @@ export class TerminalSession {
   private terminal: Terminal;
   private fitAddon: FitAddon;
   private container: HTMLElement | null = null;
+  private cursorBlinkInterval: ReturnType<typeof setInterval> | null = null;
+  private isComposing: boolean = false;
   
   public id: string = '';
   public shell: string;
@@ -36,9 +38,10 @@ export class TerminalSession {
     
     // 创建 xterm.js 终端实例
     this.terminal = new Terminal({
-      cursorBlink: true,
+      cursorBlink: false, // 禁用原生闪烁，使用自定义实现
+      cursorStyle: 'block',
       fontSize: 14,
-      fontFamily: 'Consolas, "Courier New", monospace',
+      fontFamily: '"Cascadia Mono", "Microsoft YaHei", monospace',
       theme: {
         background: '#1e1e1e',
         foreground: '#cccccc',
@@ -180,7 +183,70 @@ export class TerminalSession {
     // 在终端打开后，绑定右键粘贴事件
     this.setupContextMenuPaste();
     
+    // 设置输入法编辑时隐藏光标
+    this.setupIMECursorHiding();
+    
+    // 设置光标样式为竖线
+    this.terminal.write('\x1b[6 q'); // DECSCUSR: 6 = 竖线闪烁
+    
+    // 启动光标闪烁
+    this.startCursorBlink();
+    
+    // 聚焦终端
     this.terminal.focus();
+    
+    // 点击容器时聚焦终端
+    container.addEventListener('click', () => {
+      this.terminal.focus();
+    });
+  }
+
+  /**
+   * 启动光标闪烁
+   */
+  private startCursorBlink(): void {
+    let visible = true;
+    
+    this.cursorBlinkInterval = setInterval(() => {
+      // 输入法编辑时不闪烁，保持隐藏
+      if (this.isComposing) {
+        this.terminal.write('\x1b[?25l'); // 隐藏光标
+        return;
+      }
+      
+      visible = !visible;
+      if (visible) {
+        this.terminal.write('\x1b[?25h'); // 显示光标
+      } else {
+        this.terminal.write('\x1b[?25l'); // 隐藏光标
+      }
+    }, 530); // 闪烁间隔
+  }
+
+  /**
+   * 设置光标透明度（已废弃）
+   */
+  private setCursorOpacity(_opacity: number): void {
+    // 不再使用
+  }
+
+  /**
+   * 设置输入法编辑时隐藏光标
+   */
+  private setupIMECursorHiding(): void {
+    const textarea = this.container?.querySelector('.xterm-helper-textarea');
+    if (!textarea || !this.container) return;
+    
+    // 输入法开始编辑时隐藏光标
+    textarea.addEventListener('compositionstart', () => {
+      this.isComposing = true;
+      this.setCursorOpacity(0);
+    });
+    
+    // 输入法结束编辑时显示光标
+    textarea.addEventListener('compositionend', () => {
+      this.isComposing = false;
+    });
   }
 
   /**
@@ -376,6 +442,12 @@ export class TerminalSession {
    * 销毁终端
    */
   public dispose(): void {
+    // 停止光标闪烁
+    if (this.cursorBlinkInterval) {
+      clearInterval(this.cursorBlinkInterval);
+      this.cursorBlinkInterval = null;
+    }
+    
     const terminalAPI = getTerminalAPI();
     if (this.id && terminalAPI) {
       terminalAPI.destroy(this.id);

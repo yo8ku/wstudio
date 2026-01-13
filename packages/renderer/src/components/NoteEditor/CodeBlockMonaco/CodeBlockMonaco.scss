@@ -1,0 +1,125 @@
+/**
+ * Monaco 代码块编辑器样式
+ * 功能：定义 Monaco Editor 在代码块中的样式
+ */
+
+.code-block-monaco {
+  width: 100%;
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+
+  &.is-resizing {
+    user-select: none;
+  }
+
+  // 编辑器区域
+  .code-block-monaco-editor {
+    min-height: 60px;
+    overflow: hidden;
+  }
+
+  // Monaco 编辑器容器
+  .monaco-editor {
+    // 移除 Monaco 默认边框
+    border: none !important;
+    outline: none !important;
+
+    // 移除编辑器外层边框
+    &.focused {
+      outline: none !important;
+    }
+
+    // 行号区域
+    .margin {
+      background-color: transparent !important;
+      border: none !important;
+    }
+
+    // 编辑区域背景
+    .monaco-editor-background {
+      background-color: transparent !important;
+    }
+
+    // 当前行高亮
+    .current-line {
+      border: none !important;
+    }
+
+    // 移除溢出保护边框
+    .overflow-guard {
+      border: none !important;
+      outline: none !important;
+    }
+
+    // 移除编辑器内容区域边框
+    .lines-content {
+      border: none !important;
+    }
+
+    // 滚动条
+    .scrollbar {
+      .slider {
+        border-radius: 4px;
+      }
+    }
+  }
+
+  // 移除 react-monaco-editor 包装器边框
+  .monaco-editor-wrapper {
+    border: none !important;
+    outline: none !important;
+  }
+
+  // 移除 section 边框
+  section {
+    border: none !important;
+    outline: none !important;
+  }
+
+  // 拖动调整高度手柄 - 绝对定位浮动在底部边框上
+  .code-block-monaco-resize-handle {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 12px;
+    width: 60px;
+    cursor: ns-resize;
+    z-index: 10;
+
+    &:hover {
+      .code-block-monaco-resize-bar {
+        background-color: var(--ws-scrollbarSlider-hoverBackground);
+      }
+    }
+
+    &:active {
+      .code-block-monaco-resize-bar {
+        background-color: var(--ws-scrollbarSlider-activeBackground);
+      }
+    }
+  }
+
+  // 拖动条
+  .code-block-monaco-resize-bar {
+    width: 48px;
+    height: 4px;
+    border-radius: 2px;
+    background-color: var(--ws-scrollbarSlider-background);
+  }
+}
+
+// 加载状态
+.code-block-monaco-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60px;
+  color: var(--ws-descriptionForeground);
+  font-size: 13px;
+}

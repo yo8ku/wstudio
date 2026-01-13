@@ -1,38 +1,7 @@
 /**
- * 通用拖动调整大小手柄样式
- * 调整大小手柄
+ * ResizeHandle 组件样式
+ * 通用拖动调整大小手柄
+ * 注意：基础样式已统一到 styles/component/ResizeHandle.scss
  */
 
-.resize-handle {
-  position: absolute;
-  z-index: 10;
-  
-  // 垂直方向（上下拖动，调整高度�?
-  &--vertical {
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    cursor: ns-resize;
-    
-    &:hover {
-    }
-  }
-  
-  // 水平方向（左右拖动，调整宽度�?
-  &--horizontal {
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 4px;
-    cursor: ew-resize;
-    
-    &:hover {
-    }
-  }
-  
-  // 正在调整大小�?
-  &--resizing {
-  }
-}
-
+// 组件特定的样式覆盖（如果需要）
