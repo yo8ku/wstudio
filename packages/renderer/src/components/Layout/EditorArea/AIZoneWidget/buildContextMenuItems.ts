@@ -7,7 +7,6 @@
 import type { SelectGroup, SelectItem } from '../../../common/Select/Select';
 import { snippetService } from '../../../../services/SnippetService';
 import { knowledgeBaseService } from '../../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
-import { aiAgentService } from '../../../../services/AIAgentService';
 import { tableReferenceService } from '../../../../services/tableReference/TableReferenceService';
 import { Icon } from '../../../Icons/Icon';
 import React from 'react';
@@ -407,50 +406,6 @@ export async function buildLevel2MenuItems(
           ],
         });
       }
-    }
-  } else if (category === 'category-ai-agent') {
-    // AI 智能体二级菜单
-    try {
-      const agents = await aiAgentService.getAllAgents();
-      
-      if (agents.length > 0) {
-        const agentItems: SelectItem[] = agents.map((agent) => ({
-          value: `agent-${agent.id}`,
-          label: `${agent.emoji} ${agent.name}`,
-          icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
-        }));
-
-        groups.push({
-          groupName: 'AI 智能体',
-          items: agentItems,
-        });
-      } else {
-        // 如果没有智能体，显示提示
-        groups.push({
-          groupName: 'AI 智能体',
-          items: [
-            {
-              value: 'no-agent',
-              label: '暂无智能体',
-              icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
-              disabled: true,
-            },
-          ],
-        });
-      }
-    } catch (error) {
-      console.error('[buildContextMenuItems] 获取AI智能体失败:', error);
-      groups.push({
-        groupName: 'AI 智能体',
-        items: [
-          {
-            value: 'error',
-            label: '获取智能体失败',
-            icon: React.createElement(Icon, { iconSet: 'ui', name: 'ai-agent', size: 14 }),
-            disabled: true,
-          },
-        ],
-      });
     }
   } else if (category === 'category-prompts') {
     // 提示词二级菜单（移除代码相关的）

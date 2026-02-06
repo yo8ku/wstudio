@@ -19,7 +19,6 @@ export { KnowledgeBaseView } from './KnowledgeBaseView';
 export type { KnowledgeBaseViewProps } from './KnowledgeBaseView';
 export { AddFileMenu } from './AddFileMenu';
 export { Breadcrumb } from './Breadcrumb';
-export { AIAgentView } from './AIAgentView';
 
 // 主编辑器区域组件
 export { EditorArea } from './EditorArea/EditorArea';

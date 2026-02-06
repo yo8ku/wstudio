@@ -13,7 +13,6 @@ export interface ActivityBarVisibility {
   extensions: boolean;
   knowledgeBase: boolean;
   aiModel: boolean;
-  aiAgent: boolean;
 }
 
 export type SidebarPosition = 'left' | 'right';
@@ -44,7 +43,6 @@ export const useActivityBarStore = create<ActivityBarStore>()(
         extensions: true,
         knowledgeBase: true,
         aiModel: true,
-        aiAgent: true,
       },
       sidebarPosition: 'left',
       

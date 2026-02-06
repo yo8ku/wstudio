@@ -99,7 +99,6 @@ function registerCommonAliases(): void {
     'extensions': 'ui:extensions',
     'knowledge-base': 'ui:knowledge-base',
     'ai-model': 'ui:ai-model',
-    'ai-agent': 'ui:ai-agent',
     'settings-activity': 'ui:settings-activity',
     'user': 'ui:user',
     'menu': 'ui:menu',

@@ -18,11 +18,9 @@ import { SettingsView } from '../../../Settings/SettingsView';
 import { MarkdownPreview } from '../../../Editor/MarkdownPreview';
 import { KnowledgeBaseView } from '../KnowledgeBaseView';
 import { AIConfigView } from '../../../AIConfig/AIConfigView';
-import { AIAgentView } from '../AIAgentView';
 import { ExtensionManagerView } from '../ExtensionManagerView';
 import { ResizableDivider } from '../ResizableDivider';
 import { LanceDBView } from '../LanceDBView';
-import { DatabaseView } from '../DatabaseView';
 import { TableDesigner } from '../TableDesigner';
 import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
@@ -40,13 +38,12 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'ai-agent' | 'extension-manager' | 'lancedb-view' | 'database-view' | 'table-designer' | 'mermaid-designer';
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer';
   isPreview?: boolean;  // 新增：是否为预览模式（单击打开）
   sourceTabId?: string;  // 新增：预览标签页关联的源文件标签页ID
   knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 知识库数据（用于 knowledge 类型）
   configId?: string;  // 新增：AI配置ID（用于 ai-config 类型，优先使用此字段）
   configIndex?: number;  // 已废弃：AI配置索引（用于 ai-config 类型，保留用于向后兼容）
-  agentData?: { categoryId: string; categoryName: string };  // 新增：AI智能体数据（用于 ai-agent 类型）
   mermaidData?: { code: string; title: string };  // Mermaid 流程图数据（用于 mermaid-designer 类型）
   formId?: string;  // 表单ID（用于 table-designer 类型）
 }
@@ -549,21 +546,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
-    const handleOpenDatabaseView = () => {
-      setTabs(currentTabs => {
-        // 每次都创建新的数据库设计器标签页
-        const newTab: EditorTab = {
-          id: `database-view-${Date.now()}`,
-          title: '数据库设计器',
-          path: `database-view:/${Date.now()}`,
-          isDirty: false,
-          type: 'database-view'
-        };
-        setTimeout(() => setActiveTabId(newTab.id), 0);
-        return [...currentTabs, newTab];
-      });
-    };
-
     // 打开表格设计器
     const handleOpenTableDesigner = (event: Event) => {
       const customEvent = event as CustomEvent<{ formId?: string; formName?: string; newTab?: boolean }>;
@@ -617,7 +599,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('open-settings', handleOpenSettings);
     window.addEventListener('open-extension-manager', handleOpenExtensionManager);
     window.addEventListener('open-lancedb-view', handleOpenLanceDBView);
-    window.addEventListener('open-database-view', handleOpenDatabaseView);
     window.addEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
     window.addEventListener('open-form-view', handleOpenTableDesigner as EventListener);
     window.addEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
@@ -659,7 +640,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-settings', handleOpenSettings);
       window.removeEventListener('open-extension-manager', handleOpenExtensionManager);
       window.removeEventListener('open-lancedb-view', handleOpenLanceDBView);
-      window.removeEventListener('open-database-view', handleOpenDatabaseView);
       window.removeEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
       window.removeEventListener('open-form-view', handleOpenTableDesigner as EventListener);
       window.removeEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
@@ -995,57 +975,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('knowledge-base-updated', handleKnowledgeBaseUpdated as EventListener);
     };
   }, []);
-
-  // 监听打开AI智能体事件（独立的 useEffect，无依赖）
-  useEffect(() => {
-    const handleOpenAIAgent = (event: Event) => {
-      const customEvent = event as CustomEvent<{ 
-        categoryId: string;
-        categoryName: string;
-      }>;
-      const { categoryId, categoryName } = customEvent.detail;
-      
-      setTabs(prev => {
-        // 查找是否已存在AI智能体类型的标签页（始终只能有一个）
-        const existingAgentTab = prev.find(tab => tab.type === 'ai-agent');
-        
-        if (existingAgentTab) {
-          // 如果已存在AI智能体标签页，更新其数据
-          setActiveTabId(existingAgentTab.id);
-          console.log('[EditorArea] 更新AI智能体标签页:', categoryName);
-          return prev.map(tab => 
-            tab.id === existingAgentTab.id 
-              ? { 
-                  ...tab, 
-                  title: `智能体 - ${categoryName}`,
-                  path: `ai-agent:/${categoryId}`,
-                  agentData: { categoryId, categoryName } 
-                } 
-              : tab
-          );
-        } else {
-          // 创建新的AI智能体标签页（首次打开）
-          const newTab: EditorTab = {
-            id: `ai-agent-${Date.now()}`,
-            title: `智能体 - ${categoryName}`,
-            path: `ai-agent:/${categoryId}`,
-            isDirty: false,
-            type: 'ai-agent',
-            agentData: { categoryId, categoryName }
-          };
-          setActiveTabId(newTab.id);
-          console.log('[EditorArea] 创建AI智能体标签页:', categoryName);
-          return [...prev, newTab];
-        }
-      });
-    };
-
-    window.addEventListener('open-ai-agent', handleOpenAIAgent as EventListener);
-    
-    return () => {
-      window.removeEventListener('open-ai-agent', handleOpenAIAgent as EventListener);
-    };
-  }, []); // 无依赖，只注册一次
 
   // 监听打开 AI 配置事件（独立的 useEffect，无依赖）
   useEffect(() => {
@@ -1677,7 +1606,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           )}
 
           {/* 左侧面包屑 */}
-          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'ai-agent' && activeTab.type !== 'lancedb-view' && (
+          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && (
             <Breadcrumb path={activeTab.path} />
           )}
 
@@ -1711,9 +1640,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   {tab.type === 'extension-manager' && <ExtensionManagerView />}
                   
                   {tab.type === 'lancedb-view' && <LanceDBView />}
-                  
-                  {tab.type === 'database-view' && <DatabaseView />}
-                  
+
                   {tab.type === 'table-designer' && <TableDesigner formId={tab.formId} />}
                   
                   {tab.type === 'mermaid-designer' && (
@@ -1726,14 +1653,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   {tab.type === 'ai-config' && (
                     <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />
                   )}
-                  
-                  {tab.type === 'ai-agent' && (
-                    <AIAgentView 
-                      categoryId={tab.agentData?.categoryId || ''} 
-                      categoryName={tab.agentData?.categoryName || ''}
-                    />
-                  )}
-                  
+
                   {tab.type === 'markdown-preview' && (
                     <MarkdownPreview 
                       content={tab.content || ''} 
@@ -1882,7 +1802,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             )}
 
             {/* 右侧面包屑 */}
-            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'ai-agent' && rightActiveTab.type !== 'lancedb-view' && (
+            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && (
               <Breadcrumb path={rightActiveTab.path} />
             )}
 
@@ -1903,9 +1823,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     {tab.type === 'extension-manager' && <ExtensionManagerView />}
                     
                     {tab.type === 'lancedb-view' && <LanceDBView />}
-                    
-                    {tab.type === 'database-view' && <DatabaseView />}
-                    
+
                     {tab.type === 'table-designer' && <TableDesigner formId={tab.formId} />}
                     
                     {tab.type === 'mermaid-designer' && (
@@ -1918,14 +1836,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     {tab.type === 'ai-config' && (
                       <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />
                     )}
-                    
-                    {tab.type === 'ai-agent' && (
-                      <AIAgentView 
-                        categoryId={tab.agentData?.categoryId || ''} 
-                        categoryName={tab.agentData?.categoryName || ''}
-                      />
-                    )}
-                    
+
                     {tab.type === 'markdown-preview' && (
                       <MarkdownPreview 
                         content={tab.content || ''} 

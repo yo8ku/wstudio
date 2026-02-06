@@ -12,7 +12,6 @@ import { Icon } from '../../Icons/Icon';
 import { EditIcon } from '../../Icons/EditIcon';
 import { createPortal } from 'react-dom';
 import { ChatHistory } from './ChatHistory';
-import { aiAgentService } from '../../../services/AIAgentService';
 import { AIChatSettings, DEFAULT_CHAT_SETTINGS, type AIChatSettingsConfig, SEARCH_ENGINES } from '../../AIChatSettings';
 import { electronStore } from '../../../services/ElectronStoreService';
 import { ModelThinking, type ThinkingStep } from '../../ModeThinking';
@@ -141,9 +140,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [isLoading, setIsLoading] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
-  const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
-  const [myAgents, setMyAgents] = useState<Array<{id: string; name: string; emoji: string}>>([]);
-  const [isLoadingAgents, setIsLoadingAgents] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
@@ -168,8 +164,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const contextButtonRef = useRef<HTMLButtonElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const agentButtonRef = useRef<HTMLButtonElement>(null);
-  const agentMenuRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const headerContextMenuRef = useRef<HTMLDivElement>(null);
   const historyButtonRef = useRef<HTMLButtonElement>(null);
@@ -688,41 +682,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     };
   }, [isContextMenuOpen]);
 
-  // 点击外部关闭 AI 智能体菜单
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        isAgentMenuOpen &&
-        agentMenuRef.current &&
-        agentButtonRef.current &&
-        !agentMenuRef.current.contains(event.target as Node) &&
-        !agentButtonRef.current.contains(event.target as Node)
-      ) {
-        setIsAgentMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isAgentMenuOpen]);
-
-  // 监听 AI 智能体更新事件
-  useEffect(() => {
-    const handleAgentUpdated = () => {
-      console.log('[AIChatPanel] 收到智能体更新事件，重新加载');
-      if (isAgentMenuOpen) {
-        loadMyAgents();
-      }
-    };
-
-    window.addEventListener('ai-agent-updated', handleAgentUpdated);
-    return () => {
-      window.removeEventListener('ai-agent-updated', handleAgentUpdated);
-    };
-  }, [isAgentMenuOpen]);
-
   // 点击外部关闭 header 右键菜单
   useEffect(() => {
     if (!headerContextMenu) return;
@@ -796,37 +755,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     }
   };
 
-  // 切换 AI 智能体菜单
-  const toggleAgentMenu = async () => {
-    const newState = !isAgentMenuOpen;
-    setIsAgentMenuOpen(newState);
-    console.log(`[AIChatPanel] AI智能体菜单状态变为: ${newState ? '打开' : '关闭'}`);
-    
-    // 打开菜单时加载"我的"智能体
-    if (newState) {
-      await loadMyAgents();
-    }
-  };
-
-  // 加载"我的"智能体列表
-  const loadMyAgents = async () => {
-    setIsLoadingAgents(true);
-    try {
-      const agents = await aiAgentService.getMyAgents();
-      setMyAgents(agents.map(agent => ({
-        id: agent.id,
-        name: agent.name,
-        emoji: agent.emoji
-      })));
-      console.log(`[AIChatPanel] 加载到 ${agents.length} 个我的智能体`);
-    } catch (error) {
-      console.error('[AIChatPanel] 加载我的智能体失败:', error);
-      setMyAgents([]);
-    } finally {
-      setIsLoadingAgents(false);
-    }
-  };
-
   // 处理上下文菜单项点击
   const handleContextMenuItemClick = (action: string) => {
     console.log(`[AIChatPanel] 上下文菜单点击: ${action}`);
@@ -855,16 +783,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       default:
         console.warn(`[AIChatPanel] 未知的上下文菜单操作: ${action}`);
     }
-  };
-
-  // 处理 AI 智能体选择
-  const handleAgentSelect = (agentId: string) => {
-    console.log(`[AIChatPanel] 选择AI智能体: ${agentId}`);
-    setIsAgentMenuOpen(false);
-    // TODO: 实现 AI 智能体切换逻辑
-    window.dispatchEvent(new CustomEvent('agent-selected', { 
-      detail: { agentId } 
-    }));
   };
 
   const handleSend = async () => {
@@ -1640,76 +1558,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               </div>
             )}
 
-            {/* AI 智能体按钮 */}
-            <button 
-              ref={agentButtonRef}
-              className={`agent-button ${isAgentMenuOpen ? 'active' : ''}`}
-              onClick={toggleAgentMenu}
-              title="AI 智能体"
-            >
-              <Icon name="ai-agent" size={16} />
-            </button>
-
-            {/* AI 智能体菜单 */}
-            {isAgentMenuOpen && (
-              <div ref={agentMenuRef} className="agent-menu menu">
-                {/* 创建智能体选项 - 始终显示 */}
-                <div 
-                  className="agent-menu-item menu-item agent-menu-create"
-                  onClick={() => {
-                    setIsAgentMenuOpen(false);
-                    // 触发打开 AI 智能体侧边栏的"我的"分类
-                    window.dispatchEvent(new CustomEvent('open-ai-agent', {
-                      detail: { categoryId: 'my', categoryName: '我的' }
-                    }));
-                  }}
-                >
-                  <Icon name="plus" size={16} />
-                  <span className="agent-menu-item-text">创建智能体</span>
-                </div>
-
-                {/* 分隔线 */}
-                {!isLoadingAgents && myAgents.length > 0 && (
-                  <div className="agent-menu-divider"></div>
-                )}
-
-                {isLoadingAgents ? (
-                  <div className="agent-menu-loading">
-                    <span>加载中...</span>
-                  </div>
-                ) : myAgents.length > 0 ? (
-                  myAgents.map(agent => (
-                    <div 
-                      key={agent.id} 
-                      className="agent-menu-item menu-item"
-                    >
-                      <div 
-                        className="agent-menu-item-content"
-                        onClick={() => handleAgentSelect(agent.id)}
-                      >
-                        <span className="agent-emoji">{agent.emoji}</span>
-                        <span className="agent-menu-item-text">{agent.name}</span>
-                      </div>
-                      <EditIcon 
-                        size={14}
-                        className="agent-menu-item-edit"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log('[AIChatPanel] 编辑智能体:', agent.id);
-                          // TODO: 实现编辑功能
-                        }}
-                      />
-                    </div>
-                  ))
-                ) : (
-                  <div className="agent-menu-empty">
-                    <Icon name="empty-state" size={32} color="var(--ws-description-foreground)" />
-                    <span className="agent-menu-empty-text">暂无智能体</span>
-                  </div>
-                )}
-              </div>
-            )}
-            
             <button
               className={`deep-thinking-button ${isDeepThinkingEnabled ? 'active' : ''}`}
               onClick={() => setIsDeepThinkingEnabled(!isDeepThinkingEnabled)}

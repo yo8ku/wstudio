@@ -6,7 +6,6 @@ import { SourceControl } from '../SourceControl/SourceControl';
 import { Extensions } from '../Extensions/Extensions';
 import { KnowledgeBase } from '../KnowledgeBase/KnowledgeBase';
 import { AIModel } from '../AIModel/AIModel';
-import { AIAgent } from '../AIAgent/AIAgent';
 import { Settings } from '../Settings/Settings';
 import { UserSidebar } from '../User/UserSidebar';
 import { NotionIcon, YuqueIcon, JoplinIcon, ObsidianIcon, SiyuanIcon, FeishuIcon, KouziIcon } from '../../../Icons';
@@ -282,27 +281,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
         // AI 模型菜单（AI 模型视图不显示标题栏，所以不需要菜单）
         return [];
       
-      case 'ai-agent':
-        // AI 智能体菜单
-        return [
-          {
-            id: 'create-agent',
-            label: '创建智能体',
-            onClick: () => {
-              console.log('创建智能体');
-              // TODO: 实现创建智能体功能
-            }
-          },
-          {
-            id: 'refresh-agents',
-            label: '刷新',
-            onClick: () => {
-              console.log('刷新智能体');
-              // TODO: 实现刷新智能体功能
-            }
-          }
-        ];
-      
       case 'user':
         // 用户菜单
         return [
@@ -382,8 +360,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
         return <KnowledgeBase />;
       case 'ai-model':
         return <AIModel />;
-      case 'ai-agent':
-        return <AIAgent />;
       case 'user':
         return <UserSidebar />;
       case 'settings':
@@ -395,7 +371,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
 
   const getTitle = () => {
     const titles: Record<ActivityBarItem, string> = {
-      'ai-agent': 'AI 智能体',
       'explorer': '资源管理器',
       'search': '搜索',
       'source-control': '源文件管理',

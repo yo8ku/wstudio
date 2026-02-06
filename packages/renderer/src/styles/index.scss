@@ -128,7 +128,6 @@ body.background-image-enabled .ai-zone-border {
 
 
 
-body.background-image-enabled .ai-agent-view-tabs,
 body.background-image-enabled .titleBar {
   // border-bottom: 1px solid  #8b8b8b52;
 }
@@ -157,14 +156,6 @@ body.background-image-enabled .input[type=text] {
   border-radius: 4px !important;
 }
 
-
-body.background-image-enabled .ai-agent-card {
-  border: 1px solid #8b8b8b52 !important;
-
-  &:hover {
-    border: 1px solid var(--ws-menu-selectionForeground) !important;
-  }
-}
 
 body.background-image-enabled .right-sidebar,
 body.background-image-enabled .tab-bar,

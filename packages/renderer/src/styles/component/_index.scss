@@ -103,29 +103,17 @@
 // AIConfig AI配置
 @use './AIConfig.scss';
 
-// AIAgent AI代理
-@use './AIAgent.scss';
-
 // AIChatPanel AI聊天面板
 @use './AIChatPanel.scss';
 
 // AIModel AI模型
 @use './AIModel.scss';
 
-// ModelCapabilityBadge 模型能力徽章
-@use './ModelCapabilityBadge.scss';
-
 // KnowledgeBase 知识库
 @use './KnowledgeBase.scss';
 
-// CreateAgentDialog 创建代理对话框
-@use './CreateAgentDialog.scss';
-
 // ImportNoteDialog 导入笔记对话框
 @use './ImportNoteDialog.scss';
-
-// EmojiPicker 表情选择器
-@use './EmojiPicker.scss';
 
 // Extensions 扩展
 @use './Extensions.scss';

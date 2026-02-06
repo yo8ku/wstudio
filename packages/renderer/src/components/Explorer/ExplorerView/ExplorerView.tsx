@@ -5,7 +5,6 @@ import React, { useEffect } from 'react';
 import { OpenEditorsSection } from '../OpenEditors/OpenEditorsSection';
 import { FileTreeSection } from '../FileTree/FileTreeSection';
 import { OutlineSection } from '../Outline/OutlineSection';
-import { DatabaseSection } from '../Database';
 import { FileTreeNode, EditorInfo } from '../FileTree/types';
 import { OutlineNode } from '../Outline/types';
 import { useExplorerStore } from '../../../stores/explorerStore';
@@ -85,13 +84,11 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     isOpenEditorsExpanded,
     isFileTreeExpanded,
     isOutlineExpanded,
-    isDatabaseExpanded,
     setSelectedFile,
     setSelectedOutlineNode,
     setOpenEditorsExpanded,
     setFileTreeExpanded,
     setOutlineExpanded,
-    setDatabaseExpanded,
   } = useExplorerStore();
 
   // 监听 openEditors 变化，如果有文件打开且当前是折叠状态，则自动展开
@@ -182,17 +179,6 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
           onCollapseAll={onCollapseAll}
           onExpandedChange={setFileTreeExpanded}
           onBlankAreaClick={onBlankAreaClick}
-        />
-      </div>
-
-      {/* 数据库 */}
-      <div className="database-wrapper">
-        <DatabaseSection
-          databases={[]}
-          onNewDatabase={() => {
-            window.dispatchEvent(new CustomEvent('open-database-view'));
-          }}
-          onExpandedChange={setDatabaseExpanded}
         />
       </div>
 

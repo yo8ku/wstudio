@@ -17,6 +17,11 @@ LaenceDBView/
 # 忽略临时文档
 docs/
 
+.claude/
+
+.kiro/
+
+
 __pycache__/
 *.pyc
 *.py

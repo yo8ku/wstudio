@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"git restore packages/renderer/src/components/Explorer/Form/ packages/renderer/src/components/Layout/EditorArea/TableDesigner/ packages/renderer/src/components/NoteEditor/AtReferenceMenu/ packages/renderer/src/components/NoteEditor/TableReferenceWidget/ packages/renderer/src/services/tableData/ packages/renderer/src/services/tableReference/\")"
+    ]
+  }
+}

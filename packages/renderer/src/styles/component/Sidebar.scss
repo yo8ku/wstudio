@@ -8,6 +8,7 @@
 .sidebar[data-position="left"] {
   background-color: var(--ws-sideBar-background);
   border-right:1px solid var(--ws-border-background);
+  color:var(--ws-list-foreground);
 }
 
 
@@ -16,9 +17,6 @@
   border-left:1px solid var(--ws-border-background);
 }
 
-.sidebar-content{
- 
-}
 
 .sidebar[data-position="right"] {
   // 样式

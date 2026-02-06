@@ -66,19 +66,7 @@ interface StoreSchema {
   'explorer-config': {
     showOpenEditors?: boolean;
   };
-  
-  // AI 智能体配置
-  'ai-agents': Array<{
-    id: string;
-    name: string;
-    emoji: string;
-    prompt: string;
-    knowledgeBaseIds: string[];
-    category?: string;  // 分类：'my' | 'featured' | 'profession' 等
-    createdAt: number;
-    updatedAt: number;
-  }>;
-  
+
   // AI 聊天设置
   'ai-chat-settings': {
     temperature: number;
