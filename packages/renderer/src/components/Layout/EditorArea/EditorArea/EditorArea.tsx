@@ -24,6 +24,7 @@ import { LanceDBView } from '../LanceDBView';
 import { TableDesigner } from '../TableDesigner';
 import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
+import { SkillsMarketView } from '../SkillsMarketView';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { saveAndRemoveTableDataService } from '../../../../services/tableData';
@@ -38,7 +39,7 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer';
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market';
   isPreview?: boolean;  // 新增：是否为预览模式（单击打开）
   sourceTabId?: string;  // 新增：预览标签页关联的源文件标签页ID
   knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 知识库数据（用于 knowledge 类型）
@@ -580,7 +581,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     const handleOpenMermaidDesigner = (event: Event) => {
       const customEvent = event as CustomEvent<{ code: string; title: string }>;
       const { code, title } = customEvent.detail;
-      
+
       setTabs(currentTabs => {
         const newTab: EditorTab = {
           id: `mermaid-designer-${Date.now()}`,
@@ -595,6 +596,29 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
+    // 打开 Skills 市场
+    const handleOpenSkillsMarket = () => {
+      setTabs(currentTabs => {
+        // 检查是否已经有 Skills 市场标签页
+        const existingTab = currentTabs.find(tab => tab.type === 'skills-market');
+
+        if (existingTab) {
+          setTimeout(() => setActiveTabId(existingTab.id), 0);
+          return currentTabs;
+        } else {
+          const newTab: EditorTab = {
+            id: `skills-market-${Date.now()}`,
+            title: 'Skills 市场',
+            path: 'skills-market:/',
+            isDirty: false,
+            type: 'skills-market'
+          };
+          setTimeout(() => setActiveTabId(newTab.id), 0);
+          return [...currentTabs, newTab];
+        }
+      });
+    };
+
     window.addEventListener('open-file', handleOpenFile as EventListener);
     window.addEventListener('open-settings', handleOpenSettings);
     window.addEventListener('open-extension-manager', handleOpenExtensionManager);
@@ -602,6 +626,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
     window.addEventListener('open-form-view', handleOpenTableDesigner as EventListener);
     window.addEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
+    window.addEventListener('open-skill-market', handleOpenSkillsMarket);
     window.addEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
     
@@ -643,6 +668,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
       window.removeEventListener('open-form-view', handleOpenTableDesigner as EventListener);
       window.removeEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
+      window.removeEventListener('open-skill-market', handleOpenSkillsMarket);
       window.removeEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
       window.removeEventListener('close-all-editors', handleCloseAllEditors);
@@ -1649,7 +1675,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       title={tab.mermaidData?.title}
                     />
                   )}
-                  
+
+                  {tab.type === 'skills-market' && <SkillsMarketView />}
+
                   {tab.type === 'ai-config' && (
                     <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />
                   )}
@@ -1832,7 +1860,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                         title={tab.mermaidData?.title}
                       />
                     )}
-                    
+
+                    {tab.type === 'skills-market' && <SkillsMarketView />}
+
                     {tab.type === 'ai-config' && (
                       <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />
                     )}

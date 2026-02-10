@@ -384,6 +384,21 @@
       line-height: 1;
     }
 
+    .slash-icon {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--ws-foreground);
+      opacity: 0.7;
+    }
+
+    &:hover .slash-icon {
+      opacity: 1;
+    }
+
+    &.active .slash-icon {
+      opacity: 1;
+      color: var(--ws-accent);
+    }
   }
 
   .deep-thinking-button,
@@ -414,51 +429,243 @@
     }
   }
 
-  // 菜单
+  // 当前打开的文件指示器
+  .current-file-indicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--ws-descriptionForeground);
+    border: 1px dashed #6d7681;
+    max-width: 150px;
+    overflow: hidden;
+
+    svg {
+      flex-shrink: 0;
+      width: 14px;
+      height: 14px;
+    }
+
+    .current-file-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  // 命令菜单
   .context-menu {
     position: absolute;
-    bottom: 100%;
+    bottom: calc(100% + 14px);
     left: 0;
-    margin-bottom: 11px;
-    min-width: 220px;
-    border-radius: 6px;
-    padding: 4px;
+    right: 0;
+    width: 100%;
+    max-height: 300px;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    padding: 8px;
     z-index: 1000;
+    background-color: var(--ws-dropdown-background);
+    border: 1px solid var(--ws-dropdown-border);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 
-    // ����������
+    // 搜索框 - 吸顶
     .context-menu-search {
+      flex-shrink: 0;
       padding: 4px;
       margin-bottom: 4px;
-      border-bottom: 1px solid var(--ws-sidebar-border);
 
       .context-menu-search-input {
         width: 100%;
-        padding: 3px 0px;
-        border-radius: 4px;
+        padding: 6px 7px;
         font-size: 13px;
         outline: none;
-        transition: none;
+        border: 1px solid transparent;
+
+        &::placeholder {
+          color: var(--ws-input-placeholderForeground);
+        }
+      }
+    }
+
+    // 滚动内容区域
+    .context-menu-content {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 6px;
+
+      &::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background-color: var(--ws-scrollbarSlider-background);
+        border-radius: 3px;
       }
     }
 
     .context-menu-item {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
+      gap: 12px;
       cursor: pointer;
+      padding-left: 10px;
+      padding-right: 8px;
+      margin-bottom: 3px;
+      height: 29px;
       border-radius: 4px;
       font-size: 13px;
       transition: none;
+      color: var(--ws-dropdown-foreground);
 
       .context-menu-item-text {
         flex: 1;
         white-space: nowrap;
       }
 
+      &:hover {
+        background-color: var(--ws-dropdown-listBackground);
+      }
+
       &:active {
         opacity: 0.8;
       }
+
+      // switch 开关样式
+      &.context-menu-item-switch {
+        justify-content: space-between;
+        padding-right: 10px;
+      }
+    }
+
+    // 分组样式
+    .context-menu-group {
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--ws-border-color);
+
+      &:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+
+      .context-menu-group-title {
+        font-size: 11px;
+        margin-bottom: 3px;
+        font-weight: 600;
+        color: var(--ws-dropdownGroup-foreground);
+        padding: 4px 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+    }
+
+    // Switch 开关
+    .context-menu-switch {
+      width: 32px;
+      height: 18px;
+      border-radius: 9px;
+      background-color: var(--ws-input-background);
+      border: 1px solid var(--ws-input-border);
+      position: relative;
+      transition: background-color 0.2s ease;
+
+      .context-menu-switch-thumb {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background-color: var(--ws-foreground);
+        position: absolute;
+        top: 1px;
+        left: 1px;
+        transition: transform 0.2s ease;
+      }
+
+      &.active {
+        background-color: var(--ws-accent, #007acc);
+        border-color: var(--ws-accent, #007acc);
+
+        .context-menu-switch-thumb {
+          transform: translateX(14px);
+        }
+      }
+    }
+
+    // 二级菜单头部
+    .context-menu-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--ws-border-color);
+      margin-bottom: 8px;
+
+      .context-menu-back {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--ws-descriptionForeground);
+        padding: 4px 8px;
+        border-radius: 4px;
+
+        &:hover {
+          background-color: var(--ws-dropdown-listBackground);
+          color: var(--ws-dropdown-foreground);
+        }
+      }
+
+      .context-menu-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ws-dropdown-foreground);
+      }
+    }
+
+    // 带箭头的菜单项
+    .context-menu-item-arrow {
+      justify-content: flex-start;
+      padding-right: 10px;
+
+      .context-menu-item-current {
+        flex: 1;
+        text-align: right;
+        font-size: 12px;
+        color: var(--ws-descriptionForeground);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-right: 4px;
+      }
+
+      svg {
+        flex-shrink: 0;
+        opacity: 0.6;
+      }
+    }
+
+    // 选中状态的菜单项
+    .context-menu-item.selected {
+      background-color: var(--ws-dropdown-listBackground);
+
+      svg:last-child {
+        color: var(--ws-accent, #007acc);
+      }
+    }
+
+    // 空状态
+    .context-menu-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      color: var(--ws-descriptionForeground);
+      font-size: 13px;
     }
   }
 
@@ -634,6 +841,100 @@
     align-items: center;
     gap: 8px;
     flex: 1;
+  }
+
+  // 模式切换
+  .mode-switcher {
+    position: relative;
+
+    .mode-current {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      background-color: transparent;
+      color: var(--ws-foreground);
+      transition: none;
+      white-space: nowrap;
+
+      &:hover {
+        background-color: var(--ws-list-hoverBackground);
+      }
+
+      svg {
+        flex-shrink: 0;
+      }
+
+      svg:last-child {
+        opacity: 0.6;
+      }
+    }
+
+    .mode-menu {
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: 0;
+      min-width: 160px;
+      border-radius: 8px;
+      padding: 8px;
+      z-index: 1000;
+      background-color: var(--ws-dropdown-background);
+      border: 1px solid var(--ws-dropdown-border);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+      .mode-menu-group {
+        margin-bottom: 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--ws-border-color);
+
+        &:last-child {
+          margin-bottom: 0;
+          padding-bottom: 0;
+          border-bottom: none;
+        }
+
+        .mode-menu-group-title {
+          font-size: 11px;
+          margin-bottom: 4px;
+          font-weight: 600;
+          color: var(--ws-dropdownGroup-foreground);
+          padding: 4px 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+      }
+
+      .mode-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 4px;
+        font-size: 13px;
+        cursor: pointer;
+        color: var(--ws-dropdown-foreground);
+
+        &:hover {
+          background-color: var(--ws-dropdown-listBackground);
+        }
+
+        span {
+          flex: 1;
+        }
+
+        svg:last-child {
+          color: var(--ws-accent, #007acc);
+        }
+
+        &.active {
+          background-color: var(--ws-dropdown-listBackground);
+        }
+      }
+    }
   }
 
   .model-select {

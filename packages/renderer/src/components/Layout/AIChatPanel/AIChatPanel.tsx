@@ -19,6 +19,11 @@ import { ModelCapabilityDetector } from '../../../services/modelCapabilityDetect
 import { ModelCapability } from '../../../types/modelCapabilities';
 import { AssistantTextContextMenu, type AssistantTextContextMenuProps } from './AssistantTextContextMenu';
 import { AIResponseRenderer } from '../../AIResponseRenderer';
+import { agentService } from '../../../services/agent/AgentService';
+import { AgentState } from '../../../services/agent/types';
+import { tableReferenceService, type FormInfo } from '../../../services/tableReference';
+import { knowledgeBaseService } from '../Sidebar/KnowledgeBase/knowledgeBaseService';
+import { type KnowledgeItem } from '../Sidebar/KnowledgeBase/types';
 import './AIChatPanel.scss';
 
 interface Message {
@@ -140,13 +145,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [isLoading, setIsLoading] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
+  const [subMenuType, setSubMenuType] = useState<'none' | 'model' | 'knowledge' | 'form' | 'skills' | 'mcpServer' | 'files'>('none');
   const [searchQuery, setSearchQuery] = useState('');
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [isHoveringHandle, setIsHoveringHandle] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [isDeepThinkingEnabled, setIsDeepThinkingEnabled] = useState(false);
+  const [isDeepThinkingEnabled, setIsDeepThinkingEnabled] = useState(true);
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
   const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
@@ -157,6 +163,18 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [activeThinkingSteps, setActiveThinkingSteps] = useState<ThinkingStep[] | null>(null); // 当前正在进行的思考步骤（独立显示）
   const [isActiveThinkingExpanded, setIsActiveThinkingExpanded] = useState(false); // 临时思考步骤的展开状态
   const [textContextMenu, setTextContextMenu] = useState<{ x: number; y: number; text: string } | null>(null); // 文本选择右键菜单
+  // 模式切换状态：chat(普通对话)、plan(计划模式)、auto-edit(自动编辑)、ask-before-edit(编辑前询问)
+  const [chatMode, setChatMode] = useState<'chat' | 'plan' | 'auto-edit' | 'ask-before-edit'>('chat');
+  const [isModeMenuOpen, setIsModeMenuOpen] = useState(false); // 模式菜单展开状态
+  const [currentFileName, setCurrentFileName] = useState<string>(''); // 当前打开的文件名
+  const [formsList, setFormsList] = useState<FormInfo[]>([]); // 表单列表
+  const [isLoadingForms, setIsLoadingForms] = useState(false); // 是否正在加载表单
+  const [knowledgeBaseList, setKnowledgeBaseList] = useState<KnowledgeItem[]>([]); // 知识库列表
+  const [isLoadingKnowledgeBases, setIsLoadingKnowledgeBases] = useState(false); // 是否正在加载知识库
+  const [filesList, setFilesList] = useState<Array<{ name: string; path: string; type: 'file' | 'directory' }>>([]); // 文件列表
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false); // 是否正在加载文件
+  const [skillsList, setSkillsList] = useState<Array<{ name: string; path: string; type: 'file' | 'directory' }>>([]); // 技能包列表
+  const [isLoadingSkills, setIsLoadingSkills] = useState(false); // 是否正在加载技能包
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器的 ref
   const panelRef = useRef<HTMLDivElement>(null);
@@ -167,6 +185,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const headerRef = useRef<HTMLDivElement>(null);
   const headerContextMenuRef = useRef<HTMLDivElement>(null);
   const historyButtonRef = useRef<HTMLButtonElement>(null);
+  const modeSwitcherRef = useRef<HTMLDivElement>(null); // 模式切换器的 ref
   const isInitialLoadRef = useRef(true); // 追踪是否是初始加载
   
   // 滚动条淡入淡出效果
@@ -362,6 +381,30 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       if (animationFrameRef.current) {
         clearTimeout(animationFrameRef.current);
       }
+    };
+  }, []);
+
+  // 监听当前打开的文件变化
+  useEffect(() => {
+    const updateCurrentFile = () => {
+      const tabTitle = (window as any).__currentTabTitle;
+      setCurrentFileName(tabTitle || '');
+    };
+
+    // 初始化
+    updateCurrentFile();
+
+    // 监听标签页变化事件
+    const handleTabChange = () => {
+      updateCurrentFile();
+    };
+
+    window.addEventListener('tab-changed', handleTabChange);
+    window.addEventListener('file-opened', handleTabChange);
+
+    return () => {
+      window.removeEventListener('tab-changed', handleTabChange);
+      window.removeEventListener('file-opened', handleTabChange);
     };
   }, []);
 
@@ -673,6 +716,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         !contextButtonRef.current.contains(event.target as Node)
       ) {
         setIsContextMenuOpen(false);
+        setSubMenuType('none');
       }
     };
 
@@ -681,6 +725,25 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isContextMenuOpen]);
+
+  // 点击外部关闭模式菜单
+  useEffect(() => {
+    if (!isModeMenuOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        modeSwitcherRef.current &&
+        !modeSwitcherRef.current.contains(event.target as Node)
+      ) {
+        setIsModeMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isModeMenuOpen]);
 
   // 点击外部关闭 header 右键菜单
   useEffect(() => {
@@ -758,26 +821,126 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   // 处理上下文菜单项点击
   const handleContextMenuItemClick = (action: string) => {
     console.log(`[AIChatPanel] 上下文菜单点击: ${action}`);
-    setIsContextMenuOpen(false);
-    
-    // 触发相应的全局事件
+
+    // 触发相应的全局事件或显示二级面板
     switch (action) {
       case 'snippets':
         // 打开底部面板并切换到常用片段标签页
+        setIsContextMenuOpen(false);
+        setSubMenuType('none');
         window.dispatchEvent(new CustomEvent('open-panel', {
           detail: { view: 'snippets' }
         }));
         break;
       case 'knowledge':
-        // 打开知识库面板
-        window.dispatchEvent(new Event('show-knowledge-base'));
+        // 显示知识库二级面板并加载知识库列表
+        setSubMenuType('knowledge');
+        setIsLoadingKnowledgeBases(true);
+        knowledgeBaseService.loadFromStorage().then(data => {
+          setKnowledgeBaseList(data.created);
+          setIsLoadingKnowledgeBases(false);
+        }).catch(err => {
+          console.error('[AIChatPanel] 获取知识库列表失败:', err);
+          setIsLoadingKnowledgeBases(false);
+        });
         break;
       case 'files':
-        // 打开文件选择器
-        window.dispatchEvent(new Event('show-file-picker'));
+        // 显示文件&文件夹二级面板并加载文件列表
+        setSubMenuType('files');
+        setIsLoadingFiles(true);
+        (async () => {
+          try {
+            // 获取当前工作区路径
+            const workspaceResult = await (window as any).electron?.workspace?.getDir();
+            if (workspaceResult?.success && workspaceResult.data) {
+              const workspacePath = workspaceResult.data;
+              // 读取工作区根目录的文件和文件夹
+              const treeResult = await (window as any).electron?.folder?.readTree(workspacePath);
+              if (treeResult?.success && treeResult.data && Array.isArray(treeResult.data)) {
+                // 分离文件夹和文件，文件夹在前
+                const folders = treeResult.data.filter((item: any) => item.type === 'directory');
+                const files = treeResult.data.filter((item: any) => item.type !== 'directory');
+                setFilesList([...folders, ...files].map((item: any) => ({
+                  name: item.name,
+                  path: item.path,
+                  type: item.type === 'directory' ? 'directory' : 'file'
+                })));
+              } else {
+                setFilesList([]);
+              }
+            } else {
+              setFilesList([]);
+            }
+          } catch (err) {
+            console.error('[AIChatPanel] 获取文件列表失败:', err);
+            setFilesList([]);
+          } finally {
+            setIsLoadingFiles(false);
+          }
+        })();
+        break;
+      case 'form':
+        // 显示表单二级面板并加载表单列表
+        setSubMenuType('form');
+        setIsLoadingForms(true);
+        tableReferenceService.getAllForms().then(forms => {
+          setFormsList(forms);
+          setIsLoadingForms(false);
+        }).catch(err => {
+          console.error('[AIChatPanel] 获取表单列表失败:', err);
+          setIsLoadingForms(false);
+        });
+        break;
+      case 'skills':
+        // 显示技能二级面板并加载 .wstudio/skills 目录下的技能包
+        setSubMenuType('skills');
+        setIsLoadingSkills(true);
+        (async () => {
+          try {
+            // 获取当前工作区路径
+            const workspaceResult = await (window as any).electron?.workspace?.getDir();
+            if (workspaceResult?.success && workspaceResult.data) {
+              const workspacePath = workspaceResult.data;
+              const skillsPath = workspacePath + '/.wstudio/skills';
+              // 读取 .wstudio/skills 目录下的技能包
+              const treeResult = await (window as any).electron?.folder?.readTree(skillsPath);
+              if (treeResult?.success && treeResult.data && Array.isArray(treeResult.data)) {
+                // 分离文件夹和文件，文件夹在前
+                const folders = treeResult.data.filter((item: any) => item.type === 'directory');
+                const files = treeResult.data.filter((item: any) => item.type !== 'directory');
+                setSkillsList([...folders, ...files].map((item: any) => ({
+                  name: item.name,
+                  path: item.path,
+                  type: item.type === 'directory' ? 'directory' : 'file'
+                })));
+              } else {
+                setSkillsList([]);
+              }
+            } else {
+              setSkillsList([]);
+            }
+          } catch (err) {
+            console.error('[AIChatPanel] 获取技能包列表失败:', err);
+            setSkillsList([]);
+          } finally {
+            setIsLoadingSkills(false);
+          }
+        })();
+        break;
+      case 'mcpServer':
+        // 显示 MCP Server 二级面板
+        setSubMenuType('mcpServer');
+        break;
+      case 'clear':
+        // 清除对话
+        setIsContextMenuOpen(false);
+        setSubMenuType('none');
+        setMessages([]);
         break;
       case 'search':
         // 打开全局搜索
+        setIsContextMenuOpen(false);
+        setSubMenuType('none');
         window.dispatchEvent(new Event('show-global-search'));
         break;
       default:
@@ -787,10 +950,143 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-    
+
     // 检查是否选择了模型
     if (!selectedModel) {
       console.error('[AIChatPanel] 未选择模型');
+      return;
+    }
+
+    // 检查是否是 /agent 命令
+    const agentMatch = input.trim().match(/^\/agent\s+(.+)$/s);
+    if (agentMatch) {
+      const taskDesc = agentMatch[1].trim();
+      console.log('[AIChatPanel] 检测到 /agent 命令，在聊天中执行 Agent 任务:', taskDesc);
+
+      // 将用户的 Agent 任务作为用户消息添加
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: `/agent ${taskDesc}`,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, userMessage]);
+      setInput('');
+      setIsLoading(true);
+
+      // 创建助手消息用于显示 Agent 执行过程
+      const assistantMessageId = (Date.now() + 1).toString();
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '🤖 **Agent 任务开始执行...**\n\n',
+        timestamp: new Date(),
+        model: selectedModel
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+
+      try {
+        // 获取模型配置
+        const modelConfig = await getModelConfig(selectedModel);
+        if (!modelConfig) {
+          throw new Error(`未找到模型配置：${selectedModel}`);
+        }
+
+        // 提取实际的模型 ID
+        const actualModelId = selectedModel.includes(':') ? selectedModel.split(':')[1] : selectedModel;
+
+        // 配置 AI 提供商
+        await aiService.setProvider(modelConfig.providerId, {
+          id: modelConfig.id || 'default',
+          name: modelConfig.name || modelConfig.configName,
+          apiKey: modelConfig.apiKey,
+          apiEndpoint: modelConfig.apiEndpoint,
+          temperature: 0.7,
+          maxTokens: 4000,
+          modelId: actualModelId
+        });
+
+        // 初始化 Agent 服务
+        await agentService.initialize({
+          execution: {
+            modelId: actualModelId,
+            temperature: 0.7,
+            maxTokens: 4000,
+            streaming: true
+          }
+        });
+
+        // 创建任务
+        const task = agentService.createTask('write', taskDesc, {});
+
+        // 流式执行任务，更新聊天消息
+        await agentService.executeTaskStream(task, {
+          onStepStart: (step) => {
+            console.log('[AIChatPanel Agent] 步骤开始:', step.description);
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: msg.content + `\n📋 **步骤**: ${step.description}\n` }
+                : msg
+            ));
+          },
+          onStepComplete: (step, result) => {
+            console.log('[AIChatPanel Agent] 步骤完成:', step.description);
+            // 从步骤结果中提取输出
+            if (result) {
+              const stepOutput = (result as { thinking?: string; content?: string }).thinking
+                || (result as { thinking?: string; content?: string }).content
+                || '';
+              if (stepOutput) {
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: msg.content + `\n${stepOutput}\n` }
+                    : msg
+                ));
+              }
+            }
+          },
+          onToolCall: (toolName, params) => {
+            console.log('[AIChatPanel Agent] 工具调用:', toolName);
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: msg.content + `\n🔧 **调用工具**: ${toolName}\n` }
+                : msg
+            ));
+          },
+          onToolResult: (toolName, result) => {
+            console.log('[AIChatPanel Agent] 工具结果:', toolName);
+          },
+          onComplete: (result) => {
+            console.log('[AIChatPanel Agent] 任务完成:', result.success);
+            const finalContent = result.success
+              ? `\n\n✅ **Agent 任务完成**${result.output ? `\n\n${result.output}` : ''}`
+              : `\n\n❌ **Agent 任务失败**: ${result.error || '未知错误'}`;
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: msg.content + finalContent }
+                : msg
+            ));
+            setIsLoading(false);
+          },
+          onError: (err) => {
+            console.error('[AIChatPanel Agent] 任务错误:', err);
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: msg.content + `\n\n❌ **错误**: ${err.message}` }
+                : msg
+            ));
+            setIsLoading(false);
+          }
+        });
+      } catch (err) {
+        console.error('[AIChatPanel Agent] 执行失败:', err);
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: msg.content + `\n\n❌ **执行失败**: ${err instanceof Error ? err.message : String(err)}` }
+            : msg
+        ));
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -1517,15 +1813,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               ref={contextButtonRef}
               className={`context-button ${isContextMenuOpen ? 'active' : ''}`}
               onClick={toggleContextMenu}
-              title="添加上下文"
+              title="命令菜单"
             >
-              <Icon name="at-sign" size={16} />
+              <span className="slash-icon">/</span>
             </button>
 
             {/* 上下文菜单 */}
             {isContextMenuOpen && (
               <div ref={contextMenuRef} className="context-menu">
-                {/* 搜索框 */}
+                {/* 搜索框 - 吸顶 */}
                 <div className="context-menu-search">
                   <input
                     ref={searchInputRef}
@@ -1542,48 +1838,337 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                   />
                 </div>
 
-                {/* 菜单项 */}
-                <div className="context-menu-item" onClick={() => handleContextMenuItemClick('files')}>
-                  <Icon name="files-folder" size={16} />
-                  <span className="context-menu-item-text">文件&文件夹</span>
-                </div>
-                <div className="context-menu-item" onClick={() => handleContextMenuItemClick('knowledge')}>
-                  <Icon name="knowledge-base-book" size={16} />
-                  <span className="context-menu-item-text">知识库</span>
-                </div>
-                <div className="context-menu-item" onClick={() => handleContextMenuItemClick('snippets')}>
-                  <Icon name="code-snippet" size={16} />
-                  <span className="context-menu-item-text">常用片段</span>
+                {/* 滚动内容区域 */}
+                <div className="context-menu-content">
+                {subMenuType === 'none' ? (
+                  <>
+                    {/* 上下文分组 */}
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">上下文</div>
+                      <div className="context-menu-item" onClick={() => handleContextMenuItemClick('files')}>
+                        <span className="context-menu-item-text">文件&文件夹</span>
+                      </div>
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('knowledge')}>
+                        <span className="context-menu-item-text">知识库</span>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('form')}>
+                        <span className="context-menu-item-text">表单</span>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div className="context-menu-item" onClick={() => handleContextMenuItemClick('clear')}>
+                        <span className="context-menu-item-text">清除对话</span>
+                      </div>
+                    </div>
+
+                    {/* 模型分组 */}
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">模型</div>
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => setSubMenuType('model')}>
+                        <span className="context-menu-item-text">选择模型</span>
+                        <span className="context-menu-item-current">{availableModels.find(m => m.modelId === selectedModel)?.displayName || formatModelDisplayName(selectedModel)}</span>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div className="context-menu-item context-menu-item-switch" onClick={() => setIsDeepThinkingEnabled(!isDeepThinkingEnabled)}>
+                        <span className="context-menu-item-text">思考</span>
+                        <div className={`context-menu-switch ${isDeepThinkingEnabled ? 'active' : ''}`}>
+                          <div className="context-menu-switch-thumb" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 技能分组 */}
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">技能</div>
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('skills')}>
+                        <span className="context-menu-item-text">Skills</span>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('mcpServer')}>
+                        <span className="context-menu-item-text">MCP Server</span>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                    </div>
+                  </>
+                ) : subMenuType === 'model' ? (
+                  <>
+                    {/* 模型选择二级菜单 */}
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+
+                    <div className="context-menu-model-list">
+                      {(() => {
+                        // 按配置名称分组模型
+                        const grouped = new Map<string, ModelInfo[]>();
+                        availableModels.forEach(model => {
+                          if (!grouped.has(model.configName)) {
+                            grouped.set(model.configName, []);
+                          }
+                          grouped.get(model.configName)!.push(model);
+                        });
+
+                        return Array.from(grouped.entries()).map(([configName, models]) => (
+                          <div key={configName} className="context-menu-group">
+                            <div className="context-menu-group-title">{configName}</div>
+                            {models.map(model => (
+                              <div
+                                key={model.modelId}
+                                className={`context-menu-item ${selectedModel === model.modelId ? 'selected' : ''}`}
+                                onClick={() => {
+                                  setSelectedModel(model.modelId);
+                                  // 检查选中的模型是否支持深度思考
+                                  const supportsThinking = model.capabilities?.thinking === true;
+                                  if (supportsThinking) {
+                                    setIsDeepThinkingEnabled(true);
+                                  } else {
+                                    setIsDeepThinkingEnabled(false);
+                                  }
+                                  setSubMenuType('none');
+                                  setIsContextMenuOpen(false);
+                                }}
+                              >
+                                <AIProviderIconFromModel modelString={model.modelId} size={16} />
+                                <span className="context-menu-item-text">{model.displayName || formatModelDisplayName(model.modelId)}</span>
+                                {model.capabilities?.thinking && <ThinkingIcon size={14} />}
+                                {selectedModel === model.modelId && (
+                                  <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                                    <path d="M11.5 4L5.5 10L2.5 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </>
+                ) : subMenuType === 'files' ? (
+                  <>
+                    {/* 文件&文件夹二级菜单 */}
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+                    {isLoadingFiles ? (
+                      <div className="context-menu-empty">
+                        <span>加载中...</span>
+                      </div>
+                    ) : filesList.length === 0 ? (
+                      <div className="context-menu-empty">
+                        <span>暂无文件</span>
+                      </div>
+                    ) : (
+                      <div className="context-menu-list">
+                        {filesList.map(file => (
+                          <div
+                            key={file.path}
+                            className="context-menu-item"
+                            onClick={() => {
+                              // 将文件引用插入到输入框
+                              const fileRef = `@file[${file.path}](${file.name})`;
+                              setInput(prev => prev + fileRef + ' ');
+                              setSubMenuType('none');
+                              setIsContextMenuOpen(false);
+                              // 聚焦输入框
+                              textareaRef.current?.focus();
+                            }}
+                          >
+                            <Icon name={file.type === 'directory' ? 'folder' : 'file'} size={14} />
+                            <span className="context-menu-item-text">{file.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : subMenuType === 'knowledge' ? (
+                  <>
+                    {/* 知识库二级菜单 */}
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+                    {isLoadingKnowledgeBases ? (
+                      <div className="context-menu-empty">
+                        <span>加载中...</span>
+                      </div>
+                    ) : knowledgeBaseList.length === 0 ? (
+                      <div className="context-menu-empty">
+                        <span>暂无知识库</span>
+                      </div>
+                    ) : (
+                      <div className="context-menu-list">
+                        {knowledgeBaseList.map(kb => (
+                          <div
+                            key={kb.id}
+                            className="context-menu-item"
+                            onClick={() => {
+                              // 将知识库引用插入到输入框
+                              const kbRef = `@kb[${kb.id}](${kb.title})`;
+                              setInput(prev => prev + kbRef + ' ');
+                              setSubMenuType('none');
+                              setIsContextMenuOpen(false);
+                              // 聚焦输入框
+                              textareaRef.current?.focus();
+                            }}
+                          >
+                            <Icon name="book" size={14} />
+                            <span className="context-menu-item-text">{kb.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : subMenuType === 'form' ? (
+                  <>
+                    {/* 表单二级菜单 */}
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+                    {isLoadingForms ? (
+                      <div className="context-menu-empty">
+                        <span>加载中...</span>
+                      </div>
+                    ) : formsList.length === 0 ? (
+                      <div className="context-menu-empty">
+                        <span>暂无表单</span>
+                      </div>
+                    ) : (
+                      <div className="context-menu-list">
+                        {formsList.map(form => (
+                          <div
+                            key={form.id}
+                            className="context-menu-item"
+                            onClick={() => {
+                              // 将表单引用插入到输入框
+                              const formRef = `@form[${form.id}](${form.name})`;
+                              setInput(prev => prev + formRef + ' ');
+                              setSubMenuType('none');
+                              setIsContextMenuOpen(false);
+                              // 聚焦输入框
+                              textareaRef.current?.focus();
+                            }}
+                          >
+                            <Icon name="table" size={14} />
+                            <span className="context-menu-item-text">{form.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : subMenuType === 'skills' ? (
+                  <>
+                    {/* Skills 二级菜单 */}
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+                    {/* 浏览市场选项 */}
+                    <div className="context-menu-list">
+                      <div
+                        className="context-menu-item"
+                        onClick={() => {
+                          // 打开技能市场
+                          setSubMenuType('none');
+                          setIsContextMenuOpen(false);
+                          window.dispatchEvent(new CustomEvent('open-skill-market'));
+                        }}
+                      >
+                        <Icon name="store" size={14} />
+                        <span className="context-menu-item-text">浏览市场</span>
+                      </div>
+                    </div>
+                    {/* 技能包列表 */}
+                    {isLoadingSkills ? (
+                      <div className="context-menu-empty">
+                        <span>加载中...</span>
+                      </div>
+                    ) : skillsList.length === 0 ? (
+                      <div className="context-menu-empty">
+                        <span>暂无技能包</span>
+                      </div>
+                    ) : (
+                      <div className="context-menu-list">
+                        {skillsList.map(skill => (
+                          <div
+                            key={skill.path}
+                            className="context-menu-item"
+                            onClick={() => {
+                              // 将技能包引用插入到输入框
+                              const skillRef = `@skill[${skill.path}](${skill.name})`;
+                              setInput(prev => prev + skillRef + ' ');
+                              setSubMenuType('none');
+                              setIsContextMenuOpen(false);
+                              // 聚焦输入框
+                              textareaRef.current?.focus();
+                            }}
+                          >
+                            <Icon name={skill.type === 'directory' ? 'folder' : 'file'} size={14} />
+                            <span className="context-menu-item-text">{skill.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : subMenuType === 'mcpServer' ? (
+                  <>
+                    {/* MCP Server 二级菜单 */}
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+                    <div className="context-menu-empty">
+                      <span>暂无 MCP Server</span>
+                    </div>
+                  </>
+                ) : null}
                 </div>
               </div>
             )}
 
-            <button
-              className={`deep-thinking-button ${isDeepThinkingEnabled ? 'active' : ''}`}
-              onClick={() => setIsDeepThinkingEnabled(!isDeepThinkingEnabled)}
-              title={isDeepThinkingEnabled ? '关闭深度思考' : '开启深度思考'}
-              disabled={isLoading}
-            >
-              <Icon name="deep-thinking" size={16} />
-            </button>
-
-            <button
-              className={`web-search-button ${isWebSearchEnabled ? 'active' : ''}`}
-              onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled)}
-              title={isWebSearchEnabled ? `关闭网络搜索 (${SEARCH_ENGINES[chatSettings.searchEngine].name})` : `开启网络搜索 (${SEARCH_ENGINES[chatSettings.searchEngine].name})`}
-              disabled={isLoading}
-            >
-              <Icon name="network" size={16} />
-            </button>
-
-            <button
-              className="clear-context-button"
-              onClick={() => {/* TODO: 添加清除上下文功能 */}}
-              title="清除上下文"
-              disabled={isLoading}
-            >
-              <Icon name="clear-context" size={16} />
-            </button>
+            {/* 当前打开的文件 */}
+            {currentFileName && (
+              <div className="current-file-indicator" title={currentFileName}>
+                <Icon name="file" size={14} />
+                <span className="current-file-name">{currentFileName}</span>
+              </div>
+            )}
           </div>
 
           {/* 输入框区域 */}
@@ -1594,7 +2179,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="添加上下文，扩展@，命令 /..."
+              placeholder="输入消息，使用 / 打开命令菜单..."
               disabled={isLoading}
             />
           </div>
@@ -1602,47 +2187,131 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           {/* 底部工具栏 */}
           <div className="input-toolbar">
             <div className="toolbar-left">
-              <DropdownMenu
-                value={selectedModel}
-                onChange={(model) => {
-                  setSelectedModel(model);
-                  // 检查选中的模型是否支持深度思考
-                  const selectedModelInfo = availableModels.find(m => m.modelId === model);
-                  const supportsThinking = selectedModelInfo?.capabilities?.thinking === true;
-                  
-                  if (supportsThinking) {
-                    setIsDeepThinkingEnabled(true);
-                    console.log('[AIChatPanel] 切换到支持深度思考的模型，自动开启深度思考');
-                  } else {
-                    setIsDeepThinkingEnabled(false);
-                    console.log('[AIChatPanel] 切换到不支持深度思考的模型，自动关闭深度思考');
+              {/* 模式切换 */}
+              <div className="mode-switcher" ref={modeSwitcherRef}>
+                <button
+                  className="mode-current"
+                  onClick={() => setIsModeMenuOpen(!isModeMenuOpen)}
+                  title={
+                    chatMode === 'chat' ? '普通对话模式，直接与AI进行对话交流' :
+                    chatMode === 'plan' ? '计划模式，AI会先制定计划再执行任务' :
+                    chatMode === 'auto-edit' ? 'Agent自动编辑模式，AI会自动执行文件编辑操作' :
+                    'Agent询问模式，AI在执行编辑操作前会先询问确认'
                   }
-                }}
-                groups={(() => {
-                  // 按配置名称分组模型
-                  const grouped = new Map<string, DropdownMenuItem[]>();
-                  availableModels.forEach(model => {
-                    if (!grouped.has(model.configName)) {
-                      grouped.set(model.configName, []);
-                    }
-                    grouped.get(model.configName)!.push({
-                      value: model.modelId,
-                      label: model.displayName || formatModelDisplayName(model.modelId),
-                      icon: <AIProviderIconFromModel modelString={model.modelId} size={16} />,
-                      suffix: model.capabilities?.thinking ? <ThinkingIcon size={14} /> : undefined
-                    });
-                  });
-                  return Array.from(grouped.entries()).map(([configName, items]) => ({
-                    groupName: configName,
-                    items
-                  }));
-                })()}
-                disabled={isLoading}
-                placeholder="选择模型"
-                showSearch={availableModels.length > 5}
-                placement="top"
-                className="ai-chat-model-selector"
-              />
+                >
+                  {chatMode === 'plan' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>
+                      <path d="M9 18h6"/>
+                      <path d="M10 22h4"/>
+                    </svg>
+                  )}
+                  {chatMode === 'auto-edit' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 19h8"/>
+                      <path d="m4 17 6-6-6-6"/>
+                    </svg>
+                  )}
+                  {chatMode === 'ask-before-edit' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 6v.343"/>
+                      <path d="M18.218 18.218A7 7 0 0 1 5 15V9a7 7 0 0 1 .782-3.218"/>
+                      <path d="M19 13.343V9A7 7 0 0 0 8.56 2.902"/>
+                      <path d="M22 22 2 2"/>
+                    </svg>
+                  )}
+                  {chatMode === 'chat' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
+                    </svg>
+                  )}
+                  <span>
+                    {chatMode === 'chat' ? '普通' :
+                     chatMode === 'plan' ? '计划' :
+                     chatMode === 'auto-edit' ? '自动编辑' : '编辑前询问'}
+                  </span>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                    <path d="M3 5L6 8L9 5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+
+                {isModeMenuOpen && (
+                  <div className="mode-menu">
+                    <div className="mode-menu-group">
+                      <div className="mode-menu-group-title">对话模式</div>
+                      <div
+                        className={`mode-menu-item ${chatMode === 'chat' ? 'active' : ''}`}
+                        onClick={() => { setChatMode('chat'); setIsModeMenuOpen(false); }}
+                        title="普通对话模式，直接与AI进行对话交流"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
+                        </svg>
+                        <span>普通</span>
+                        {chatMode === 'chat' && (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                            <path d="M11.5 4L5.5 10L2.5 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                      <div
+                        className={`mode-menu-item ${chatMode === 'plan' ? 'active' : ''}`}
+                        onClick={() => { setChatMode('plan'); setIsModeMenuOpen(false); }}
+                        title="计划模式，AI会先制定计划再执行任务"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>
+                          <path d="M9 18h6"/>
+                          <path d="M10 22h4"/>
+                        </svg>
+                        <span>计划</span>
+                        {chatMode === 'plan' && (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                            <path d="M11.5 4L5.5 10L2.5 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mode-menu-group">
+                      <div className="mode-menu-group-title">Agent模式</div>
+                      <div
+                        className={`mode-menu-item ${chatMode === 'auto-edit' ? 'active' : ''}`}
+                        onClick={() => { setChatMode('auto-edit'); setIsModeMenuOpen(false); }}
+                        title="Agent自动编辑模式，AI会自动执行文件编辑操作"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 19h8"/>
+                          <path d="m4 17 6-6-6-6"/>
+                        </svg>
+                        <span>自动编辑</span>
+                        {chatMode === 'auto-edit' && (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                            <path d="M11.5 4L5.5 10L2.5 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                      <div
+                        className={`mode-menu-item ${chatMode === 'ask-before-edit' ? 'active' : ''}`}
+                        onClick={() => { setChatMode('ask-before-edit'); setIsModeMenuOpen(false); }}
+                        title="Agent询问模式，AI在执行编辑操作前会先询问确认"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 6v.343"/>
+                          <path d="M18.218 18.218A7 7 0 0 1 5 15V9a7 7 0 0 1 .782-3.218"/>
+                          <path d="M19 13.343V9A7 7 0 0 0 8.56 2.902"/>
+                          <path d="M22 22 2 2"/>
+                        </svg>
+                        <span>编辑前询问</span>
+                        {chatMode === 'ask-before-edit' && (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                            <path d="M11.5 4L5.5 10L2.5 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             
             <div className="input-actions">

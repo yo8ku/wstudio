@@ -27,6 +27,9 @@ import { registerNoteSystemHandlers } from './note-system';
 import { registerDatabaseConnectorHandlers, cleanupDatabaseConnections } from './ipc/databaseConnectorHandlers';
 import { registerFormHandlers } from './ipc/formHandlers';
 import { getCodeRunnerService } from './services/CodeRunnerService';
+import { registerAgentFileSystemHandlers } from './ipc/agentFileSystemHandlers';
+import { registerAgentRAGHandlers } from './ipc/agentRAGHandlers';
+import { registerSkillsMarketHandlers } from './ipc/skillsMarketHandlers';
 
 // 插件系统路径
 // 使用多种方式尝试找到项目根目录，确保路径正确
@@ -119,6 +122,15 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   
   // 注册表单 IPC 处理器
   registerFormHandlers();
+
+  // 注册 Agent 文件系统 IPC 处理器
+  registerAgentFileSystemHandlers();
+
+  // 注册 Agent RAG IPC 处理器
+  registerAgentRAGHandlers();
+
+  // 注册 Skills 市场 IPC 处理器
+  registerSkillsMarketHandlers();
   
   // 初始化代码运行服务
   getCodeRunnerService();

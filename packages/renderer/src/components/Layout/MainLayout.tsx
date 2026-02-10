@@ -44,7 +44,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const [isPanelVisible, setIsPanelVisible] = useState(false); // 默认隐藏底部面板
   const [panelActiveView, setPanelActiveView] = useState<'snippets' | 'timeline' | 'terminal'>('terminal');
   const [aiChatPanelPosition, setAIChatPanelPosition] = useState<'right' | 'left'>('right'); // AI Chat Panel 位置
-  
+
   // 获取背景图片配置（订阅状态以触发重新渲染）
   const { config } = useBackgroundStore();
   const backgroundEnabled = config.enabled && !!config.imagePath;
@@ -437,9 +437,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
           {/* AI 对话面板 */}
           {isAIChatVisible && (
-            <div 
+            <div
               className='ai-chat-panel-right-border'
-              style={{ 
+              style={{
                 order: (() => {
                   // 如果主侧栏和 AI Chat 在同一侧，AI Chat 在主侧栏内侧
                   if (sidebarPosition === 'left' && aiChatPanelPosition === 'left') return 1;
@@ -454,8 +454,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 flexShrink: 0
               }}
             >
-              <AIChatPanel 
-                
+              <AIChatPanel
+
                 onClose={() => setIsAIChatVisible(false)}
                 onMoveLeft={handleAIChatMoveLeft}
                 onMoveRight={handleAIChatMoveRight}

@@ -15,6 +15,10 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: false, // 允许自动切换到下一个可用端口
+    headers: {
+      // Content Security Policy - 禁止 unsafe-eval 以消除 Electron 安全警告
+      'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';"
+    },
     fs: {
       // 允许访问整个项目根目录及 node_modules
       allow: [

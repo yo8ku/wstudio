@@ -87,19 +87,6 @@ const PROVIDER_INFO = {
       ModelCapability.STREAMING
     ]
   },
-  xai: {
-    id: 'xai',
-    name: 'xAI',
-    icon: 'xAI',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.REASONING,
-      ModelCapability.TOOLS,
-      ModelCapability.FUNCTION_CALLING,
-      ModelCapability.STREAMING
-    ]
-  },
   kimi: {
     id: 'kimi',
     name: 'Kimi',
@@ -140,33 +127,6 @@ const PROVIDER_INFO = {
       ModelCapability.STREAMING
     ]
   },
-  ollama: {
-    id: 'ollama',
-    name: 'Ollama',
-    icon: '',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.REASONING,
-      ModelCapability.STREAMING
-    ]
-  },
-  azure: {
-    id: 'azure',
-    name: 'Azure OpenAI',
-    icon: 'Azure',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.REASONING,
-      ModelCapability.VISION,
-      ModelCapability.TOOLS,
-      ModelCapability.FUNCTION_CALLING,
-      ModelCapability.STREAMING,
-      ModelCapability.EMBEDDING,
-      ModelCapability.MODERATION
-    ]
-  },
   modelscope: {
     id: 'modelscope',
     name: '魔塔社区',
@@ -175,66 +135,6 @@ const PROVIDER_INFO = {
       ModelCapability.TEXT_GENERATION,
       ModelCapability.CODE_GENERATION,
       ModelCapability.REASONING,
-      ModelCapability.STREAMING
-    ]
-  },
-  siliconflow: {
-    id: 'siliconflow',
-    name: '硅基流动',
-    icon: '',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.STREAMING
-    ]
-  },
-  ph8: {
-    id: 'ph8',
-    name: 'PH8',
-    icon: '',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.STREAMING
-    ]
-  },
-  ai302: {
-    id: 'ai302',
-    name: '302.AI',
-    icon: '',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.STREAMING
-    ]
-  },
-  lanyun: {
-    id: 'lanyun',
-    name: '蓝耘',
-    icon: '',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.STREAMING
-    ]
-  },
-  lmstudio: {
-    id: 'lmstudio',
-    name: 'Lm Studio',
-    icon: '',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.STREAMING
-    ]
-  },
-  volcengine: {
-    id: 'volcengine',
-    name: '火山方舟',
-    icon: '',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
       ModelCapability.STREAMING
     ]
   },
@@ -321,7 +221,6 @@ export class AIProviderFactoryImpl implements AIProviderFactory {
         // provider = new ZenmuxProvider(); // 暂时禁用
         throw new Error('Zenmux provider is temporarily disabled');
         break;
-      case 'xai':
       case 'kimi':
       case 'modelscope':
         // 魔塔社区需要特殊处理（需要模型ID）
@@ -330,14 +229,6 @@ export class AIProviderFactoryImpl implements AIProviderFactory {
 
       case 'glm':
       case 'openrouter':
-      case 'ollama':
-      case 'azure':
-      case 'siliconflow':
-      case 'ph8':
-      case 'ai302':
-      case 'lanyun':
-      case 'lmstudio':
-      case 'volcengine':
       case 'custom':
         // 使用通用的 CustomProvider，支持所有兼容 OpenAI API 格式的服务
         const providerInfo = PROVIDER_INFO[providerId as keyof typeof PROVIDER_INFO];

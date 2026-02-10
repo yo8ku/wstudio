@@ -228,6 +228,10 @@ function registerCommonAliases(): void {
     
     // 发送图标别名
     'send': 'ui:send',
+
+    // Skills 市场图标别名
+    'star': 'ui:star',
+    'skill-detail': 'ui:skill-detail',
   });
 }
 

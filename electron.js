@@ -10,6 +10,13 @@ const https = require('https');
 const http = require('http');
 const { fileURLToPath } = require('url');
 
+// 开发模式下禁用安全警告（生产模式下会自动启用）
+// 注意：这不会降低安全性，因为 CSP 仍然通过 HTTP 响应头和 meta 标签设置
+// 警告本身说明 "This warning will not show up once the app is packaged"
+if (process.env.NODE_ENV === 'development') {
+  process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
+}
+
 // 设置模块解析路径，将 @note-studio 映射到 packages 目录
 const Module = require('module');
 const originalResolveFilename = Module._resolveFilename;
@@ -888,8 +895,8 @@ ipcMain.handle('folder:read-tree', async (event, folderPath) => {
       const nodes = [];
       
       for (const entry of entries) {
-        // 忽略隐藏文件和特殊目录
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+        // 忽略隐藏文件和特殊目录（但保留 .wstudio 目录）
+        if ((entry.name.startsWith('.') && entry.name !== '.wstudio') || entry.name === 'node_modules') {
           continue;
         }
         
@@ -968,8 +975,8 @@ ipcMain.handle('folder:get-all-notes', async (event, folderPath) => {
       const entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
       
       for (const entry of entries) {
-        // 忽略隐藏文件和特殊目录
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+        // 忽略隐藏文件和特殊目录（但保留 .wstudio 目录）
+        if ((entry.name.startsWith('.') && entry.name !== '.wstudio') || entry.name === 'node_modules') {
           continue;
         }
         
@@ -1188,8 +1195,8 @@ ipcMain.handle('folder:expand', async (event, folderPath, rootPath) => {
       const nodes = [];
       
       for (const entry of entries) {
-        // 忽略隐藏文件和特殊目录
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+        // 忽略隐藏文件和特殊目录（但保留 .wstudio 目录）
+        if ((entry.name.startsWith('.') && entry.name !== '.wstudio') || entry.name === 'node_modules') {
           continue;
         }
         

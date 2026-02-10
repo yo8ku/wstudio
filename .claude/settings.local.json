@@ -92,7 +92,15 @@
       "Bash(cmd /c \"dir /s /b \"\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\GitHubDesktop\"\" 2>nul | findstr /i git.exe\")",
       "Bash(powershell -Command \"Get-ChildItem -Path ''C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\GitHubDesktop'' -Recurse -Filter ''git.exe'' -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName\")",
       "Bash(\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.5.4\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\" restore \"packages/renderer/src/components/Explorer/ExplorerView.tsx\")",
-      "Bash(powershell -Command \"Select-String -Path ''e:\\\\Wise Note Studio\\\\note-studio1.0-pro\\\\packages\\\\renderer\\\\src\\\\components\\\\Explorer\\\\ExplorerView.tsx'' -Pattern ''FormSection'' | Select-Object -First 3\")"
+      "Bash(powershell -Command \"Select-String -Path ''e:\\\\Wise Note Studio\\\\note-studio1.0-pro\\\\packages\\\\renderer\\\\src\\\\components\\\\Explorer\\\\ExplorerView.tsx'' -Pattern ''FormSection'' | Select-Object -First 3\")",
+      "Bash(curl -s \"https://skillsmp.com/api/v1/skills/search?q=*&limit=1\" -H \"Authorization: Bearer sk_live_skillsmp_A7rMh9uRnMkhBT8DxhjzKlWhgyJ8pWkkNGF_casCXiQ\")",
+      "Bash(curl -s \"https://skillsmp.com/skills/dalehurley-phpbot-skills-get-weather-forecast-skill-md\" -H \"Authorization: Bearer sk_live_skillsmp_A7rMh9uRnMkhBT8DxhjzKlWhgyJ8pWkkNGF_casCXiQ\")",
+      "Bash(curl -s \"https://skillsmp.com/api/v1/skills/dalehurley-phpbot-skills-get-weather-forecast-skill-md\" -H \"Authorization: Bearer sk_live_skillsmp_A7rMh9uRnMkhBT8DxhjzKlWhgyJ8pWkkNGF_casCXiQ\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/dalehurley/phpbot/main/skills/get-weather-forecast/skill.md\")",
+      "Bash(curl -s \"https://api.github.com/repos/dalehurley/phpbot/contents/skills/get-weather-forecast\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/dalehurley/phpbot/main/skills/get-weather-forecast/SKILL.md\")",
+      "Bash(pnpm build:renderer)",
+      "Bash(npx tsc --noEmit)"
     ]
   }
 }
