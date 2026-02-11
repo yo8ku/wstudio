@@ -3,9 +3,73 @@
  * 功能：在主进程中处理 Skills 市场 API 请求，避免 CORS 限制
  */
 
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, net, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+
+/** 请求超时时间（毫秒） */
+const FETCH_TIMEOUT = 30000;
+
+/** 最大重试次数 */
+const MAX_RETRIES = 2;
+
+/**
+ * 使用 Electron net 模块发起网络请求
+ * net 模块会自动使用系统代理设置，解决国内网络无法直接访问 GitHub 的问题
+ * 首次启动时会等待 app ready，避免 net 模块未就绪导致 fetch failed
+ * @param url 请求 URL
+ * @param options 请求选项
+ * @returns Response 对象
+ */
+async function electronFetch(
+  url: string,
+  options: { headers?: Record<string, string>; method?: string; body?: string } = {}
+): Promise<Response> {
+  // 确保 Electron app 已就绪，net 模块才能正常工作
+  if (!app.isReady()) {
+    await app.whenReady();
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
+  try {
+    const response = await net.fetch(url, {
+      method: options.method || 'GET',
+      headers: options.headers,
+      body: options.body,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * 带重试的网络请求
+ * @param url 请求 URL
+ * @param options 请求选项
+ * @param retries 剩余重试次数
+ * @returns Response 对象
+ */
+async function fetchWithRetry(
+  url: string,
+  options: { headers?: Record<string, string>; method?: string; body?: string } = {},
+  retries: number = MAX_RETRIES
+): Promise<Response> {
+  try {
+    return await electronFetch(url, options);
+  } catch (error) {
+    if (retries > 0) {
+      console.log(`[SkillsMarketHandlers] 请求失败，${retries} 次重试剩余:`, url);
+      // 等待 1 秒后重试
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return fetchWithRetry(url, options, retries - 1);
+    }
+    throw error;
+  }
+}
 
 /** Skills 市场 API 配置 */
 const SKILLS_MARKET_CONFIG = {
@@ -126,7 +190,7 @@ async function getGitHubFiles(
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${dirPath}?ref=${branch}`;
   console.log('[SkillsMarketHandlers] 获取目录内容:', apiUrl);
 
-  const response = await fetch(apiUrl, {
+  const response = await fetchWithRetry(apiUrl, {
     headers: {
       'Accept': 'application/vnd.github.v3+json',
       'User-Agent': 'Note-Studio-App',
@@ -162,7 +226,7 @@ async function getGitHubFiles(
  * 下载文件内容
  */
 async function downloadFile(url: string): Promise<string> {
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: {
       'User-Agent': 'Note-Studio-App',
     },
@@ -233,7 +297,7 @@ export function registerSkillsMarketHandlers(): void {
 
       const url = `${SKILLS_MARKET_CONFIG.baseUrl}/api/v1/skills/search?${queryParams.toString()}`;
 
-      const response = await fetch(url, {
+      const response = await fetchWithRetry(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${SKILLS_MARKET_CONFIG.apiKey}`,
@@ -284,7 +348,7 @@ export function registerSkillsMarketHandlers(): void {
 
       const url = `${SKILLS_MARKET_CONFIG.baseUrl}/api/v1/skills/ai-search?${queryParams.toString()}`;
 
-      const response = await fetch(url, {
+      const response = await fetchWithRetry(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${SKILLS_MARKET_CONFIG.apiKey}`,
@@ -345,7 +409,7 @@ export function registerSkillsMarketHandlers(): void {
       const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/SKILL.md`;
       console.log('[SkillsMarketHandlers] 获取 SKILL.md:', rawUrl);
 
-      const response = await fetch(rawUrl);
+      const response = await fetchWithRetry(rawUrl);
 
       if (!response.ok) {
         // 尝试其他可能的文件名
@@ -356,7 +420,7 @@ export function registerSkillsMarketHandlers(): void {
 
         for (const altUrl of alternativeUrls) {
           console.log('[SkillsMarketHandlers] 尝试备选 URL:', altUrl);
-          const altResponse = await fetch(altUrl);
+          const altResponse = await fetchWithRetry(altUrl);
           if (altResponse.ok) {
             const content = await altResponse.text();
             console.log('[SkillsMarketHandlers] 获取详情成功（备选）');
@@ -468,28 +532,42 @@ export function registerSkillsMarketHandlers(): void {
 
       console.log('[SkillsMarketHandlers] 安装成功:', params.skillName);
 
-      // 创建 package.json 文件，保存技能包详情信息
-      const packageJson = {
+      // 创建 skill.config.json 配置文件，保存技能包详情信息和下载来源
+      const skillConfig = {
         name: params.skillName,
         version: params.skillInfo?.version || '1.0.0',
+        displayName: params.skillName,
         description: params.skillInfo?.description || '',
-        author: params.skillInfo?.author || '',
-        source: 'skillsmp.com',
-        githubUrl: params.githubUrl,
-        skillInfo: {
-          id: params.skillInfo?.id || params.skillName,
-          stars: params.skillInfo?.stars || 0,
-          downloads: params.skillInfo?.downloads || 0,
-          tags: params.skillInfo?.tags || [],
-          createdAt: params.skillInfo?.createdAt || Date.now(),
-          updatedAt: params.skillInfo?.updatedAt || Date.now(),
+        author: {
+          name: params.skillInfo?.author || '',
         },
-        installedAt: Date.now(),
+        keywords: params.skillInfo?.tags || [],
+        source: {
+          marketplace: 'skillsmp',
+          marketplaceUrl: 'https://skillsmp.com',
+          skillId: params.skillInfo?.id || params.skillName,
+          skillUrl: params.githubUrl,
+          downloadedAt: new Date().toISOString(),
+          downloadedVersion: params.skillInfo?.version || '1.0.0',
+        },
+        repository: {
+          type: 'git',
+          url: params.githubUrl,
+        },
+        stars: params.skillInfo?.stars || 0,
+        downloads: params.skillInfo?.downloads || 0,
+        createdAt: params.skillInfo?.createdAt 
+          ? new Date(params.skillInfo.createdAt).toISOString() 
+          : new Date().toISOString(),
+        updatedAt: params.skillInfo?.updatedAt 
+          ? new Date(params.skillInfo.updatedAt).toISOString() 
+          : new Date().toISOString(),
+        files: files.map(f => f.path),
       };
 
-      const packageJsonPath = path.join(targetDir, 'package.json');
-      fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
-      console.log('[SkillsMarketHandlers] 创建 package.json:', packageJsonPath);
+      const skillConfigPath = path.join(targetDir, 'skill.config.json');
+      fs.writeFileSync(skillConfigPath, JSON.stringify(skillConfig, null, 2), 'utf-8');
+      console.log('[SkillsMarketHandlers] 创建 skill.config.json:', skillConfigPath);
 
       return {
         success: true,
@@ -544,42 +622,42 @@ export function registerSkillsMarketHandlers(): void {
         if (entry.isDirectory()) {
           const skillPath = path.join(skillsDir, entry.name);
 
-          // 优先检查是否有 package.json 文件（市场安装的会有）
-          const packageJsonPath = path.join(skillPath, 'package.json');
+          // 优先检查是否有 skill.config.json 配置文件（市场安装的会有）
+          const skillConfigPath = path.join(skillPath, 'skill.config.json');
           let description: string | undefined;
           let githubUrl: string | undefined;
           let packageInfo: LocalSkillInfo['packageInfo'] | undefined;
           let isFromMarket = false;
 
-          if (fs.existsSync(packageJsonPath)) {
+          if (fs.existsSync(skillConfigPath)) {
             try {
-              const packageContent = fs.readFileSync(packageJsonPath, 'utf-8');
-              const packageData = JSON.parse(packageContent);
+              const configContent = fs.readFileSync(skillConfigPath, 'utf-8');
+              const configData = JSON.parse(configContent);
 
-              // 从 package.json 读取信息
-              description = packageData.description;
-              githubUrl = packageData.githubUrl;
-              isFromMarket = packageData.source === 'skillsmp.com';
+              // 从 skill.config.json 读取信息
+              description = configData.description;
+              githubUrl = configData.repository?.url || configData.source?.skillUrl;
+              isFromMarket = configData.source?.marketplace === 'skillsmp';
 
               packageInfo = {
-                version: packageData.version,
-                author: packageData.author,
-                source: packageData.source,
-                stars: packageData.skillInfo?.stars,
-                downloads: packageData.skillInfo?.downloads,
-                tags: packageData.skillInfo?.tags,
-                createdAt: packageData.skillInfo?.createdAt,
-                updatedAt: packageData.skillInfo?.updatedAt,
-                installedAt: packageData.installedAt,
+                version: configData.version,
+                author: configData.author?.name,
+                source: configData.source?.marketplace,
+                stars: configData.stars,
+                downloads: configData.downloads,
+                tags: configData.keywords,
+                createdAt: configData.createdAt,
+                updatedAt: configData.updatedAt,
+                installedAt: configData.source?.downloadedAt ? new Date(configData.source.downloadedAt).getTime() : undefined,
               };
 
-              console.log('[SkillsMarketHandlers] 从 package.json 读取技能包信息:', entry.name);
+              console.log('[SkillsMarketHandlers] 从 skill.config.json 读取技能包信息:', entry.name);
             } catch (err) {
-              console.warn('[SkillsMarketHandlers] 读取 package.json 失败:', err);
+              console.warn('[SkillsMarketHandlers] 读取 skill.config.json 失败:', err);
             }
           }
 
-          // 如果没有从 package.json 获取到信息，尝试从 SKILL.md 读取
+          // 如果没有从 skill.config.json 获取到信息，尝试从 SKILL.md 读取
           if (!description) {
             // 检查是否有 SKILL.md 文件
             const skillMdPath = fs.existsSync(path.join(skillPath, 'SKILL.md'))
@@ -631,7 +709,7 @@ export function registerSkillsMarketHandlers(): void {
             }
           }
 
-          // 判断是否从市场安装：有 package.json 且 source 为 skillsmp.com
+          // 判断是否从市场安装：有 skill.config.json 且 source.marketplace 为 skillsmp
           const hasSkillMd = fs.existsSync(path.join(skillPath, 'SKILL.md')) ||
                             fs.existsSync(path.join(skillPath, 'skill.md'));
 
