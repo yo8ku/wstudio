@@ -214,32 +214,6 @@ export class BackgroundManager {
       validated.blur = DEFAULT_CONFIG.blur;
     }
     
-    // 检查文件是否存在，如果不存在则暂时禁用背景（等待缓存恢复）
-    if (validated.imagePath && validated.imagePath.trim() !== '') {
-      try {
-        const normalizedPath = path.normalize(validated.imagePath);
-        validated.imagePath = normalizedPath;
-        
-        if (!fs.existsSync(normalizedPath)) {
-          console.warn(`[BackgroundManager] 图片文件不存在，暂时禁用背景，等待缓存恢复: ${normalizedPath}`);
-          validated.enabled = false;
-          // 保留 sourcePath，方便后续从缓存中恢复
-          if (!validated.sourcePath || validated.sourcePath.trim() === '') {
-            validated.sourcePath = normalizedPath;
-          }
-        } 
-      } catch (error) {
-        console.warn(`[BackgroundManager] 检查文件存在性失败，暂时禁用背景: ${validated.imagePath}`, error);
-        validated.enabled = false;
-      }
-    }
-    
-    // 如果 imagePath 存在但 enabled 为 false，自动启用背景
-    // 这可以修复配置不一致的问题（比如用户设置了图片但忘记启用）
-    if (validated.imagePath && validated.imagePath.trim() !== '' && !validated.enabled) {
-      validated.enabled = true;
-    }
-    
     // 如果 enabled 为 true 但 imagePath 为空，自动禁用背景
     if (validated.enabled && (!validated.imagePath || validated.imagePath.trim() === '')) {
       validated.enabled = false;
@@ -273,32 +247,30 @@ export class BackgroundManager {
    */
   notifyRenderer(): void {
     try {
-      // 转换配置，将文件路径转换为 local-file:// 协议
-      const resolvedImagePath = this.getExistingImagePath();
-      
-      // 只有当文件确实存在时才发送配置，否则清空 imagePath
+      // 直接使用配置中的路径，转换为 local-file:// 协议
+      let imagePath = this.config.imagePath;
+      if (imagePath && imagePath.startsWith('local-file://')) {
+        imagePath = this.convertFromLocalFileUrl(imagePath);
+      }
+
       let imagePathForRenderer = '';
-      if (resolvedImagePath) {
+      if (imagePath && imagePath.trim() !== '') {
         try {
-          imagePathForRenderer = this.convertToLocalFileUrl(resolvedImagePath);
+          imagePathForRenderer = this.convertToLocalFileUrl(imagePath);
         } catch (e) {
-          console.warn('[BackgroundManager] 转换路径为 local-file:// 失败:', resolvedImagePath, e);
-          imagePathForRenderer = '';
+          console.warn('[BackgroundManager] 转换路径为 local-file:// 失败:', imagePath, e);
         }
       }
-      
+
       const configForRenderer = {
         ...this.config,
         imagePath: imagePathForRenderer,
-        // 如果文件不存在，禁用背景
         enabled: imagePathForRenderer ? this.config.enabled : false
       };
-      
-      // 通过 events API 发送事件到渲染进程
+
       this.api.events.emit('background-image:config-updated', configForRenderer);
     } catch (error) {
       console.error('[BackgroundManager] notifyRenderer 发生错误:', error);
-      // 发送空配置，禁用背景
       this.api.events.emit('background-image:config-updated', {
         ...this.config,
         imagePath: '',

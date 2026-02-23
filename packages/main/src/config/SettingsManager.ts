@@ -178,9 +178,9 @@ export class SettingsManager extends EventEmitter {
   private async loadSettings(): Promise<void> {
     try {
       console.log('[SettingsManager] ========== 开始加载设置 ==========');
-      
+
       // 加载用户设置（带自动恢复机制）
-      const userSettings = await this.loadUserSettings();
+      const userSettings = await this.loadUserSettings(true);
       
       // 加载工作区设置（如果存在）
       const workspaceSettings = await this.loadWorkspaceSettings();
@@ -228,7 +228,7 @@ export class SettingsManager extends EventEmitter {
    * 安全机制：文件不存在或损坏时自动恢复
    * 支持 JSONC 格式（带注释的 JSON）
    */
-  private async loadUserSettings(): Promise<Partial<SettingsSchema>> {
+  private async loadUserSettings(updatePluginSettings = false): Promise<Partial<SettingsSchema>> {
     try {
       const content = await fs.readFile(this.userSettingsPath, 'utf-8');
       
@@ -276,8 +276,10 @@ export class SettingsManager extends EventEmitter {
         }
       }
       
-      // 保存插件配置到内存
-      this.pluginSettings = { ...this.pluginSettings, ...pluginConfig };
+      // 保存插件配置到内存（仅初始化时）
+      if (updatePluginSettings) {
+        this.pluginSettings = { ...this.pluginSettings, ...pluginConfig };
+      }
       return filtered;
     } catch (error) {
       const err = error as NodeJS.ErrnoException;

@@ -387,30 +387,18 @@ const BackgroundImage: React.FC = () => {
     invoke('background-image:cache-image', sourcePath)
       .then((result: any) => {
         cacheInFlightRef.current.delete(sourcePath);
+        // 缓存仅用于显示优化，不回写到持久化配置，避免缓存被清理后背景失效
         if (!result?.success || !result.cachedPath || result.cachedPath === sourcePath) {
           return;
         }
-
+        // 仅更新内存中的 store，不发送 update-config 到主进程
         const latestConfig = useBackgroundStore.getState().config;
-
-        // 仅当当前背景图片来自用户路径时，才回写缓存路径到配置中
-        const isUserImage =
-          typeof latestConfig.sourcePath === 'string' &&
-          latestConfig.sourcePath.length > 0 &&
-          !latestConfig.sourcePath.toLowerCase().includes('/resources/backgroundimg');
-
-        if (!isUserImage) {
-          return;
+        if (latestConfig.sourcePath === sourcePath) {
+          setConfig({
+            ...latestConfig,
+            imagePath: normalizeToLocalFileUrl(result.cachedPath),
+          });
         }
-
-        ipcRenderer.send('background-image:update-config', {
-          imagePath: result.cachedPath,
-          sourcePath: latestConfig.sourcePath,
-          opacity: latestConfig.opacity,
-          blur: latestConfig.blur,
-          fit: latestConfig.fit,
-          enabled: latestConfig.enabled,
-        });
       })
       .catch((error: any) => {
         cacheInFlightRef.current.delete(sourcePath);

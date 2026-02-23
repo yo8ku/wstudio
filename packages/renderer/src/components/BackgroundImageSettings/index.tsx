@@ -497,8 +497,13 @@ export const BackgroundImageSettings: React.FC<BackgroundImageSettingsProps> = (
       if (shouldSave) {
         const ipcRenderer = (window as any).electron?.ipcRenderer;
         if (ipcRenderer) {
-          console.log('[BackgroundImageSettings] 保存配置到主进程', updated);
-          ipcRenderer.send('background-image:update-config', updated);
+          // 保存时始终用原始路径（sourcePath），避免缓存路径被持久化后缓存被清理导致背景失效
+          const configToSave = {
+            ...updated,
+            imagePath: updated.sourcePath || updated.imagePath,
+          };
+          console.log('[BackgroundImageSettings] 保存配置到主进程', configToSave);
+          ipcRenderer.send('background-image:update-config', configToSave);
         }
       }
     }
@@ -717,10 +722,13 @@ export const BackgroundImageSettings: React.FC<BackgroundImageSettingsProps> = (
     saveConfigTimerRef.current = setTimeout(() => {
     const ipcRenderer = (window as any).electron?.ipcRenderer;
     if (ipcRenderer) {
-        console.log('[BackgroundImageSettings] 📤 防抖保存配置到主进程', configToSave);
-        console.log('[BackgroundImageSettings] 配置内容:', JSON.stringify(configToSave, null, 2));
-        ipcRenderer.send('background-image:update-config', configToSave);
-        console.log('[BackgroundImageSettings] ✅ 配置已发送，等待主进程确认...');
+        // 保存时始终用原始路径（sourcePath），避免缓存路径被持久化
+        const persistConfig = {
+          ...configToSave,
+          imagePath: configToSave.sourcePath || configToSave.imagePath,
+        };
+        console.log('[BackgroundImageSettings] 📤 防抖保存配置到主进程', persistConfig);
+        ipcRenderer.send('background-image:update-config', persistConfig);
         
         // 延迟验证：2秒后检查配置是否真的被写入
         setTimeout(async () => {
