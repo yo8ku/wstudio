@@ -53,6 +53,22 @@ interface EditorAreaProps {
   className?: string;
 }
 
+type EditorTabsChangeReason = 'open' | 'close' | 'switch' | 'update';
+
+interface EditorTabsStateItem {
+  id: string;
+  title: string;
+  path: string;
+  type?: EditorTab['type'];
+  isPreview?: boolean;
+}
+
+interface EditorTabsStateDetail {
+  reason: EditorTabsChangeReason;
+  tabs: EditorTabsStateItem[];
+  activeTabId: string | null;
+}
+
 export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   console.log('========================================');
   console.log('[EditorArea 组件] 组件函数被调用（渲染）');
@@ -77,6 +93,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
   // 编辑器类型状态：'monaco' | 'codemirror'
   const [editorType, setEditorType] = useState<'monaco' | 'codemirror'>('monaco');
+  const previousTabsLengthRef = useRef<number>(0);
+  const previousActiveTabIdRef = useRef<string | null>(null);
+  const tabChangeReasonOverrideRef = useRef<EditorTabsChangeReason | null>(null);
 
 
   // 处理创建新片段
@@ -236,6 +255,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     console.log('[EditorArea] 当前 tabs 数量:', tabs.length);
     
     const handleOpenFile = async (event: Event) => {
+      tabChangeReasonOverrideRef.current = 'open';
       console.log('[EditorArea] ========== 收到 open-file 事件 ==========');
       console.log('[EditorArea] 事件类型:', event.type);
       console.log('[EditorArea] 事件对象:', event);
@@ -1232,6 +1252,38 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   // 当活动标签改变时，通知文件树更新选中状态
   useEffect(() => {
     const activeTab = tabs.find(tab => tab.id === activeTabId);
+    const previousTabsLength = previousTabsLengthRef.current;
+    const previousActiveTabId = previousActiveTabIdRef.current;
+    const overrideReason = tabChangeReasonOverrideRef.current;
+    let reason: EditorTabsChangeReason = overrideReason || 'update';
+
+    if (!overrideReason) {
+      if (tabs.length > previousTabsLength) {
+        reason = 'open';
+      } else if (tabs.length < previousTabsLength) {
+        reason = 'close';
+      } else if (activeTabId !== previousActiveTabId) {
+        reason = 'switch';
+      }
+    }
+
+    const tabsStateDetail: EditorTabsStateDetail = {
+      reason,
+      tabs: tabs.map(tab => ({
+        id: tab.id,
+        title: tab.title,
+        path: tab.path,
+        type: tab.type,
+        isPreview: tab.isPreview
+      })),
+      activeTabId
+    };
+
+    // Expose a stable tabs snapshot for components that mount later.
+    (window as any).__editorTabsState = tabsStateDetail;
+    window.dispatchEvent(new CustomEvent('editor:tabs-state-changed', {
+      detail: tabsStateDetail
+    }));
     
     if (activeTab && activeTab.type === 'file' && activeTab.path) {
       // 派发自定义事件，通知文件树当前激活的文件
@@ -1239,6 +1291,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         detail: { path: activeTab.path }
       }));
     }
+    tabChangeReasonOverrideRef.current = null;
+    previousTabsLengthRef.current = tabs.length;
+    previousActiveTabIdRef.current = activeTabId;
   }, [activeTabId, tabs]);
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
@@ -1255,6 +1310,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
   // 处理标签页切换
   const handleTabClick = (tabId: string) => {
+    tabChangeReasonOverrideRef.current = 'switch';
     setActiveTabId(tabId);
     
     // 通知 FileExplorer 更新选中状态（仅针对文件类型的标签页）
@@ -1278,6 +1334,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   };
 
   const handleTabClose = (tabId: string) => {
+    tabChangeReasonOverrideRef.current = 'close';
     const closingTab = tabs.find(tab => tab.id === tabId);
     
     // 如果是 AI 配置标签页，检查是否有未保存的更改
@@ -1525,7 +1582,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         isFileTab: activeTab?.type === 'file',
         isAIConfigTab: activeTab?.type === 'ai-config',
         language: activeTab?.language,
-        path: activeTab?.path
+        path: activeTab?.path,
+        title: activeTab?.title || ''
       }
     }));
 

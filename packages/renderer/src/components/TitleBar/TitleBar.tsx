@@ -132,7 +132,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         { label: '新建文件', shortcut: 'Ctrl+N', action: handleNewFile },
         { label: '打开文件...', shortcut: 'Ctrl+O', action: handleOpenFile },
         { label: '打开文件夹..', shortcut: 'Ctrl+K Ctrl+O', action: handleOpenFolder },
-        { 
+        {
           label: '打开最近的文件',
           shortcut: 'Ctrl+R',
           submenu: [
@@ -147,16 +147,19 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         { label: '另存为..', shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
         { label: '全部保存', shortcut: 'Ctrl+K S', action: handleSaveAll },
         { separator: true },
-        { 
-          label: '首选项', 
+        { label: '命令面板...', shortcut: 'Ctrl+Shift+P' },
+        { label: '查看分块数据', action: () => window.dispatchEvent(new CustomEvent('open-lancedb-view')) },
+        { separator: true },
+        {
+          label: '首选项',
           submenu: [
             { label: '设置', shortcut: 'Ctrl+,', action: handleOpenSettings },
             { label: '扩展', action: handleOpenExtensions },
             { label: '键盘快捷方式', shortcut: 'Ctrl+K Ctrl+S' },
             { label: '配置常用片段' },
             { separator: true },
-            { 
-              label: '主题', 
+            {
+              label: '主题',
               shortcut: 'Ctrl+K Ctrl+T',
               submenu: [
                 { label: '颜色主题' },
@@ -170,71 +173,6 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         { label: '关闭文件夹', shortcut: 'Ctrl+K F' },
         { separator: true },
         { label: '退出', shortcut: 'Alt+F4', action: handleQuit },
-      ]
-    },
-    {
-      title: '编辑',
-      items: [
-        { label: '撤销', shortcut: 'Ctrl+Z', action: () => document.execCommand('undo') },
-        { label: '重做', shortcut: 'Ctrl+Y', action: () => document.execCommand('redo') },
-        { separator: true },
-        { label: '剪切', shortcut: 'Ctrl+X', action: () => document.execCommand('cut') },
-        { label: '复制', shortcut: 'Ctrl+C', action: () => document.execCommand('copy') },
-        { label: '粘贴', shortcut: 'Ctrl+V', action: () => document.execCommand('paste') },
-        { separator: true },
-        { label: '查找', shortcut: 'Ctrl+F' },
-        { label: '替换', shortcut: 'Ctrl+H' },
-        { separator: true },
-        { label: '在文件中查找', shortcut: 'Ctrl+Shift+F' },
-        { label: '在文件中替换', shortcut: 'Ctrl+Shift+H' }
-      ]
-    },
-    {
-      title: '选择',
-      items: [
-        { label: '全选', shortcut: 'Ctrl+A' },
-        { label: '展开选择', shortcut: 'Shift+Alt+Right' },
-        { label: '收缩选择', shortcut: 'Shift+Alt+Right' },
-      ]
-    },
-    {
-      title: '查看',
-      items: [
-        { label: '命令面板...', shortcut: 'Ctrl+Shift+P' },
-        { separator: true },
-        {
-          label: '外观',
-          submenu: [
-            { label: '切换侧边栏', shortcut: 'Ctrl+B', action: onToggleSidebar },
-            { label: 'AI 助手', shortcut: 'Ctrl+Shift+A', action: onToggleAIPanel },
-          ]
-        },
-        { separator: true },
-        { label: '查看分块数据', action: () => window.dispatchEvent(new CustomEvent('open-lancedb-view')) },
-      ]
-    },
-    {
-      title: '转到',
-      items: [
-        { label: '转到文件...', shortcut: 'Ctrl+P' },
-        { label: '转到..', shortcut: 'Ctrl+G' },
-        { label: '转到符号...', shortcut: 'Ctrl+Shift+O' },
-      ]
-    },
-    {
-      title: '运行',
-      items: [
-        { label: '启动调试', shortcut: 'F5' },
-        { label: '运行(不调试', shortcut: 'Ctrl+F5' },
-      ]
-    },
-    {
-      title: '帮助',
-      items: [
-        { label: '欢迎', shortcut: '' },
-        { label: '文档' },
-        { separator: true },
-        { label: '关于' },
       ]
     },
   ];

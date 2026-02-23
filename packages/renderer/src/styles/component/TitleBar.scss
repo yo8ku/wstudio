@@ -45,7 +45,7 @@
 }
 
 .titlebar-dropdown {
-  background-color: var(--ws-menu-background);
+  background-color: var(--ws-dropdown-background);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
@@ -69,7 +69,7 @@
 
 
 .titlebar-submenu {
-  background-color: var(--ws-menu-background);
+    background-color: var(--ws-dropdown-background);
   border-color: var(--ws-menu-border);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 

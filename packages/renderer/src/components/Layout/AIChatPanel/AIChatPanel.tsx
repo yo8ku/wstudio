@@ -15,15 +15,14 @@ import { ChatHistory } from './ChatHistory';
 import { AIChatSettings, DEFAULT_CHAT_SETTINGS, type AIChatSettingsConfig, SEARCH_ENGINES } from '../../AIChatSettings';
 import { electronStore } from '../../../services/ElectronStoreService';
 import { ModelThinking, type ThinkingStep } from '../../ModeThinking';
-import { ModelCapabilityDetector } from '../../../services/modelCapabilityDetector';
-import { ModelCapability } from '../../../types/modelCapabilities';
 import { AssistantTextContextMenu, type AssistantTextContextMenuProps } from './AssistantTextContextMenu';
 import { AIResponseRenderer } from '../../AIResponseRenderer';
 import { agentService } from '../../../services/agent/AgentService';
-import { AgentState } from '../../../services/agent/types';
+import { AgentState, AgentTaskType } from '../../../services/agent/types';
 import { tableReferenceService, type FormInfo } from '../../../services/tableReference';
 import { knowledgeBaseService } from '../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { type KnowledgeItem } from '../Sidebar/KnowledgeBase/types';
+import { getAIZoneSystemPromptAsync } from '../../../services/ai/SystemPrompt';
 import './AIChatPanel.scss';
 
 interface Message {
@@ -175,6 +174,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [isLoadingFiles, setIsLoadingFiles] = useState(false); // 是否正在加载文件
   const [skillsList, setSkillsList] = useState<Array<{ name: string; path: string; type: 'file' | 'directory' }>>([]); // 技能包列表
   const [isLoadingSkills, setIsLoadingSkills] = useState(false); // 是否正在加载技能包
+  const [selectedSkills, setSelectedSkills] = useState<Array<{ name: string; path: string }>>([]); // 用户选中的技能包
+  const [selectedFiles, setSelectedFiles] = useState<Array<{ name: string; path: string }>>([]); // 用户选中的文件
+  const [selectedKbs, setSelectedKbs] = useState<Array<{ id: string; title: string }>>([]); // 用户选中的知识库
+  const [selectedForms, setSelectedForms] = useState<Array<{ id: string; name: string }>>([]); // 用户选中的表单
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器的 ref
   const panelRef = useRef<HTMLDivElement>(null);
@@ -386,25 +389,20 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
   // 监听当前打开的文件变化
   useEffect(() => {
-    const updateCurrentFile = () => {
-      const tabTitle = (window as any).__currentTabTitle;
-      setCurrentFileName(tabTitle || '');
+    // 初始化：从全局变量读取当前标签页标题
+    const tabTitle = (window as any).__currentTabTitle;
+    setCurrentFileName(tabTitle || '');
+
+    // 监听标签页切换事件，从事件 detail 中获取文件名
+    const handleTabChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setCurrentFileName(detail?.title || '');
     };
 
-    // 初始化
-    updateCurrentFile();
-
-    // 监听标签页变化事件
-    const handleTabChange = () => {
-      updateCurrentFile();
-    };
-
-    window.addEventListener('tab-changed', handleTabChange);
-    window.addEventListener('file-opened', handleTabChange);
+    window.addEventListener('editor:active-tab-changed', handleTabChange);
 
     return () => {
-      window.removeEventListener('tab-changed', handleTabChange);
-      window.removeEventListener('file-opened', handleTabChange);
+      window.removeEventListener('editor:active-tab-changed', handleTabChange);
     };
   }, []);
 
@@ -857,9 +855,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               // 读取工作区根目录的文件和文件夹
               const treeResult = await (window as any).electron?.folder?.readTree(workspacePath);
               if (treeResult?.success && treeResult.data && Array.isArray(treeResult.data)) {
+                // 过滤掉 .wstudio 目录
+                const filteredData = treeResult.data.filter((item: any) => item.name !== '.wstudio');
                 // 分离文件夹和文件，文件夹在前
-                const folders = treeResult.data.filter((item: any) => item.type === 'directory');
-                const files = treeResult.data.filter((item: any) => item.type !== 'directory');
+                const folders = filteredData.filter((item: any) => item.type === 'directory');
+                const files = filteredData.filter((item: any) => item.type !== 'directory');
                 setFilesList([...folders, ...files].map((item: any) => ({
                   name: item.name,
                   path: item.path,
@@ -1090,310 +1090,176 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       return;
     }
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
-
-    // 如果是第一条消息，先创建会话
-    if (messages.length === 0) {
-      try {
-        const now = Date.now();
-        await window.electronAPI?.chatHistory?.createSession({
-          id: currentSessionId,
-          title: '新对话',
-          createdAt: now,
-          updatedAt: now
-        });
-        console.log('[AIChatPanel] 创建新会话（首条消息）:', currentSessionId);
-      } catch (error) {
-        console.error('[AIChatPanel] 创建会话失败:', error);
-      }
-    }
-
-    // 保存用户消息到数据库
-    try {
-      await window.electronAPI?.chatHistory?.addMessage({
-        id: userMessage.id,
-        sessionId: currentSessionId,
+    // 非 chat 模式（plan / auto-edit / ask-before-edit）以及 chat 模式都走 Agent 路径
+    // chat 模式：禁止写入，只允许只读工具
+    // plan / ask-before-edit：写入前需确认
+    // auto-edit：写入自动执行
+    {
+      const taskDesc = input.trim();
+      const userMessage: Message = {
+        id: Date.now().toString(),
         role: 'user',
-        content: userMessage.content,
-        timestamp: userMessage.timestamp.getTime()
-      });
-    } catch (error) {
-      console.error('[AIChatPanel] 保存用户消息失败:', error);
-    }
-
-    try {
-      // 获取选择的模型配置
-      const modelConfig = await getModelConfig(selectedModel);
-      if (!modelConfig) {
-        throw new Error(`未找到模型配置：${selectedModel}`);
-      }
-
-      console.log('[AIChatPanel] 发送消息到模型:', selectedModel);
-      console.log('[AIChatPanel] 使用配置:', modelConfig.name);
-
-      // 提取实际的模型ID（去掉提供商前缀）
-      const [providerId, actualModelId] = selectedModel.split(':');
-      
-      console.log('[AIChatPanel] 提供商:', providerId, '模型:', actualModelId);
-
-      // 🎯 如果启用了深度思考，立即显示深度思考组件（先假设支持）
-      // 这样用户可以立即看到反馈，而不是等待能力检测完成
-      let shouldShowThinking = isDeepThinkingEnabled;
-      
-      if (isDeepThinkingEnabled) {
-        // 立即初始化思考步骤显示
-        const initialThinkingStep: ThinkingStep = {
-          id: Date.now().toString(),
-          title: '',
-          content: '',
-          status: 'thinking',
-          timestamp: new Date()
-        };
-        setActiveThinkingSteps([initialThinkingStep]);
-        setIsActiveThinkingExpanded(false); // 初始化时默认折叠
-        console.log('[AIChatPanel] 🎯 立即初始化深度思考组件显示（默认折叠）');
-        
-        // 滚动到底部，确保深度思考组件在可视范围内
-        setTimeout(() => {
-          scrollToBottom(true); // 使用 instant 模式立即滚动
-        }, 50);
-      }
-
-      // 检测模型是否支持深度思考
-      // 对于某些不支持模型详情API的服务商（如魔塔社区），跳过API检测以提升速度
-      const skipAPIDetection = providerId === 'ModelScope';
-      
-      const capabilityDetector = new ModelCapabilityDetector();
-      const detectionResult = await capabilityDetector.detectCapabilities(
-        actualModelId,
-        modelConfig.apiEndpoint,
-        modelConfig.apiKey,
-        skipAPIDetection
-      );
-      const supportsReasoning = detectionResult.success && 
-        detectionResult.capabilities.includes(ModelCapability.REASONING);
-      
-      // 更新是否需要显示深度思考过程（根据实际检测结果）
-      shouldShowThinking = isDeepThinkingEnabled && supportsReasoning;
-      
-      console.log('[AIChatPanel] 深度思考状态:', {
-        enabled: isDeepThinkingEnabled,
-        supportsReasoning,
-        shouldShowThinking
-      });
-      
-      // 如果检测到模型不支持推理，清除已显示的深度思考组件
-      if (isDeepThinkingEnabled && !supportsReasoning) {
-        setActiveThinkingSteps([]);
-        setIsActiveThinkingExpanded(false);
-        console.log('[AIChatPanel] ⚠️ 模型不支持深度思考，清除深度思考组件');
-      }
-
-      // 准备聊天历史
-      let chatHistory = [...messages, userMessage].map(msg => ({
-        role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content
-      }));
-
-      // 🔥 修复：添加system message明确告知模型身份，避免模型身份混淆
-      // 移除所有现有的system message（避免旧的system message干扰）
-      chatHistory = chatHistory.filter(msg => msg.role !== 'system');
-      
-      // 根据模型信息生成身份说明
-      const modelDisplayName = modelConfig.displayName || formatModelDisplayName(selectedModel);
-      const providerDisplayName = getProviderDisplayName(providerId, actualModelId);
-      const systemMessage = `你是一个AI助手，模型名称是${modelDisplayName}。当用户询问你的身份、模型名称或开发者时，请准确回答：你是${modelDisplayName}模型，由${providerDisplayName}提供。不要声称自己是其他模型（如Google训练的模型、OpenAI的模型等）。`;
-      
-      // 在消息数组开头添加system message
-      chatHistory.unshift({
-        role: 'system',
-        content: systemMessage
-      });
-      
-      console.log('[AIChatPanel] 🔥 添加system message:', {
-        modelDisplayName,
-        providerId,
-        systemMessage
-      });
-
-      // 创建临时的助手消息ID（但先不添加到消息列表）
-      const tempAiMessageId = (Date.now() + 1).toString();
-      let assistantMessageAdded = false; // 标记是否已添加 assistant 消息
-
-      // 设置AI Provider（使用modelConfig中的配置）
-      await aiService.setProvider(modelConfig.providerId, {
-        id: modelConfig.id || 'default',
-        name: modelConfig.name || modelConfig.configName,
-        apiKey: modelConfig.apiKey,
-        apiEndpoint: modelConfig.apiEndpoint,
-        temperature: chatSettings.temperature,
-        maxTokens: chatSettings.maxTokens,
-        modelId: actualModelId // ✅ 传递实际的模型ID（如 glm-4-plus）
-      });
-
-      // 使用 AIService 的流式API
-      let accumulatedContent = '';
-      let accumulatedReasoning = '';
-      const thinkingSteps: ThinkingStep[] = [];
-      let currentThinkingStep: ThinkingStep | null = null;
-      let hasReceivedReasoning = false; // 🔥 新增：标记是否收到过推理内容
-      
-      // 如果启用了深度思考且模型支持，初始化 currentThinkingStep
-      if (shouldShowThinking) {
-        currentThinkingStep = {
-          id: Date.now().toString(),
-          title: '',
-          content: '',
-          status: 'thinking',
-          timestamp: new Date()
-        };
-        thinkingSteps.push(currentThinkingStep);
-        console.log('[AIChatPanel] 🎯 初始化思考步骤追踪');
-      }
-      
-      await aiService.generateTextStream({
-        model: actualModelId,
-        messages: chatHistory,
-        temperature: chatSettings.temperature,
-        maxTokens: chatSettings.maxTokens,
-        reasoning: shouldShowThinking ? { 
-          enabled: true,
-          thinkingBudget: chatSettings.thinkingBudget // ✅ 传递思考预算参数
-        } : undefined
-      }, {
-        onReasoning: (reasoning: string) => {
-          // 处理推理内容（从模型返回的真实思考过程）
-          // console.log('[AIChatPanel] 🧠 收到推理片段:', reasoning.substring(0, 100) + '...');
-          // console.log('[AIChatPanel] 推理片段长度:', reasoning.length);
-          
-          hasReceivedReasoning = true; // 🔥 标记已收到推理内容
-          accumulatedReasoning += reasoning;
-          // console.log('[AIChatPanel] 累计推理长度:', accumulatedReasoning.length);
-          
-          // 更新当前思考步骤（已在初始化时创建）
-          if (currentThinkingStep) {
-            currentThinkingStep.content = accumulatedReasoning;
-            // console.log('[AIChatPanel] 🔄 更新思考步骤内容');
-          }
-          
-          // ✅ 更新临时思考步骤状态（独立显示，不在 assistant 消息中）
-          setActiveThinkingSteps([...thinkingSteps]);
-          // console.log('[AIChatPanel] 🎯 更新临时思考步骤显示');
-        },
-        onContent: (chunk: string) => {
-          // 流式回调 - 处理正常回复内容
-          accumulatedContent += chunk;
-          // console.log('[AIChatPanel] 📝 收到内容片段，长度:', chunk.length, '已收到推理:', hasReceivedReasoning, '已添加消息:', assistantMessageAdded);
-          
-          // 🔥 如果启用了深度思考但还没收到推理内容，先不创建 assistant 消息
-          if (shouldShowThinking && !hasReceivedReasoning) {
-            // console.log('[AIChatPanel] ⏳ 等待推理内容，暂不创建 assistant 消息');
-            return;
-          }
-          
-          // 如果有思考过程，标记思考完成
-          if (currentThinkingStep && currentThinkingStep.status === 'thinking') {
-            currentThinkingStep.status = 'completed';
-            if (currentThinkingStep.timestamp) {
-              currentThinkingStep.duration = Date.now() - currentThinkingStep.timestamp.getTime();
-              console.log('[AIChatPanel] ⏱️ 思考耗时:', currentThinkingStep.duration, 'ms');
-            }
-            // console.log('[AIChatPanel] ✅ 思考步骤已完成，状态已更新为:', currentThinkingStep.status);
-          }
-          
-          // ✅ 只有在收到第一个内容片段时才添加 assistant 消息
-          if (!assistantMessageAdded) {
-            // console.log('[AIChatPanel] 🎯 准备创建 assistant 消息，ID:', tempAiMessageId);
-            assistantMessageAdded = true;
-            
-            // 清除临时思考步骤显示，并重置展开状态
-            setActiveThinkingSteps(null);
-            setIsActiveThinkingExpanded(false);
-            
-            const initialMessage: Message = {
-              id: tempAiMessageId,
-              role: 'assistant',
-              content: accumulatedContent,
-              timestamp: new Date(),
-              model: selectedModel,
-              isThinking: false,
-              thinkingSteps: thinkingSteps.length > 0 ? thinkingSteps.map(step => ({...step})) : undefined
-            };
-            setMessages(prev => {
-              // console.log('[AIChatPanel] 🔥 创建 assistant 消息，ID:', tempAiMessageId, '当前消息数:', prev.length, '→', prev.length + 1);
-              // console.log('[AIChatPanel] 🔍 当前所有消息ID:', prev.map(m => `${m.id}(${m.role})`).join(', '));
-              const newMessages = [...prev, initialMessage];
-              // console.log('[AIChatPanel] 🔍 新消息列表ID:', newMessages.map(m => `${m.id}(${m.role})`).join(', '));
-              return newMessages;
-            });
-            // console.log('[AIChatPanel] ✅ 思考完成，开始显示 assistant 消息');
-          } else {
-            // 更新消息显示
-            // console.log('[AIChatPanel] 🔄 更新 assistant 消息，内容长度:', accumulatedContent.length);
-            setMessages(prev => prev.map(msg =>
-              msg.id === tempAiMessageId
-                ? { 
-                    ...msg, 
-                    content: accumulatedContent,
-                    isThinking: false,
-                    // 深拷贝思考步骤，确保 React 能检测到变化
-                    thinkingSteps: thinkingSteps.length > 0 ? thinkingSteps.map(step => ({...step})) : undefined
-                  }
-                : msg
-            ));
-          }
-        }
-      });
-
-      console.log('[AIChatPanel] AI 响应完成');
-      console.log('[AIChatPanel] 最终累计推理长度:', accumulatedReasoning.length);
-      console.log('[AIChatPanel] 最终累计内容长度:', accumulatedContent.length);
-      
-      // 保存AI响应到数据库（包括推理内容）
-      try {
-        const messageToSave = {
-          id: tempAiMessageId,
-          sessionId: currentSessionId,
-          role: 'assistant' as const,
-          content: accumulatedContent,
-          model: selectedModel,
-          timestamp: Date.now(),
-          reasoning: accumulatedReasoning || undefined // 保存推理内容
-        };
-        
-        console.log('[AIChatPanel] 准备保存的消息:', {
-          id: messageToSave.id,
-          contentLength: messageToSave.content.length,
-          reasoningLength: messageToSave.reasoning?.length || 0,
-          hasReasoning: !!messageToSave.reasoning
-        });
-        
-        await window.electronAPI?.chatHistory?.addMessage(messageToSave);
-        console.log('[AIChatPanel] ✅ AI消息已保存（包含推理内容）');
-      } catch (error) {
-        console.error('[AIChatPanel] ❌ 保存AI消息失败:', error);
-      }
-      
-      setIsLoading(false);
-    } catch (error) {
-      console.error('[AIChatPanel] 调用 AI 服务失败:', error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `抱歉，调试AI 服务失败！${String(error)}`,
+        content: taskDesc,
         timestamp: new Date()
       };
-      setMessages(prev => [...prev, errorMessage]);
-      setIsLoading(false);
+      setMessages(prev => [...prev, userMessage]);
+      setInput('');
+      setIsLoading(true);
+
+      const assistantMessageId = (Date.now() + 1).toString();
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        model: selectedModel
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+
+      try {
+        const modelConfig = await getModelConfig(selectedModel);
+        if (!modelConfig) throw new Error(`未找到模型配置：${selectedModel}`);
+
+        const actualModelId = selectedModel.includes(':') ? selectedModel.split(':')[1] : selectedModel;
+
+        await aiService.setProvider(modelConfig.providerId, {
+          id: modelConfig.id || 'default',
+          name: modelConfig.name || modelConfig.configName,
+          apiKey: modelConfig.apiKey,
+          apiEndpoint: modelConfig.apiEndpoint,
+          temperature: 0.7,
+          maxTokens: 4000,
+          modelId: actualModelId
+        });
+
+        await agentService.initialize({
+          execution: { modelId: actualModelId, temperature: 0.7, maxTokens: 4000, streaming: true }
+        });
+
+        // 每次对话前重置记忆，避免上次工具结果污染本次
+        agentService.reset();
+
+        // 获取工作区路径并注册工具（每次都重新注册以确保路径最新）
+        const workspaceResult = await (window as any).electron?.workspace?.getDir();
+        const workspacePath = workspaceResult?.success ? workspaceResult.data : '';
+        agentService.registerDefaultTools({ workspacePath });
+
+        // 根据模式设置约束
+        const constraints = chatMode === 'chat'
+          ? { allowFileWrite: false, allowCommandExecution: false }
+          : chatMode === 'plan' || chatMode === 'ask-before-edit'
+            ? { allowFileWrite: true, allowCommandExecution: false }
+            : {}; // auto-edit：无限制
+
+        // 将选中的上下文（表单、知识库、文件、技能）注入任务描述
+        let contextDesc = '';
+
+        // 表单：只注入元数据（列名、行数），数据通过 query_form 工具按需查询
+        if (selectedForms.length > 0) {
+          for (const form of selectedForms) {
+            const detail = await tableReferenceService.getFormDetail(form.id);
+            if (detail && detail.columns.length > 0) {
+              const colNames = detail.columns.map(c => c.name).join('、');
+              contextDesc += `\n\n【引用表单：${detail.name}】\n- 表单ID: ${detail.id}\n- 列：${colNames}\n- 共 ${detail.rows.length} 行数据\n- 如需查询具体数据，请使用 query_form 工具，传入 formId="${detail.id}"`;
+            } else {
+              contextDesc += `\n\n【引用表单】${form.name} (id: ${form.id})`;
+            }
+          }
+          setSelectedForms([]);
+        }
+        if (selectedKbs.length > 0) {
+          contextDesc += `\n\n【引用知识库】\n${selectedKbs.map(k => `- ${k.title} (id: ${k.id})`).join('\n')}`;
+          setSelectedKbs([]);
+        }
+        if (selectedFiles.length > 0) {
+          contextDesc += `\n\n【引用文件】\n${selectedFiles.map(f => `- ${f.name} (${f.path})`).join('\n')}`;
+          setSelectedFiles([]);
+        }
+        if (selectedSkills.length > 0) {
+          contextDesc += `\n\n【技能指令】请只执行以下指定的技能包：\n${selectedSkills.map(s => `- ${s.name} (${s.path})`).join('\n')}`;
+          setSelectedSkills([]);
+        }
+
+        const taskType: AgentTaskType = chatMode === 'chat' ? 'query' : 'write';
+        const task = agentService.createTask(taskType, taskDesc + contextDesc, { workspacePath }, constraints);
+
+        // ask-before-edit / plan 模式：写入工具需要用户确认
+        const needsConfirm = chatMode === 'ask-before-edit' || chatMode === 'plan';
+
+        await agentService.executeTaskStream(task, {
+          onStepStart: (step) => {
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: msg.content + `\n📋 **${step.description}**\n` }
+                : msg
+            ));
+          },
+          onContent: (() => {
+            let buffer = '';
+            let timer: ReturnType<typeof setTimeout> | null = null;
+            return (content: string) => {
+              buffer += content;
+              if (!timer) {
+                timer = setTimeout(() => {
+                  const flushed = buffer;
+                  buffer = '';
+                  timer = null;
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: msg.content + flushed }
+                      : msg
+                  ));
+                }, 50);
+              }
+            };
+          })(),
+          onToolCall: (toolName) => {
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: msg.content + `\n🔧 **调用工具**: ${toolName}\n` }
+                : msg
+            ));
+          },
+          onConfirmRequired: needsConfirm
+            ? (toolName, params) => new Promise<boolean>(resolve => {
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: msg.content + `\n⚠️ **工具 "${toolName}" 请求写入操作，是否允许？（自动允许）**\n` }
+                    : msg
+                ));
+                // TODO: 接入真实的 UI 确认弹窗，目前自动允许
+                resolve(true);
+              })
+            : undefined,
+          onComplete: (result) => {
+            const finalContent = result.success
+              ? (result.output ? `\n\n${result.output}` : '')
+              : `\n\n❌ **执行失败**: ${result.error || '未知错误'}`;
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: (msg.content + finalContent).trim() }
+                : msg
+            ));
+            setIsLoading(false);
+          },
+          onError: (err) => {
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: msg.content + `\n\n❌ **错误**: ${err.message}` }
+                : msg
+            ));
+            setIsLoading(false);
+          }
+        });
+      } catch (err) {
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: msg.content + `\n\n❌ **执行失败**: ${err instanceof Error ? err.message : String(err)}` }
+            : msg
+        ));
+        setIsLoading(false);
+      }
+      return;
     }
   };
 
@@ -1784,7 +1650,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             </div>
           )}
           
-          {/* 只在非思考模式下显示"正在思考..."加载动画 */}
+          {/* 只在非思考模式下显示加载动画 */}
           {isLoading && !isDeepThinkingEnabled && (
             <div className="message assistant">
               <div className="message-bubble assistant">
@@ -1794,7 +1660,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                     <span></span>
                     <span></span>
                   </div>
-                  <span className="text">正在思考...</span>
                 </div>
               </div>
             </div>
@@ -1888,6 +1753,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       <div className="context-menu-group-title">技能</div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('skills')}>
                         <span className="context-menu-item-text">Skills</span>
+                        {selectedSkills.length > 0 && <span className="context-menu-item-badge">{selectedSkills.length}</span>}
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
@@ -1984,9 +1850,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             key={file.path}
                             className="context-menu-item"
                             onClick={() => {
-                              // 将文件引用插入到输入框
-                              const fileRef = `@file[${file.path}](${file.name})`;
-                              setInput(prev => prev + fileRef + ' ');
+                              // 将文件存入选中列表
+                              setSelectedFiles(prev => {
+                                const exists = prev.some(f => f.path === file.path);
+                                if (exists) return prev;
+                                return [...prev, { name: file.name, path: file.path }];
+                              });
                               setSubMenuType('none');
                               setIsContextMenuOpen(false);
                               // 聚焦输入框
@@ -2026,9 +1895,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             key={kb.id}
                             className="context-menu-item"
                             onClick={() => {
-                              // 将知识库引用插入到输入框
-                              const kbRef = `@kb[${kb.id}](${kb.title})`;
-                              setInput(prev => prev + kbRef + ' ');
+                              // 将知识库存入选中列表
+                              setSelectedKbs(prev => {
+                                const exists = prev.some(k => k.id === kb.id);
+                                if (exists) return prev;
+                                return [...prev, { id: kb.id, title: kb.title }];
+                              });
                               setSubMenuType('none');
                               setIsContextMenuOpen(false);
                               // 聚焦输入框
@@ -2068,9 +1940,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             key={form.id}
                             className="context-menu-item"
                             onClick={() => {
-                              // 将表单引用插入到输入框
-                              const formRef = `@form[${form.id}](${form.name})`;
-                              setInput(prev => prev + formRef + ' ');
+                              // 将表单存入选中列表
+                              setSelectedForms(prev => {
+                                const exists = prev.some(f => f.id === form.id);
+                                if (exists) return prev;
+                                return [...prev, { id: form.id, name: form.name }];
+                              });
                               setSubMenuType('none');
                               setIsContextMenuOpen(false);
                               // 聚焦输入框
@@ -2124,19 +1999,23 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         {skillsList.map(skill => (
                           <div
                             key={skill.path}
-                            className="context-menu-item"
+                            className={`context-menu-item${selectedSkills.some(s => s.path === skill.path) ? ' selected' : ''}`}
                             onClick={() => {
-                              // 将技能包引用插入到输入框
-                              const skillRef = `@skill[${skill.path}](${skill.name})`;
-                              setInput(prev => prev + skillRef + ' ');
-                              setSubMenuType('none');
-                              setIsContextMenuOpen(false);
-                              // 聚焦输入框
-                              textareaRef.current?.focus();
+                              // 切换技能包选中状态
+                              setSelectedSkills(prev => {
+                                const exists = prev.some(s => s.path === skill.path);
+                                if (exists) return prev.filter(s => s.path !== skill.path);
+                                return [...prev, { name: skill.name, path: skill.path }];
+                              });
                             }}
                           >
                             <Icon name={skill.type === 'directory' ? 'folder' : 'file'} size={14} />
                             <span className="context-menu-item-text">{skill.name}</span>
+                            {selectedSkills.some(s => s.path === skill.path) && (
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                                <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" />
+                              </svg>
+                            )}
                           </div>
                         ))}
                       </div>

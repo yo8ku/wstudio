@@ -38,6 +38,15 @@ export class OpenAIProvider extends BaseAIProvider {
     );
   }
 
+  setConfig(config: AIProviderConfig): void {
+    const raw = config.apiEndpoint || 'https://api.openai.com/v1/chat/completions';
+    // 如果只填了 base URL（没有 /v1/chat/completions），自动补全
+    const endpoint = raw.includes('/chat/completions')
+      ? raw
+      : raw.replace(/\/+$/, '') + '/v1/chat/completions';
+    super.setConfig({ ...config, apiEndpoint: endpoint });
+  }
+
   // 获取可用模型列表（使用缓存机制）
   async getAvailableModels(): Promise<AIModel[]> {
     return this.getModelsWithCache(() => this.fetchModelsFromAPI());
@@ -231,7 +240,7 @@ export class OpenAIProvider extends BaseAIProvider {
       const data = await response.json();
       return this.parseResponse(data);
     } catch (error) {
-      this.handleError(error, 'Failed to generate text');
+      this.handleError(error);
     }
   }
 
@@ -336,26 +345,22 @@ export class OpenAIProvider extends BaseAIProvider {
   // 测试连接（成功后刷新模型缓存）
   async testConnection(): Promise<boolean> {
     try {
+      if (!this.config.modelId) {
+        throw new Error('请填写模型 ID 后再测试连接');
+      }
+
       const testParams: AIRequestParams = {
-        model: 'gpt-3.5-turbo',
+        model: this.config.modelId,
         messages: [{ role: 'user', content: 'Hi' }],
         maxTokens: 10
       };
 
       await this.generateText(testParams);
       this.connectionStatus = 'connected';
-      
-      // 注意：测试连接时不再自动保存配置，只在用户点击"保存配置"时才保存
-      // 这样可以避免重复创建配置记录
-      
       return true;
     } catch (error) {
       this.connectionStatus = 'error';
-      
-      // 测试失败时，清空缓存的模型列表
       this.cachedModels = null;
-      
-      // 抛出原始错误，让调用方获取服务商返回的具体错误信息
       throw error;
     }
   }

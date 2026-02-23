@@ -201,6 +201,11 @@
         &.success {
           opacity: 1;
         }
+
+        &.api-endpoint-preview {
+          margin-top: 4px;
+          word-break: break-all;
+        }
       }
 
       .empty-models-hint {
@@ -460,6 +465,38 @@
 
               &:hover svg {
                 opacity: 1;
+              }
+
+              .model-item-actions {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-shrink: 0;
+              }
+
+              .btn-remove-model {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 18px;
+                padding: 0;
+                border: none;
+                background: transparent;
+                cursor: pointer;
+                opacity: 0;
+                color: var(--ws-foreground);
+                border-radius: 3px;
+                transition: opacity 0.15s, background 0.15s;
+
+                &:hover {
+                  background: var(--ws-button-secondary-hover-background, rgba(255,255,255,0.1));
+                  opacity: 1 !important;
+                }
+              }
+
+              &:hover .btn-remove-model {
+                opacity: 0.5;
               }
             }
           }

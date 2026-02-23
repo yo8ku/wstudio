@@ -576,7 +576,7 @@ export class SettingsManager extends EventEmitter {
       const existingSettings = await this.loadUserSettings();
       
       // 恢复 pluginSettings（因为 loadUserSettings 可能覆盖了它）
-      this.pluginSettings = { ...currentPluginSettings, ...this.pluginSettings };
+      this.pluginSettings = { ...this.pluginSettings, ...currentPluginSettings };
       
       // 只保存与默认值不同的设置
       const settingsToSave = this.filterDefaultValues(this.settings);

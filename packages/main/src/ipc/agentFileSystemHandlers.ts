@@ -90,7 +90,10 @@ export function registerAgentFileSystemHandlers(): void {
     'agent:fs:searchFiles',
     'agent:fs:fileExists',
     'agent:fs:createDirectory',
-    'agent:fs:deleteFile'
+    'agent:fs:deleteFile',
+    'agent:fs:editFile',
+    'agent:fs:multiEdit',
+    'agent:fs:glob'
   ];
 
   for (const handler of handlersToRemove) {
@@ -557,5 +560,186 @@ export function registerAgentFileSystemHandlers(): void {
     }
   );
 
+  // ========== 精确替换编辑 ==========
+  ipcMain.handle(
+    'agent:fs:editFile',
+    async (
+      _event: Electron.IpcMainInvokeEvent,
+      filePath: string,
+      oldString: string,
+      newString: string,
+      workspacePath: string
+    ): Promise<AgentFileResult> => {
+      try {
+        if (!isPathInWorkspace(filePath, workspacePath)) {
+          return { success: false, error: '文件路径不在工作区范围内' };
+        }
+        if (containsForbiddenPattern(filePath)) {
+          return { success: false, error: '禁止访问该路径' };
+        }
+        if (!isExtensionAllowed(filePath)) {
+          return { success: false, error: '不允许编辑该类型的文件' };
+        }
+
+        const originalContent = await fs.readFile(filePath, 'utf-8');
+        const matchCount = originalContent.split(oldString).length - 1;
+
+        if (matchCount === 0) {
+          return { success: false, error: '未找到匹配的文本，请确认 old_string 与文件内容完全一致' };
+        }
+        if (matchCount > 1) {
+          return { success: false, error: `找到 ${matchCount} 处匹配，old_string 不唯一，请提供更多上下文以精确定位` };
+        }
+
+        const newContent = originalContent.replace(oldString, newString);
+        await fs.writeFile(filePath, newContent, 'utf-8');
+
+        console.log('[AgentFS] 文件编辑成功:', filePath);
+
+        return {
+          success: true,
+          data: { originalContent, newContent, matchCount: 1, path: filePath }
+        };
+      } catch (error) {
+        console.error('[AgentFS] 编辑文件失败:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+  );
+
+  // ========== 多处原子编辑 ==========
+  ipcMain.handle(
+    'agent:fs:multiEdit',
+    async (
+      _event: Electron.IpcMainInvokeEvent,
+      filePath: string,
+      edits: Array<{ old_string: string; new_string: string }>,
+      workspacePath: string
+    ): Promise<AgentFileResult> => {
+      try {
+        if (!isPathInWorkspace(filePath, workspacePath)) {
+          return { success: false, error: '文件路径不在工作区范围内' };
+        }
+        if (containsForbiddenPattern(filePath)) {
+          return { success: false, error: '禁止访问该路径' };
+        }
+        if (!isExtensionAllowed(filePath)) {
+          return { success: false, error: '不允许编辑该类型的文件' };
+        }
+        if (!edits || edits.length === 0) {
+          return { success: false, error: '编辑操作列表不能为空' };
+        }
+
+        let content = await fs.readFile(filePath, 'utf-8');
+
+        // 先验证所有 old_string 都存在且唯一
+        for (let i = 0; i < edits.length; i++) {
+          const matchCount = content.split(edits[i].old_string).length - 1;
+          if (matchCount === 0) {
+            return { success: false, error: `第 ${i + 1} 个编辑的 old_string 未找到匹配` };
+          }
+          if (matchCount > 1) {
+            return { success: false, error: `第 ${i + 1} 个编辑的 old_string 匹配了 ${matchCount} 处，不唯一` };
+          }
+        }
+
+        // 全部验证通过后执行替换
+        for (const edit of edits) {
+          content = content.replace(edit.old_string, edit.new_string);
+        }
+
+        await fs.writeFile(filePath, content, 'utf-8');
+
+        console.log('[AgentFS] 多处编辑成功:', filePath, `共 ${edits.length} 处`);
+
+        return {
+          success: true,
+          data: { newContent: content, editCount: edits.length, path: filePath }
+        };
+      } catch (error) {
+        console.error('[AgentFS] 多处编辑失败:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+  );
+
+  // ========== Glob 模式匹配 ==========
+  ipcMain.handle(
+    'agent:fs:glob',
+    async (
+      _event: Electron.IpcMainInvokeEvent,
+      pattern: string,
+      basePath: string,
+      workspacePath: string
+    ): Promise<AgentFileResult> => {
+      try {
+        if (!isPathInWorkspace(basePath, workspacePath)) {
+          return { success: false, error: '搜索路径不在工作区范围内' };
+        }
+
+        // 使用递归遍历 + 简单 glob 匹配
+        const matches: string[] = [];
+        const maxResults = 500;
+
+        async function walkDir(dir: string, depth: number): Promise<void> {
+          if (depth > 10 || matches.length >= maxResults) return;
+
+          let entries;
+          try {
+            entries = await fs.readdir(dir, { withFileTypes: true });
+          } catch {
+            return;
+          }
+
+          for (const entry of entries) {
+            if (matches.length >= maxResults) break;
+
+            const fullEntryPath = path.join(dir, entry.name);
+
+            // 跳过禁止的目录
+            if (containsForbiddenPattern(fullEntryPath)) continue;
+
+            if (entry.isDirectory()) {
+              await walkDir(fullEntryPath, depth + 1);
+            } else if (entry.isFile()) {
+              const relativePath = path.relative(basePath, fullEntryPath).replace(/\\/g, '/');
+              if (matchGlobPattern(relativePath, pattern)) {
+                matches.push(relativePath);
+              }
+            }
+          }
+        }
+
+        await walkDir(basePath, 0);
+
+        console.log('[AgentFS] Glob 匹配完成:', pattern, `找到 ${matches.length} 个文件`);
+
+        return {
+          success: true,
+          data: matches
+        };
+      } catch (error) {
+        console.error('[AgentFS] Glob 匹配失败:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+  );
+
   console.log('[AgentFS] Agent 文件系统 IPC 处理器已注册');
+}
+
+/**
+ * 简单的 glob 模式匹配
+ * 支持 * (匹配单层) 和 ** (匹配多层)
+ */
+function matchGlobPattern(filePath: string, pattern: string): boolean {
+  const regexStr = pattern
+    .replace(/\./g, '\\.')
+    .replace(/\*\*\//g, '(.+/)?')
+    .replace(/\*\*/g, '.*')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\?/g, '[^/]');
+
+  const regex = new RegExp(`^${regexStr}$`, 'i');
+  return regex.test(filePath);
 }

@@ -9,6 +9,7 @@ import { EditorTab } from '../EditorArea';
 import { Icon } from '../../../Icons/Icon';
 import { MonacoContextMenu } from '../MonacoContextMenu/MonacoContextMenu';
 import type { MenuGroup } from '../MonacoContextMenu/MonacoContextMenu';
+import { CustomScrollbar } from '../../../common/CustomScrollbar';
 import './TabBar.scss';
 
 export interface TabBarProps {
@@ -288,7 +289,13 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   return (
     <div className="tab-bar">
-      <div className="tab-bar-scroll-container" ref={scrollContainerRef}>
+      <CustomScrollbar
+        className="tab-bar-scroll-container"
+        direction="horizontal"
+        scrollbarWidth={3}
+        defaultOpacity={0.6}
+        fadeOutDelay={800}
+      >
         {tabs.map((tab) => {
           const isActive = activeTabId === tab.id;
           const isHovered = hoveredTabId === tab.id;
@@ -329,8 +336,8 @@ export const TabBar: React.FC<TabBarProps> = ({
             </div>
           );
         })}
-      </div>
-      
+      </CustomScrollbar>
+
       {/* 操作按钮区域 */}
       <div className="tab-bar-actions">
         {activeTab?.type === 'settings' && (

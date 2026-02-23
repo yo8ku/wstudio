@@ -1237,7 +1237,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       });
       
       // 根据是否有 RAG 上下文选择不同的 System Prompt（从 AI-Zone.md 文件动态加载）
-      const systemMessage = await getAIZoneSystemPromptAsync(hasRagContext, modelDisplayName, providerDisplayName);
+      const systemMessage = await getAIZoneSystemPromptAsync(hasRagContext);
 
       const trimmedHistory = chatHistory.length > MAX_INLINE_CHAT_HISTORY_MESSAGES
         ? chatHistory.slice(chatHistory.length - MAX_INLINE_CHAT_HISTORY_MESSAGES)
@@ -3767,13 +3767,12 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             enabled: false
           },
           scrollbar: {
-            horizontal: 'auto', // 启用横向滚动条（配合 wordWrap: 'off' 使用）
-            horizontalScrollbarSize: 10, // 设置横向滚动条大小
-            vertical: 'auto', // 保持纵向滚动条
-            verticalScrollbarSize: 14, // 纵向滚动条大小
+            horizontal: 'hidden',
+            vertical: 'auto',
+            verticalScrollbarSize: 14,
           },
           scrollBeyondLastLine: false,
-          wordWrap: 'off', // 禁用自动换行，避免编辑器宽度变化时行高变化导致内联聊天位置移动
+          wordWrap: 'on',
           automaticLayout: true,
           padding: {
             top: 16,

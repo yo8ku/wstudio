@@ -53,6 +53,8 @@ export const FileExplorer: React.FC = () => {
   
   // 是否显示"打开的编辑器"列表（由菜单控制）
   const [showOpenEditors, setShowOpenEditors] = useState<boolean>(true);
+  // 表单区域展开状态（持久化）
+  const [initialFormExpanded, setInitialFormExpanded] = useState<boolean>(false);
 
   // 辅助函数：根据路径查找节点
   const findNodeByPath = useCallback((path: string | null | undefined): FileTreeNode | null => {
@@ -318,12 +320,15 @@ export const FileExplorer: React.FC = () => {
     };
   }, [loadFileTree]);
 
-  // 加载资源管理器配置（显示/隐藏"打开的编辑器"）
+  // 加载资源管理器配置（显示/隐藏"打开的编辑器"、表单展开状态）
   useEffect(() => {
     const loadConfig = async () => {
       const config = await electronStore.get('explorer-config');
       if (config?.showOpenEditors !== undefined) {
         setShowOpenEditors(config.showOpenEditors);
+      }
+      if (config?.isFormExpanded !== undefined) {
+        setInitialFormExpanded(config.isFormExpanded);
       }
     };
     loadConfig();
@@ -337,9 +342,11 @@ export const FileExplorer: React.FC = () => {
       console.log('[FileExplorer] 切换"打开的编辑器"显示:', show);
       
       setShowOpenEditors(show);
-      
-      // 持久化配置
+
+      // 持久化配置（合并写入，保留其他字段）
+      const currentConfig = await electronStore.get('explorer-config') ?? {};
       await electronStore.set('explorer-config', {
+        ...currentConfig,
         showOpenEditors: show,
       });
     };
@@ -1234,6 +1241,14 @@ export const FileExplorer: React.FC = () => {
         onCreateCancel={handleCreateCancel}
         onRename={handleRename}
         onBlankAreaClick={handleBlankAreaClick}
+        initialFormExpanded={initialFormExpanded}
+        onFormExpandedChange={async (expanded) => {
+          const currentConfig = await electronStore.get('explorer-config') ?? {};
+          await electronStore.set('explorer-config', {
+            ...currentConfig,
+            isFormExpanded: expanded,
+          });
+        }}
       />
     </>
   );

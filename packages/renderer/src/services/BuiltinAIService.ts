@@ -3,6 +3,32 @@
  * 描述: 通过IPC与主进程通信，调用内置AI模型
  */
 
+/** 缓存的代码生成提示词 */
+let cachedCodeGenPrompt: string | null = null;
+
+/**
+ * 从 code-generation.md 加载代码生成提示词
+ */
+async function loadCodeGenPrompt(): Promise<string> {
+  if (cachedCodeGenPrompt !== null) {
+    return cachedCodeGenPrompt;
+  }
+  try {
+    const response = await fetch(new URL('../../../../prompts/code/generation.md', import.meta.url));
+    if (response.ok) {
+      cachedCodeGenPrompt = await response.text();
+      return cachedCodeGenPrompt;
+    }
+  } catch (error) {
+    console.warn('[BuiltinAIService] 从文件加载代码生成提示词失败:', error);
+  }
+  cachedCodeGenPrompt = '';
+  return cachedCodeGenPrompt;
+}
+
+// 触发预加载
+loadCodeGenPrompt().catch(console.error);
+
 /**
  * 聊天消息接口
  */
@@ -200,7 +226,7 @@ class BuiltinAIService {
     } else {
       messages.push({
         role: 'system',
-        content: '你是一个专业的编程助手，帮助用户编写高质量的代码。请只返回代码，不要包含额外的解释。',
+        content: cachedCodeGenPrompt || '',
       });
     }
 
@@ -239,7 +265,7 @@ class BuiltinAIService {
     } else {
       messages.push({
         role: 'system',
-        content: '你是一个专业的编程助手，帮助用户编写高质量的代码。请只返回代码，不要包含额外的解释。',
+        content: cachedCodeGenPrompt || '',
       });
     }
 

@@ -19,7 +19,9 @@
 
 [data-theme-mode=dark] .command-center,
 // 菜单栏 菜单边框
-[data-theme-mode=dark] .titlebar-dropdown {
+[data-theme-mode=dark] .titlebar-dropdown,
+[data-theme-mode=dark] .titlebar-submenu
+ {
     border: 1px solid rgb(129 129 129 / 28%);
 
 }

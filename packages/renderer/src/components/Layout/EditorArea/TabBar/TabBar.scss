@@ -24,26 +24,24 @@
   display: flex;
   align-items: stretch;
   flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
   flex: 1;
   height: 100%;
-  scrollbar-width: thin;
+  min-width: 0;
 
-  &::-webkit-scrollbar {
-    height: 3px;
+  .custom-scrollbar-content {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: nowrap;
   }
 
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  .custom-scrollbar-track--horizontal {
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 0;
 
-  &::-webkit-scrollbar-thumb {
-    background: var(--ws-scrollbar-thumb, var(--scrollbar-thumb, #79797966));
-    border-radius: 3px;
-
-    &:hover {
-      background: var(--ws-scrollbar-thumb-hover, var(--scrollbar-thumb-hover, #646464b3));
+    .custom-scrollbar-thumb {
+      cursor: default;
     }
   }
 }

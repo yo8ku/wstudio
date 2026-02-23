@@ -71,21 +71,29 @@ export interface ExecutionResult {
 }
 
 /**
- * 默认系统提示词
+ * 缓存的执行器提示词
  */
-const DEFAULT_EXECUTOR_PROMPT = `你是一个智能写作助手，正在执行用户的任务。
+let cachedExecutorPrompt: string | null = null;
 
-## 执行原则
-1. 严格按照计划执行每个步骤
-2. 每个步骤完成后，评估结果并决定下一步
-3. 如果遇到问题，尝试调整方案
-4. 保持输出简洁、准确
-
-## 输出格式
-对于每个步骤，请输出：
-1. 当前步骤的执行结果
-2. 下一步的计划（如果有）
-3. 如果需要调用工具，请明确指出工具名称和参数`;
+/**
+ * 从 agent-executor.md 加载执行器提示词
+ */
+async function loadExecutorPrompt(): Promise<string> {
+  if (cachedExecutorPrompt !== null) {
+    return cachedExecutorPrompt;
+  }
+  try {
+    const response = await fetch(new URL('../../../../../prompts/agent/executor.md', import.meta.url));
+    if (response.ok) {
+      cachedExecutorPrompt = await response.text();
+      return cachedExecutorPrompt;
+    }
+  } catch (error) {
+    console.warn('[AgentExecutor] 从文件加载执行器提示词失败:', error);
+  }
+  cachedExecutorPrompt = '';
+  return cachedExecutorPrompt;
+}
 
 /**
  * Agent 任务执行器类
@@ -103,13 +111,23 @@ export class AgentExecutor {
   /** 文件变更记录 */
   private fileChanges: FileChange[] = [];
 
+  /** 写入类工具确认回调（ask-before-edit 模式使用） */
+  private confirmCallback: ((toolName: string, params: Record<string, unknown>) => Promise<boolean>) | null = null;
+
   constructor(config: AgentExecutorConfig) {
     this.config = {
       ...config,
-      systemPrompt: config.systemPrompt || DEFAULT_EXECUTOR_PROMPT,
       maxRetries: config.maxRetries || 3,
       retryDelay: config.retryDelay || 1000
     };
+    // 触发异步加载提示词
+    if (!config.systemPrompt) {
+      loadExecutorPrompt().then(prompt => {
+        if (!this.config.systemPrompt) {
+          this.config.systemPrompt = prompt;
+        }
+      }).catch(console.error);
+    }
   }
 
   /**
@@ -323,7 +341,7 @@ export class AgentExecutor {
     const response = await aiService.generateText({
       model: this.config.executionConfig.modelId,
       messages: [
-        { role: 'system', content: this.config.systemPrompt || DEFAULT_EXECUTOR_PROMPT },
+        { role: 'system', content: this.config.systemPrompt || cachedExecutorPrompt || '' },
         ...messages
       ],
       temperature: this.config.executionConfig.temperature || 0.7,
@@ -347,7 +365,9 @@ export class AgentExecutor {
     const { toolRegistry, stateManager, memory } = this.config;
 
     if (!step.toolCall) {
-      throw new Error('工具调用步骤缺少工具信息');
+      // toolCall 缺失时降级为 think 步骤，避免整个任务失败
+      console.warn(`[AgentExecutor] 步骤 "${step.description}" 缺少工具信息，降级为 think 步骤`);
+      return this.executeThinkStep(task, step);
     }
 
     const { toolName, parameters } = step.toolCall;
@@ -358,21 +378,21 @@ export class AgentExecutor {
       throw new Error(`工具 "${toolName}" 不存在`);
     }
 
-    // 检查是否需要用户确认
-    if (tool.requiresConfirmation) {
-      const confirmationRequest: ConfirmationRequest = {
-        id: `confirm_${Date.now()}`,
-        type: 'custom',
-        description: `工具 "${toolName}" 需要确认执行`,
-        createdAt: Date.now()
+    // 检查是否需要用户确认（写入类工具 + 有确认回调时）
+    if (tool.requiresConfirmation && this.confirmCallback) {
+      const allowed = await this.confirmCallback(toolName, parameters);
+      if (!allowed) {
+        return {
+          result: { skipped: true },
+          output: `用户拒绝了工具 "${toolName}" 的执行`
+        };
+      }
+    } else if (tool.requiresConfirmation && task.constraints?.allowFileWrite === false) {
+      // chat 模式：禁止写入工具执行
+      return {
+        result: { blocked: true },
+        output: `当前模式不允许执行写入操作（工具: ${toolName}）`
       };
-
-      stateManager.setConfirmationRequest(confirmationRequest);
-
-      // 等待用户确认
-      // 这里需要外部机制来处理确认响应
-      // 暂时跳过确认，直接执行
-      console.log(`[AgentExecutor] 工具 ${toolName} 需要确认，暂时跳过确认直接执行`);
     }
 
     // 执行工具
@@ -394,9 +414,8 @@ export class AgentExecutor {
 
     return {
       result: toolResult,
-      output: toolResult.success
-        ? `工具 ${toolName} 执行成功`
-        : `工具 ${toolName} 执行失败: ${toolResult.error}`,
+      // tool_call 步骤不产生用户可见的输出，结果已存入记忆供后续步骤使用
+      output: toolResult.success ? undefined : `工具 ${toolName} 执行失败: ${toolResult.error}`,
       diffChanges
     };
   }
@@ -421,7 +440,7 @@ export class AgentExecutor {
     const response = await aiService.generateText({
       model: this.config.executionConfig.modelId,
       messages: [
-        { role: 'system', content: this.config.systemPrompt || DEFAULT_EXECUTOR_PROMPT },
+        { role: 'system', content: this.config.systemPrompt || cachedExecutorPrompt || '' },
         ...messages
       ],
       temperature: this.config.executionConfig.temperature || 0.7,
@@ -471,7 +490,7 @@ ${completedSteps.map(s => `- ${s.description}: ${JSON.stringify(s.result)}`).joi
     const response = await aiService.generateText({
       model: this.config.executionConfig.modelId,
       messages: [
-        { role: 'system', content: this.config.systemPrompt || DEFAULT_EXECUTOR_PROMPT },
+        { role: 'system', content: this.config.systemPrompt || cachedExecutorPrompt || '' },
         ...messages
       ],
       temperature: 0.3,
@@ -724,8 +743,12 @@ ${completedSteps.map(s => `- ${s.description}: ${JSON.stringify(s.result)}`).joi
       onDiffGenerated?: (diff: DiffChange) => void;
       onComplete?: (result: ExecutionResult) => void;
       onError?: (error: Error) => void;
+      /** 写入类工具需要用户确认时调用，返回 true 表示允许，false 表示拒绝 */
+      onConfirmRequired?: (toolName: string, params: Record<string, unknown>) => Promise<boolean>;
     }
   ): Promise<ExecutionResult> {
+    // 将确认回调挂载到实例，供 executeToolCallStep 使用
+    this.confirmCallback = callbacks.onConfirmRequired ?? null;
     // 注册事件监听器
     const { stateManager } = this.config;
 
@@ -788,8 +811,9 @@ ${completedSteps.map(s => `- ${s.description}: ${JSON.stringify(s.result)}`).joi
       }
       throw error;
     } finally {
-      // 清理事件监听器
+      // 清理事件监听器和确认回调
       unsubscribers.forEach(unsub => unsub());
+      this.confirmCallback = null;
     }
   }
 }

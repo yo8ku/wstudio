@@ -24,8 +24,24 @@ import { AgentMemory } from './AgentMemory';
 import { AgentPlanner } from './AgentPlanner';
 import { AgentExecutor, ExecutionResult } from './AgentExecutor';
 import { ToolRegistry } from './tools/ToolRegistry';
-import { createFileSystemTools, FileSystemToolConfig } from './tools/FileSystemTool';
-import { createRAGTools, RAGToolConfig } from './tools/RAGTool';
+import { ReadFileTool } from './tools/filesystem/ReadFileTool';
+import { WriteFileTool } from './tools/filesystem/WriteFileTool';
+import { EditFileTool } from './tools/filesystem/EditFileTool';
+import { MultiEditFileTool } from './tools/filesystem/MultiEditFileTool';
+import { ListFilesTool } from './tools/filesystem/ListFilesTool';
+import { SearchFilesTool } from './tools/filesystem/SearchFilesTool';
+import { GlobTool } from './tools/filesystem/GlobTool';
+import { KnowledgeQueryTool } from './tools/rag/KnowledgeQueryTool';
+import { SemanticSearchTool } from './tools/rag/SemanticSearchTool';
+import { FindSimilarTool } from './tools/rag/FindSimilarTool';
+import { GetContextTool } from './tools/rag/GetContextTool';
+import { BashTool } from './tools/shell/BashTool';
+import { AskUserTool } from './tools/interaction/AskUserTool';
+import { WebFetchTool } from './tools/network/WebFetchTool';
+import { TodoReadTool } from './tools/taskmanager/TodoReadTool';
+import { TodoWriteTool } from './tools/taskmanager/TodoWriteTool';
+import { QueryFormTool } from './tools/interaction/QueryFormTool';
+import type { FileSystemToolConfig, RAGToolConfig, ShellToolConfig, WebFetchToolConfig } from './tools/base/types';
 
 /**
  * 默认执行配置
@@ -144,26 +160,51 @@ export class AgentService {
     workspacePath: string;
     fileSystemConfig?: Partial<FileSystemToolConfig>;
     ragConfig?: RAGToolConfig;
+    shellConfig?: Partial<ShellToolConfig>;
+    webFetchConfig?: Partial<WebFetchToolConfig>;
   }): void {
-    const { workspacePath, fileSystemConfig, ragConfig } = options;
+    const { workspacePath, fileSystemConfig, ragConfig, shellConfig, webFetchConfig } = options;
 
-    // 注册文件系统工具
-    const fsTools = createFileSystemTools({
-      workspacePath,
-      ...fileSystemConfig
-    });
-    fsTools.forEach(tool => this.toolRegistry.register(tool, 'file'));
+    // 文件系统工具配置
+    const fsConfig: FileSystemToolConfig = { workspacePath, ...fileSystemConfig };
+    // RAG 工具配置
+    const ragCfg: RAGToolConfig = { workspacePath, ...ragConfig };
 
-    // 注册 RAG 工具
-    const ragTools = createRAGTools(ragConfig);
-    ragTools.forEach(tool => this.toolRegistry.register(tool, 'search'));
+    // 使用新的类式工具注册
+    this.toolRegistry.registerTools([
+      // 文件系统工具
+      new ReadFileTool(fsConfig),
+      new WriteFileTool(fsConfig),
+      new EditFileTool(fsConfig),
+      new MultiEditFileTool(fsConfig),
+      new ListFilesTool(fsConfig),
+      new SearchFilesTool(fsConfig),
+      new GlobTool(fsConfig),
+      // RAG 工具
+      new KnowledgeQueryTool(ragCfg),
+      new SemanticSearchTool(ragCfg),
+      new FindSimilarTool(ragCfg),
+      new GetContextTool(ragCfg),
+      // Shell 工具
+      new BashTool({ workspacePath, ...shellConfig }),
+      // 交互工具
+      new AskUserTool({ workspacePath }),
+      // 网络工具
+      new WebFetchTool({ workspacePath, ...webFetchConfig }),
+      // 任务管理工具
+      new TodoReadTool({ workspacePath }),
+      new TodoWriteTool({ workspacePath }),
+      // 表单查询工具
+      new QueryFormTool({ workspacePath }),
+    ]);
 
     // 更新规划器的工具列表
     this.planner.updateConfig({
       availableTools: this.toolRegistry.getAll()
     });
 
-    console.log(`[AgentService] 已注册 ${fsTools.length + ragTools.length} 个默认工具`);
+    const stats = this.toolRegistry.getStats();
+    console.log(`[AgentService] 已注册 ${stats.totalTools} 个默认工具`);
   }
 
   /**
@@ -241,6 +282,7 @@ export class AgentService {
       onDiffGenerated?: (diff: DiffChange) => void;
       onComplete?: (result: ExecutionResult) => void;
       onError?: (error: Error) => void;
+      onConfirmRequired?: (toolName: string, params: Record<string, unknown>) => Promise<boolean>;
     }
   ): Promise<ExecutionResult> {
     if (!this.initialized) {

@@ -50,6 +50,8 @@ export interface ExplorerViewProps {
   onCreateCancel?: (node: FileTreeNode) => void;
   onRename?: (node: FileTreeNode, newName: string) => void;
   onBlankAreaClick?: () => void;
+  initialFormExpanded?: boolean;
+  onFormExpandedChange?: (expanded: boolean) => void;
 }
 
 /**
@@ -79,6 +81,8 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   onCreateCancel,
   onRename,
   onBlankAreaClick,
+  initialFormExpanded = false,
+  onFormExpandedChange,
 }) => {
   
   const [selectedFile, setSelectedFile] = useState<FileTreeNode | null>(null);
@@ -92,7 +96,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   // 追踪展开/折叠状态
   const [isFileTreeExpanded, setIsFileTreeExpanded] = useState(true);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(false);
-  const [isFormExpanded, setIsFormExpanded] = useState(false);
+  const [isFormExpanded, setIsFormExpanded] = useState(initialFormExpanded);
 
   // 表单状态
   const [formGroups, setFormGroups] = useState<import('./Form/types').FormGroupItem[]>([]);
@@ -973,7 +977,10 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         onGroupToggle={handleGroupToggle}
         onNewForm={handleNewForm}
         onNewGroup={handleNewGroup}
-        onExpandedChange={setIsFormExpanded}
+        onExpandedChange={(expanded) => {
+          setIsFormExpanded(expanded);
+          onFormExpandedChange?.(expanded);
+        }}
         onOpenForm={handleOpenForm}
         onOpenFormInNewTab={handleOpenFormInNewTab}
         onRenameForm={handleRenameForm}

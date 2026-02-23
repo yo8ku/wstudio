@@ -647,6 +647,19 @@
         flex-shrink: 0;
         opacity: 0.6;
       }
+
+      .context-menu-item-badge {
+        margin-left: auto;
+        margin-right: 4px;
+        font-size: 11px;
+        min-width: 16px;
+        height: 16px;
+        line-height: 16px;
+        text-align: center;
+        border-radius: 8px;
+        background-color: var(--ws-accent, #007acc);
+        color: #fff;
+      }
     }
 
     // 选中状态的菜单项

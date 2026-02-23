@@ -100,7 +100,29 @@
       "Bash(curl -s \"https://api.github.com/repos/dalehurley/phpbot/contents/skills/get-weather-forecast\")",
       "Bash(curl -s \"https://raw.githubusercontent.com/dalehurley/phpbot/main/skills/get-weather-forecast/SKILL.md\")",
       "Bash(pnpm build:renderer)",
-      "Bash(npx tsc --noEmit)"
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(npx vite:*)",
+      "Bash(timeout:*)",
+      "Bash(taskkill:*)",
+      "Bash(dir:*)",
+      "Bash(git.exe diff:*)",
+      "Bash(git.exe status:*)",
+      "Bash(git.exe show:*)",
+      "Bash(/c/Program Files/Git/bin/git.exe -C \"e:/Wise Note Studio/note-studio1.0-pro\" status:*)",
+      "Bash(/mingw64/bin/git -C \"e:/Wise Note Studio/note-studio1.0-pro\" status:*)",
+      "Bash(/c/Program\\\\ Files/Git/bin/git.exe -C \"e:/Wise Note Studio/note-studio1.0-pro\" show:*)",
+      "Bash(/c/Program\\\\ Files/Git/bin/git.exe -C \"e:/Wise Note Studio/note-studio1.0-pro\" log:*)",
+      "Bash(/c/Program\\\\ Files/Git/bin/git.exe -C \"e:/Wise Note Studio/note-studio1.0-pro\" diff:*)",
+      "Bash(\"/c/Program Files/Git/bin/git.exe\" -C \"e:/Wise Note Studio/note-studio1.0-pro\" diff:*)",
+      "Bash(\"/c/Program Files/Git/cmd/git.exe\" -C \"e:/Wise Note Studio/note-studio1.0-pro\" diff:*)",
+      "Bash(powershell.exe -Command \"cd ''e:/Wise Note Studio/note-studio1.0-pro''; git diff HEAD -- ''packages/renderer/src/components/Layout/AIChatPanel/AIChatPanel.tsx'' | Select-Object -First 100\")",
+      "Bash(\"/c/Users/Administrator/AppData/Local/GitHubDesktop/app-3.5.4/resources/app/git/cmd/git.exe\" -C \"e:/Wise Note Studio/note-studio1.0-pro\" show:*)",
+      "Bash(\"/c/Users/Administrator/AppData/Local/GitHubDesktop/app-3.5.4/resources/app/git/cmd/git.exe\" -C \"e:/Wise Note Studio/note-studio1.0-pro\" checkout:*)",
+      "Bash(ls -la \"e:\\\\Wise Note Studio\\\\note-studio1.0-pro\\\\packages\\\\AI\"\" 2>/dev/null || echo \"AI directory not found \")"
     ]
   }
 }

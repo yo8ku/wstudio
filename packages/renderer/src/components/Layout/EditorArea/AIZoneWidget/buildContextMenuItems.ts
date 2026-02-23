@@ -251,11 +251,13 @@ export async function buildLevel2MenuItems(
         try {
           const treeResult = await window.electron?.folder?.readTree(targetPath);
           if (treeResult?.success && treeResult.data && Array.isArray(treeResult.data)) {
+            // 过滤掉 .wstudio 目录
+            const filteredData = treeResult.data.filter((item: any) => item.name !== '.wstudio');
             // 先添加文件夹，再添加文件
             const folders: typeof treeResult.data = [];
             const files: typeof treeResult.data = [];
-            
-            for (const item of treeResult.data) {
+
+            for (const item of filteredData) {
               if (item.type === 'directory') {
                 folders.push(item);
               } else {

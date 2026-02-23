@@ -9,6 +9,8 @@ import {
   ToolResult,
   ToolParameterSchema
 } from '../types';
+import { BaseTool } from './base/BaseTool';
+import type { ToolCategory } from './base/types';
 
 /**
  * 工具注册表类
@@ -22,8 +24,15 @@ export class ToolRegistry {
 
   constructor() {
     // 初始化默认分类
-    this.categories.set('file', new Set());
+    this.categories.set('filesystem', new Set());
     this.categories.set('search', new Set());
+    this.categories.set('shell', new Set());
+    this.categories.set('interaction', new Set());
+    this.categories.set('network', new Set());
+    this.categories.set('agent', new Set());
+    this.categories.set('taskmanager', new Set());
+    // 兼容旧分类
+    this.categories.set('file', new Set());
     this.categories.set('execute', new Set());
     this.categories.set('query', new Set());
     this.categories.set('other', new Set());
@@ -54,6 +63,24 @@ export class ToolRegistry {
   registerAll(tools: Array<{ tool: AgentTool; category?: string }>): void {
     for (const { tool, category } of tools) {
       this.register(tool, category);
+    }
+  }
+
+  /**
+   * 注册工具类实例
+   * 自动调用 toAgentTool() 转换并使用元数据中的分类
+   */
+  registerTool(tool: BaseTool, category?: ToolCategory): void {
+    const agentTool = tool.toAgentTool();
+    this.register(agentTool, category ?? tool.metadata.category);
+  }
+
+  /**
+   * 批量注册工具类实例
+   */
+  registerTools(tools: BaseTool[]): void {
+    for (const tool of tools) {
+      this.registerTool(tool);
     }
   }
 

@@ -53,7 +53,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const { isActivityBarVisible } = useRightSidebarStore();
   
   // 获取主侧栏位置
-  const { sidebarPosition } = useActivityBarStore();
+  const { sidebarPosition, setSidebarPosition } = useActivityBarStore();
   
   // 全局命令中心
   const commandCenterRef = useRef<VSCodeCommandCenter | null>(null);
@@ -84,11 +84,18 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
   const handleAIChatMoveLeft = () => {
     setAIChatPanelPosition('left');
+    setSidebarPosition('right');
   };
 
   const handleAIChatMoveRight = () => {
     setAIChatPanelPosition('right');
+    setSidebarPosition('left');
   };
+
+  // 主侧栏位置变化时，AI panel 自动移到相反侧
+  useEffect(() => {
+    setAIChatPanelPosition(sidebarPosition === 'left' ? 'right' : 'left');
+  }, [sidebarPosition]);
 
   // 监听打开底部面板事件
   useEffect(() => {

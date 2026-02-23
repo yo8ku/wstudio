@@ -30,38 +30,29 @@ export interface AgentPlannerConfig {
 }
 
 /**
- * 默认系统提示词
+ * 缓存的规划器提示词
  */
-const DEFAULT_SYSTEM_PROMPT = `你是一个智能任务规划助手，专门用于笔记写作场景。你的任务是分析用户的需求，并创建一个详细的执行计划。
+let cachedPlannerPrompt: string | null = null;
 
-## 你的能力
-1. 分析用户的写作需求和意图
-2. 将复杂任务分解为可执行的步骤
-3. 决定每个步骤需要使用的工具
-4. 评估任务的可行性
-
-## 规划原则
-1. 步骤应该清晰、具体、可执行
-2. 每个步骤应该有明确的目标
-3. 步骤之间应该有合理的顺序
-4. 考虑可能的错误情况和回退方案
-5. 优先使用简单直接的方法
-
-## 输出格式
-请以 JSON 格式输出执行计划，包含以下字段：
-{
-  "analysis": "对任务的分析和理解",
-  "steps": [
-    {
-      "type": "think|tool_call|write|verify",
-      "description": "步骤描述",
-      "toolName": "工具名称（如果是 tool_call 类型）",
-      "toolParams": {} // 工具参数（如果是 tool_call 类型）
+/**
+ * 从 agent-planner.md 加载规划器提示词
+ */
+async function loadPlannerPrompt(): Promise<string> {
+  if (cachedPlannerPrompt !== null) {
+    return cachedPlannerPrompt;
+  }
+  try {
+    const response = await fetch(new URL('../../../../../prompts/agent/planner.md', import.meta.url));
+    if (response.ok) {
+      cachedPlannerPrompt = await response.text();
+      return cachedPlannerPrompt;
     }
-  ],
-  "estimatedSteps": 预估总步骤数,
-  "risks": ["可能的风险或注意事项"]
-}`;
+  } catch (error) {
+    console.warn('[AgentPlanner] 从文件加载规划器提示词失败:', error);
+  }
+  cachedPlannerPrompt = '';
+  return cachedPlannerPrompt;
+}
 
 /**
  * Agent 任务规划器类
@@ -73,9 +64,16 @@ export class AgentPlanner {
   constructor(config: AgentPlannerConfig) {
     this.config = {
       ...config,
-      systemPrompt: config.systemPrompt || DEFAULT_SYSTEM_PROMPT,
       maxPlanSteps: config.maxPlanSteps || 20
     };
+    // 触发异步加载提示词
+    if (!config.systemPrompt) {
+      loadPlannerPrompt().then(prompt => {
+        if (!this.config.systemPrompt) {
+          this.config.systemPrompt = prompt;
+        }
+      }).catch(console.error);
+    }
   }
 
   /**
@@ -83,6 +81,11 @@ export class AgentPlanner {
    */
   async createPlan(task: AgentTask): Promise<AgentPlan> {
     console.log(`[AgentPlanner] 开始为任务创建计划: ${task.id}`);
+
+    // 确保提示词已加载
+    if (!this.config.systemPrompt) {
+      this.config.systemPrompt = await loadPlannerPrompt();
+    }
 
     // 构建提示词
     const messages = this.buildPlanningMessages(task);
@@ -155,7 +158,7 @@ export class AgentPlanner {
         messages: [
           {
             role: 'system',
-            content: this.config.systemPrompt || DEFAULT_SYSTEM_PROMPT
+            content: this.config.systemPrompt || cachedPlannerPrompt || ''
           },
           ...messages
         ],
@@ -314,16 +317,21 @@ export class AgentPlanner {
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
 
-        const steps: AgentStep[] = (parsed.steps || []).map((step: any, index: number) => ({
-          id: `step_${Date.now()}_${index}`,
-          type: this.normalizeStepType(step.type),
-          description: step.description || `步骤 ${index + 1}`,
-          status: 'pending' as const,
-          toolCall: step.toolName ? {
-            toolName: step.toolName,
-            parameters: step.toolParams || {}
-          } : undefined
-        }));
+        const steps: AgentStep[] = (parsed.steps || []).map((step: any, index: number) => {
+          // 兼容 LLM 可能使用的多种字段名
+          const toolName = step.toolName || step.tool_name || step.tool || step.name;
+          const toolParams = step.toolParams || step.tool_params || step.params || step.parameters || {};
+          return {
+            id: `step_${Date.now()}_${index}`,
+            type: this.normalizeStepType(step.type),
+            description: step.description || `步骤 ${index + 1}`,
+            status: 'pending' as const,
+            toolCall: (step.type === 'tool_call' || step.type === 'tool') && toolName ? {
+              toolName,
+              parameters: toolParams
+            } : undefined
+          };
+        });
 
         return {
           taskId: task.id,
@@ -360,16 +368,20 @@ export class AgentPlanner {
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         if (parsed.steps && Array.isArray(parsed.steps)) {
-          return parsed.steps.map((step: any, index: number) => ({
-            id: `step_${Date.now()}_${index}`,
-            type: this.normalizeStepType(step.type),
-            description: step.description || `步骤 ${index + 1}`,
-            status: 'pending' as const,
-            toolCall: step.toolName ? {
-              toolName: step.toolName,
-              parameters: step.toolParams || {}
-            } : undefined
-          }));
+          return parsed.steps.map((step: any, index: number) => {
+            const toolName = step.toolName || step.tool_name || step.tool || step.name;
+            const toolParams = step.toolParams || step.tool_params || step.params || step.parameters || {};
+            return {
+              id: `step_${Date.now()}_${index}`,
+              type: this.normalizeStepType(step.type),
+              description: step.description || `步骤 ${index + 1}`,
+              status: 'pending' as const,
+              toolCall: (step.type === 'tool_call' || step.type === 'tool') && toolName ? {
+                toolName,
+                parameters: toolParams
+              } : undefined
+            };
+          });
         }
       }
     } catch (error) {

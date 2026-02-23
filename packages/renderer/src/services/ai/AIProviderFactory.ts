@@ -1,20 +1,17 @@
 /**
  * AI提供商工厂类
  * 功能：统一管理所有AI提供商，提供创建和配置功能
- * 描述：作为AI提供商的统一入口，支持动态创建和配置不同的AI提供商
+ * 描述：基于7种协议类型创建对应的提供商实例
  */
 
 import { AIProvider, AIProviderConfig, AIProviderFactory, ModelCapability } from '../../types/aiProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
+import { OpenAIResponseProvider } from './providers/OpenAIResponseProvider';
 import { AnthropicProvider } from './providers/AnthropicProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
-import { DeepSeekProvider } from './providers/DeepSeekProvider';
-import { GroqProvider } from './providers/GroqProvider';
-// import { ZenmuxProvider } from './providers/ZenmuxProvider'; // 暂时禁用
 import { CustomProvider } from './providers/CustomProvider';
-import { ModelScopeProvider } from './providers/ModelScopeProvider';
 
-// 支持的提供商信息
+// 支持的提供商信息（7种协议）
 const PROVIDER_INFO = {
   openai: {
     id: 'openai',
@@ -32,10 +29,10 @@ const PROVIDER_INFO = {
       ModelCapability.MODERATION
     ]
   },
-  anthropic: {
-    id: 'anthropic',
-    name: 'Anthropic',
-    icon: 'Claude',
+  'openai-response': {
+    id: 'openai-response',
+    name: 'OpenAI Response',
+    icon: 'OpenAI',
     capabilities: [
       ModelCapability.TEXT_GENERATION,
       ModelCapability.CODE_GENERATION,
@@ -43,7 +40,7 @@ const PROVIDER_INFO = {
       ModelCapability.VISION,
       ModelCapability.TOOLS,
       ModelCapability.FUNCTION_CALLING,
-      ModelCapability.STREAMING
+      ModelCapability.STREAMING,
     ]
   },
   gemini: {
@@ -61,62 +58,10 @@ const PROVIDER_INFO = {
       ModelCapability.WEB_SEARCH
     ]
   },
-  deepseek: {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    icon: 'DeepSeek',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.REASONING,
-      ModelCapability.TOOLS,
-      ModelCapability.FUNCTION_CALLING,
-      ModelCapability.STREAMING
-    ]
-  },
-  groq: {
-    id: 'groq',
-    name: 'Groq',
-    icon: 'Grok',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.REASONING,
-      ModelCapability.TOOLS,
-      ModelCapability.FUNCTION_CALLING,
-      ModelCapability.STREAMING
-    ]
-  },
-  kimi: {
-    id: 'kimi',
-    name: 'Kimi',
-    icon: 'Kimi',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.REASONING,
-      ModelCapability.TOOLS,
-      ModelCapability.FUNCTION_CALLING,
-      ModelCapability.STREAMING
-    ]
-  },
-  glm: {
-    id: 'glm',
-    name: 'GLM (智谱AI)',
-    icon: 'GLM',
-    capabilities: [
-      ModelCapability.TEXT_GENERATION,
-      ModelCapability.CODE_GENERATION,
-      ModelCapability.REASONING,
-      ModelCapability.TOOLS,
-      ModelCapability.FUNCTION_CALLING,
-      ModelCapability.STREAMING
-    ]
-  },
-  openrouter: {
-    id: 'openrouter',
-    name: 'OpenRouter',
-    icon: 'OpenRouter',
+  anthropic: {
+    id: 'anthropic',
+    name: 'Anthropic',
+    icon: 'Claude',
     capabilities: [
       ModelCapability.TEXT_GENERATION,
       ModelCapability.CODE_GENERATION,
@@ -127,20 +72,24 @@ const PROVIDER_INFO = {
       ModelCapability.STREAMING
     ]
   },
-  modelscope: {
-    id: 'modelscope',
-    name: '魔塔社区',
-    icon: '',
+  azure: {
+    id: 'azure',
+    name: 'Azure OpenAI',
+    icon: 'Azure',
     capabilities: [
       ModelCapability.TEXT_GENERATION,
       ModelCapability.CODE_GENERATION,
       ModelCapability.REASONING,
-      ModelCapability.STREAMING
+      ModelCapability.VISION,
+      ModelCapability.TOOLS,
+      ModelCapability.FUNCTION_CALLING,
+      ModelCapability.STREAMING,
+      ModelCapability.EMBEDDING
     ]
   },
-  zenmux: {
-    id: 'zenmux',
-    name: 'Zenmux',
+  ollama: {
+    id: 'ollama',
+    name: 'Ollama',
     icon: '',
     capabilities: [
       ModelCapability.TEXT_GENERATION,
@@ -172,32 +121,16 @@ export class AIProviderFactoryImpl implements AIProviderFactory {
     return AIProviderFactoryImpl.instance;
   }
 
-  // 创建提供商实例
   public createProvider(providerId: string, config: AIProviderConfig): AIProvider {
-    // 对于魔塔社区等需要 modelId 的提供商，缓存键需要包含 modelId
-    const cacheKey = config.modelId 
-      ? `${providerId}-${config.apiKey}-${config.modelId}`
-      : `${providerId}-${config.apiKey}`;
-    
-    console.log(`[AIProviderFactory] createProvider 被调用:`, {
-      providerId,
-      'config.modelId': config.modelId,
-      cacheKey,
-      'hasCached': this.providers.has(cacheKey)
-    });
-    
-    // 检查缓存
+    const cacheKey = `${providerId}-${config.apiKey}`;
+
     if (this.providers.has(cacheKey)) {
-      console.log(`[AIProviderFactory] ✓ 使用缓存的提供商实例`);
       const cachedProvider = this.providers.get(cacheKey)!;
-      // 即使有缓存，也要更新配置（以防配置有变化）
       cachedProvider.configure(config).catch(error => {
         console.error(`Failed to reconfigure cached provider ${providerId}:`, error);
       });
       return cachedProvider;
     }
-
-    console.log(`[AIProviderFactory] 创建新的提供商实例`);
 
     let provider: AIProvider;
 
@@ -205,32 +138,19 @@ export class AIProviderFactoryImpl implements AIProviderFactory {
       case 'openai':
         provider = new OpenAIProvider();
         break;
-      case 'anthropic':
-        provider = new AnthropicProvider();
+      case 'openai-response':
+        provider = new OpenAIResponseProvider();
         break;
       case 'gemini':
         provider = new GeminiProvider();
         break;
-      case 'deepseek':
-        provider = new DeepSeekProvider();
+      case 'anthropic':
+        provider = new AnthropicProvider();
         break;
-      case 'groq':
-        provider = new GroqProvider();
-        break;
-      case 'zenmux':
-        // provider = new ZenmuxProvider(); // 暂时禁用
-        throw new Error('Zenmux provider is temporarily disabled');
-        break;
-      case 'kimi':
-      case 'modelscope':
-        // 魔塔社区需要特殊处理（需要模型ID）
-        provider = new ModelScopeProvider();
-        break;
-
-      case 'glm':
-      case 'openrouter':
+      case 'azure':
+      case 'ollama':
       case 'custom':
-        // 使用通用的 CustomProvider，支持所有兼容 OpenAI API 格式的服务
+      default: {
         const providerInfo = PROVIDER_INFO[providerId as keyof typeof PROVIDER_INFO];
         provider = new CustomProvider(
           providerId,
@@ -238,79 +158,56 @@ export class AIProviderFactoryImpl implements AIProviderFactory {
           providerInfo?.icon || ''
         );
         break;
-      default:
-        throw new Error(`Unsupported provider: ${providerId}`);
+      }
     }
 
-    // 配置提供商
     provider.configure(config).catch(error => {
       console.error(`Failed to configure provider ${providerId}:`, error);
     });
 
-    // 缓存提供商实例
     this.providers.set(cacheKey, provider);
-
     return provider;
   }
 
-  // 获取支持的提供商列表
   public getSupportedProviders(): string[] {
     return Object.keys(PROVIDER_INFO);
   }
 
-  // 获取提供商信息
   public getProviderInfo(providerId: string): { id: string; name: string; icon: string; capabilities: ModelCapability[] } | null {
     return PROVIDER_INFO[providerId as keyof typeof PROVIDER_INFO] || null;
   }
 
-  // 获取所有提供商信息
   public getAllProviderInfo(): Array<{ id: string; name: string; icon: string; capabilities: ModelCapability[] }> {
     return Object.values(PROVIDER_INFO);
   }
 
-  // 清除提供商缓存
   public clearProviderCache(providerId?: string): void {
     if (providerId) {
-      // 清除特定提供商的缓存
       const keysToDelete = Array.from(this.providers.keys()).filter(key => key.startsWith(providerId));
       keysToDelete.forEach(key => this.providers.delete(key));
     } else {
-      // 清除所有缓存
       this.providers.clear();
     }
   }
 
-  // 获取提供商实例
   public getProvider(providerId: string, config: AIProviderConfig): AIProvider | null {
-    const cacheKey = config.modelId 
-      ? `${providerId}-${config.apiKey}-${config.modelId}`
-      : `${providerId}-${config.apiKey}`;
+    const cacheKey = `${providerId}-${config.apiKey}`;
     return this.providers.get(cacheKey) || null;
   }
 
-  // 检查提供商是否已缓存
   public hasProvider(providerId: string, config: AIProviderConfig): boolean {
-    const cacheKey = config.modelId 
-      ? `${providerId}-${config.apiKey}-${config.modelId}`
-      : `${providerId}-${config.apiKey}`;
+    const cacheKey = `${providerId}-${config.apiKey}`;
     return this.providers.has(cacheKey);
   }
 
-  // 获取缓存统计
   public getCacheStats(): { totalProviders: number; providerCounts: Record<string, number> } {
     const providerCounts: Record<string, number> = {};
-    
     for (const key of this.providers.keys()) {
-      const providerId = key.split('-')[0];
-      providerCounts[providerId] = (providerCounts[providerId] || 0) + 1;
+      const id = key.split('-')[0];
+      providerCounts[id] = (providerCounts[id] || 0) + 1;
     }
-
-    return {
-      totalProviders: this.providers.size,
-      providerCounts
-    };
+    return { totalProviders: this.providers.size, providerCounts };
   }
 }
 
-// 导出单例实例
 export const aiProviderFactory = AIProviderFactoryImpl.getInstance();

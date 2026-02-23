@@ -1,5 +1,7 @@
 /**
  * 提示词模板
+ * 提示词内容来源于 packages/prompts/knowledge-base/rag.md
+ * 调用方需通过 setSystemPrompt() 设置提示词内容
  */
 
 export class PromptTemplate {
@@ -7,14 +9,7 @@ export class PromptTemplate {
   private userPromptTemplate: string;
 
   constructor() {
-    this.systemPrompt = `你是一个专业的知识库助手。你的任务是基于提供的上下文信息回答用户的问题。
-
-规则：
-1. 仅使用提供的上下文信息来回答问题
-2. 如果上下文中没有相关信息，请明确说明
-3. 保持回答准确、简洁、有条理
-4. 可以引用具体的来源文档
-5. 如果需要，可以提供额外的解释或背景信息`;
+    this.systemPrompt = '';
 
     this.userPromptTemplate = `上下文信息：
 {context}

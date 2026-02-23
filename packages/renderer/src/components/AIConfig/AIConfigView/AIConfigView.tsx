@@ -10,7 +10,7 @@ import { Tooltip } from '../../Tooltip';
 import { Icon } from '../../Icons';
 import { SearchBox } from '../../common/SearchBox';
 import { DropdownMenu } from '../../common/DropdownMenu';
-import { aiService, AI_PROVIDERS, loadAIProvidersConfig, ConfigProvider, setModelEnabled, isModelEnabled } from '../../../services/ai';
+import { aiService, AI_PROVIDERS, setModelEnabled, isModelEnabled } from '../../../services/ai';
 import { AIProviderConfig } from '../../../types/aiProvider';
 import { toastService } from '../../../services/ToastService';
 import { clearModelCache } from '../../../services/ModelCacheService';
@@ -68,7 +68,7 @@ interface AIModelConfig {
   models?: string[]; // 魔塔社区等服务商的多个模型ID列表
 }
 
-// 使用新的AI提供商配置（作为默认值）
+// 使用 AI_PROVIDERS 生成服务商列表（7种协议）
 const DEFAULT_AI_PROVIDERS_LIST = Object.values(AI_PROVIDERS).map(provider => ({
   id: provider.id,
   name: provider.name,
@@ -77,23 +77,8 @@ const DEFAULT_AI_PROVIDERS_LIST = Object.values(AI_PROVIDERS).map(provider => ({
 }));
 
 export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configIndex }) => {
-  // 从配置文件加载的服务商列表
-  const [configProviders, setConfigProviders] = useState<ConfigProvider[]>([]);
-  
-  // 合并后的服务商列表（配置文件优先，然后是默认列表）
-  const AI_PROVIDERS_LIST = useMemo(() => {
-    if (configProviders.length > 0) {
-      // 从配置文件生成服务商列表
-      return configProviders.map(provider => ({
-        id: provider.id,
-        name: provider.name,
-        iconName: provider.id.charAt(0).toUpperCase() + provider.id.slice(1), // 生成图标名称
-        endpoint: provider.config.base_url + (provider.config.chat_endpoint || '')
-      }));
-    }
-    // 回退到默认列表
-    return DEFAULT_AI_PROVIDERS_LIST;
-  }, [configProviders]);
+  // 服务商列表（7种协议）
+  const AI_PROVIDERS_LIST = DEFAULT_AI_PROVIDERS_LIST;
   const [config, setConfig] = useState<AIModelConfig>({
     name: '',
     apiKey: '',
@@ -128,23 +113,6 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     const provider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
     return provider?.iconName || '';
   }, [config.providerId, AI_PROVIDERS_LIST]);
-
-  // 从配置文件加载服务商列表
-  useEffect(() => {
-    const loadConfig = async () => {
-      try {
-        const providers = await loadAIProvidersConfig();
-        if (providers && providers.length > 0) {
-          console.log('[AIConfigView] 从配置文件加载服务商列表，数量:', providers.length);
-          setConfigProviders(providers);
-        }
-      } catch (error) {
-        console.error('[AIConfigView] 加载服务商配置失败:', error);
-        // 失败时使用默认列表，不影响用户使用
-      }
-    };
-    loadConfig();
-  }, []);
 
   // 检测未保存更改并通知 EditorArea
   useEffect(() => {
@@ -693,17 +661,6 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     loadConfig();
   }, [currentConfigId]);
 
-  // 自动加载模型列表（仅在测试连接成功后）
-  useEffect(() => {
-    // 检查是否有有效的 API 端点（用户设置的或服务商默认的）
-    const autoLoadProvider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
-    const hasValidEndpoint = config.apiEndpoint || autoLoadProvider?.endpoint;
-    
-    if (config.apiKey && hasValidEndpoint && hasTestedConnection) {
-      fetchModels();
-    }
-  }, [config.apiKey, config.apiEndpoint, config.providerId, hasTestedConnection, fetchModels]);
-
   // 处理提供商变更
   const handleProviderChange = (providerId: string) => {
     const provider = AI_PROVIDERS_LIST.find(p => p.id === providerId);
@@ -711,7 +668,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       setConfig(prev => ({
         ...prev,
         providerId,
-        apiEndpoint: provider.endpoint
+        apiEndpoint: ''
       }));
       setAvailableModels([]);
       setHasTestedConnection(false); // 切换提供商，需要重新测试
@@ -936,10 +893,10 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     }
     
     // 根据提供商类型检查额外的必填项
-    // 魔塔社区（modelscope）需要模型ID
-    if (config.providerId === 'modelscope') {
-      if (!config.modelId || !config.modelId.trim()) {
-        missingFields.push('模型ID');
+    // Azure OpenAI 需要填写 endpoint
+    if (config.providerId === 'azure') {
+      if (!config.apiEndpoint || !config.apiEndpoint.trim()) {
+        missingFields.push('API 地址');
       }
     }
     
@@ -951,11 +908,9 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     }
     
     // 如果用户没有填写 API 地址，使用服务商的默认地址
-    if (!config.apiEndpoint || !config.apiEndpoint.trim()) {
-      if (testHasDefaultEndpoint) {
-        config.apiEndpoint = testProvider!.endpoint;
-      }
-    }
+    const effectiveEndpoint = (config.apiEndpoint && config.apiEndpoint.trim())
+      ? config.apiEndpoint
+      : (testHasDefaultEndpoint ? testProvider!.endpoint : '');
 
     console.log('[AIConfigView] ✓ 基本验证通过，开始测试连接...');
     setTestStatus('testing');
@@ -965,7 +920,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       // 如果是临时配置（新建），则不传ID（避免保存到数据库）
       // 如果是已保存的配置，使用配置ID（以便正确缓存）
       const isTemp = currentConfigId.startsWith('temp-config-');
-      
+
       console.log('[AIConfigView] 测试连接 - 准备配置:', {
         'config.modelId': config.modelId,
         'config.modelId类型': typeof config.modelId,
@@ -974,12 +929,12 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
         'modelId是否空字符串': config.modelId === '',
         '完整config对象': config
       });
-      
+
       const aiConfig: AIProviderConfig = {
         ...(isTemp ? {} : { id: currentConfigId }),
         name: config.name,
         apiKey: config.apiKey,
-        apiEndpoint: config.apiEndpoint,
+        apiEndpoint: effectiveEndpoint,
         ...(config.modelId !== undefined && config.modelId !== '' ? { modelId: config.modelId } : {}), // 魔塔社区等需要的模型ID（向后兼容）
         ...(config.models && config.models.length > 0 ? { models: config.models } : {}) // 魔塔社区等的多个模型ID列表
       };
@@ -1004,18 +959,31 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       if (isConnected) {
         setTestStatus('success');
         toastService.success('连接成功！');
-        
+
         // 标记已测试连接成功
         setHasTestedConnection(true);
-        
-        // 连接成功后，清除模型ID输入框内容
-        setConfig({ ...config, modelId: '' });
-        
-        // 连接成功后，自动获取模型列表（会自动展开包含模型的服务商）
-        await fetchModels();
-        
-        // 注意：获取模型列表后不会自动保存，需要用户手动点击"保存配置"按钮
-        
+
+        // 连接成功后，将测试用的模型 ID 累加到列表（不重复）
+        if (config.modelId) {
+          const testModel: ChatModel = {
+            id: config.modelId,
+            name: config.modelId,
+            displayName: config.modelId,
+            enabled: false
+          };
+          setAvailableModels(prev => {
+            const exists = prev.some(m => m.id === testModel.id);
+            return exists ? prev : [...prev, testModel];
+          });
+          setConfig(prev => ({
+            ...prev,
+            chatModels: prev.chatModels?.some(m => m.id === testModel.id)
+              ? prev.chatModels
+              : [...(prev.chatModels || []), testModel],
+            modelId: ''
+          }));
+        }
+
         // 清除测试状态
         setTimeout(() => {
           setTestStatus('idle');
@@ -1118,23 +1086,64 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
               <p className="form-hint">请妥善保管您的 API Key，不要分享给他人</p>
             </div>
 
-            {/* 魔塔社区的模型ID输入框 */}
-            {config.providerId === 'modelscope' && (
+            {/* Azure OpenAI 的 endpoint 提示 */}
+            {config.providerId === 'azure' && (
               <div className="form-group">
-                <label>模型 ID *</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={config.modelId || ''}
-                  onChange={(e) => {
-                    setConfig({ ...config, modelId: e.target.value });
-                  }}
-                  placeholder="例如: qwen-plus 或 qwen-turbo"
-                  required
-                />
-                <p className="form-hint">魔塔社区需要指定模型ID才能使用，请输入您要使用的模型ID</p>
+                <p className="form-hint">Azure OpenAI 需要填写完整的部署端点，格式：<br/>
+                  <code>https://&#123;resource&#125;.openai.azure.com/openai/deployments/&#123;deployment&#125;/chat/completions?api-version=2024-02-15-preview</code>
+                </p>
               </div>
             )}
+
+            <div className="form-group">
+              <label>API 地址</label>
+              <input
+                type="text"
+                className="form-control"
+                value={config.apiEndpoint}
+                onChange={(e) => {
+                  setConfig({ ...config, apiEndpoint: e.target.value });
+                  setHasTestedConnection(false);
+                }}
+                placeholder={
+                  config.providerId === 'azure'
+                    ? 'https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version=...'
+                    : config.providerId === 'ollama'
+                    ? 'http://localhost:11434/v1/chat/completions'
+                    : '留空则使用默认地址'
+                }
+              />
+              {config.providerId === 'azure' ? (
+                <p className="form-hint">必填，请输入完整的 API 端点地址</p>
+              ) : config.providerId === 'custom' ? (
+                <p className="form-hint">必填，请输入完整的 API 端点地址</p>
+              ) : (() => {
+                if (!config.apiEndpoint) return <p className="form-hint">可选，留空则自动使用默认地址</p>;
+                // 去掉末尾已有的 /v1/... 路径，只保留 base URL
+                const base = config.apiEndpoint.replace(/\/+$/, '').replace(/\/v1(\/.*)?$/, '');
+                const previewUrl = base + '/v1/chat/completions';
+                return (
+                  <p className="form-hint api-endpoint-preview">
+                    预览：{previewUrl}
+                  </p>
+                );
+              })()}
+            </div>
+
+            <div className="form-group">
+              <label>模型 ID（可选）</label>
+              <input
+                type="text"
+                className="form-control"
+                value={config.modelId || ''}
+                onChange={(e) => {
+                  setConfig({ ...config, modelId: e.target.value });
+                  setHasTestedConnection(false);
+                }}
+                placeholder="例如：gpt-5.1、deepseek、gemini-3-pro-preview"
+              />
+              <p className="form-hint">部分服务商（如魔塔社区）需要指定模型 ID 才能连接</p>
+            </div>
 
             <div className="form-group">
               <div className="model-accordion">
@@ -1182,14 +1191,32 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                                     {model.displayName || model.name}
                                     {model.capabilities?.thinking && <ThinkingIcon size={14} />}
                                   </span>
-                                  <label className="model-switch">
-                                    <input
-                                      type="checkbox"
-                                      checked={isEnabled}
-                                      onChange={(e) => toggleModelEnabled(model.id, e.target.checked)}
-                                    />
-                                    <span className="switch-slider"></span>
-                                  </label>
+                                  <div className="model-item-actions">
+                                    <label className="model-switch">
+                                      <input
+                                        type="checkbox"
+                                        checked={isEnabled}
+                                        onChange={(e) => toggleModelEnabled(model.id, e.target.checked)}
+                                      />
+                                      <span className="switch-slider"></span>
+                                    </label>
+                                    <button
+                                      type="button"
+                                      className="btn-remove-model"
+                                      title="移除模型"
+                                      onClick={() => {
+                                        setAvailableModels(prev => prev.filter(m => m.id !== model.id));
+                                        setConfig(prev => ({
+                                          ...prev,
+                                          chatModels: prev.chatModels?.filter(m => m.id !== model.id)
+                                        }));
+                                      }}
+                                    >
+                                      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                                        <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                                      </svg>
+                                    </button>
+                                  </div>
                                 </div>
                               );
 
@@ -1239,25 +1266,30 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
           <div className="usage-guide">
             <h3>使用指南</h3>
             <ul>
-              <li>选择您要使用的 AI 提供商</li>
-              <li>填写配置名称后即可保存配置</li>
-              <li>输入对应的 API Key（标准服务商会自动使用默认 API 地址）</li>
-              {config.providerId === 'modelscope' ? (
+              <li>选择接入协议类型，填写配置名称和 API Key</li>
+              <li>填写模型 ID，点击"测试连接"验证配置</li>
+              {config.providerId === 'azure' ? (
                 <>
-                  <li>魔塔社区需要在"模型ID"输入框中输入模型ID（例如：qwen-plus）</li>
-                  <li>您可以点击"测试连接"来验证模型ID是否正确</li>
+                  <li>Azure OpenAI 需要手动填写完整的部署端点地址</li>
+                  <li>使用 <code>api-key</code> 头认证，无需 Bearer 前缀</li>
                 </>
-              ) : config.providerId === 'deepseek' ? (
+              ) : config.providerId === 'ollama' ? (
                 <>
-                  <li>官方只支持两种对话模式：</li>
-                  <li style={{ marginLeft: '1em' }}>1. DeepSeek Chat（通用对话）</li>
-                  <li style={{ marginLeft: '1em' }}>2. DeepSeek Reasoner（深度思考）</li>
-                  <li>模型始终与官方保持一致，使用最新模型！</li>
+                  <li>Ollama 为本地部署，默认地址为 <code>http://localhost:11434</code></li>
+                  <li>无需填写 API Key，点击"测试连接"获取本地模型列表</li>
+                </>
+              ) : config.providerId === 'openai-response' ? (
+                <>
+                  <li>OpenAI Response 使用 <code>/v1/responses</code> 新版 API</li>
+                  <li>支持内置工具和多轮状态管理</li>
+                </>
+              ) : config.providerId === 'custom' ? (
+                <>
+                  <li>自定义协议需手动填写 API 地址</li>
+                  <li>支持所有兼容 OpenAI 格式的服务（DeepSeek、Kimi、通义千问等）</li>
                 </>
               ) : (
-                <>
-                  <li>您可以点击"测试连接"来验证配置并自动获取可用模型列表</li>
-                </>
+                <li>测试连接成功，请记得保存配置。否则无法使用！</li>
               )}
             </ul>
           </div>

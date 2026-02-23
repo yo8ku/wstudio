@@ -65,6 +65,7 @@ interface StoreSchema {
   // 资源管理器配置
   'explorer-config': {
     showOpenEditors?: boolean;
+    isFormExpanded?: boolean;
   };
 
   // AI 聊天设置

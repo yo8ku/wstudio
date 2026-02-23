@@ -41,9 +41,11 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
   const isControlled = controlledExpanded !== undefined;
   const isExpanded = isControlled ? controlledExpanded : internalExpanded;
 
-  // 在组件挂载时通知父组件初始展开状态
+  // 在组件挂载时通知父组件初始展开状态（仅非受控模式）
   useEffect(() => {
-    onExpandChange?.(defaultExpanded);
+    if (!isControlled) {
+      onExpandChange?.(defaultExpanded);
+    }
   }, []);
 
   const handleToggle = () => {

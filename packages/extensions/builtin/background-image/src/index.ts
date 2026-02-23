@@ -253,17 +253,6 @@ export async function activate(context: PluginContext, api: PluginAPI): Promise<
     })
   );
 
-  // 添加状态栏项
-  const statusBarItem = api.ui.registerStatusBarItem({
-    id: 'background-image-status',
-    text: '$(file-media) 背景',
-    tooltip: '点击打开背景图片设置',
-    command: 'background-image.settings',
-    alignment: 'right',
-    priority: 100
-  });
-  context.subscriptions.push(statusBarItem);
-
   // 监听配置变化
   context.subscriptions.push(
     api.events.on('storage:changed', (event: any) => {

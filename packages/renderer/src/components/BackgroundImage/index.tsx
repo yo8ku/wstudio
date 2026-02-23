@@ -329,6 +329,18 @@ const BackgroundImage: React.FC = () => {
         enabled: Boolean(updatedConfig.enabled && updatedConfig.imagePath),
       };
 
+      // 如果收到的是空配置（无 imagePath），且当前已有有效配置，跳过以避免覆盖正确的背景
+      if (!configWithLocalFileUrl.imagePath) {
+        const currentConfig = useBackgroundStore.getState().config;
+        if (currentConfig.imagePath) {
+          return;
+        }
+        // 尚未初始化时也跳过，让 loadPersistedConfig 负责加载
+        if (!useBackgroundStore.getState().isInitialized) {
+          return;
+        }
+      }
+
       setConfig(configWithLocalFileUrl);
     };
 
