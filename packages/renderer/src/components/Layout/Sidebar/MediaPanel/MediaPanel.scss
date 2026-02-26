@@ -1,0 +1,279 @@
+/**
+ * 素材管理面板样式
+ */
+
+.media-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+
+  &-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px;
+    gap: 8px;
+    border-bottom: 1px solid var(--ws-panel-border);
+
+    &-left,
+    &-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+  }
+
+  &-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ws-foreground);
+    cursor: pointer;
+    transition: background-color 0.15s;
+
+    &:hover {
+      background: var(--ws-list-hoverBackground);
+    }
+
+    &.active {
+      background: var(--ws-list-activeSelectionBackground);
+      color: var(--ws-list-activeSelectionForeground);
+    }
+
+    &--danger:hover {
+      background: var(--ws-inputValidation-errorBackground, rgba(255, 0, 0, 0.2));
+      color: var(--ws-inputValidation-errorForeground, #f44336);
+    }
+  }
+
+  &-select {
+    padding: 4px 8px;
+    border: 1px solid var(--ws-input-border);
+    border-radius: 4px;
+    background: var(--ws-input-background);
+    color: var(--ws-input-foreground);
+    cursor: pointer;
+    outline: none;
+
+    &:focus {
+      border-color: var(--ws-focusBorder);
+    }
+  }
+
+  &-content {
+    flex: 1;
+    overflow: auto;
+    padding: 8px;
+  }
+
+  &-loading,
+  &-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--ws-descriptionForeground);
+    gap: 8px;
+
+    p {
+      margin: 0;
+    }
+  }
+
+  &-empty {
+    &-hint {
+      font-size: 12px;
+      opacity: 0.7;
+    }
+  }
+
+  &-lazy-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: opacity 0.2s;
+    }
+  }
+
+  &-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+
+    &-item {
+      display: flex;
+      flex-direction: column;
+      border-radius: 4px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: background-color 0.15s;
+      border: 2px solid transparent;
+
+      &:hover {
+        background: var(--ws-list-hoverBackground);
+      }
+
+      &.selected {
+        border-color: var(--ws-focusBorder);
+        background: var(--ws-list-activeSelectionBackground);
+
+        .media-panel-grid-item-name {
+          color: var(--ws-list-activeSelectionForeground);
+        }
+      }
+
+      &-preview {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1;
+        background: var(--ws-editor-background);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+      }
+
+      &-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        background: var(--ws-editor-background);
+        color: var(--ws-descriptionForeground);
+        opacity: 0.5;
+      }
+
+      &-video {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        background: var(--ws-editor-background);
+        color: var(--ws-descriptionForeground);
+      }
+
+      &-badge {
+        position: absolute;
+        bottom: 4px;
+        right: 4px;
+        padding: 2px 4px;
+        border-radius: 2px;
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+      }
+
+      &-play-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.3);
+        color: #fff;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+
+      &:hover &-play-overlay {
+        opacity: 1;
+      }
+
+      &-name {
+        padding: 4px;
+        font-size: 11px;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+  }
+
+  &-rename-input {
+    width: 100%;
+    padding: 2px 4px;
+    border: 1px solid var(--ws-focusBorder);
+    border-radius: 2px;
+    background: var(--ws-input-background);
+    color: var(--ws-input-foreground);
+    font-size: 11px;
+    text-align: center;
+    outline: none;
+
+    .media-panel-list-item & {
+      flex: 1;
+      text-align: left;
+    }
+  }
+
+  &-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    &-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.15s;
+
+      &:hover {
+        background: var(--ws-list-hoverBackground);
+      }
+
+      &.selected {
+        background: var(--ws-list-activeSelectionBackground);
+        color: var(--ws-list-activeSelectionForeground);
+      }
+
+      &-icon {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--ws-descriptionForeground);
+      }
+
+      &-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+      }
+
+      &-size {
+        flex-shrink: 0;
+        font-size: 11px;
+        color: var(--ws-descriptionForeground);
+      }
+    }
+  }
+}

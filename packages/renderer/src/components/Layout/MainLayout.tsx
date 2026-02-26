@@ -72,6 +72,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       return;
     }
 
+    if (activity === 'media') {
+      // 点击素材管理时，打开标签页而不是侧边栏
+      window.dispatchEvent(new Event('open-media-panel'));
+      return;
+    }
+
     if (activeActivity === activity) {
       // 如果点击当前活动的项，切换侧边栏可见性
       setIsSidebarVisible(!isSidebarVisible);

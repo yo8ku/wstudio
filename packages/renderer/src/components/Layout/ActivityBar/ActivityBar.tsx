@@ -8,7 +8,7 @@ import { useActivityBarStore, ActivityBarVisibility } from "../../../stores/acti
 import { ActivityBarContextMenu } from "./ActivityBarContextMenu";
 import "./ActivityBar.scss";
 
-export type ActivityBarItem = 'explorer' | 'search' | 'source-control' | 'extensions' | 'knowledge-base' | 'ai-model' | 'user' | 'settings';
+export type ActivityBarItem = 'explorer' | 'search' | 'source-control' | 'extensions' | 'knowledge-base' | 'ai-model' | 'media' | 'user' | 'settings';
 
 interface ActivityBarProps {
   activeItem: ActivityBarItem;
@@ -65,6 +65,12 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       title: "AI 模型",
       iconName: "ai-model",
       visibilityKey: "aiModel",
+    },
+    {
+      id: "media",
+      title: "素材管理",
+      iconName: "media",
+      visibilityKey: "media",
     },
   ];
 

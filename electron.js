@@ -2,7 +2,7 @@
  * Electron 主进程启动文件
  */
 
-const { app, BrowserWindow, ipcMain, protocol, dialog, session, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, dialog, session, shell, Menu, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
@@ -114,6 +114,23 @@ function createWindow(backgroundColor = '#1e1e1e') {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // F12 随时打开 DevTools（方便调试）
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12') {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
+
+  // 监听渲染进程崩溃
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('[Electron] 渲染进程崩溃:', details.reason, details.exitCode);
+  });
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (level >= 2) { // warning=2, error=3
+      console.error(`[Renderer] ${message} (${sourceId}:${line})`);
+    }
   });
   
   // 监听窗口焦点变化

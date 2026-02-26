@@ -32,6 +32,7 @@ import { registerAgentRAGHandlers } from './ipc/agentRAGHandlers';
 import { registerAgentShellHandlers } from './ipc/agentShellHandlers';
 import { registerAgentNetworkHandlers } from './ipc/agentNetworkHandlers';
 import { registerSkillsMarketHandlers } from './ipc/skillsMarketHandlers';
+import { registerMediaHandlers } from './ipc/mediaHandlers';
 
 // 插件系统路径
 // 使用多种方式尝试找到项目根目录，确保路径正确
@@ -139,6 +140,9 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
 
   // 注册 Skills 市场 IPC 处理器
   registerSkillsMarketHandlers();
+
+  // 注册素材管理 IPC 处理器
+  registerMediaHandlers();
   
   // 初始化代码运行服务
   getCodeRunnerService();

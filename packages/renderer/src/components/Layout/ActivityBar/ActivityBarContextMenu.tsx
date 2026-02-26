@@ -57,6 +57,11 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
       label: 'AI模型',
       checked: visibility.aiModel,
     },
+    {
+      id: 'media',
+      label: '素材管理',
+      checked: visibility.media,
+    },
   ];
 
   // 调整菜单位置，防止超出视图

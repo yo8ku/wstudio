@@ -13,6 +13,7 @@ export interface ActivityBarVisibility {
   extensions: boolean;
   knowledgeBase: boolean;
   aiModel: boolean;
+  media: boolean;
 }
 
 export type SidebarPosition = 'left' | 'right';
@@ -43,6 +44,7 @@ export const useActivityBarStore = create<ActivityBarStore>()(
         extensions: true,
         knowledgeBase: true,
         aiModel: true,
+        media: true,
       },
       sidebarPosition: 'left',
       
@@ -77,6 +79,17 @@ export const useActivityBarStore = create<ActivityBarStore>()(
     }),
     {
       name: 'activity-bar-storage',
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<ActivityBarStore> | undefined;
+        return {
+          ...currentState,
+          ...persisted,
+          visibility: {
+            ...currentState.visibility,
+            ...(persisted?.visibility || {}),
+          },
+        };
+      },
     }
   )
 );

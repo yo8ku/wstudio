@@ -93,6 +93,26 @@ const KnowledgeBase: IconComponent = () => (
   </svg>
 );
 
+// 素材管理图标
+const Media: IconComponent = () => (
+  <svg
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" strokeWidth={2} />
+    <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M21 15l-5-5L5 21"
+    />
+  </svg>
+);
+
 // AI 模型图标
 const AIModel: IconComponent = () => (
   <svg
@@ -1395,6 +1415,7 @@ export const uiIconSet: IconSet = {
     'extensions': Extensions,
     'knowledge-base': KnowledgeBase,
     'ai-model': AIModel,
+    'media': Media,
     'settings-activity': SettingsActivity,
     'user': User,
 

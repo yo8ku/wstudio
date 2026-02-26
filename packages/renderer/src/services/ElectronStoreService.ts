@@ -100,6 +100,9 @@ interface StoreSchema {
     autoSave: boolean;
     autoSaveInterval: number;
   };
+
+  // AI 聊天选中的模型
+  'ai-chat-selected-model': string;
 }
 
 /**

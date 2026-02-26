@@ -125,7 +125,9 @@
       "Bash(ls -la \"e:\\\\Wise Note Studio\\\\note-studio1.0-pro\\\\packages\\\\AI\"\" 2>/dev/null || echo \"AI directory not found \")",
       "Bash(python3:*)",
       "Bash(node --version:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(xargs grep -l \"generateTextStream\")",
+      "Bash(xargs grep -l \"StreamCallback\")"
     ]
   }
 }

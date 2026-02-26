@@ -232,6 +232,9 @@ function registerCommonAliases(): void {
     // Skills 市场图标别名
     'star': 'ui:star',
     'skill-detail': 'ui:skill-detail',
+
+    // 媒体播放图标别名
+    'circle-play': 'ui:circle-play',
   });
 }
 

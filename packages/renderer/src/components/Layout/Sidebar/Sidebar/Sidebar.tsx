@@ -280,7 +280,7 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
       case 'ai-model':
         // AI 模型菜单（AI 模型视图不显示标题栏，所以不需要菜单）
         return [];
-      
+
       case 'user':
         // 用户菜单
         return [
@@ -378,7 +378,8 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
       'knowledge-base': '知识库',
       'ai-model': 'AI 模型',
       'user': '用户',
-      'settings': '设置'
+      'settings': '设置',
+      'media': '素材管理'
     };
     return titles[activeView];
   };

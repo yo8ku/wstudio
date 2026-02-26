@@ -25,6 +25,7 @@ import { TableDesigner } from '../TableDesigner';
 import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
 import { SkillsMarketView } from '../SkillsMarketView';
+import { MediaPanel } from '../../Sidebar/MediaPanel';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { saveAndRemoveTableDataService } from '../../../../services/tableData';
@@ -39,7 +40,7 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market';
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'media';
   isPreview?: boolean;  // 新增：是否为预览模式（单击打开）
   sourceTabId?: string;  // 新增：预览标签页关联的源文件标签页ID
   knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 知识库数据（用于 knowledge 类型）
@@ -449,6 +450,27 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
+    const handleOpenMediaPanel = () => {
+      setTabs(currentTabs => {
+        const mediaTab = currentTabs.find(tab => tab.type === 'media');
+
+        if (mediaTab) {
+          setTimeout(() => setActiveTabId(mediaTab.id), 0);
+          return currentTabs;
+        } else {
+          const newTab: EditorTab = {
+            id: `media-${Date.now()}`,
+            title: '素材管理',
+            path: 'media:/',
+            isDirty: false,
+            type: 'media'
+          };
+          setTimeout(() => setActiveTabId(newTab.id), 0);
+          return [...currentTabs, newTab];
+        }
+      });
+    };
+
     const handleOpenExtensionManager = () => {
       // 使用函数式更新来访问最新的 tabs 状态
       setTabs(currentTabs => {
@@ -641,6 +663,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     window.addEventListener('open-file', handleOpenFile as EventListener);
     window.addEventListener('open-settings', handleOpenSettings);
+    window.addEventListener('open-media-panel', handleOpenMediaPanel);
     window.addEventListener('open-extension-manager', handleOpenExtensionManager);
     window.addEventListener('open-lancedb-view', handleOpenLanceDBView);
     window.addEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
@@ -683,6 +706,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('open-file', handleOpenFile as EventListener);
       window.removeEventListener('open-settings', handleOpenSettings);
+      window.removeEventListener('open-media-panel', handleOpenMediaPanel);
       window.removeEventListener('open-extension-manager', handleOpenExtensionManager);
       window.removeEventListener('open-lancedb-view', handleOpenLanceDBView);
       window.removeEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
@@ -1735,6 +1759,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   )}
 
                   {tab.type === 'skills-market' && <SkillsMarketView />}
+
+                  {tab.type === 'media' && <MediaPanel />}
 
                   {tab.type === 'ai-config' && (
                     <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />

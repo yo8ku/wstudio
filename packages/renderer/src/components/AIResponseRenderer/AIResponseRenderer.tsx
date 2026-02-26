@@ -1,6 +1,7 @@
 /**
  * AI 响应渲染器组件
  * 用于在聊天面板中渲染格式化的 AI 响应
+ * 流式阶段直接显示纯文本（逐字追加效果），完成后渲染 Markdown
  */
 
 import React, { useMemo, useEffect, useRef } from 'react';
@@ -35,11 +36,11 @@ export const AIResponseRenderer: React.FC<AIResponseRendererProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 格式化 AI 响应
+  // 流式阶段不解析 Markdown，直接显示纯文本；完成后才渲染
   const formattedHTML = useMemo(() => {
-    if (!content) return '';
+    if (!content || isStreaming) return '';
     return formatAIResponse(content, formatOptions);
-  }, [content, formatOptions]);
+  }, [content, isStreaming, formatOptions]);
 
   // 处理代码块折叠功能
   useEffect(() => {
@@ -48,7 +49,7 @@ export const AIResponseRenderer: React.FC<AIResponseRendererProps> = ({
     const handleToggleClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       const button = target.closest('.ai-response-code-block-toggle') as HTMLButtonElement;
-      
+
       if (!button) return;
 
       const targetId = button.getAttribute('data-target');
@@ -58,7 +59,7 @@ export const AIResponseRenderer: React.FC<AIResponseRendererProps> = ({
       if (!codeBlock) return;
 
       const isExpanded = button.getAttribute('aria-expanded') === 'true';
-      
+
       if (isExpanded) {
         codeBlock.classList.add('collapsed');
         button.setAttribute('aria-expanded', 'false');
@@ -77,23 +78,22 @@ export const AIResponseRenderer: React.FC<AIResponseRendererProps> = ({
   }, [formattedHTML]);
 
   return (
-    <div 
+    <div
       ref={containerRef}
       className={`ai-response-container ${className}`}
       data-streaming={isStreaming}
     >
-      <div 
-        className="ai-response"
-        dangerouslySetInnerHTML={{ __html: formattedHTML }}
-      />
-      
-      {/* 流式响应加载指示器 */}
-      {isStreaming && (
-        <div className="ai-response-streaming-indicator">
-          <span className="streaming-dot"></span>
-          <span className="streaming-dot"></span>
-          <span className="streaming-dot"></span>
+      {isStreaming ? (
+        // 流式阶段：纯文本逐字显示，保留换行
+        <div className="ai-response ai-response--streaming">
+          {content}
         </div>
+      ) : (
+        // 完成后：渲染 Markdown
+        <div
+          className="ai-response"
+          dangerouslySetInnerHTML={{ __html: formattedHTML }}
+        />
       )}
     </div>
   );
@@ -103,38 +103,9 @@ export const AIResponseRenderer: React.FC<AIResponseRendererProps> = ({
  * 内联样式（可选）
  */
 const inlineStyles = `
-.ai-response-streaming-indicator {
-  display: flex;
-  gap: 4px;
-  padding: 8px 0;
-  align-items: center;
-}
-
-.streaming-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--ws-accent-color, #007acc);
-  animation: streaming-pulse 1.4s infinite ease-in-out;
-}
-
-.streaming-dot:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.streaming-dot:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-@keyframes streaming-pulse {
-  0%, 80%, 100% {
-    opacity: 0.3;
-    transform: scale(0.8);
-  }
-  40% {
-    opacity: 1;
-    transform: scale(1);
-  }
+.ai-response--streaming {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 `;
 
@@ -150,4 +121,3 @@ if (typeof document !== 'undefined') {
 }
 
 export default AIResponseRenderer;
-
