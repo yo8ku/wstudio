@@ -19,7 +19,6 @@
     "@emoji-mart/data": "^1.2.1",
     "@emoji-mart/react": "^1.1.1",
     "@floating-ui/react": "^0.27.16",
-    "@huggingface/transformers": "^3.8.1",
     "@monaco-editor/react": "^4.7.0",
     "@note-studio/global-rag": "workspace:*",
     "@note-studio/shared": "workspace:*",

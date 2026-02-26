@@ -5,7 +5,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getCachedModels, getModelConfig, type CachedModelInfo } from '../../../services/ModelCacheService';
 import { aiService } from '../../../services/ai/AIService';
-import { isModelEnabled, loadModelEnabledStatesFromDB } from '../../../services/ai';
+import { isModelEnabled, loadModelEnabledStatesFromDB, type ChatMessage } from '../../../services/ai';
 import { DropdownMenu, type DropdownMenuItem, type DropdownMenuGroup } from '../../common/DropdownMenu';
 import { AIProviderIconFromModel } from '../../Icons/AIProviderIcon';
 import { Icon } from '../../Icons/Icon';
@@ -1090,8 +1090,188 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       return;
     }
 
-    // 非 chat 模式（plan / auto-edit / ask-before-edit）以及 chat 模式都走 Agent 路径
-    // chat 模式：禁止写入，只允许只读工具
+    // 普通对话模式：直接调用 AI，不走 Agent 流水线
+    if (chatMode === 'chat') {
+      const taskDesc = input.trim();
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: taskDesc,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, userMessage]);
+      setInput('');
+      setIsLoading(true);
+
+      const assistantMessageId = (Date.now() + 1).toString();
+      setMessages(prev => [...prev, {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        model: selectedModel
+      }]);
+
+      try {
+        const modelConfig = await getModelConfig(selectedModel);
+        if (!modelConfig) throw new Error(`未找到模型配置：${selectedModel}`);
+
+        const actualModelId = selectedModel.includes(':') ? selectedModel.split(':')[1] : selectedModel;
+
+        await aiService.setProvider(modelConfig.providerId, {
+          id: modelConfig.id || 'default',
+          name: modelConfig.name || modelConfig.configName,
+          apiKey: modelConfig.apiKey,
+          apiEndpoint: modelConfig.apiEndpoint,
+          temperature: 0.7,
+          maxTokens: 4000,
+          modelId: actualModelId
+        });
+
+        // 构建上下文文本
+        let contextText = '';
+        if (selectedForms.length > 0) {
+          for (const form of selectedForms) {
+            const detail = await tableReferenceService.getFormDetail(form.id);
+            if (detail && detail.columns.length > 0) {
+              const colNames = detail.columns.map((c: { name: string }) => c.name).join('、');
+              contextText += `\n\n【引用表单：${detail.name}】\n- 列：${colNames}\n- 共 ${detail.rows.length} 行数据`;
+            }
+          }
+          setSelectedForms([]);
+        }
+        if (selectedKbs.length > 0) {
+          contextText += `\n\n【引用知识库】\n${selectedKbs.map(k => `- ${k.title}`).join('\n')}`;
+          setSelectedKbs([]);
+        }
+        // 有引用文件时，告知 AI 可用 read_file 工具读取
+        const hasFiles = selectedFiles.length > 0;
+        const pendingFiles = [...selectedFiles];
+        if (hasFiles) {
+          contextText += `\n\n【引用文件】以下文件已准备好，请使用 read_file 工具读取其内容：\n${pendingFiles.map(f => `- ${f.name}：${f.path}`).join('\n')}`;
+          setSelectedFiles([]);
+        }
+
+        // 构建消息列表
+        const chatMessages: ChatMessage[] = [];
+
+        // 有上下文时加 system prompt
+        if (contextText.length > 0) {
+          const systemPrompt = await getAIZoneSystemPromptAsync(false);
+          if (systemPrompt) chatMessages.push({ role: 'system', content: systemPrompt });
+        }
+
+        // 历史对话（当前 messages 快照，不含刚加入的新消息）
+        for (const m of messages) {
+          if (m.role === 'user' || m.role === 'assistant') {
+            chatMessages.push({ role: m.role, content: m.content });
+          }
+        }
+
+        // 当前用户消息（含上下文）
+        chatMessages.push({ role: 'user', content: taskDesc + contextText });
+
+        // read_file 工具定义（仅在有引用文件时注入）
+        const chatTools = hasFiles ? [{
+          type: 'function' as const,
+          function: {
+            name: 'read_file',
+            description: '读取本地文件内容。用于读取用户引用的文件。',
+            parameters: {
+              type: 'object',
+              properties: {
+                path: { type: 'string', description: '文件的绝对路径' }
+              },
+              required: ['path']
+            }
+          }
+        }] : undefined;
+
+        // tool call 循环：AI 可能多次调用 read_file，每次执行后继续对话
+        const runChatWithTools = async (): Promise<void> => {
+          let pendingToolCalls: { id: string; name: string; argsRaw: string }[] = [];
+          let currentContent = '';
+
+          await aiService.generateTextStream(
+            { model: actualModelId, messages: chatMessages, temperature: 0.7, maxTokens: 4000, tools: chatTools },
+            {
+              onContent: (chunk) => {
+                currentContent += chunk;
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessageId ? { ...msg, content: msg.content + chunk } : msg
+                ));
+              },
+              onToolCall: (toolCall) => {
+                // 流式 tool call 是增量片段，需要按 index 拼接
+                const idx = (toolCall as any).index ?? 0;
+                if (!pendingToolCalls[idx]) {
+                  pendingToolCalls[idx] = { id: toolCall.id ?? '', name: toolCall.function?.name ?? '', argsRaw: '' };
+                }
+                if (toolCall.id) pendingToolCalls[idx].id = toolCall.id;
+                if (toolCall.function?.name) pendingToolCalls[idx].name = toolCall.function.name;
+                if (toolCall.function?.arguments) pendingToolCalls[idx].argsRaw += toolCall.function.arguments;
+              },
+              onComplete: async () => {
+                if (pendingToolCalls.length === 0) {
+                  setIsLoading(false);
+                  return;
+                }
+
+                // 把 assistant 的 tool_calls 追加到消息历史
+                const toolCallsForMsg = pendingToolCalls.map(tc => ({
+                  id: tc.id,
+                  type: 'function' as const,
+                  function: { name: tc.name, arguments: tc.argsRaw }
+                }));
+                chatMessages.push({ role: 'assistant', content: currentContent, tool_calls: toolCallsForMsg });
+
+                // 执行每个 tool call
+                for (const tc of pendingToolCalls) {
+                  let toolResult = '';
+                  try {
+                    if (tc.name === 'read_file') {
+                      const args = JSON.parse(tc.argsRaw) as { path: string };
+                      const content: string = await (window as any).electron?.ipcRenderer.invoke('read-file', args.path);
+                      toolResult = content ?? '（文件内容为空）';
+                    } else {
+                      toolResult = `未知工具：${tc.name}`;
+                    }
+                  } catch (e) {
+                    toolResult = `读取失败：${e instanceof Error ? e.message : String(e)}`;
+                  }
+                  chatMessages.push({ role: 'tool', content: toolResult, tool_call_id: tc.id });
+                }
+
+                // 重置，继续下一轮
+                pendingToolCalls = [];
+                currentContent = '';
+                await runChatWithTools();
+              },
+              onError: (error) => {
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: msg.content + `\n\n❌ 请求失败: ${error.message}` }
+                    : msg
+                ));
+                setIsLoading(false);
+              }
+            }
+          );
+        };
+
+        await runChatWithTools();
+      } catch (err) {
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: `❌ 请求失败: ${err instanceof Error ? err.message : String(err)}` }
+            : msg
+        ));
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Agent 模式（plan / auto-edit / ask-before-edit）
     // plan / ask-before-edit：写入前需确认
     // auto-edit：写入自动执行
     {
@@ -1145,11 +1325,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         agentService.registerDefaultTools({ workspacePath });
 
         // 根据模式设置约束
-        const constraints = chatMode === 'chat'
-          ? { allowFileWrite: false, allowCommandExecution: false }
-          : chatMode === 'plan' || chatMode === 'ask-before-edit'
-            ? { allowFileWrite: true, allowCommandExecution: false }
-            : {}; // auto-edit：无限制
+        const constraints = chatMode === 'plan' || chatMode === 'ask-before-edit'
+          ? { allowFileWrite: true, allowCommandExecution: false }
+          : {}; // auto-edit：无限制
 
         // 将选中的上下文（表单、知识库、文件、技能）注入任务描述
         let contextDesc = '';
@@ -1180,7 +1358,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           setSelectedSkills([]);
         }
 
-        const taskType: AgentTaskType = chatMode === 'chat' ? 'query' : 'write';
+        const taskType: AgentTaskType = 'write';
         const task = agentService.createTask(taskType, taskDesc + contextDesc, { workspacePath }, constraints);
 
         // ask-before-edit / plan 模式：写入工具需要用户确认

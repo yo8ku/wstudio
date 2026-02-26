@@ -6,24 +6,27 @@
 import { ipcMain } from 'electron';
 import { KnowledgeBaseVectorIngestionService } from '../services/KnowledgeBaseVectorIngestionService.js';
 import { VectorIngestionOptions } from '@note-studio/global-rag';
-
-// 使用子进程版本的 Embedding 服务（避免阻塞主进程）
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const embeddingWorkerService = require('../services/EmbeddingWorkerService.js');
+import { cloudEmbeddingService } from '../services/CloudEmbeddingService.js';
 
 /**
- * 子进程 Embedding API 适配器
- * 将 EmbeddingWorkerService 的接口适配为 EmbeddingAPI 接口
+ * 云端 Embedding API 适配器
+ * 将 CloudEmbeddingService 的接口适配为 EmbeddingAPI 接口
  */
 class EmbeddingAPIAdapter {
   async embedText(text: string): Promise<number[]> {
-    const result = await embeddingWorkerService.generateEmbedding(text);
-    return result.vectors;
+    const result = await cloudEmbeddingService.generateEmbedding(text);
+    if (!result.success || !result.vectors?.[0]) {
+      throw new Error(result.error ?? 'Embedding 生成失败');
+    }
+    return result.vectors[0];
   }
 
   async embedTexts(texts: string[]): Promise<number[][]> {
-    const results = await embeddingWorkerService.generateBatchEmbeddings(texts);
-    return results.map((r: { vectors: number[] }) => r.vectors);
+    const result = await cloudEmbeddingService.generateBatchEmbeddings(texts);
+    if (!result.success || !result.vectors) {
+      throw new Error(result.error ?? 'Batch Embedding 生成失败');
+    }
+    return result.vectors;
   }
 }
 
@@ -72,7 +75,7 @@ export function registerKnowledgeBaseVectorIngestionHandlers(): void {
         const service = getService();
         await service.initialize();
 
-        // 使用子进程 Embedding API（不阻塞主进程）
+        // 使用云端 Embedding API
         const embeddingAPI = new EmbeddingAPIAdapter();
 
         // 处理文件
@@ -107,7 +110,7 @@ export function registerKnowledgeBaseVectorIngestionHandlers(): void {
         const service = getService();
         await service.initialize();
 
-        // 使用子进程 Embedding API（不阻塞主进程）
+        // 使用云端 Embedding API
         const embeddingAPI = new EmbeddingAPIAdapter();
 
         // 处理文件（注意：进度回调需要通过其他方式传递，例如通过事件）

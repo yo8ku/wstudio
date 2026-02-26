@@ -35,8 +35,6 @@ const { initializeExtensions, pluginManager, settingsManager, workspaceManager, 
 // 导入终端服务相关模块
 const { TerminalService } = require('./packages/main/dist/main/src/services/terminal/index.js');
 const { setTerminalService } = require('./packages/main/dist/main/src/ipc/terminalHandlers.js');
-// 使用 Worker 线程版本的 Embedding 服务，避免阻塞主进程
-const embeddingService = require('./packages/main/src/services/EmbeddingWorkerService.js');
 // 云端 Embedding 服务
 const { cloudEmbeddingService } = require('./packages/main/dist/main/src/services/CloudEmbeddingService.js');
 const { getAllEmbeddingProviders, getEnabledEmbeddingModels } = require('./packages/main/dist/main/src/services/EmbeddingModelConfig.js');
@@ -1593,35 +1591,6 @@ ipcMain.handle('shell:open-external', async (event, url) => {
     return { success: true };
   } catch (error) {
     console.error('[IPC] 打开外部链接失败:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-/**
- * Embedding 服务相关 IPC 处理
- */
-
-// 生成单个文本的向量
-ipcMain.handle('embedding:generate', async (event, text) => {
-  try {
-    console.log('[IPC-Embedding] 生成向量，文本长度:', text.length, '子进程状态:', embeddingService.isInitialized ? '已初始化' : '未初始化');
-    const result = await embeddingService.generateEmbedding(text);
-    console.log('[IPC-Embedding] 向量生成完成，维度:', result.vectors?.length);
-    return { success: true, data: result };
-  } catch (error) {
-    console.error('[IPC-Embedding] 生成向量失败:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// 批量生成向量
-ipcMain.handle('embedding:generate-batch', async (event, texts) => {
-  try {
-    console.log('[IPC] 批量生成向量，数量:', texts.length);
-    const results = await embeddingService.generateBatchEmbeddings(texts);
-    return { success: true, data: results };
-  } catch (error) {
-    console.error('[IPC] 批量生成向量失败:', error);
     return { success: false, error: error.message };
   }
 });

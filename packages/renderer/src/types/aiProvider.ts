@@ -50,7 +50,7 @@ export enum ModelCapability {
 
 // 聊天消息
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   name?: string;
   tool_calls?: ToolCall[];

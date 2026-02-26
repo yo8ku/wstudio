@@ -1204,7 +1204,6 @@ export class WorkspaceVectorIndexService {
       this.indexingChild.kill();
       this.indexingChild = null;
     }
-    // 注意：不关闭 embeddingWorkerService，因为它是全局单例，可能被其他地方使用
   }
 
   private cleanup(): void {
