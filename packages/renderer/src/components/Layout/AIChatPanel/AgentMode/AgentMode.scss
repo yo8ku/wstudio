@@ -182,7 +182,7 @@
 
     .step-item {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
       padding: 4px 0;
       font-size: 11px;
@@ -202,6 +202,14 @@
       &.failed {
         color: #d9534f;
       }
+    }
+
+    .step-content {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
     }
 
     .step-icon {
@@ -236,10 +244,17 @@
     }
 
     .step-description {
-      flex: 1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.4;
+    }
+
+    .step-reason {
+      color: #d9534f;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
   }
 

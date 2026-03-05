@@ -1,6 +1,6 @@
-/**
+﻿/**
  * Explorer Section 样式
- * 资源管理器面板
+ * 统一 section 标题、操作按钮与内容区域布局
  */
 
 .explorer-section-accordion {
@@ -8,28 +8,25 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  overflow: hidden; // 防止该层滚动
-  min-height: 0; // 允许内容滚动
+  min-height: 0;
+  overflow: hidden;
   border: none;
 }
 
 .explorer-section-item {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto; // 可以伸缩，根据内容调�?  overflow: hidden; // 防止该层滚动
-  min-height: 0; // 允许内容滚动
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
   border: none;
 }
 
 .explorer-section-header-wrapper {
   position: relative;
   width: 100%;
-
-  &:hover {
-    .explorer-section-actions {
-      opacity: 1;
-    }
-  }
+  padding: 4px 4px 0 4px;
+  contain: paint;
 }
 
 .explorer-section-trigger {
@@ -38,13 +35,21 @@
   align-items: center;
   gap: 2px;
   height: 22px;
-  padding: 0 80px 0 4px; // 右侧留出更多空间给操作按�?  border: none;
+  padding: 0 76px 0 4px;
+  border: none;
+  border-radius: 6px;
   cursor: pointer;
   user-select: none;
   text-decoration: none !important;
-  //list.hoverBackground
+  background-color: var(--ws-sideBarSectionHeader-background, transparent);
+
   &:hover {
     text-decoration: none !important;
+    background-color: var(--ws-list-hoverBackground, var(--ws-list-hover-background, rgba(127, 127, 127, 0.18)));
+  }
+
+  &:active {
+    background-color: var(--ws-toolbar-activeBackground, var(--ws-toolbar-active-background, rgba(127, 127, 127, 0.24)));
   }
 
   .explorer-section-chevron {
@@ -68,8 +73,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-
-  // section title 样式
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -78,22 +81,18 @@
 
 .explorer-section-actions {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 5px;
+  right: 8px;
   display: flex;
   gap: 2px;
-  padding: 0 4px;
-  height: 22px;
+  height: 20px;
   align-items: center;
-  opacity: 0;
-  transition: opacity 0.1s ease;
-  pointer-events: none;
-
-  &:has(.explorer-action-button) {
-    pointer-events: auto;
-  }
+  opacity: 1;
+  pointer-events: auto;
 
   .explorer-action-button {
+    background: transparent;
+    color: var(--ws-icon-foreground);
     border: none;
     cursor: pointer;
     width: 20px;
@@ -104,11 +103,22 @@
     justify-content: center;
     font-size: 16px;
     border-radius: 5px;
-    pointer-events: auto;
+
+    &:hover {
+      background-color: var(--ws-toolbar-hoverBackground, var(--ws-toolbar-hover-background, rgba(127, 127, 127, 0.18)));
+    }
+
+    &:active {
+      background-color: var(--ws-toolbar-activeBackground, var(--ws-toolbar-active-background, rgba(127, 127, 127, 0.24)));
+    }
 
     &:disabled {
       opacity: 0.4;
       cursor: default;
+
+      &:hover {
+        background-color: transparent;
+      }
     }
 
     svg {
@@ -119,10 +129,10 @@
 }
 
 .explorer-section-content {
-  padding: 0;
+  padding: 0 0 4px 0;
   flex: 1;
-  min-height: 0; // 允许子元素滚动
-  overflow: hidden; // 防止该层滚动，让内部的 file-tree-content 滚动
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }

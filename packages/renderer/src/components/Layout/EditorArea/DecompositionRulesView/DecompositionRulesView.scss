@@ -1,0 +1,239 @@
+/**
+ * 规则管理视图样式
+ */
+
+.decomposition-rules-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 14px;
+  gap: 12px;
+  color: var(--ws-foreground);
+  background-color: var(--ws-editor-background);
+}
+
+.decomposition-rules-view__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.decomposition-rules-view__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.decomposition-rules-view__meta {
+  font-size: 12px;
+  color: var(--ws-descriptionForeground);
+}
+
+.decomposition-rules-view__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.decomposition-rules-view__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--ws-input-border);
+  border-radius: 4px;
+  background-color: var(--ws-toolbar-hover-background);
+  color: var(--ws-foreground);
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+}
+
+.decomposition-rules-view__action:hover {
+  background-color: var(--ws-dropdown-listBackground);
+}
+
+.decomposition-rules-view__content {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  overflow: auto;
+}
+
+.decomposition-rules-view__sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.decomposition-rules-view__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.decomposition-rules-view__section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ws-descriptionForeground);
+}
+
+.decomposition-rules-view__editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.decomposition-rules-view__input {
+  min-width: 180px;
+  max-width: 320px;
+  border: 1px solid var(--ws-input-border);
+  border-radius: 4px;
+  background-color: var(--ws-input-background);
+  color: var(--ws-input-foreground);
+  padding: 6px 8px;
+  outline: none;
+  font-size: 12px;
+}
+
+.decomposition-rules-view__input:focus {
+  border-color: var(--ws-accent);
+}
+
+.decomposition-rules-view__empty,
+.decomposition-rules-view__empty-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ws-descriptionForeground);
+  font-size: 13px;
+  padding: 12px;
+}
+
+.decomposition-rules-view__empty {
+  height: 100%;
+  min-height: 140px;
+}
+
+.decomposition-rules-view__empty-inline {
+  min-height: 56px;
+  border: 1px dashed var(--ws-panel-border);
+  border-radius: 6px;
+}
+
+.decomposition-rules-view__list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ws-panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.decomposition-rules-view__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ws-panel-border);
+  cursor: pointer;
+}
+
+.decomposition-rules-view__item:hover {
+  background-color: var(--ws-dropdown-listBackground);
+}
+
+.decomposition-rules-view__item:last-child {
+  border-bottom: none;
+}
+
+.decomposition-rules-view__item.is-enabled {
+  background-color: var(--ws-list-activeSelectionBackground);
+}
+
+.decomposition-rules-view__item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.decomposition-rules-view__item-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.decomposition-rules-view__item-name {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decomposition-rules-view__item-tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--ws-panel-border);
+  color: var(--ws-descriptionForeground);
+}
+
+.decomposition-rules-view__item-instruction {
+  font-size: 11px;
+  color: var(--ws-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.decomposition-rules-view__switch {
+  width: 30px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--ws-input-border);
+  display: inline-flex;
+  align-items: center;
+  padding: 1px;
+  flex-shrink: 0;
+}
+
+.decomposition-rules-view__switch-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: var(--ws-descriptionForeground);
+}
+
+.decomposition-rules-view__switch.is-active {
+  justify-content: flex-end;
+  border-color: var(--ws-accent);
+}
+
+.decomposition-rules-view__switch.is-active .decomposition-rules-view__switch-thumb {
+  background-color: var(--ws-accent);
+}
+
+.decomposition-rules-view__delete {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ws-descriptionForeground);
+  flex-shrink: 0;
+}
+
+.decomposition-rules-view__delete:hover {
+  background-color: var(--ws-toolbar-hover-background);
+  color: var(--ws-foreground);
+}

@@ -4,7 +4,7 @@
  * 描述：支持多个服务商的 Embedding 模型配置和连接测试
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DropdownMenu } from '../common/DropdownMenu/DropdownMenu';
 import { Icon } from '../Icons/Icon';
 import { electronStore } from '../../services/ElectronStoreService';
@@ -196,7 +196,91 @@ export const EmbeddingConfig: React.FC = () => {
     }
   }, [state.models]);
 
-  // 保存自定义配置
+  // 防抖保存自定义配置的定时器
+  const saveCustomConfigTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // 标记是否已完成初始加载（避免加载时触发保存）
+  const isInitialLoadRef = useRef(true);
+
+  // 自动保存自定义配置（防抖 500ms）
+  useEffect(() => {
+    // 跳过初始加载
+    if (isInitialLoadRef.current) {
+      return;
+    }
+
+    // 只在选择自定义服务商时保存
+    if (state.selectedProviderId !== 'custom') {
+      return;
+    }
+
+    // 清除之前的定时器
+    if (saveCustomConfigTimerRef.current) {
+      clearTimeout(saveCustomConfigTimerRef.current);
+    }
+
+    // 防抖保存
+    saveCustomConfigTimerRef.current = setTimeout(async () => {
+      await window.electron?.cloudEmbedding?.setCustomConfig(state.customConfig);
+      console.log('[EmbeddingConfig] 自定义配置已自动保存');
+    }, 500);
+
+    return () => {
+      if (saveCustomConfigTimerRef.current) {
+        clearTimeout(saveCustomConfigTimerRef.current);
+      }
+    };
+  }, [state.customConfig, state.selectedProviderId]);
+
+  // 初始加载完成后设置标记
+  useEffect(() => {
+    if (!state.isLoading) {
+      // 延迟设置，确保初始状态已完全加载
+      const timer = setTimeout(() => {
+        isInitialLoadRef.current = false;
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [state.isLoading]);
+
+  // 防抖保存 API Key 的定时器
+  const saveApiKeyTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 自动保存 API Key（防抖 500ms）
+  useEffect(() => {
+    // 跳过初始加载
+    if (isInitialLoadRef.current) {
+      return;
+    }
+
+    // 没有选择服务商时不保存
+    if (!state.selectedProviderId) {
+      return;
+    }
+
+    // 清除之前的定时器
+    if (saveApiKeyTimerRef.current) {
+      clearTimeout(saveApiKeyTimerRef.current);
+    }
+
+    // 防抖保存（Ollama 可以保存空值，其他服务商需要有值才保存）
+    saveApiKeyTimerRef.current = setTimeout(async () => {
+      if (state.selectedProviderId === 'ollama' || state.apiKey.trim()) {
+        await window.electron?.cloudEmbedding?.setApiKey(
+          state.selectedProviderId,
+          state.apiKey.trim()
+        );
+        console.log('[EmbeddingConfig] API Key 已自动保存');
+      }
+    }, 500);
+
+    return () => {
+      if (saveApiKeyTimerRef.current) {
+        clearTimeout(saveApiKeyTimerRef.current);
+      }
+    };
+  }, [state.apiKey, state.selectedProviderId]);
+
+  // 保存自定义配置（手动调用，用于立即索引前）
   const saveCustomConfig = useCallback(async () => {
     if (state.selectedProviderId === 'custom') {
       await window.electron?.cloudEmbedding?.setCustomConfig(state.customConfig);
@@ -243,20 +327,23 @@ export const EmbeddingConfig: React.FC = () => {
       }
     }
 
-    // 检查是否输入了 API Key
-    if (!state.apiKey.trim()) {
-      setState(prev => ({
-        ...prev,
-        testResult: { success: false, message: '请先输入 API Key' },
-      }));
-      return;
-    }
+    // Ollama 不需要 API Key，其他服务商需要检查
+    if (state.selectedProviderId !== 'ollama') {
+      // 检查是否输入了 API Key
+      if (!state.apiKey.trim()) {
+        setState(prev => ({
+          ...prev,
+          testResult: { success: false, message: '请先输入 API Key' },
+        }));
+        return;
+      }
 
-    // 先保存 API Key
-    await window.electron?.cloudEmbedding?.setApiKey(
-      state.selectedProviderId,
-      state.apiKey.trim()
-    );
+      // 先保存 API Key
+      await window.electron?.cloudEmbedding?.setApiKey(
+        state.selectedProviderId,
+        state.apiKey.trim()
+      );
+    }
 
     // 获取工作区路径
     const workspaceResult = await window.electron?.workspace?.getDir();
@@ -369,10 +456,9 @@ export const EmbeddingConfig: React.FC = () => {
                   groupName: currentProvider?.name || '模型',
                   items: providerModels.map(model => ({
                     value: model.id,
-                    label: model.displayName,
-                    suffix: model.pricePerMillion === 0 ? (
-                      <span className="embedding-config__model-free">免费</span>
-                    ) : undefined,
+                    label: model.pricePerMillion === 0
+                      ? `${model.displayName} (免费)`
+                      : model.displayName,
                   })),
                 }]}
                 placeholder="选择模型"
@@ -461,16 +547,21 @@ export const EmbeddingConfig: React.FC = () => {
           </div>
         )}
 
-        {/* API Key 输入 */}
+        {/* API Key 输入 - Ollama 可选，其他服务商必填 */}
         <div className="embedding-config__field">
-          <label className="embedding-config__label">API Key</label>
+          <label className="embedding-config__label">
+            API Key
+            {state.selectedProviderId === 'ollama' && (
+              <span className="embedding-config__label-hint">（本地运行可留空）</span>
+            )}
+          </label>
           <div className="embedding-config__api-key-row">
             <div className="embedding-config__input-wrapper">
               <input
                 type={state.showApiKey ? 'text' : 'password'}
                 value={state.apiKey}
                 onChange={e => setState(prev => ({ ...prev, apiKey: e.target.value, testResult: null }))}
-                placeholder={`输入 ${currentProvider?.name || ''} API Key`}
+                placeholder={state.selectedProviderId === 'ollama' ? '本地运行可留空，云端需填写' : `输入 ${currentProvider?.name || ''} API Key`}
                 className="embedding-config__input"
                 autoComplete="off"
                 spellCheck={false}
@@ -484,13 +575,23 @@ export const EmbeddingConfig: React.FC = () => {
               </span>
             </div>
             <div
-              className={`embedding-config__action embedding-config__action--primary ${state.isIndexing || state.isGlobalIndexing || !state.selectedProviderId || !state.apiKey.trim() || (state.selectedProviderId === 'custom' ? !isCustomConfigValid() : !state.currentModel) ? 'disabled' : ''}`}
-              onClick={state.isIndexing || state.isGlobalIndexing || !state.selectedProviderId || !state.apiKey.trim() || (state.selectedProviderId === 'custom' ? !isCustomConfigValid() : !state.currentModel) ? undefined : handleStartIndexing}
+              className={`embedding-config__action embedding-config__action--primary ${
+                state.isIndexing || state.isGlobalIndexing || !state.selectedProviderId ||
+                (state.selectedProviderId !== 'ollama' && !state.apiKey.trim()) ||
+                (state.selectedProviderId === 'custom' ? !isCustomConfigValid() : !state.currentModel)
+                  ? 'disabled' : ''
+              }`}
+              onClick={
+                state.isIndexing || state.isGlobalIndexing || !state.selectedProviderId ||
+                (state.selectedProviderId !== 'ollama' && !state.apiKey.trim()) ||
+                (state.selectedProviderId === 'custom' ? !isCustomConfigValid() : !state.currentModel)
+                  ? undefined : handleStartIndexing
+              }
             >
               {state.isIndexing || state.isGlobalIndexing ? '索引中...' : '立即索引'}
             </div>
           </div>
-          {currentProvider?.apiKeyUrl && (
+          {currentProvider?.apiKeyUrl && state.selectedProviderId !== 'ollama' && (
             <span
               className="embedding-config__api-key-link"
               onClick={() => window.electron?.shell?.openExternal(currentProvider.apiKeyUrl)}

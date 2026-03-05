@@ -464,6 +464,9 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
     };
   }, [isResizing, onClose, sidebarPosition]);
 
+  const showSidebarHeader = activeView !== 'ai-model' && activeView !== 'explorer';
+  const showHeaderMenu = activeView !== 'explorer';
+
   return (
     <div 
       ref={sidebarRef}
@@ -476,7 +479,7 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
       }}
     >
       {/* AI 模型视图不显示标题栏 */}
-      {activeView !== 'ai-model' && (
+      {showSidebarHeader && (
         <div className="sidebar-header">
           <span>{getTitle()}</span>
           <button
@@ -499,12 +502,14 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
       />
 
       {/* 下拉菜单 */}
-      <SidebarHeaderMenu
-        isOpen={isMenuOpen}
-        position={menuPosition}
-        onClose={handleMenuClose}
-        items={getMenuItems()}
-      />
+      {showHeaderMenu && (
+        <SidebarHeaderMenu
+          isOpen={isMenuOpen}
+          position={menuPosition}
+          onClose={handleMenuClose}
+          items={getMenuItems()}
+        />
+      )}
     </div>
   );
 }

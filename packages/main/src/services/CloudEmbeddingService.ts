@@ -5,13 +5,15 @@
  * 配置持久化：使用 electron-store 存储 API Key 和模型选择
  */
 
-import { 
-  EmbeddingModelConfig, 
+import {
+  EmbeddingModelConfig,
   getEmbeddingModelById,
   getEnabledEmbeddingModels,
   getAllEmbeddingProviders,
 } from './EmbeddingModelConfig';
 import Store from 'electron-store';
+import http from 'http';
+import https from 'https';
 
 /** Embedding 请求参数 */
 interface EmbeddingRequest {
@@ -228,6 +230,10 @@ class CloudEmbeddingServiceClass {
     if (!model) {
       return false;
     }
+    // Ollama 不需要 API Key
+    if (model.providerId === 'ollama') {
+      return true;
+    }
     const apiKey = this.config.apiKeys[model.providerId];
     return !!apiKey && apiKey.trim().length > 0;
   }
@@ -265,7 +271,8 @@ class CloudEmbeddingServiceClass {
     }
 
     const apiKey = this.config.apiKeys[model.providerId];
-    if (!apiKey) {
+    // Ollama 不需要 API Key（本地运行时可以为空）
+    if (!apiKey && model.providerId !== 'ollama') {
       return {
         success: false,
         error: `未配置 ${model.providerId} 的 API Key`,
@@ -322,7 +329,14 @@ class CloudEmbeddingServiceClass {
   ): Promise<EmbeddingResult> {
     // 截断过长的文本，避免超过模型的 token 限制
     const truncatedTexts = texts.map(text => this.truncateText(text));
-    
+
+    // Ollama 使用不同的 API 格式
+    const isOllama = model.providerId === 'ollama';
+
+    if (isOllama) {
+      return this.callOllamaEmbeddingAPI(model, truncatedTexts);
+    }
+
     const requestBody: EmbeddingRequest = {
       input: truncatedTexts.length === 1 ? truncatedTexts[0] : truncatedTexts,
       model: model.name,
@@ -351,7 +365,7 @@ class CloudEmbeddingServiceClass {
       }
 
       const data: EmbeddingResponse = await response.json();
-      
+
       // 按 index 排序并提取向量
       const sortedData = data.data.sort((a, b) => a.index - b.index);
       const vectors = sortedData.map(d => d.embedding);
@@ -375,6 +389,129 @@ class CloudEmbeddingServiceClass {
   }
 
   /**
+   * 调用 Ollama Embedding API（使用 Node.js http 模块避免 Electron fetch 限制）
+   */
+  private async callOllamaEmbeddingAPI(
+    model: EmbeddingModelConfig,
+    texts: string[]
+  ): Promise<EmbeddingResult> {
+    try {
+      console.log(`[CloudEmbedding] 调用 Ollama API: ${model.apiEndpoint}, 文本数: ${texts.length}`);
+
+      const vectors: number[][] = [];
+
+      // 获取 API Key（可选，用于云端 Ollama）
+      const apiKey = this.config.apiKeys[model.providerId];
+
+      // Ollama 不支持批量请求，需要逐个处理
+      for (const text of texts) {
+        const requestBody = JSON.stringify({
+          model: model.name,
+          input: text,
+        });
+
+        const result = await this.httpRequest(model.apiEndpoint, requestBody, apiKey);
+
+        if (!result.success) {
+          return result;
+        }
+
+        const data = JSON.parse(result.data!);
+
+        // Ollama 返回 embeddings 数组（复数）
+        if (data.embeddings && Array.isArray(data.embeddings) && data.embeddings.length > 0) {
+          vectors.push(data.embeddings[0]);
+        } else if (data.embedding && Array.isArray(data.embedding)) {
+          // 兼容旧版本返回 embedding（单数）
+          vectors.push(data.embedding);
+        } else {
+          console.error('[CloudEmbedding] Ollama 返回数据:', JSON.stringify(data));
+          return {
+            success: false,
+            error: 'Ollama 返回的数据格式不正确',
+          };
+        }
+      }
+
+      console.log(`[CloudEmbedding] Ollama 成功生成 ${vectors.length} 个向量，维度: ${vectors[0]?.length}`);
+
+      return {
+        success: true,
+        vectors,
+        model: model.name,
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[CloudEmbedding] Ollama 请求失败:', errorMsg);
+      return {
+        success: false,
+        error: `Ollama 连接失败: ${errorMsg}`,
+      };
+    }
+  }
+
+  /**
+   * 使用 Node.js http/https 模块发起请求（避免 Electron fetch 对 localhost 的限制）
+   */
+  private httpRequest(
+    url: string,
+    body: string,
+    apiKey?: string
+  ): Promise<{ success: boolean; data?: string; error?: string }> {
+    return new Promise((resolve) => {
+      const parsedUrl = new URL(url);
+      const isHttps = parsedUrl.protocol === 'https:';
+      const httpModule = isHttps ? https : http;
+
+      // 强制使用 IPv4，避免 IPv6 连接问题
+      let hostname = parsedUrl.hostname;
+      if (hostname === 'localhost') {
+        hostname = '127.0.0.1';
+      }
+
+      const options = {
+        hostname,
+        port: parsedUrl.port || (isHttps ? 443 : 80),
+        path: parsedUrl.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          ...(apiKey && apiKey.trim() ? { 'Authorization': `Bearer ${apiKey}` } : {}),
+        },
+      };
+
+      const req = httpModule.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve({ success: true, data });
+          } else {
+            resolve({
+              success: false,
+              error: `Ollama API 错误 (${res.statusCode}): ${data}`,
+            });
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        console.error('[CloudEmbedding] HTTP 请求错误:', error.message);
+        resolve({
+          success: false,
+          error: `Ollama 连接失败: ${error.message}`,
+        });
+      });
+
+      req.write(body);
+      req.end();
+    });
+  }
+
+  /**
    * 测试连接
    * @param providerId 服务商 ID
    * @param apiKey API Key
@@ -390,11 +527,44 @@ class CloudEmbeddingServiceClass {
       return { success: false, message: `未找到 ${providerId} 的模型配置` };
     }
 
-    const model = modelId 
+    const model = modelId
       ? models.find(m => m.id === modelId) || models[0]
       : models[0];
 
     const testText = '测试连接';
+
+    // Ollama 使用 http 模块避免 Electron fetch 限制
+    if (providerId === 'ollama') {
+      try {
+        const requestBody = JSON.stringify({
+          model: model.name,
+          input: testText,
+        });
+
+        const result = await this.httpRequest(model.apiEndpoint, requestBody, apiKey);
+
+        if (!result.success) {
+          return {
+            success: false,
+            message: result.error || 'Ollama 连接失败',
+          };
+        }
+
+        const data = JSON.parse(result.data!);
+        // Ollama 返回 embeddings 数组（复数）
+        const dimensions = data.embeddings?.[0]?.length || data.embedding?.length || 0;
+
+        return {
+          success: true,
+          message: `连接成功，模型: ${model.name}，维度: ${dimensions}`,
+          dimensions,
+        };
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        return { success: false, message: `Ollama 连接失败: ${errorMsg}（请确保 Ollama 正在运行）` };
+      }
+    }
+
     const requestBody: EmbeddingRequest = {
       input: testText,
       model: model.name,
@@ -413,9 +583,9 @@ class CloudEmbeddingServiceClass {
 
       if (!response.ok) {
         const errorText = await response.text();
-        return { 
-          success: false, 
-          message: `API 错误 (${response.status}): ${errorText}` 
+        return {
+          success: false,
+          message: `API 错误 (${response.status}): ${errorText}`
         };
       }
 
@@ -443,10 +613,13 @@ class CloudEmbeddingServiceClass {
       return { success: false, message: '未配置 Embedding 模型，请先选择服务商和模型' };
     }
 
-    // 获取 API Key
-    const apiKey = this.getApiKey(model.providerId);
-    if (!apiKey) {
-      return { success: false, message: `未配置 ${model.providerId} 的 API Key` };
+    // Ollama 不需要 API Key
+    if (model.providerId !== 'ollama') {
+      // 获取 API Key
+      const apiKey = this.getApiKey(model.providerId);
+      if (!apiKey) {
+        return { success: false, message: `未配置 ${model.providerId} 的 API Key` };
+      }
     }
 
     // 测试 API 连接

@@ -71,6 +71,59 @@ function containsForbiddenPattern(targetPath: string): boolean {
 }
 
 /**
+ * 检查目录名是否为隐藏目录（.xxx）
+ */
+function isHiddenDirectoryName(name: string): boolean {
+  if (!name) return false;
+  if (name === '.' || name === '..') return false;
+  return name.startsWith('.');
+}
+
+/**
+ * 检查路径中是否包含隐藏目录（.xxx）
+ * @param targetPath 目标路径
+ * @param workspacePath 工作区根路径
+ * @param treatLastSegmentAsDirectory 是否将最后一个路径段视为目录
+ */
+function containsHiddenDirectoryInPath(
+  targetPath: string,
+  workspacePath: string,
+  treatLastSegmentAsDirectory: boolean
+): boolean {
+  const normalizedTarget = path.normalize(targetPath);
+  const normalizedWorkspace = path.normalize(workspacePath);
+
+  let relativePath = path.relative(normalizedWorkspace, normalizedTarget);
+  if (!relativePath || relativePath === '.') {
+    return false;
+  }
+
+  // 如果相对路径不可用，回退到原始路径段检查
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    relativePath = normalizedTarget;
+  }
+
+  const segments = relativePath
+    .split(path.sep)
+    .filter(segment => segment.length > 0);
+
+  if (segments.length === 0) return false;
+
+  const lastIndex = treatLastSegmentAsDirectory
+    ? segments.length - 1
+    : segments.length - 2;
+
+  for (let i = 0; i <= lastIndex; i += 1) {
+    if (i < 0) break;
+    if (isHiddenDirectoryName(segments[i])) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * 验证文件扩展名是否允许写入
  */
 function isExtensionAllowed(filePath: string): boolean {
@@ -128,6 +181,13 @@ export function registerAgentFileSystemHandlers(): void {
           };
         }
 
+        if (containsHiddenDirectoryInPath(filePath, workspacePath, false)) {
+          return {
+            success: false,
+            error: '禁止访问隐藏目录（.xxx）中的内容'
+          };
+        }
+
         // 检查文件是否存在
         try {
           await fs.access(filePath);
@@ -170,6 +230,8 @@ export function registerAgentFileSystemHandlers(): void {
       workspacePath: string
     ): Promise<AgentFileResult> => {
       try {
+        const normalizedContent = typeof content === 'string' ? content : '';
+
         // 安全验证
         if (!isPathInWorkspace(filePath, workspacePath)) {
           return {
@@ -185,6 +247,13 @@ export function registerAgentFileSystemHandlers(): void {
           };
         }
 
+        if (containsHiddenDirectoryInPath(filePath, workspacePath, false)) {
+          return {
+            success: false,
+            error: '禁止写入隐藏目录（.xxx）中的内容'
+          };
+        }
+
         if (!isExtensionAllowed(filePath)) {
           return {
             success: false,
@@ -197,13 +266,25 @@ export function registerAgentFileSystemHandlers(): void {
         await fs.mkdir(dir, { recursive: true });
 
         // 写入文件
-        await fs.writeFile(filePath, content, 'utf-8');
+        await fs.writeFile(filePath, normalizedContent, 'utf-8');
+        const persistedContent = await fs.readFile(filePath, 'utf-8');
+        if (persistedContent !== normalizedContent) {
+          return {
+            success: false,
+            error: '写入校验失败：文件内容与目标内容不一致'
+          };
+        }
+        const bytesWritten = Buffer.byteLength(normalizedContent, 'utf-8');
 
         console.log('[AgentFS] 文件写入成功:', filePath);
 
         return {
           success: true,
-          data: { path: filePath }
+          data: {
+            path: filePath,
+            bytesWritten,
+            newContent: normalizedContent
+          }
         };
       } catch (error) {
         console.error('[AgentFS] 写入文件失败:', error);
@@ -247,6 +328,13 @@ export function registerAgentFileSystemHandlers(): void {
           };
         }
 
+        if (containsHiddenDirectoryInPath(dirPath, workspacePath, true)) {
+          return {
+            success: false,
+            error: '禁止访问隐藏目录（.xxx）'
+          };
+        }
+
         const files: FileInfo[] = [];
 
         async function listDir(currentPath: string, depth: number): Promise<void> {
@@ -257,6 +345,10 @@ export function registerAgentFileSystemHandlers(): void {
 
             for (const entry of entries) {
               const fullPath = path.join(currentPath, entry.name);
+
+              if (entry.isDirectory() && isHiddenDirectoryName(entry.name)) {
+                continue;
+              }
 
               // 跳过禁止的路径
               if (containsForbiddenPattern(fullPath)) {
@@ -334,6 +426,13 @@ export function registerAgentFileSystemHandlers(): void {
         const regex = new RegExp(pattern, 'gi');
         const results: SearchResult[] = [];
 
+        if (containsHiddenDirectoryInPath(dirPath, workspacePath, true)) {
+          return {
+            success: false,
+            error: '禁止在隐藏目录（.xxx）中搜索'
+          };
+        }
+
         async function searchDir(currentPath: string): Promise<void> {
           if (results.length >= maxResults) return;
 
@@ -344,6 +443,10 @@ export function registerAgentFileSystemHandlers(): void {
               if (results.length >= maxResults) break;
 
               const fullPath = path.join(currentPath, entry.name);
+
+              if (entry.isDirectory() && isHiddenDirectoryName(entry.name)) {
+                continue;
+              }
 
               // 跳过禁止的路径
               if (containsForbiddenPattern(fullPath)) {
@@ -434,6 +537,13 @@ export function registerAgentFileSystemHandlers(): void {
           };
         }
 
+        if (containsHiddenDirectoryInPath(filePath, workspacePath, false)) {
+          return {
+            success: false,
+            error: '禁止访问隐藏目录（.xxx）中的内容'
+          };
+        }
+
         try {
           await fs.access(filePath);
           const stats = await fs.stat(filePath);
@@ -489,6 +599,13 @@ export function registerAgentFileSystemHandlers(): void {
           };
         }
 
+        if (containsHiddenDirectoryInPath(dirPath, workspacePath, true)) {
+          return {
+            success: false,
+            error: '禁止创建隐藏目录（.xxx）'
+          };
+        }
+
         await fs.mkdir(dirPath, { recursive: true });
 
         console.log('[AgentFS] 目录创建成功:', dirPath);
@@ -528,6 +645,13 @@ export function registerAgentFileSystemHandlers(): void {
           return {
             success: false,
             error: '禁止删除该文件'
+          };
+        }
+
+        if (containsHiddenDirectoryInPath(filePath, workspacePath, false)) {
+          return {
+            success: false,
+            error: '禁止删除隐藏目录（.xxx）中的内容'
           };
         }
 
@@ -577,6 +701,9 @@ export function registerAgentFileSystemHandlers(): void {
         if (containsForbiddenPattern(filePath)) {
           return { success: false, error: '禁止访问该路径' };
         }
+        if (containsHiddenDirectoryInPath(filePath, workspacePath, false)) {
+          return { success: false, error: '禁止访问隐藏目录（.xxx）中的内容' };
+        }
         if (!isExtensionAllowed(filePath)) {
           return { success: false, error: '不允许编辑该类型的文件' };
         }
@@ -622,6 +749,9 @@ export function registerAgentFileSystemHandlers(): void {
         }
         if (containsForbiddenPattern(filePath)) {
           return { success: false, error: '禁止访问该路径' };
+        }
+        if (containsHiddenDirectoryInPath(filePath, workspacePath, false)) {
+          return { success: false, error: '禁止访问隐藏目录（.xxx）中的内容' };
         }
         if (!isExtensionAllowed(filePath)) {
           return { success: false, error: '不允许编辑该类型的文件' };
@@ -677,6 +807,10 @@ export function registerAgentFileSystemHandlers(): void {
           return { success: false, error: '搜索路径不在工作区范围内' };
         }
 
+        if (containsHiddenDirectoryInPath(basePath, workspacePath, true)) {
+          return { success: false, error: '禁止在隐藏目录（.xxx）中执行 glob' };
+        }
+
         // 使用递归遍历 + 简单 glob 匹配
         const matches: string[] = [];
         const maxResults = 500;
@@ -695,6 +829,8 @@ export function registerAgentFileSystemHandlers(): void {
             if (matches.length >= maxResults) break;
 
             const fullEntryPath = path.join(dir, entry.name);
+
+            if (entry.isDirectory() && isHiddenDirectoryName(entry.name)) continue;
 
             // 跳过禁止的目录
             if (containsForbiddenPattern(fullEntryPath)) continue;

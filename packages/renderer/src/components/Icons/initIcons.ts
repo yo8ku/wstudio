@@ -235,6 +235,8 @@ function registerCommonAliases(): void {
 
     // 媒体播放图标别名
     'circle-play': 'ui:circle-play',
+    'video-embed': 'ui:video-embed',
+    'media': 'ui:media',
   });
 }
 

@@ -3,7 +3,7 @@
  * 用于显示和管理图片、视频素材，支持本地路径导入
  */
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../../../Icons';
 import { ContextMenu, type ContextMenuItem } from '../../../../components/Explorer/Common/ContextMenu';
 import './MediaPanel.scss';
@@ -23,6 +23,31 @@ type FilterType = 'image' | 'video';
 
 // 缩略图缓存
 const thumbnailCache = new Map<string, string>();
+
+// 正在生成缩略图的视频数量限制
+let activeVideoCount = 0;
+const MAX_ACTIVE_VIDEOS = 3;
+const pendingVideos: Array<() => void> = [];
+
+const requestVideoSlot = (callback: () => void) => {
+  if (activeVideoCount < MAX_ACTIVE_VIDEOS) {
+    activeVideoCount++;
+    callback();
+  } else {
+    pendingVideos.push(callback);
+  }
+};
+
+const releaseVideoSlot = () => {
+  activeVideoCount--;
+  if (pendingVideos.length > 0 && activeVideoCount < MAX_ACTIVE_VIDEOS) {
+    const next = pendingVideos.shift();
+    if (next) {
+      activeVideoCount++;
+      next();
+    }
+  }
+};
 
 // 懒加载图片组件
 const LazyImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
@@ -74,21 +99,39 @@ const LazyImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
   );
 };
 
-// 视频缩略图组件（带缓存和懒加载）
+// 视频缩略图组件（带缓存和懒加载，限制并发数量防止 OOM）
 const VideoThumbnail: React.FC<{ src: string; alt: string; cacheKey: string }> = ({ src, alt, cacheKey }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(() => thumbnailCache.get(cacheKey) || null);
   const [error, setError] = useState(false);
-  const [imgError, setImgError] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [checkedPersisted, setCheckedPersisted] = useState(false);
+
+  // 检查是否有持久化的缩略图
+  useEffect(() => {
+    // 如果内存缓存中有，直接使用
+    if (thumbnailCache.has(cacheKey)) {
+      setThumbnail(thumbnailCache.get(cacheKey)!);
+      setCheckedPersisted(true);
+      return;
+    }
+
+    // 检查文件系统中是否有缩略图
+    window.electron?.ipcRenderer?.invoke('media:get-thumbnail-path', cacheKey).then((result: { success: boolean; path?: string }) => {
+      if (result?.success && result.path) {
+        const fileUrl = `local-file:///${result.path.replace(/\\/g, '/')}`;
+        thumbnailCache.set(cacheKey, fileUrl);
+        setThumbnail(fileUrl);
+      }
+      setCheckedPersisted(true);
+    });
+  }, [cacheKey]);
 
   // 懒加载检测
   useEffect(() => {
-    // 如果已有缓存，直接显示
-    if (thumbnailCache.has(cacheKey)) {
-      setThumbnail(thumbnailCache.get(cacheKey)!);
+    if (!checkedPersisted) return;
+    if (thumbnail) {
       setIsVisible(true);
       return;
     }
@@ -108,91 +151,91 @@ const VideoThumbnail: React.FC<{ src: string; alt: string; cacheKey: string }> =
     }
 
     return () => observer.disconnect();
-  }, [cacheKey]);
+  }, [cacheKey, checkedPersisted, thumbnail]);
 
-  // 生成缩略图
+  // 生成缩略图（使用队列限制并发）
   useEffect(() => {
-    if (!isVisible || thumbnail || thumbnailCache.has(cacheKey)) return;
+    if (!checkedPersisted || !isVisible || thumbnail || thumbnailCache.has(cacheKey) || isProcessing || error) return;
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    requestVideoSlot(() => {
+      setIsProcessing(true);
 
-    const handleLoadedData = () => {
-      video.currentTime = Math.min(1, video.duration / 10);
-    };
+      const video = document.createElement('video');
+      const canvas = document.createElement('canvas');
 
-    const handleSeeked = () => {
-      try {
-        const ctx = canvas.getContext('2d');
-        if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          if (dataUrl && dataUrl.length > 100) {
-            thumbnailCache.set(cacheKey, dataUrl);
-            setThumbnail(dataUrl);
+      const cleanup = () => {
+        video.removeEventListener('loadeddata', handleLoadedData);
+        video.removeEventListener('seeked', handleSeeked);
+        video.removeEventListener('error', handleError);
+        video.src = '';
+        video.load();
+        releaseVideoSlot();
+        setIsProcessing(false);
+      };
+
+      const handleLoadedData = () => {
+        video.currentTime = Math.min(1, video.duration / 10);
+      };
+
+      const handleSeeked = () => {
+        try {
+          const ctx = canvas.getContext('2d');
+          if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
+            // 保持比例缩放
+            const maxSize = 200;
+            const scale = Math.min(maxSize / video.videoWidth, maxSize / video.videoHeight, 1);
+            canvas.width = Math.floor(video.videoWidth * scale);
+            canvas.height = Math.floor(video.videoHeight * scale);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+            if (dataUrl && dataUrl.length > 100) {
+              thumbnailCache.set(cacheKey, dataUrl);
+              setThumbnail(dataUrl);
+              // 持久化到文件系统
+              window.electron?.ipcRenderer?.invoke('media:save-thumbnail', cacheKey, dataUrl);
+            } else {
+              setError(true);
+            }
           } else {
             setError(true);
           }
-        } else {
+        } catch (e) {
           setError(true);
         }
-      } catch (e) {
+        cleanup();
+      };
+
+      const handleError = () => {
         setError(true);
-      }
-    };
+        cleanup();
+      };
 
-    const handleError = () => {
-      setError(true);
-    };
+      video.addEventListener('loadeddata', handleLoadedData);
+      video.addEventListener('seeked', handleSeeked);
+      video.addEventListener('error', handleError);
 
-    video.addEventListener('loadeddata', handleLoadedData);
-    video.addEventListener('seeked', handleSeeked);
-    video.addEventListener('error', handleError);
-
-    return () => {
-      video.removeEventListener('loadeddata', handleLoadedData);
-      video.removeEventListener('seeked', handleSeeked);
-      video.removeEventListener('error', handleError);
-    };
-  }, [isVisible, thumbnail, cacheKey, src]);
-
-  const showPlayIcon = error || !thumbnail || imgError;
+      video.preload = 'metadata';
+      video.src = src;
+    });
+  }, [checkedPersisted, isVisible, thumbnail, cacheKey, src, isProcessing, error]);
 
   return (
     <div ref={containerRef} className="media-panel-lazy-container">
-      {isVisible && (
-        <>
-          <video
-            ref={videoRef}
-            src={src}
-            style={{ display: 'none' }}
-            preload="metadata"
-          />
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
-        </>
-      )}
-      {!isVisible ? (
+      {!checkedPersisted || (!isVisible && !thumbnail) ? (
         <div className="media-panel-grid-item-placeholder">
           <Icon name="circle-play" size={24} />
         </div>
-      ) : showPlayIcon ? (
-        <div className="media-panel-grid-item-video">
-          <Icon name="circle-play" size={32} />
-        </div>
-      ) : (
+      ) : thumbnail ? (
         <>
-          <img
-            src={thumbnail!}
-            alt={alt}
-            onError={() => setImgError(true)}
-          />
+          <img src={thumbnail} alt={alt} />
           <div className="media-panel-grid-item-play-overlay">
             <Icon name="circle-play" size={32} />
           </div>
         </>
+      ) : (
+        <div className="media-panel-grid-item-video">
+          <Icon name="circle-play" size={32} />
+        </div>
       )}
     </div>
   );
@@ -358,11 +401,15 @@ export const MediaPanel: React.FC = () => {
   const handleContextMenu = useCallback((e: React.MouseEvent, item: MediaItem) => {
     e.preventDefault();
     e.stopPropagation();
+    // 如果当前项未选中，则选中它（不影响已有的多选）
+    if (!selectedItems.has(item.id)) {
+      setSelectedItems(new Set([item.id]));
+    }
     setContextMenu({
       position: { x: e.clientX, y: e.clientY },
       item,
     });
-  }, []);
+  }, [selectedItems]);
 
   // 关闭右键菜单
   const handleCloseContextMenu = useCallback(() => {

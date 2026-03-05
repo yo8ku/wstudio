@@ -1,37 +1,63 @@
+﻿/**
+ * 打开的编辑器分区样式
+ * 统一列表项的间距、悬停与选中表现
+ */
+
 .open-editors-section {
-  // ����������� order ��λ
   display: flex;
   flex-direction: column;
-  flex-shrink: 0; // ��������������Ȼ�߶�
-  overflow: hidden; // �����������
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .open-editors-content {
-  padding: 0;
+  padding: 4px 0 6px;
 
   .open-editors-empty {
-    padding: 12px 20px;
-    font-size: 13px;
+    margin: 0 6px;
+    padding: 10px;
+    font-size: 12px;
     font-style: italic;
+    border-radius: 6px;
+    color: var(--ws-descriptionForeground, var(--ws-disabledForeground, var(--ws-list-deemphasizedForeground)));
+    background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
   }
 
   .editor-group {
     .editor-group-name {
-      padding: 4px 20px;
+      padding: 4px 10px;
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.4px;
+      color: var(--ws-descriptionForeground, var(--ws-sideBarTitle-foreground));
     }
 
     .editor-group-items {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+
       .editor-item {
         display: flex;
         align-items: center;
-        padding: 2px 20px;
+        min-height: 22px;
+        padding: 0 8px;
+        margin: 0 4px;
+        border-radius: 6px;
         cursor: pointer;
         user-select: none;
         gap: 6px;
         position: relative;
+
+        &:hover {
+          background-color: var(--ws-list-hoverBackground, var(--ws-list-hover-background, rgba(127, 127, 127, 0.16)));
+        }
+
+        &.active {
+          background-color: var(--ws-list-inactiveSelectionBackground, var(--ws-list-activeSelectionBackground));
+          color: var(--ws-list-inactiveSelectionForeground, var(--ws-list-activeSelectionForeground));
+        }
+
         .editor-item-icon {
           font-size: 16px;
           line-height: 1;
@@ -48,26 +74,31 @@
         .editor-item-close {
           border: none;
           cursor: pointer;
-          padding: 4px;
+          padding: 3px;
           font-size: 16px;
           line-height: 1;
           opacity: 0;
           display: flex;
           align-items: center;
           justify-content: center;
-          border-radius: 3px;
-          transition: background-color 0.1s ease;
+          border-radius: 4px;
+          transition: background-color 0.12s ease, opacity 0.12s ease;
+
+          &:hover {
+            background-color: var(--ws-toolbar-hoverBackground, var(--ws-toolbar-hover-background, rgba(127, 127, 127, 0.2)));
+          }
+
           .editor-item-dirty-indicator {
             font-size: 14px;
             line-height: 1;
           }
         }
 
-        &:hover .editor-item-close {
+        &:hover .editor-item-close,
+        &.active .editor-item-close {
           opacity: 1;
         }
       }
     }
   }
 }
-

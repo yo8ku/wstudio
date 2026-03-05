@@ -38,7 +38,10 @@ export class WriteFileTool extends BaseTool<FileSystemToolConfig> {
   };
 
   async execute(params: Record<string, unknown>): Promise<ToolResult> {
-    const { path, content } = params as { path: string; content: string };
+    const { path } = params as { path: string; content: string };
+    const content = typeof (params as { content?: unknown }).content === 'string'
+      ? ((params as { content: string }).content)
+      : '';
 
     if (this.config.allowWrite === false) {
       return this.failure('当前配置不允许写入文件');
@@ -52,6 +55,10 @@ export class WriteFileTool extends BaseTool<FileSystemToolConfig> {
     const ext = getFileExtension(path);
     if (!isExtensionAllowed(ext, this.config)) {
       return this.failure(`不允许写入 ${ext} 类型的文件`);
+    }
+
+    if (content.length === 0) {
+      return this.failure('写入内容为空，已阻止覆盖文件');
     }
 
     const maxSize = getMaxFileSize(this.config);
@@ -79,7 +86,7 @@ export class WriteFileTool extends BaseTool<FileSystemToolConfig> {
 
     return this.success({
       path: fullPath,
-      bytesWritten: result.data?.bytesWritten ?? content.length,
+      bytesWritten: result.data?.bytesWritten ?? new TextEncoder().encode(content).length,
     }, changes);
   }
 }

@@ -39,6 +39,9 @@ export { BashTool } from './shell/BashTool';
 
 // 交互工具
 export { AskUserTool } from './interaction/AskUserTool';
+export { ListFormsTool } from './interaction/ListFormsTool';
+export { GetFormSchemaTool } from './interaction/GetFormSchemaTool';
+export { QueryFormTool } from './interaction/QueryFormTool';
 
 // 网络工具
 export { WebFetchTool } from './network/WebFetchTool';

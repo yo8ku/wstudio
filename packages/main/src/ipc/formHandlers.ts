@@ -4,7 +4,12 @@
  */
 
 import { ipcMain } from 'electron';
-import { getFormDatabase, type FormGroup, type FormData } from '../services/FormDatabase';
+import {
+  getFormDatabase,
+  type FormGroup,
+  type FormData,
+  type FormQueryParams,
+} from '../services/FormDatabase';
 
 /**
  * 注册表单相关的 IPC 处理器
@@ -122,6 +127,17 @@ export function registerFormHandlers(): void {
       return { success: true, data: form };
     } catch (error) {
       console.error('[FormHandlers] 获取表单失败:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // 查询表单行（服务端过滤 + 分页）
+  ipcMain.handle('form:queryRows', async (_, params: FormQueryParams) => {
+    try {
+      const result = await db.queryFormRows(params);
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('[FormHandlers] 查询表单行失败:', error);
       return { success: false, error: String(error) };
     }
   });

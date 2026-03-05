@@ -34,7 +34,7 @@ contextBridge.exposeInMainWorld('electron', {
     open: () => ipcRenderer.invoke('file:open'),
     read: (filePath) => ipcRenderer.invoke('file:read', filePath),
     save: (filePath, content) => ipcRenderer.invoke('file:save', filePath, content),
-    saveAs: (content) => ipcRenderer.invoke('file:save-as', content),
+    saveAs: (content, options) => ipcRenderer.invoke('file:save-as', content, options),
     showOpenDialog: (options) => ipcRenderer.invoke('file:show-open-dialog', options),
     readBinary: (filePath) => ipcRenderer.invoke('file:read-binary', filePath)
   },
@@ -183,6 +183,7 @@ contextBridge.exposeInMainWorld('electron', {
     getAllForms: () => ipcRenderer.invoke('form:getAllForms'),
     getFormsByGroup: (groupId) => ipcRenderer.invoke('form:getFormsByGroup', groupId),
     getFormById: (id) => ipcRenderer.invoke('form:getFormById', id),
+    queryRows: (params) => ipcRenderer.invoke('form:queryRows', params),
     updateForm: (id, updates) => ipcRenderer.invoke('form:updateForm', id, updates),
     deleteForm: (id) => ipcRenderer.invoke('form:deleteForm', id),
   },

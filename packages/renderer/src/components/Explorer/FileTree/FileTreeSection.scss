@@ -1,17 +1,16 @@
-/**
- * 文件树区域样式
- * 显示工作区的文件和文件夹结构
+﻿/**
+ * 文件树分区样式
+ * 负责资源管理器中文件树列表、节点交互与缩进引导线
  */
 
-// 文件树部分的外层容器
 .file-tree-section {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   overflow: hidden;
   min-height: 0;
+  background-color: var(--ws-sideBarSectionHeader-background, var(--ws-sideBar-background));
 
-  // 确保 ExplorerSection 占满空间
   .explorer-section-accordion {
     display: flex;
     flex-direction: column;
@@ -21,11 +20,9 @@
   }
 }
 
-// 文件树内容区域（使用 CustomScrollbar 组件）
 .file-tree-content {
-  // CustomScrollbar 内部的 content 区域样式
   .custom-scrollbar-content {
-    padding: 2px 0 16px 0;
+    padding: 4px 0 14px 0;
     user-select: none;
     font-size: 13px;
     line-height: 22px;
@@ -35,12 +32,74 @@
     display: flex;
     flex-direction: column;
     width: 100%;
+    gap: 1px;
+  }
+
+  .file-tree-workspace-label {
+    margin: 0 6px 4px;
+    padding: 2px 8px;
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    color: var(--ws-sideBarTitle-foreground, var(--ws-descriptionForeground));
+    background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
+    cursor: pointer;
+    outline: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:hover {
+      background-color: var(--ws-list-hoverBackground, var(--ws-list-hover-background, rgba(127, 127, 127, 0.16)));
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 1px var(--ws-focusBorder, var(--ws-focus-border));
+    }
+
+    .file-tree-workspace-chevron {
+      font-size: 14px;
+      width: 14px;
+      flex-shrink: 0;
+    }
+
+    .file-tree-workspace-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .file-tree-workspace-root {
+    margin: 0 6px 4px;
+    padding: 2px 8px 2px 26px;
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--ws-sideBarTitle-foreground, var(--ws-descriptionForeground));
+    background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .file-tree-empty {
-    padding: 12px 20px;
-    font-size: 13px;
+    margin: 0 6px;
+    padding: 10px;
+    font-size: 12px;
     font-style: italic;
+    border-radius: 6px;
+    color: var(--ws-descriptionForeground, var(--ws-disabledForeground, var(--ws-list-deemphasizedForeground)));
+    background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
   }
 }
 
@@ -55,11 +114,13 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    padding: 11px 0;
-    padding-right: 8px;
+    padding: 0 8px 0 0;
     cursor: pointer;
-    height: 20px;
-    border: 1px solid transparent;
+    min-height: 22px;
+    height: 22px;
+    margin: 0 4px;
+    border: none;
+    border-radius: 6px;
     position: relative;
     box-sizing: border-box;
 
@@ -82,49 +143,45 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      min-width: 0;
     }
 
-    // 创建中的节点样式
-    &.creating {
+    &.creating,
+    &.editing {
       cursor: default;
+      background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
 
       .inline-input {
         flex: 1;
         font-size: 13px;
         padding: 0 4px;
         outline: none;
-        height: 18px;
-        line-height: 18px;
+        height: 20px;
+        line-height: 20px;
       }
     }
 
     &.context-menu-active {
-      border-color: var(--ws-button-background);
+      box-shadow: inset 0 0 0 1px var(--ws-focusBorder, var(--ws-button-background));
     }
 
-    // 选中状态（默认 - 鼠标离开后的柔和状态）
-    &.selected {
-      background-color: var(--ws-list-inactiveSelectionBackground);
-      color: var(--ws-list-focusForeground);
+    &:not(.selected):not(.creating):not(.editing):hover {
+      background-color: var(--ws-list-hoverBackground, var(--ws-list-hover-background, rgba(127, 127, 127, 0.16)));
+      color: var(--ws-list-hoverForeground, var(--ws-list-foreground));
+    }
 
-      &::after {
-        background: inherit;
-        opacity: 1;
-      }
+    &.selected {
+      background-color: var(--ws-list-inactiveSelectionBackground, var(--ws-list-activeSelectionBackground));
+      color: var(--ws-list-inactiveSelectionForeground, var(--ws-list-activeSelectionForeground));
 
       .file-tree-name {
         color: inherit;
       }
     }
 
-    // 选中状态 + 鼠标悬停（高亮激活状态）
     &.selected:hover {
-      color: var(--ws-list-activeSelectionForeground);
-
-      &::after {
-        background: inherit;
-        opacity: 1;
-      }
+      background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-inactiveSelectionBackground));
+      color: var(--ws-list-activeSelectionForeground, var(--ws-list-inactiveSelectionForeground));
     }
   }
 
@@ -133,7 +190,6 @@
     flex-direction: column;
     position: relative;
 
-    // 垂直连接线 - 从父节点延伸到最后一个子节点
     &::before {
       content: '';
       position: absolute;
@@ -145,7 +201,6 @@
       opacity: 0;
     }
 
-    // 根据 data-parent-depth 设置垂直线的 left 位置
     &[data-parent-depth="0"]::before {
       left: 16px;
     }
@@ -170,7 +225,6 @@
       left: 76px;
     }
 
-    // 最后一个子节点时，垂直线不延伸到底部
     .file-tree-node:last-child {
       .file-tree-node-content::after {
         content: '';
@@ -184,7 +238,6 @@
         opacity: 0;
       }
 
-      // 根据层级设置遮罩位置
       .file-tree-node-content[data-depth="2"]::after {
         left: 40px;
       }
@@ -208,7 +261,6 @@
   }
 }
 
-// 悬停时显示缩进线
 .file-tree-content:hover {
   .file-tree-children::before,
   .file-tree-node:last-child .file-tree-node-content::after {

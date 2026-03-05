@@ -54,6 +54,44 @@ const StepIcon: React.FC<{ status: string }> = ({ status }) => {
   }
 };
 
+const isRecordObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+const toStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(item => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+};
+
+const readVerifyFailureReason = (result: unknown): string | null => {
+  if (!isRecordObject(result)) return null;
+  const gateRaw = result.gate;
+  if (!isRecordObject(gateRaw)) return null;
+
+  const passed = gateRaw.passed;
+  if (typeof passed === 'boolean' && passed) return null;
+
+  const score = typeof gateRaw.score === 'number' && Number.isFinite(gateRaw.score)
+    ? Math.max(0, Math.min(100, Math.floor(gateRaw.score)))
+    : null;
+  const threshold = typeof gateRaw.threshold === 'number' && Number.isFinite(gateRaw.threshold)
+    ? Math.max(0, Math.min(100, Math.floor(gateRaw.threshold)))
+    : null;
+  const issues = toStringList(gateRaw.issues);
+
+  const scoreText = score != null
+    ? (threshold != null ? `${score}/${threshold}` : `${score}`)
+    : (threshold != null ? `--/${threshold}` : '--');
+  const reasonText = issues.slice(0, 3).join('；') || '未达到验证阈值';
+  return `失败原因：${reasonText}（评分 ${scoreText}）`;
+};
+
+const getStepFailureReason = (step: AgentStep): string | null => {
+  if (step.error && step.error.trim()) return step.error.trim();
+  return readVerifyFailureReason(step.result);
+};
+
 /**
  * Agent 模式组件
  */
@@ -399,12 +437,20 @@ export const AgentMode: React.FC<AgentModeProps> = ({
           </div>
           {isStepsExpanded && (
             <div className="steps-list">
-              {steps.map((step, index) => (
-                <div key={step.id} className={`step-item ${step.status}`}>
-                  <StepIcon status={step.status} />
-                  <span className="step-description">{step.description}</span>
-                </div>
-              ))}
+              {steps.map((step) => {
+                const failureReason = getStepFailureReason(step);
+                return (
+                  <div key={step.id} className={`step-item ${step.status}`}>
+                    <StepIcon status={step.status} />
+                    <div className="step-content">
+                      <span className="step-description">{step.description}</span>
+                      {failureReason && (
+                        <span className="step-reason">{failureReason}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

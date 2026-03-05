@@ -6,7 +6,7 @@
 
 import { aiService } from '../../../../services/ai/AIService';
 import { getModelConfig } from '../../../../services/ModelCacheService';
-import { getTableDesignerSystemPrompt } from '../../../../services/ai/SystemPrompt';
+import { getTableDesignerSystemPromptAsync } from '../../../../services/ai/SystemPrompt';
 import type { AIRequestParams, StreamCallback, AIResponse } from '../../../../types/aiProvider';
 import type { CellValue } from './types';
 
@@ -74,6 +74,101 @@ export class BatchTableGenerator {
     return null;
   }
 
+  private inferColumnsFromRows(rows: Array<Record<string, CellValue>>): Array<{ name: string; type: string }> {
+    if (rows.length === 0) return [];
+
+    const columnOrder: string[] = [];
+    const columnSamples = new Map<string, CellValue[]>();
+
+    rows.forEach((row) => {
+      Object.entries(row).forEach(([key, value]) => {
+        if (!columnOrder.includes(key)) {
+          columnOrder.push(key);
+        }
+        const samples = columnSamples.get(key) || [];
+        samples.push(value);
+        columnSamples.set(key, samples);
+      });
+    });
+
+    return columnOrder.map((name) => ({
+      name,
+      type: this.inferColumnType(columnSamples.get(name) || []),
+    }));
+  }
+
+  private inferColumnType(values: CellValue[]): string {
+    const nonEmptyValues = values.filter((value) => value !== null && value !== undefined && value !== '');
+    if (nonEmptyValues.length === 0) return 'text';
+
+    const allBoolean = nonEmptyValues.every((value) => typeof value === 'boolean');
+    if (allBoolean) return 'checkbox';
+
+    const allNumber = nonEmptyValues.every((value) => {
+      if (typeof value === 'number') return true;
+      if (typeof value === 'string' && value.trim() !== '') {
+        return !Number.isNaN(Number(value));
+      }
+      return false;
+    });
+    if (allNumber) return 'number';
+
+    const allDate = nonEmptyValues.every((value) => typeof value === 'string' && !Number.isNaN(Date.parse(value)));
+    if (allDate) return 'date';
+
+    return 'text';
+  }
+
+  private normalizeRows(rows: unknown): Array<Record<string, CellValue>> {
+    if (!Array.isArray(rows)) return [];
+    return rows.filter((row): row is Record<string, CellValue> => (
+      typeof row === 'object' && row !== null && !Array.isArray(row)
+    ));
+  }
+
+  private normalizeColumns(columns: unknown): Array<{ name: string; type: string }> {
+    if (!Array.isArray(columns)) return [];
+    return columns
+      .map((column) => {
+        if (typeof column !== 'object' || column === null) return null;
+        const col = column as { name?: unknown; type?: unknown };
+        const name = String(col.name ?? '').trim();
+        if (!name) return null;
+        const type = String(col.type ?? 'text').trim() || 'text';
+        return { name, type };
+      })
+      .filter((column): column is { name: string; type: string } => column !== null);
+  }
+
+  private normalizeTableData(data: unknown): TableData | null {
+    if (Array.isArray(data)) {
+      const rows = this.normalizeRows(data);
+      if (rows.length === 0) return null;
+      const columns = this.inferColumnsFromRows(rows);
+      return columns.length > 0 ? { columns, rows } : null;
+    }
+
+    if (typeof data !== 'object' || data === null) return null;
+
+    const root = data as Record<string, unknown>;
+    const nested = (typeof root.data === 'object' && root.data !== null)
+      ? root.data as Record<string, unknown>
+      : root;
+
+    const rows = this.normalizeRows(nested.rows ?? root.rows);
+    let columns = this.normalizeColumns(nested.columns ?? root.columns);
+
+    if (columns.length === 0 && rows.length > 0) {
+      columns = this.inferColumnsFromRows(rows);
+    }
+
+    if (columns.length === 0 || rows.length === 0) {
+      return null;
+    }
+
+    return { columns, rows };
+  }
+
   /**
    * 解析 AI 返回的 JSON 内容
    */
@@ -93,8 +188,11 @@ export class BatchTableGenerator {
       jsonContent = jsonContent.trim();
 
       // 提取 JSON 对象
-      const jsonStartIndex = jsonContent.indexOf('{');
-      const jsonEndIndex = jsonContent.lastIndexOf('}');
+      const objectStartIndex = jsonContent.indexOf('{');
+      const arrayStartIndex = jsonContent.indexOf('[');
+      const useArray = arrayStartIndex !== -1 && (objectStartIndex === -1 || arrayStartIndex < objectStartIndex);
+      const jsonStartIndex = useArray ? arrayStartIndex : objectStartIndex;
+      const jsonEndIndex = useArray ? jsonContent.lastIndexOf(']') : jsonContent.lastIndexOf('}');
       
       if (jsonStartIndex === -1 || jsonEndIndex === -1 || jsonEndIndex <= jsonStartIndex) {
         return null;
@@ -103,15 +201,15 @@ export class BatchTableGenerator {
       jsonContent = jsonContent.slice(jsonStartIndex, jsonEndIndex + 1);
 
       // 尝试解析
-      let data: TableData | null = null;
+      let rawData: unknown = null;
       try {
-        data = JSON.parse(jsonContent);
+        rawData = JSON.parse(jsonContent);
       } catch {
         // 尝试修复截断的 JSON
-        data = this.tryFixTruncatedJson(jsonContent);
+        rawData = this.tryFixTruncatedJson(jsonContent);
       }
 
-      return data;
+      return this.normalizeTableData(rawData);
     } catch {
       return null;
     }
@@ -120,7 +218,7 @@ export class BatchTableGenerator {
   /**
    * 尝试修复截断的 JSON
    */
-  private tryFixTruncatedJson(jsonContent: string): TableData | null {
+  private tryFixTruncatedJson(jsonContent: string): unknown | null {
     const rowsMatch = jsonContent.match(/"rows"\s*:\s*\[/);
     if (!rowsMatch) return null;
 
@@ -196,7 +294,7 @@ export class BatchTableGenerator {
       modelId: actualModelName,
     });
 
-    const systemPrompt = getTableDesignerSystemPrompt();
+    const systemPrompt = await getTableDesignerSystemPromptAsync();
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: prompt },
@@ -273,8 +371,6 @@ export class BatchTableGenerator {
         }
       }
 
-      if (!columns) return null;
-
       // 尝试提取已完成的 rows
       const rowsMatch = jsonContent.match(/"rows"\s*:\s*\[/);
       if (!rowsMatch) return null;
@@ -333,7 +429,7 @@ export class BatchTableGenerator {
       }
 
       if (rows.length > 0) {
-        return { columns, rows };
+        return { columns: columns || [], rows };
       }
 
       return null;
@@ -362,7 +458,7 @@ export class BatchTableGenerator {
         
         const response = await this.generateBatchWithStream(userInput, (_content, partialData) => {
           // 流式更新
-          if (partialData && callbacks.onStreamData) {
+          if (partialData && partialData.columns.length > 0 && callbacks.onStreamData) {
             callbacks.onStreamData(partialData);
           }
         });
@@ -372,7 +468,20 @@ export class BatchTableGenerator {
         if (data) {
           callbacks.onComplete(data);
         } else {
-          callbacks.onError?.(new Error('解析 AI 响应失败'));
+          const rowsData = this.parseRowsOnly(response);
+          if (rowsData && rowsData.length > 0) {
+            const inferredColumns = this.inferColumnsFromRows(rowsData);
+            if (inferredColumns.length > 0) {
+              callbacks.onComplete({
+                columns: inferredColumns,
+                rows: rowsData,
+              });
+            } else {
+              callbacks.onError?.(new Error('解析 AI 响应失败'));
+            }
+          } else {
+            callbacks.onError?.(new Error('解析 AI 响应失败'));
+          }
         }
       } catch (error) {
         callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
@@ -413,12 +522,14 @@ export class BatchTableGenerator {
         const response = await this.generateBatchWithStream(batchPrompt, (_content, partialData) => {
           // 流式更新：合并已有数据和新的部分数据
           if (partialData && callbacks.onStreamData) {
-            const streamColumns = columns || partialData.columns;
-            const streamRows = [...allRows, ...partialData.rows];
-            callbacks.onStreamData({
-              columns: streamColumns,
-              rows: streamRows,
-            });
+            const streamColumns = columns && columns.length > 0 ? columns : partialData.columns;
+            if (streamColumns && streamColumns.length > 0) {
+              const streamRows = [...allRows, ...partialData.rows];
+              callbacks.onStreamData({
+                columns: streamColumns,
+                rows: streamRows,
+              });
+            }
           }
         });
         
@@ -428,14 +539,25 @@ export class BatchTableGenerator {
           // 如果解析失败，尝试只解析 rows 数组
           const rowsData = this.parseRowsOnly(response);
           if (rowsData && rowsData.length > 0) {
+            if (!columns || columns.length === 0) {
+              columns = this.inferColumnsFromRows(rowsData);
+            }
             allRows.push(...rowsData);
+            if (columns && columns.length > 0) {
+              callbacks.onBatchComplete?.(batch + 1, totalBatches, {
+                columns,
+                rows: allRows,
+              });
+            }
           }
           continue;
         }
 
         // 保存列结构（只在第一批）
-        if (batch === 0 && batchData.columns) {
+        if ((!columns || columns.length === 0) && batchData.columns && batchData.columns.length > 0) {
           columns = batchData.columns;
+        } else if ((!columns || columns.length === 0) && batchData.rows && batchData.rows.length > 0) {
+          columns = this.inferColumnsFromRows(batchData.rows);
         }
 
         // 合并行数据
@@ -443,10 +565,12 @@ export class BatchTableGenerator {
           allRows.push(...batchData.rows);
         }
 
-        callbacks.onBatchComplete?.(batch + 1, totalBatches, {
-          columns: columns || [],
-          rows: allRows,
-        });
+        if (columns && columns.length > 0) {
+          callbacks.onBatchComplete?.(batch + 1, totalBatches, {
+            columns,
+            rows: allRows,
+          });
+        }
 
       } catch (error) {
         console.error(`[BatchTableGenerator] 第 ${batch + 1} 批生成失败:`, error);
@@ -455,7 +579,11 @@ export class BatchTableGenerator {
     }
 
     // 返回最终结果
-    if (columns && allRows.length > 0) {
+    if ((!columns || columns.length === 0) && allRows.length > 0) {
+      columns = this.inferColumnsFromRows(allRows);
+    }
+
+    if (columns && columns.length > 0 && allRows.length > 0) {
       callbacks.onComplete({
         columns,
         rows: allRows.slice(0, requestedCount), // 确保不超过请求数量
@@ -488,14 +616,16 @@ export class BatchTableGenerator {
         const arrayEnd = jsonContent.lastIndexOf(']');
         if (arrayEnd > 0) {
           jsonContent = jsonContent.slice(0, arrayEnd + 1);
-          return JSON.parse(jsonContent);
+          const parsed = JSON.parse(jsonContent);
+          return this.normalizeRows(parsed);
         }
       }
 
       // 尝试从对象中提取 rows
       const rowsMatch = jsonContent.match(/"rows"\s*:\s*(\[[\s\S]*?\])/);
       if (rowsMatch) {
-        return JSON.parse(rowsMatch[1]);
+        const parsed = JSON.parse(rowsMatch[1]);
+        return this.normalizeRows(parsed);
       }
 
       return null;

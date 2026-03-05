@@ -157,7 +157,10 @@ export function createWriteFileTool(config: FileSystemToolConfig): AgentTool {
     requiresConfirmation: true, // 写入操作需要用户确认
 
     async execute(params: Record<string, unknown>): Promise<ToolResult> {
-      const { path, content } = params as { path: string; content: string };
+      const { path } = params as { path: string; content: string };
+      const content = typeof (params as { content?: unknown }).content === 'string'
+        ? ((params as { content: string }).content)
+        : '';
 
       // 检查是否允许写入
       if (!mergedConfig.allowWrite) {
@@ -191,6 +194,12 @@ export function createWriteFileTool(config: FileSystemToolConfig): AgentTool {
           return {
             success: false,
             error: `内容大小超过限制 (${mergedConfig.maxFileSize} 字节)`
+          };
+        }
+        if (content.length === 0) {
+          return {
+            success: false,
+            error: '写入内容为空，已阻止覆盖文件'
           };
         }
 
@@ -484,39 +493,104 @@ export function createSearchFilesTool(config: FileSystemToolConfig): AgentTool {
  * 安全地解析路径，确保在工作区范围内
  */
 function resolveSecurePath(workspacePath: string, relativePath: string): string | null {
-  // 标准化路径分隔符
-  const normalizedWorkspace = workspacePath.replace(/\\/g, '/');
-  const normalizedRelative = relativePath.replace(/\\/g, '/');
-
-  // 移除开头的 ./ 或 /
-  const cleanRelative = normalizedRelative.replace(/^\.?\//, '');
-
-  // 检查是否包含 .. 路径遍历
-  if (cleanRelative.includes('..')) {
-    // 简单检查：如果包含 ..，需要更严格的验证
-    const parts = cleanRelative.split('/');
-    let depth = 0;
-    for (const part of parts) {
-      if (part === '..') {
-        depth--;
-        if (depth < 0) {
-          return null; // 尝试访问工作区外部
-        }
-      } else if (part !== '.' && part !== '') {
-        depth++;
-      }
-    }
-  }
-
-  // 构建完整路径
-  const fullPath = `${normalizedWorkspace}/${cleanRelative}`;
-
-  // 最终验证：确保路径以工作区路径开头
-  if (!fullPath.startsWith(normalizedWorkspace)) {
+  const normalizedWorkspace = canonicalizeSecurePath(workspacePath);
+  if (!normalizedWorkspace) {
     return null;
   }
 
-  return fullPath;
+  const normalizedInput = (relativePath ?? '').replace(/\\/g, '/').trim();
+  if (!normalizedInput) {
+    return normalizedWorkspace;
+  }
+
+  const cleanRelative = normalizedInput.replace(/^\.?[\\/]/, '');
+  const candidatePath = isAbsoluteSecurePath(normalizedInput)
+    ? normalizedInput
+    : `${normalizedWorkspace}/${cleanRelative}`;
+  const normalizedCandidate = canonicalizeSecurePath(candidatePath);
+
+  if (!normalizedCandidate) {
+    return null;
+  }
+
+  if (!isPathInsideWorkspaceSecure(normalizedWorkspace, normalizedCandidate)) {
+    return null;
+  }
+
+  return normalizedCandidate;
+}
+
+const WINDOWS_ABSOLUTE_SECURE_PATH_REGEX = /^[a-zA-Z]:[\\/]/;
+const WINDOWS_DRIVE_ROOT_SECURE_PATH_REGEX = /^[a-zA-Z]:\/$/;
+
+function isAbsoluteSecurePath(pathValue: string): boolean {
+  return WINDOWS_ABSOLUTE_SECURE_PATH_REGEX.test(pathValue) || pathValue.startsWith('/');
+}
+
+function trimSecurePathTrailingSeparators(pathValue: string): string {
+  if (pathValue === '/' || WINDOWS_DRIVE_ROOT_SECURE_PATH_REGEX.test(pathValue)) {
+    return pathValue;
+  }
+  return pathValue.replace(/\/+$/, '');
+}
+
+function canonicalizeSecurePath(pathValue: string): string | null {
+  const normalized = pathValue.replace(/\\/g, '/').trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const driveMatch = normalized.match(/^([a-zA-Z]):/);
+  const hasDrive = !!driveMatch;
+  const drivePrefix = hasDrive ? `${driveMatch![1].toUpperCase()}:` : '';
+
+  let rest = hasDrive ? normalized.slice(2) : normalized;
+  const absolute = hasDrive || rest.startsWith('/');
+  if (rest.startsWith('/')) {
+    rest = rest.slice(1);
+  }
+
+  const parts = rest.split('/').filter(Boolean);
+  const stack: string[] = [];
+  for (const part of parts) {
+    if (part === '.') continue;
+    if (part === '..') {
+      if (stack.length === 0) {
+        return null;
+      }
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+  }
+
+  if (hasDrive) {
+    const joined = stack.join('/');
+    return joined ? `${drivePrefix}/${joined}` : `${drivePrefix}/`;
+  }
+
+  if (absolute) {
+    return stack.length > 0 ? `/${stack.join('/')}` : '/';
+  }
+
+  return stack.join('/');
+}
+
+function isPathInsideWorkspaceSecure(workspacePath: string, targetPath: string): boolean {
+  const normalizedWorkspace = trimSecurePathTrailingSeparators(workspacePath);
+  const normalizedTarget = trimSecurePathTrailingSeparators(targetPath);
+  const caseInsensitive = WINDOWS_ABSOLUTE_SECURE_PATH_REGEX.test(normalizedWorkspace);
+  const workspaceComparable = caseInsensitive ? normalizedWorkspace.toLowerCase() : normalizedWorkspace;
+  const targetComparable = caseInsensitive ? normalizedTarget.toLowerCase() : normalizedTarget;
+
+  if (targetComparable === workspaceComparable) {
+    return true;
+  }
+
+  const workspacePrefix = workspaceComparable.endsWith('/')
+    ? workspaceComparable
+    : `${workspaceComparable}/`;
+  return targetComparable.startsWith(workspacePrefix);
 }
 
 /**

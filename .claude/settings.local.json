@@ -127,7 +127,8 @@
       "Bash(node --version:*)",
       "Bash(node -e:*)",
       "Bash(xargs grep -l \"generateTextStream\")",
-      "Bash(xargs grep -l \"StreamCallback\")"
+      "Bash(xargs grep -l \"StreamCallback\")",
+      "Bash(pnpm add @tanstack/react-virtual --filter @note-studio/renderer)"
     ]
   }
 }

@@ -3524,7 +3524,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   useEffect(() => {
     (window as any).__currentTabId = tabId;
     (window as any).__currentTabTitle = tabTitle;
-  }, [tabId, tabTitle]);
+    (window as any).__currentTabPath = filePath;
+  }, [tabId, tabTitle, filePath]);
 
   // 监听编辑器滚动事件，同步到预览
   useEffect(() => {

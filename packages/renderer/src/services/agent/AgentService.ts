@@ -37,6 +37,8 @@ import { FindSimilarTool } from './tools/rag/FindSimilarTool';
 import { GetContextTool } from './tools/rag/GetContextTool';
 import { BashTool } from './tools/shell/BashTool';
 import { AskUserTool } from './tools/interaction/AskUserTool';
+import { ListFormsTool } from './tools/interaction/ListFormsTool';
+import { GetFormSchemaTool } from './tools/interaction/GetFormSchemaTool';
 import { WebFetchTool } from './tools/network/WebFetchTool';
 import { TodoReadTool } from './tools/taskmanager/TodoReadTool';
 import { TodoWriteTool } from './tools/taskmanager/TodoWriteTool';
@@ -126,14 +128,21 @@ export class AgentService {
   }
 
   /**
+   * 同步执行配置到 planner 和 executor
+   */
+  private syncExecutionConfig(): void {
+    this.planner.updateConfig({
+      executionConfig: this.config.execution,
+      availableTools: this.toolRegistry.getAll()
+    });
+
+    this.executor.updateExecutionConfig(this.config.execution);
+  }
+
+  /**
    * 初始化服务
    */
   async initialize(config?: Partial<AgentServiceConfig>): Promise<void> {
-    if (this.initialized) {
-      console.log('[AgentService] 服务已初始化');
-      return;
-    }
-
     // 合并配置
     if (config) {
       this.config = {
@@ -143,11 +152,13 @@ export class AgentService {
       };
     }
 
-    // 更新组件配置
-    this.planner.updateConfig({
-      executionConfig: this.config.execution,
-      availableTools: this.toolRegistry.getAll()
-    });
+    // 每次初始化调用都同步执行配置，确保使用当前选择模型
+    this.syncExecutionConfig();
+
+    if (this.initialized) {
+      console.log('[AgentService] 服务已初始化');
+      return;
+    }
 
     this.initialized = true;
     console.log('[AgentService] 服务初始化完成');
@@ -194,6 +205,8 @@ export class AgentService {
       // 任务管理工具
       new TodoReadTool({ workspacePath }),
       new TodoWriteTool({ workspacePath }),
+      new ListFormsTool({ workspacePath }),
+      new GetFormSchemaTool({ workspacePath }),
       // 表单查询工具
       new QueryFormTool({ workspacePath }),
     ]);
@@ -486,10 +499,7 @@ export class AgentService {
    */
   updateExecutionConfig(config: Partial<AgentExecutionConfig>): void {
     this.config.execution = { ...this.config.execution, ...config };
-
-    this.planner.updateConfig({
-      executionConfig: this.config.execution
-    });
+    this.syncExecutionConfig();
 
     console.log('[AgentService] 执行配置已更新');
   }

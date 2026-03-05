@@ -92,6 +92,13 @@ export class BashTool extends BaseTool<ShellToolConfig> {
 
     const { stdout, stderr, exitCode } = result.data ?? { stdout: '', stderr: '', exitCode: -1 };
 
+    if (exitCode !== 0) {
+      const stderrSummary = typeof stderr === 'string' ? stderr.trim() : '';
+      const stdoutSummary = typeof stdout === 'string' ? stdout.trim() : '';
+      const fallback = stderrSummary || stdoutSummary || 'unknown error';
+      return this.failure(`命令执行失败 (exit=${exitCode}): ${fallback}`);
+    }
+
     return this.success({
       stdout,
       stderr,

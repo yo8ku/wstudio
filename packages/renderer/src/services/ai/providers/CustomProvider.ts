@@ -417,6 +417,93 @@ export class CustomProvider extends BaseAIProvider {
     return deprecatedModels.includes(modelId);
   }
 
+  private normalizeSmartQuotes(value: string): string {
+    return value
+      // Double quotes: curly/full-width/HTML entities
+      .replace(/[\u201C\u201D\u201E\u2033\uFF02]/g, '"')
+      .replace(/&quot;|&#34;|&#x22;/gi, '"')
+      // Single quotes: curly/full-width/HTML entities
+      .replace(/[\u2018\u2019\u201A\u2032\uFF07]/g, "'")
+      .replace(/&apos;|&#39;|&#x27;/gi, "'");
+  }
+
+  private parseToolParamValue(value: string): unknown {
+    const normalized = this.normalizeSmartQuotes(value).trim();
+    if (!normalized) return '';
+    if (
+      (normalized.startsWith('{') && normalized.endsWith('}'))
+      || (normalized.startsWith('[') && normalized.endsWith(']'))
+      || (normalized.startsWith('"') && normalized.endsWith('"'))
+    ) {
+      try {
+        return JSON.parse(normalized);
+      } catch {
+        return normalized;
+      }
+    }
+    return normalized;
+  }
+
+  private parseMiniMaxToolCallBlock(block: string): { id: string; type: 'function'; function: { name: string; arguments: string } } | null {
+    const normalized = this.normalizeSmartQuotes(block);
+    const invokeMatch = normalized.match(/<invoke\s+name\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>/i);
+    if (!invokeMatch) return null;
+    const invokeName = (invokeMatch[1] ?? invokeMatch[2] ?? invokeMatch[3] ?? '').trim();
+    if (!invokeName) return null;
+
+    const args: Record<string, unknown> = {};
+    const paramRegex = /<parameter\s+name\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>([\s\S]*?)<\/parameter>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = paramRegex.exec(normalized)) !== null) {
+      const key = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+      if (!key) continue;
+      const rawValue = match[4] ?? '';
+      args[key] = this.parseToolParamValue(rawValue);
+    }
+
+    return {
+      id: `minimax-tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'function',
+      function: {
+        name: invokeName,
+        arguments: JSON.stringify(args),
+      }
+    };
+  }
+
+  private extractMiniMaxToolCallsFromText(text: string): {
+    content: string;
+    toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
+  } {
+    const normalizedText = this.normalizeSmartQuotes(text);
+    const minimaxBlockRegex = /(?:<\s*minimax:tool_call[^>]*>|(?<![</])minimax:tool_call)\s*([\s\S]*?)<\/\s*minimax:tool_call\s*>/gi;
+    let visible = '';
+    let cursor = 0;
+    const toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> = [];
+
+    let match: RegExpExecArray | null;
+    while ((match = minimaxBlockRegex.exec(normalizedText)) !== null) {
+      const startIndex = match.index;
+      if (startIndex > cursor) {
+        visible += normalizedText.slice(cursor, startIndex);
+      }
+      const block = match[0];
+      const parsed = this.parseMiniMaxToolCallBlock(block);
+      if (parsed) {
+        toolCalls.push(parsed);
+      } else {
+        visible += block;
+      }
+      cursor = startIndex + block.length;
+    }
+
+    if (cursor < normalizedText.length) {
+      visible += normalizedText.slice(cursor);
+    }
+
+    return { content: visible, toolCalls };
+  }
+
   /**
    * 生成文本（非流式）
    */
@@ -449,9 +536,25 @@ export class CustomProvider extends BaseAIProvider {
 
       const data = await response.json();
       const choice = data.choices?.[0];
+      const messageContent = choice?.message?.content || '';
+      const nativeToolCalls = choice?.message?.tool_calls;
+      let normalizedContent = messageContent;
+      let normalizedToolCalls = nativeToolCalls;
+
+      if (
+        (!nativeToolCalls || nativeToolCalls.length === 0)
+        && typeof messageContent === 'string'
+        && messageContent.includes('minimax:tool_call')
+      ) {
+        const extracted = this.extractMiniMaxToolCallsFromText(messageContent);
+        if (extracted.toolCalls.length > 0) {
+          normalizedContent = extracted.content;
+          normalizedToolCalls = extracted.toolCalls as any;
+        }
+      }
 
       return {
-        content: choice?.message?.content || '',
+        content: normalizedContent,
         model: data.model,
         usage: data.usage ? {
           promptTokens: data.usage.prompt_tokens,
@@ -459,7 +562,7 @@ export class CustomProvider extends BaseAIProvider {
           totalTokens: data.usage.total_tokens
         } : undefined,
         finishReason: choice?.finish_reason,
-        toolCalls: choice?.message?.tool_calls
+        toolCalls: normalizedToolCalls
       };
     } catch (error) {
       console.error(`[${this.name}] 生成文本失败:`, error);
@@ -509,6 +612,63 @@ export class CustomProvider extends BaseAIProvider {
       let buffer = '';
       let fullContent = '';
       let usage: AIResponse['usage'] | undefined;
+      let minimaxContentBuffer = '';
+
+      const emitVisibleContent = (text: string): void => {
+        if (!text) return;
+        fullContent += text;
+        callback.onContent?.(text);
+      };
+
+      const flushMiniMaxToolCallBuffer = (force: boolean = false): void => {
+        const endTag = '</minimax:tool_call>';
+        const findMiniMaxStart = (text: string): number => {
+          const marker = 'minimax:tool_call';
+          let idx = text.indexOf(marker);
+          while (idx >= 0) {
+            const prev = idx > 0 ? text[idx - 1] : '';
+            if (prev !== '/') {
+              return prev === '<' ? idx - 1 : idx;
+            }
+            idx = text.indexOf(marker, idx + marker.length);
+          }
+          return -1;
+        };
+
+        while (minimaxContentBuffer.length > 0) {
+          const start = findMiniMaxStart(minimaxContentBuffer);
+          if (start < 0) {
+            if (force || minimaxContentBuffer.length > 2048) {
+              emitVisibleContent(minimaxContentBuffer);
+              minimaxContentBuffer = '';
+            }
+            return;
+          }
+
+          if (start > 0) {
+            emitVisibleContent(minimaxContentBuffer.slice(0, start));
+            minimaxContentBuffer = minimaxContentBuffer.slice(start);
+          }
+
+          const end = minimaxContentBuffer.indexOf(endTag);
+          if (end < 0) {
+            if (force) {
+              emitVisibleContent(minimaxContentBuffer);
+              minimaxContentBuffer = '';
+            }
+            return;
+          }
+
+          const block = minimaxContentBuffer.slice(0, end + endTag.length);
+          minimaxContentBuffer = minimaxContentBuffer.slice(end + endTag.length);
+          const parsedToolCall = this.parseMiniMaxToolCallBlock(block);
+          if (parsedToolCall) {
+            callback.onToolCall?.(parsedToolCall as any);
+          } else {
+            emitVisibleContent(block);
+          }
+        }
+      };
 
       while (true) {
         // 检查是否已取消
@@ -549,8 +709,8 @@ export class CustomProvider extends BaseAIProvider {
               const delta = parsed.choices?.[0]?.delta;
               
               if (delta?.content) {
-                fullContent += delta.content;
-                callback.onContent?.(delta.content);
+                minimaxContentBuffer += String(delta.content);
+                flushMiniMaxToolCallBuffer(false);
               }
               
               if (delta?.tool_calls) {
@@ -572,6 +732,8 @@ export class CustomProvider extends BaseAIProvider {
           }
         }
       }
+
+      flushMiniMaxToolCallBuffer(true);
 
       callback.onComplete?.({
         content: fullContent,

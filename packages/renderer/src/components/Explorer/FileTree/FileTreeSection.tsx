@@ -1,9 +1,9 @@
-/**
- * 文件树区域组件
- * 显示工作区的文件和文件夹结构
+﻿/**
+ * 鏂囦欢鏍戝尯鍩熺粍浠?
+ * 鏄剧ず宸ヤ綔鍖虹殑鏂囦欢鍜屾枃浠跺す缁撴瀯
  */
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import ExplorerSection from '../ExplorerSection';
 import { FileTreeNode, FileTreeCallbacks } from './types';
 import { InlineInput } from '../Common/InlineInput';
@@ -44,54 +44,55 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
 }) => {
   const scrollbarRef = useRef<CustomScrollbarRef>(null);
   const isRestoringScrollRef = useRef<boolean>(false);
+  const [isWorkspaceExpanded, setIsWorkspaceExpanded] = useState(true);
   
-  // 从 store 获取滚动位置
+  // 浠?store 鑾峰彇婊氬姩浣嶇疆
   const { fileTreeScrollTop, setFileTreeScrollTop, workspacePath } = useExplorerStore();
 
-  // 处理滚动事件，保存滚动位置
+  // 澶勭悊婊氬姩浜嬩欢锛屼繚瀛樻粴鍔ㄤ綅缃?
   const handleScroll = useCallback((scrollTop: number) => {
     if (!isRestoringScrollRef.current) {
       setFileTreeScrollTop(scrollTop);
     }
   }, [setFileTreeScrollTop]);
 
-  // 恢复滚动位置（当路径匹配时）
+  // 鎭㈠婊氬姩浣嶇疆锛堝綋璺緞鍖归厤鏃讹級
   useEffect(() => {
     if (!rootPath) return;
     
-    // 只有当路径匹配时才恢复滚动位置
+    // 鍙湁褰撹矾寰勫尮閰嶆椂鎵嶆仮澶嶆粴鍔ㄤ綅缃?
     if (rootPath === workspacePath) {
       if (fileTreeScrollTop > 0) {
         isRestoringScrollRef.current = true;
         
-        // 使用 requestAnimationFrame 确保 DOM 已更新
+        // 浣跨敤 requestAnimationFrame 纭繚 DOM 宸叉洿鏂?
         requestAnimationFrame(() => {
           scrollbarRef.current?.setScrollTop(fileTreeScrollTop);
-          // 延迟重置标志，避免立即触发滚动事件
+          // 寤惰繜閲嶇疆鏍囧織锛岄伩鍏嶇珛鍗宠Е鍙戞粴鍔ㄤ簨浠?
           setTimeout(() => {
             isRestoringScrollRef.current = false;
           }, 100);
         });
       }
     } else {
-      // 路径不匹配时，重置滚动位置
+      // 璺緞涓嶅尮閰嶆椂锛岄噸缃粴鍔ㄤ綅缃?
       scrollbarRef.current?.setScrollTop(0);
     }
   }, [rootPath, workspacePath, fileTreeScrollTop]);
 
-  // 节点变化时更新滚动条
+  // 鑺傜偣鍙樺寲鏃舵洿鏂版粴鍔ㄦ潯
   useEffect(() => {
     scrollbarRef.current?.updateScrollbar();
   }, [nodes]);
 
-  // 构建操作按钮
+  // 鏋勫缓鎿嶄綔鎸夐挳
   const actions = [];
 
   if (onNewFile) {
     actions.push({
       id: 'new-file',
       icon: <i className="codicon codicon-new-file" />,
-      tooltip: '新建文件',
+      tooltip: '鏂板缓鏂囦欢',
       onClick: onNewFile,
     });
   }
@@ -109,7 +110,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     actions.push({
       id: 'refresh',
       icon: <i className="codicon codicon-refresh" />,
-      tooltip: '刷新',
+      tooltip: '鍒锋柊',
       onClick: onRefresh,
     });
   }
@@ -118,14 +119,14 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     actions.push({
       id: 'collapse-all',
       icon: <i className="codicon codicon-collapse-all" />,
-      tooltip: '全部折叠',
+      tooltip: '鍏ㄩ儴鎶樺彔',
       onClick: onCollapseAll,
     });
   }
 
-  // 渲染文件树节点
+  // 娓叉煋鏂囦欢鏍戣妭鐐?
   const renderNode = (node: FileTreeNode) => {
-    // 文件和文件夹共用选中状态：通过路径匹配判断是否选中
+    // 鏂囦欢鍜屾枃浠跺す鍏辩敤閫変腑鐘舵€侊細閫氳繃璺緞鍖归厤鍒ゆ柇鏄惁閫変腑
     const isSelected = node.path === selectedFilePath;
     const isContextMenuTarget = node.path === contextMenuSelectionPath;
     const icon = node.isDirectory
@@ -134,7 +135,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
         : 'codicon-folder'
       : 'codicon-file';
 
-    // 如果是创建中的节点，显示内联输入框
+    // 濡傛灉鏄垱寤轰腑鐨勮妭鐐癸紝鏄剧ず鍐呰仈杈撳叆妗?
     if (node.isCreating) {
       return (
         <div key={`creating-${node.creatingType}`} className="file-tree-node">
@@ -167,7 +168,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
       );
     }
 
-    // 如果是编辑中的节点，显示内联输入框
+    // 濡傛灉鏄紪杈戜腑鐨勮妭鐐癸紝鏄剧ず鍐呰仈杈撳叆妗?
     if (node.isEditing) {
       return (
         <div key={node.path} className="file-tree-node">
@@ -194,7 +195,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
             <i className={`file-tree-icon codicon ${icon}`} />
             <InlineInput
               initialValue={node.name}
-              placeholder="输入名称"
+              placeholder="杈撳叆鍚嶇О"
               onConfirm={(newName) => callbacks?.onRename?.(node, newName)}
               onCancel={() => callbacks?.onRename?.(node, node.name)}
               autoFocus={true}
@@ -222,11 +223,11 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
           data-depth={depth}
           onClick={() => {
             if (node.isDirectory) {
-              // 文件夹：点击时选中并切换展开/折叠状态
+              // 鏂囦欢澶癸細鐐瑰嚮鏃堕€変腑骞跺垏鎹㈠睍寮€/鎶樺彔鐘舵€?
               callbacks?.onFileClick?.(node);
               callbacks?.onFolderToggle?.(node);
             } else {
-              // 文件：点击时选中
+              // 鏂囦欢锛氱偣鍑绘椂閫変腑
               callbacks?.onFileClick?.(node);
             }
           }}
@@ -257,9 +258,9 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     );
   };
 
-  // 处理空白区域点击
+  // 澶勭悊绌虹櫧鍖哄煙鐐瑰嚮
   const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // 只有当点击的是容器本身（空白区域），而不是子元素时才触发
+    // 鍙湁褰撶偣鍑荤殑鏄鍣ㄦ湰韬紙绌虹櫧鍖哄煙锛夛紝鑰屼笉鏄瓙鍏冪礌鏃舵墠瑙﹀彂
     if (e.target === e.currentTarget && onBlankAreaClick) {
       onBlankAreaClick();
     }
@@ -280,11 +281,37 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
           onClick={handleContentClick}
           onContextMenu={onContainerContextMenu}
         >
-          {nodes.length === 0 ? (
+          <div
+            className={`file-tree-workspace-label ${isWorkspaceExpanded ? 'expanded' : 'collapsed'}`}
+            title={rootPath || '工作区'}
+            role="button"
+            tabIndex={0}
+            onClick={() => setIsWorkspaceExpanded((prev) => !prev)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setIsWorkspaceExpanded((prev) => !prev);
+              }
+            }}
+          >
+            <i
+              className={`codicon ${
+                isWorkspaceExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'
+              } file-tree-workspace-chevron`}
+            />
+            <span className="file-tree-workspace-name">工作区</span>
+          </div>
+          {isWorkspaceExpanded && rootPath && (
+            <div className="file-tree-workspace-root" title={rootPath}>
+              {rootName}
+            </div>
+          )}
+          {isWorkspaceExpanded && nodes.length === 0 ? (
             <div className="file-tree-empty">
               {rootPath ? '文件夹为空' : '尚未打开文件夹'}
             </div>
-          ) : (
+          ) : null}
+          {isWorkspaceExpanded && nodes.length > 0 && (
             <div className="tree-view">
               {nodes.map((node) => renderNode(node))}
             </div>

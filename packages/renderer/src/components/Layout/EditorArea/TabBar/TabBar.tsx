@@ -1,7 +1,7 @@
-/**
- * 标签栏组件
- * 功能：编辑器标签页管理，标签栏设计
- * 描述：提供文件标签切换、关闭、悬停效果等功能
+﻿/**
+ * 鏍囩鏍忕粍浠?
+ * 鍔熻兘锛氱紪杈戝櫒鏍囩椤电鐞嗭紝鏍囩鏍忚璁?
+ * 鎻忚堪锛氭彁渚涙枃浠舵爣绛惧垏鎹€佸叧闂€佹偓鍋滄晥鏋滅瓑鍔熻兘
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -9,7 +9,7 @@ import { EditorTab } from '../EditorArea';
 import { Icon } from '../../../Icons/Icon';
 import { MonacoContextMenu } from '../MonacoContextMenu/MonacoContextMenu';
 import type { MenuGroup } from '../MonacoContextMenu/MonacoContextMenu';
-import { CustomScrollbar } from '../../../common/CustomScrollbar';
+import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
 import './TabBar.scss';
 
 export interface TabBarProps {
@@ -27,7 +27,8 @@ export const TabBar: React.FC<TabBarProps> = ({
 }) => {
   const [isEditorFocused, setIsEditorFocused] = useState(true);
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<CustomScrollbarRef>(null);
+  const previousTabIdsRef = useRef<string[]>([]);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [moreMenuPosition, setMoreMenuPosition] = useState({ x: 0, y: 0 });
   const moreButtonRef = useRef<HTMLButtonElement>(null);
@@ -35,14 +36,41 @@ export const TabBar: React.FC<TabBarProps> = ({
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
-  // 切换 CodeMirror 模式
+  const ensureTabFullyVisible = useCallback((tabId: string) => {
+    const scrollContainer = scrollContainerRef.current?.getContentElement();
+    if (!scrollContainer) return;
+
+    const tabElement = scrollContainer.querySelector(`[data-tab-id="${tabId}"]`) as HTMLElement | null;
+    if (!tabElement) return;
+
+    const tabLeft = tabElement.offsetLeft;
+    const tabRight = tabLeft + tabElement.offsetWidth;
+    const viewLeft = scrollContainer.scrollLeft;
+    const viewRight = viewLeft + scrollContainer.clientWidth;
+    let nextScrollLeft = viewLeft;
+
+    if (tabRight > viewRight) {
+      nextScrollLeft = tabRight - scrollContainer.clientWidth;
+    } else if (tabLeft < viewLeft) {
+      nextScrollLeft = tabLeft;
+    }
+
+    const maxScrollLeft = Math.max(scrollContainer.scrollWidth - scrollContainer.clientWidth, 0);
+    nextScrollLeft = Math.min(Math.max(nextScrollLeft, 0), maxScrollLeft);
+
+    if (nextScrollLeft !== viewLeft) {
+      scrollContainerRef.current?.setScrollLeft(nextScrollLeft);
+    }
+  }, []);
+
+  // 鍒囨崲 CodeMirror 妯″紡
   const toggleCodeMirrorMode = useCallback(() => {
     const newMode = codeMirrorMode === 'source' ? 'preview' : 'source';
     setCodeMirrorMode(newMode);
     window.dispatchEvent(new CustomEvent('set-codemirror-mode', { detail: newMode }));
   }, [codeMirrorMode]);
   
-  // 监听编辑器区域焦点变化
+  // 鐩戝惉缂栬緫鍣ㄥ尯鍩熺劍鐐瑰彉鍖?
   useEffect(() => {
     const handleFocus = () => setIsEditorFocused(true);
     const handleBlur = () => setIsEditorFocused(false);
@@ -59,17 +87,34 @@ export const TabBar: React.FC<TabBarProps> = ({
     }
   }, []);
 
-  // 当活动标签改变时，滚动到可见区域
+  // 褰撴椿鍔ㄦ爣绛炬敼鍙樻椂锛屾粴鍔ㄥ埌鍙鍖哄煙
   useEffect(() => {
-    if (activeTabId && scrollContainerRef.current) {
-      const activeElement = scrollContainerRef.current.querySelector(`[data-tab-id="${activeTabId}"]`);
-      if (activeElement) {
-        activeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-      }
-    }
-  }, [activeTabId]);
+    if (!activeTabId) return;
+    const rafId = window.requestAnimationFrame(() => {
+      ensureTabFullyVisible(activeTabId);
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [activeTabId, ensureTabFullyVisible]);
 
-  // 获取文件图标（简化版，使用通用文件图标）
+  useEffect(() => {
+    const previousTabIds = previousTabIdsRef.current;
+    const currentTabIds = tabs.map(tab => tab.id);
+    const lastTab = tabs[tabs.length - 1];
+    const hasNewLastTab =
+      tabs.length > previousTabIds.length &&
+      !!lastTab &&
+      !previousTabIds.includes(lastTab.id);
+
+    previousTabIdsRef.current = currentTabIds;
+
+    if (!hasNewLastTab || !lastTab) return;
+    const rafId = window.requestAnimationFrame(() => {
+      ensureTabFullyVisible(lastTab.id);
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [tabs, ensureTabFullyVisible]);
+
+  // 鑾峰彇鏂囦欢鍥炬爣锛堢畝鍖栫増锛屼娇鐢ㄩ€氱敤鏂囦欢鍥炬爣锛?
   const getFileIcon = (language?: string) => {
     return (
       <svg className="tab-item-icon" fill="currentColor" viewBox="0 0 16 16">
@@ -78,10 +123,10 @@ export const TabBar: React.FC<TabBarProps> = ({
     );
   };
 
-  // 处理打开设置 JSON
+  // 澶勭悊鎵撳紑璁剧疆 JSON
   const handleOpenSettingsJson = async () => {
     try {
-      // 使用 openJson 直接从文件读取内容，而不是使用 getAll（包含默认值）
+      // 浣跨敤 openJson 鐩存帴浠庢枃浠惰鍙栧唴瀹癸紝鑰屼笉鏄娇鐢?getAll锛堝寘鍚粯璁ゅ€硷級
       const result = await window.electronAPI?.settings?.openJson('user');
       const jsonContent = result?.success && result.data?.content
         ? result.data.content
@@ -102,38 +147,38 @@ export const TabBar: React.FC<TabBarProps> = ({
     }
   };
 
-  // 处理标签点击
+  // 澶勭悊鏍囩鐐瑰嚮
   const handleTabClick = (tabId: string) => {
     onTabClick(tabId);
   };
 
-  // 处理标签关闭
+  // 澶勭悊鏍囩鍏抽棴
   const handleTabClose = (e: React.MouseEvent, tabId: string) => {
     e.stopPropagation();
     onTabClose(tabId);
   };
 
-  // 处理更多操作按钮点击
+  // 澶勭悊鏇村鎿嶄綔鎸夐挳鐐瑰嚮
   const handleMoreClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (moreButtonRef.current) {
       const rect = moreButtonRef.current.getBoundingClientRect();
       setMoreMenuPosition({
-        x: rect.right - 200, // 菜单宽度 200px，向左对齐
+        x: rect.right - 200, // 鑿滃崟瀹藉害 200px锛屽悜宸﹀榻?
         y: rect.bottom + 4
       });
       setShowMoreMenu(!showMoreMenu);
     }
   };
 
-  // 更多操作菜单
+  // 鏇村鎿嶄綔鑿滃崟
   const moreMenuGroups: MenuGroup[] = [
     {
       id: 'close-group',
       items: [
         {
           id: 'close-all',
-          label: '全部关闭',
+          label: '鍏ㄩ儴鍏抽棴',
           action: () => {
             tabs.forEach(tab => onTabClose(tab.id));
           },
@@ -149,10 +194,10 @@ export const TabBar: React.FC<TabBarProps> = ({
         },
         {
           id: 'lock-current',
-          label: '锁定当前',
+          label: '閿佸畾褰撳墠',
           action: () => {
-            console.log('锁定当前');
-            // TODO: 实现锁定功能
+            console.log('閿佸畾褰撳墠');
+            // TODO: 瀹炵幇閿佸畾鍔熻兘
           },
           disabled: !activeTab
         }
@@ -163,16 +208,16 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'show-backlinks',
-          label: '显示反向链接',
+          label: '鏄剧ず鍙嶅悜閾炬帴',
           action: () => {
-            console.log('显示反向链接');
-            // TODO: 实现反向链接功能
+            console.log('鏄剧ず鍙嶅悜閾炬帴');
+            // TODO: 瀹炵幇鍙嶅悜閾炬帴鍔熻兘
           },
           disabled: !activeTab
         },
         {
           id: 'source-mode',
-          label: codeMirrorMode === 'source' ? '预览模式' : '源码模式',
+          label: codeMirrorMode === 'source' ? '棰勮妯″紡' : '婧愮爜妯″紡',
           action: toggleCodeMirrorMode,
           disabled: !activeTab
         }
@@ -183,28 +228,28 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'split-horizontal',
-          label: '左右分屏',
+          label: '宸﹀彸鍒嗗睆',
           action: () => {
-            console.log('左右分屏');
-            // TODO: 实现左右分屏
+            console.log('宸﹀彸鍒嗗睆');
+            // TODO: 瀹炵幇宸﹀彸鍒嗗睆
           },
           disabled: !activeTab
         },
         {
           id: 'split-vertical',
-          label: '上下分屏',
+          label: '涓婁笅鍒嗗睆',
           action: () => {
-            console.log('上下分屏');
-            // TODO: 实现上下分屏
+            console.log('涓婁笅鍒嗗睆');
+            // TODO: 瀹炵幇涓婁笅鍒嗗睆
           },
           disabled: !activeTab
         },
         {
           id: 'open-in-new-window',
-          label: '在新窗口中打开',
+          label: '鍦ㄦ柊绐楀彛涓墦寮€',
           action: () => {
-            console.log('在新窗口中打开');
-            // TODO: 实现在新窗口中打开
+            console.log('鍦ㄦ柊绐楀彛涓墦寮€');
+            // TODO: 瀹炵幇鍦ㄦ柊绐楀彛涓墦寮€
           },
           disabled: !activeTab
         }
@@ -218,25 +263,25 @@ export const TabBar: React.FC<TabBarProps> = ({
           label: '重命名',
           action: () => {
             console.log('重命名');
-            // TODO: 实现重命名功能
+            // TODO: 瀹炵幇閲嶅懡鍚嶅姛鑳?
           },
           disabled: !activeTab
         },
         {
           id: 'move-file',
-          label: '将文件移动到...',
+          label: '灏嗘枃浠剁Щ鍔ㄥ埌...',
           action: () => {
-            console.log('将文件移动到...');
-            // TODO: 实现移动文件功能
+            console.log('灏嗘枃浠剁Щ鍔ㄥ埌...');
+            // TODO: 瀹炵幇绉诲姩鏂囦欢鍔熻兘
           },
           disabled: !activeTab
         },
         {
           id: 'mark-important',
-          label: '标记重要文件',
+          label: '鏍囪閲嶈鏂囦欢',
           action: () => {
-            console.log('标记重要文件');
-            // TODO: 实现标记重要文件功能
+            console.log('鏍囪閲嶈鏂囦欢');
+            // TODO: 瀹炵幇鏍囪閲嶈鏂囦欢鍔熻兘
           },
           disabled: !activeTab
         }
@@ -247,13 +292,13 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'reveal-in-explorer',
-          label: '在资源管理器中打开',
+          label: '鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€',
           action: async () => {
             if (activeTab?.path) {
               try {
                 await window.electron?.ipcRenderer.invoke('open-in-explorer', activeTab.path);
               } catch (error) {
-                console.error('在资源管理器中打开失败:', error);
+                console.error('鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€澶辫触:', error);
               }
             }
           },
@@ -266,17 +311,17 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'delete-file',
-          label: '删除文件',
+          label: '鍒犻櫎鏂囦欢',
           action: async () => {
             if (activeTab?.path) {
-              const confirmed = confirm(`确定要删除文档"${activeTab.title}" 吗？`);
+              const confirmed = confirm(`确定要删除文档 "${activeTab.title}" 吗？`);
               if (confirmed) {
                 try {
                   await window.electron?.ipcRenderer.invoke('delete-file', activeTab.path);
                   onTabClose(activeTab.id);
                 } catch (error) {
-                  console.error('删除文件失败:', error);
-                  alert('删除文件失败');
+                  console.error('鍒犻櫎鏂囦欢澶辫触:', error);
+                  alert('鍒犻櫎鏂囦欢澶辫触');
                 }
               }
             }
@@ -290,6 +335,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   return (
     <div className="tab-bar">
       <CustomScrollbar
+        ref={scrollContainerRef}
         className="tab-bar-scroll-container"
         direction="horizontal"
         scrollbarWidth={3}
@@ -310,25 +356,25 @@ export const TabBar: React.FC<TabBarProps> = ({
               onMouseLeave={() => setHoveredTabId(null)}
               title={tab.path}
             >
-              {/* 活动标签顶部指示例*/}
+              {/* 娲诲姩鏍囩椤堕儴鎸囩ず渚?/}
               {isActive && <div className="tab-item-border-top" />}
               
-              {/* 文件图标 */}
+              {/* 鏂囦欢鍥炬爣 */}
               {getFileIcon(tab.language)}
               
-              {/* 文件名 */}
+              {/* 鏂囦欢鍚?*/}
               <span className="tab-item-title">
                 {tab.title}
               </span>
               
-              {/* 脏标记或关闭按钮 */}
+              {/* 鑴忔爣璁版垨鍏抽棴鎸夐挳 */}
               {tab.isDirty && !isHovered ? (
                 <span className="tab-item-dirty-indicator">●</span>
               ) : (
                 <button
                   className="tab-item-close"
                   onClick={(e) => handleTabClose(e, tab.id)}
-                  title="关闭"
+                  title="鍏抽棴"
                 >
                   <Icon name="close" size={16} />
                 </button>
@@ -338,13 +384,13 @@ export const TabBar: React.FC<TabBarProps> = ({
         })}
       </CustomScrollbar>
 
-      {/* 操作按钮区域 */}
+      {/* 鎿嶄綔鎸夐挳鍖哄煙 */}
       <div className="tab-bar-actions">
         {activeTab?.type === 'settings' && (
           <button 
             className="tab-bar-action-btn"
             onClick={handleOpenSettingsJson}
-            title="打开设置 (JSON)"
+            title="鎵撳紑璁剧疆 (JSON)"
           >
             <Icon name="file-code" size={16} />
           </button>
@@ -370,14 +416,14 @@ export const TabBar: React.FC<TabBarProps> = ({
         <button 
           ref={moreButtonRef}
           className="tab-bar-action-btn"
-          title="更多操作"
+          title="鏇村鎿嶄綔"
           onClick={handleMoreClick}
         >
           <Icon name="more-vert" size={16} />
         </button>
       </div>
 
-      {/* 更多操作菜单 */}
+      {/* 鏇村鎿嶄綔鑿滃崟 */}
       <MonacoContextMenu
         visible={showMoreMenu}
         x={moreMenuPosition.x}

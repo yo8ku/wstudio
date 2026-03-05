@@ -103,6 +103,21 @@ interface StoreSchema {
 
   // AI 聊天选中的模型
   'ai-chat-selected-model': string;
+
+  'ai-chat-decomposition-rules': Array<{
+    id: string;
+    name: string;
+    instruction: string;
+    enabled: boolean;
+    builtin: boolean;
+  }>;
+
+  'ai-chat-writing-rule-documents': Array<{
+    id: string;
+    name: string;
+    path: string;
+    enabled: boolean;
+  }>;
 }
 
 /**

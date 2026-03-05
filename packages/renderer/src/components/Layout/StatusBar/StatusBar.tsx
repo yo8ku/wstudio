@@ -15,6 +15,7 @@ interface StatusBarProps {}
 export const StatusBar: React.FC<StatusBarProps> = () => {
   const { sidebarPosition } = useActivityBarStore();
   const [pluginStatusBarItems, setPluginStatusBarItems] = useState<any[]>([]);
+  const [wordCount, setWordCount] = useState<number>(0);
 
   // 新增：监听显示背景图片设置面板事件
   const [showBackgroundSettings, setShowBackgroundSettings] = useState(false);
@@ -192,6 +193,27 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
 
   // 监听活动标签页类型变化
   useEffect(() => {
+    const calculateWordCount = (content: string): number => {
+      if (!content) return 0;
+      return content.replace(/\s+/g, "").length;
+    };
+
+    const handleContentChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ content?: string }>;
+      const content = typeof customEvent.detail?.content === "string"
+        ? customEvent.detail.content
+        : "";
+      setWordCount(calculateWordCount(content));
+    };
+
+    window.addEventListener("editor:content-changed", handleContentChanged);
+
+    return () => {
+      window.removeEventListener("editor:content-changed", handleContentChanged);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleActiveTabChanged = (event: Event) => {
       const customEvent = event as CustomEvent<{
         tabType:
@@ -215,6 +237,9 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
         // 使用 React.startTransition 来优化状态更新，避免闪烁
         React.startTransition(() => {
           setCurrentTabType(tabType);
+          if (tabType !== "file") {
+            setWordCount(0);
+          }
 
           // 同时更新语言信息
           if (language) {
@@ -528,10 +553,9 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                 })}
 
               {/* 光标位置 */}
-              <span className="status-bar-text">Ln 1, Col 1</span>
+              <div className="status-bar-info-btn">字数 {wordCount}</div>
 
               {/* 文件编码 */}
-              <div className="status-bar-info-btn">UTF-8</div>
 
               {/* 语言模式 */}
               <div className="status-bar-info-btn">{currentLanguage}</div>

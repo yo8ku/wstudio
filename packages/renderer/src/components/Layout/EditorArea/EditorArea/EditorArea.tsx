@@ -25,6 +25,7 @@ import { TableDesigner } from '../TableDesigner';
 import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
 import { SkillsMarketView } from '../SkillsMarketView';
+import { DecompositionRulesView } from '../DecompositionRulesView';
 import { MediaPanel } from '../../Sidebar/MediaPanel';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
@@ -40,7 +41,7 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'media';
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'media';
   isPreview?: boolean;  // 新增：是否为预览模式（单击打开）
   sourceTabId?: string;  // 新增：预览标签页关联的源文件标签页ID
   knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 知识库数据（用于 knowledge 类型）
@@ -48,6 +49,21 @@ export interface EditorTab {
   configIndex?: number;  // 已废弃：AI配置索引（用于 ai-config 类型，保留用于向后兼容）
   mermaidData?: { code: string; title: string };  // Mermaid 流程图数据（用于 mermaid-designer 类型）
   formId?: string;  // 表单ID（用于 table-designer 类型）
+  decompositionRulesData?: {
+    rules: Array<{
+      id: string;
+      name: string;
+      instruction: string;
+      enabled: boolean;
+      builtin: boolean;
+    }>;
+    writingRuleDocuments?: Array<{
+      id: string;
+      name: string;
+      path: string;
+      enabled: boolean;
+    }>;
+  };
 }
 
 interface EditorAreaProps {
@@ -69,6 +85,61 @@ interface EditorTabsStateDetail {
   tabs: EditorTabsStateItem[];
   activeTabId: string | null;
 }
+
+interface ReplaceActiveTabContentDetail {
+  content: string;
+  path?: string;
+  name?: string;
+  markDirty?: boolean;
+}
+
+const normalizeComparableFilePath = (value: string): string =>
+  value.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+const AGENT_DRAFT_PATH_PREFIX = 'agent-draft:/';
+
+const sanitizeSaveFileName = (value: string): string =>
+  value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-').trim();
+
+const ensureDraftFileExtension = (value: string): string => {
+  if (/\.[a-zA-Z0-9]+$/.test(value)) return value;
+  return `${value}.md`;
+};
+
+const getDraftSaveFileName = (tab: EditorTab): string => {
+  const fromPath = tab.path.startsWith(AGENT_DRAFT_PATH_PREFIX)
+    ? tab.path.slice(AGENT_DRAFT_PATH_PREFIX.length).trim()
+    : '';
+  const baseName = sanitizeSaveFileName(fromPath || tab.title || 'untitled');
+  const safeName = baseName || 'untitled';
+  return ensureDraftFileExtension(safeName);
+};
+
+const buildWorkspaceDefaultSavePath = (workspacePath: string, fileName: string): string => {
+  const normalizedWorkspace = workspacePath.trim().replace(/[\\/]+$/, '');
+  if (!normalizedWorkspace) return '';
+  const separator = normalizedWorkspace.includes('\\') ? '\\' : '/';
+  return `${normalizedWorkspace}${separator}${fileName}`;
+};
+
+const getFileNameFromPath = (value: string): string => {
+  const normalized = value.replace(/\\/g, '/');
+  const segments = normalized.split('/').filter(Boolean);
+  return segments[segments.length - 1] || value;
+};
+
+const appendNumericSuffixToPath = (filePath: string, index: number): string => {
+  const normalized = filePath.replace(/\\/g, '/');
+  const slashIndex = normalized.lastIndexOf('/');
+  const dir = slashIndex >= 0 ? normalized.slice(0, slashIndex + 1) : '';
+  const fileName = slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized;
+  const dotIndex = fileName.lastIndexOf('.');
+  const hasExt = dotIndex > 0 && dotIndex < fileName.length - 1;
+  const baseName = hasExt ? fileName.slice(0, dotIndex) : fileName;
+  const ext = hasExt ? fileName.slice(dotIndex) : '';
+  const suffixed = `${baseName}-${index}${ext}`;
+  const joined = `${dir}${suffixed}`;
+  return filePath.includes('\\') ? joined.replace(/\//g, '\\') : joined;
+};
 
 export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   console.log('========================================');
@@ -97,6 +168,26 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const previousTabsLengthRef = useRef<number>(0);
   const previousActiveTabIdRef = useRef<string | null>(null);
   const tabChangeReasonOverrideRef = useRef<EditorTabsChangeReason | null>(null);
+  const activeTabIdRef = useRef<string | null>(null);
+  const rightActiveTabIdRef = useRef<string | null>(null);
+  const tabsRef = useRef<EditorTab[]>([]);
+  const rightTabsRef = useRef<EditorTab[]>([]);
+
+  useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+  }, [activeTabId]);
+
+  useEffect(() => {
+    rightActiveTabIdRef.current = rightActiveTabId;
+  }, [rightActiveTabId]);
+
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
+
+  useEffect(() => {
+    rightTabsRef.current = rightTabs;
+  }, [rightTabs]);
 
 
   // 处理创建新片段
@@ -425,6 +516,84 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }
     };
 
+    const handleReplaceActiveTabContent = (event: Event) => {
+      const customEvent = event as CustomEvent<ReplaceActiveTabContentDetail>;
+      const detail = customEvent.detail;
+      if (!detail || typeof detail.content !== 'string') return;
+
+      const targetPath = typeof detail.path === 'string' ? detail.path : '';
+      const targetName = typeof detail.name === 'string' ? detail.name : '';
+      const markDirty = detail.markDirty ?? false;
+      const normalizedTargetPath = targetPath ? normalizeComparableFilePath(targetPath) : '';
+
+      const applyToTabs = (
+        currentTabs: EditorTab[],
+        activeId: string | null
+      ): { tabs: EditorTab[]; resolvedId: string | null; matched: boolean } => {
+        let resolvedTargetId: string | null = null;
+        let matched = false;
+
+        const updatedTabs = currentTabs.map(tab => {
+          if (tab.type !== 'file') return tab;
+
+          const normalizedTabPath = normalizeComparableFilePath(tab.path || '');
+          const matchByPath = !!normalizedTargetPath && normalizedTabPath === normalizedTargetPath;
+          const matchByActive = !normalizedTargetPath && !!activeId && tab.id === activeId;
+          if (!matchByPath && !matchByActive) return tab;
+
+          matched = true;
+          resolvedTargetId = tab.id;
+          return {
+            ...tab,
+            title: targetName || tab.title,
+            path: tab.path || targetPath || tab.path,
+            content: detail.content,
+            isDirty: markDirty,
+          };
+        });
+
+        return { tabs: updatedTabs, resolvedId: resolvedTargetId, matched };
+      };
+
+      const leftSnapshot = tabsRef.current;
+      const rightSnapshot = rightTabsRef.current;
+      const leftResult = applyToTabs(leftSnapshot, activeTabIdRef.current);
+      const rightResult = applyToTabs(rightSnapshot, rightActiveTabIdRef.current);
+
+      if (leftResult.matched) {
+        setTabs(leftResult.tabs);
+        if (leftResult.resolvedId) {
+          setTimeout(() => setActiveTabId(leftResult.resolvedId), 0);
+        }
+      }
+
+      if (rightResult.matched) {
+        setRightTabs(rightResult.tabs);
+        if (rightResult.resolvedId) {
+          setTimeout(() => setRightActiveTabId(rightResult.resolvedId), 0);
+        }
+      }
+
+      if (leftResult.matched || rightResult.matched) {
+        return;
+      }
+
+      if (targetPath) {
+        const createdTab: EditorTab = {
+          id: `file-${Date.now()}`,
+          title: targetName || 'Untitled',
+          path: targetPath,
+          isDirty: markDirty,
+          language: targetPath.toLowerCase().endsWith('.md') ? 'markdown' : 'plaintext',
+          content: detail.content,
+          type: 'file',
+          isPreview: false,
+        };
+        setTabs(prev => [...prev, createdTab]);
+        setTimeout(() => setActiveTabId(createdTab.id), 0);
+      }
+    };
+
     const handleOpenSettings = () => {
       // 使用函数式更新来访问最新的 tabs 状态
       setTabs(currentTabs => {
@@ -661,7 +830,57 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
+    const handleOpenDecompositionRules = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        rules?: Array<{
+          id: string;
+          name: string;
+          instruction: string;
+          enabled: boolean;
+          builtin: boolean;
+        }>;
+        writingRuleDocuments?: Array<{
+          id: string;
+          name: string;
+          path: string;
+          enabled: boolean;
+        }>;
+      }>;
+      const initialRules = Array.isArray(customEvent.detail?.rules)
+        ? customEvent.detail.rules
+        : [];
+      const initialWritingRuleDocuments = Array.isArray(customEvent.detail?.writingRuleDocuments)
+        ? customEvent.detail.writingRuleDocuments
+        : [];
+
+      setTabs(currentTabs => {
+        const existingTab = currentTabs.find(tab => tab.type === 'decomposition-rules');
+
+        if (existingTab) {
+          setTimeout(() => setActiveTabId(existingTab.id), 0);
+          return currentTabs;
+        }
+
+        const newTab: EditorTab = {
+          id: `decomposition-rules-${Date.now()}`,
+          title: '拆解规则管理',
+          path: 'decomposition-rules:/',
+          isDirty: false,
+          type: 'decomposition-rules',
+          decompositionRulesData: initialRules.length > 0 || initialWritingRuleDocuments.length > 0
+            ? {
+                rules: initialRules.map(rule => ({ ...rule })),
+                writingRuleDocuments: initialWritingRuleDocuments.map(document => ({ ...document })),
+              }
+            : undefined,
+        };
+        setTimeout(() => setActiveTabId(newTab.id), 0);
+        return [...currentTabs, newTab];
+      });
+    };
+
     window.addEventListener('open-file', handleOpenFile as EventListener);
+    window.addEventListener('editor:replace-active-tab-content', handleReplaceActiveTabContent as EventListener);
     window.addEventListener('open-settings', handleOpenSettings);
     window.addEventListener('open-media-panel', handleOpenMediaPanel);
     window.addEventListener('open-extension-manager', handleOpenExtensionManager);
@@ -670,6 +889,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('open-form-view', handleOpenTableDesigner as EventListener);
     window.addEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
     window.addEventListener('open-skill-market', handleOpenSkillsMarket);
+    window.addEventListener('open-decomposition-rules', handleOpenDecompositionRules as EventListener);
     window.addEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
     
@@ -705,6 +925,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     
     return () => {
       window.removeEventListener('open-file', handleOpenFile as EventListener);
+      window.removeEventListener('editor:replace-active-tab-content', handleReplaceActiveTabContent as EventListener);
       window.removeEventListener('open-settings', handleOpenSettings);
       window.removeEventListener('open-media-panel', handleOpenMediaPanel);
       window.removeEventListener('open-extension-manager', handleOpenExtensionManager);
@@ -713,6 +934,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-form-view', handleOpenTableDesigner as EventListener);
       window.removeEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
       window.removeEventListener('open-skill-market', handleOpenSkillsMarket);
+      window.removeEventListener('open-decomposition-rules', handleOpenDecompositionRules as EventListener);
       window.removeEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
       window.removeEventListener('close-all-editors', handleCloseAllEditors);
@@ -1555,19 +1777,101 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       return;
     }
 
-    // 如果文件没有路径，使用另存为
-    if (!tab.path || tab.path === '') {
+    // 如果是无路径文件或 Agent 临时文档，使用另存为
+    const requiresSaveAs = !tab.path
+      || tab.path === ''
+      || tab.path.startsWith(AGENT_DRAFT_PATH_PREFIX);
+    if (requiresSaveAs) {
       try {
-        const result = await window.electron?.file?.saveAs(tab.content || '');
+        const isAgentDraft = tab.path.startsWith(AGENT_DRAFT_PATH_PREFIX);
+        if (isAgentDraft) {
+          const workspaceResult = await window.electron?.workspace?.getDir();
+          const workspacePath = workspaceResult?.success
+            ? String(workspaceResult.data || '').trim()
+            : '';
+          if (workspacePath) {
+            const fileName = getDraftSaveFileName(tab);
+            const defaultPath = buildWorkspaceDefaultSavePath(workspacePath, fileName);
+            if (defaultPath) {
+              let targetPath = defaultPath;
+              const existsFn = window.electron?.fs?.exists;
+              if (existsFn) {
+                try {
+                  const existsDefault = await existsFn(defaultPath);
+                  if (existsDefault) {
+                    let resolved = '';
+                    for (let i = 1; i <= 200; i += 1) {
+                      const candidate = appendNumericSuffixToPath(defaultPath, i);
+                      const existsCandidate = await existsFn(candidate);
+                      if (!existsCandidate) {
+                        resolved = candidate;
+                        break;
+                      }
+                    }
+                    if (resolved) {
+                      targetPath = resolved;
+                    } else {
+                      targetPath = '';
+                    }
+                  }
+                } catch {
+                  // ignore existence check failure and fallback to default path
+                }
+              }
+
+              let contentToSave = tab.content || '';
+              if (isHtmlContent(contentToSave)) {
+                contentToSave = htmlToMarkdown(contentToSave);
+              }
+              if (targetPath) {
+                const autoSaveResult = await window.electron?.file?.save(targetPath, contentToSave);
+                if (autoSaveResult?.success) {
+                  const savedName = getFileNameFromPath(targetPath);
+                  setTabs(prev => prev.map(t =>
+                    t.id === tab.id
+                      ? { ...t, path: targetPath, title: savedName, isDirty: false }
+                      : t
+                  ));
+                  setRightTabs(prev => prev.map(t =>
+                    t.sourceTabId === tab.id
+                      ? { ...t, path: targetPath, title: savedName, isDirty: false }
+                      : t
+                  ));
+                  return;
+                }
+              }
+            }
+          }
+        }
+
+        let saveAsOptions: { defaultPath?: string } | undefined;
+        if (isAgentDraft) {
+          const workspaceResult = await window.electron?.workspace?.getDir();
+          const workspacePath = workspaceResult?.success
+            ? String(workspaceResult.data || '').trim()
+            : '';
+          if (workspacePath) {
+            const fileName = getDraftSaveFileName(tab);
+            const defaultPath = buildWorkspaceDefaultSavePath(workspacePath, fileName);
+            if (defaultPath) {
+              saveAsOptions = { defaultPath };
+            }
+          }
+        }
+
+        const result = await window.electron?.file?.saveAs(tab.content || '', saveAsOptions);
         if (result?.success && result.data) {
           // 更新标签页信息
-          if (result.data) {
-            setTabs(tabs.map(t => 
-              t.id === tab.id 
-                ? { ...t, path: result.data!.path, title: result.data!.name, isDirty: false }
-                : t
-            ));
-          }
+          setTabs(prev => prev.map(t =>
+            t.id === tab.id
+              ? { ...t, path: result.data!.path, title: result.data!.name, isDirty: false }
+              : t
+          ));
+          setRightTabs(prev => prev.map(t =>
+            t.sourceTabId === tab.id
+              ? { ...t, path: result.data!.path, title: result.data!.name, isDirty: false }
+              : t
+          ));
         }
       } catch (error) {
         // 另存为文件失败，静默处理
@@ -1597,6 +1901,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   // 监听活动标签页变化，通知状态栏和大纲
   useEffect(() => {
     const activeTab = tabs.find(tab => tab.id === activeTabId);
+
+    // 同步全局当前标签上下文，供 AI 面板等全局组件读取
+    (window as any).__currentTabTitle = activeTab?.title || '';
+    (window as any).__currentTabPath = activeTab?.path || '';
     
     // 发送全局事件，告知状态栏当前标签页类型
     window.dispatchEvent(new CustomEvent('editor:active-tab-changed', {
@@ -1714,7 +2022,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           )}
 
           {/* 左侧面包屑 */}
-          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && (
+          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && (
             <Breadcrumb path={activeTab.path} />
           )}
 
@@ -1759,6 +2067,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   )}
 
                   {tab.type === 'skills-market' && <SkillsMarketView />}
+
+                  {tab.type === 'decomposition-rules' && (
+                    <DecompositionRulesView
+                      initialRules={tab.decompositionRulesData?.rules}
+                      initialWritingRuleDocuments={tab.decompositionRulesData?.writingRuleDocuments}
+                    />
+                  )}
 
                   {tab.type === 'media' && <MediaPanel />}
 
@@ -1914,7 +2229,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             )}
 
             {/* 右侧面包屑 */}
-            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && (
+            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && rightActiveTab.type !== 'decomposition-rules' && (
               <Breadcrumb path={rightActiveTab.path} />
             )}
 
@@ -1946,6 +2261,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     )}
 
                     {tab.type === 'skills-market' && <SkillsMarketView />}
+
+                    {tab.type === 'decomposition-rules' && (
+                      <DecompositionRulesView
+                        initialRules={tab.decompositionRulesData?.rules}
+                        initialWritingRuleDocuments={tab.decompositionRulesData?.writingRuleDocuments}
+                      />
+                    )}
 
                     {tab.type === 'ai-config' && (
                       <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />

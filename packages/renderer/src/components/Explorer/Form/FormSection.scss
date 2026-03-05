@@ -1,29 +1,24 @@
-/**
- * 表单Section样式
- * 资源管理器中表单列表的样式定义
+﻿/**
+ * 表单分区样式
+ * 负责表单与分组列表的视觉层级与交互状态
  */
 
 .form-section {
   display: flex;
   flex-direction: column;
   position: relative;
-  border-top: 1px solid var(--ws-border-background);
+  background-color: var(--ws-sideBarSectionHeader-background, var(--ws-sideBar-background));
 
-  &--expanded {
-    flex: 0 0 auto;
-  }
-
+  &--expanded,
   &--collapsed {
     flex: 0 0 auto;
   }
 }
 
-// 拖动手柄样式（布局样式在 ResizeHandle.scss 中统一定义）
 .form-resize-handle {
-  // 样式已统一到 styles/component/ResizeHandle.scss
+  // 布局样式统一定义在 styles/component/ResizeHandle.scss
 }
 
-// 拖动时的全局遮罩层
 .form-resize-overlay {
   position: fixed;
   top: 0;
@@ -34,11 +29,9 @@
   cursor: ns-resize;
 }
 
-// 表单内容区域（使用 CustomScrollbar 组件）
 .form-content {
-  // CustomScrollbar 内部的 content 区域样式
   .custom-scrollbar-content {
-    padding: 4px 0 24px 0;
+    padding: 4px 0 16px 0;
   }
 }
 
@@ -47,12 +40,15 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  margin: 0 6px;
+  padding: 14px 12px;
   gap: 8px;
-  color: var(--ws-foreground-muted);
+  border-radius: 6px;
+  color: var(--ws-descriptionForeground, var(--ws-disabledForeground, var(--ws-list-deemphasizedForeground)));
+  background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
 
   .empty-icon {
-    opacity: 0.5;
+    opacity: 0.55;
   }
 
   span {
@@ -63,6 +59,7 @@
 .form-list {
   display: flex;
   flex-direction: column;
+  gap: 1px;
 }
 
 .form-group-wrapper {
@@ -74,22 +71,23 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  min-height: 22px;
+  padding: 0 8px;
   cursor: pointer;
   user-select: none;
-  border-radius: 4px;
+  border-radius: 6px;
   margin: 0 4px;
 
   &:hover {
-    background-color: var(--ws-list-hoverBackground);
+    background-color: var(--ws-list-hoverBackground, var(--ws-list-hover-background, rgba(127, 127, 127, 0.16)));
   }
 
   &.selected {
-    background-color: var(--ws-list-activeSelectionBackground);
-    color: var(--ws-list-activeSelectionForeground);
+    background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-inactiveSelectionBackground));
+    color: var(--ws-list-activeSelectionForeground, var(--ws-list-inactiveSelectionForeground));
 
     .item-icon {
-      color: var(--ws-list-activeSelectionForeground);
+      color: inherit;
     }
   }
 
@@ -113,6 +111,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
 }
 
@@ -125,22 +124,23 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px 4px 20px;
+  min-height: 22px;
+  padding: 0 8px;
   cursor: pointer;
   user-select: none;
-  border-radius: 4px;
+  border-radius: 6px;
   margin: 0 4px;
 
   &:hover {
-    background-color: var(--ws-list-hoverBackground);
+    background-color: var(--ws-list-hoverBackground, var(--ws-list-hover-background, rgba(127, 127, 127, 0.16)));
   }
 
   &.selected {
-    background-color: var(--ws-list-activeSelectionBackground);
-    color: var(--ws-list-activeSelectionForeground);
+    background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-inactiveSelectionBackground));
+    color: var(--ws-list-activeSelectionForeground, var(--ws-list-inactiveSelectionForeground));
 
     .item-icon {
-      color: var(--ws-list-activeSelectionForeground);
+      color: inherit;
     }
   }
 
@@ -155,10 +155,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
 }
 
-// 内联编辑输入框
 .inline-edit-input {
   flex: 1;
   display: flex;
@@ -167,15 +167,16 @@
   padding: 0 4px;
   font-size: 13px;
   line-height: 22px;
-  border: 1px solid var(--ws-focus-border);
+  border: 1px solid var(--ws-focusBorder, var(--ws-focus-border));
   background-color: var(--ws-input-background);
   color: var(--ws-input-foreground);
   outline: none;
   min-width: 0;
   box-sizing: border-box;
   margin: 0;
+  border-radius: 4px;
 
   &:focus {
-    border-color: var(--ws-focus-border);
+    border-color: var(--ws-focusBorder, var(--ws-focus-border));
   }
 }

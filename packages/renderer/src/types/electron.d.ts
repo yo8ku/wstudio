@@ -251,6 +251,60 @@ export interface FormTableData {
   updatedAt: number;
 }
 
+export type FormQueryWhereOperator =
+  | 'eq'
+  | 'ne'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'contains'
+  | 'starts_with'
+  | 'ends_with';
+
+export interface FormQueryWhere {
+  column: string;
+  op: FormQueryWhereOperator;
+  value: unknown;
+}
+
+export interface FormQueryParams {
+  formId: string;
+  query?: string;
+  where?: FormQueryWhere | null;
+  columns?: string[];
+  limit?: number;
+  offset?: number;
+  rowIds?: string[];
+}
+
+export interface FormQueryColumn {
+  id: string;
+  name: string;
+}
+
+export interface FormQueryRow {
+  id: string;
+  cells: Record<string, unknown>;
+}
+
+export interface FormQueryResult {
+  formId: string;
+  formName: string;
+  allColumns: FormQueryColumn[];
+  selectedColumns: FormQueryColumn[];
+  rows: FormQueryRow[];
+  matchedTotal: number;
+  returnedCount: number;
+  totalRows: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset: number;
+  appliedWhere: FormQueryWhere | null;
+  whereInferred: boolean;
+}
+
 export interface ElectronIPC {
   ipcRenderer: {
     send: (channel: string, ...args: any[]) => void;
@@ -268,7 +322,12 @@ export interface ElectronIPC {
     open: () => Promise<FileResult>;
     read: (filePath: string) => Promise<FileResult>;
     save: (filePath: string, content: string) => Promise<APIResponse>;
-    saveAs: (content: string) => Promise<FileResult>;
+    saveAs: (
+      content: string,
+      options?: {
+        defaultPath?: string;
+      }
+    ) => Promise<FileResult>;
     showOpenDialog: (options: {
       title?: string;
       defaultPath?: string;
@@ -322,6 +381,7 @@ export interface ElectronIPC {
     getAllForms: () => Promise<APIResponse<FormTableData[]>>;
     getFormsByGroup: (groupId: string | null) => Promise<APIResponse<FormTableData[]>>;
     getFormById: (id: string) => Promise<APIResponse<FormTableData | null>>;
+    queryRows: (params: FormQueryParams) => Promise<APIResponse<FormQueryResult | null>>;
     updateForm: (id: string, updates: Partial<FormTableData>) => Promise<APIResponse>;
     deleteForm: (id: string) => Promise<APIResponse>;
   };

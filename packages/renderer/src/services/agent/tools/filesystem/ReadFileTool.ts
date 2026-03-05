@@ -9,6 +9,13 @@ import type { ToolResult, ToolParameterSchema } from '../../types';
 import type { ToolMetadata, FileSystemToolConfig } from '../base/types';
 import { resolveSecurePath, getFileExtension, isExtensionAllowed, getMaxFileSize } from './FileSecurityUtils';
 
+interface DirectoryEntry {
+  name: string;
+  type: 'file' | 'directory';
+  path: string;
+  size?: number;
+}
+
 export class ReadFileTool extends BaseTool<FileSystemToolConfig> {
   readonly name = 'read_file';
 
@@ -59,6 +66,41 @@ export class ReadFileTool extends BaseTool<FileSystemToolConfig> {
     );
 
     if (!result.success) {
+      const errorText = (result.error ?? '').toLowerCase();
+      const isDirectoryReadError = errorText.includes('eisdir')
+        || errorText.includes('is a directory')
+        || errorText.includes('illegal operation on a directory');
+      if (isDirectoryReadError) {
+        const listResult = await this.invokeIPC<DirectoryEntry[]>(
+          'agent:fs:listFiles',
+          fullPath,
+          this.config.workspacePath,
+          false,
+          2
+        );
+        if (listResult.success) {
+          const entries = Array.isArray(listResult.data) ? listResult.data : [];
+          const listingLines = entries.slice(0, 200).map(entry => {
+            const suffix = entry.type === 'directory'
+              ? '/'
+              : '';
+            return `- ${entry.name}${suffix}`;
+          });
+          const listingText = [
+            '[Directory listing fallback]',
+            `Path: ${fullPath}`,
+            `Entries: ${entries.length}`,
+            ...listingLines
+          ].join('\n');
+          return this.success({
+            content: listingText,
+            path: fullPath,
+            size: listingText.length,
+            isDirectory: true,
+            entries,
+          });
+        }
+      }
       return this.failure(result.error ?? '读取文件失败');
     }
 

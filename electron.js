@@ -38,6 +38,8 @@ const { setTerminalService } = require('./packages/main/dist/main/src/ipc/termin
 // 云端 Embedding 服务
 const { cloudEmbeddingService } = require('./packages/main/dist/main/src/services/CloudEmbeddingService.js');
 const { getAllEmbeddingProviders, getEnabledEmbeddingModels } = require('./packages/main/dist/main/src/services/EmbeddingModelConfig.js');
+// 工作区向量索引服务
+const { workspaceVectorIndexService } = require('./packages/main/dist/main/src/services/WorkspaceVectorIndexService.js');
 
 const logIconPath = path.join(__dirname, 'log', 'log.png');
 if (!fs.existsSync(logIconPath)) {
@@ -114,7 +116,12 @@ function createWindow(backgroundColor = '#1e1e1e') {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // 清除向量索引服务的窗口引用
+    workspaceVectorIndexService.setMainWindow(null);
   });
+
+  // 设置向量索引服务的主窗口引用（用于发送进度事件）
+  workspaceVectorIndexService.setMainWindow(mainWindow);
 
   // F12 随时打开 DevTools（方便调试）
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -1281,15 +1288,20 @@ ipcMain.handle('folder:expand', async (event, folderPath, rootPath) => {
 });
 
 // 另存为对话框
-ipcMain.handle('file:save-as', async (event, content = '') => {
+ipcMain.handle('file:save-as', async (event, content = '', options = {}) => {
   try {
+    const requestedDefaultPath =
+      options && typeof options.defaultPath === 'string'
+        ? options.defaultPath.trim()
+        : '';
+    const fallbackWorkspacePath = workspaceManager.getWorkspaceDir();
     const result = await dialog.showSaveDialog(mainWindow, {
       filters: [
         { name: 'Markdown', extensions: ['md'] },
         { name: 'JSON', extensions: ['json'] },
         { name: 'Text', extensions: ['txt'] },
       ],
-      defaultPath: workspaceManager.getWorkspaceDir()
+      defaultPath: requestedDefaultPath || fallbackWorkspacePath
     });
 
     if (!result.canceled && result.filePath) {
@@ -1676,6 +1688,36 @@ ipcMain.handle('cloud-embedding:get-current-model', async () => {
     return { success: true, data: model };
   } catch (error) {
     console.error('[IPC] 获取当前 Embedding 模型失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 生成单个向量（兼容旧的 embedding:generate 通道，知识库使用）
+ipcMain.handle('embedding:generate', async (event, text) => {
+  try {
+    const result = await cloudEmbeddingService.generateEmbedding(text);
+    if (result.success) {
+      return { success: true, data: result };
+    } else {
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('[IPC] 生成向量失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 批量生成向量（兼容旧的 embedding:generate-batch 通道，知识库使用）
+ipcMain.handle('embedding:generate-batch', async (event, texts) => {
+  try {
+    const result = await cloudEmbeddingService.generateBatchEmbeddings(texts);
+    if (result.success) {
+      return { success: true, data: result };
+    } else {
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('[IPC] 批量生成向量失败:', error);
     return { success: false, error: error.message };
   }
 });

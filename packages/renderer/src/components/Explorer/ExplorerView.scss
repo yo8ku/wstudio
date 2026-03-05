@@ -1,28 +1,51 @@
-/**
+﻿/**
  * 资源管理器主容器样式
- * 包含：打开的编辑器面板、文件树面板、时间线面板
+ * 负责资源管理器分区布局、卡片层级与滚动行为
  */
 
 .explorer-view {
+  --explorer-surface-bg: var(--ws-sideBar-background);
+  --explorer-group-bg: var(--ws-sideBarSectionHeader-background, var(--ws-sideBar-background));
+
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  box-sizing: border-box;
+  padding: 8px 6px 10px;
+  gap: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   position: relative;
+  background-color: var(--ws-sideBar-background);
+
+  > .open-editors-section,
+  > .file-tree-section,
+  > .form-section,
+  > .accordion-section {
+    border: none;
+    border-radius: 0;
+    background-color: var(--explorer-surface-bg);
+    overflow: hidden;
+    min-width: 0;
+    contain: paint;
+  }
+
+  > .open-editors-section,
+  > .form-section,
+  > .accordion-section {
+    flex: 0 0 auto;
+  }
+
+  // 工作区目录按内容高度布局，不再撑满剩余空间
+  > .file-tree-section {
+    flex: 0 0 auto;
+    min-height: 22px;
+  }
+
+  > .file-tree-section,
+  > .form-section {
+    background-color: var(--explorer-group-bg);
+  }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

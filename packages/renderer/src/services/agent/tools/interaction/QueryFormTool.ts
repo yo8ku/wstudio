@@ -1,58 +1,62 @@
 /**
- * 表单查询工具
- * 功能：按条件查询表单数据，支持关键词过滤和分页，避免全量数据注入
- * 描述：根据表单 ID 和可选的过滤条件查询表单行数据，返回匹配的行
+ * Form query tool.
+ * Supports querying rows by form id or form name with keyword/column filters.
  */
 
 import { BaseTool } from '../base/BaseTool';
 import type { ToolResult, ToolParameterSchema } from '../../types';
 import type { ToolMetadata, BaseToolConfig } from '../base/types';
 
-/** 表单列定义 */
 interface FormColumn {
   id: string;
   name: string;
 }
 
-/** 表单行数据 */
-interface FormRow {
-  id: string;
-  cells: Record<string, unknown>;
-}
-
-/** form:getFormById 返回的原始数据 */
-interface RawFormData {
+interface FormTableData {
   id: string;
   name: string;
-  data?: string;
+}
+
+interface QueryRowsResult {
+  formId: string;
+  formName: string;
+  selectedColumns: Array<{ id: string; name: string }>;
+  rows: Array<{ id: string; cells: Record<string, unknown> }>;
+  matchedTotal: number;
+  returnedCount: number;
+  hasMore: boolean;
 }
 
 export class QueryFormTool extends BaseTool<BaseToolConfig> {
   readonly name = 'query_form';
 
-  readonly description = '查询表单数据。根据表单 ID 和可选的关键词过滤条件，返回匹配的行数据。适用于查询封禁账号、订单记录等结构化数据。';
+  readonly description = 'Query form rows. Accepts formId (preferred) or formName, with optional keyword and column filter.';
 
   readonly parameters: ToolParameterSchema = {
     type: 'object',
     properties: {
       formId: {
         type: 'string',
-        description: '表单 ID',
+        description: 'Form id (recommended).',
+      },
+      formName: {
+        type: 'string',
+        description: 'Form name (optional when formId is unknown).',
       },
       keyword: {
         type: 'string',
-        description: '过滤关键词，匹配任意列的值（可选）',
+        description: 'Optional keyword filter. Matches any selected column.',
       },
       column: {
         type: 'string',
-        description: '指定要过滤的列名（可选，不填则搜索所有列）',
+        description: 'Optional target column name. If omitted, search all columns.',
       },
       limit: {
         type: 'number',
-        description: '最多返回的行数，默认 50',
+        description: 'Max rows to return. Default 50.',
       },
     },
-    required: ['formId'],
+    required: [],
   };
 
   readonly metadata: ToolMetadata = {
@@ -60,55 +64,46 @@ export class QueryFormTool extends BaseTool<BaseToolConfig> {
     requiresConfirmation: false,
     readOnly: true,
     priority: 85,
-    version: '1.0.0',
+    version: '1.1.0',
   };
 
+  validateParams(params: Record<string, unknown>): boolean {
+    const formId = typeof params.formId === 'string' ? params.formId.trim() : '';
+    const formName = typeof params.formName === 'string' ? params.formName.trim() : '';
+    return formId.length > 0 || formName.length > 0;
+  }
+
   async execute(params: Record<string, unknown>): Promise<ToolResult> {
-    const { formId, keyword, column, limit = 50 } = params as {
-      formId: string;
+    const { formId, formName, keyword, column, limit = 50 } = params as {
+      formId?: string;
+      formName?: string;
       keyword?: string;
       column?: string;
       limit?: number;
     };
 
-    const result = await this.invokeIPC<RawFormData>('form:getFormById', formId);
+    const resolvedFormIdResult = await this.resolveFormId(formId, formName);
+    if (!resolvedFormIdResult.success) {
+      return this.failure(resolvedFormIdResult.error);
+    }
+    const resolvedFormId = resolvedFormIdResult.formId;
 
-    if (!result.success || !result.data) {
-      return this.failure(result.error ?? `表单 ${formId} 不存在`);
+    const queryResult = await this.invokeIPC<QueryRowsResult>('form:queryRows', {
+      formId: resolvedFormId,
+      query: keyword ?? '',
+      columns: column ? [column] : undefined,
+      limit,
+      offset: 0,
+    });
+
+    if (!queryResult.success || !queryResult.data) {
+      return this.failure(queryResult.error ?? `Form ${resolvedFormId} does not exist`);
     }
 
-    let parsed: { columns?: FormColumn[]; rows?: FormRow[] } = {};
-    try {
-      parsed = result.data.data ? JSON.parse(result.data.data) : {};
-    } catch {
-      return this.failure('表单数据解析失败');
-    }
-
-    const columns: FormColumn[] = parsed.columns ?? [];
-    let rows: FormRow[] = parsed.rows ?? [];
-
-    // 按关键词过滤
-    if (keyword) {
-      const lowerKw = keyword.toLowerCase();
-      const targetCols = column
-        ? columns.filter(c => c.name.toLowerCase() === column.toLowerCase())
-        : columns;
-
-      rows = rows.filter(row =>
-        targetCols.some(col => {
-          const val = String(row.cells?.[col.id] ?? '').toLowerCase();
-          return val.includes(lowerKw);
-        })
-      );
-    }
-
-    // 限制返回行数
-    const totalMatched = rows.length;
-    rows = rows.slice(0, limit as number);
-
-    // 格式化为可读表格
+    const data = queryResult.data;
+    const columns: FormColumn[] = data.selectedColumns;
     const colNames = columns.map(c => c.name);
-    const rowsData = rows.map(row =>
+    const rowsData = data.rows.map(row =>
       columns.reduce<Record<string, unknown>>((acc, col) => {
         acc[col.name] = row.cells?.[col.id] ?? '';
         return acc;
@@ -116,13 +111,61 @@ export class QueryFormTool extends BaseTool<BaseToolConfig> {
     );
 
     return this.success({
-      formName: result.data.name,
-      formId,
+      formName: data.formName,
+      formId: data.formId,
       columns: colNames,
       rows: rowsData,
-      totalMatched,
-      returned: rows.length,
-      hasMore: totalMatched > rows.length,
+      totalMatched: data.matchedTotal,
+      returned: data.returnedCount,
+      hasMore: data.hasMore,
     });
+  }
+
+  private async resolveFormId(
+    formId?: string,
+    formName?: string
+  ): Promise<{ success: true; formId: string } | { success: false; error: string }> {
+    const trimmedFormId = typeof formId === 'string' ? formId.trim() : '';
+    if (trimmedFormId) {
+      return { success: true, formId: trimmedFormId };
+    }
+
+    const trimmedFormName = typeof formName === 'string' ? formName.trim() : '';
+    if (!trimmedFormName) {
+      return { success: false, error: 'Missing formId/formName. Please provide at least one.' };
+    }
+
+    const formsResult = await this.invokeIPC<FormTableData[]>('form:getAllForms');
+    if (!formsResult.success || !formsResult.data) {
+      return { success: false, error: formsResult.error ?? 'Unable to list forms. Try list_forms first.' };
+    }
+
+    const forms = formsResult.data;
+    const normalized = trimmedFormName.toLowerCase();
+
+    const exactNameMatches = forms.filter(form => (form.name ?? '').trim().toLowerCase() === normalized);
+    if (exactNameMatches.length === 1) {
+      return { success: true, formId: exactNameMatches[0].id };
+    }
+    if (exactNameMatches.length > 1) {
+      const candidates = exactNameMatches.slice(0, 5).map(form => `${form.name}(${form.id})`).join(', ');
+      return { success: false, error: `Multiple forms matched by name. Use formId: ${candidates}` };
+    }
+
+    const exactIdMatches = forms.filter(form => (form.id ?? '').trim().toLowerCase() === normalized);
+    if (exactIdMatches.length === 1) {
+      return { success: true, formId: exactIdMatches[0].id };
+    }
+
+    const fuzzyMatches = forms.filter(form => (form.name ?? '').toLowerCase().includes(normalized));
+    if (fuzzyMatches.length === 1) {
+      return { success: true, formId: fuzzyMatches[0].id };
+    }
+    if (fuzzyMatches.length > 1) {
+      const candidates = fuzzyMatches.slice(0, 5).map(form => `${form.name}(${form.id})`).join(', ');
+      return { success: false, error: `Multiple fuzzy matches found. Use formId: ${candidates}` };
+    }
+
+    return { success: false, error: `Form "${trimmedFormName}" not found. Try list_forms first.` };
   }
 }

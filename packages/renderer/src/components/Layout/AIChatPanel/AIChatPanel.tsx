@@ -2,7 +2,7 @@
  * AI 对话面板组件  - Note WStudio 2.0使用的是这个组件
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { getCachedModels, getModelConfig, type CachedModelInfo } from '../../../services/ModelCacheService';
 import { aiService } from '../../../services/ai/AIService';
 import { isModelEnabled, loadModelEnabledStatesFromDB, type ChatMessage } from '../../../services/ai';
@@ -19,9 +19,10 @@ import { AssistantTextContextMenu, type AssistantTextContextMenuProps } from './
 import { AIResponseRenderer } from '../../AIResponseRenderer';
 import { agentService } from '../../../services/agent/AgentService';
 import { AgentState, AgentTaskType } from '../../../services/agent/types';
-import { tableReferenceService, type FormInfo } from '../../../services/tableReference';
+import { tableReferenceService, type FormDetail, type FormInfo } from '../../../services/tableReference';
 import { knowledgeBaseService } from '../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { type KnowledgeItem } from '../Sidebar/KnowledgeBase/types';
+import { toastService } from '../../../services/ToastService';
 import { getAIZoneSystemPromptAsync } from '../../../services/ai/SystemPrompt';
 import { TipTapInput, type TipTapInputRef } from '../EditorArea/AIZoneWidget/TipTapInput';
 import './AIChatPanel.scss';
@@ -30,14 +31,40 @@ interface ToolLog {
   uiId: string;
   name: string;
   label: string;
+  detail?: string;
   summary?: string;
+  command?: string;
+  output?: string;
   status: 'pending' | 'success' | 'error';
+}
+
+interface ActLog {
+  id: string;
+  ts: number;
+  key?: string;
+  kind: 'status' | 'step' | 'tool' | 'stream' | 'error';
+  title: string;
+  detail?: string;
+  status: 'info' | 'pending' | 'running' | 'success' | 'error';
+}
+
+type TodoItemStatus = 'pending' | 'in_progress' | 'completed';
+
+interface TodoItemView {
+  id: string;
+  content: string;
+  status: TodoItemStatus;
+  source: 'agent' | 'plan';
+  stepId?: string;
 }
 
 /** 消息内容块：文本或工具调用 */
 type ContentBlock =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; key?: string; isStreaming?: boolean }
   | { type: 'tool'; tool: ToolLog }
+  | { type: 'act'; act: ActLog }
+  | { type: 'todo'; key: string; title: string; items: TodoItemView[]; isStreaming?: boolean }
+  | { type: 'decomposition'; title: string; content: string; key: string; isStreaming?: boolean }
   | { type: 'thinking'; content: string; isThinking: boolean; elapsedSeconds?: number };
 
 interface Message {
@@ -74,11 +101,1678 @@ interface AIChatPanelProps {
   position?: 'left' | 'right'; // 当前位置
 }
 
+interface PendingToolConfirmation {
+  id: string;
+  toolName: string;
+  params: Record<string, unknown>;
+  detail?: string;
+}
+
+interface SlashCommandItem {
+  command: string;
+  description: string;
+  insertText: string;
+}
+
+interface DecompositionRule {
+  id: string;
+  name: string;
+  instruction: string;
+  enabled: boolean;
+  builtin: boolean;
+}
+
+interface WritingRuleDocument {
+  id: string;
+  name: string;
+  path: string;
+  enabled: boolean;
+}
+
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 400;
 const COLLAPSE_THRESHOLD = 250; // 小于此宽度时自动收缩
 const EDITOR_AREA_MIN_WIDTH = 358; // editor-area 的最小宽度
+const createActLogId = (): string =>
+  `act-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const DECOMPOSITION_RULE_STORE_KEY = 'ai-chat-decomposition-rules';
+const DECOMPOSITION_RULE_UPDATED_EVENT = 'decomposition-rules-updated';
+const DECOMPOSITION_RULE_UPDATED_SOURCE = 'ai-chat-panel';
+const WRITING_RULE_STORE_KEY = 'ai-chat-writing-rule-documents';
+const WRITING_RULE_UPDATED_EVENT = 'writing-rules-updated';
+const WRITING_RULE_UPDATED_SOURCE = 'ai-chat-panel';
+const RULE_DOCUMENT_EXTENSIONS = new Set(['md', 'txt']);
+const BUILTIN_DECOMPOSITION_RULES: DecompositionRule[] = [
+  {
+    id: 'overall-structure',
+    name: '整体框架',
+    instruction: '拆解主题目标、主线、信息组织与论证顺序。',
+    enabled: true,
+    builtin: true,
+  },
+  {
+    id: 'sub-headings',
+    name: '小标题',
+    instruction: '提取并评估标题层级、命名方式与信息覆盖是否完整。',
+    enabled: true,
+    builtin: true,
+  },
+  {
+    id: 'paragraph-layout',
+    name: '段落',
+    instruction: '分析段落长度、开合方式、段内逻辑与段间衔接。',
+    enabled: true,
+    builtin: true,
+  },
+  {
+    id: 'sentence-pattern',
+    name: '句式',
+    instruction: '识别长短句比例、并列与递进结构、节奏变化。',
+    enabled: true,
+    builtin: true,
+  },
+  {
+    id: 'word-choice',
+    name: '用词',
+    instruction: '提取关键词、术语密度、口语化/书面化倾向和情绪色彩。',
+    enabled: true,
+    builtin: true,
+  },
+  {
+    id: 'style-tone',
+    name: '风格',
+    instruction: '判断文风语气、作者立场、叙述视角与受众匹配度。',
+    enabled: true,
+    builtin: true,
+  },
+  {
+    id: 'transitions',
+    name: '过渡词',
+    instruction: '识别连接词和转场方式，检查逻辑跳跃与连贯性。',
+    enabled: true,
+    builtin: true,
+  },
+  {
+    id: 'scene',
+    name: '场景',
+    instruction: '标注时空背景、人物关系、事件触发点与情境张力。',
+    enabled: true,
+    builtin: true,
+  },
+  {
+    id: 'case-evidence',
+    name: '案例',
+    instruction: '提取案例类型、证据强度、引用方式与论点支撑关系。',
+    enabled: true,
+    builtin: true,
+  },
+];
+
+const cloneBuiltinDecompositionRules = (): DecompositionRule[] =>
+  BUILTIN_DECOMPOSITION_RULES.map(rule => ({ ...rule }));
+
+const getFileExtension = (filePath: string): string => {
+  const normalized = filePath.trim().toLowerCase();
+  const dotIndex = normalized.lastIndexOf('.');
+  if (dotIndex < 0 || dotIndex === normalized.length - 1) return '';
+  return normalized.slice(dotIndex + 1);
+};
+
+const isSupportedRuleDocumentFile = (filePath: string): boolean =>
+  RULE_DOCUMENT_EXTENSIONS.has(getFileExtension(filePath));
+
+const buildRuleIdentityKey = (name: string, instruction: string): string =>
+  `${name.trim().toLowerCase()}|${instruction.trim().toLowerCase()}`;
+
+const normalizeComparableRuleDocumentPath = (value: string): string =>
+  value.trim().replace(/\\/g, '/').toLowerCase();
+
+const stringifyActDetail = (value: unknown): string | undefined => {
+  if (value == null) return undefined;
+  if (typeof value === 'string') return value;
+  try {
+    const compact = JSON.stringify(value);
+    if (!compact) return undefined;
+    return compact.length > 220 ? `${compact.slice(0, 220)}...` : compact;
+  } catch {
+    return String(value);
+  }
+};
+
+interface VerifyGateDetailView {
+  passed: boolean;
+  score: number | null;
+  threshold: number | null;
+  issues: string[];
+}
+
+const isRecordObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+const toStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(item => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+};
+
+const toSafeInteger = (value: unknown): number | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, Math.floor(value)));
+};
+
+const extractVerifyGateDetail = (result: unknown): VerifyGateDetailView | null => {
+  if (!isRecordObject(result)) return null;
+  const gateRaw = result.gate;
+  if (!isRecordObject(gateRaw)) return null;
+
+  const score = toSafeInteger(gateRaw.score);
+  const threshold = toSafeInteger(gateRaw.threshold);
+  const passedRaw = gateRaw.passed;
+  const passed = typeof passedRaw === 'boolean'
+    ? passedRaw
+    : (score != null && threshold != null ? score >= threshold : score != null);
+  const issues = toStringList(gateRaw.issues);
+
+  if (score == null && threshold == null && issues.length === 0 && typeof passedRaw !== 'boolean') {
+    return null;
+  }
+
+  return {
+    passed,
+    score,
+    threshold,
+    issues,
+  };
+};
+
+const formatVerifyGateDetail = (gate: VerifyGateDetailView): string => {
+  const scorePart = gate.score != null
+    ? (gate.threshold != null ? `${gate.score}/${gate.threshold}` : `${gate.score}`)
+    : (gate.threshold != null ? `--/${gate.threshold}` : '--');
+  if (gate.passed) {
+    return `Verify gate passed. score=${scorePart}`;
+  }
+  const reason = gate.issues.slice(0, 3).join('；') || 'Score below threshold.';
+  return `Verify gate failed. score=${scorePart}. reasons: ${reason}`;
+};
+
+const BASH_TOOL_OUTPUT_MAX_CHARS = 24000;
+
+const normalizeBashOutput = (value: string): string =>
+  value.replace(/\r\n/g, '\n').replace(/\u0000/g, '').trim();
+
+const truncateBashOutput = (value: string): string => {
+  if (value.length <= BASH_TOOL_OUTPUT_MAX_CHARS) return value;
+  const keep = Math.max(4000, BASH_TOOL_OUTPUT_MAX_CHARS - 120);
+  return `${value.slice(0, keep)}\n\n...[truncated ${value.length - keep} chars]`;
+};
+
+const buildBashToolOutput = (result: { success: boolean; data?: unknown; error?: string }): string => {
+  const data = isRecordObject(result.data) ? result.data : null;
+  const stdout = data && typeof data.stdout === 'string' ? data.stdout : '';
+  const stderr = data && typeof data.stderr === 'string' ? data.stderr : '';
+  const merged = [normalizeBashOutput(stdout), normalizeBashOutput(stderr)]
+    .filter(Boolean)
+    .join('\n');
+
+  if (merged) {
+    return truncateBashOutput(merged);
+  }
+
+  const errorText = typeof result.error === 'string' ? result.error.trim() : '';
+  return errorText || '';
+};
+
+const extractReferenceArticleField = (stdout: string, marker: string): string | null => {
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`\\[${escaped}\\]\\s*(.+)`, 'i');
+  const match = stdout.match(pattern);
+  if (!match?.[1]) return null;
+  const value = match[1].trim();
+  return value || null;
+};
+
+const formatToolCallStepDetail = (result: unknown): string | undefined => {
+  if (!isRecordObject(result)) return stringifyActDetail(result);
+
+  const success = typeof result.success === 'boolean' ? result.success : null;
+  const error = typeof result.error === 'string' ? result.error.trim() : '';
+  const data = isRecordObject(result.data) ? result.data : null;
+  const command = data && typeof data.command === 'string' ? data.command.trim() : '';
+  const stdout = data && typeof data.stdout === 'string' ? data.stdout : '';
+  const stderr = data && typeof data.stderr === 'string' ? data.stderr.trim() : '';
+  const exitCode = data && typeof data.exitCode === 'number' && Number.isFinite(data.exitCode)
+    ? Math.floor(data.exitCode)
+    : null;
+
+  if (stdout) {
+    const refPath = extractReferenceArticleField(stdout, 'reference-article-path');
+    const refName = extractReferenceArticleField(stdout, 'reference-article-name');
+    if (refPath || refName) {
+      return refName && refPath
+        ? `Reference article selected: ${refName} (${refPath})`
+        : `Reference article selected: ${refName || refPath}`;
+    }
+  }
+
+  const lineCount = stdout
+    ? stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean).length
+    : 0;
+  const commandFailed = success === false || (exitCode != null && exitCode !== 0);
+
+  if (commandFailed) {
+    const errorText = error || stderr || 'Tool execution failed';
+    return command
+      ? `Tool failed: ${command}. ${errorText}${exitCode != null ? ` (exit=${exitCode})` : ''}`
+      : `Tool failed: ${errorText}${exitCode != null ? ` (exit=${exitCode})` : ''}`;
+  }
+
+  if (command) {
+    const summary = lineCount > 0 ? `output ${lineCount} lines` : 'no output';
+    const exitPart = exitCode != null ? `, exit=${exitCode}` : '';
+    return `Command done: ${command} (${summary}${exitPart})`;
+  }
+
+  if (lineCount > 0) {
+    return `Tool succeeded, output ${lineCount} lines`;
+  }
+
+  return success === true ? 'Tool succeeded' : stringifyActDetail(result);
+};
+
+const isToolCallExecutionFailed = (result: unknown): boolean => {
+  if (!isRecordObject(result)) return false;
+  if (typeof result.success === 'boolean' && result.success === false) return true;
+  const data = isRecordObject(result.data) ? result.data : null;
+  if (data && typeof data.exitCode === 'number' && Number.isFinite(data.exitCode)) {
+    return Math.floor(data.exitCode) !== 0;
+  }
+  return false;
+};
+
+const parseToolArgs = (argsRaw: string): Record<string, unknown> | null => {
+  try {
+    const parsed = JSON.parse(argsRaw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+const MINIMAX_TOOL_BLOCK_REGEX = /(?:<\s*minimax:tool_call[^>]*>|(?<![</])minimax:tool_call)\s*[\s\S]*?<\/\s*minimax:tool_call\s*>/gi;
+const MINIMAX_INVOKE_BLOCK_REGEX = /<\s*invoke\b[\s\S]*?<\/\s*invoke\s*>/gi;
+const MINIMAX_PARAMETER_BLOCK_REGEX = /<\s*parameter\b[\s\S]*?<\/\s*parameter\s*>/gi;
+
+const cleanupMiniMaxMarkup = (text: string): string => {
+  return text
+    .replace(MINIMAX_TOOL_BLOCK_REGEX, '')
+    .replace(MINIMAX_INVOKE_BLOCK_REGEX, '')
+    .replace(MINIMAX_PARAMETER_BLOCK_REGEX, '')
+    .trim();
+};
+
+const AGENT_ENVELOPE_KEYS = new Set([
+  'thinking',
+  'reasoning',
+  'content',
+  'answer',
+  'response',
+  'text',
+  'tool_calls',
+  'toolCalls',
+  'steps',
+  'status',
+]);
+
+const extractDisplayTextFromEnvelope = (value: Record<string, unknown>): string => {
+  const textCandidates: string[] = [];
+  const pushValue = (input: unknown): void => {
+    if (typeof input === 'string' && input.trim()) {
+      textCandidates.push(input.trim());
+      return;
+    }
+    if (Array.isArray(input)) {
+      const merged = input
+        .map(item => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean)
+        .join('\n');
+      if (merged) textCandidates.push(merged);
+    }
+  };
+
+  pushValue(value.content);
+  pushValue(value.answer);
+  pushValue(value.response);
+  pushValue(value.text);
+  pushValue(value.thinking);
+  pushValue(value.reasoning);
+
+  return textCandidates.join('\n').trim();
+};
+
+const optimizeAssistantOutput = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+
+  const cleanedRaw = cleanupMiniMaxMarkup(trimmed);
+  const looksLikeEnvelope = cleanedRaw.startsWith('{') && cleanedRaw.endsWith('}');
+
+  if (!looksLikeEnvelope) {
+    return cleanedRaw || raw;
+  }
+
+  try {
+    const parsed = JSON.parse(cleanedRaw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return cleanedRaw || raw;
+    }
+    const record = parsed as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (keys.length === 0) {
+      return cleanedRaw || raw;
+    }
+
+    const isLikelyAgentEnvelope = keys.every(key => AGENT_ENVELOPE_KEYS.has(key));
+    if (!isLikelyAgentEnvelope) {
+      return cleanedRaw || raw;
+    }
+
+    const extracted = extractDisplayTextFromEnvelope(record);
+    const cleanedExtracted = cleanupMiniMaxMarkup(extracted);
+    return cleanedExtracted || cleanedRaw || raw;
+  } catch {
+    return cleanedRaw || raw;
+  }
+};
+
+const normalizeToolArgsForKey = (argsRaw: string): string => {
+  const parsed = parseToolArgs(argsRaw);
+  if (!parsed) return argsRaw.trim();
+
+  const normalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(normalize);
+    }
+    if (value && typeof value === 'object') {
+      const input = value as Record<string, unknown>;
+      const sorted: Record<string, unknown> = {};
+      for (const key of Object.keys(input).sort()) {
+        sorted[key] = normalize(input[key]);
+      }
+      return sorted;
+    }
+    return value;
+  };
+
+  return JSON.stringify(normalize(parsed));
+};
+
+const buildToolCallCacheKey = (toolName: string, argsRaw: string): string =>
+  `${toolName}:${normalizeToolArgsForKey(argsRaw)}`;
+
+const hashText = (value: string): string => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+const normalizeDecompositionRules = (value: unknown): DecompositionRule[] => {
+  const defaults = cloneBuiltinDecompositionRules();
+  if (!Array.isArray(value)) return defaults;
+
+  const sanitize = (input: unknown): string =>
+    typeof input === 'string' ? input.trim() : '';
+  const defaultsById = new Map(defaults.map(rule => [rule.id, rule] as const));
+  const normalized: DecompositionRule[] = [];
+  const seenIds = new Set<string>();
+
+  for (const rawItem of value) {
+    if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) continue;
+    const item = rawItem as Record<string, unknown>;
+    const rawName = sanitize(item.name);
+    const rawInstruction = sanitize(item.instruction);
+    const rawId = sanitize(item.id);
+    const generatedId = rawName && rawInstruction
+      ? `custom-${hashText(`${rawName}|${rawInstruction}`)}`
+      : '';
+    const ruleId = rawId || generatedId;
+    if (!ruleId || seenIds.has(ruleId)) continue;
+
+    const defaultRule = defaultsById.get(ruleId);
+    const name = rawName || defaultRule?.name || '';
+    const instruction = rawInstruction || defaultRule?.instruction || '';
+    if (!name || !instruction) continue;
+
+    const enabled = typeof item.enabled === 'boolean'
+      ? item.enabled
+      : (defaultRule?.enabled ?? true);
+    const builtin = defaultRule?.builtin
+      ?? (typeof item.builtin === 'boolean' ? item.builtin : false);
+
+    normalized.push({
+      id: ruleId,
+      name,
+      instruction,
+      enabled,
+      builtin,
+    });
+    seenIds.add(ruleId);
+
+    if (defaultRule) {
+      defaultsById.delete(ruleId);
+    }
+  }
+
+  for (const defaultRule of defaults) {
+    if (!seenIds.has(defaultRule.id)) {
+      normalized.push(defaultRule);
+    }
+  }
+
+  return normalized;
+};
+
+const getEnabledDecompositionRules = (rules: DecompositionRule[]): DecompositionRule[] =>
+  rules.filter(rule => rule.enabled && rule.name.trim() && rule.instruction.trim());
+
+const areDecompositionRulesEqual = (
+  left: DecompositionRule[],
+  right: DecompositionRule[],
+): boolean => {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    const l = left[i];
+    const r = right[i];
+    if (
+      l.id !== r.id
+      || l.name !== r.name
+      || l.instruction !== r.instruction
+      || l.enabled !== r.enabled
+      || l.builtin !== r.builtin
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const normalizeWritingRuleDocuments = (value: unknown): WritingRuleDocument[] => {
+  if (!Array.isArray(value)) return [];
+
+  const sanitize = (input: unknown): string =>
+    typeof input === 'string' ? input.trim() : '';
+  const normalized: WritingRuleDocument[] = [];
+  const seenPathKeys = new Set<string>();
+
+  for (const rawItem of value) {
+    if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) continue;
+    const item = rawItem as Record<string, unknown>;
+    const rawPath = sanitize(item.path);
+    if (!rawPath) continue;
+
+    const pathKey = normalizeComparableRuleDocumentPath(rawPath);
+    if (!pathKey || seenPathKeys.has(pathKey)) continue;
+
+    const rawName = sanitize(item.name);
+    const rawId = sanitize(item.id);
+    normalized.push({
+      id: rawId || `writing-doc-${hashText(pathKey)}`,
+      name: rawName || rawPath.split(/[/\\]/).pop() || rawPath,
+      path: rawPath,
+      enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
+    });
+    seenPathKeys.add(pathKey);
+  }
+
+  return normalized;
+};
+
+const areWritingRuleDocumentsEqual = (
+  left: WritingRuleDocument[],
+  right: WritingRuleDocument[],
+): boolean => {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    const l = left[i];
+    const r = right[i];
+    if (
+      l.id !== r.id
+      || l.name !== r.name
+      || l.path !== r.path
+      || l.enabled !== r.enabled
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const normalizeTimelineText = (value: string): string =>
+  value.replace(/\s+/g, ' ').trim();
+
+const TODO_ITEM_MAX_COUNT = 64;
+const SIMPLE_TODO_CONTENT_MAX_CHARS = 42;
+type SimpleAgentStepKind = 'requirement' | 'reference' | 'decomposition' | 'outline' | 'writing' | 'tool' | 'verify' | 'other';
+const REQUIREMENT_BRIEF_STEP_REGEX = /(decompose user requirements|structured writing brief|需求拆解|用户需求|写作需求|writing brief)/i;
+const REFERENCE_ARTICLE_STEP_REGEX = /(reference article|参考文章|读取参考|抽取参考|随机参考|随机抽取|随机提取|风格参考|style reference|\.md\/\.txt|md\/txt)/i;
+const OUTLINE_STEP_REGEX = /(article framework|meta framework|overall framework|structure|outline|heading|框架|结构|大纲|小标题)/i;
+const WRITING_STEP_REGEX = /(write paragraph|paragraph by paragraph|编写|写作|生成正文|rewrite|revise|draft|optimi)/i;
+const VERIFY_STEP_REGEX = /(verify|评分|score|逐句|校验|gate)/i;
+
+const trimTodoContent = (value: string, maxChars = SIMPLE_TODO_CONTENT_MAX_CHARS): string => {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars)}...`;
+};
+
+const inferSimpleAgentStepKind = (stepType: string, description: string): SimpleAgentStepKind => {
+  const normalizedDesc = description.trim();
+  const normalizedType = stepType.trim();
+  if (REQUIREMENT_BRIEF_STEP_REGEX.test(normalizedDesc)) return 'requirement';
+  if (REFERENCE_ARTICLE_STEP_REGEX.test(normalizedDesc)) return 'reference';
+  if (isDecompositionStep(normalizedDesc)) return 'decomposition';
+  if (OUTLINE_STEP_REGEX.test(normalizedDesc)) return 'outline';
+  if (normalizedType === 'write' || WRITING_STEP_REGEX.test(normalizedDesc)) return 'writing';
+  if (normalizedType === 'tool_call') return 'tool';
+  if (normalizedType === 'verify' || VERIFY_STEP_REGEX.test(normalizedDesc)) return 'verify';
+  return 'other';
+};
+
+const getSimpleAgentStepLabel = (kind: SimpleAgentStepKind): string => {
+  switch (kind) {
+    case 'requirement':
+      return '需求清单';
+    case 'reference':
+      return '读取参考文章';
+    case 'decomposition':
+      return '拆解文章素材';
+    case 'outline':
+      return '输出结构与大纲';
+    case 'writing':
+      return '开始编写（流式写入）';
+    case 'tool':
+      return '工具调用';
+    case 'verify':
+      return '校验与优化';
+    default:
+      return '执行步骤';
+  }
+};
+
+const shouldShowSimpleStepLog = (kind: SimpleAgentStepKind, phase: 'start' | 'complete' | 'failed'): boolean => {
+  if (phase === 'failed') return true;
+  return kind === 'requirement'
+    || kind === 'reference'
+    || kind === 'decomposition'
+    || kind === 'outline'
+    || kind === 'writing'
+    || kind === 'tool';
+};
+
+const simplifyPlanTodoContent = (content: string): string => {
+  const kind = inferSimpleAgentStepKind('', content);
+  switch (kind) {
+    case 'requirement':
+      return '根据需求，列举执行清单';
+    case 'reference':
+      return '读取文件（参考文章素材）';
+    case 'decomposition':
+      return '拆解文章素材';
+    case 'outline':
+      return '输出整体结构、文章大纲';
+    case 'writing':
+      return '开始编写（流式写入临时文档）';
+    case 'tool':
+      return '工具调用';
+    case 'verify':
+      return '校验与优化';
+    default:
+      return trimTodoContent(content);
+  }
+};
+
+const simplifyTodoDisplayContent = (content: string, source: TodoItemView['source']): string => {
+  if (source === 'plan') {
+    return simplifyPlanTodoContent(content);
+  }
+  return trimTodoContent(content);
+};
+
+const TODO_STATUS_WEIGHT: Record<TodoItemStatus, number> = {
+  pending: 0,
+  in_progress: 1,
+  completed: 2,
+};
+
+const mergeTodoStatus = (current: TodoItemStatus, incoming: TodoItemStatus): TodoItemStatus =>
+  TODO_STATUS_WEIGHT[incoming] >= TODO_STATUS_WEIGHT[current] ? incoming : current;
+
+const normalizeTodoStatus = (value: unknown): TodoItemStatus => {
+  if (value === 'completed') return 'completed';
+  if (value === 'in_progress') return 'in_progress';
+  return 'pending';
+};
+
+const normalizeTodoItems = (value: unknown): TodoItemView[] => {
+  if (!Array.isArray(value)) return [];
+  const normalized: TodoItemView[] = [];
+  const indexByKey = new Map<string, number>();
+  for (const rawItem of value) {
+    if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) continue;
+    const item = rawItem as Record<string, unknown>;
+    const id = typeof item.id === 'string' ? item.id.trim() : '';
+    const source: TodoItemView['source'] = item.source === 'plan' ? 'plan' : 'agent';
+    const rawContent = typeof item.content === 'string' ? item.content.trim() : '';
+    const content = simplifyTodoDisplayContent(rawContent, source);
+    if (!id || !content) continue;
+    const status = normalizeTodoStatus(item.status);
+    const stepId = typeof item.stepId === 'string' ? item.stepId : undefined;
+    const dedupeKey = `${source}:${content}`;
+    const existingIndex = indexByKey.get(dedupeKey);
+    if (existingIndex !== undefined) {
+      const existing = normalized[existingIndex];
+      normalized[existingIndex] = {
+        ...existing,
+        status: mergeTodoStatus(existing.status, status),
+        stepId: existing.stepId || stepId,
+      };
+      continue;
+    }
+    normalized.push({
+      id,
+      content,
+      status,
+      source,
+      stepId,
+    });
+    indexByKey.set(dedupeKey, normalized.length - 1);
+    if (normalized.length >= TODO_ITEM_MAX_COUNT) break;
+  }
+  return normalized;
+};
+
+const READ_FILE_BATCH_LOG_THRESHOLD = 1;
+const READ_FILE_CHUNK_DEFAULT_LINES = 160;
+const READ_FILE_CHUNK_MIN_LINES = 40;
+const READ_FILE_CHUNK_MAX_LINES = 320;
+const READ_FILE_FULL_INLINE_LINE_LIMIT = 220;
+const READ_FILE_FULL_INLINE_CHAR_LIMIT = 20000;
+const TOOL_RESULT_MAX_CHARS = 26000;
+const TOOL_RESULT_LIST_MAX_LINES = 420;
+const TOOL_CONTEXT_BUDGET_CHARS = 180000;
+const TOOL_CONTEXT_KEEP_RECENT_MESSAGES = 16;
+const COMPACT_KEEP_RECENT_MESSAGES = 8;
+const COMPACT_SUMMARY_ITEM_LIMIT = 8;
+const WRITE_STREAM_RENDER_INTERVAL_MS = 20;
+const WRITE_STREAM_RENDER_CHUNK_SIZE = 12;
+const WRITE_STREAM_MIN_VISIBLE_CHARS = 20;
+const WRITE_CONTENT_MARKER_REGEX = /(?:^|\n)\s*(?:[#>*-]+\s*)?(?:\*\*)?(?:生成内容如下|最终内容|正文如下|输出如下)(?:\*\*)?\s*(?:[：:]|\n)\s*/i;
+const WRITE_PROCEDURE_LINE_REGEX = /^\s*(?:[-*]\s*)?(?:工具|参数|tool|params?)\s*[：:]/i;
+const WRITE_PROCEDURE_TOKEN_REGEX = /\b(?:read_file|write_file|edit_file|multi_edit_file|list_files|search_files|run_shell|bash)\b/i;
+const WRITE_PROCEDURE_HINT_REGEX = /(我需要先读取|我将先读取|先读取当前文件|先查询工作区|为了.*上下文.*先读取)/i;
+
+const isProcedureLikeWriteOutput = (value: string): boolean => {
+  const lines = value
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return true;
+
+  let matched = 0;
+  for (const line of lines) {
+    if (
+      WRITE_PROCEDURE_LINE_REGEX.test(line)
+      || WRITE_PROCEDURE_TOKEN_REGEX.test(line)
+      || WRITE_PROCEDURE_HINT_REGEX.test(line)
+    ) {
+      matched += 1;
+    }
+  }
+
+  if (lines.length <= 4) {
+    return matched >= 1;
+  }
+
+  return matched >= Math.max(2, Math.ceil(lines.length / 3));
+};
+
+const normalizeWriteOutputForEditor = (raw: string, final: boolean): string => {
+  const source = raw || '';
+  if (!source) return '';
+
+  const markerMatch = source.match(WRITE_CONTENT_MARKER_REGEX);
+  let content = source;
+
+  if (markerMatch && typeof markerMatch.index === 'number') {
+    content = source.slice(markerMatch.index + markerMatch[0].length);
+  } else {
+    const fallback = source
+      .replace(/^\s*```[a-zA-Z0-9_-]*\s*\n/, '')
+      .replace(/\n?```\s*$/, '')
+      .trimStart();
+    if (!fallback) {
+      return '';
+    }
+    if (final) {
+      if (isProcedureLikeWriteOutput(fallback)) {
+        return '';
+      }
+      return fallback;
+    }
+    const fallbackDraft = fallback.trimEnd();
+    if (fallbackDraft.length < WRITE_STREAM_MIN_VISIBLE_CHARS) {
+      return '';
+    }
+    if (isProcedureLikeWriteOutput(fallbackDraft)) {
+      return '';
+    }
+    return fallbackDraft;
+  }
+
+  content = content.replace(/^\s*```[a-zA-Z0-9_-]*\s*\n/, '');
+  if (final) {
+    content = content.replace(/\n?```\s*$/, '');
+  }
+  content = content.replace(/^\s+/, '');
+  if (!content) return '';
+  if (isProcedureLikeWriteOutput(content)) return '';
+  return content;
+};
+
+const SLASH_COMMAND_ITEMS: SlashCommandItem[] = [
+  { command: '/compact', description: '压缩历史上下文，保留最近会话', insertText: '/compact' },
+  { command: '/help', description: '查看可用命令说明', insertText: '/help' },
+  { command: '/clear', description: '清空当前对话', insertText: '/clear' },
+];
+
+interface ReadFileChunkResult {
+  chunkText: string;
+  chunkLineCount: number;
+  chunkIndex: number;
+  chunkTotal: number;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  safeCursor: number;
+  safeChunkLines: number;
+  hasMore: boolean;
+  nextCursor: number;
+}
+
+type FormWhereOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'starts_with' | 'ends_with';
+
+const shortenPathForTimeline = (path: string, maxLength = 72): string => {
+  if (path.length <= maxLength) return path;
+  const sep = path.includes('\\') ? '\\' : '/';
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  const fileName = parts[parts.length - 1] ?? '';
+  const parent = parts.length > 1 ? parts[parts.length - 2] : '';
+  const tail = parent ? `${parent}${sep}${fileName}` : fileName;
+  if (tail && tail.length + 4 <= maxLength) {
+    return `...${sep}${tail}`;
+  }
+  return `...${path.slice(-(maxLength - 3))}`;
+};
+
+const parseReadLineCountFromSummary = (summary: string): number | undefined => {
+  const normalized = summary.replace(/\s+\(cached\)$/i, '').trim();
+  if (normalized === '(empty file)') return 0;
+  const match = normalized.match(/(\d+)\s+lines(?:\s+of\s+output)?/i);
+  if (!match) return undefined;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const parseLineChunkArgs = (args: Record<string, unknown> | null): { cursor: number; chunkLines: number } => {
+  const cursorValue = args?.cursor;
+  const chunkLinesValue = args?.chunkLines;
+  const rawCursor = typeof cursorValue === 'number' && Number.isFinite(cursorValue)
+    ? Math.floor(cursorValue)
+    : 0;
+  const rawChunkLines = typeof chunkLinesValue === 'number' && Number.isFinite(chunkLinesValue)
+    ? Math.floor(chunkLinesValue)
+    : READ_FILE_CHUNK_DEFAULT_LINES;
+  return {
+    cursor: Math.max(0, rawCursor),
+    chunkLines: Math.min(
+      READ_FILE_CHUNK_MAX_LINES,
+      Math.max(READ_FILE_CHUNK_MIN_LINES, rawChunkLines)
+    ),
+  };
+};
+
+const buildReadFileChunkResult = (
+  content: string,
+  cursor: number,
+  chunkLines: number
+): ReadFileChunkResult => {
+  const normalized = (content ?? '').replace(/\r\n/g, '\n');
+  const lines = normalized.length > 0 ? normalized.split('\n') : [];
+  const totalLines = lines.length;
+  const safeChunkLines = Math.min(
+    READ_FILE_CHUNK_MAX_LINES,
+    Math.max(READ_FILE_CHUNK_MIN_LINES, Math.floor(chunkLines || READ_FILE_CHUNK_DEFAULT_LINES))
+  );
+  const safeCursor = Math.max(0, Math.min(Math.floor(cursor || 0), totalLines));
+  const endExclusive = Math.min(totalLines, safeCursor + safeChunkLines);
+  const chunkLinesList = lines.slice(safeCursor, endExclusive);
+  const chunkText = chunkLinesList.join('\n');
+  const hasMore = endExclusive < totalLines;
+  const nextCursor = hasMore ? endExclusive : totalLines;
+  const chunkLineCount = chunkLinesList.length;
+  const chunkIndex = chunkLineCount === 0 ? 0 : Math.floor(safeCursor / safeChunkLines) + 1;
+  const chunkTotal = totalLines === 0 ? 0 : Math.max(1, Math.ceil(totalLines / safeChunkLines));
+  const startLine = chunkLineCount === 0 ? 0 : safeCursor + 1;
+  const endLine = chunkLineCount === 0 ? 0 : safeCursor + chunkLineCount;
+
+  return {
+    chunkText,
+    chunkLineCount,
+    chunkIndex,
+    chunkTotal,
+    startLine,
+    endLine,
+    totalLines,
+    safeCursor,
+    safeChunkLines,
+    hasMore,
+    nextCursor,
+  };
+};
+
+const trimTextByChars = (value: string, maxChars: number): string => {
+  if (value.length <= maxChars) return value;
+  const keep = Math.max(1200, maxChars - 80);
+  return `${value.slice(0, keep)}\n\n[truncated ${value.length - keep} chars]`;
+};
+
+const trimListDirectoryForModel = (content: string): string => {
+  const normalized = content.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  if (lines.length <= TOOL_RESULT_LIST_MAX_LINES) {
+    return trimTextByChars(normalized, TOOL_RESULT_MAX_CHARS);
+  }
+  const headCount = Math.min(260, lines.length);
+  const tailCount = Math.min(120, Math.max(0, lines.length - headCount));
+  const head = lines.slice(0, headCount);
+  const tail = tailCount > 0 ? lines.slice(-tailCount) : [];
+  const omitted = Math.max(0, lines.length - head.length - tail.length);
+  const merged = [
+    ...head,
+    `[list_directory truncated] omitted ${omitted} items to keep model context stable`,
+    ...tail,
+  ].join('\n');
+  return trimTextByChars(merged, TOOL_RESULT_MAX_CHARS);
+};
+
+const trimReadToolResultForModel = (content: string): string => {
+  if (content.length <= TOOL_RESULT_MAX_CHARS) return content;
+  const normalized = content.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const firstBlankIdx = lines.findIndex(line => line.trim() === '');
+  const headerEnd = firstBlankIdx >= 0 ? Math.min(firstBlankIdx + 1, 12) : Math.min(10, lines.length);
+  const header = lines.slice(0, headerEnd).join('\n');
+  const body = lines.slice(headerEnd).join('\n');
+  const remaining = Math.max(1400, TOOL_RESULT_MAX_CHARS - header.length - 120);
+  const slicedBody = body.slice(0, remaining);
+  return `${header}\n${slicedBody}\n\n[truncated ${Math.max(0, body.length - slicedBody.length)} chars for context budget]`;
+};
+
+const getToolResultForModel = (toolName: string, toolResult: string): string => {
+  if (!toolResult) return toolResult;
+  if (toolName === 'list_directory') {
+    return trimListDirectoryForModel(toolResult);
+  }
+  if (toolName === 'read_file' || toolName === 'read_file_chunk') {
+    return trimReadToolResultForModel(toolResult);
+  }
+  return trimTextByChars(toolResult, TOOL_RESULT_MAX_CHARS);
+};
+
+const compactToolMessageContent = (content: string): string => {
+  if (content.includes('[tool output compacted]')) {
+    return content;
+  }
+  const normalized = content.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const head = lines.slice(0, Math.min(10, lines.length)).join('\n');
+  return `${head}\n\n[tool output compacted] Older tool payload was reduced to avoid context overflow.`;
+};
+
+const enforceToolMessageBudget = (messages: ChatMessage[]): { compacted: number; totalChars: number } => {
+  let totalChars = 0;
+  const toolIndexes: number[] = [];
+  for (let i = 0; i < messages.length; i += 1) {
+    const msg = messages[i];
+    if (msg.role !== 'tool') continue;
+    toolIndexes.push(i);
+    totalChars += msg.content.length;
+  }
+  if (totalChars <= TOOL_CONTEXT_BUDGET_CHARS) {
+    return { compacted: 0, totalChars };
+  }
+
+  let compacted = 0;
+  const unprotectedCount = Math.max(0, toolIndexes.length - TOOL_CONTEXT_KEEP_RECENT_MESSAGES);
+  for (let k = 0; k < unprotectedCount && totalChars > TOOL_CONTEXT_BUDGET_CHARS; k += 1) {
+    const idx = toolIndexes[k];
+    const original = messages[idx]?.content ?? '';
+    if (!original) continue;
+    const compactedContent = compactToolMessageContent(original);
+    if (compactedContent.length >= original.length) continue;
+    messages[idx] = { ...messages[idx], content: compactedContent };
+    totalChars -= (original.length - compactedContent.length);
+    compacted += 1;
+  }
+
+  if (totalChars > TOOL_CONTEXT_BUDGET_CHARS) {
+    for (let k = 0; k < toolIndexes.length && totalChars > TOOL_CONTEXT_BUDGET_CHARS; k += 1) {
+      const idx = toolIndexes[k];
+      const original = messages[idx]?.content ?? '';
+      if (!original || original.startsWith('[tool output omitted]')) continue;
+      const omitted = '[tool output omitted] This payload was removed due to context budget.';
+      messages[idx] = { ...messages[idx], content: omitted };
+      totalChars -= Math.max(0, original.length - omitted.length);
+      compacted += 1;
+    }
+  }
+
+  return { compacted, totalChars };
+};
+
+const buildCompactConversationSummary = (history: Message[]): string => {
+  if (history.length === 0) {
+    return '无可压缩的历史消息。';
+  }
+  const normalizedHistory = history
+    .map(item => ({ role: item.role, text: normalizeTimelineText(item.content ?? '') }))
+    .filter(item => item.text.length > 0);
+  if (normalizedHistory.length === 0) {
+    return '无可压缩的历史消息。';
+  }
+
+  const summaryItems: string[] = [];
+  for (const item of normalizedHistory.slice(-COMPACT_SUMMARY_ITEM_LIMIT)) {
+    const prefix = item.role === 'user' ? 'û' : '';
+    const brief = item.text.length > 96 ? `${item.text.slice(0, 96)}...` : item.text;
+    summaryItems.push(`- ${prefix}: ${brief}`);
+  }
+
+  return [
+    `已折叠 ${normalizedHistory.length} 条历史消息，保留最近 ${COMPACT_KEEP_RECENT_MESSAGES} 条原始消息。`,
+    '历史摘要：',
+    ...summaryItems,
+  ].join('\n');
+};
+
+const buildToolActTitle = (toolName: string, argsRaw: string): { title: string; detail?: string } => {
+  const args = parseToolArgs(argsRaw);
+  const path = typeof args?.path === 'string' ? args.path : undefined;
+  const query = typeof args?.query === 'string' ? args.query : undefined;
+  const pattern = typeof args?.pattern === 'string' ? args.pattern : undefined;
+  const formId = typeof args?.formId === 'string' ? args.formId : undefined;
+  const formName = typeof args?.formName === 'string' ? args.formName : undefined;
+
+  switch (toolName) {
+    case 'read_file':
+      return { title: path ? `Read "${path}"` : 'Read file' };
+    case 'read_file_chunk':
+      return { title: path ? `Read chunk "${path}"` : 'Read file chunk' };
+    case 'list_directory':
+      return { title: path ? `List "${path}"` : 'List directory' };
+    case 'edit_file':
+      return { title: path ? `Edit "${path}"` : 'Edit file' };
+    case 'write_file':
+      return { title: path ? `Write "${path}"` : 'Write file' };
+    case 'search_files':
+      return {
+        title: path ? `Search in "${path}"` : 'Search files',
+        detail: query ?? pattern,
+      };
+    case 'query_knowledge':
+      return {
+        title: 'Query knowledge',
+        detail: query ?? undefined,
+      };
+    case 'query_form':
+      return {
+        title: formName
+          ? `Query form "${formName}"`
+          : 'Query form',
+        detail: query ?? undefined,
+      };
+    default:
+      return {
+        title: `Run ${toolName}`,
+        detail: stringifyActDetail(args ?? argsRaw),
+      };
+  }
+};
+
+const buildToolCallDetail = (toolName: string, params: Record<string, unknown>): string => {
+  if (toolName === 'bash' && typeof params.command === 'string') {
+    return params.command;
+  }
+  if (toolName === 'write_file') {
+    const path = typeof params.path === 'string' ? params.path : '(unknown path)';
+    const content = typeof params.content === 'string' ? params.content : '';
+    return `path: ${path}\ncontent_length: ${content.length}`;
+  }
+  if (toolName === 'edit_file') {
+    const path = typeof params.path === 'string' ? params.path : '(unknown path)';
+    const oldString = typeof params.old_string === 'string' ? params.old_string : '';
+    const newString = typeof params.new_string === 'string' ? params.new_string : '';
+    return `path: ${path}\nold_length: ${oldString.length}\nnew_length: ${newString.length}`;
+  }
+  if (toolName === 'multi_edit_file') {
+    const path = typeof params.path === 'string' ? params.path : '(unknown path)';
+    const edits = Array.isArray(params.edits) ? params.edits.length : 0;
+    return `path: ${path}\nedits: ${edits}`;
+  }
+  return stringifyActDetail(params) || '';
+};
+
+const EDIT_TASK_HINT_REGEX = /(修改|改写|重写|润色|优化|修复|编辑|edit|rewrite|refactor|fix|patch)/i;
+const QUERY_TASK_HINT_REGEX = /(\?|||ʲô|Ϊʲô|Ϊ|||Щ|ѯ|||ͳ||г|ܽ|compare|difference|explain|show|list|find|query|search|count)/i;
+const WRITE_TASK_HINT_REGEX = /(鍐檤鎾板啓|鐢熸垚|鍒涘缓|璧疯崏|缂栧啓|娑﹁壊|鏀瑰啓|淇敼|瀹屽杽|浼樺寲|寮€鍙憒瀹炵幇|write|draft|compose|create|implement|build)/i;
+const NON_TASK_SMALLTALK_REGEX = /^(?:\u4f60\u597d|\u60a8\u597d|\u55e8|\u54c8\u55bd|\u563f|\u5728\u5417|\u5728\u561b|hello|hi|hey|thanks|thank you|thx|\u8c22\u8c22|\u591a\u8c22|\u597d\u7684|ok|okay|\u6536\u5230|\u660e\u767d\u4e86|\u55ef|\u54e6|\u5662)\s*[!！。?？~～]*$/i;
+const NON_TASK_META_QUERY_REGEX = /(?:\u4f60\u662f\u4ec0\u4e48\u6a21\u578b|\u4f60\u662f\u5565\u6a21\u578b|\u4f60\u7528\u7684\u4ec0\u4e48\u6a21\u578b|\u5f53\u524d\u662f\u4ec0\u4e48\u6a21\u578b|\u73b0\u5728\u662f\u4ec0\u4e48\u6a21\u578b|\u4f60\u662f\u8c01|\u4f60\u80fd\u505a\u4ec0\u4e48|\u4f60\u4f1a\u4ec0\u4e48|what\s+model\s+are\s+you|which\s+model\s+are\s+you|who\s+are\s+you|what\s+can\s+you\s+do)/i;
+const TASK_EXECUTION_HINT_REGEX = /(?:\u5199|\u6539|\u91cd\u5199|\u6da6\u8272|\u751f\u6210|\u521b\u5efa|\u65b0\u5efa|\u6574\u7406|\u603b\u7ed3|\u5f52\u7eb3|\u5206\u6790|\u63d0\u53d6|\u62c6\u89e3|\u6267\u884c|\u8fd0\u884c|\u6253\u5f00|\u8bfb\u53d6|\u7f16\u8f91|\u4fee\u6539|\u4fdd\u5b58|\u5bfc\u5165|\u6784\u5efa|\u7f16\u8bd1|\u6d4b\u8bd5|\u4fee\u590d|\u6392\u67e5|\u5b9e\u73b0|\u5f00\u53d1|\u8c03\u7528|\u67e5\u8be2|\u68c0\u7d22|\u7ffb\u8bd1|write|rewrite|generate|create|draft|compose|edit|modify|save|run|execute|build|compile|test|fix|implement|refactor|analy[sz]e|summari[sz]e|extract|search|query|translate)/i;
+const DECOMPOSITION_STEP_REGEX = /(拆解|decompos|framework|小标题|段落|句式|用词|风格|过渡|场景|案例)/i;
+const SHOW_DECOMPOSITION_STREAM_BLOCK = false;
+const SHOW_DECOMPOSITION_STEP_LOG = false;
+
+const isLikelyNonTaskAgentInput = (input: string): boolean => {
+  const normalized = input.trim();
+  if (!normalized) return false;
+  if (normalized.startsWith('/')) return false;
+  if (TASK_EXECUTION_HINT_REGEX.test(normalized)) return false;
+  if (NON_TASK_SMALLTALK_REGEX.test(normalized)) return true;
+  if (normalized.length <= 64 && NON_TASK_META_QUERY_REGEX.test(normalized)) return true;
+  return false;
+};
+
+const isDecompositionStep = (description: string): boolean =>
+  DECOMPOSITION_STEP_REGEX.test(description.trim());
+
+const stripDecompositionSection = (fullText: string, decompositionText: string): string => {
+  const normalizedFull = fullText.trim();
+  const normalizedDecomposition = decompositionText.trim();
+  if (!normalizedFull || !normalizedDecomposition) return normalizedFull;
+
+  if (normalizedFull.includes(normalizedDecomposition)) {
+    return normalizedFull.replace(normalizedDecomposition, '').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  const firstAnchor = normalizedDecomposition.split(/\r?\n/).find(line => line.trim().length > 0)?.trim() ?? '';
+  if (!firstAnchor) return normalizedFull;
+
+  const anchorIndex = normalizedFull.indexOf(firstAnchor);
+  if (anchorIndex < 0 || anchorIndex > Math.floor(normalizedFull.length * 0.7)) {
+    return normalizedFull;
+  }
+
+  const approxEnd = Math.min(normalizedFull.length, anchorIndex + normalizedDecomposition.length);
+  const stripped = `${normalizedFull.slice(0, anchorIndex)}${normalizedFull.slice(approxEnd)}`;
+  return stripped.replace(/\n{3,}/g, '\n\n').trim();
+};
+
+const inferAgentTaskType = (
+  taskDescription: string,
+  hasContextHint: boolean,
+  hasCurrentFile: boolean
+): AgentTaskType => {
+  const normalized = taskDescription.trim();
+  if (!normalized) return 'write';
+  if (EDIT_TASK_HINT_REGEX.test(normalized)) return 'edit';
+  if (WRITE_TASK_HINT_REGEX.test(normalized)) return 'write';
+  if (hasCurrentFile && !QUERY_TASK_HINT_REGEX.test(normalized)) return 'edit';
+  if (QUERY_TASK_HINT_REGEX.test(normalized)) return 'query';
+  if (hasContextHint && !WRITE_TASK_HINT_REGEX.test(normalized)) return 'query';
+  return 'write';
+};
+
+const buildCompactAgentResultText = (
+  taskType: AgentTaskType,
+  currentFilePath: string,
+  changedFiles: string[],
+  targetPath?: string
+): string => {
+  const resolvedTargetPath = (targetPath || currentFilePath).trim();
+  const lines: string[] = ['已完成 Agent 执行。'];
+
+  if (taskType === 'write' || taskType === 'edit') {
+    if (resolvedTargetPath) {
+      lines.push(`目标文件: ${resolvedTargetPath}`);
+      if (resolvedTargetPath.toLowerCase().startsWith(AGENT_DRAFT_PATH_PREFIX)) {
+        lines.push('Saved to temporary draft tab.');
+      }
+    }
+
+    if (changedFiles.length > 0) {
+      lines.push(`文件改动: ${changedFiles.length} 个`);
+      for (const filePath of changedFiles.slice(0, 5)) {
+        lines.push(`- ${filePath}`);
+      }
+      if (changedFiles.length > 5) {
+        lines.push(`- ... 另有 ${changedFiles.length - 5} 个文件`);
+      }
+    } else {
+      lines.push('未检测到文件改动。');
+    }
+  }
+
+  if (taskType === 'query' && changedFiles.length === 0) {
+    lines.push('此任务为查询模式，未执行文件写入。');
+  }
+
+  return lines.join('\n');
+};
+
+interface KnowledgeFileCandidate {
+  name: string;
+  path?: string;
+  content?: string;
+}
+
+interface AgentRAGResultItem {
+  content?: string;
+  childContent?: string;
+  filePath?: string;
+  score?: number;
+}
+
+const normalizeFilePath = (value: string): string =>
+  value.replace(/\\/g, '/').toLowerCase();
+
+const getPathBaseName = (value: string): string => {
+  const segments = value.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] ?? value;
+};
+
+const AGENT_DRAFT_PATH_PREFIX = 'agent-draft:/';
+const AGENT_DRAFT_TITLE_PREFIX = 'untitled-';
+const AGENT_DRAFT_TITLE_REGEX = /^untitled-(\d+)$/i;
+let agentDraftSequenceSeed = 0;
+
+const pickNextAgentDraftTitle = (): string => {
+  let maxIndex = agentDraftSequenceSeed;
+  const tabsState = (window as any).__editorTabsState as {
+    tabs?: Array<{ title?: string; path?: string }>;
+  } | undefined;
+  const tabs = Array.isArray(tabsState?.tabs) ? tabsState.tabs : [];
+
+  for (const tab of tabs) {
+    const tabPath = typeof tab.path === 'string' ? tab.path.trim() : '';
+    const tabTitle = typeof tab.title === 'string' ? tab.title.trim() : '';
+    if (!tabPath.toLowerCase().startsWith(AGENT_DRAFT_PATH_PREFIX)) {
+      continue;
+    }
+    const titleMatch = tabTitle.match(AGENT_DRAFT_TITLE_REGEX);
+    if (titleMatch) {
+      const parsed = Number(titleMatch[1]);
+      if (Number.isFinite(parsed) && parsed > maxIndex) {
+        maxIndex = parsed;
+      }
+      continue;
+    }
+    const fileName = getPathBaseName(tabPath).replace(/\.md$/i, '');
+    const fileMatch = fileName.match(AGENT_DRAFT_TITLE_REGEX);
+    if (!fileMatch) continue;
+    const parsed = Number(fileMatch[1]);
+    if (Number.isFinite(parsed) && parsed > maxIndex) {
+      maxIndex = parsed;
+    }
+  }
+
+  agentDraftSequenceSeed = maxIndex + 1;
+  return `${AGENT_DRAFT_TITLE_PREFIX}${agentDraftSequenceSeed}`;
+};
+
+const buildAgentDraftTarget = (): { path: string; name: string } => {
+  const draftTitle = pickNextAgentDraftTitle();
+  return {
+    path: `${AGENT_DRAFT_PATH_PREFIX}${draftTitle}.md`,
+    name: draftTitle,
+  };
+};
+
+const VIRTUAL_TAB_PATH_PREFIXES = [
+  'settings:/',
+  'media:/',
+  'extension-manager:/',
+  'lancedb-view:/',
+  'table-designer:/',
+  'mermaid-designer:/',
+  'skills-market:/',
+  'preview:/',
+  'theme-override://',
+  AGENT_DRAFT_PATH_PREFIX,
+];
+
+const isVirtualTabPath = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+  return VIRTUAL_TAB_PATH_PREFIXES.some(prefix => normalized.startsWith(prefix));
+};
+
+const isLikelyFileSystemPath = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (isVirtualTabPath(trimmed)) return false;
+  if (/^[a-zA-Z]:[\\/]/.test(trimmed)) return true;
+  if (trimmed.startsWith('\\\\') || trimmed.startsWith('/')) return true;
+  if (trimmed.includes('/') || trimmed.includes('\\')) return true;
+  return /\.[a-zA-Z0-9]+$/.test(trimmed);
+};
+
+const normalizeComparablePath = (value: string): string =>
+  value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+const isPathInsideBase = (targetPath: string, basePath: string): boolean => {
+  const target = normalizeComparablePath(targetPath);
+  const base = normalizeComparablePath(basePath);
+  if (!target || !base) return false;
+  if (target === base) return true;
+  return target.startsWith(`${base}/`);
+};
+
+const deriveDirectoryPath = (filePath: string): string => {
+  const normalized = filePath.replace(/\\/g, '/').trim();
+  if (!normalized) return '';
+  if (/^[a-zA-Z]:\/[^/]+$/.test(normalized)) {
+    return normalized.slice(0, 3);
+  }
+  const lastSlash = normalized.lastIndexOf('/');
+  if (lastSlash <= 0) return normalized;
+  return normalized.slice(0, lastSlash);
+};
+
+const trimSnippet = (value: string, maxLength = 520): string => {
+  const normalized = value.trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength)}...`;
+};
+
+const buildSearchTerms = (query: string): string[] => {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const asciiTerms = trimmed.match(/[a-zA-Z0-9_#.-]+/g) ?? [];
+  const cjkTerms = trimmed.match(/[\u4e00-\u9fff]{2,}/g) ?? [];
+  const splitTerms = trimmed
+    .split(/[\s,.;:!?|/\\()[\]{}"'`]+/)
+    .map(term => term.trim())
+    .filter(Boolean);
+
+  const merged = [trimmed, ...asciiTerms, ...cjkTerms, ...splitTerms]
+    .filter(term => term.length >= 2 || /[a-zA-Z0-9]/.test(term));
+
+  const dedup = new Map<string, string>();
+  for (const term of merged) {
+    const key = term.toLowerCase();
+    if (!dedup.has(key)) {
+      dedup.set(key, term);
+    }
+  }
+  return Array.from(dedup.values()).slice(0, 16);
+};
+
+const scoreTextByTerms = (content: string, terms: string[]): number => {
+  if (!content || terms.length === 0) return 0;
+  const lower = content.toLowerCase();
+  let score = 0;
+
+  for (const term of terms) {
+    const needle = term.toLowerCase();
+    if (!needle) continue;
+    let idx = lower.indexOf(needle);
+    let hits = 0;
+    while (idx >= 0 && hits < 8) {
+      hits += 1;
+      idx = lower.indexOf(needle, idx + needle.length);
+    }
+    if (hits > 0) {
+      score += 3 + hits;
+    }
+  }
+
+  return score;
+};
+
+const extractSnippetByTerms = (content: string, terms: string[], maxLength = 560): string => {
+  const normalized = content.trim();
+  if (!normalized) return '';
+  if (normalized.length <= maxLength) return normalized;
+
+  const lower = normalized.toLowerCase();
+  let anchor = -1;
+  for (const term of terms) {
+    const idx = lower.indexOf(term.toLowerCase());
+    if (idx >= 0 && (anchor < 0 || idx < anchor)) {
+      anchor = idx;
+    }
+  }
+
+  if (anchor < 0) {
+    return trimSnippet(normalized, maxLength);
+  }
+
+  const start = Math.max(0, anchor - Math.floor(maxLength * 0.35));
+  const end = Math.min(normalized.length, start + maxLength);
+  const snippet = normalized.slice(start, end).trim();
+  if (start > 0 || end < normalized.length) {
+    return `${start > 0 ? '...' : ''}${snippet}${end < normalized.length ? '...' : ''}`;
+  }
+  return snippet;
+};
+
+const parseFormColumnsArg = (columns: unknown): string[] => {
+  if (Array.isArray(columns)) {
+    return columns
+      .map(item => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean);
+  }
+  if (typeof columns === 'string') {
+    const trimmed = columns.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map(item => (typeof item === 'string' ? item.trim() : ''))
+            .filter(Boolean);
+        }
+      } catch {
+        // fall through to csv parser
+      }
+    }
+    return columns
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const buildFormSearchTerms = (query: string): string[] => {
+  const base = buildSearchTerms(query);
+  if (base.length > 0) return base;
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  return [trimmed];
+};
+
+const parseQueryFormWhere = (
+  where: unknown
+): { column: string; op: FormWhereOperator; value: unknown } | null => {
+  let normalizedWhere = where;
+  if (typeof normalizedWhere === 'string') {
+    const trimmed = normalizedWhere.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        normalizedWhere = JSON.parse(trimmed);
+      } catch {
+        normalizedWhere = where;
+      }
+    }
+  }
+
+  const rawEntry = Array.isArray(normalizedWhere) ? normalizedWhere[0] : normalizedWhere;
+  if (!rawEntry || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) return null;
+  const input = rawEntry as Record<string, unknown>;
+  const column = typeof input.column === 'string'
+    ? input.column.trim()
+    : (typeof input.field === 'string' ? input.field.trim() : '');
+  const opToken = typeof input.op === 'string'
+    ? input.op.trim().toLowerCase()
+    : (typeof input.operator === 'string' ? input.operator.trim().toLowerCase() : '');
+  const value = input.value ?? input.target;
+  if (!column || !opToken || value === undefined) return null;
+  const opAliasMap: Record<string, FormWhereOperator> = {
+    '=': 'eq',
+    '==': 'eq',
+    'eq': 'eq',
+    'equals': 'eq',
+    'equal': 'eq',
+    '等于': 'eq',
+    '!=': 'ne',
+    '<>': 'ne',
+    'ne': 'ne',
+    'not_equal': 'ne',
+    'not equals': 'ne',
+    '不等于': 'ne',
+    '>': 'gt',
+    'gt': 'gt',
+    'greater_than': 'gt',
+    '大于': 'gt',
+    '>=': 'gte',
+    'gte': 'gte',
+    'greater_or_equal': 'gte',
+    '大于等于': 'gte',
+    '<': 'lt',
+    'lt': 'lt',
+    'less_than': 'lt',
+    '小于': 'lt',
+    '<=': 'lte',
+    'lte': 'lte',
+    'less_or_equal': 'lte',
+    '小于等于': 'lte',
+    'contains': 'contains',
+    'like': 'contains',
+    '包含': 'contains',
+    'starts_with': 'starts_with',
+    'startswith': 'starts_with',
+    'prefix': 'starts_with',
+    '开头是': 'starts_with',
+    'ends_with': 'ends_with',
+    'endswith': 'ends_with',
+    'suffix': 'ends_with',
+    '结尾是': 'ends_with',
+  };
+  const opRaw = opAliasMap[opToken] ?? (opToken as FormWhereOperator);
+  const allowed: FormWhereOperator[] = [
+    'eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'starts_with', 'ends_with',
+  ];
+  if (!allowed.includes(opRaw as FormWhereOperator)) return null;
+  return { column, op: opRaw as FormWhereOperator, value };
+};
+
+const resolveFormColumnByToken = (detail: FormDetail, token: string): FormDetail['columns'][number] | null => {
+  const normalized = token.trim().toLowerCase();
+  if (!normalized) return null;
+  const aliasMap: Record<string, string[]> = {
+    '性别': ['gender', 'sex'],
+    'gender': ['性别', 'sex'],
+    'sex': ['性别', 'gender'],
+    '姓名': ['name'],
+    'name': ['姓名'],
+    '邮箱': ['email', 'mail'],
+    'email': ['邮箱', 'mail'],
+  };
+  const candidates = new Set<string>([normalized]);
+  const aliases = aliasMap[normalized] ?? [];
+  for (const alias of aliases) {
+    candidates.add(alias.toLowerCase());
+  }
+  return detail.columns.find(column => {
+    const id = String(column.id ?? '').trim().toLowerCase();
+    const name = String(column.name ?? '').trim().toLowerCase();
+    return candidates.has(id) || candidates.has(name);
+  }) ?? null;
+};
+
+const toComparableNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const match = value.match(/-?\d+(\.\d+)?/);
+    if (!match) return null;
+    const num = Number(match[0]);
+    return Number.isFinite(num) ? num : null;
+  }
+  return null;
+};
+
+const normalizeGenderToken = (value: unknown): 'male' | 'female' | null => {
+  const text = normalizeFormCellValue(value).trim().toLowerCase();
+  if (!text) return null;
+  if (
+    text === '男' || text === '男性' || text === 'male' || text === 'm'
+    || text === 'man' || text === 'boy'
+  ) return 'male';
+  if (
+    text === '女' || text === '女性' || text === 'female' || text === 'f'
+    || text === 'woman' || text === 'girl'
+  ) return 'female';
+  return null;
+};
+
+const doesFormRowMatchWhere = (
+  row: { cells?: Record<string, unknown> },
+  detail: FormDetail,
+  where: { column: string; op: FormWhereOperator; value: unknown }
+): boolean => {
+  const targetColumn = resolveFormColumnByToken(detail, where.column);
+  if (!targetColumn) return false;
+  const cellValueRaw = (row.cells ?? {})[targetColumn.id];
+  const cellText = normalizeFormCellValue(cellValueRaw);
+  const whereText = normalizeFormCellValue(where.value);
+
+  switch (where.op) {
+    case 'contains':
+      return cellText.toLowerCase().includes(whereText.toLowerCase());
+    case 'starts_with':
+      return cellText.toLowerCase().startsWith(whereText.toLowerCase());
+    case 'ends_with':
+      return cellText.toLowerCase().endsWith(whereText.toLowerCase());
+    case 'eq':
+      {
+        const leftGender = normalizeGenderToken(cellValueRaw);
+        const rightGender = normalizeGenderToken(where.value);
+        if (leftGender && rightGender) return leftGender === rightGender;
+        return cellText.trim().toLowerCase() === whereText.trim().toLowerCase();
+      }
+    case 'ne':
+      {
+        const leftGender = normalizeGenderToken(cellValueRaw);
+        const rightGender = normalizeGenderToken(where.value);
+        if (leftGender && rightGender) return leftGender !== rightGender;
+        return cellText.trim().toLowerCase() !== whereText.trim().toLowerCase();
+      }
+    case 'gt':
+    case 'gte':
+    case 'lt':
+    case 'lte': {
+      const left = toComparableNumber(cellValueRaw);
+      const right = toComparableNumber(where.value);
+      if (left == null || right == null) return false;
+      if (where.op === 'gt') return left > right;
+      if (where.op === 'gte') return left >= right;
+      if (where.op === 'lt') return left < right;
+      return left <= right;
+    }
+    default:
+      return true;
+  }
+};
+
+const resolveFormColumns = (detail: FormDetail, columnsArg: unknown): FormDetail['columns'] => {
+  const tokens = parseFormColumnsArg(columnsArg);
+  if (tokens.length === 0) return detail.columns;
+
+  const loweredTokens = new Set(tokens.map(token => token.toLowerCase()));
+  const selected = detail.columns.filter(column => {
+    const id = String(column.id ?? '').toLowerCase();
+    const name = String(column.name ?? '').toLowerCase();
+    return loweredTokens.has(id) || loweredTokens.has(name);
+  });
+  return selected.length > 0 ? selected : detail.columns;
+};
+
+const inferImplicitFormWhere = (
+  detail: FormDetail,
+  query: string
+): { column: string; op: FormWhereOperator; value: unknown; inferredBy: 'gender' } | null => {
+  const gender = normalizeGenderToken(query);
+  if (!gender) return null;
+
+  const candidateColumns = detail.columns.filter(column => {
+    const name = String(column.name ?? '').trim().toLowerCase();
+    return name.includes('性别') || name.includes('gender') || name.includes('sex');
+  });
+  const target = candidateColumns[0] ?? null;
+  if (!target) return null;
+
+  return {
+    column: target.id,
+    op: 'eq',
+    value: query,
+    inferredBy: 'gender',
+  };
+};
+
+const normalizeFormCellValue = (value: unknown): string => {
+  if (value == null) return '';
+  if (Array.isArray(value)) {
+    return value.map(item => String(item ?? '')).join(', ');
+  }
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const doesFormRowMatchQuery = (
+  row: { id?: string; cells?: Record<string, unknown> },
+  columns: FormDetail['columns'],
+  queryTerms: string[]
+): boolean => {
+  if (queryTerms.length === 0) return true;
+  const values: string[] = [];
+  if (row.id) values.push(String(row.id));
+  const cells = row.cells ?? {};
+  for (const column of columns) {
+    values.push(normalizeFormCellValue(cells[column.id]));
+  }
+  const haystack = values.join(' ').toLowerCase();
+  return queryTerms.every(term => haystack.includes(term.toLowerCase()));
+};
+
+const collectKnowledgeFileCandidates = (root: KnowledgeItem): KnowledgeFileCandidate[] => {
+  const output: KnowledgeFileCandidate[] = [];
+
+  const walk = (item: KnowledgeItem): void => {
+    if (item.type === 'file') {
+      const name = typeof item.path === 'string' && item.path.trim().length > 0
+        ? getPathBaseName(item.path)
+        : item.title;
+      const content = typeof item.metadata?.content === 'string'
+        ? item.metadata.content
+        : undefined;
+      output.push({ name, path: item.path, content });
+      return;
+    }
+    if (Array.isArray(item.children)) {
+      for (const child of item.children) {
+        walk(child);
+      }
+    }
+  };
+
+  walk(root);
+  return output;
+};
 
 // 深度思考图标组件 (Lucide Brain Icon)
 const ThinkingIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
@@ -128,7 +1822,7 @@ const formatModelDisplayName = (modelId: string): string => {
  * @returns 提供商显示名称
  */
 const getProviderDisplayName = (providerId: string, modelId?: string): string => {
-  // 从模型ID中推断实际提供商（对于魔塔社区等聚合平台）
+  // 从模型 ID 中推断实际提供商（对于魔塔社区等聚合平台）
   if (modelId) {
     const lowerModelId = modelId.toLowerCase();
     if (lowerModelId.includes('glm') || lowerModelId.includes('zhipu')) {
@@ -153,13 +1847,13 @@ const getProviderDisplayName = (providerId: string, modelId?: string): string =>
     'gemini': 'Google',
     'modelscope': '魔塔社区',
     'zenmux': 'Zenmux',
-    'custom': '自定义'
+    'custom': '自定义',
   };
   return providerNames[providerId.toLowerCase()] || providerId;
 };
 
 /**
- * 工具调用思考块组件（类 Claude.ai 折叠式）
+ * 工具调用思考块组件（类似 Claude.ai 折叠式）
  */
 interface ThinkingBlockProps {
   toolCalls?: Message['toolCalls'];
@@ -171,10 +1865,10 @@ interface ThinkingBlockProps {
   onToggle: () => void;
 }
 
-const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ toolCalls, thinkingContent, isDeepThinking, isThinkingPhase, elapsedSeconds, isExpanded, onToggle }) => {
+const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ toolCalls, thinkingContent, isDeepThinking, isThinkingPhase, isExpanded, onToggle }) => {
   const headerText = isDeepThinking
-    ? (isThinkingPhase ? '深度思考中...' : `已深度思考 ${elapsedSeconds ?? 0} 秒`)
-    : (isThinkingPhase ? '正在思考...' : `已思考 ${elapsedSeconds ?? 0} 秒`);
+    ? (isThinkingPhase ? '˼...' : '˼')
+    : (isThinkingPhase ? '˼...' : '˼');
 
   // 进行中时默认展开
   const effectiveExpanded = isThinkingPhase ? true : isExpanded;
@@ -205,8 +1899,41 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ toolCalls, thinkingConten
 };
 
 /**
- * 解析消息内容，将 [TOOL_CALL:uiId] 占位符与文字块交错渲染
+ * 解析消息内容，将 [TOOL_CALL:uiId] 占位符与文字块交错渲?
  */
+interface DecompositionBlockProps {
+  title: string;
+  content: string;
+  isStreaming?: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+const DecompositionBlock: React.FC<DecompositionBlockProps> = ({
+  title,
+  content,
+  isStreaming = false,
+  isExpanded,
+  onToggle
+}) => {
+  if (!content.trim() && !isStreaming) return null;
+
+  return (
+    <div className={`decomposition-block${isStreaming ? ' decomposition-block--active' : ''}`}>
+      <div className="decomposition-block__header" onClick={onToggle}>
+        {isStreaming && <span className="decomposition-block__spinner" />}
+        <span className="decomposition-block__title">{title}</span>
+        <span className={`decomposition-block__chevron${isExpanded ? ' expanded' : ''}`} />
+      </div>
+      {isExpanded && (
+        <div className="decomposition-block__body">
+          <AIResponseRenderer content={content} isStreaming={isStreaming} />
+        </div>
+      )}
+    </div>
+  );
+};
+
 function renderMessageBlocks(
   content: string,
   toolCalls: Message['toolCalls'],
@@ -262,7 +1989,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [isLoading, setIsLoading] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
-  const [subMenuType, setSubMenuType] = useState<'none' | 'model' | 'knowledge' | 'form' | 'skills' | 'mcpServer' | 'files'>('none');
+  const [subMenuType, setSubMenuType] = useState<'none' | 'model' | 'knowledge' | 'form' | 'skills' | 'memory' | 'decompositionRules' | 'writingRules' | 'mcpServer' | 'files'>('none');
   const [searchQuery, setSearchQuery] = useState('');
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
@@ -278,10 +2005,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [chatSettings, setChatSettings] = useState<AIChatSettingsConfig>(DEFAULT_CHAT_SETTINGS);
   const [toolThinkingExpanded, setToolThinkingExpanded] = useState<Map<string, boolean>>(new Map()); // 思考块展开状态（工具调用 + 深度思考）
   const [textContextMenu, setTextContextMenu] = useState<{ x: number; y: number; text: string } | null>(null); // 文本选择右键菜单
-  // 模式切换状态：chat(普通对话)、agent(Agent模式，执行前询问确认)
-  const [chatMode, setChatMode] = useState<'chat' | 'agent'>('chat');
-  const [isModeMenuOpen, setIsModeMenuOpen] = useState(false); // 模式菜单展开状态
   const [currentFileName, setCurrentFileName] = useState<string>(''); // 当前打开的文件名
+  const [currentFilePath, setCurrentFilePath] = useState<string>(''); // 当前打开标签页对应的文件路径
   const [formsList, setFormsList] = useState<FormInfo[]>([]); // 表单列表
   const [isLoadingForms, setIsLoadingForms] = useState(false); // 是否正在加载表单
   const [knowledgeBaseList, setKnowledgeBaseList] = useState<KnowledgeItem[]>([]); // 知识库列表
@@ -294,8 +2019,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [selectedFiles, setSelectedFiles] = useState<Array<{ name: string; path: string; type?: 'file' | 'directory' }>>([]); // 用户选中的文件
   const [selectedKbs, setSelectedKbs] = useState<Array<{ id: string; title: string }>>([]); // 用户选中的知识库
   const [selectedForms, setSelectedForms] = useState<Array<{ id: string; name: string }>>([]); // 用户选中的表单
+  const [writingRuleDocuments, setWritingRuleDocuments] = useState<WritingRuleDocument[]>([]);
+  const [newDecompositionRuleName, setNewDecompositionRuleName] = useState('');
+  const [newDecompositionRuleInstruction, setNewDecompositionRuleInstruction] = useState('');
+  const [agentMemoryStats, setAgentMemoryStats] = useState<{ usagePercentage: number; totalEntries: number }>({
+    usagePercentage: 0,
+    totalEntries: 0,
+  });
+  const [decompositionRules, setDecompositionRules] = useState<DecompositionRule[]>(() => cloneBuiltinDecompositionRules());
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器的 ref
+  const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器 ref
   const panelRef = useRef<HTMLDivElement>(null);
   const tiptapRef = useRef<TipTapInputRef>(null);
   const contextButtonRef = useRef<HTMLButtonElement>(null);
@@ -304,19 +2037,513 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const headerRef = useRef<HTMLDivElement>(null);
   const headerContextMenuRef = useRef<HTMLDivElement>(null);
   const historyButtonRef = useRef<HTMLButtonElement>(null);
-  const modeSwitcherRef = useRef<HTMLDivElement>(null); // 模式切换器的 ref
-  const isInitialLoadRef = useRef(true); // 追踪是否是初始加载
+  const isInitialLoadRef = useRef(true); // 追踪是否为初始加载
   const providerCacheRef = useRef<{ modelId: string; actualModelId: string } | null>(null); // 缓存已初始化的 provider
+
+  const [pendingToolConfirmation, setPendingToolConfirmation] = useState<PendingToolConfirmation | null>(null);
+  const pendingToolConfirmationResolverRef = useRef<{
+    id: string;
+    resolve: (allowed: boolean) => void;
+  } | null>(null);
+
+  const decompositionRulesLoadedRef = useRef(false);
+  const writingRulesLoadedRef = useRef(false);
+
+  const handleInsertSlashCommand = useCallback((insertText: string) => {
+    tiptapRef.current?.setText(insertText);
+    setInput(insertText);
+    setIsContextMenuOpen(false);
+    setSubMenuType('none');
+    setSearchQuery('');
+    tiptapRef.current?.focus();
+  }, []);
+
+  const enabledDecompositionRules = getEnabledDecompositionRules(decompositionRules);
+  const enabledWritingRuleDocuments = useMemo(
+    () => writingRuleDocuments.filter(document => document.enabled && document.path.trim().length > 0),
+    [writingRuleDocuments],
+  );
+
+  const refreshAgentMemoryStats = useCallback(() => {
+    try {
+      const stats = agentService.getMemoryStats();
+      setAgentMemoryStats({
+        usagePercentage: Number.isFinite(stats.usagePercentage) ? stats.usagePercentage : 0,
+        totalEntries: Number.isFinite(stats.totalEntries) ? stats.totalEntries : 0,
+      });
+    } catch (error) {
+      console.error('[AIChatPanel] 获取记忆统计失败:', error);
+      setAgentMemoryStats({ usagePercentage: 0, totalEntries: 0 });
+    }
+  }, []);
+
+  const handleClearAgentMemory = useCallback(() => {
+    try {
+      agentService.getMemory().clear();
+      refreshAgentMemoryStats();
+      toastService.success('已清空记忆');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[AIChatPanel] 清空记忆失败:', error);
+      toastService.error(`清空记忆失败: ${errorMessage}`);
+    }
+  }, [refreshAgentMemoryStats]);
+
+  const handleToggleDecompositionRule = useCallback((ruleId: string) => {
+    setDecompositionRules(prev => prev.map(rule =>
+      rule.id === ruleId ? { ...rule, enabled: !rule.enabled } : rule
+    ));
+  }, []);
+
+  const handleAddDecompositionRule = useCallback(() => {
+    const name = newDecompositionRuleName.trim();
+    const instruction = newDecompositionRuleInstruction.trim();
+    if (!name || !instruction) {
+      toastService.warning('请先输入规则名称和规则说明');
+      return;
+    }
+
+    const identityKey = buildRuleIdentityKey(name, instruction);
+    const existingRule = decompositionRules.find(
+      rule => buildRuleIdentityKey(rule.name, rule.instruction) === identityKey,
+    );
+
+    if (existingRule) {
+      if (!existingRule.enabled) {
+        setDecompositionRules(prev =>
+          prev.map(rule =>
+            rule.id === existingRule.id ? { ...rule, enabled: true } : rule,
+          ),
+        );
+        toastService.success('规则已存在，已自动启用');
+      } else {
+        toastService.info('规则已存在');
+      }
+      return;
+    }
+
+    const uniqueSeed = `${name}|${instruction}|${Date.now().toString()}`;
+    setDecompositionRules(prev => [
+      ...prev,
+      {
+        id: `custom-${hashText(uniqueSeed)}`,
+        name,
+        instruction,
+        enabled: true,
+        builtin: false,
+      },
+    ]);
+    setNewDecompositionRuleName('');
+    setNewDecompositionRuleInstruction('');
+    toastService.success('已添加拆解规则');
+  }, [decompositionRules, newDecompositionRuleInstruction, newDecompositionRuleName]);
+
+  const handleDeleteDecompositionRule = useCallback((ruleId: string) => {
+    setDecompositionRules(prev => prev.filter(rule => !(rule.id === ruleId && !rule.builtin)));
+  }, []);
+
+  const handleResetBuiltinDecompositionRules = useCallback(() => {
+    setDecompositionRules(prev => {
+      const customRules = prev.filter(rule => !rule.builtin);
+      return [...cloneBuiltinDecompositionRules(), ...customRules];
+    });
+  }, []);
+
+  const handleOpenDecompositionRulesTab = useCallback(() => {
+    setSubMenuType('none');
+    setIsContextMenuOpen(false);
+    window.dispatchEvent(new CustomEvent('open-decomposition-rules', {
+      detail: {
+        rules: decompositionRules.map(rule => ({ ...rule })),
+        writingRuleDocuments: writingRuleDocuments.map(document => ({ ...document })),
+      },
+    }));
+  }, [decompositionRules, writingRuleDocuments]);
+
+  const handleImportWritingRuleDocuments = useCallback(async () => {
+    try {
+      const dialogResult = await window.electron?.file?.showOpenDialog?.({
+        title: '导入写作规则',
+        filters: [
+          { name: '规则文档 (*.md, *.txt)', extensions: ['md', 'txt'] },
+          { name: 'Markdown (*.md)', extensions: ['md'] },
+          { name: 'Text (*.txt)', extensions: ['txt'] },
+        ],
+        properties: ['openFile', 'multiSelections'],
+      });
+
+      if (!dialogResult || dialogResult.canceled || dialogResult.filePaths.length === 0) {
+        return;
+      }
+
+      const supportedPaths = dialogResult.filePaths
+        .map(path => path.trim())
+        .filter(path => path.length > 0 && isSupportedRuleDocumentFile(path));
+      if (supportedPaths.length === 0) {
+        toastService.error('仅支持导入 .md 或 .txt 文档');
+        return;
+      }
+
+      if (supportedPaths.length < dialogResult.filePaths.length) {
+        toastService.warning(`已忽略 ${dialogResult.filePaths.length - supportedPaths.length} 个非 .md/.txt 文件`);
+      }
+
+      const nextDocuments = writingRuleDocuments.map(document => ({ ...document }));
+      const indexByPath = new Map<string, number>();
+      nextDocuments.forEach((document, index) => {
+        indexByPath.set(normalizeComparableRuleDocumentPath(document.path), index);
+      });
+      let addedCount = 0;
+      let enabledCount = 0;
+
+      for (const filePath of supportedPaths) {
+        const pathKey = normalizeComparableRuleDocumentPath(filePath);
+        const existingIndex = indexByPath.get(pathKey);
+        if (typeof existingIndex === 'number') {
+          const existingDocument = nextDocuments[existingIndex];
+          if (!existingDocument.enabled) {
+            nextDocuments[existingIndex] = { ...existingDocument, enabled: true };
+            enabledCount += 1;
+          }
+          continue;
+        }
+
+        const documentName = filePath.split(/[/\\]/).pop() || filePath;
+        nextDocuments.push({
+          id: `writing-doc-${hashText(pathKey)}`,
+          name: documentName,
+          path: filePath,
+          enabled: true,
+        });
+        indexByPath.set(pathKey, nextDocuments.length - 1);
+        addedCount += 1;
+      }
+
+      if (addedCount === 0 && enabledCount === 0) {
+        toastService.info('没有新的写作规则可导入');
+        return;
+      }
+
+      setWritingRuleDocuments(nextDocuments);
+
+      if (enabledCount > 0) {
+        toastService.success(`导入完成：新增 ${addedCount} 个文档，启用已有 ${enabledCount} 个文档`);
+      } else {
+        toastService.success(`导入完成：新增 ${addedCount} 个写作规则`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toastService.error(`导入写作规则失败: ${errorMessage}`);
+      console.error('[AIChatPanel] 导入写作规则失败:', error);
+    }
+  }, [writingRuleDocuments]);
+
+  const handleToggleWritingRuleDocument = useCallback((documentId: string) => {
+    setWritingRuleDocuments(prev => prev.map(document =>
+      document.id === documentId ? { ...document, enabled: !document.enabled } : document,
+    ));
+  }, []);
+
+  const handleDeleteWritingRuleDocument = useCallback((documentId: string) => {
+    setWritingRuleDocuments(prev => prev.filter(document => document.id !== documentId));
+  }, []);
+
+  const handleEditWritingRuleDocument = useCallback(async (document: WritingRuleDocument) => {
+    try {
+      const filePath = document.path.trim();
+      if (!filePath) {
+        toastService.warning('规则文档路径无效');
+        return;
+      }
+
+      const content = await window.electron?.ipcRenderer.invoke('read-file', filePath);
+      if (typeof content !== 'string') {
+        toastService.error('读取规则文档失败');
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent('open-file', {
+        detail: {
+          path: filePath,
+          name: document.name,
+          content,
+          isPreview: false,
+        },
+      }));
+      setSubMenuType('none');
+      setIsContextMenuOpen(false);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toastService.error(`打开规则文档失败: ${errorMessage}`);
+      console.error('[AIChatPanel] 打开规则文档失败:', error);
+    }
+  }, []);
+
+  const handleClearWritingRuleDocuments = useCallback(() => {
+    if (writingRuleDocuments.length === 0) {
+      toastService.info('当前没有可清空的写作规则');
+      return;
+    }
+    setWritingRuleDocuments([]);
+    toastService.success('已清空写作规则');
+  }, [writingRuleDocuments.length]);
+
+  const appendActLog = useCallback((
+    messageId: string,
+    payload: {
+      key?: string;
+      kind: ActLog['kind'];
+      title: string;
+      detail?: string;
+      status?: ActLog['status'];
+    }
+  ) => {
+    const event: ActLog = {
+      id: createActLogId(),
+      ts: Date.now(),
+      key: payload.key,
+      kind: payload.kind,
+      title: payload.title,
+      detail: payload.detail,
+      status: payload.status ?? 'info',
+    };
+
+    setMessages(prev => prev.map(msg =>
+      msg.id === messageId
+        ? { ...msg, contentBlocks: [...(msg.contentBlocks ?? []), { type: 'act', act: event }] }
+        : msg
+    ));
+  }, []);
+
+  const upsertActLog = useCallback((
+    messageId: string,
+    payload: {
+      key: string;
+      kind: ActLog['kind'];
+      title: string;
+      detail?: string;
+      status?: ActLog['status'];
+    }
+  ) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== messageId) return msg;
+      const blocks = [...(msg.contentBlocks ?? [])];
+      const idx = blocks.findIndex(
+        block => block.type === 'act' && block.act.key === payload.key
+      );
+      if (idx >= 0) {
+        const existing = blocks[idx];
+        if (existing.type === 'act') {
+          blocks[idx] = {
+            type: 'act',
+            act: {
+              ...existing.act,
+              ts: Date.now(),
+              kind: payload.kind,
+              title: payload.title,
+              detail: payload.detail,
+              status: payload.status ?? existing.act.status,
+            },
+          };
+        }
+      } else {
+        blocks.push({
+          type: 'act',
+          act: {
+            id: createActLogId(),
+            ts: Date.now(),
+            key: payload.key,
+            kind: payload.kind,
+            title: payload.title,
+            detail: payload.detail,
+            status: payload.status ?? 'info',
+          },
+        });
+      }
+
+      return { ...msg, contentBlocks: blocks };
+    }));
+  }, []);
+
+  const upsertTodoBlock = useCallback((
+    messageId: string,
+    items: TodoItemView[],
+    options?: {
+      title?: string;
+      isStreaming?: boolean;
+    }
+  ) => {
+    const key = `${messageId}-todo`;
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== messageId) return msg;
+      const blocks = [...(msg.contentBlocks ?? [])];
+      const nextBlock: ContentBlock = {
+        type: 'todo',
+        key,
+        title: options?.title || 'Todo',
+        items,
+        isStreaming: options?.isStreaming ?? false,
+      };
+      const existingIndex = blocks.findIndex(block => block.type === 'todo' && block.key === key);
+      if (existingIndex >= 0) {
+        blocks[existingIndex] = nextBlock;
+      } else {
+        blocks.push(nextBlock);
+      }
+      return { ...msg, contentBlocks: blocks };
+    }));
+  }, []);
+
+  const appendToolLogBlock = useCallback((
+    messageId: string,
+    tool: ToolLog
+  ) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== messageId) return msg;
+      return {
+        ...msg,
+        contentBlocks: [...(msg.contentBlocks ?? []), { type: 'tool', tool }],
+        toolCalls: [...(msg.toolCalls ?? []), tool],
+      };
+    }));
+  }, []);
+
+  const resolveLatestPendingToolLog = useCallback((
+    messageId: string,
+    toolName: string,
+    status: 'success' | 'error',
+    summary?: string,
+    updates?: {
+      detail?: string;
+      command?: string;
+      output?: string;
+    }
+  ) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== messageId) return msg;
+
+      let resolved = false;
+      const applyResolution = (tool: ToolLog): ToolLog => {
+        if (!resolved && tool.name === toolName && tool.status === 'pending') {
+          resolved = true;
+          const nextTool: ToolLog = {
+            ...tool,
+            status,
+            summary: summary ?? tool.summary,
+          };
+          if (updates) {
+            if (typeof updates.detail === 'string') {
+              nextTool.detail = updates.detail;
+            }
+            if (typeof updates.command === 'string') {
+              nextTool.command = updates.command;
+            }
+            if (typeof updates.output === 'string') {
+              nextTool.output = updates.output;
+            }
+          }
+          return nextTool;
+        }
+        return tool;
+      };
+
+      const nextBlocks = (msg.contentBlocks ?? []).map(block => {
+        if (block.type !== 'tool') return block;
+        return {
+          type: 'tool' as const,
+          tool: applyResolution(block.tool),
+        };
+      });
+
+      const nextToolCalls = (msg.toolCalls ?? []).map(applyResolution);
+
+      return {
+        ...msg,
+        contentBlocks: nextBlocks,
+        toolCalls: nextToolCalls,
+      };
+    }));
+  }, []);
+
+  const settlePendingToolConfirmation = useCallback((allowed: boolean) => {
+    const pending = pendingToolConfirmationResolverRef.current;
+    if (!pending) return;
+    pendingToolConfirmationResolverRef.current = null;
+    setPendingToolConfirmation(null);
+    pending.resolve(allowed);
+  }, []);
+
+  const requestToolConfirmation = useCallback((
+    toolName: string,
+    params: Record<string, unknown>
+  ): Promise<boolean> => {
+    return new Promise<boolean>(resolve => {
+      // Keep only one pending request to avoid stacked popups.
+      const previous = pendingToolConfirmationResolverRef.current;
+      if (previous) {
+        previous.resolve(false);
+      }
+
+      const id = `tool-confirm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      pendingToolConfirmationResolverRef.current = { id, resolve };
+      setPendingToolConfirmation({
+        id,
+        toolName,
+        params,
+        detail: buildToolCallDetail(toolName, params),
+      });
+    });
+  }, []);
+
+  const handleToolConfirmActionKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>, allowed: boolean) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      settlePendingToolConfirmation(allowed);
+    },
+    [settlePendingToolConfirmation]
+  );
+
+  useEffect(() => {
+    return () => {
+      const pending = pendingToolConfirmationResolverRef.current;
+      if (!pending) return;
+      pendingToolConfirmationResolverRef.current = null;
+      pending.resolve(false);
+    };
+  }, []);
+
+  const syncEditorTabContent = useCallback((
+    content: string,
+    path?: string,
+    name?: string,
+    markDirty: boolean = false
+  ) => {
+    if (typeof content !== 'string') return;
+    window.dispatchEvent(new CustomEvent('editor:replace-active-tab-content', {
+      detail: {
+        content,
+        path,
+        name,
+        markDirty,
+      },
+    }));
+  }, []);
+
+  const waitForActFrame = useCallback(
+    async (ms = 180): Promise<void> => new Promise(resolve => setTimeout(resolve, ms)),
+    []
+  );
   
   // 滚动条淡入淡出效果
   const DEFAULT_OPACITY = 0.5; // 默认透明度
-  const [scrollbarOpacity, setScrollbarOpacity] = useState(0); // 初始为0，完全透明
+  const [scrollbarOpacity, setScrollbarOpacity] = useState(0); // 初始值，完全透明
   const fadeTimerRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
   // 淡入：立即中断所有动画并显示滚动条
   const fadeIn = useCallback(() => {
-    // 取消所有进行中的动画
+    // 取消已有进行中的动画
     if (fadeTimerRef.current) {
       clearTimeout(fadeTimerRef.current);
       fadeTimerRef.current = null;
@@ -366,7 +2593,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   // 处理插入到文档
   const handleInsertToDocument = useCallback((text: string) => {
     try {
-      // 获取全局的 Monaco 编辑器实例
+      // 获取全局 Monaco 编辑器实例
       const editor = (window as unknown as { __monacoEditor?: { executeEdits: (source: string, edits: Array<{ range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }; text: string }>) => void; getPosition: () => { lineNumber: number; column: number } | null; focus: () => void } }).__monacoEditor;
       
       if (!editor) {
@@ -406,7 +2633,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const handleCopyText = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      console.log('[AIChatPanel] 已复制文本到剪贴板');
+      console.log('[AIChatPanel] Text copied to clipboard');
       // TODO: 显示通知提示用户复制成功
     } catch (error) {
       console.error('[AIChatPanel] 复制文本失败:', error);
@@ -415,7 +2642,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
   // 处理添加到聊天
   const handleAddToChat = useCallback((text: string) => {
-    // 将选中的文本添加到输入框中
+    // 将文本追加到聊天输入框
     setInput((prevInput) => {
       // 如果输入框已有内容，在末尾添加换行后再添加文本
       if (prevInput.trim()) {
@@ -430,17 +2657,17 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       tiptapRef.current?.focus();
     }, 0);
 
-    console.log('[AIChatPanel] 已添加文本到聊天输入框');
+    console.log('[AIChatPanel] Added text to chat input');
   }, []);
 
   // 处理插入到内联编辑
   const handleInsertToInlineEdit = useCallback((text: string) => {
     try {
-      // 获取全局的打开内联聊天方法
+      // 获取全局内联聊天打开函数
       const openInlineChat = (window as unknown as { __openInlineChat?: (initialText?: string) => void }).__openInlineChat;
       
       if (!openInlineChat) {
-        console.warn('[AIChatPanel] 没有找到打开内联聊天的方法');
+        console.warn('[AIChatPanel] Inline chat opener not found');
         // TODO: 显示通知提示用户打开一个文档
         return;
       }
@@ -454,7 +2681,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     }
   }, []);
 
-  // 处理 assistant 消息的文本选择
+  // 处理 assistant 消息中的文本选中
   const handleAssistantTextSelection = useCallback((event: React.MouseEvent) => {
     // 只处理右键点击
     if (event.button !== 2) return;
@@ -466,7 +2693,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
     const selectedText = selection.toString();
     
-    // 检查选中的文本是否在 assistant 消息中
+    // Ensure selected text belongs to an assistant message.
     const target = event.target as HTMLElement;
     const messageContent = target.closest('.message.assistant .message-content');
     
@@ -497,16 +2724,19 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     };
   }, []);
 
-  // 监听当前打开的文件变化
+  // Track active editor file changes.
   useEffect(() => {
-    // 初始化：从全局变量读取当前标签页标题
+    // Initialize from global active tab context.
     const tabTitle = (window as any).__currentTabTitle;
+    const tabPath = (window as any).__currentTabPath;
     setCurrentFileName(tabTitle || '');
+    setCurrentFilePath(tabPath || '');
 
-    // 监听标签页切换事件，从事件 detail 中获取文件名
+    // Listen for tab-change events and sync title/path.
     const handleTabChange = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
+      const detail = (e as CustomEvent<{ title?: string; path?: string }>).detail;
       setCurrentFileName(detail?.title || '');
+      setCurrentFilePath(detail?.path || '');
     };
 
     window.addEventListener('editor:active-tab-changed', handleTabChange);
@@ -516,7 +2746,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     };
   }, []);
 
-  // 动态更新滚动条样式
+  // 注入滚动条样式
   useEffect(() => {
     if (!messagesContainerRef.current) return;
 
@@ -529,22 +2759,22 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       document.head.appendChild(styleElement);
     }
 
-    // 获取 CSS 变量的颜色值并转换为 RGBA
+    // Read CSS variable color and convert to RGBA.
     const getColorWithOpacity = (cssVar: string, fallbackColor: string, opacity: number) => {
       const computedStyle = getComputedStyle(document.documentElement);
       const color = computedStyle.getPropertyValue(cssVar).trim() || fallbackColor;
       
-      // 如果颜色已经是 rgba 格式
+      // If the color is already rgba().
       if (color.startsWith('rgba')) {
         return color.replace(/[\d.]+\)$/g, `${opacity})`);
       }
       
-      // 如果是 rgb 格式，转换为 rgba
+      // If the color is rgb(), convert to rgba().
       if (color.startsWith('rgb')) {
         return color.replace('rgb', 'rgba').replace(')', `, ${opacity})`);
       }
       
-      // 如果是十六进制，转换为 rgba
+      // If the color is hex, convert to rgba().
       if (color.startsWith('#')) {
         const hex = color.replace('#', '');
         const r = parseInt(hex.substring(0, 2), 16);
@@ -556,7 +2786,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       return color;
     };
 
-    // 使用主题配色，动态设置透明度
+    // Apply theme color with dynamic opacity.
     const normalColor = getColorWithOpacity(
       '--ws-scrollbarSlider-background',
       'rgba(121, 121, 121, 0.4)',
@@ -591,21 +2821,21 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   // 加载可用模型
   const loadModels = async () => {
     try {
-      console.log('[AIChatPanel] 从缓存加载模型列表...');
+      console.log('[AIChatPanel] Loading model list from cache...');
       
       const cachedModels = await getCachedModels();
       console.log('[AIChatPanel] 获取到模型列表，数量:', cachedModels.length);
       
       if (cachedModels.length === 0) {
-        console.warn('[AIChatPanel] 模型列表为空！请检查：');
-        console.warn('  1. 是否配置了AI模型？（需要设置API Key和API Endpoint）');
-        console.warn('  2. 是否选择了具体的模型？');
+        console.warn('[AIChatPanel] 未获取到可用模型');
+        console.warn('  1. Check whether AI model config is set (API key / endpoint).');
+        console.warn('  2. Check whether a concrete model is selected.');
       }
       
-      // 转换为 ModelInfo 格式，并过滤掉禁用的模型
+      // Convert to ModelInfo and filter out disabled models.
       const modelInfos: ModelInfo[] = cachedModels
         .filter(model => {
-          // 从模型ID中提取实际的模型名称（格式：configName:modelName）
+          // Extract real model name from model ID (configName:modelName).
           const modelName = model.modelId.includes(':') ? model.modelId.split(':')[1] : model.modelId;
           return isModelEnabled(modelName);
         })
@@ -622,11 +2852,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       
       setAvailableModels(modelInfos);
       if (modelInfos.length > 0 && !selectedModel) {
-        // 尝试从持久化存储读取上次选择的模型
+        // Try restoring previously selected model from persistence.
         const savedModel = await electronStore.get('ai-chat-selected-model') as string | undefined;
         if (savedModel && modelInfos.some(m => m.modelId === savedModel)) {
           setSelectedModel(savedModel);
-          console.log('[AIChatPanel] 恢复上次选择的模型:', savedModel);
+          console.log('[AIChatPanel] Restored previous model:', savedModel);
         } else {
           setSelectedModel(modelInfos[0].modelId);
           console.log('[AIChatPanel] 默认选择模型:', modelInfos[0].modelId);
@@ -641,10 +2871,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'instant' : 'smooth' });
   };
 
-  // 加载历史会话（使用 useCallback 确保函数稳定）
+  // Load history session (wrapped with useCallback for stability).
   const loadHistorySession = React.useCallback(async (sessionId: string, closeMenu = true) => {
     try {
-      console.log('[AIChatPanel] 开始加载历史会话:', sessionId);
+      console.log('[AIChatPanel] Start loading history session:', sessionId);
       
       // 关闭历史记录菜单（如果需要）
       if (closeMenu) {
@@ -654,9 +2884,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       // 获取历史消息
       const result = await window.electronAPI?.chatHistory?.getMessages(sessionId);
       if (result?.success && result.data) {
-        console.log('[AIChatPanel] 从数据库加载的原始消息:', result.data);
+        console.log('[AIChatPanel] Raw history messages from DB:', result.data);
         
-        // 将数据库消息转换为组件消息格式
+        // Convert DB messages to component message format.
         const historyMessages: Message[] = result.data.map(msg => {
           const message: Message = {
             id: msg.id,
@@ -667,20 +2897,20 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             reasoning: msg.reasoning
           };
 
-          // 如果有推理内容，转换为思考步骤
+          // If reasoning exists, convert it into thinking step data.
           if (msg.reasoning && msg.role === 'assistant') {
-            console.log('[AIChatPanel] 发现推理内容，长度:', msg.reasoning.length, '消息ID:', msg.id);
+            console.log('[AIChatPanel] Found reasoning content, length:', msg.reasoning.length, 'messageId:', msg.id);
             
-            // 估算思考耗时：基于推理内容长度估算（每1000字符约1秒）
+            // Estimate thinking duration from reasoning content length.
             const estimatedDuration = Math.round(msg.reasoning.length / 10);
             
             message.thinkingSteps = [{
               id: `thinking-${msg.id}`,
-              title: '深度思考',
+              title: 'Deep thinking',
               content: msg.reasoning,
               status: 'completed',
               timestamp: new Date(msg.timestamp),
-              duration: estimatedDuration // 添加估算的耗时
+              duration: estimatedDuration // 添加估算耗时
             }];
             // console.log('[AIChatPanel] 已创建思考步骤，估算耗时:', estimatedDuration, 'ms');
           } else if (msg.role === 'assistant') {
@@ -691,40 +2921,40 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         
         console.log('[AIChatPanel] 转换后的消息列表:', historyMessages);
         
-        // 加载历史会话时，设置为初始加载状态，以便直接显示最后的消息
+        // 标记初始化加载完成，后续滚动采用 smooth 行为
         isInitialLoadRef.current = true;
         
         // 更新消息列表和当前会话ID
         setMessages(historyMessages);
         setCurrentSessionId(sessionId);
-        console.log('[AIChatPanel] 成功加载历史会话:', sessionId, '消息数:', historyMessages.length);
+        console.log('[AIChatPanel] History session loaded:', sessionId, 'message count:', historyMessages.length);
         
-        // 滚动到底部（使用 instant 行为，直接显示最后的消息）
+        // Scroll to bottom instantly so latest message is visible.
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
         }, 100);
       } else {
-        console.warn('[AIChatPanel] 加载历史会话失败：未获取到数据');
+        console.warn('[AIChatPanel] Failed to load history: no data returned');
       }
     } catch (error) {
       console.error('[AIChatPanel] 加载历史会话失败:', error);
     }
-  }, []); // 空依赖数组，函数不依赖外部变量
+  }, []); // No external dependencies.
 
-  // 初始化：加载最后一条历史记录或生成新会话ID
+  // 初始化聊天会话并恢复当前会话 ID
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        // 尝试获取所有会话
+        // Try reading existing sessions first.
         const result = await window.electronAPI?.chatHistory?.getSessions();
         if (result?.success && result.data && result.data.length > 0) {
-          // 按更新时间排序，获取最新的会话
+          // 按更新时间排序，优先加载最新会话
           const sessions = result.data.sort((a, b) => b.updatedAt - a.updatedAt);
           const latestSession = sessions[0];
           
-          console.log('[AIChatPanel] 发现历史会话，自动加载最新会话:', latestSession.id);
+          console.log('[AIChatPanel] Found history sessions, auto-loading latest:', latestSession.id);
           
-          // 加载最新会话的消息（不需要关闭菜单，因为初始化时菜单本来就是关闭的）
+          // 自动加载最新会话，避免创建新会话覆盖历史
           await loadHistorySession(latestSession.id, false);
         } else {
           // 没有历史记录，生成新的会话ID
@@ -733,7 +2963,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           console.log('[AIChatPanel] 无历史记录，生成新会话ID:', sessionId);
         }
       } catch (error) {
-        console.error('[AIChatPanel] 初始化聊天失败:', error);
+        console.error('[AIChatPanel] Failed to initialize chat:', error);
         // 出错时生成新的会话ID
         const sessionId = `session-${Date.now()}`;
         setCurrentSessionId(sessionId);
@@ -741,10 +2971,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     };
 
     initializeChat();
-  }, []); // 空依赖数组，仅在组件挂载时执行一次
+  }, []); // Run once on mount.
 
   useEffect(() => {
-    // 首次加载：先从数据库加载模型启用状态，再加载模型列表
+    // First load: restore model-enabled state, then load models.
     const initModels = async () => {
       await loadModelEnabledStatesFromDB();
       loadModels();
@@ -757,9 +2987,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       loadModels();
     };
     
-    // 监听模型启用状态变化事件
+    // Listen for model-enabled state change events.
     const handleModelEnabledChanged = () => {
-      console.log('[AIChatPanel] 模型启用状态已变化，重新加载模型列表...');
+      console.log('[AIChatPanel] Model-enabled state changed, reloading model list...');
       loadModels();
     };
     
@@ -778,7 +3008,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       try {
         const savedSettings = await electronStore.get('ai-chat-settings');
         if (savedSettings) {
-          // 兼容旧版本设置（没有 searchEngine 字段）
+          // Backward compatibility for settings without searchEngine field.
           const settingsWithDefaults = {
             ...DEFAULT_CHAT_SETTINGS,
             ...savedSettings
@@ -799,7 +3029,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     const saveChatSettings = async () => {
       try {
         await electronStore.set('ai-chat-settings', chatSettings);
-        console.log('[AIChatPanel] 聊天设置已保存');
+        console.log('[AIChatPanel] Chat settings saved');
       } catch (error) {
         console.error('[AIChatPanel] 保存聊天设置失败:', error);
       }
@@ -812,15 +3042,165 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   }, [chatSettings]);
 
   useEffect(() => {
-    // 如果是初始加载，使用 instant 行为；否则使用 smooth 行为
+    let disposed = false;
+    const loadDecompositionRules = async () => {
+      try {
+        const savedRules = await electronStore.get(DECOMPOSITION_RULE_STORE_KEY);
+        if (!disposed) {
+          setDecompositionRules(normalizeDecompositionRules(savedRules));
+        }
+      } catch (error) {
+        console.error('[AIChatPanel] 加载拆解规则失败:', error);
+      } finally {
+        if (!disposed) {
+          decompositionRulesLoadedRef.current = true;
+        }
+      }
+    };
+
+    loadDecompositionRules();
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!decompositionRulesLoadedRef.current) return;
+    let disposed = false;
+
+    const saveDecompositionRules = async () => {
+      try {
+        const success = await electronStore.set(DECOMPOSITION_RULE_STORE_KEY, decompositionRules);
+        if (!success || disposed) return;
+
+        window.dispatchEvent(new CustomEvent(DECOMPOSITION_RULE_UPDATED_EVENT, {
+          detail: {
+            source: DECOMPOSITION_RULE_UPDATED_SOURCE,
+            updatedAt: Date.now(),
+          },
+        }));
+      } catch (error) {
+        console.error('[AIChatPanel] 保存拆解规则失败:', error);
+      }
+    };
+
+    saveDecompositionRules();
+
+    return () => {
+      disposed = true;
+    };
+  }, [decompositionRules]);
+
+  useEffect(() => {
+    const handleDecompositionRulesUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ source?: string }>;
+      if (customEvent.detail?.source === DECOMPOSITION_RULE_UPDATED_SOURCE) {
+        return;
+      }
+
+      try {
+        const savedRules = await electronStore.get(DECOMPOSITION_RULE_STORE_KEY);
+        const normalized = normalizeDecompositionRules(savedRules);
+        setDecompositionRules(prev =>
+          areDecompositionRulesEqual(prev, normalized) ? prev : normalized,
+        );
+      } catch (error) {
+        console.error('[AIChatPanel] 同步拆解规则失败:', error);
+      }
+    };
+
+    window.addEventListener(DECOMPOSITION_RULE_UPDATED_EVENT, handleDecompositionRulesUpdated as EventListener);
+    return () => {
+      window.removeEventListener(DECOMPOSITION_RULE_UPDATED_EVENT, handleDecompositionRulesUpdated as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    const loadWritingRuleDocuments = async () => {
+      try {
+        const savedDocuments = await electronStore.get(WRITING_RULE_STORE_KEY);
+        if (!disposed) {
+          setWritingRuleDocuments(normalizeWritingRuleDocuments(savedDocuments));
+        }
+      } catch (error) {
+        console.error('[AIChatPanel] 加载写作规则文档失败:', error);
+      } finally {
+        if (!disposed) {
+          writingRulesLoadedRef.current = true;
+        }
+      }
+    };
+
+    loadWritingRuleDocuments();
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!writingRulesLoadedRef.current) return;
+    let disposed = false;
+
+    const saveWritingRuleDocuments = async () => {
+      try {
+        const success = await electronStore.set(WRITING_RULE_STORE_KEY, writingRuleDocuments);
+        if (!success || disposed) return;
+
+        window.dispatchEvent(new CustomEvent(WRITING_RULE_UPDATED_EVENT, {
+          detail: {
+            source: WRITING_RULE_UPDATED_SOURCE,
+            updatedAt: Date.now(),
+          },
+        }));
+      } catch (error) {
+        console.error('[AIChatPanel] 保存写作规则文档失败:', error);
+      }
+    };
+
+    saveWritingRuleDocuments();
+
+    return () => {
+      disposed = true;
+    };
+  }, [writingRuleDocuments]);
+
+  useEffect(() => {
+    const handleWritingRulesUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ source?: string }>;
+      if (customEvent.detail?.source === WRITING_RULE_UPDATED_SOURCE) {
+        return;
+      }
+
+      try {
+        const savedDocuments = await electronStore.get(WRITING_RULE_STORE_KEY);
+        const normalized = normalizeWritingRuleDocuments(savedDocuments);
+        setWritingRuleDocuments(prev =>
+          areWritingRuleDocumentsEqual(prev, normalized) ? prev : normalized,
+        );
+      } catch (error) {
+        console.error('[AIChatPanel] 同步写作规则文档失败:', error);
+      }
+    };
+
+    window.addEventListener(WRITING_RULE_UPDATED_EVENT, handleWritingRulesUpdated as EventListener);
+    return () => {
+      window.removeEventListener(WRITING_RULE_UPDATED_EVENT, handleWritingRulesUpdated as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Use instant on initial load, smooth on subsequent updates.
     scrollToBottom(isInitialLoadRef.current);
-    // 第一次滚动后，将标志设置为 false
+    // Mark initial load as consumed after first scroll.
     if (isInitialLoadRef.current && messages.length > 0) {
       isInitialLoadRef.current = false;
     }
   }, [messages]);
 
-  // 点击外部关闭上下文菜单
+  // Close context menu when clicking outside.
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -841,32 +3221,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     };
   }, [isContextMenuOpen]);
 
-  // 点击外部关闭模式菜单
-  useEffect(() => {
-    if (!isModeMenuOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        modeSwitcherRef.current &&
-        !modeSwitcherRef.current.contains(event.target as Node)
-      ) {
-        setIsModeMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isModeMenuOpen]);
-
   // 点击外部关闭 header 右键菜单
   useEffect(() => {
     if (!headerContextMenu) return;
 
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      // 检查点击是否在标题栏或菜单内
+      // Check if click is inside header or menu.
       const isInsideHeader = headerRef.current?.contains(target);
       const isInsideMenu = headerContextMenuRef.current?.contains(target);
       
@@ -894,7 +3255,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     };
   }, [headerContextMenu]);
 
-  // 工具调用思考块：进行中时自动展开，完成后自动折叠
+  // 同步思考块展开状态，确保新消息默认展开
   useEffect(() => {
     setToolThinkingExpanded(prev => {
       const next = new Map(prev);
@@ -922,33 +3283,34 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     // 清空当前消息
     setMessages([]);
     setCurrentSessionId(sessionId);
-    console.log('[AIChatPanel] 创建新对话（延迟创建）:', sessionId);
+    console.log('[AIChatPanel] New chat created (sessionId):', sessionId);
   };
 
-  // 切换上下文菜单
+  // Toggle context menu visibility.
   const toggleContextMenu = () => {
     const newState = !isContextMenuOpen;
     setIsContextMenuOpen(newState);
     
-    // 当菜单打开时，自动聚焦搜索框
+    // Focus search input when opening the menu.
     if (newState) {
+      refreshAgentMemoryStats();
       setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
     } else {
-      // 菜单关闭时清空搜索
+      // Clear search query when closing the menu.
       setSearchQuery('');
     }
   };
 
   // 处理上下文菜单项点击
   const handleContextMenuItemClick = (action: string) => {
-    console.log(`[AIChatPanel] 上下文菜单点击: ${action}`);
+    console.log(`[AIChatPanel] Context menu click: ${action}`);
 
-    // 触发相应的全局事件或显示二级面板
+    // Trigger event or show second-level panel based on action.
     switch (action) {
       case 'snippets':
-        // 打开底部面板并切换到常用片段标签页
+        // Open bottom panel and switch to snippets tab.
         setIsContextMenuOpen(false);
         setSubMenuType('none');
         window.dispatchEvent(new CustomEvent('open-panel', {
@@ -956,14 +3318,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         }));
         break;
       case 'knowledge':
-        // 显示知识库二级面板并加载知识库列表
+        // Show knowledge submenu and load knowledge list.
         setSubMenuType('knowledge');
         setIsLoadingKnowledgeBases(true);
         knowledgeBaseService.loadFromStorage().then(data => {
           setKnowledgeBaseList(data.created);
           setIsLoadingKnowledgeBases(false);
         }).catch(err => {
-          console.error('[AIChatPanel] 获取知识库列表失败:', err);
+          console.error('[AIChatPanel] Failed to load knowledge list:', err);
           setIsLoadingKnowledgeBases(false);
         });
         break;
@@ -973,14 +3335,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         setIsLoadingFiles(true);
         (async () => {
           try {
-            // 获取当前工作区路径
+            // Get current workspace path.
             const workspaceResult = await (window as any).electron?.workspace?.getDir();
             if (workspaceResult?.success && workspaceResult.data) {
               const workspacePath = workspaceResult.data;
-              // 读取工作区根目录的文件和文件夹
+              // Read files/folders under workspace root.
               const treeResult = await (window as any).electron?.folder?.readTree(workspacePath);
               if (treeResult?.success && treeResult.data && Array.isArray(treeResult.data)) {
-                // 过滤掉 .wstudio 目录
+                // Exclude .wstudio directory.
                 const filteredData = treeResult.data.filter((item: any) => item.name !== '.wstudio');
                 // 分离文件夹和文件，文件夹在前
                 const folders = filteredData.filter((item: any) => item.type === 'directory');
@@ -1005,7 +3367,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         })();
         break;
       case 'form':
-        // 显示表单二级面板并加载表单列表
+        // Show forms submenu and load forms list.
         setSubMenuType('form');
         setIsLoadingForms(true);
         tableReferenceService.getAllForms().then(forms => {
@@ -1017,12 +3379,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         });
         break;
       case 'skills':
-        // 显示技能二级面板并加载 .wstudio/skills 目录下的技能包
+        // 显示技能包子菜单并加载 .wstudio/skills 列表
         setSubMenuType('skills');
         setIsLoadingSkills(true);
         (async () => {
           try {
-            // 获取当前工作区路径
+            // Get current workspace path.
             const workspaceResult = await (window as any).electron?.workspace?.getDir();
             if (workspaceResult?.success && workspaceResult.data) {
               const workspacePath = workspaceResult.data;
@@ -1045,12 +3407,22 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               setSkillsList([]);
             }
           } catch (err) {
-            console.error('[AIChatPanel] 获取技能包列表失败:', err);
+            console.error('[AIChatPanel] 加载技能包失败:', err);
             setSkillsList([]);
           } finally {
             setIsLoadingSkills(false);
           }
         })();
+        break;
+      case 'memory':
+        refreshAgentMemoryStats();
+        setSubMenuType('memory');
+        break;
+      case 'decompositionRules':
+        setSubMenuType('decompositionRules');
+        break;
+      case 'writingRules':
+        setSubMenuType('writingRules');
         break;
       case 'mcpServer':
         // 显示 MCP Server 二级面板
@@ -1075,149 +3447,155 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
+    const trimmedInput = input.trim();
 
-    // 检查是否选择了模型
+    // Ensure a model is selected before sending.
     if (!selectedModel) {
       console.error('[AIChatPanel] 未选择模型');
       return;
     }
 
-    // 检查是否是 /agent 命令
-    const agentMatch = input.trim().match(/^\/agent\s+(.+)$/s);
-    if (agentMatch) {
-      const taskDesc = agentMatch[1].trim();
-      console.log('[AIChatPanel] 检测到 /agent 命令，在聊天中执行 Agent 任务:', taskDesc);
+    const useChatFlowForNonTaskInAgent = isLikelyNonTaskAgentInput(trimmedInput);
 
-      // 将用户的 Agent 任务作为用户消息添加
+    const consumeAgentContextDesc = (): string => {
+      let contextDesc = '';
+
+      if (selectedForms.length > 0) {
+        for (const form of selectedForms) {
+          contextDesc += `\n\n[Referenced form] ${form.name} (id: ${form.id})\n- If specific data is needed, call query_form with formId="${form.id}"`;
+        }
+        setSelectedForms([]);
+      }
+
+      const activeTabTitle = currentFileName.trim();
+      const activeTabPath = currentFilePath.trim();
+      if (activeTabTitle || activeTabPath) {
+        contextDesc += '\n\n[Current active tab]';
+        if (activeTabTitle) {
+          contextDesc += `\n- title: ${activeTabTitle}`;
+        }
+        if (activeTabPath) {
+          contextDesc += `\n- path: ${activeTabPath}`;
+        }
+        contextDesc += '\n- instruction: If editing is required, prioritize this file unless the user explicitly asks to edit another file.';
+      }
+
+      if (selectedKbs.length > 0) {
+        contextDesc += `\n\n[Referenced knowledge bases]\n${selectedKbs.map(k => `- ${k.title} (id: ${k.id})`).join('\n')}`;
+        setSelectedKbs([]);
+      }
+
+      if (selectedFiles.length > 0) {
+        const referencedFileItems = selectedFiles.filter(item => item.type === 'file');
+        const referencedDirectoryItems = selectedFiles.filter(item => item.type === 'directory');
+        if (referencedFileItems.length > 0) {
+          contextDesc += `\n\n[Referenced files]\n${referencedFileItems.map(f => `- ${f.name} (${f.path})`).join('\n')}`;
+        }
+        if (referencedDirectoryItems.length > 0) {
+          contextDesc += `\n\n[Referenced directories]\n${referencedDirectoryItems.map(f => `- ${f.name} (${f.path})`).join('\n')}`;
+          contextDesc += '\n- instruction: Use list_files on directories first. Do not call read_file directly on a directory path.';
+        }
+        setSelectedFiles([]);
+      }
+
+      if (selectedSkills.length > 0) {
+        contextDesc += `\n\n[Skill constraints]\nOnly execute using the following skill packs:\n${selectedSkills.map(s => `- ${s.name} (${s.path})`).join('\n')}`;
+        setSelectedSkills([]);
+      }
+
+      if (enabledDecompositionRules.length > 0) {
+        contextDesc += '\n\n[Auto decomposition rules]\n'
+          + 'Before writing or editing, first decompose the reference materials and the current draft according to the enabled rules. '
+          + `Then continue with the final write/edit output.\nEnabled rules:\n${enabledDecompositionRules.map(rule => `- ${rule.name}: ${rule.instruction}`).join('\n')}`;
+      }
+
+      if (enabledWritingRuleDocuments.length > 0) {
+        contextDesc += '\n\n[Writing rule documents]\n'
+          + 'Before final writing/editing output, read these rule documents and apply their style and constraints.\n'
+          + `${enabledWritingRuleDocuments.map(document => `- ${document.name} (${document.path})`).join('\n')}`;
+      }
+
+      return contextDesc;
+    };
+
+    // /help: show built-in command help
+    if (/^\/help\b/i.test(trimmedInput)) {
       const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
-        content: `/agent ${taskDesc}`,
-        timestamp: new Date()
+        content: '/help',
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, userMessage]);
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: [
+          '可用命令：',
+          '- `/compact` 压缩历史上下文，保留最近会话',
+          '- `/clear` 清空当前对话',
+          '- `/help` 查看命令说明',
+        ].join('\n'),
+        timestamp: new Date(),
+        model: selectedModel,
+      };
+      setMessages(prev => [...prev, userMessage, assistantMessage]);
       tiptapRef.current?.clear();
       setInput('');
-      setIsLoading(true);
-
-      // 创建助手消息用于显示 Agent 执行过程
-      const assistantMessageId = (Date.now() + 1).toString();
-      const assistantMessage: Message = {
-        id: assistantMessageId,
-        role: 'assistant',
-        content: '🤖 **Agent 任务开始执行...**\n\n',
-        timestamp: new Date(),
-        model: selectedModel
-      };
-      setMessages(prev => [...prev, assistantMessage]);
-
-      try {
-        // 获取模型配置
-        const modelConfig = await getModelConfig(selectedModel);
-        if (!modelConfig) {
-          throw new Error(`未找到模型配置：${selectedModel}`);
-        }
-
-        // 提取实际的模型 ID
-        const actualModelId = selectedModel.includes(':') ? selectedModel.split(':')[1] : selectedModel;
-
-        // 配置 AI 提供商
-        await aiService.setProvider(modelConfig.providerId, {
-          id: modelConfig.id || 'default',
-          name: modelConfig.name || modelConfig.configName,
-          apiKey: modelConfig.apiKey,
-          apiEndpoint: modelConfig.apiEndpoint,
-          temperature: 0.7,
-          maxTokens: 4000,
-          modelId: actualModelId
-        });
-
-        // 初始化 Agent 服务
-        await agentService.initialize({
-          execution: {
-            modelId: actualModelId,
-            temperature: 0.7,
-            maxTokens: 4000,
-            streaming: true
-          }
-        });
-
-        // 创建任务
-        const task = agentService.createTask('write', taskDesc, {});
-
-        // 流式执行任务，更新聊天消息
-        await agentService.executeTaskStream(task, {
-          onStepStart: (step) => {
-            console.log('[AIChatPanel Agent] 步骤开始:', step.description);
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: msg.content + `\n📋 **步骤**: ${step.description}\n` }
-                : msg
-            ));
-          },
-          onStepComplete: (step, result) => {
-            console.log('[AIChatPanel Agent] 步骤完成:', step.description);
-            // 从步骤结果中提取输出
-            if (result) {
-              const stepOutput = (result as { thinking?: string; content?: string }).thinking
-                || (result as { thinking?: string; content?: string }).content
-                || '';
-              if (stepOutput) {
-                setMessages(prev => prev.map(msg =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: msg.content + `\n${stepOutput}\n` }
-                    : msg
-                ));
-              }
-            }
-          },
-          onToolCall: (toolName, params) => {
-            console.log('[AIChatPanel Agent] 工具调用:', toolName);
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: msg.content + `\n🔧 **调用工具**: ${toolName}\n` }
-                : msg
-            ));
-          },
-          onToolResult: (toolName, result) => {
-            console.log('[AIChatPanel Agent] 工具结果:', toolName);
-          },
-          onComplete: (result) => {
-            console.log('[AIChatPanel Agent] 任务完成:', result.success);
-            const finalContent = result.success
-              ? `\n\n✅ **Agent 任务完成**${result.output ? `\n\n${result.output}` : ''}`
-              : `\n\n❌ **Agent 任务失败**: ${result.error || '未知错误'}`;
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: msg.content + finalContent }
-                : msg
-            ));
-            setIsLoading(false);
-          },
-          onError: (err) => {
-            console.error('[AIChatPanel Agent] 任务错误:', err);
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: msg.content + `\n\n❌ **错误**: ${err.message}` }
-                : msg
-            ));
-            setIsLoading(false);
-          }
-        });
-      } catch (err) {
-        console.error('[AIChatPanel Agent] 执行失败:', err);
-        setMessages(prev => prev.map(msg =>
-          msg.id === assistantMessageId
-            ? { ...msg, content: msg.content + `\n\n❌ **执行失败**: ${err instanceof Error ? err.message : String(err)}` }
-            : msg
-        ));
-        setIsLoading(false);
-      }
+      setIsContextMenuOpen(false);
+      setSubMenuType('none');
       return;
     }
 
-    // 普通对话模式：直接调用 AI，不走 Agent 流水线
-    if (chatMode === 'chat') {
+    // /clear: clear all messages
+    if (/^\/clear\b/i.test(trimmedInput)) {
+      setMessages([]);
+      tiptapRef.current?.clear();
+      setInput('');
+      setIsContextMenuOpen(false);
+      setSubMenuType('none');
+      return;
+    }
+
+    // /compact: fold old history into a compact summary message
+    if (/^\/compact\b/i.test(trimmedInput)) {
+      const historyToCompact = messages.filter(m => m.role === 'user' || m.role === 'assistant');
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: '/compact',
+        timestamp: new Date(),
+      };
+      if (historyToCompact.length <= COMPACT_KEEP_RECENT_MESSAGES) {
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: '当前历史较短，暂不需要压缩。',
+          timestamp: new Date(),
+          model: selectedModel,
+        };
+        setMessages(prev => [...prev, userMessage, assistantMessage]);
+      } else {
+        const historyToFold = historyToCompact.slice(0, historyToCompact.length - COMPACT_KEEP_RECENT_MESSAGES);
+        const recentHistory = historyToCompact.slice(-COMPACT_KEEP_RECENT_MESSAGES);
+        const compactSummary = buildCompactConversationSummary(historyToFold);
+        const compactMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `Context compacted\n${compactSummary}`,
+          timestamp: new Date(),
+          model: selectedModel,
+        };
+        setMessages([...recentHistory, userMessage, compactMessage]);
+      }
+      tiptapRef.current?.clear();
+      setInput('');
+      setIsContextMenuOpen(false);
+      setSubMenuType('none');
+      return;
+    }
+
+    // Non-task query: call AI directly (without Agent workflow).
+    if (useChatFlowForNonTaskInAgent) {
       const taskDesc = input.trim();
       const userMessage: Message = {
         id: Date.now().toString(),
@@ -1238,9 +3616,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         timestamp: new Date(),
         model: selectedModel
       }]);
+      const ignoreReferencedContext = useChatFlowForNonTaskInAgent;
 
       try {
-        // 只在模型切换时重新初始化 provider，避免每次发送都重复初始化
+        // Reinitialize provider only when model changes.
         const actualModelId = selectedModel.includes(':') ? selectedModel.split(':')[1] : selectedModel;
         if (!providerCacheRef.current || providerCacheRef.current.modelId !== selectedModel) {
           const modelConfig = await getModelConfig(selectedModel);
@@ -1257,27 +3636,239 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           providerCacheRef.current = { modelId: selectedModel, actualModelId };
         }
 
-        // 构建上下文文本
+        // Build context text.
         let contextText = '';
-        if (selectedForms.length > 0) {
-          for (const form of selectedForms) {
-            const detail = await tableReferenceService.getFormDetail(form.id);
-            if (detail && detail.columns.length > 0) {
-              const colNames = detail.columns.map((c: { name: string }) => c.name).join('、');
-              contextText += `\n\n【引用表单：${detail.name}】\n- 列：${colNames}\n- 共 ${detail.rows.length} 行数据`;
+        const pendingForms = ignoreReferencedContext ? [] : [...selectedForms];
+        const pendingKbs = ignoreReferencedContext ? [] : [...selectedKbs];
+        const knowledgeFileNamesForTool = new Set<string>();
+        const knowledgeKnownPathsForTool = new Set<string>();
+        const knowledgeCandidatesForTool: KnowledgeFileCandidate[] = [];
+        const knowledgeContentCache = new Map<string, string>();
+        const allowedFormIdsForTool = new Set<string>();
+        const allowedFormNamesForTool = new Map<string, string>();
+        const taskSearchTerms = buildSearchTerms(taskDesc);
+        if (pendingForms.length > 0) {
+          for (const form of pendingForms) {
+            allowedFormIdsForTool.add(form.id);
+            if (form.name?.trim()) {
+              allowedFormNamesForTool.set(form.name.trim().toLowerCase(), form.id);
             }
+            contextText += `\n\n[Referenced form] ${form.name} (id: ${form.id})\n- Use query_form with formId to fetch rows as needed.`;
           }
           setSelectedForms([]);
         }
-        if (selectedKbs.length > 0) {
-          contextText += `\n\n【引用知识库】\n${selectedKbs.map(k => `- ${k.title}`).join('\n')}`;
+        if (pendingKbs.length > 0) {
+          const kbActKey = 'chat-kb-retrieval';
+          const MAX_FILES_PER_KB = 24;
+          const MAX_SNIPPETS_TOTAL = 20;
+          const MAX_TOTAL_CHARS = 12000;
+          const MAX_FALLBACK_SNIPPETS_PER_KB = 2;
+          let totalSnippetCount = 0;
+          let totalChars = 0;
+          let fallbackSnippetCount = 0;
+          const dedupKeys = new Set<string>();
+          const kbSections: string[] = [];
+
+          upsertActLog(assistantMessageId, {
+            key: kbActKey,
+            kind: 'tool',
+            title: `Retrieving knowledge snippets 0/${pendingKbs.length}`,
+            detail: `${pendingKbs.length} knowledge base(s)`,
+            status: 'running',
+          });
+          await waitForActFrame(80);
+
+          for (let kbIndex = 0; kbIndex < pendingKbs.length; kbIndex += 1) {
+            const kb = pendingKbs[kbIndex];
+            const kbItem = await knowledgeBaseService.findItem(kb.id);
+            if (!kbItem || kbItem.type !== 'folder') {
+              continue;
+            }
+
+            const candidates = collectKnowledgeFileCandidates(kbItem);
+            const uniqueFileNames = Array.from(
+              new Set(
+                candidates
+                  .map(candidate => candidate.name.trim())
+                  .filter(name => name.length > 0)
+              )
+            );
+
+            const knownPathSet = new Set(
+              candidates
+                .map(candidate => candidate.path)
+                .filter((value): value is string => typeof value === 'string' && value.length > 0)
+                .map(value => normalizeFilePath(value))
+            );
+
+            const searchFileNames = uniqueFileNames
+              .slice(0, MAX_FILES_PER_KB)
+              .map(name => getPathBaseName(name));
+            for (const fileName of searchFileNames) {
+              knowledgeFileNamesForTool.add(fileName);
+            }
+            for (const normalizedPath of knownPathSet) {
+              knowledgeKnownPathsForTool.add(normalizedPath);
+            }
+            knowledgeCandidatesForTool.push(...candidates);
+
+            const kbSnippets: string[] = [];
+            for (const fileName of searchFileNames) {
+              if (totalSnippetCount >= MAX_SNIPPETS_TOTAL || totalChars >= MAX_TOTAL_CHARS) {
+                break;
+              }
+
+              let ragResult: any;
+              try {
+                ragResult = await (window as any).electron?.ipcRenderer.invoke('agent:rag:query', {
+                  query: taskDesc,
+                  topK: 3,
+                  fileName,
+                });
+              } catch {
+                continue;
+              }
+
+              const ragItems = Array.isArray(ragResult?.data?.results)
+                ? (ragResult.data.results as AgentRAGResultItem[])
+                : [];
+
+              for (const item of ragItems) {
+                if (totalSnippetCount >= MAX_SNIPPETS_TOTAL || totalChars >= MAX_TOTAL_CHARS) {
+                  break;
+                }
+
+                const filePath = typeof item.filePath === 'string' ? item.filePath : '';
+                if (knownPathSet.size > 0 && filePath) {
+                  const normalized = normalizeFilePath(filePath);
+                  if (!knownPathSet.has(normalized)) {
+                    continue;
+                  }
+                }
+
+                const rawText = typeof item.childContent === 'string' && item.childContent.trim().length > 0
+                  ? item.childContent
+                  : (typeof item.content === 'string' ? item.content : '');
+                if (!rawText.trim()) continue;
+
+                const snippet = trimSnippet(rawText, 560);
+                const dedupKey = `${filePath}|${snippet}`;
+                if (dedupKeys.has(dedupKey)) {
+                  continue;
+                }
+                dedupKeys.add(dedupKey);
+
+                const sourceName = filePath ? getPathBaseName(filePath) : fileName;
+                kbSnippets.push(`[${sourceName}]\n${snippet}`);
+                totalSnippetCount += 1;
+                totalChars += snippet.length;
+              }
+            }
+
+            if (kbSnippets.length === 0) {
+              const rankedFallback: Array<{ score: number; name: string; path?: string; snippet: string }> = [];
+              for (const candidate of candidates.slice(0, MAX_FILES_PER_KB * 2)) {
+                if (totalSnippetCount >= MAX_SNIPPETS_TOTAL || totalChars >= MAX_TOTAL_CHARS) {
+                  break;
+                }
+                const cacheKey = candidate.path ?? candidate.name;
+                let content = typeof candidate.content === 'string' ? candidate.content : '';
+                if (!content && candidate.path) {
+                  if (knowledgeContentCache.has(cacheKey)) {
+                    content = knowledgeContentCache.get(cacheKey) ?? '';
+                  } else {
+                    try {
+                      const fileContent: string = await (window as any).electron?.ipcRenderer.invoke('read-file', candidate.path);
+                      content = typeof fileContent === 'string' ? fileContent : '';
+                    } catch {
+                      content = '';
+                    }
+                    knowledgeContentCache.set(cacheKey, content);
+                  }
+                } else if (content) {
+                  knowledgeContentCache.set(cacheKey, content);
+                }
+
+                if (!content.trim()) continue;
+                const score = scoreTextByTerms(content, taskSearchTerms);
+                if (score <= 0) continue;
+                const snippet = extractSnippetByTerms(content, taskSearchTerms, 560);
+                if (!snippet) continue;
+                rankedFallback.push({
+                  score,
+                  name: candidate.name,
+                  path: candidate.path,
+                  snippet,
+                });
+              }
+
+              rankedFallback.sort((a, b) => b.score - a.score);
+              for (const item of rankedFallback.slice(0, MAX_FALLBACK_SNIPPETS_PER_KB)) {
+                if (totalSnippetCount >= MAX_SNIPPETS_TOTAL || totalChars >= MAX_TOTAL_CHARS) {
+                  break;
+                }
+                const dedupKey = `${item.path ?? item.name}|${item.snippet}`;
+                if (dedupKeys.has(dedupKey)) continue;
+                dedupKeys.add(dedupKey);
+                kbSnippets.push(`[${item.name}]\n${item.snippet}`);
+                totalSnippetCount += 1;
+                totalChars += item.snippet.length;
+                fallbackSnippetCount += 1;
+              }
+            }
+
+            if (kbSnippets.length > 0) {
+              kbSections.push(`- ${kb.title}\n${kbSnippets.join('\n\n')}`);
+            }
+
+            upsertActLog(assistantMessageId, {
+              key: kbActKey,
+              kind: 'tool',
+              title: `Retrieving knowledge snippets ${kbIndex + 1}/${pendingKbs.length}`,
+              detail: `${totalSnippetCount} snippets`,
+              status: 'running',
+            });
+          }
+
+          if (kbSections.length > 0) {
+            contextText += `\n\n[Referenced knowledge snippets]\n${kbSections.join('\n\n')}`;
+            upsertActLog(assistantMessageId, {
+              key: kbActKey,
+              kind: 'tool',
+              title: `Knowledge retrieval completed ${pendingKbs.length}/${pendingKbs.length}`,
+              detail: fallbackSnippetCount > 0
+                ? `${totalSnippetCount} snippets (${fallbackSnippetCount} from stored content)`
+                : `${totalSnippetCount} snippets`,
+              status: 'success',
+            });
+          } else {
+            let progressText = '';
+            try {
+              const progress = await (window as any).electron?.workspaceVectorIndex?.getProgress?.();
+              if (progress?.success && progress.data) {
+                const p = progress.data;
+                progressText = ` | index ${p.status} ${p.processedFiles}/${p.totalFiles}`;
+              }
+            } catch {
+              // ignore optional status fetch failure
+            }
+            contextText += `\n\n[Referenced knowledge bases]\n${pendingKbs.map(k => `- ${k.title} (id: ${k.id})`).join('\n')}`;
+            upsertActLog(assistantMessageId, {
+              key: kbActKey,
+              kind: 'tool',
+              title: `Knowledge retrieval completed ${pendingKbs.length}/${pendingKbs.length}`,
+              detail: `No vector snippets found, fallback to referenced knowledge base list${progressText}`,
+              status: 'success',
+            });
+          }
+
           setSelectedKbs([]);
         }
-        // 有引用文件/文件夹时，展开文件夹并告知 AI
-        const hasFiles = selectedFiles.length > 0;
-        const pendingFiles = [...selectedFiles];
+        // If referenced files/folders exist, expand folders and pass context to AI.
+        const pendingFiles = ignoreReferencedContext ? [] : [...selectedFiles];
+        const hasFiles = pendingFiles.length > 0;
         if (hasFiles) {
-          // 递归展开文件夹，收集所有子文件路径
+          // 展开目录并收集其中所有文件
           const expandedFiles: { name: string; path: string }[] = [];
           for (const f of pendingFiles) {
             if (f.type === 'directory') {
@@ -1294,18 +3885,41 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 };
                 flatten(treeResult.data);
               }
-              // 文件夹本身也告知 AI，方便 list_directory 探索
-              expandedFiles.unshift({ name: f.name + '（文件夹）', path: f.path });
+              // Include folder item itself so list_directory can be used.
+              expandedFiles.unshift({ name: `${f.name} (folder)`, path: f.path });
             } else {
               expandedFiles.push({ name: f.name, path: f.path });
             }
           }
-          contextText += `\n\n【引用文件】以下文件已准备好，请使用 read_file 工具读取内容，使用 list_directory 工具列出文件夹内容：\n${expandedFiles.map(f => `- ${f.name}：${f.path}`).join('\n')}`;
+          contextText += `\n\n[Referenced files] The following files are prepared. Use read_file/read_file_chunk to read content and list_directory to inspect folders:\n${expandedFiles.map(f => `- ${f.name}: ${f.path}`).join('\n')}`;
           setSelectedFiles([]);
+        }
+
+        if (!ignoreReferencedContext && enabledWritingRuleDocuments.length > 0) {
+          contextText += '\n\n[Writing rule documents] Read these documents first and follow their writing constraints/style before final output:\n'
+            + `${enabledWritingRuleDocuments.map(document => `- ${document.name}: ${document.path}`).join('\n')}`;
         }
 
         // 构建消息列表
         const chatMessages: ChatMessage[] = [];
+
+        const timelineStylePrompt = [
+          'When tool use is needed, keep a Claude-Code-like timeline interaction style.',
+          'Before each tool call, output 1-2 short Chinese sentences explaining the next action.',
+          'After each tool result, output one short Chinese progress update before continuing.',
+          'Keep updates incremental and concise; do not dump everything at once.',
+          'Avoid repeating the same progress sentence or re-listing unchanged conclusions.',
+          'If knowledge base context is referenced but insufficient, use query_knowledge to continue retrieval before final answer.',
+          'If forms are referenced, use query_form with formId to fetch only the rows/columns needed before final answer.',
+          'For numeric conditions (e.g. 年龄 > 29), call query_form with where={column,op,value}; do not manually recount names.',
+          'For categorical filters (e.g. 女性/男性), use query_form where on 性别/sex/gender column instead of fuzzy matching all columns.',
+          'When query_form returns all_columns and selected_columns, use all_columns to decide whether a field exists.',
+          'When query_form returns matched_total, use that exact number in final answer.',
+          'When the user asks to summarize a folder or multiple files, read every listed file unless the user explicitly asks for sampling.',
+          'For large files, prefer read_file_chunk with sequential cursor until has_more=false, and report progress in Chinese after each chunk.',
+          'If file count is large, continue in batches until all files are read before the final summary.'
+        ].join('\n');
+        chatMessages.push({ role: 'system', content: timelineStylePrompt });
 
         // 有上下文时加 system prompt
         if (contextText.length > 0) {
@@ -1313,7 +3927,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           if (systemPrompt) chatMessages.push({ role: 'system', content: systemPrompt });
         }
 
-        // 历史对话（当前 messages 快照，不含刚加入的新消息）
+        // History messages snapshot (excluding just-added message).
         for (const m of messages) {
           if (m.role === 'user' || m.role === 'assistant') {
             chatMessages.push({ role: m.role, content: m.content });
@@ -1323,79 +3937,246 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         // 当前用户消息（含上下文）
         chatMessages.push({ role: 'user', content: taskDesc + contextText });
 
-        // read_file 工具定义（仅在有引用文件时注入）
-        const chatTools = hasFiles ? [
-          {
-            type: 'function' as const,
+        // Chat tool definitions: file queries + knowledge retrieval.
+        const toolDefs: Array<{
+          type: 'function';
+          function: {
+            name: string;
+            description: string;
+            parameters: Record<string, unknown>;
+          };
+        }> = [];
+        if (allowedFormIdsForTool.size > 0) {
+          toolDefs.push({
+            type: 'function',
             function: {
-              name: 'read_file',
-              description: '读取本地文件内容。',
+              name: 'query_form',
+              description: 'Query rows from referenced forms by formId, with optional query/columns/limit/offset.',
               parameters: {
                 type: 'object',
-                properties: { path: { type: 'string', description: '文件的绝对路径' } },
-                required: ['path']
+                properties: {
+                  formId: { type: 'string', description: 'Referenced form ID' },
+                  formName: { type: 'string', description: 'Optional form name alias when formId is unavailable' },
+                  query: { type: 'string', description: 'Optional keyword query for row filtering' },
+                  columns: {
+                    oneOf: [
+                      { type: 'array', items: { type: 'string' } },
+                      { type: 'string' }
+                    ],
+                    description: 'Optional columns by id/name. Supports ["列A","列B"] or "列A,列B"',
+                  },
+                  selected_columns: {
+                    oneOf: [
+                      { type: 'array', items: { type: 'string' } },
+                      { type: 'string' }
+                    ],
+                    description: 'Alias of columns',
+                  },
+                  selectedColumns: {
+                    oneOf: [
+                      { type: 'array', items: { type: 'string' } },
+                      { type: 'string' }
+                    ],
+                    description: 'Alias of columns',
+                  },
+                  limit: { type: 'number', description: 'Rows per call, default 20, max 80' },
+                  offset: { type: 'number', description: 'Offset for pagination, default 0' },
+                  rowIds: { type: 'array', items: { type: 'string' }, description: 'Optional explicit row ids' },
+                  where: {
+                    oneOf: [
+                      {
+                        type: 'object',
+                        properties: {
+                          column: { type: 'string' },
+                          field: { type: 'string' },
+                          op: { type: 'string' },
+                          operator: { type: 'string' },
+                          value: { oneOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }] },
+                          target: { oneOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }] },
+                        },
+                      },
+                      {
+                        type: 'array',
+                        items: { type: 'object' },
+                      },
+                      { type: 'string' }
+                    ],
+                    description: 'Structured filter, supports object/array/json-string. op supports =, !=, >, >=, <, <= and aliases',
+                  },
+                },
+                required: ['formId']
               }
             }
-          },
-          {
-            type: 'function' as const,
+          });
+        }
+        if (hasFiles) {
+          toolDefs.push(
+            {
+              type: 'function',
+              function: {
+                name: 'read_file',
+                description: 'Read local file content. For large files this may return partial content and a next cursor.',
+                parameters: {
+                  type: 'object',
+                  properties: { path: { type: 'string', description: 'Absolute file path' } },
+                  required: ['path']
+                }
+              }
+            },
+            {
+              type: 'function',
+              function: {
+                name: 'read_file_chunk',
+                description: 'Read one chunk of a local file by line cursor. Call repeatedly until has_more=false.',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    path: { type: 'string', description: 'Absolute file path' },
+                    cursor: { type: 'number', description: '0-based next line cursor, default 0' },
+                    chunkLines: { type: 'number', description: `Lines per chunk, recommended ${READ_FILE_CHUNK_DEFAULT_LINES}` }
+                  },
+                  required: ['path']
+                }
+              }
+            },
+            {
+              type: 'function',
+              function: {
+                name: 'list_directory',
+                description: 'List files and subfolders in a directory.',
+                parameters: {
+                  type: 'object',
+                  properties: { path: { type: 'string', description: 'Absolute directory path' } },
+                  required: ['path']
+                }
+              }
+            }
+          );
+        }
+        if (pendingKbs.length > 0 && knowledgeFileNamesForTool.size > 0) {
+          toolDefs.push({
+            type: 'function',
             function: {
-              name: 'list_directory',
-              description: '列出文件夹下的文件和子文件夹。',
+              name: 'query_knowledge',
+              description: 'Search referenced knowledge bases by semantic query and return matched snippets.',
               parameters: {
                 type: 'object',
-                properties: { path: { type: 'string', description: '文件夹的绝对路径' } },
-                required: ['path']
+                properties: {
+                  query: { type: 'string', description: 'Natural language query for retrieval' },
+                  topK: { type: 'number', description: 'Maximum snippets to return' },
+                  fileName: { type: 'string', description: 'Optional file name in referenced knowledge bases' }
+                },
+                required: ['query']
               }
             }
-          }
-        ] : undefined;
+          });
+        }
+        const chatTools = toolDefs.length > 0 ? toolDefs : undefined;
+        let activeChatTools = chatTools;
+        let chatRound = 0;
+        const MAX_CHAT_ROUNDS = 24;
+        const MAX_QUERY_KNOWLEDGE_CALLS = 3;
+        const toolResultCache = new Map<string, { result: string; summary: string; status: 'success' | 'error' }>();
+        const emittedToolActKeys = new Set<string>();
+        const readBatchActKey = 'chat-tool-read-batch-global';
+        let readFilePlannedTotal = 0;
+        let readFileDoneTotal = 0;
+        let readFileFailedTotal = 0;
+        let readFileTotalLines = 0;
+        let listedFileCountHint = 0;
+        let useGlobalReadFileBatchLog = false;
+        let queryKnowledgeCallsTotal = 0;
+        let queryKnowledgeNoNewResultStreak = 0;
+        const queryKnowledgeResultHashes = new Set<string>();
+        const readFileContentCache = new Map<string, string>();
+        const contextBudgetActKey = 'chat-tool-context-budget';
+        let toolContextCompactedTotal = 0;
+        let lastToolRoundSignature = '';
+        let repeatedCachedToolRounds = 0;
 
         // tool call 循环：AI 可能多次调用工具，每次执行后继续对话
         const runChatWithTools = async (): Promise<void> => {
+          const roundIndex = ++chatRound;
+          if (roundIndex > MAX_CHAT_ROUNDS) {
+            appendActLog(assistantMessageId, {
+              kind: 'error',
+              title: 'Stopped: too many rounds',
+              detail: `Exceeded ${MAX_CHAT_ROUNDS} rounds, please refine the request.`,
+              status: 'error',
+            });
+            setIsLoading(false);
+            return;
+          }
           let pendingToolCalls: { id: string; name: string; argsRaw: string; uiId: string }[] = [];
           let currentContent = '';
+          let renderQueue = '';
+          let renderTimer: ReturnType<typeof setTimeout> | null = null;
+          const textBlockKey = `chat-text-round-${roundIndex}`;
+
+          const appendContentChunk = (chunk: string): void => {
+            setMessages(prev => prev.map(msg => {
+              if (msg.id !== assistantMessageId) return msg;
+              const blocks = msg.contentBlocks ?? [];
+              const textIdx = blocks.findIndex(
+                block => block.type === 'text' && block.key === textBlockKey
+              );
+              if (textIdx >= 0) {
+                const existing = blocks[textIdx];
+                if (existing.type === 'text') {
+                  const updatedBlock: ContentBlock = {
+                    type: 'text',
+                    key: textBlockKey,
+                    text: existing.text + chunk,
+                    isStreaming: true,
+                  };
+                  const updated = [...blocks];
+                  updated[textIdx] = updatedBlock;
+                  return { ...msg, content: msg.content + chunk, contentBlocks: updated };
+                }
+              }
+              return {
+                ...msg,
+                content: msg.content + chunk,
+                contentBlocks: [...blocks, { type: 'text', key: textBlockKey, text: chunk, isStreaming: true }],
+              };
+            }));
+          };
+
+          const flushRenderQueue = (): void => {
+            if (!renderQueue) {
+              renderTimer = null;
+              return;
+            }
+
+            const stepSize = Math.max(2, Math.min(10, Math.ceil(renderQueue.length / 10)));
+            const chunk = renderQueue.slice(0, stepSize);
+            renderQueue = renderQueue.slice(stepSize);
+            appendContentChunk(chunk);
+            renderTimer = setTimeout(flushRenderQueue, 30);
+          };
+
+          const enqueueRenderChunk = (chunk: string): void => {
+            renderQueue += chunk;
+            if (!renderTimer) {
+              flushRenderQueue();
+            }
+          };
+
+          const waitForRenderQueueDrain = async (): Promise<void> => {
+            while (renderQueue.length > 0 || renderTimer) {
+              await new Promise(resolve => setTimeout(resolve, 20));
+            }
+          };
 
           await aiService.generateTextStream(
-            { model: actualModelId, messages: chatMessages, temperature: 0.7, maxTokens: 4000, tools: chatTools },
+            { model: actualModelId, messages: chatMessages, temperature: 0.7, maxTokens: 4000, tools: activeChatTools },
             {
               onContent: (chunk) => {
                 currentContent += chunk;
-                setMessages(prev => prev.map(msg => {
-                  if (msg.id !== assistantMessageId) return msg;
-                  // 追加到 contentBlocks 的最后一个文本块，或创建新文本块
-                  const blocks = msg.contentBlocks ?? [];
-                  const lastBlock = blocks[blocks.length - 1];
-                  if (lastBlock?.type === 'text') {
-                    const updated = [...blocks];
-                    updated[updated.length - 1] = { type: 'text', text: lastBlock.text + chunk };
-                    return { ...msg, content: msg.content + chunk, contentBlocks: updated };
-                  } else {
-                    return { ...msg, content: msg.content + chunk, contentBlocks: [...blocks, { type: 'text', text: chunk }] };
-                  }
-                }));
+                enqueueRenderChunk(chunk);
               },
-              onReasoning: (reasoning) => {
-                setMessages(prev => prev.map(msg => {
-                  if (msg.id !== assistantMessageId) return msg;
-                  // 追加到 contentBlocks 的 thinking 块
-                  const blocks = msg.contentBlocks ?? [];
-                  const thinkingIdx = blocks.findIndex(b => b.type === 'thinking');
-                  if (thinkingIdx >= 0) {
-                    const updated = [...blocks];
-                    const tb = updated[thinkingIdx] as { type: 'thinking'; content: string; isThinking: boolean };
-                    updated[thinkingIdx] = { ...tb, content: tb.content + reasoning };
-                    return { ...msg, contentBlocks: updated, isThinking: true, thinkingStartTime: msg.thinkingStartTime ?? Date.now() };
-                  } else {
-                    // 在开头插入 thinking 块
-                    return {
-                      ...msg,
-                      contentBlocks: [{ type: 'thinking', content: reasoning, isThinking: true }, ...blocks],
-                      isThinking: true,
-                      thinkingStartTime: msg.thinkingStartTime ?? Date.now()
-                    };
-                  }
-                }));
+              onReasoning: () => {
+                // Keep reasoning hidden for a cleaner Claude-like timeline.
               },
               onToolCall: (toolCall) => {
                 const idx = (toolCall as any).index ?? 0;
@@ -1407,32 +4188,21 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 if (toolCall.id) pendingToolCalls[idx].id = toolCall.id;
                 if (toolCall.function?.name) pendingToolCalls[idx].name += toolCall.function.name;
                 if (toolCall.function?.arguments) pendingToolCalls[idx].argsRaw += toolCall.function.arguments;
-
-                const tc = pendingToolCalls[idx];
-                if (tc.name && isNew) {
-                  // 插入工具调用块到 contentBlocks
-                  const toolLog: ToolLog = { uiId: tc.uiId, name: tc.name, label: tc.name, status: 'pending' };
-                  setMessages(prev => prev.map(msg =>
-                    msg.id === assistantMessageId
-                      ? {
-                          ...msg,
-                          isThinkingPhase: true,
-                          thinkingStartTime: msg.thinkingStartTime ?? Date.now(),
-                          toolCalls: [...(msg.toolCalls ?? []), toolLog],
-                          contentBlocks: [...(msg.contentBlocks ?? []), { type: 'tool', tool: toolLog }]
-                        }
-                      : msg
-                  ));
-                }
               },
               onComplete: async () => {
-                // 推理完成：把 thinking 块状态改为 completed，记录耗时
+                try {
+                  await waitForRenderQueueDrain();
+                // Thinking round completed: mark block completed and record elapsed time.
                 setMessages(prev => prev.map(msg => {
                   if (msg.id !== assistantMessageId) return msg;
                   const elapsed = msg.thinkingStartTime ? Math.max(1, Math.round((Date.now() - msg.thinkingStartTime) / 1000)) : 1;
-                  // 更新 contentBlocks 中的 thinking 块
+                  // Update thinking/text block state when a round completes.
                   const updatedBlocks = msg.contentBlocks?.map(b =>
-                    b.type === 'thinking' ? { ...b, isThinking: false, elapsedSeconds: elapsed } : b
+                    b.type === 'thinking'
+                      ? { ...b, isThinking: false, elapsedSeconds: elapsed }
+                      : (b.type === 'text' && b.key === textBlockKey)
+                        ? { ...b, isStreaming: false }
+                        : b
                   );
                   return {
                     ...msg,
@@ -1442,13 +4212,108 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                   };
                 }));
 
-                const validToolCalls = pendingToolCalls.filter(tc => tc != null);
+                const allowedToolNames = new Set(
+                  (activeChatTools ?? []).map(tool => tool.function?.name).filter(Boolean) as string[]
+                );
+                const ignoredToolCalls = pendingToolCalls.filter(
+                  tc => tc != null && tc.name && !allowedToolNames.has(tc.name)
+                );
+                if (ignoredToolCalls.length > 0) {
+                  const ignoredNames = Array.from(new Set(ignoredToolCalls.map(tc => tc.name))).join(', ');
+                  appendActLog(assistantMessageId, {
+                    kind: 'status',
+                    title: 'Ignored unsupported tool calls',
+                    detail: ignoredNames,
+                    status: 'info',
+                  });
+                }
+                const validToolCalls = pendingToolCalls.filter(
+                  tc => tc != null && tc.name && allowedToolNames.has(tc.name)
+                );
                 if (validToolCalls.length === 0) {
+                  const optimizedFinalText = optimizeAssistantOutput(currentContent);
+                  if (optimizedFinalText !== currentContent) {
+                    setMessages(prev => prev.map(msg =>
+                      msg.id === assistantMessageId
+                        ? {
+                            ...msg,
+                            content: optimizedFinalText,
+                            contentBlocks: (msg.contentBlocks ?? []).map(block => (
+                              block.type === 'text'
+                                ? { ...block, text: optimizeAssistantOutput(block.text), isStreaming: false }
+                                : block
+                            )),
+                          }
+                        : msg
+                    ));
+                  }
+                  if (useGlobalReadFileBatchLog) {
+                    const hasIncompleteReads = listedFileCountHint > 0 && readFileDoneTotal < listedFileCountHint;
+                    const detailParts = [`total ${readFileTotalLines} lines`];
+                    if (listedFileCountHint > 0) {
+                      detailParts.push(`listed ${listedFileCountHint} files`);
+                    }
+                    if (readFileFailedTotal > 0) {
+                      detailParts.push(`failed ${readFileFailedTotal}`);
+                    }
+                    upsertActLog(assistantMessageId, {
+                      key: readBatchActKey,
+                      kind: 'tool',
+                      title: hasIncompleteReads
+                        ? `Read calls ${readFileDoneTotal}/${readFilePlannedTotal} (incomplete)`
+                        : `Read calls ${readFileDoneTotal}/${readFilePlannedTotal}`,
+                      detail: detailParts.join(' | '),
+                      status: hasIncompleteReads || readFileFailedTotal > 0 ? 'error' : 'success',
+                    });
+                  }
                   setIsLoading(false);
                   return;
                 }
+                const roundToolKeys = validToolCalls.map(tc => buildToolCallCacheKey(tc.name, tc.argsRaw));
+                const roundToolSignature = roundToolKeys.join('||');
+                const allRoundToolsCached = roundToolKeys.length > 0
+                  && roundToolKeys.every(key => toolResultCache.has(key));
+                if (
+                  roundToolSignature
+                  && roundToolSignature === lastToolRoundSignature
+                  && allRoundToolsCached
+                ) {
+                  repeatedCachedToolRounds += 1;
+                } else {
+                  repeatedCachedToolRounds = 0;
+                }
+                lastToolRoundSignature = roundToolSignature;
 
-                // 把 assistant 的 tool_calls 追加到消息历史
+                const readFileCallsInRound = validToolCalls.reduce(
+                  (count, tc) => (tc.name === 'read_file' || tc.name === 'read_file_chunk' ? count + 1 : count),
+                  0
+                );
+                if (readFileCallsInRound > 0) {
+                  readFilePlannedTotal += readFileCallsInRound;
+                  if (!useGlobalReadFileBatchLog && readFilePlannedTotal >= READ_FILE_BATCH_LOG_THRESHOLD) {
+                    useGlobalReadFileBatchLog = true;
+                  }
+                  if (useGlobalReadFileBatchLog) {
+                    const detailParts = [`queued ${readFilePlannedTotal - readFileDoneTotal}`];
+                    detailParts.push(`total ${readFileTotalLines} lines`);
+                    if (listedFileCountHint > 0) {
+                      detailParts.push(`listed ${listedFileCountHint} files`);
+                    }
+                    if (readFileFailedTotal > 0) {
+                      detailParts.push(`failed ${readFileFailedTotal}`);
+                    }
+                    upsertActLog(assistantMessageId, {
+                      key: readBatchActKey,
+                      kind: 'tool',
+                      title: `Reading calls ${readFileDoneTotal}/${readFilePlannedTotal}`,
+                      detail: detailParts.join(' | '),
+                      status: 'running',
+                    });
+                    await waitForActFrame(40);
+                  }
+                }
+
+                // Append assistant tool_calls into chat history.
                 const toolCallsForMsg = validToolCalls.map(tc => ({
                   id: tc.id,
                   type: 'function' as const,
@@ -1456,69 +4321,557 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 }));
                 chatMessages.push({ role: 'assistant', content: currentContent, tool_calls: toolCallsForMsg });
 
-                // 执行每个 tool call，通过 uiId 更新已有条目（不重复添加）
-                const updateToolInMessage = (uiId: string, updates: Partial<ToolLog>) => {
-                  setMessages(prev => prev.map(msg => {
-                    if (msg.id !== assistantMessageId) return msg;
-                    const updatedToolCalls = msg.toolCalls?.map(t => t.uiId === uiId ? { ...t, ...updates } : t);
-                    const updatedBlocks = msg.contentBlocks?.map(b =>
-                      b.type === 'tool' && b.tool.uiId === uiId
-                        ? { ...b, tool: { ...b.tool, ...updates } }
-                        : b
-                    );
-                    return { ...msg, toolCalls: updatedToolCalls, contentBlocks: updatedBlocks };
-                  }));
-                };
-
                 for (const tc of validToolCalls) {
                   let toolResult = '';
+                  let resultSummary = 'done';
+                  let resultStatus: 'success' | 'error' = 'success';
+                  let readFilePath = '';
+                  let readFileLineCount: number | undefined;
+                  const toolCacheKey = buildToolCallCacheKey(tc.name, tc.argsRaw);
+                  const toolActKey = `chat-tool-${hashText(toolCacheKey)}`;
+                  let toolAct = buildToolActTitle(tc.name, tc.argsRaw);
+                  const cachedToolResult = toolResultCache.get(toolCacheKey);
+                  const isReadToolCall = tc.name === 'read_file' || tc.name === 'read_file_chunk';
+                  const useBatchReadLogForCall = useGlobalReadFileBatchLog && isReadToolCall;
+                  const showToolLog = !useBatchReadLogForCall && !emittedToolActKeys.has(toolActKey);
+
+                  if (showToolLog) {
+                    upsertActLog(assistantMessageId, {
+                      key: toolActKey,
+                      kind: 'tool',
+                      title: toolAct.title,
+                      detail: toolAct.detail,
+                      status: 'running',
+                    });
+                    await waitForActFrame(90);
+                  }
                   try {
-                    if (tc.name === 'read_file') {
-                      const args = JSON.parse(tc.argsRaw) as { path: string };
-                      const label = `Read "${args.path}"`;
-                      updateToolInMessage(tc.uiId, { label });
-                      const content: string = await (window as any).electron?.ipcRenderer.invoke('read-file', args.path);
-                      toolResult = content ?? '';
-                      const lineCount = toolResult ? toolResult.split('\n').length : 0;
-                      const summary = lineCount > 0 ? `${lineCount} lines of output` : '(empty)';
-                      updateToolInMessage(tc.uiId, { status: 'success', summary });
-                      if (!toolResult) toolResult = '（文件内容为空）';
+                    if (cachedToolResult) {
+                      toolResult = cachedToolResult.result;
+                      resultStatus = cachedToolResult.status;
+                      resultSummary = cachedToolResult.summary.endsWith('(cached)')
+                        ? cachedToolResult.summary
+                        : `${cachedToolResult.summary} (cached)`;
+                      if (isReadToolCall) {
+                        const args = parseToolArgs(tc.argsRaw);
+                        readFilePath = typeof args?.path === 'string' ? args.path : '';
+                        const cachedLineCount = parseReadLineCountFromSummary(resultSummary);
+                        if (typeof cachedLineCount === 'number') {
+                          readFileLineCount = cachedLineCount;
+                        } else if (!toolResult || toolResult === '[empty file]') {
+                          readFileLineCount = 0;
+                        } else {
+                          readFileLineCount = toolResult.split('\n').length;
+                        }
+                      }
+                    } else if (tc.name === 'read_file') {
+                      const args = parseToolArgs(tc.argsRaw);
+                      readFilePath = typeof args?.path === 'string' ? args.path : '';
+                      if (!readFilePath) throw new Error('Missing file path');
+
+                      let content = readFileContentCache.get(readFilePath);
+                      if (typeof content !== 'string') {
+                        const readResult: string = await (window as any).electron?.ipcRenderer.invoke('read-file', readFilePath);
+                        content = readResult ?? '';
+                        readFileContentCache.set(readFilePath, content);
+                      }
+
+                      const normalized = content.replace(/\r\n/g, '\n');
+                      const totalLines = normalized ? normalized.split('\n').length : 0;
+                      const shouldInlineFull = totalLines <= READ_FILE_FULL_INLINE_LINE_LIMIT
+                        && normalized.length <= READ_FILE_FULL_INLINE_CHAR_LIMIT;
+
+                      if (shouldInlineFull) {
+                        toolResult = normalized || '[empty file]';
+                        readFileLineCount = totalLines;
+                        resultSummary = totalLines > 0 ? `${totalLines} lines of output` : '(empty file)';
+                      } else {
+                        const { cursor, chunkLines } = parseLineChunkArgs(null);
+                        const chunk = buildReadFileChunkResult(normalized, cursor, chunkLines);
+                        readFileLineCount = chunk.chunkLineCount;
+                        resultSummary = chunk.chunkLineCount > 0
+                          ? `${chunk.chunkLineCount} lines | chunk ${chunk.chunkIndex}/${chunk.chunkTotal}`
+                          : '(empty file)';
+                        toolResult = [
+                          `[read_file partial] ${readFilePath}`,
+                          `chunk ${chunk.chunkIndex}/${chunk.chunkTotal}`,
+                          `lines ${chunk.startLine}-${chunk.endLine}/${chunk.totalLines}`,
+                          `cursor ${chunk.safeCursor}`,
+                          `has_more ${chunk.hasMore ? 'true' : 'false'}`,
+                          `next_cursor ${chunk.nextCursor}`,
+                          `chunk_lines ${chunk.safeChunkLines}`,
+                          '',
+                          chunk.chunkText || '[empty chunk]',
+                          ...(chunk.hasMore
+                            ? [
+                              '',
+                              `[continue] Call read_file_chunk with {"path":"${readFilePath}","cursor":${chunk.nextCursor},"chunkLines":${chunk.safeChunkLines}}`
+                            ]
+                            : []),
+                        ].join('\n');
+                      }
+                    } else if (tc.name === 'read_file_chunk') {
+                      const args = parseToolArgs(tc.argsRaw);
+                      readFilePath = typeof args?.path === 'string' ? args.path : '';
+                      if (!readFilePath) throw new Error('Missing file path');
+
+                      let content = readFileContentCache.get(readFilePath);
+                      if (typeof content !== 'string') {
+                        const readResult: string = await (window as any).electron?.ipcRenderer.invoke('read-file', readFilePath);
+                        content = readResult ?? '';
+                        readFileContentCache.set(readFilePath, content);
+                      }
+
+                      const { cursor, chunkLines } = parseLineChunkArgs(args);
+                      const chunk = buildReadFileChunkResult(content, cursor, chunkLines);
+                      readFileLineCount = chunk.chunkLineCount;
+                      resultSummary = chunk.chunkLineCount > 0
+                        ? `${chunk.chunkLineCount} lines | chunk ${chunk.chunkIndex}/${chunk.chunkTotal} | ${chunk.endLine}/${chunk.totalLines}`
+                        : '(empty file)';
+                      toolResult = [
+                        `[read_file_chunk] ${readFilePath}`,
+                        `chunk ${chunk.chunkIndex}/${chunk.chunkTotal}`,
+                        `lines ${chunk.startLine}-${chunk.endLine}/${chunk.totalLines}`,
+                        `cursor ${chunk.safeCursor}`,
+                        `has_more ${chunk.hasMore ? 'true' : 'false'}`,
+                        `next_cursor ${chunk.nextCursor}`,
+                        `chunk_lines ${chunk.safeChunkLines}`,
+                        '',
+                        chunk.chunkText || '[empty chunk]',
+                      ].join('\n');
+                    } else if (tc.name === 'query_form') {
+                      const args = parseToolArgs(tc.argsRaw);
+                      const formIdArg = typeof args?.formId === 'string' ? args.formId.trim() : '';
+                      const formNameArg = typeof args?.formName === 'string' ? args.formName.trim() : '';
+                      const query = typeof args?.query === 'string' ? args.query.trim() : '';
+                      const explicitWhere = parseQueryFormWhere(args?.where);
+                      const limitArg = typeof args?.limit === 'number' && Number.isFinite(args.limit)
+                        ? Math.floor(args.limit)
+                        : 80;
+                      const offsetArg = typeof args?.offset === 'number' && Number.isFinite(args.offset)
+                        ? Math.floor(args.offset)
+                        : 0;
+                      const rowIdsArg = Array.isArray(args?.rowIds)
+                        ? args.rowIds.map(item => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
+                        : [];
+                      const limit = Math.max(1, Math.min(80, limitArg));
+                      const offset = Math.max(0, offsetArg);
+
+                      let resolvedFormId = formIdArg;
+                      if (resolvedFormId) {
+                        const normalizedFromFormId = resolvedFormId.toLowerCase();
+                        const mappedFromName = allowedFormNamesForTool.get(normalizedFromFormId);
+                        if (mappedFromName) {
+                          resolvedFormId = mappedFromName;
+                        }
+                      }
+                      if (!resolvedFormId && formNameArg) {
+                        const normalizedName = formNameArg.toLowerCase();
+                        resolvedFormId = allowedFormNamesForTool.get(normalizedName) ?? '';
+                      }
+                      if (!resolvedFormId) {
+                        throw new Error('Missing formId');
+                      }
+                      if (allowedFormIdsForTool.size > 0 && !allowedFormIdsForTool.has(resolvedFormId)) {
+                        throw new Error(`Form is not referenced in context: ${resolvedFormId}`);
+                      }
+                      const columnsArg = args?.columns ?? args?.selected_columns ?? args?.selectedColumns;
+                      const selectedColumnsArg = parseFormColumnsArg(columnsArg);
+                      const queryRowsResult = await window.electron?.form?.queryRows({
+                        formId: resolvedFormId,
+                        query,
+                        where: explicitWhere ?? undefined,
+                        columns: selectedColumnsArg,
+                        limit,
+                        offset,
+                        rowIds: rowIdsArg,
+                      });
+                      if (!queryRowsResult?.success || !queryRowsResult.data) {
+                        throw new Error(queryRowsResult?.error || `Form not found: ${resolvedFormId}`);
+                      }
+
+                      const data = queryRowsResult.data;
+                      toolAct = { ...toolAct, title: `Query form "${data.formName}"` };
+                      allowedFormIdsForTool.add(data.formId);
+                      allowedFormNamesForTool.set(data.formName.trim().toLowerCase(), data.formId);
+
+                      const rowLines = data.rows.map((row, idx) => {
+                        const cellPairs = data.selectedColumns.map(column => {
+                          const value = normalizeFormCellValue((row.cells ?? {})[column.id]);
+                          const compactValue = value.length > 120 ? `${value.slice(0, 120)}...` : value;
+                          return `${column.name}=${compactValue}`;
+                        });
+                        if (cellPairs.length === 0) {
+                          return `[${data.offset + idx + 1}] rowId=${row.id}`;
+                        }
+                        return `[${data.offset + idx + 1}] rowId=${row.id} | ${cellPairs.join(' | ')}`;
+                      });
+
+                      toolResult = [
+                        `[form] ${data.formName} (id: ${data.formId})`,
+                        `all_columns: ${data.allColumns.map(column => column.name).join(', ')}`,
+                        `selected_columns: ${data.selectedColumns.map(column => column.name).join(', ')}`,
+                        `matched_total: ${data.matchedTotal}`,
+                        `returned_count: ${data.returnedCount}`,
+                        `rows: ${data.returnedCount} returned / ${data.matchedTotal} matched / ${data.totalRows} total`,
+                        `offset: ${data.offset}`,
+                        `limit: ${data.limit}`,
+                        ...(query ? [`query: ${query}`] : []),
+                        ...(data.appliedWhere ? [`where: ${JSON.stringify(data.appliedWhere)}`] : []),
+                        ...(data.whereInferred ? ['where_inferred: true'] : []),
+                        `has_more ${data.hasMore ? 'true' : 'false'}`,
+                        ...(data.hasMore ? [`next_offset ${data.nextOffset}`] : []),
+                        '',
+                        ...(rowLines.length > 0 ? rowLines : ['[no rows matched]']),
+                      ].join('\n');
+                      resultSummary = `${data.matchedTotal} matched | ${data.returnedCount} returned`;
+                    } else if (tc.name === 'query_knowledge') {
+                      const args = parseToolArgs(tc.argsRaw);
+                      const query = typeof args?.query === 'string' ? args.query.trim() : '';
+                      const topK = typeof args?.topK === 'number'
+                        ? Math.max(1, Math.min(12, Math.floor(args.topK)))
+                        : 6;
+                      const fileNameArg = typeof args?.fileName === 'string'
+                        ? args.fileName.trim()
+                        : '';
+
+                      if (!query) {
+                        throw new Error('Missing query');
+                      }
+
+                      queryKnowledgeCallsTotal += 1;
+
+                      const fileNames = fileNameArg
+                        ? [getPathBaseName(fileNameArg)]
+                        : Array.from(knowledgeFileNamesForTool).slice(0, 36);
+                      const queryTerms = buildSearchTerms(query);
+
+                      if (fileNames.length === 0) {
+                        toolResult = 'No referenced knowledge files available';
+                        resultSummary = 'no referenced knowledge files';
+                      } else {
+                        const collected: AgentRAGResultItem[] = [];
+                        const dedup = new Set<string>();
+
+                        for (const fileName of fileNames) {
+                          let ragResult: any;
+                          try {
+                            ragResult = await (window as any).electron?.ipcRenderer.invoke('agent:rag:query', {
+                              query,
+                              topK: 3,
+                              fileName,
+                            });
+                          } catch {
+                            continue;
+                          }
+
+                          const ragItems = Array.isArray(ragResult?.data?.results)
+                            ? (ragResult.data.results as AgentRAGResultItem[])
+                            : [];
+
+                          for (const item of ragItems) {
+                            const filePath = typeof item.filePath === 'string' ? item.filePath : '';
+                            if (knowledgeKnownPathsForTool.size > 0 && filePath) {
+                              const normalized = normalizeFilePath(filePath);
+                              if (!knowledgeKnownPathsForTool.has(normalized)) {
+                                continue;
+                              }
+                            }
+
+                            const rawText = typeof item.childContent === 'string' && item.childContent.trim().length > 0
+                              ? item.childContent
+                              : (typeof item.content === 'string' ? item.content : '');
+                            if (!rawText.trim()) continue;
+
+                            const dedupKey = `${filePath}|${rawText.slice(0, 180)}`;
+                            if (dedup.has(dedupKey)) {
+                              continue;
+                            }
+                            dedup.add(dedupKey);
+
+                            collected.push({
+                              ...item,
+                              childContent: rawText,
+                            });
+                          }
+                        }
+
+                        collected.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+                        const snippets = collected.slice(0, topK);
+                        if (snippets.length === 0) {
+                          const rankedFallback: Array<{ score: number; sourceName: string; snippet: string; path?: string }> = [];
+                          const fileNameFilter = fileNameArg ? getPathBaseName(fileNameArg).toLowerCase() : '';
+                          for (const candidate of knowledgeCandidatesForTool.slice(0, 120)) {
+                            const candidateName = getPathBaseName(candidate.name).toLowerCase();
+                            if (fileNameFilter && candidateName !== fileNameFilter) {
+                              continue;
+                            }
+                            const cacheKey = candidate.path ?? candidate.name;
+                            let content = typeof candidate.content === 'string' ? candidate.content : '';
+                            if (!content && candidate.path) {
+                              if (knowledgeContentCache.has(cacheKey)) {
+                                content = knowledgeContentCache.get(cacheKey) ?? '';
+                              } else {
+                                try {
+                                  const fileContent: string = await (window as any).electron?.ipcRenderer.invoke('read-file', candidate.path);
+                                  content = typeof fileContent === 'string' ? fileContent : '';
+                                } catch {
+                                  content = '';
+                                }
+                                knowledgeContentCache.set(cacheKey, content);
+                              }
+                            } else if (content) {
+                              knowledgeContentCache.set(cacheKey, content);
+                            }
+
+                            if (!content.trim()) continue;
+                            const score = scoreTextByTerms(content, queryTerms);
+                            if (score <= 0) continue;
+                            const snippet = extractSnippetByTerms(content, queryTerms, 560);
+                            if (!snippet) continue;
+                            rankedFallback.push({
+                              score,
+                              sourceName: candidate.name,
+                              snippet,
+                              path: candidate.path,
+                            });
+                          }
+
+                          rankedFallback.sort((a, b) => b.score - a.score);
+                          const fallbackSnippets = rankedFallback.slice(0, topK);
+                          if (fallbackSnippets.length === 0) {
+                            toolResult = 'No matching knowledge snippets found';
+                            resultSummary = 'no matches';
+                            queryKnowledgeNoNewResultStreak += 1;
+                          } else {
+                            toolResult = fallbackSnippets.map((item, idx) => (
+                              `[${idx + 1}] ${item.sourceName}\n${item.snippet}`
+                            )).join('\n\n');
+                            resultSummary = `${fallbackSnippets.length} snippets (keyword fallback)`;
+                            const hash = hashText(toolResult);
+                            if (queryKnowledgeResultHashes.has(hash)) {
+                              queryKnowledgeNoNewResultStreak += 1;
+                            } else {
+                              queryKnowledgeResultHashes.add(hash);
+                              queryKnowledgeNoNewResultStreak = 0;
+                            }
+                          }
+                        } else {
+                          toolResult = snippets.map((item, idx) => {
+                            const filePath = typeof item.filePath === 'string' ? item.filePath : '';
+                            const sourceName = filePath ? getPathBaseName(filePath) : 'knowledge';
+                            const rawText = typeof item.childContent === 'string' && item.childContent.trim().length > 0
+                              ? item.childContent
+                              : (typeof item.content === 'string' ? item.content : '');
+                            return `[${idx + 1}] ${sourceName}\n${trimSnippet(rawText, 560)}`;
+                          }).join('\n\n');
+                          resultSummary = `${snippets.length} snippets`;
+                          const hash = hashText(toolResult);
+                          if (queryKnowledgeResultHashes.has(hash)) {
+                            queryKnowledgeNoNewResultStreak += 1;
+                          } else {
+                            queryKnowledgeResultHashes.add(hash);
+                            queryKnowledgeNoNewResultStreak = 0;
+                          }
+                        }
+                      }
                     } else if (tc.name === 'list_directory') {
-                      const args = JSON.parse(tc.argsRaw) as { path: string };
-                      const label = `List "${args.path}"`;
-                      updateToolInMessage(tc.uiId, { label });
-                      const treeResult = await (window as any).electron?.folder?.readTree(args.path);
+                      const args = parseToolArgs(tc.argsRaw);
+                      const path = typeof args?.path === 'string' ? args.path : '';
+                      if (!path) throw new Error('Missing directory path');
+                      const treeResult = await (window as any).electron?.folder?.readTree(path);
                       if (treeResult?.success && Array.isArray(treeResult.data)) {
                         const items = treeResult.data;
+                        const listedFiles = items.filter((item: any) => item?.type !== 'directory').length;
+                        listedFileCountHint = Math.max(listedFileCountHint, listedFiles);
                         toolResult = items.map((item: any) =>
                           `${item.type === 'directory' ? '[DIR]' : '[FILE]'} ${item.path}`
                         ).join('\n');
-                        const summary = `${items.length} items`;
-                        updateToolInMessage(tc.uiId, { status: 'success', summary });
+                        resultSummary = `${items.length} items`;
                       } else {
-                        toolResult = '（无法列出目录内容）';
-                        updateToolInMessage(tc.uiId, { status: 'error' });
+                        toolResult = 'Failed to list directory';
+                        resultSummary = 'failed';
+                        resultStatus = 'error';
                       }
                     } else {
-                      toolResult = `未知工具：${tc.name}`;
+                      toolResult = `Unknown tool: ${tc.name}`;
+                      resultSummary = toolResult;
+                      resultStatus = 'error';
                     }
                   } catch (e) {
-                    toolResult = `读取失败：${e instanceof Error ? e.message : String(e)}`;
-                    updateToolInMessage(tc.uiId, { status: 'error', summary: 'failed' });
+                    const errorMessage = e instanceof Error ? e.message : String(e);
+                    toolResult = `Tool execution failed: ${errorMessage}`;
+                    resultSummary = errorMessage;
+                    resultStatus = 'error';
                   }
-                  chatMessages.push({ role: 'tool', content: toolResult, tool_call_id: tc.id });
+
+                  if (!cachedToolResult) {
+                    toolResultCache.set(toolCacheKey, {
+                      result: toolResult,
+                      summary: resultSummary,
+                      status: resultStatus,
+                    });
+                  }
+
+                  if (useBatchReadLogForCall) {
+                    readFileDoneTotal += 1;
+                    if (resultStatus === 'error') {
+                      readFileFailedTotal += 1;
+                    } else {
+                      const lineCount = typeof readFileLineCount === 'number'
+                        ? readFileLineCount
+                        : parseReadLineCountFromSummary(resultSummary) ?? 0;
+                      readFileTotalLines += lineCount;
+                      readFileLineCount = lineCount;
+                    }
+
+                    const isBatchFinished = readFileDoneTotal >= readFilePlannedTotal;
+                    const status: ActLog['status'] = isBatchFinished
+                      ? (readFileFailedTotal > 0 ? 'error' : 'success')
+                      : 'running';
+                    const title = isBatchFinished
+                      ? (readFileFailedTotal > 0
+                        ? `Read calls ${readFileDoneTotal}/${readFilePlannedTotal} (with errors)`
+                        : `Read calls ${readFileDoneTotal}/${readFilePlannedTotal}`)
+                      : `Reading calls ${readFileDoneTotal}/${readFilePlannedTotal}`;
+
+                    const detailParts: string[] = [
+                      `latest: ${shortenPathForTimeline(readFilePath || '(unknown)')}`,
+                    ];
+                    if (resultStatus === 'error') {
+                      detailParts.push(`error: ${resultSummary}`);
+                    } else if (typeof readFileLineCount === 'number') {
+                      detailParts.push(`${readFileLineCount} lines`);
+                    }
+                    detailParts.push(`total ${readFileTotalLines} lines`);
+                    if (listedFileCountHint > 0) {
+                      detailParts.push(`listed ${listedFileCountHint} files`);
+                    }
+                    if (readFileFailedTotal > 0) {
+                      detailParts.push(`failed ${readFileFailedTotal}`);
+                    }
+
+                    upsertActLog(assistantMessageId, {
+                      key: readBatchActKey,
+                      kind: 'tool',
+                      title,
+                      detail: detailParts.join(' | '),
+                      status,
+                    });
+                    await waitForActFrame(isBatchFinished ? 80 : 20);
+                  } else if (showToolLog) {
+                    upsertActLog(assistantMessageId, {
+                      key: toolActKey,
+                      kind: 'tool',
+                      title: toolAct.title,
+                      detail: resultSummary,
+                      status: resultStatus,
+                    });
+                    emittedToolActKeys.add(toolActKey);
+                    await waitForActFrame(80);
+                  }
+                  const toolResultForModel = getToolResultForModel(tc.name, toolResult);
+                  chatMessages.push({ role: 'tool', content: toolResultForModel, tool_call_id: tc.id });
+                  const budgetResult = enforceToolMessageBudget(chatMessages);
+                  if (budgetResult.compacted > 0) {
+                    toolContextCompactedTotal += budgetResult.compacted;
+                    upsertActLog(assistantMessageId, {
+                      key: contextBudgetActKey,
+                      kind: 'status',
+                      title: 'Context budget applied',
+                      detail: `compacted ${toolContextCompactedTotal} tool payloads | tool chars ${budgetResult.totalChars}`,
+                      status: 'info',
+                    });
+                    await waitForActFrame(20);
+                  }
                 }
 
-                // 工具全部执行完毕，重置状态，继续下一轮对话
+                const onlyKnowledgeCallsThisRound = validToolCalls.length > 0
+                  && validToolCalls.every(tc => tc.name === 'query_knowledge');
+                const shouldStopKnowledgeLoop = !!activeChatTools
+                  && onlyKnowledgeCallsThisRound
+                  && (
+                    queryKnowledgeCallsTotal >= MAX_QUERY_KNOWLEDGE_CALLS
+                    || (queryKnowledgeNoNewResultStreak >= 1 && queryKnowledgeCallsTotal >= 2)
+                  );
+                if (shouldStopKnowledgeLoop) {
+                  activeChatTools = undefined;
+                  appendActLog(assistantMessageId, {
+                    kind: 'status',
+                    title: 'Knowledge retrieval converged',
+                    detail: `Stop tools after ${queryKnowledgeCallsTotal} calls; generate final answer.`,
+                    status: 'success',
+                  });
+                  chatMessages.push({
+                    role: 'system',
+                    content: 'You already have enough retrieved context. Do not call any tools. Provide the final answer in Chinese now.'
+                  });
+                }
+                const shouldStopRepeatedToolLoop = !!activeChatTools
+                  && repeatedCachedToolRounds >= 1
+                  && allRoundToolsCached;
+                if (shouldStopRepeatedToolLoop) {
+                  activeChatTools = undefined;
+                  appendActLog(assistantMessageId, {
+                    kind: 'status',
+                    title: 'Tool loop detected',
+                    detail: 'Repeated cached tool calls detected, forcing final answer.',
+                    status: 'info',
+                  });
+                  chatMessages.push({
+                    role: 'system',
+                    content: 'Tool results are already sufficient. Do not call any tools again. Provide the final answer in Chinese now.'
+                  });
+                }
+
                 pendingToolCalls = [];
                 currentContent = '';
 
-                await runChatWithTools();
+                  await runChatWithTools();
+                } catch (error) {
+                  if (renderTimer) {
+                    clearTimeout(renderTimer);
+                    renderTimer = null;
+                  }
+                  renderQueue = '';
+                  const errorMessage = error instanceof Error ? error.message : String(error);
+                  appendActLog(assistantMessageId, {
+                    kind: 'error',
+                    title: 'Round finalize error',
+                    detail: errorMessage,
+                    status: 'error',
+                  });
+                  setMessages(prev => prev.map(msg => {
+                    if (msg.id !== assistantMessageId) return msg;
+                    return {
+                      ...msg,
+                      isThinking: false,
+                      content: msg.content + `\n\nRequest failed: ${errorMessage}`,
+                      contentBlocks: msg.contentBlocks?.map(b => (
+                        b.type === 'thinking'
+                          ? { ...b, isThinking: false }
+                          : (b.type === 'text' ? { ...b, isStreaming: false } : b)
+                      )),
+                    };
+                  }));
+                  setIsLoading(false);
+                }
               },
               onError: (error) => {
+                if (renderTimer) {
+                  clearTimeout(renderTimer);
+                  renderTimer = null;
+                }
+                renderQueue = '';
+                appendActLog(assistantMessageId, {
+                  kind: 'error',
+                  title: 'Streaming error',
+                  detail: error.message,
+                  status: 'error',
+                });
                 setMessages(prev => prev.map(msg =>
                   msg.id === assistantMessageId
-                    ? { ...msg, content: msg.content + `\n\n❌ 请求失败: ${error.message}` }
+                    ? { ...msg, content: msg.content + `\n\nRequest failed: ${error.message}` }
                     : msg
                 ));
                 setIsLoading(false);
@@ -1529,9 +4882,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
         await runChatWithTools();
       } catch (err) {
+        appendActLog(assistantMessageId, {
+          kind: 'error',
+          title: 'Chat request exception',
+          detail: err instanceof Error ? err.message : String(err),
+          status: 'error',
+        });
         setMessages(prev => prev.map(msg =>
           msg.id === assistantMessageId
-            ? { ...msg, content: `❌ 请求失败: ${err instanceof Error ? err.message : String(err)}` }
+            ? { ...msg, content: `Request failed: ${err instanceof Error ? err.message : String(err)}` }
             : msg
         ));
         setIsLoading(false);
@@ -1539,7 +4898,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       return;
     }
 
-    // Agent 模式：执行写入操作前需用户确认
+    // Agent 模式：调用 Agent 执行任务
     {
       const taskDesc = input.trim();
       const userMessage: Message = {
@@ -1562,6 +4921,19 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         model: selectedModel
       };
       setMessages(prev => [...prev, assistantMessage]);
+      appendActLog(assistantMessageId, {
+        kind: 'status',
+        title: 'Agent task started',
+        detail: taskDesc,
+        status: 'running',
+      });
+      let finalizeDecompositionBlock: () => void = () => {};
+      let todoEventListener: EventListener | null = null;
+      const detachTodoListener = (): void => {
+        if (!todoEventListener) return;
+        window.removeEventListener('agent:todo-changed', todoEventListener);
+        todoEventListener = null;
+      };
 
       try {
         const modelConfig = await getModelConfig(selectedModel);
@@ -1588,67 +4960,466 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
         // 获取工作区路径并注册工具（每次都重新注册以确保路径最新）
         const workspaceResult = await (window as any).electron?.workspace?.getDir();
-        const workspacePath = workspaceResult?.success ? workspaceResult.data : '';
-        agentService.registerDefaultTools({ workspacePath });
+        const configuredWorkspacePath = workspaceResult?.success ? String(workspaceResult.data || '') : '';
 
-        // agent 模式：允许文件写入，禁止命令执行（执行前需确认）
-        const constraints = { allowFileWrite: true, allowCommandExecution: false };
-
-        // 将选中的上下文（表单、知识库、文件、技能）注入任务描述
-        let contextDesc = '';
-
-        // 表单：只注入元数据（列名、行数），数据通过 query_form 工具按需查询
-        if (selectedForms.length > 0) {
-          for (const form of selectedForms) {
-            const detail = await tableReferenceService.getFormDetail(form.id);
-            if (detail && detail.columns.length > 0) {
-              const colNames = detail.columns.map(c => c.name).join('、');
-              contextDesc += `\n\n【引用表单：${detail.name}】\n- 表单ID: ${detail.id}\n- 列：${colNames}\n- 共 ${detail.rows.length} 行数据\n- 如需查询具体数据，请使用 query_form 工具，传入 formId="${detail.id}"`;
-            } else {
-              contextDesc += `\n\n【引用表单】${form.name} (id: ${form.id})`;
-            }
+        // Agent mode constraints: allow file write and command execution (with confirmation).
+        const constraints = { allowFileWrite: true, allowCommandExecution: true };
+        const selectedFormsSnapshot = selectedForms.map(form => ({ ...form }));
+        const selectedKbsSnapshot = selectedKbs.map(kb => ({ ...kb }));
+        const selectedFilesSnapshot = selectedFiles.map(file => ({ ...file }));
+        const hasContextHint = selectedFormsSnapshot.length > 0
+          || selectedKbsSnapshot.length > 0
+          || selectedFilesSnapshot.length > 0;
+        const contextDesc = consumeAgentContextDesc();
+        const liveCurrentTabPath = typeof (window as any).__currentTabPath === 'string'
+          ? (window as any).__currentTabPath.trim()
+          : '';
+        const liveCurrentTabTitle = typeof (window as any).__currentTabTitle === 'string'
+          ? (window as any).__currentTabTitle.trim()
+          : '';
+        const selectedFileFallback = selectedFiles.find(item =>
+          item.type === 'file' && typeof item.path === 'string' && item.path.trim().length > 0
+        )?.path?.trim() ?? '';
+        const normalizedCurrentFilePath = currentFilePath.trim() || liveCurrentTabPath || selectedFileFallback;
+        const normalizedCurrentFileName = currentFileName.trim()
+          || liveCurrentTabTitle
+          || (normalizedCurrentFilePath ? getPathBaseName(normalizedCurrentFilePath) : '');
+        const hasWritableCurrentFile = isLikelyFileSystemPath(normalizedCurrentFilePath);
+        const taskType = inferAgentTaskType(taskDesc, hasContextHint, hasWritableCurrentFile);
+        const compactAgentOutput = taskType === 'write' || taskType === 'edit';
+        const currentFileForTask = !compactAgentOutput && hasWritableCurrentFile
+          ? normalizedCurrentFilePath
+          : '';
+        const streamingDraftTarget = compactAgentOutput
+          ? buildAgentDraftTarget()
+          : null;
+        const inferredWorkspacePath = hasWritableCurrentFile
+          ? deriveDirectoryPath(normalizedCurrentFilePath)
+          : '';
+        const workspacePath = (() => {
+          if (!configuredWorkspacePath) {
+            return inferredWorkspacePath;
           }
-          setSelectedForms([]);
+          if (
+            inferredWorkspacePath
+            && hasWritableCurrentFile
+            && !isPathInsideBase(normalizedCurrentFilePath, configuredWorkspacePath)
+          ) {
+            return inferredWorkspacePath;
+          }
+          return configuredWorkspacePath;
+        })();
+
+        // 每次按最新上下文重新注册工具，确保当前标签页文件可写。
+        agentService.registerDefaultTools({ workspacePath });
+        const additionalContext: Record<string, unknown> = {};
+        if (!compactAgentOutput && normalizedCurrentFileName) {
+          additionalContext.currentTabTitle = normalizedCurrentFileName;
         }
-        if (selectedKbs.length > 0) {
-          contextDesc += `\n\n【引用知识库】\n${selectedKbs.map(k => `- ${k.title} (id: ${k.id})`).join('\n')}`;
-          setSelectedKbs([]);
+        if (!compactAgentOutput && normalizedCurrentFilePath) {
+          additionalContext.currentTabPath = normalizedCurrentFilePath;
+          additionalContext.currentTabEditPriority = 'prefer_current_tab_file';
         }
-        if (selectedFiles.length > 0) {
-          contextDesc += `\n\n【引用文件】\n${selectedFiles.map(f => `- ${f.name} (${f.path})`).join('\n')}`;
-          setSelectedFiles([]);
+        if (compactAgentOutput) {
+          additionalContext.referenceSource = 'random_workspace_article_by_command';
+          additionalContext.referenceDimensions = [
+            'framework',
+            'style',
+            'sentence_patterns',
+            'structure',
+            'logic_chain',
+            'wording',
+            'transitions',
+            'turning_points',
+            'cases',
+          ];
+          additionalContext.decompositionWorkflow = {
+            steps: [
+              'extract_meta_framework',
+              'decide_sub_headings_or_direct_paragraph_decomposition',
+              'paragraph_level_decomposition',
+              'paragraph_by_paragraph_writing',
+              'sentence_level_compare_score_and_optimize_loop',
+            ],
+            paragraphDimensions: [
+              'logic_chain',
+              'transitions',
+              'turning_points',
+              'cases',
+              'word_choice',
+              'information_density',
+              'layout_style',
+              'highlight_lines',
+              'verb_adjective_precision',
+              'rhetorical_devices',
+              'length',
+              'rhythm',
+              'narrative_perspective',
+              'hooks',
+              'emotion_curve',
+              'core_intent',
+              'entry_point',
+              'voice_style',
+              'credibility_backing',
+              'scientific_examples',
+              'verb_noun_ratio',
+              'rhetorical_logic',
+            ],
+          };
+          // Reduce token burn from repeated verify loops for draft-generation mode.
+          additionalContext.verifyGate = {
+            minScore: 80,
+            maxRepairRounds: 1,
+          };
         }
-        if (selectedSkills.length > 0) {
-          contextDesc += `\n\n【技能指令】请只执行以下指定的技能包：\n${selectedSkills.map(s => `- ${s.name} (${s.path})`).join('\n')}`;
-          setSelectedSkills([]);
+        additionalContext.taskIntent = compactAgentOutput
+          ? (taskType === 'edit'
+            ? 'rewrite_by_random_reference_article'
+            : 'generate_by_random_reference_article')
+          : `${taskType}_task`;
+        additionalContext.referencedContext = {
+          files: selectedFilesSnapshot
+            .filter(item => item.type === 'file' && typeof item.path === 'string' && item.path.trim().length > 0)
+            .map(item => ({ name: item.name, path: item.path, type: 'file' })),
+          directories: selectedFilesSnapshot
+            .filter(item => item.type === 'directory' && typeof item.path === 'string' && item.path.trim().length > 0)
+            .map(item => ({ name: item.name, path: item.path, type: 'directory' })),
+          knowledgeBases: selectedKbsSnapshot.map(item => ({ id: item.id, title: item.title })),
+          forms: selectedFormsSnapshot.map(item => ({ id: item.id, name: item.name })),
+        };
+        if (enabledDecompositionRules.length > 0) {
+          additionalContext.decompositionRules = enabledDecompositionRules.map(rule => ({
+            id: rule.id,
+            name: rule.name,
+            instruction: rule.instruction,
+          }));
+        }
+        if (enabledWritingRuleDocuments.length > 0) {
+          additionalContext.writingRuleDocuments = enabledWritingRuleDocuments.map(document => ({
+            id: document.id,
+            name: document.name,
+            path: document.path,
+            enabled: document.enabled,
+          }));
+        }
+        const currentTabTargetContext = !compactAgentOutput && normalizedCurrentFilePath
+          ? `\n\n[Current tab reference]\n- title: ${normalizedCurrentFileName || getPathBaseName(normalizedCurrentFilePath)}\n- path: ${normalizedCurrentFilePath}\n- instruction: use as reference only. do not overwrite this file unless the user explicitly requests writing to this path.`
+          : '';
+
+        const task = agentService.createTask(
+          taskType,
+          taskDesc + contextDesc + currentTabTargetContext,
+          {
+            workspacePath,
+            currentFile: currentFileForTask || undefined,
+            additionalContext: Object.keys(additionalContext).length > 0 ? additionalContext : undefined,
+          },
+          constraints
+        );
+
+        if (streamingDraftTarget) {
+          syncEditorTabContent('', streamingDraftTarget.path, streamingDraftTarget.name, false);
         }
 
-        const taskType: AgentTaskType = 'write';
-        const task = agentService.createTask(taskType, taskDesc + contextDesc, { workspacePath }, constraints);
-
-        // agent 模式始终需要用户确认
+        // Agent mode always requires confirmation.
         const needsConfirm = true;
+        let hasLoggedStreamStart = false;
+        const decompositionBlockKey = `${assistantMessageId}-decomposition`;
+        let activeStepId = '';
+        let activeStepType = '';
+        let activeStepIsDecomposition = false;
+        let decompositionStreamText = '';
+        let streamingWriteDraft = '';
+        let streamingWriteBuffer = '';
+        let streamingWriteRaw = '';
+        let writeStepPendingFinalize = false;
+        let writeRenderTimer: ReturnType<typeof setInterval> | null = null;
+
+        upsertTodoBlock(assistantMessageId, [], {
+          title: '执行清单',
+          isStreaming: true,
+        });
+        todoEventListener = (event: Event) => {
+          const detail = (event as CustomEvent<{ todos?: unknown }>).detail;
+          const items = normalizeTodoItems(detail?.todos);
+          upsertTodoBlock(assistantMessageId, items, {
+            title: '执行清单',
+            isStreaming: true,
+          });
+        };
+        window.addEventListener('agent:todo-changed', todoEventListener);
+
+        const resolveStreamingTargetPath = (): string => {
+          if (streamingDraftTarget?.path) {
+            return streamingDraftTarget.path;
+          }
+          if (currentFileForTask) {
+            return currentFileForTask;
+          }
+          const livePath = typeof (window as any).__currentTabPath === 'string'
+            ? (window as any).__currentTabPath.trim()
+            : '';
+          if (isLikelyFileSystemPath(livePath)) {
+            return livePath;
+          }
+          return hasWritableCurrentFile
+            ? normalizedCurrentFilePath
+            : '';
+        };
+
+        const resolveStreamingTargetName = (targetPath: string): string | undefined => {
+          if (streamingDraftTarget && targetPath === streamingDraftTarget.path) {
+            return streamingDraftTarget.name;
+          }
+          if (normalizedCurrentFileName) {
+            return normalizedCurrentFileName;
+          }
+          const liveTitle = typeof (window as any).__currentTabTitle === 'string'
+            ? (window as any).__currentTabTitle.trim()
+            : '';
+          if (liveTitle) {
+            return liveTitle;
+          }
+          return targetPath ? getPathBaseName(targetPath) : undefined;
+        };
+
+        const flushStreamingWriteDraft = (markDirty: boolean): void => {
+          if (!compactAgentOutput) return;
+          if (!streamingWriteDraft) return;
+          const targetPath = resolveStreamingTargetPath();
+          if (!targetPath) return;
+          syncEditorTabContent(
+            streamingWriteDraft,
+            targetPath,
+            resolveStreamingTargetName(targetPath),
+            markDirty
+          );
+        };
+
+        const stopWriteRenderPump = (): void => {
+          if (!writeRenderTimer) return;
+          clearInterval(writeRenderTimer);
+          writeRenderTimer = null;
+        };
+
+        const drainWriteRenderBuffer = (markDirty: boolean, final: boolean): void => {
+          if (streamingWriteBuffer) {
+            streamingWriteRaw += streamingWriteBuffer;
+            streamingWriteBuffer = '';
+          }
+          streamingWriteDraft = normalizeWriteOutputForEditor(streamingWriteRaw, final);
+          flushStreamingWriteDraft(markDirty);
+        };
+
+        const ensureWriteRenderPump = (): void => {
+          if (writeRenderTimer) return;
+          writeRenderTimer = setInterval(() => {
+            if (!streamingWriteBuffer) {
+              if (writeStepPendingFinalize) {
+                writeStepPendingFinalize = false;
+                activeStepType = '';
+                drainWriteRenderBuffer(false, true);
+              }
+              stopWriteRenderPump();
+              return;
+            }
+            const chunk = streamingWriteBuffer.slice(0, WRITE_STREAM_RENDER_CHUNK_SIZE);
+            streamingWriteBuffer = streamingWriteBuffer.slice(chunk.length);
+            if (!chunk) return;
+            streamingWriteRaw += chunk;
+            streamingWriteDraft = normalizeWriteOutputForEditor(streamingWriteRaw, false);
+            flushStreamingWriteDraft(true);
+            if (!streamingWriteBuffer && writeStepPendingFinalize) {
+              writeStepPendingFinalize = false;
+              activeStepType = '';
+              drainWriteRenderBuffer(false, true);
+              stopWriteRenderPump();
+            }
+          }, WRITE_STREAM_RENDER_INTERVAL_MS);
+        };
+
+        const appendDecompositionChunk = (chunk: string): void => {
+          const normalizedChunk = chunk;
+          decompositionStreamText += normalizedChunk;
+          if (!SHOW_DECOMPOSITION_STREAM_BLOCK) {
+            return;
+          }
+          setMessages(prev => prev.map(msg => {
+            if (msg.id !== assistantMessageId) return msg;
+            const blocks = [...(msg.contentBlocks ?? [])];
+            const existingIndex = blocks.findIndex(
+              block => block.type === 'decomposition' && block.key === decompositionBlockKey
+            );
+            if (existingIndex >= 0) {
+              const existing = blocks[existingIndex];
+              if (existing.type === 'decomposition') {
+                blocks[existingIndex] = {
+                  ...existing,
+                  content: existing.content + normalizedChunk,
+                  isStreaming: true,
+                };
+              }
+            } else {
+              blocks.push({
+                type: 'decomposition',
+                key: decompositionBlockKey,
+                title: '拆解过程',
+                content: normalizedChunk,
+                isStreaming: true,
+              });
+            }
+            return { ...msg, contentBlocks: blocks };
+          }));
+        };
+
+        finalizeDecompositionBlock = (): void => {
+          if (!SHOW_DECOMPOSITION_STREAM_BLOCK) {
+            return;
+          }
+          setMessages(prev => prev.map(msg => {
+            if (msg.id !== assistantMessageId) return msg;
+            const blocks = (msg.contentBlocks ?? []).map(block => {
+              if (block.type === 'decomposition' && block.key === decompositionBlockKey) {
+                return { ...block, isStreaming: false };
+              }
+              return block;
+            });
+            return { ...msg, contentBlocks: blocks };
+          }));
+        };
 
         await agentService.executeTaskStream(task, {
-          onStepStart: (_step) => {
-            // 步骤开始：不写入 content，由 ThinkingBlock 展示
+          onStepStart: (step) => {
+            activeStepId = typeof step.id === 'string' ? step.id : '';
+            activeStepType = typeof step.type === 'string' ? step.type : '';
+            activeStepIsDecomposition = isDecompositionStep(String(step.description ?? ''));
+            const stepDescription = String(step.description ?? '');
+            const simpleStepKind = inferSimpleAgentStepKind(activeStepType, stepDescription);
+            if (activeStepType === 'write') {
+              stopWriteRenderPump();
+              streamingWriteDraft = '';
+              streamingWriteBuffer = '';
+              streamingWriteRaw = '';
+              writeStepPendingFinalize = false;
+            }
+            const shouldShowStartLog = compactAgentOutput
+              ? shouldShowSimpleStepLog(simpleStepKind, 'start')
+              : !(activeStepIsDecomposition && !SHOW_DECOMPOSITION_STEP_LOG);
+            if (shouldShowStartLog) {
+              appendActLog(assistantMessageId, {
+                kind: 'step',
+                title: compactAgentOutput
+                  ? `开始：${getSimpleAgentStepLabel(simpleStepKind)}`
+                  : (activeStepIsDecomposition
+                    ? `Step started (decomposition): ${step.description}`
+                    : `Step started: ${step.description}`),
+                status: 'running',
+              });
+            }
+          },
+          onStepComplete: (step, result) => {
+            const completedIsDecomposition = isDecompositionStep(String(step.description ?? ''));
+            const completedStepType = typeof step.type === 'string' ? step.type : '';
+            const completedDescription = String(step.description ?? '');
+            const simpleStepKind = inferSimpleAgentStepKind(completedStepType, completedDescription);
+            const verifyGateDetail = step.type === 'verify'
+              ? extractVerifyGateDetail(result)
+              : null;
+            const toolCallFailed = step.type === 'tool_call'
+              ? isToolCallExecutionFailed(result)
+              : false;
+            const verifyFailed = !!(verifyGateDetail && !verifyGateDetail.passed);
+            const stepFailed = verifyFailed || toolCallFailed;
+            const stepTitlePrefix = verifyFailed
+              ? 'Step failed (verify gate)'
+              : (toolCallFailed ? 'Step failed (tool call)' : 'Step completed');
+            const stepDetail = verifyGateDetail
+              ? formatVerifyGateDetail(verifyGateDetail)
+              : (step.type === 'tool_call'
+                ? formatToolCallStepDetail(result)
+                : (result ? stringifyActDetail(result) : undefined));
+            const shouldShowCompleteLog = compactAgentOutput
+              ? shouldShowSimpleStepLog(simpleStepKind, stepFailed ? 'failed' : 'complete')
+              : !(completedIsDecomposition && !SHOW_DECOMPOSITION_STEP_LOG);
+            const compactStepDetailRaw = stepFailed
+              ? (verifyGateDetail
+                ? formatVerifyGateDetail(verifyGateDetail)
+                : (step.type === 'tool_call' ? formatToolCallStepDetail(result) : undefined))
+              : undefined;
+            const compactStepDetail = compactStepDetailRaw
+              ? trimTodoContent(compactStepDetailRaw, 120)
+              : undefined;
+            if (shouldShowCompleteLog) {
+              appendActLog(assistantMessageId, {
+                kind: 'step',
+                title: compactAgentOutput
+                  ? `${stepFailed ? '失败' : '完成'}：${getSimpleAgentStepLabel(simpleStepKind)}`
+                  : (completedIsDecomposition
+                    ? `${stepTitlePrefix} (decomposition): ${step.description}`
+                    : `${stepTitlePrefix}: ${step.description}`),
+                detail: compactAgentOutput ? compactStepDetail : stepDetail,
+                status: stepFailed ? 'error' : 'success',
+              });
+            }
+            if (completedIsDecomposition) {
+              finalizeDecompositionBlock();
+            }
+            if (step.type === 'write') {
+              writeStepPendingFinalize = true;
+              if (!streamingWriteBuffer && !writeRenderTimer) {
+                writeStepPendingFinalize = false;
+                activeStepType = '';
+                drainWriteRenderBuffer(false, true);
+              } else {
+                ensureWriteRenderPump();
+              }
+            }
+            if (activeStepId && step.id === activeStepId) {
+              activeStepIsDecomposition = false;
+              if (step.type !== 'write') {
+                activeStepType = '';
+              }
+            }
           },
           onContent: (() => {
-            let buffer = '';
-            let timer: ReturnType<typeof setTimeout> | null = null;
+            let answerBuffer = '';
+            let answerTimer: ReturnType<typeof setTimeout> | null = null;
+            const flushAnswerBuffer = () => {
+              const flushed = answerBuffer;
+              answerBuffer = '';
+              answerTimer = null;
+              if (!flushed) return;
+              setMessages(prev => prev.map(msg =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: msg.content + flushed }
+                  : msg
+              ));
+            };
             return (content: string) => {
-              buffer += content;
-              if (!timer) {
-                timer = setTimeout(() => {
-                  const flushed = buffer;
-                  buffer = '';
-                  timer = null;
-                  setMessages(prev => prev.map(msg =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: msg.content + flushed }
-                      : msg
-                  ));
-                }, 50);
+              if (!compactAgentOutput && !hasLoggedStreamStart && content.trim()) {
+                hasLoggedStreamStart = true;
+                appendActLog(assistantMessageId, {
+                  kind: 'stream',
+                  title: 'Agent streaming response',
+                  status: 'running',
+                });
+              }
+              if (activeStepIsDecomposition) {
+                appendDecompositionChunk(content);
+                return;
+              }
+              if (compactAgentOutput && activeStepType === 'write') {
+                streamingWriteBuffer += content;
+                ensureWriteRenderPump();
+                return;
+              }
+              // Compact write/edit mode keeps only concise timeline and write-stream-to-tab behavior.
+              if (compactAgentOutput) {
+                return;
+              }
+              answerBuffer += content;
+              if (!answerTimer) {
+                answerTimer = setTimeout(flushAnswerBuffer, 90);
               }
             };
           })(),
@@ -1660,13 +5431,32 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             else if (typeof p.query === 'string') label = `${toolName} "${p.query}"`;
             else if (typeof p.pattern === 'string') label = `${toolName} "${p.pattern}"`;
             else if (typeof p.command === 'string') label = `${toolName} ${p.command}`;
+            const toolDetail = buildToolCallDetail(toolName, p);
+            const bashCommand = toolName === 'bash' && typeof p.command === 'string'
+              ? p.command
+              : undefined;
+            const pendingToolLog: ToolLog = {
+              uiId,
+              name: toolName,
+              label,
+              detail: toolDetail,
+              command: bashCommand,
+              output: toolName === 'bash' ? 'Running...' : undefined,
+              status: 'pending',
+            };
+            appendActLog(assistantMessageId, {
+              kind: 'tool',
+              title: `Tool call: ${toolName}`,
+              detail: toolDetail,
+              status: 'pending',
+            });
+            appendToolLogBlock(assistantMessageId, pendingToolLog);
             setMessages(prev => prev.map(msg =>
               msg.id === assistantMessageId
                 ? {
                     ...msg,
                     isThinkingPhase: true,
                     thinkingStartTime: msg.thinkingStartTime ?? Date.now(),
-                    toolCalls: [...(msg.toolCalls ?? []), { uiId, name: toolName, label, status: 'pending' as const }]
                   }
                 : msg
             ));
@@ -1674,8 +5464,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           onToolResult: (toolName, result) => {
             // 从真实结果中提取摘要
             let summary = result.success ? 'done' : 'failed';
+            const resultData = (result.data ?? {}) as Record<string, unknown>;
+            const bashOutput = toolName === 'bash'
+              ? buildBashToolOutput(result as { success: boolean; data?: unknown; error?: string })
+              : undefined;
             if (result.success && result.data) {
-              const d = result.data as Record<string, unknown>;
+              const d = resultData;
               if (typeof d.content === 'string') {
                 const lines = d.content.split('\n').length;
                 summary = `${lines} lines`;
@@ -1686,40 +5480,160 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               } else if (typeof d.output === 'string') {
                 const lines = d.output.split('\n').filter(Boolean).length;
                 summary = lines > 0 ? `${lines} lines` : 'done';
+              } else if (typeof d.stdout === 'string') {
+                const lines = d.stdout.split('\n').filter(Boolean).length;
+                summary = lines > 0 ? `${lines} lines` : 'done';
               }
             }
-            // 把最后一个同名 pending 工具调用标记为 success + 填入 summary
-            setMessages(prev => prev.map(msg => {
-              if (msg.id !== assistantMessageId) return msg;
-              let marked = false;
-              const updated = (msg.toolCalls ?? []).map(tc => {
-                if (!marked && tc.name === toolName && tc.status === 'pending') {
-                  marked = true;
-                  return { ...tc, status: (result.success ? 'success' : 'error') as 'success' | 'error', summary };
-                }
-                return tc;
-              });
-              return { ...msg, toolCalls: updated };
-            }));
+            if (toolName === 'bash' && bashOutput) {
+              const lines = bashOutput.split('\n').filter(Boolean).length;
+              summary = lines > 0 ? `${lines} lines` : summary;
+            }
+            appendActLog(assistantMessageId, {
+              kind: 'tool',
+              title: `Tool result: ${toolName}`,
+              detail: summary,
+              status: result.success ? 'success' : 'error',
+            });
+            resolveLatestPendingToolLog(
+              assistantMessageId,
+              toolName,
+              result.success ? 'success' : 'error',
+              summary,
+              {
+                detail: toolName === 'bash' && typeof resultData.command === 'string'
+                  ? resultData.command
+                  : undefined,
+                command: toolName === 'bash' && typeof resultData.command === 'string'
+                  ? resultData.command
+                  : undefined,
+                output: toolName === 'bash'
+                  ? (bashOutput || (result.success ? '(no output)' : (result.error || 'Tool execution failed')))
+                  : undefined,
+              }
+            );
+
+            const isWriteTool = toolName === 'write_file' || toolName === 'edit_file' || toolName === 'multi_edit_file';
+            if (isWriteTool && result.success) {
+              const data = (result.data ?? {}) as Record<string, unknown>;
+              const changeWithContent = (result.changes ?? []).find((change: { newContent?: string }) =>
+                typeof change.newContent === 'string'
+              );
+              const writtenContent = typeof changeWithContent?.newContent === 'string'
+                ? changeWithContent.newContent
+                : (typeof data.newContent === 'string' ? data.newContent : '');
+              const writtenPath = typeof data.path === 'string'
+                ? data.path
+                : (typeof changeWithContent?.filePath === 'string'
+                  ? changeWithContent.filePath
+                  : normalizedCurrentFilePath);
+              const writtenName = writtenPath
+                ? getPathBaseName(writtenPath)
+                : (normalizedCurrentFileName || undefined);
+              const normalizedWrittenContent = normalizeWriteOutputForEditor(writtenContent, true);
+
+              if (normalizedWrittenContent) {
+                syncEditorTabContent(normalizedWrittenContent, writtenPath || undefined, writtenName, false);
+              }
+            }
           },
           onConfirmRequired: needsConfirm
-            ? (toolName, _params) => new Promise<boolean>(resolve => {
-                // TODO: 接入真实的 UI 确认弹窗，目前自动允许
-                resolve(true);
-              })
+            ? (toolName, params) => requestToolConfirmation(toolName, params)
             : undefined,
           onComplete: (result) => {
+            detachTodoListener();
+            if (pendingToolConfirmationResolverRef.current) {
+              settlePendingToolConfirmation(false);
+            }
+            if (writeStepPendingFinalize && !writeRenderTimer) {
+              writeStepPendingFinalize = false;
+              drainWriteRenderBuffer(false, true);
+            } else if (streamingWriteBuffer && !writeRenderTimer) {
+              ensureWriteRenderPump();
+            }
+            const optimizedOutput = result.output ? optimizeAssistantOutput(result.output) : '';
+            const outputWithoutDecomposition = decompositionStreamText.trim()
+              ? stripDecompositionSection(optimizedOutput, decompositionStreamText)
+              : optimizedOutput;
+            const finalSuccessOutput = outputWithoutDecomposition || optimizedOutput;
+            const changedFiles = (result.changes ?? [])
+              .map((change: { filePath?: string }) => change.filePath)
+              .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+            if (compactAgentOutput && result.success && changedFiles.length === 0) {
+              const fallbackWriteContent = typeof result.finalWriteContent === 'string'
+                ? normalizeWriteOutputForEditor(result.finalWriteContent, true).trim()
+                : '';
+              if (fallbackWriteContent) {
+                const fallbackTargetPath = resolveStreamingTargetPath();
+                if (fallbackTargetPath) {
+                  syncEditorTabContent(
+                    fallbackWriteContent,
+                    fallbackTargetPath,
+                    resolveStreamingTargetName(fallbackTargetPath),
+                    true
+                  );
+                }
+              }
+            }
+            const finalSuccessContent = compactAgentOutput
+              ? buildCompactAgentResultText(
+                taskType,
+                normalizedCurrentFilePath,
+                changedFiles,
+                resolveStreamingTargetPath()
+              )
+              : finalSuccessOutput;
             const finalContent = result.success
-              ? (result.output ? result.output : '')
-              : `❌ **执行失败**: ${result.error || '未知错误'}`;
+              ? finalSuccessContent
+              : `**Execution failed**: ${result.error || 'Unknown error'}`;
+            const completionDetail = (() => {
+              if (!result.success) {
+                return result.error || 'unknown error';
+              }
+              if (compactAgentOutput) {
+                const targetPath = resolveStreamingTargetPath() || normalizedCurrentFilePath;
+                if (changedFiles.length > 0) {
+                  return `已完成，文件改动 ${changedFiles.length} 个`;
+                }
+                if (targetPath) {
+                  return `已完成，输出目标 ${targetPath}`;
+                }
+                return '已完成';
+              }
+              const outputLength = finalSuccessOutput.trim().length;
+              return outputLength > 0
+                ? `已完成，输出 ${outputLength} 字符`
+                : '已完成';
+            })();
+            appendActLog(assistantMessageId, {
+              kind: 'status',
+              title: result.success ? 'Agent task completed' : 'Agent task failed',
+              detail: completionDetail,
+              status: result.success ? 'success' : 'error',
+            });
             setMessages(prev => prev.map(msg => {
               if (msg.id !== assistantMessageId) return msg;
               const elapsed = msg.thinkingStartTime ? Math.max(1, Math.round((Date.now() - msg.thinkingStartTime) / 1000)) : 1;
+              const finalizedBlocks = (msg.contentBlocks ?? []).map(block => {
+                if (block.type === 'decomposition' && block.key === decompositionBlockKey) {
+                  return { ...block, isStreaming: false };
+                }
+                if (block.type === 'todo') {
+                  return { ...block, isStreaming: false };
+                }
+                if (block.type === 'tool' && block.tool.status === 'pending') {
+                  return { ...block, tool: { ...block.tool, status: 'success' as const } };
+                }
+                return block;
+              });
               return {
                 ...msg,
                 isThinkingPhase: false,
                 elapsedSeconds: elapsed,
-                content: finalContent.trim(),
+                content: result.success
+                  ? (finalContent.trim() || msg.content.trim())
+                  : finalContent.trim(),
+                contentBlocks: finalizedBlocks,
                 toolCalls: msg.toolCalls?.map(tc =>
                   tc.status === 'pending' ? { ...tc, status: 'success' as const } : tc
                 ),
@@ -1728,20 +5642,62 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             setIsLoading(false);
           },
           onError: (err) => {
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: msg.content + `\n\n❌ **错误**: ${err.message}` }
-                : msg
-            ));
+            detachTodoListener();
+            if (pendingToolConfirmationResolverRef.current) {
+              settlePendingToolConfirmation(false);
+            }
+            stopWriteRenderPump();
+            writeStepPendingFinalize = false;
+            drainWriteRenderBuffer(false, true);
+            finalizeDecompositionBlock();
+            appendActLog(assistantMessageId, {
+              kind: 'error',
+              title: 'Agent stream error',
+              detail: err.message,
+              status: 'error',
+            });
+            setMessages(prev => prev.map(msg => {
+              if (msg.id !== assistantMessageId) return msg;
+              const nextBlocks = (msg.contentBlocks ?? []).map(block =>
+                block.type === 'todo'
+                  ? { ...block, isStreaming: false }
+                  : block
+              );
+              return {
+                ...msg,
+                content: msg.content + `\n\n**Error**: ${err.message}`,
+                contentBlocks: nextBlocks,
+              };
+            }));
             setIsLoading(false);
           }
         });
+        detachTodoListener();
       } catch (err) {
-        setMessages(prev => prev.map(msg =>
-          msg.id === assistantMessageId
-            ? { ...msg, content: msg.content + `\n\n❌ **执行失败**: ${err instanceof Error ? err.message : String(err)}` }
-            : msg
-        ));
+        detachTodoListener();
+        if (pendingToolConfirmationResolverRef.current) {
+          settlePendingToolConfirmation(false);
+        }
+        finalizeDecompositionBlock();
+        appendActLog(assistantMessageId, {
+          kind: 'error',
+          title: 'Agent task exception',
+          detail: err instanceof Error ? err.message : String(err),
+          status: 'error',
+        });
+        setMessages(prev => prev.map(msg => {
+          if (msg.id !== assistantMessageId) return msg;
+          const nextBlocks = (msg.contentBlocks ?? []).map(block =>
+            block.type === 'todo'
+              ? { ...block, isStreaming: false }
+              : block
+          );
+          return {
+            ...msg,
+            content: msg.content + `\n\n**Execution failed**: ${err instanceof Error ? err.message : String(err)}`,
+            contentBlocks: nextBlocks,
+          };
+        }));
         setIsLoading(false);
       }
       return;
@@ -1776,9 +5732,41 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (isMaximized) return; // 最大化时不允许调整大小
+    if (isMaximized) return; // 最大化时禁用拖拽调整
     e.preventDefault();
     setIsResizing(true);
+  };
+
+  const renderToolLogEntry = (tool: ToolLog, key: React.Key): React.ReactNode => {
+    if (tool.name === 'bash') {
+      const commandText = (tool.command || tool.detail || tool.label || 'bash').trim();
+      const outputText = (tool.output || '').trim();
+      const bodyText = outputText || (tool.status === 'pending' ? 'Running...' : '(no output)');
+
+      return (
+        <div key={key} className={`tool-bash-card tool-bash-card--${tool.status}`}>
+          <div className="tool-bash-card__header">
+            <span className="tool-bash-card__tag">Bash</span>
+            <code className="tool-bash-card__command">{commandText}</code>
+          </div>
+          <pre className="tool-bash-card__body">{bodyText}</pre>
+        </div>
+      );
+    }
+
+    return (
+      <div key={key} className={`tool-call-log__item tool-call-log__item--${tool.status}`}>
+        <span className="tool-call-log__dot" />
+        <span className="tool-call-log__label">{tool.label}</span>
+        {tool.summary && <span className="tool-call-log__summary">{tool.summary}</span>}
+        {tool.detail && (
+          <details className="tool-call-log__details">
+            <summary>查看参数/命令</summary>
+            <pre>{tool.detail}</pre>
+          </details>
+        )}
+      </div>
+    );
   };
 
   useEffect(() => {
@@ -1792,17 +5780,17 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       
       // 根据位置计算期望的新宽度
       let newWidth = position === 'right' 
-        ? rect.right - e.clientX  // 右侧：从右边界向左拖动增加宽度
-        : e.clientX - rect.left;  // 左侧：从左边界向右拖动增加宽度
+        ? rect.right - e.clientX  // Right panel: drag left to increase width.
+        : e.clientX - rect.left;  // Left panel: drag right to increase width.
       
-      // 如果能找到 editor-area，检查其当前宽度
+      // If editor-area exists, check its current width.
       if (editorArea) {
         const editorAreaRect = editorArea.getBoundingClientRect();
         const currentEditorAreaWidth = editorAreaRect.width;
         
-        // 如果 editor-area 已经达到或低于最小宽度
+        // If editor-area is at or below the minimum width.
         if (currentEditorAreaWidth <= EDITOR_AREA_MIN_WIDTH) {
-          // 只允许减小 AI panel 的宽度（即增加 editor-area 的宽度）
+          // Only allow shrinking AI panel (thus increasing editor-area width).
           const currentWidth = rect.width;
           if (newWidth > currentWidth) {
             // 阻止 AI panel 继续增大
@@ -1811,17 +5799,17 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         }
       }
       
-      // 限制在最小和最大宽度之间
+      // Clamp width between min and max.
       newWidth = Math.max(MIN_WIDTH, Math.min(newWidth, MAX_WIDTH));
       
-      // 如果宽度小于收缩阈值，自动关闭面板
+      // 宽度低于阈值时自动关闭面板
       if (newWidth < COLLAPSE_THRESHOLD) {
         onClose();
         setIsResizing(false);
         return;
       }
       
-      // 设置新宽度
+      // Apply new width.
       setWidth(newWidth);
     };
 
@@ -1873,14 +5861,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         />
       )}
 
-      {/* 面板标题栏*/}
+      {/* Panel Header */}
       <div 
         ref={headerRef}
         className="ai-chat-panel-header"
         onContextMenu={handleHeaderRightClick}
       >
         <div className="ai-chat-panel-header-left">
-          <span>{currentView === 'chat' ? '聊天' : '设置'}</span>
+          <span>{currentView === 'chat' ? '' : ''}</span>
         </div>
         <div className="ai-chat-panel-header-right">
           {currentView === 'chat' ? (
@@ -1908,7 +5896,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               <div className="ai-chat-panel-header-divider"></div>
               <button
                 onClick={toggleMaximize}
-                title={isMaximized ? '还原' : '最大化'}
+                title={isMaximized ? 'Restore' : 'Maximize'}
               >
                 {isMaximized ? (
                   <svg width="16" height="16" viewBox="0 0 24 24">
@@ -1980,9 +5968,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         document.body
       )}
 
-      {/* 主内容区域 - 条件渲染聊天视图或设置视图 */}
+      {/* Main content area: render chat view or settings view. */}
       {currentView === 'chat' ? (
-        <>
+        <React.Fragment>
           {/* 消息列表容器 */}
           <div 
             ref={messagesContainerRef}
@@ -1994,21 +5982,41 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               className={`ai-chat-panel-messages-content ${isMaximized ? 'max-width' : ''}`}
             >
               {messages.map((message, index) => {
-                // 调试：输出每条消息的 thinkingSteps 状态
+                // Debug: output thinkingSteps state for each message.
                 // if (message.role === 'assistant') {
                 //   console.log('[AIChatPanel Render] 助手消息ID:', message.id, 
                 //     'thinkingSteps:', message.thinkingSteps, 
-                //     'thinkingSteps长度:', message.thinkingSteps?.length,
+                //     'thinkingSteps length:', message.thinkingSteps?.length,
                 //     'content:', message.content?.substring(0, 50));
                 // }
                 
-                // 当前消息是否有思考步骤
+                // Whether current assistant message has thinking steps.
                 const hasThinkingSteps = message.role === 'assistant' && message.thinkingSteps && message.thinkingSteps.length > 0;
+                const isLatestAssistantMessage = message.role === 'assistant' && index === messages.length - 1;
+                const contentBlocks = message.contentBlocks ?? [];
+                const dedupedContentBlocks = contentBlocks.reduce<ContentBlock[]>((acc, block) => {
+                  if (block.type !== 'text') {
+                    acc.push(block);
+                    return acc;
+                  }
+                  const normalizedCurrent = normalizeTimelineText(block.text);
+                  const lastTextBlock = [...acc].reverse().find(item => item.type === 'text');
+                  if (lastTextBlock && lastTextBlock.type === 'text') {
+                    const normalizedLast = normalizeTimelineText(lastTextBlock.text);
+                    if (normalizedCurrent && normalizedCurrent === normalizedLast) {
+                      return acc;
+                    }
+                  }
+                  acc.push(block);
+                  return acc;
+                }, []);
+                const hasTextBlock = message.role === 'assistant' && dedupedContentBlocks.some(block => block.type === 'text');
+                const showThinkingIndicator = isLatestAssistantMessage && isLoading;
                 
                 return (
                   <React.Fragment key={message.id}>
 
-                    {/* 渲染用户消息或助手消息 */}
+                    {/* Render user or assistant message. */}
                     <div
                       className={`message ${message.role === 'user' ? 'user' : 'assistant'}`}
                     >
@@ -2032,10 +6040,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                           </div>
                         )}
                         
-                        {/* 交错渲染内容块：文本、工具调用、深度思考 */}
-                        {message.role === 'assistant' && message.contentBlocks && message.contentBlocks.length > 0 ? (
+                        {/* Interleaved blocks: text, tool calls, deep thinking. */}
+                        {message.role === 'assistant' && dedupedContentBlocks.length > 0 ? (
                           <div className="message-content-blocks">
-                            {message.contentBlocks.map((block, blockIdx) => {
+                            {dedupedContentBlocks.map((block, blockIdx) => {
                               if (block.type === 'thinking') {
                                 return (
                                   <ThinkingBlock
@@ -2055,29 +6063,122 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                 );
                               }
                               if (block.type === 'tool') {
+                                return renderToolLogEntry(block.tool, block.tool.uiId);
+                              }
+                              if (block.type === 'act') {
                                 return (
-                                  <div key={block.tool.uiId} className={`tool-call-log__item tool-call-log__item--${block.tool.status}`}>
-                                    <span className="tool-call-log__dot" />
-                                    <span className="tool-call-log__label">{block.tool.label}</span>
-                                    {block.tool.summary && <span className="tool-call-log__summary">{block.tool.summary}</span>}
+                                  <div key={block.act.id} className={`act-log__item act-log__item--${block.act.status}`}>
+                                    <span className="act-log__dot" />
+                                    <span className="act-log__title">{block.act.title}</span>
+                                    {block.act.detail && <span className="act-log__detail">{block.act.detail}</span>}
                                   </div>
                                 );
                               }
-                              if (block.type === 'text') {
-                                const isLastBlock = blockIdx === message.contentBlocks!.length - 1;
-                                const isStreamingThis = isLoading && index === messages.length - 1 && isLastBlock;
+                              if (block.type === 'todo') {
+                                const completedCount = block.items.filter(item => item.status === 'completed').length;
+                                const totalCount = block.items.length;
+                                const requirementItems = block.items.filter(item => item.source === 'agent');
+                                const requirementCompleted = requirementItems.filter(item => item.status === 'completed').length;
+                                const planItems = block.items.filter(item => item.source === 'plan');
+                                const planCompleted = planItems.filter(item => item.status === 'completed').length;
                                 return (
-                                  <div key={`text-${blockIdx}`} className="message-content" onContextMenu={handleAssistantTextSelection}>
+                                  <div key={block.key} className="todo-card">
+                                    <div className="todo-card__header">
+                                      <span className="todo-card__title">{block.title}</span>
+                                      {totalCount > 0 && (
+                                        <span className="todo-card__meta">{completedCount}/{totalCount}</span>
+                                      )}
+                                    </div>
+                                    {totalCount > 0 ? (
+                                      <div className="todo-card__sections">
+                                        {requirementItems.length > 0 && (
+                                          <div className="todo-card__section">
+                                            <div className="todo-card__section-header">
+                                              <span className="todo-card__section-title">需求拆解</span>
+                                              <span className="todo-card__section-meta">{requirementCompleted}/{requirementItems.length}</span>
+                                            </div>
+                                            <ul className="todo-card__list">
+                                              {requirementItems.map(item => (
+                                                <li key={item.id} className={`todo-card__item todo-card__item--${item.status}`}>
+                                                  <span className="todo-card__dot" />
+                                                  <span className="todo-card__text">{item.content}</span>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
+                                        {planItems.length > 0 && (
+                                          <div className="todo-card__section">
+                                            <div className="todo-card__section-header">
+                                              <span className="todo-card__section-title">执行计划</span>
+                                              <span className="todo-card__section-meta">{planCompleted}/{planItems.length}</span>
+                                            </div>
+                                            <ul className="todo-card__list">
+                                              {planItems.map(item => (
+                                                <li key={item.id} className={`todo-card__item todo-card__item--${item.status}`}>
+                                                  <span className="todo-card__dot" />
+                                                  <span className="todo-card__text">{item.content}</span>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="todo-card__empty">
+                                        {block.isStreaming ? '正在拆解需求...' : '暂无任务'}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              if (block.type === 'decomposition') {
+                                const key = `${message.id}-decomposition-expanded`;
+                                const isExpanded = toolThinkingExpanded.get(key) ?? true;
+                                return (
+                                  <DecompositionBlock
+                                    key={block.key}
+                                    title={block.title}
+                                    content={block.content}
+                                    isStreaming={block.isStreaming}
+                                    isExpanded={isExpanded}
+                                    onToggle={() => setToolThinkingExpanded(prev => {
+                                      const next = new Map(prev);
+                                      next.set(key, !isExpanded);
+                                      return next;
+                                    })}
+                                  />
+                                );
+                              }
+                              if (block.type === 'text') {
+                                const isStreamingThis = block.isStreaming ?? showThinkingIndicator;
+                                return (
+                                  <div key={block.key ?? `text-${blockIdx}`} className="message-content message-content--timeline" onContextMenu={handleAssistantTextSelection}>
                                     <AIResponseRenderer content={block.text} isStreaming={isStreamingThis} />
                                   </div>
                                 );
                               }
                               return null;
                             })}
+                            {!hasTextBlock && message.content && (
+                              <div className="message-content message-content--timeline" onContextMenu={handleAssistantTextSelection}>
+                                <AIResponseRenderer
+                                  content={message.content}
+                                  isStreaming={showThinkingIndicator}
+                                />
+                              </div>
+                            )}
+                            {showThinkingIndicator && (
+                              <div className="act-log__item act-log__item--running act-log__item--thinking">
+                                <span className="act-log__dot" />
+                                <span className="act-log__title">Thinking</span>
+                                <span className="act-log__detail">In progress...</span>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <>
-                            {/* 深度思考块（兼容旧消息） */}
+                            {/* Deep thinking block (legacy-compatible). */}
                             {hasThinkingSteps && (
                               <ThinkingBlock
                                 thinkingContent={message.thinkingSteps![0].content}
@@ -2094,20 +6195,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                               />
                             )}
 
-                            {/* 工具调用日志（兼容旧消息） */}
+                            {/* Tool call log (legacy-compatible). */}
                             {message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0 && (
                               <div className="tool-call-log">
                                 {message.toolCalls.map((tc, i) => (
-                                  <div key={tc.uiId ?? i} className={`tool-call-log__item tool-call-log__item--${tc.status}`}>
-                                    <span className="tool-call-log__dot" />
-                                    <span className="tool-call-log__label">{tc.label}</span>
-                                    {tc.summary && <span className="tool-call-log__summary">{tc.summary}</span>}
-                                  </div>
+                                  renderToolLogEntry(tc, tc.uiId ?? i)
                                 ))}
                               </div>
                             )}
 
-                            {/* 最终答案 */}
+                            {/* Final answer */}
                             <div
                               className="message-content"
                               onContextMenu={message.role === 'assistant' ? handleAssistantTextSelection : undefined}
@@ -2121,13 +6218,17 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                 message.content
                               )}
                             </div>
+                            {showThinkingIndicator && message.role === 'assistant' && !message.content && !hasThinkingSteps && (
+                              <div className="act-log__item act-log__item--running act-log__item--thinking">
+                                <span className="act-log__dot" />
+                                <span className="act-log__title">Thinking</span>
+                                <span className="act-log__detail">In progress...</span>
+                              </div>
+                            )}
                           </>
                         )}
                         <div className="message-footer">
-                          <div className="message-time">
-                            {message.timestamp.toLocaleTimeString()}
-                          </div>
-                          {/* 助手消息工具栏 */}
+                          {/* Assistant message toolbar */}
                           {message.role === 'assistant' && (
                             <div className="message-toolbar">
                               <button 
@@ -2169,8 +6270,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 );
           })}
 
-          {/* 只在非思考模式下显示加载动画 */}
-          {isLoading && !isDeepThinkingEnabled && (
+          {/* 加载中占位（仅非深度思考模式） */}
+          {isLoading && !isDeepThinkingEnabled && (!messages.length || messages[messages.length - 1]?.role !== 'assistant') && (
             <div className="message assistant">
               <div className="message-bubble assistant">
                 <div className="message-loading">
@@ -2191,7 +6292,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           {/* 输入区域 */}
           <div className={`ai-chat-panel-input-container ${isMaximized ? 'centered' : ''}`}>
         <div className={`ai-chat-panel-input-container-inner ${isMaximized ? 'max-width' : ''}`}>
-          {/* 上方工具栏 */}
+          {/* Top toolbar */}
           <div className="input-top-toolbar">
             <button
               ref={contextButtonRef}
@@ -2202,10 +6303,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               <span className="slash-icon">/</span>
             </button>
 
-            {/* 上下文菜单 */}
+            {/* Context menu */}
             {isContextMenuOpen && (
               <div ref={contextMenuRef} className="context-menu">
-                {/* 搜索框 - 吸顶 */}
+                {/* Search bar (sticky) */}
                 <div className="context-menu-search">
                   <input
                     ref={searchInputRef}
@@ -2226,11 +6327,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 <div className="context-menu-content">
                 {subMenuType === 'none' ? (
                   <>
-                    {/* 上下文分组 */}
+                    {/* Context groups */}
                     <div className="context-menu-group">
                       <div className="context-menu-group-title">上下文</div>
                       <div className="context-menu-item" onClick={() => handleContextMenuItemClick('files')}>
-                        <span className="context-menu-item-text">文件&文件夹</span>
+                        <span className="context-menu-item-text">文件与文件夹</span>
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('knowledge')}>
                         <span className="context-menu-item-text">知识库</span>
@@ -2243,9 +6344,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                      </div>
-                      <div className="context-menu-item" onClick={() => handleContextMenuItemClick('clear')}>
-                        <span className="context-menu-item-text">清除对话</span>
                       </div>
                     </div>
 
@@ -2267,12 +6365,33 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       </div>
                     </div>
 
-                    {/* 技能分组 */}
+                    {/* Skills group */}
                     <div className="context-menu-group">
                       <div className="context-menu-group-title">技能</div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('skills')}>
                         <span className="context-menu-item-text">Skills</span>
                         {selectedSkills.length > 0 && <span className="context-menu-item-badge">{selectedSkills.length}</span>}
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('memory')}>
+                        <span className="context-menu-item-text">记忆</span>
+                        <span className="context-menu-item-current">{agentMemoryStats.usagePercentage}%</span>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('decompositionRules')}>
+                        <span className="context-menu-item-text">拆解规则</span>
+                        {enabledDecompositionRules.length > 0 && <span className="context-menu-item-badge">{enabledDecompositionRules.length}</span>}
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('writingRules')}>
+                        <span className="context-menu-item-text">写作规则</span>
+                        {enabledWritingRuleDocuments.length > 0 && <span className="context-menu-item-badge">{enabledWritingRuleDocuments.length}</span>}
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
@@ -2283,6 +6402,26 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
+                    </div>
+
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">命令</div>
+                      {SLASH_COMMAND_ITEMS
+                        .filter(cmd => {
+                          const keyword = searchQuery.trim().toLowerCase();
+                          if (!keyword) return true;
+                          return cmd.command.toLowerCase().includes(keyword)
+                            || cmd.description.toLowerCase().includes(keyword);
+                        })
+                        .map(cmd => (
+                          <div
+                            key={cmd.command}
+                            className="context-menu-item"
+                            onClick={() => handleInsertSlashCommand(cmd.insertText)}
+                          >
+                            <span className="context-menu-item-text">{cmd.command}</span>
+                          </div>
+                        ))}
                     </div>
                   </>
                 ) : subMenuType === 'model' ? (
@@ -2299,7 +6438,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
                     <div className="context-menu-model-list">
                       {(() => {
-                        // 按配置名称分组模型
+                        // Group models by config name.
                         const grouped = new Map<string, ModelInfo[]>();
                         availableModels.forEach(model => {
                           if (!grouped.has(model.configName)) {
@@ -2317,9 +6456,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                 className={`context-menu-item ${selectedModel === model.modelId ? 'selected' : ''}`}
                                 onClick={() => {
                                   setSelectedModel(model.modelId);
-                                  electronStore.set('ai-chat-selected-model', model.modelId); // 持久化选择
-                                  providerCacheRef.current = null; // 模型切换，清除 provider 缓存
-                                  // 检查选中的模型是否支持深度思考
+                                  electronStore.set('ai-chat-selected-model', model.modelId); // 持久化已选模型
+                                  providerCacheRef.current = null; // Clear provider cache on model switch.
+                                  // Check whether selected model supports deep thinking.
                                   const supportsThinking = model.capabilities?.thinking === true;
                                   if (supportsThinking) {
                                     setIsDeepThinkingEnabled(true);
@@ -2347,7 +6486,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                   </>
                 ) : subMenuType === 'files' ? (
                   <>
-                    {/* 文件&文件夹二级菜单 */}
+                    {/* Files & folders submenu */}
                     <div className="context-menu-header">
                       <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
@@ -2371,7 +6510,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             key={file.path}
                             className="context-menu-item"
                             onClick={() => {
-                              // 将文件存入选中列表
+                              // 避免重复选择同一路径
                               setSelectedFiles(prev => {
                                 const exists = prev.some(f => f.path === file.path);
                                 if (exists) return prev;
@@ -2393,7 +6532,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                   </>
                 ) : subMenuType === 'knowledge' ? (
                   <>
-                    {/* 知识库二级菜单 */}
+                    {/* Knowledge base submenu */}
                     <div className="context-menu-header">
                       <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
@@ -2463,7 +6602,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             key={form.id}
                             className="context-menu-item"
                             onClick={() => {
-                              // 将表单存入选中列表
+                              // 避免重复选择同一表单
                               setSelectedForms(prev => {
                                 const exists = prev.some(f => f.id === form.id);
                                 if (exists) return prev;
@@ -2499,7 +6638,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       <div
                         className="context-menu-item"
                         onClick={() => {
-                          // 打开技能市场
+                          // Open skills marketplace.
                           setSubMenuType('none');
                           setIsContextMenuOpen(false);
                           window.dispatchEvent(new CustomEvent('open-skill-market'));
@@ -2525,13 +6664,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             key={skill.path}
                             className={`context-menu-item${selectedSkills.some(s => s.path === skill.path) ? ' selected' : ''}`}
                             onClick={() => {
-                              // 切换技能包选中状态
+                              // Toggle selected state for skill package.
                               const exists = selectedSkills.some(s => s.path === skill.path);
                               setSelectedSkills(prev => {
                                 if (exists) return prev.filter(s => s.path !== skill.path);
                                 return [...prev, { name: skill.name, path: skill.path }];
                               });
-                              // 插入或移除内联 @tag
+                              // Insert/remove @tag in input text.
                               if (!exists) {
                                 tiptapRef.current?.insertFileReference(`skill:${skill.path}`, skill.name);
                               } else {
@@ -2550,6 +6689,233 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         ))}
                       </div>
                     )}
+                  </>
+                ) : subMenuType === 'decompositionRules' ? (
+                  <>
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">拆解规则</div>
+                      <div className="context-menu-rule-editor">
+                        <input
+                          className="context-menu-rule-input"
+                          placeholder="规则名称"
+                          value={newDecompositionRuleName}
+                          onChange={event => setNewDecompositionRuleName(event.target.value)}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleAddDecompositionRule();
+                            }
+                          }}
+                        />
+                        <input
+                          className="context-menu-rule-input"
+                          placeholder="规则说明"
+                          value={newDecompositionRuleInstruction}
+                          onChange={event => setNewDecompositionRuleInstruction(event.target.value)}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleAddDecompositionRule();
+                            }
+                          }}
+                        />
+                        <div className="context-menu-item" onClick={handleAddDecompositionRule}>
+                          <Icon name="file-code" size={14} />
+                          <span className="context-menu-item-text">添加规则</span>
+                        </div>
+                        <div className="context-menu-item" onClick={handleOpenDecompositionRulesTab}>
+                          <Icon name="file" size={14} />
+                          <span className="context-menu-item-text">在标签页中管理</span>
+                        </div>
+                        <div className="context-menu-item" onClick={handleResetBuiltinDecompositionRules}>
+                          <Icon name="refresh" size={14} />
+                          <span className="context-menu-item-text">恢复默认规则</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">拆解规则列表</div>
+                      {decompositionRules.length === 0 ? (
+                        <div className="context-menu-empty">
+                          <span>暂无规则</span>
+                        </div>
+                      ) : (
+                        <div className="context-menu-list">
+                          {decompositionRules.map(rule => (
+                            <div
+                              key={rule.id}
+                              className={`context-menu-item context-menu-rule-item${rule.enabled ? ' selected' : ''}`}
+                              onClick={() => handleToggleDecompositionRule(rule.id)}
+                            >
+                              <span className="context-menu-item-text">{rule.name}</span>
+                              <span className="context-menu-rule-instruction" title={rule.instruction}>{rule.instruction}</span>
+                              <div className={`context-menu-switch ${rule.enabled ? 'active' : ''}`}>
+                                <div className="context-menu-switch-thumb" />
+                              </div>
+                              {!rule.builtin && (
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  className="context-menu-rule-delete"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteDecompositionRule(rule.id);
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      handleDeleteDecompositionRule(rule.id);
+                                    }
+                                  }}
+                                >
+                                  <Icon name="delete" size={12} />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                  </>
+                ) : subMenuType === 'writingRules' ? (
+                  <>
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                      <div className="context-menu-header-actions">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className="context-menu-header-action"
+                          title="导入文档"
+                          onClick={handleImportWritingRuleDocuments}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              handleImportWritingRuleDocuments();
+                            }
+                          }}
+                        >
+                          <Icon name="file-upload" size={14} />
+                        </div>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className="context-menu-header-action"
+                          title="清空文档"
+                          onClick={handleClearWritingRuleDocuments}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              handleClearWritingRuleDocuments();
+                            }
+                          }}
+                        >
+                          <Icon name="delete" size={14} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="context-menu-group">
+                      {writingRuleDocuments.length === 0 ? (
+                        <div className="context-menu-empty">
+                          <span>暂无规则</span>
+                        </div>
+                      ) : (
+                        <div className="context-menu-list">
+                          {writingRuleDocuments.map(document => (
+                            <div
+                              key={document.id}
+                              className={`context-menu-item context-menu-rule-item${document.enabled ? ' selected' : ''}`}
+                              onClick={() => handleToggleWritingRuleDocument(document.id)}
+                            >
+                              <span className="context-menu-item-text">{document.name}</span>
+                              <span className="context-menu-rule-instruction" title={document.path}>{document.path}</span>
+                              <div className={`context-menu-switch ${document.enabled ? 'active' : ''}`}>
+                                <div className="context-menu-switch-thumb" />
+                              </div>
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                className="context-menu-rule-edit"
+                                title="编辑文档"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleEditWritingRuleDocument(document);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    handleEditWritingRuleDocument(document);
+                                  }
+                                }}
+                              >
+                                <Icon name="edit" size={12} />
+                              </div>
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                className="context-menu-rule-delete"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleDeleteWritingRuleDocument(document.id);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    handleDeleteWritingRuleDocument(document.id);
+                                  }
+                                }}
+                              >
+                                <Icon name="delete" size={12} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : subMenuType === 'memory' ? (
+                  <>
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">记忆状态</div>
+                      <div className="context-menu-item disabled">
+                        <span className="context-menu-item-text">
+                          使用率 {agentMemoryStats.usagePercentage}% · 共 {agentMemoryStats.totalEntries} 条
+                        </span>
+                      </div>
+                      <div className="context-menu-item" onClick={handleClearAgentMemory}>
+                        <Icon name="refresh" size={14} />
+                        <span className="context-menu-item-text">清空记忆</span>
+                      </div>
+                    </div>
                   </>
                 ) : subMenuType === 'mcpServer' ? (
                   <>
@@ -2571,16 +6937,51 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               </div>
             )}
 
-            {/* 当前打开的文件 */}
+            {/* Currently opened file */}
             {currentFileName && (
-              <div className="current-file-indicator" title={currentFileName}>
+              <div className="current-file-indicator" title={currentFilePath || currentFileName}>
                 <Icon name="file" size={14} />
                 <span className="current-file-name">{currentFileName}</span>
               </div>
             )}
           </div>
 
-          {/* 输入框区域 */}
+          {pendingToolConfirmation && (
+            <div className="tool-confirm-inline">
+              <div className="tool-confirm-inline__content">
+                <div className="tool-confirm-inline__title">
+                  工具执行确认: {pendingToolConfirmation.toolName}
+                </div>
+                {pendingToolConfirmation.detail && (
+                  <div className="tool-confirm-inline__detail">
+                    {pendingToolConfirmation.detail}
+                  </div>
+                )}
+              </div>
+              <div className="tool-confirm-inline__actions">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="tool-confirm-inline__btn tool-confirm-inline__btn--deny"
+                  onClick={() => settlePendingToolConfirmation(false)}
+                  onKeyDown={(event) => handleToolConfirmActionKeyDown(event, false)}
+                >
+                  拒绝
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="tool-confirm-inline__btn tool-confirm-inline__btn--allow"
+                  onClick={() => settlePendingToolConfirmation(true)}
+                  onKeyDown={(event) => handleToolConfirmActionKeyDown(event, true)}
+                >
+                  允许
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Input area */}
           <div className="input-area">
             <TipTapInput
               ref={tiptapRef}
@@ -2597,75 +6998,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             />
           </div>
 
-          {/* 底部工具栏 */}
+          {/* Bottom toolbar */}
           <div className="input-toolbar">
-            <div className="toolbar-left">
-              {/* 模式切换 */}
-              <div className="mode-switcher" ref={modeSwitcherRef}>
-                <button
-                  className="mode-current"
-                  onClick={() => setIsModeMenuOpen(!isModeMenuOpen)}
-                  title={
-                    chatMode === 'chat' ? '普通对话模式，直接与AI进行对话交流' :
-                    'Agent模式，执行操作前会询问确认'
-                  }
-                >
-                  {chatMode === 'agent' && (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 19h8"/>
-                      <path d="m4 17 6-6-6-6"/>
-                    </svg>
-                  )}
-                  {chatMode === 'chat' && (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
-                    </svg>
-                  )}
-                  <span>
-                    {chatMode === 'chat' ? 'Chat' : 'Agent'}
-                  </span>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                    <path d="M3 5L6 8L9 5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-
-                {isModeMenuOpen && (
-                  <div className="mode-menu">
-                    <div
-                      className={`mode-menu-item ${chatMode === 'chat' ? 'active' : ''}`}
-                      onClick={() => { setChatMode('chat'); setIsModeMenuOpen(false); }}
-                      title="普通对话模式，直接与AI进行对话交流"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
-                      </svg>
-                      <span>Chat</span>
-                      {chatMode === 'chat' && (
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                          <path d="M11.5 4L5.5 10L2.5 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      )}
-                    </div>
-                    <div
-                      className={`mode-menu-item ${chatMode === 'agent' ? 'active' : ''}`}
-                      onClick={() => { setChatMode('agent'); setIsModeMenuOpen(false); }}
-                      title="Agent模式，执行操作前会询问确认"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 19h8"/>
-                        <path d="m4 17 6-6-6-6"/>
-                      </svg>
-                      <span>Agent</span>
-                      {chatMode === 'agent' && (
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                          <path d="M11.5 4L5.5 10L2.5 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <div className="toolbar-left" />
             
             <div className="input-actions">
               {isLoading && (
@@ -2692,8 +7027,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             </div>
           </div>
         </div>
-          </div>
-        </>
+        </div>
+        </React.Fragment>
       ) : (
         /* 设置视图 */
         <AIChatSettings

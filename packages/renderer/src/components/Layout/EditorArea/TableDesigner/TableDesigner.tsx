@@ -1352,7 +1352,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
   // 处理分批生成的表格数据
   const handleBatchGenerateData = useCallback((data: { columns: Array<{ name: string; type: string }>; rows: Array<Record<string, CellValue>> }) => {
-    if (!data.columns || !Array.isArray(data.columns)) return;
+    if (!data.columns || !Array.isArray(data.columns) || data.columns.length === 0) return;
 
     // 收集每列的样本数据用于类型验证
     const sampleDataByColumn: Record<string, CellValue[]> = {};

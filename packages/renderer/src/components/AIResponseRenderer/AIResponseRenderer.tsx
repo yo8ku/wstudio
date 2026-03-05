@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AI 响应渲染器组件
  * 用于在聊天面板中渲染格式化的 AI 响应
  * 流式阶段直接显示纯文本（逐字追加效果），完成后渲染 Markdown
@@ -38,9 +38,9 @@ export const AIResponseRenderer: React.FC<AIResponseRendererProps> = ({
 
   // 流式阶段不解析 Markdown，直接显示纯文本；完成后才渲染
   const formattedHTML = useMemo(() => {
-    if (!content || isStreaming) return '';
+    if (!content) return '';
     return formatAIResponse(content, formatOptions);
-  }, [content, isStreaming, formatOptions]);
+  }, [content, formatOptions]);
 
   // 处理代码块折叠功能
   useEffect(() => {
@@ -83,18 +83,10 @@ export const AIResponseRenderer: React.FC<AIResponseRendererProps> = ({
       className={`ai-response-container ${className}`}
       data-streaming={isStreaming}
     >
-      {isStreaming ? (
-        // 流式阶段：纯文本逐字显示，保留换行
-        <div className="ai-response ai-response--streaming">
-          {content}
-        </div>
-      ) : (
-        // 完成后：渲染 Markdown
-        <div
-          className="ai-response"
-          dangerouslySetInnerHTML={{ __html: formattedHTML }}
-        />
-      )}
+      <div
+        className="ai-response"
+        dangerouslySetInnerHTML={{ __html: formattedHTML }}
+      />
     </div>
   );
 };

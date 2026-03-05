@@ -32,12 +32,91 @@ export interface FormData {
   [key: string]: unknown;
 }
 
+export type FormQueryWhereOperator =
+  | 'eq'
+  | 'ne'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'contains'
+  | 'starts_with'
+  | 'ends_with';
+
+export interface FormQueryWhere {
+  column: string;
+  op: FormQueryWhereOperator;
+  value: unknown;
+}
+
+export interface FormQueryParams {
+  formId: string;
+  query?: string;
+  where?: FormQueryWhere | null;
+  columns?: string[];
+  limit?: number;
+  offset?: number;
+  rowIds?: string[];
+}
+
+export interface FormQueryColumn {
+  id: string;
+  name: string;
+}
+
+export interface FormQueryRow {
+  id: string;
+  cells: Record<string, unknown>;
+}
+
+export interface FormQueryResult {
+  formId: string;
+  formName: string;
+  allColumns: FormQueryColumn[];
+  selectedColumns: FormQueryColumn[];
+  rows: FormQueryRow[];
+  matchedTotal: number;
+  returnedCount: number;
+  totalRows: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset: number;
+  appliedWhere: FormQueryWhere | null;
+  whereInferred: boolean;
+}
+
+interface ParsedFormPayload {
+  columns: FormQueryColumn[];
+  rows: FormQueryRow[];
+}
+
+const PARSED_FORM_CACHE_LIMIT = 2;
+const PREPARED_FORM_QUERY_CACHE_LIMIT = 1;
+
+interface PreparedColumnIndex {
+  eqMap: Map<string, string[]>;
+  maleRowIds: Set<string>;
+  femaleRowIds: Set<string>;
+  numericValues: Array<{ rowId: string; value: number }>;
+}
+
+interface PreparedFormQueryIndex {
+  updatedAt: number;
+  columns: FormQueryColumn[];
+  rowsById: Map<string, FormQueryRow>;
+  rowOrder: string[];
+  columnIndexes: Map<string, PreparedColumnIndex>;
+}
+
 /**
  * 表单数据库管理类
  */
 export class FormDatabase {
   private db: SQLiteDatabase;
   private initialized: boolean = false;
+  private parsedFormCache: Map<string, { updatedAt: number; payload: ParsedFormPayload }> = new Map();
+  private preparedQueryCache: Map<string, PreparedFormQueryIndex> = new Map();
 
   constructor() {
     this.db = new SQLiteDatabase('forms.db');
@@ -58,6 +137,322 @@ export class FormDatabase {
       console.error('[FormDatabase] 数据库初始化失败:', error);
       throw error;
     }
+  }
+
+  private normalizeFormCellValue(value: unknown): string {
+    if (value == null) return '';
+    if (Array.isArray(value)) {
+      return value.map(item => String(item ?? '')).join(', ');
+    }
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  private normalizeComparableText(value: unknown): string {
+    return this.normalizeFormCellValue(value).trim().toLowerCase();
+  }
+
+  private buildSearchTerms(query: string): string[] {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+
+    const asciiTerms = trimmed.match(/[a-zA-Z0-9_#.-]+/g) ?? [];
+    const cjkTerms = trimmed.match(/[\u4e00-\u9fff]{2,}/g) ?? [];
+    const splitTerms = trimmed
+      .split(/[\s,，。.;；:：!?！？|/\\()[\]{}"'`]+/)
+      .map(term => term.trim())
+      .filter(Boolean);
+
+    const merged = [trimmed, ...asciiTerms, ...cjkTerms, ...splitTerms]
+      .filter(term => term.length >= 2 || /[a-zA-Z0-9]/.test(term));
+
+    const dedup = new Map<string, string>();
+    for (const term of merged) {
+      const key = term.toLowerCase();
+      if (!dedup.has(key)) {
+        dedup.set(key, term);
+      }
+    }
+    return Array.from(dedup.values()).slice(0, 16);
+  }
+
+  private buildFormSearchTerms(query: string): string[] {
+    const base = this.buildSearchTerms(query);
+    if (base.length > 0) return base;
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    return [trimmed];
+  }
+
+  private normalizeGenderToken(value: unknown): 'male' | 'female' | null {
+    const text = this.normalizeFormCellValue(value).trim().toLowerCase();
+    if (!text) return null;
+    if (
+      text === '男' || text === '男性' || text === 'male' || text === 'm'
+      || text === 'man' || text === 'boy'
+    ) return 'male';
+    if (
+      text === '女' || text === '女性' || text === 'female' || text === 'f'
+      || text === 'woman' || text === 'girl'
+    ) return 'female';
+    return null;
+  }
+
+  private toComparableNumber(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const match = value.match(/-?\d+(\.\d+)?/);
+      if (!match) return null;
+      const parsed = Number(match[0]);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  }
+
+  private resolveColumnByToken(columns: FormQueryColumn[], token: string): FormQueryColumn | null {
+    const normalized = token.trim().toLowerCase();
+    if (!normalized) return null;
+
+    const aliasMap: Record<string, string[]> = {
+      '性别': ['gender', 'sex'],
+      'gender': ['性别', 'sex'],
+      'sex': ['性别', 'gender'],
+      '姓名': ['name'],
+      'name': ['姓名'],
+      '邮箱': ['email', 'mail'],
+      'email': ['邮箱', 'mail'],
+    };
+    const candidates = new Set<string>([normalized]);
+    for (const alias of aliasMap[normalized] ?? []) {
+      candidates.add(alias.toLowerCase());
+    }
+
+    return columns.find(column => {
+      const id = String(column.id ?? '').trim().toLowerCase();
+      const name = String(column.name ?? '').trim().toLowerCase();
+      return candidates.has(id) || candidates.has(name);
+    }) ?? null;
+  }
+
+  private resolveSelectedColumns(columns: FormQueryColumn[], tokens: string[] | undefined): FormQueryColumn[] {
+    if (!tokens || tokens.length === 0) return columns;
+    const lowered = new Set(tokens.map(token => token.trim().toLowerCase()).filter(Boolean));
+    const selected = columns.filter(column => {
+      const id = String(column.id ?? '').trim().toLowerCase();
+      const name = String(column.name ?? '').trim().toLowerCase();
+      return lowered.has(id) || lowered.has(name);
+    });
+    return selected.length > 0 ? selected : columns;
+  }
+
+  private inferWhereFromQuery(columns: FormQueryColumn[], query: string): FormQueryWhere | null {
+    const gender = this.normalizeGenderToken(query);
+    if (!gender) return null;
+    const target = columns.find(column => {
+      const name = String(column.name ?? '').trim().toLowerCase();
+      return name.includes('性别') || name.includes('gender') || name.includes('sex');
+    }) ?? null;
+    if (!target) return null;
+    return {
+      column: target.id,
+      op: 'eq',
+      value: query,
+    };
+  }
+
+  private rowMatchesWhere(
+    row: FormQueryRow,
+    columns: FormQueryColumn[],
+    where: FormQueryWhere
+  ): boolean {
+    const targetColumn = this.resolveColumnByToken(columns, where.column);
+    if (!targetColumn) return false;
+
+    const cellValueRaw = (row.cells ?? {})[targetColumn.id];
+    const cellText = this.normalizeFormCellValue(cellValueRaw);
+    const whereText = this.normalizeFormCellValue(where.value);
+
+    switch (where.op) {
+      case 'contains':
+        return cellText.toLowerCase().includes(whereText.toLowerCase());
+      case 'starts_with':
+        return cellText.toLowerCase().startsWith(whereText.toLowerCase());
+      case 'ends_with':
+        return cellText.toLowerCase().endsWith(whereText.toLowerCase());
+      case 'eq': {
+        const leftGender = this.normalizeGenderToken(cellValueRaw);
+        const rightGender = this.normalizeGenderToken(where.value);
+        if (leftGender && rightGender) return leftGender === rightGender;
+        return cellText.trim().toLowerCase() === whereText.trim().toLowerCase();
+      }
+      case 'ne': {
+        const leftGender = this.normalizeGenderToken(cellValueRaw);
+        const rightGender = this.normalizeGenderToken(where.value);
+        if (leftGender && rightGender) return leftGender !== rightGender;
+        return cellText.trim().toLowerCase() !== whereText.trim().toLowerCase();
+      }
+      case 'gt':
+      case 'gte':
+      case 'lt':
+      case 'lte': {
+        const left = this.toComparableNumber(cellValueRaw);
+        const right = this.toComparableNumber(where.value);
+        if (left == null || right == null) return false;
+        if (where.op === 'gt') return left > right;
+        if (where.op === 'gte') return left >= right;
+        if (where.op === 'lt') return left < right;
+        return left <= right;
+      }
+      default:
+        return true;
+    }
+  }
+
+  private rowMatchesQuery(
+    row: FormQueryRow,
+    selectedColumns: FormQueryColumn[],
+    queryTerms: string[]
+  ): boolean {
+    if (queryTerms.length === 0) return true;
+    const values: string[] = [String(row.id ?? '')];
+    const cells = row.cells ?? {};
+    for (const column of selectedColumns) {
+      values.push(this.normalizeFormCellValue(cells[column.id]));
+    }
+    const haystack = values.join(' ').toLowerCase();
+    return queryTerms.every(term => haystack.includes(term.toLowerCase()));
+  }
+
+  private parseFormPayload(form: FormData): ParsedFormPayload {
+    const cached = this.parsedFormCache.get(form.id);
+    if (cached && cached.updatedAt === form.updatedAt) {
+      this.parsedFormCache.delete(form.id);
+      this.parsedFormCache.set(form.id, cached);
+      return cached.payload;
+    }
+
+    let parsed: { columns?: unknown; rows?: unknown } = {};
+    try {
+      parsed = form.data ? JSON.parse(form.data) : {};
+    } catch {
+      parsed = {};
+    }
+
+    const rawColumns = Array.isArray(parsed.columns) ? parsed.columns : [];
+    const rawRows = Array.isArray(parsed.rows) ? parsed.rows : [];
+
+    const columns: FormQueryColumn[] = rawColumns.map((column, index) => {
+      const input = (column ?? {}) as Record<string, unknown>;
+      const idRaw = input.id;
+      const nameRaw = input.name;
+      return {
+        id: typeof idRaw === 'string' && idRaw.trim().length > 0 ? idRaw : `col-${index}`,
+        name: typeof nameRaw === 'string' && nameRaw.trim().length > 0
+          ? nameRaw
+          : String(idRaw ?? `column-${index + 1}`),
+      };
+    });
+
+    const rows: FormQueryRow[] = rawRows.map((row, index) => {
+      const input = (row ?? {}) as Record<string, unknown>;
+      const cellsRaw = input.cells;
+      const cells = (cellsRaw && typeof cellsRaw === 'object' && !Array.isArray(cellsRaw))
+        ? (cellsRaw as Record<string, unknown>)
+        : {};
+      const idRaw = input.id;
+      return {
+        id: typeof idRaw === 'string' && idRaw.trim().length > 0 ? idRaw : String(idRaw ?? `row-${index + 1}`),
+        cells,
+      };
+    });
+
+    const payload: ParsedFormPayload = { columns, rows };
+    this.parsedFormCache.set(form.id, { updatedAt: form.updatedAt, payload });
+    if (this.parsedFormCache.size > PARSED_FORM_CACHE_LIMIT) {
+      const firstKey = this.parsedFormCache.keys().next().value;
+      if (firstKey) this.parsedFormCache.delete(firstKey);
+    }
+    return payload;
+  }
+
+  private getPreparedFormQueryIndex(form: FormData, payload: ParsedFormPayload): PreparedFormQueryIndex {
+    const cached = this.preparedQueryCache.get(form.id);
+    if (cached && cached.updatedAt === form.updatedAt) {
+      this.preparedQueryCache.delete(form.id);
+      this.preparedQueryCache.set(form.id, cached);
+      return cached;
+    }
+
+    const rowsById = new Map<string, FormQueryRow>();
+    const rowOrder: string[] = [];
+    for (const row of payload.rows) {
+      const rowId = String(row.id);
+      rowsById.set(rowId, row);
+      rowOrder.push(rowId);
+    }
+
+    const prepared: PreparedFormQueryIndex = {
+      updatedAt: form.updatedAt,
+      columns: payload.columns,
+      rowsById,
+      rowOrder,
+      columnIndexes: new Map<string, PreparedColumnIndex>(),
+    };
+
+    this.preparedQueryCache.set(form.id, prepared);
+    if (this.preparedQueryCache.size > PREPARED_FORM_QUERY_CACHE_LIMIT) {
+      const firstKey = this.preparedQueryCache.keys().next().value;
+      if (firstKey) this.preparedQueryCache.delete(firstKey);
+    }
+    return prepared;
+  }
+
+  private getOrBuildColumnIndex(
+    prepared: PreparedFormQueryIndex,
+    columnId: string
+  ): PreparedColumnIndex {
+    const cached = prepared.columnIndexes.get(columnId);
+    if (cached) return cached;
+
+    const eqMap = new Map<string, string[]>();
+    const maleRowIds = new Set<string>();
+    const femaleRowIds = new Set<string>();
+    const numericValues: Array<{ rowId: string; value: number }> = [];
+
+    for (const rowId of prepared.rowOrder) {
+      const row = prepared.rowsById.get(rowId);
+      if (!row) continue;
+      const rawValue = (row.cells ?? {})[columnId];
+      const textKey = this.normalizeComparableText(rawValue);
+      if (!eqMap.has(textKey)) {
+        eqMap.set(textKey, []);
+      }
+      eqMap.get(textKey)!.push(rowId);
+
+      const gender = this.normalizeGenderToken(rawValue);
+      if (gender === 'male') maleRowIds.add(rowId);
+      if (gender === 'female') femaleRowIds.add(rowId);
+
+      const num = this.toComparableNumber(rawValue);
+      if (num != null) {
+        numericValues.push({ rowId, value: num });
+      }
+    }
+
+    const built: PreparedColumnIndex = {
+      eqMap,
+      maleRowIds,
+      femaleRowIds,
+      numericValues,
+    };
+    prepared.columnIndexes.set(columnId, built);
+    return built;
   }
 
   /**
@@ -205,6 +600,8 @@ export class FormDatabase {
 
     // 删除该分组下的所有表单（使用原始SQL确保正确执行）
     await this.db.execute('DELETE FROM forms WHERE groupId = ?', [id]);
+    this.parsedFormCache.clear();
+    this.preparedQueryCache.clear();
 
     // 删除分组（使用原始SQL确保正确执行）
     await this.db.execute('DELETE FROM form_groups WHERE id = ?', [id]);
@@ -294,6 +691,160 @@ export class FormDatabase {
     return row;
   }
 
+  async queryFormRows(params: FormQueryParams): Promise<FormQueryResult | null> {
+    await this.ensureInitialized();
+
+    const formId = params.formId?.trim();
+    if (!formId) {
+      throw new Error('Missing formId');
+    }
+
+    const form = await this.getFormById(formId);
+    if (!form) return null;
+
+    const payload = this.parseFormPayload(form);
+    const { columns } = payload;
+    const prepared = this.getPreparedFormQueryIndex(form, payload);
+    const limitArg = typeof params.limit === 'number' && Number.isFinite(params.limit)
+      ? Math.floor(params.limit)
+      : 80;
+    const offsetArg = typeof params.offset === 'number' && Number.isFinite(params.offset)
+      ? Math.floor(params.offset)
+      : 0;
+    const limit = Math.max(1, Math.min(200, limitArg));
+    const offset = Math.max(0, offsetArg);
+    const selectedColumns = this.resolveSelectedColumns(columns, params.columns);
+    const rowIdFilter = Array.isArray(params.rowIds) && params.rowIds.length > 0
+      ? new Set(params.rowIds.map(item => String(item)))
+      : null;
+    const query = typeof params.query === 'string' ? params.query.trim() : '';
+    const queryTerms = this.buildFormSearchTerms(query);
+
+    const explicitWhere = params.where ?? null;
+    const inferredWhere = !explicitWhere ? this.inferWhereFromQuery(columns, query) : null;
+    const effectiveWhere = explicitWhere ?? inferredWhere;
+    const effectiveQueryTerms = inferredWhere ? [] : queryTerms;
+    let whereCandidateSet: Set<string> | null = null;
+    if (effectiveWhere) {
+      const whereColumn = this.resolveColumnByToken(columns, effectiveWhere.column);
+      if (!whereColumn) {
+        return {
+          formId: form.id,
+          formName: form.name,
+          allColumns: columns,
+          selectedColumns,
+          rows: [],
+          matchedTotal: 0,
+          returnedCount: 0,
+          totalRows: prepared.rowOrder.length,
+          offset,
+          limit,
+          hasMore: false,
+          nextOffset: 0,
+          appliedWhere: effectiveWhere,
+          whereInferred: !!inferredWhere,
+        };
+      }
+      const columnIndex = this.getOrBuildColumnIndex(prepared, whereColumn.id);
+      const whereText = this.normalizeComparableText(effectiveWhere.value);
+      const rightNum = this.toComparableNumber(effectiveWhere.value);
+
+      if (effectiveWhere.op === 'eq' || effectiveWhere.op === 'ne') {
+        let matched = new Set<string>();
+        const rightGender = this.normalizeGenderToken(effectiveWhere.value);
+        if (rightGender === 'male') {
+          matched = new Set(columnIndex.maleRowIds);
+        } else if (rightGender === 'female') {
+          matched = new Set(columnIndex.femaleRowIds);
+        } else {
+          matched = new Set(columnIndex.eqMap.get(whereText) ?? []);
+        }
+
+        if (effectiveWhere.op === 'eq') {
+          whereCandidateSet = matched;
+        } else {
+          const excluded = matched;
+          whereCandidateSet = new Set<string>();
+          for (const rowId of prepared.rowOrder) {
+            if (!excluded.has(rowId)) whereCandidateSet.add(rowId);
+          }
+        }
+      } else if (effectiveWhere.op === 'gt' || effectiveWhere.op === 'gte' || effectiveWhere.op === 'lt' || effectiveWhere.op === 'lte') {
+        if (rightNum == null) {
+          whereCandidateSet = new Set<string>();
+        } else {
+          whereCandidateSet = new Set<string>();
+          for (const entry of columnIndex.numericValues) {
+            if (effectiveWhere.op === 'gt' && entry.value > rightNum) whereCandidateSet.add(entry.rowId);
+            if (effectiveWhere.op === 'gte' && entry.value >= rightNum) whereCandidateSet.add(entry.rowId);
+            if (effectiveWhere.op === 'lt' && entry.value < rightNum) whereCandidateSet.add(entry.rowId);
+            if (effectiveWhere.op === 'lte' && entry.value <= rightNum) whereCandidateSet.add(entry.rowId);
+          }
+        }
+      }
+    }
+
+    const pagedRows: FormQueryRow[] = [];
+    let matchedTotal = 0;
+
+    for (const rowId of prepared.rowOrder) {
+      if (rowIdFilter && !rowIdFilter.has(rowId)) {
+        continue;
+      }
+      if (whereCandidateSet && !whereCandidateSet.has(rowId)) {
+        continue;
+      }
+      const row = prepared.rowsById.get(rowId);
+      if (!row) continue;
+      if (effectiveWhere && !this.rowMatchesWhere(row, columns, effectiveWhere)) {
+        continue;
+      }
+      if (!this.rowMatchesQuery(row, selectedColumns, effectiveQueryTerms)) {
+        continue;
+      }
+
+      const matchIndex = matchedTotal;
+      matchedTotal += 1;
+
+      if (matchIndex < offset) {
+        continue;
+      }
+      if (pagedRows.length >= limit) {
+        continue;
+      }
+
+      const projectedCells: Record<string, unknown> = {};
+      for (const column of selectedColumns) {
+        projectedCells[column.id] = (row.cells ?? {})[column.id];
+      }
+      pagedRows.push({
+        id: rowId,
+        cells: projectedCells,
+      });
+    }
+
+    const returnedCount = pagedRows.length;
+    const nextOffset = offset + returnedCount;
+    const hasMore = nextOffset < matchedTotal;
+
+    return {
+      formId: form.id,
+      formName: form.name,
+      allColumns: columns,
+      selectedColumns,
+      rows: pagedRows,
+      matchedTotal,
+      returnedCount,
+      totalRows: prepared.rowOrder.length,
+      offset,
+      limit,
+      hasMore,
+      nextOffset,
+      appliedWhere: effectiveWhere,
+      whereInferred: !!inferredWhere,
+    };
+  }
+
   /**
    * 更新表单
    */
@@ -315,6 +866,8 @@ export class FormDatabase {
       `UPDATE forms SET ${setClause} WHERE id = ?`,
       values
     );
+    this.parsedFormCache.delete(id);
+    this.preparedQueryCache.delete(id);
 
     return true;
   }
@@ -327,6 +880,8 @@ export class FormDatabase {
 
     // 使用原始SQL确保正确执行删除
     await this.db.execute('DELETE FROM forms WHERE id = ?', [id]);
+    this.parsedFormCache.delete(id);
+    this.preparedQueryCache.delete(id);
 
     return true;
   }
@@ -337,6 +892,8 @@ export class FormDatabase {
   close(): void {
     this.db.close();
     this.initialized = false;
+    this.parsedFormCache.clear();
+    this.preparedQueryCache.clear();
   }
 }
 

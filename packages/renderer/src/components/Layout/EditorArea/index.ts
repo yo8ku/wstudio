@@ -17,6 +17,7 @@ export { ImportNoteDialog } from './ImportNoteDialog';
 export type { ImportNoteDialogProps } from './ImportNoteDialog';
 export { KnowledgeBaseView } from './KnowledgeBaseView';
 export type { KnowledgeBaseViewProps } from './KnowledgeBaseView';
+export { DecompositionRulesView } from './DecompositionRulesView';
 export { AddFileMenu } from './AddFileMenu';
 export { Breadcrumb } from './Breadcrumb';
 
