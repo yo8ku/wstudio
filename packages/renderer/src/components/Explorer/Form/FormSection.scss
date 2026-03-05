@@ -7,7 +7,15 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  background-color: var(--ws-sideBarSectionHeader-background, var(--ws-sideBar-background));
+  background-color: transparent;
+
+  .explorer-section-trigger--form-idle {
+    gap: 6px;
+  }
+
+  .explorer-section-trigger {
+    background-color: transparent;
+  }
 
   &--expanded,
   &--collapsed {

@@ -1,10 +1,9 @@
-/**
+﻿/**
  * Explorer Section 组件
- * 资源管理器面板（简化版，无动画）
- * 支持：新建文件、新建文件夹、刷新等操作
+ * 统一资源管理器分区标题、折叠行为与操作按钮。
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Icon } from '../../Icons/Icon';
 import './ExplorerSection.scss';
 
@@ -20,7 +19,9 @@ export interface ExplorerSectionProps {
   title: string;
   icon?: React.ReactNode;
   defaultExpanded?: boolean;
-  expanded?: boolean; // 受控的展开状态
+  expanded?: boolean;
+  preserveTitleCase?: boolean;
+  toggleIconMode?: 'default' | 'folder-on-idle' | 'form-on-idle' | 'editors-on-idle';
   actions?: ActionButton[];
   children: React.ReactNode;
   onExpandChange?: (expanded: boolean) => void;
@@ -31,17 +32,20 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
   icon,
   defaultExpanded = true,
   expanded: controlledExpanded,
+  preserveTitleCase = false,
+  toggleIconMode = 'default',
   actions = [],
   children,
   onExpandChange,
 }) => {
   const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
 
-  // 使用受控或非受控模式
   const isControlled = controlledExpanded !== undefined;
   const isExpanded = isControlled ? controlledExpanded : internalExpanded;
+  const useFolderIdleIcon = toggleIconMode === 'folder-on-idle';
+  const useFormIdleIcon = toggleIconMode === 'form-on-idle';
+  const useEditorsIdleIcon = toggleIconMode === 'editors-on-idle';
 
-  // 在组件挂载时通知父组件初始展开状态（仅非受控模式）
   useEffect(() => {
     if (!isControlled) {
       onExpandChange?.(defaultExpanded);
@@ -60,17 +64,34 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
     <div className="explorer-section-accordion">
       <div className="explorer-section-item">
         <div className="explorer-section-header-wrapper">
-          <div className="explorer-section-trigger" onClick={handleToggle}>
-            <Icon
-              name="chevron-down"
-              size={16}
-              className="explorer-section-chevron"
-              style={{
-                transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-              }}
-            />
+          <div
+            className={`explorer-section-trigger ${
+              useFolderIdleIcon ? 'explorer-section-trigger--folder-idle' : ''
+            } ${
+              useFormIdleIcon ? 'explorer-section-trigger--form-idle' : ''
+            } ${
+              useEditorsIdleIcon ? 'explorer-section-trigger--editors-idle' : ''
+            }`}
+            onClick={handleToggle}
+          >
+            <span className="explorer-section-toggle-icon">
+              {useFolderIdleIcon && <i className="codicon codicon-folder explorer-section-folder-icon" />}
+              {useFormIdleIcon && <Icon name="table-properties" size={16} className="explorer-section-form-icon" />}
+              {useEditorsIdleIcon && <i className="codicon codicon-files explorer-section-editors-icon" />}
+              <i
+                className={`codicon ${
+                  isExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'
+                } explorer-section-chevron`}
+              />
+            </span>
             {icon && <span className="explorer-section-icon">{icon}</span>}
-            <span className="explorer-section-title-text">{title}</span>
+            <span
+              className={`explorer-section-title-text ${
+                preserveTitleCase ? 'explorer-section-title-text--preserve-case' : ''
+              }`}
+            >
+              {title}
+            </span>
           </div>
           {actions.length > 0 && (
             <div className="explorer-section-actions">

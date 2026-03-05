@@ -11,7 +11,6 @@ import { UserSidebar } from '../User/UserSidebar';
 import { NotionIcon, YuqueIcon, JoplinIcon, ObsidianIcon, SiyuanIcon, FeishuIcon, KouziIcon } from '../../../Icons';
 import { Icon } from '../../../Icons';
 import { SidebarHeaderMenu, SidebarHeaderMenuItem } from '../SidebarHeaderMenu';
-import { electronStore } from '../../../../services/ElectronStoreService';
 import { useActivityBarStore } from '../../../../stores/activityBarStore';
 import './Sidebar.scss';
 
@@ -36,9 +35,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
   // 获取侧边栏位置
   const { sidebarPosition } = useActivityBarStore();
   
-  // 打开编辑器默认勾选状态
-  const [openEditorsChecked, setOpenEditorsChecked] = useState(true);
-  
   // 大纲默认勾选状态
   const [outlineChecked, setOutlineChecked] = useState(true);
 
@@ -48,21 +44,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
       case 'explorer':
         // 资源管理器菜单
         return [
-          {
-            id: 'open-editors',
-            label: '打开编辑器',
-            checked: openEditorsChecked,
-            onClick: () => {
-              const newState = !openEditorsChecked;
-              setOpenEditorsChecked(newState);
-              console.log('[Sidebar] 切换打开编辑器显示', newState);
-              
-              // 发送事件通知 FileExplorer 组件
-              window.dispatchEvent(new CustomEvent('toggle-open-editors', {
-                detail: { show: newState }
-              }));
-            }
-          },
           {
             id: 'outline',
             label: '大纲',
@@ -410,17 +391,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
     e.preventDefault();
     setIsResizing(true);
   };
-
-  // 加载资源管理器配置（同步菜单勾选状态）
-  useEffect(() => {
-    const loadConfig = async () => {
-      const config = await electronStore.get('explorer-config');
-      if (config?.showOpenEditors !== undefined) {
-        setOpenEditorsChecked(config.showOpenEditors);
-      }
-    };
-    loadConfig();
-  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {

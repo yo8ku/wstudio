@@ -20,6 +20,18 @@
   position: relative;
   background-color: var(--ws-sideBar-background);
 
+  .explorer-workspace-title {
+    margin: 0 4px;
+    padding: 0 4px;
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: var(--ws-sideBarTitle-foreground, var(--ws-sideBar-foreground));
+  }
+
   > .open-editors-section,
   > .file-tree-section,
   > .form-section,
@@ -44,8 +56,9 @@
     min-height: 22px;
   }
 
+  > .open-editors-section,
   > .file-tree-section,
   > .form-section {
-    background-color: var(--explorer-group-bg);
+    background-color: transparent;
   }
 }

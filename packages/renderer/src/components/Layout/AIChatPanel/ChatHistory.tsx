@@ -14,10 +14,9 @@ interface ChatHistoryProps {
   onClose: () => void;
   onSelectSession: (sessionId: string) => void;
   buttonRef: React.RefObject<HTMLButtonElement>;
-  panelPosition?: 'left' | 'right'; // AI Panel 的位置
 }
 
-export const ChatHistory: React.FC<ChatHistoryProps> = ({ isOpen, onClose, onSelectSession, buttonRef, panelPosition = 'right' }) => {
+export const ChatHistory: React.FC<ChatHistoryProps> = ({ isOpen, onClose, onSelectSession, buttonRef }) => {
   const [sessions, setSessions] = useState<ChatSessionData[]>([]);
   const [sessionTitles, setSessionTitles] = useState<Map<string, string>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
@@ -28,42 +27,28 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ isOpen, onClose, onSel
   // 订阅全局模态窗口状态
   const isModalOpen = useModalStore((state) => state.isOpen);
 
-  // 计算菜单位置和最大高度（避免溢出窗口）
+  // 计算下拉菜单位置和最大高度（避免溢出窗口）
   useEffect(() => {
     if (isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       const menuWidth = 300; // 菜单宽度
       const spacing = 8; // 距离窗口底部和边缘的间距
-      
-      // 计算可用的垂直空间
-      const availableHeight = window.innerHeight - rect.bottom - spacing;
-      const calculatedMaxHeight = Math.max(200, Math.min(500, availableHeight - spacing));
-      
-      // 根据 AI Panel 位置决定菜单展开方向
-      let menuX: number;
-      if (panelPosition === 'left') {
-        // AI Panel 在左侧：菜单向右展开（左对齐按钮）
-        menuX = rect.left;
-        // 确保不超出右边界
-        const maxX = window.innerWidth - menuWidth - spacing;
-        menuX = Math.min(menuX, maxX);
-        console.log('[ChatHistory] AI Panel在左侧，菜单向右展开，x:', menuX);
-      } else {
-        // AI Panel 在右侧：菜单向左展开（右对齐按钮）
-        menuX = rect.right - menuWidth;
-        // 确保不超出左边界
-        menuX = Math.max(spacing, menuX);
-        console.log('[ChatHistory] AI Panel在右侧，菜单向左展开，x:', menuX);
-      }
-      
+
+      const minX = spacing;
+      const maxX = Math.max(spacing, window.innerWidth - menuWidth - spacing);
+      const menuX = Math.min(Math.max(rect.left, minX), maxX);
+      const menuY = rect.bottom + 6;
+      const availableHeight = window.innerHeight - menuY - spacing;
+      const calculatedMaxHeight = Math.max(200, Math.min(500, availableHeight));
+
       setMenuPosition({
         x: menuX,
-        y: rect.bottom + 4
+        y: menuY
       });
-      
+
       setMaxHeight(calculatedMaxHeight);
     }
-  }, [isOpen, buttonRef, panelPosition]);
+  }, [isOpen, buttonRef]);
 
   // 加载会话列表
   useEffect(() => {

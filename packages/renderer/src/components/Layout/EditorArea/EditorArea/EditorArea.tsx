@@ -1,12 +1,12 @@
-/**
- * 编辑器区域容器
- * 功能：管理编辑器标签页、文件保存和快捷键
- * 描述：提供文件编辑、保存、预览等核心功能
+﻿/**
+ * 缂栬緫鍣ㄥ尯鍩熷鍣?
+ * 鍔熻兘锛氱鐞嗙紪杈戝櫒鏍囩椤点€佹枃浠朵繚瀛樺拰蹇嵎閿?
+ * 鎻忚堪锛氭彁渚涙枃浠剁紪杈戙€佷繚瀛樸€侀瑙堢瓑鏍稿績鍔熻兘
  */
 
-// 顶层日志 - 模块加载时立即执行
+// 椤跺眰鏃ュ織 - 妯″潡鍔犺浇鏃剁珛鍗虫墽琛?
 console.log('========================================');
-console.log('[EditorArea 模块] 文件被加载！');
+console.log('[EditorArea 妯″潡] 鏂囦欢琚姞杞斤紒');
 console.log('========================================');
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -26,6 +26,7 @@ import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
 import { SkillsMarketView } from '../SkillsMarketView';
 import { DecompositionRulesView } from '../DecompositionRulesView';
+import { AIChatPanel } from '../../AIChatPanel/AIChatPanel';
 import { MediaPanel } from '../../Sidebar/MediaPanel';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
@@ -41,14 +42,14 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'media';
-  isPreview?: boolean;  // 新增：是否为预览模式（单击打开）
-  sourceTabId?: string;  // 新增：预览标签页关联的源文件标签页ID
-  knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 知识库数据（用于 knowledge 类型）
-  configId?: string;  // 新增：AI配置ID（用于 ai-config 类型，优先使用此字段）
-  configIndex?: number;  // 已废弃：AI配置索引（用于 ai-config 类型，保留用于向后兼容）
-  mermaidData?: { code: string; title: string };  // Mermaid 流程图数据（用于 mermaid-designer 类型）
-  formId?: string;  // 表单ID（用于 table-designer 类型）
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'media' | 'ai-chat';
+  isPreview?: boolean;  // 鏂板锛氭槸鍚︿负棰勮妯″紡锛堝崟鍑绘墦寮€锛?
+  sourceTabId?: string;  // 鏂板锛氶瑙堟爣绛鹃〉鍏宠仈鐨勬簮鏂囦欢鏍囩椤礗D
+  knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 鐭ヨ瘑搴撴暟鎹紙鐢ㄤ簬 knowledge 绫诲瀷锛?
+  configId?: string;  // 鏂板锛欰I閰嶇疆ID锛堢敤浜?ai-config 绫诲瀷锛屼紭鍏堜娇鐢ㄦ瀛楁锛?
+  configIndex?: number;  // 宸插簾寮冿細AI閰嶇疆绱㈠紩锛堢敤浜?ai-config 绫诲瀷锛屼繚鐣欑敤浜庡悜鍚庡吋瀹癸級
+  mermaidData?: { code: string; title: string };  // Mermaid 娴佺▼鍥炬暟鎹紙鐢ㄤ簬 mermaid-designer 绫诲瀷锛?
+  formId?: string;  // 琛ㄥ崟ID锛堢敤浜?table-designer 绫诲瀷锛?
   decompositionRulesData?: {
     rules: Array<{
       id: string;
@@ -91,6 +92,10 @@ interface ReplaceActiveTabContentDetail {
   path?: string;
   name?: string;
   markDirty?: boolean;
+}
+
+interface UpdateActiveTabTitleDetail {
+  title?: string;
 }
 
 const normalizeComparableFilePath = (value: string): string =>
@@ -146,24 +151,24 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   console.log('[EditorArea 组件] 组件函数被调用（渲染）');
   console.log('========================================');
   
-  // 左侧编辑器组
+  // 宸︿晶缂栬緫鍣ㄧ粍
   const [tabs, setTabs] = useState<EditorTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   
-  // 右侧编辑器组（用于分割视图）
+  // 鍙充晶缂栬緫鍣ㄧ粍锛堢敤浜庡垎鍓茶鍥撅級
   const [rightTabs, setRightTabs] = useState<EditorTab[]>([]);
   const [rightActiveTabId, setRightActiveTabId] = useState<string | null>(null);
   
-  // 分割视图是否激活
+  // 鍒嗗壊瑙嗗浘鏄惁婵€娲?
   const [isSplitView, setIsSplitView] = useState(false);
   
-  // 左侧编辑器组宽度（像素）
+  // 宸︿晶缂栬緫鍣ㄧ粍瀹藉害锛堝儚绱狅級
   const [leftWidth, setLeftWidth] = useState<number | null>(null);
 
-  // 跟踪哪些配置标签页有未保存的更改
+  // 璺熻釜鍝簺閰嶇疆鏍囩椤垫湁鏈繚瀛樼殑鏇存敼
   const [unsavedConfigTabs, setUnsavedConfigTabs] = useState<Set<string>>(new Set());
 
-  // 编辑器类型状态：'monaco' | 'codemirror'
+  // 缂栬緫鍣ㄧ被鍨嬬姸鎬侊細'monaco' | 'codemirror'
   const [editorType, setEditorType] = useState<'monaco' | 'codemirror'>('monaco');
   const previousTabsLengthRef = useRef<number>(0);
   const previousActiveTabIdRef = useRef<string | null>(null);
@@ -190,30 +195,30 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   }, [rightTabs]);
 
 
-  // 处理创建新片段
+  // 澶勭悊鍒涘缓鏂扮墖娈?
   const handleCreateSnippet = useCallback((event: Event) => {
     const customEvent = event as CustomEvent;
     const { name } = customEvent.detail;
-    console.log('[EditorArea] 创建新片段:', name);
+    console.log('[EditorArea] 鍒涘缓鏂扮墖娈?', name);
     
-    // 创建 JSONC 格式的片段配置标签页，支持注释
+    // 鍒涘缓 JSONC 鏍煎紡鐨勭墖娈甸厤缃爣绛鹃〉锛屾敮鎸佹敞閲?
     const snippetTemplate = `{
-  // 片段名称（用于显示和区分片段）
+  // 鐗囨鍚嶇О锛堢敤浜庢樉绀哄拰鍖哄垎鐗囨锛?
   "name": "${name}",
   
-  // 触发前缀（必填，用于自动补全。应该是独一无二的，例如：rfc, mysnippet）
+  // 瑙﹀彂鍓嶇紑锛堝繀濉紝鐢ㄤ簬鑷姩琛ュ叏銆傚簲璇ユ槸鐙竴鏃犱簩鐨勶紝渚嬪锛歳fc, mysnippet锛?
   "prefix": "myprefix",
   
-  // 片段内容
+  // 鐗囨鍐呭
   "body": "",
   
-  // 片段描述（可选）
+  // 鐗囨鎻忚堪锛堝彲閫夛級
   "description": "",
   
-  // 编程语言（可选）如：javascript, python, html, css 等
+  // 缂栫▼璇█锛堝彲閫夛級濡傦細javascript, python, html, css 绛?
   "language": "",
   
-  // 标签（可选，多个标签用逗号分隔）
+  // 鏍囩锛堝彲閫夛紝澶氫釜鏍囩鐢ㄩ€楀彿鍒嗛殧锛?
   "tags": ""
 }`;
     
@@ -222,7 +227,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       title: `${name}.json`,
       path: `snippet:/new/${name}`,
       isDirty: false,
-      language: 'jsonc',  // 使用 jsonc 支持注释
+      language: 'jsonc',  // 浣跨敤 jsonc 鏀寔娉ㄩ噴
       content: snippetTemplate,
       type: 'file'
     };
@@ -231,17 +236,17 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     setActiveTabId(newTab.id);
   }, []);
 
-  // 处理插入片段到编辑器
+  // 澶勭悊鎻掑叆鐗囨鍒扮紪杈戝櫒
   const handleInsertSnippet = useCallback((event: Event) => {
     const customEvent = event as CustomEvent;
     const { snippet } = customEvent.detail;
-    console.log('[EditorArea] 插入片段:', snippet.name);
+    console.log('[EditorArea] 鎻掑叆鐗囨:', snippet.name);
     
-    // TODO: 插入片段到当前活动的编辑器
-    // 暂时只是创建一个显示片段内容的标签页
+    // TODO: 鎻掑叆鐗囨鍒板綋鍓嶆椿鍔ㄧ殑缂栬緫鍣?
+    // 鏆傛椂鍙槸鍒涘缓涓€涓樉绀虹墖娈靛唴瀹圭殑鏍囩椤?
     const newTab: EditorTab = {
       id: `snippet-preview-${Date.now()}`,
-      title: `片段: ${snippet.name}`,
+      title: `鐗囨: ${snippet.name}`,
       path: `snippet:/preview/${snippet.id}`,
       isDirty: false,
       language: snippet.language || 'plaintext',
@@ -253,36 +258,62 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     setActiveTabId(newTab.id);
   }, []);
 
-  // 处理打开编辑器标签页
+  // 澶勭悊鎵撳紑缂栬緫鍣ㄦ爣绛鹃〉
   const handleOpenEditorTab = useCallback((event: Event) => {
-    const customEvent = event as CustomEvent;
-    const { path, content, language, title } = customEvent.detail;
-    console.log('[EditorArea] 打开编辑器标签页:', title);
-    
-    // 检查是否已经打开相同路径的标签页
-    const existingTab = tabs.find(tab => tab.path === path);
-    if (existingTab) {
+    const customEvent = event as CustomEvent<{
+      path?: string;
+      content?: string;
+      language?: string;
+      title?: string;
+      type?: EditorTab['type'];
+    }>;
+    const { path, content, language, title, type } = customEvent.detail || {};
+    if (!path) return;
+
+    const resolvedType: EditorTab['type'] = type === 'ai-chat' ? 'ai-chat' : 'file';
+    console.log('[EditorArea] 打开编辑器标签页:', title, resolvedType);
+
+    // 检查是否已经打开相同路径的标签页（左右分组都需要检查）
+    const existingLeftTab = tabs.find(tab => tab.path === path && (tab.type || 'file') === resolvedType);
+    if (existingLeftTab) {
+      if (resolvedType === 'ai-chat' && title && existingLeftTab.title !== title) {
+        setTabs(prev => prev.map(tab =>
+          tab.id === existingLeftTab.id ? { ...tab, title } : tab
+        ));
+      }
       console.log('[EditorArea] 标签页已存在，激活该标签页');
-      setActiveTabId(existingTab.id);
+      setActiveTabId(existingLeftTab.id);
       return;
     }
-    
+
+    const existingRightTab = rightTabs.find(tab => tab.path === path && (tab.type || 'file') === resolvedType);
+    if (existingRightTab) {
+      if (resolvedType === 'ai-chat' && title && existingRightTab.title !== title) {
+        setRightTabs(prev => prev.map(tab =>
+          tab.id === existingRightTab.id ? { ...tab, title } : tab
+        ));
+      }
+      console.log('[EditorArea] 右侧标签页已存在，激活该标签页');
+      setRightActiveTabId(existingRightTab.id);
+      return;
+    }
+
     // 创建新的标签页
     const newTab: EditorTab = {
-      id: `editor-${Date.now()}`,
-      title: title || '新文件',
-      path: path,
+      id: `${resolvedType || 'editor'}-${Date.now()}`,
+      title: title || (resolvedType === 'ai-chat' ? '未选择模型' : '新文件'),
+      path,
       isDirty: false,
-      language: language || 'plaintext',
-      content: content || '',
-      type: 'file'
+      language: resolvedType === 'file' ? (language || 'plaintext') : undefined,
+      content: resolvedType === 'file' ? (content || '') : undefined,
+      type: resolvedType
     };
-    
+
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newTab.id);
-  }, [tabs]);
+  }, [rightTabs, tabs]);
 
-  // 注册片段事件监听器（独立的 useEffect）
+  // 娉ㄥ唽鐗囨浜嬩欢鐩戝惉鍣紙鐙珛鐨?useEffect锛?
   useEffect(() => {
     window.addEventListener('create-snippet', handleCreateSnippet);
     window.addEventListener('insert-snippet', handleInsertSnippet);
@@ -295,12 +326,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, [handleCreateSnippet, handleInsertSnippet, handleOpenEditorTab]);
 
-  // 监听插入数据库表格事件，跳转到文件编辑器标签页
+  // 鐩戝惉鎻掑叆鏁版嵁搴撹〃鏍间簨浠讹紝璺宠浆鍒版枃浠剁紪杈戝櫒鏍囩椤?
   useEffect(() => {
     const handleInsertDatabaseTable = (event: Event) => {
       const customEvent = event as CustomEvent<{ focusEditor?: boolean }>;
       if (customEvent.detail?.focusEditor) {
-        // 找到第一个文件类型的标签页（非设计器）
+        // 鎵惧埌绗竴涓枃浠剁被鍨嬬殑鏍囩椤碉紙闈炶璁″櫒锛?
         const fileTab = tabs.find(t => t.type === 'file');
         if (fileTab) {
           setActiveTabId(fileTab.id);
@@ -314,7 +345,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, [tabs]);
 
-  // 加载上次打开的文档
+  // 鍔犺浇涓婃鎵撳紑鐨勬枃妗?
   useEffect(() => {
     const loadLastOpened = async () => {
       try {
@@ -334,39 +365,39 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           setActiveTabId(newTab.id);
         }
       } catch (error) {
-        // 加载上次打开的文件失败，静默处理
+        // 鍔犺浇涓婃鎵撳紑鐨勬枃浠跺け璐ワ紝闈欓粯澶勭悊
       }
     };
 
     loadLastOpened();
   }, []);
 
-  // 监听打开文件事件
+  // 鐩戝惉鎵撳紑鏂囦欢浜嬩欢
   useEffect(() => {
-    console.log('[EditorArea] ========== useEffect 开始注册事件监听器 ==========');
-    console.log('[EditorArea] 当前 tabs 数量:', tabs.length);
+    console.log('[EditorArea] ========== useEffect 寮€濮嬫敞鍐屼簨浠剁洃鍚櫒 ==========');
+    console.log('[EditorArea] 褰撳墠 tabs 鏁伴噺:', tabs.length);
     
     const handleOpenFile = async (event: Event) => {
       tabChangeReasonOverrideRef.current = 'open';
-      console.log('[EditorArea] ========== 收到 open-file 事件 ==========');
-      console.log('[EditorArea] 事件类型:', event.type);
-      console.log('[EditorArea] 事件对象:', event);
+      console.log('[EditorArea] ========== 鏀跺埌 open-file 浜嬩欢 ==========');
+      console.log('[EditorArea] 浜嬩欢绫诲瀷:', event.type);
+      console.log('[EditorArea] 浜嬩欢瀵硅薄:', event);
       
       const customEvent = event as CustomEvent<{ 
         path?: string; 
         content?: string; 
         name?: string; 
         language?: string;
-        isPreview?: boolean;  // 新增：是否为预览模式
-        lineNumber?: number;  // 新增：要定位的行号
-        column?: number;      // 新增：要定位的列号
+        isPreview?: boolean;  // 鏂板锛氭槸鍚︿负棰勮妯″紡
+        lineNumber?: number;  // 鏂板锛氳瀹氫綅鐨勮鍙?
+        column?: number;      // 鏂板锛氳瀹氫綅鐨勫垪鍙?
       }>;
       
-      console.log('[EditorArea] 事件详情:', customEvent.detail);
-      console.log('[EditorArea] 详情类型:', typeof customEvent.detail);
+      console.log('[EditorArea] 浜嬩欢璇︽儏:', customEvent.detail);
+      console.log('[EditorArea] 璇︽儏绫诲瀷:', typeof customEvent.detail);
       
       if (customEvent.detail) {
-        // 使用自定义事件中的文件数据
+        // 浣跨敤鑷畾涔変簨浠朵腑鐨勬枃浠舵暟鎹?
         const { path, content, name, language, isPreview = false, lineNumber, column } = customEvent.detail;
         
         console.log('[EditorArea] Opening file:', {
@@ -378,17 +409,17 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           isPreview
         });
         
-        // 使用函数式更新来访问最新的 tabs 状态，避免闭包问题
+        // 浣跨敤鍑芥暟寮忔洿鏂版潵璁块棶鏈€鏂扮殑 tabs 鐘舵€侊紝閬垮厤闂寘闂
         setTabs(currentTabs => {
-          // 检查是否已经打开了该文件
+          // 妫€鏌ユ槸鍚﹀凡缁忔墦寮€浜嗚鏂囦欢
           const existingTab = currentTabs.find(tab => tab.path === path);
           
           if (existingTab) {
-            // 设置为活动标签
+            // 璁剧疆涓烘椿鍔ㄦ爣绛?
             setTimeout(() => setActiveTabId(existingTab.id), 0);
             
-            // 如果是双击打开（非预览），将预览标签转为固定标签
-            // 同时更新标签的内容（如果提供了）
+            // 濡傛灉鏄弻鍑绘墦寮€锛堥潪棰勮锛夛紝灏嗛瑙堟爣绛捐浆涓哄浐瀹氭爣绛?
+            // 鍚屾椂鏇存柊鏍囩鐨勫唴瀹癸紙濡傛灉鎻愪緵浜嗭級
             if (!isPreview && existingTab.isPreview) {
               return currentTabs.map(tab => 
                 tab.id === existingTab.id 
@@ -401,7 +432,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   : tab
               );
             } else if (content !== undefined) {
-              // 更新内容（如果提供了新内容）
+              // 鏇存柊鍐呭锛堝鏋滄彁渚涗簡鏂板唴瀹癸級
               return currentTabs.map(tab => 
                 tab.id === existingTab.id 
                   ? { 
@@ -412,15 +443,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   : tab
               );
             }
-            // 没有变化，返回原数组
+            // 娌℃湁鍙樺寲锛岃繑鍥炲師鏁扮粍
             return currentTabs;
           }
           
-          // 如果是预览模式，替换现有的预览标签
+          // 濡傛灉鏄瑙堟ā寮忥紝鏇挎崲鐜版湁鐨勯瑙堟爣绛?
           if (isPreview) {
             const previewTab = currentTabs.find(tab => tab.isPreview);
             if (previewTab) {
-              // 替换预览标签
+              // 鏇挎崲棰勮鏍囩
               const newId = `file-${Date.now()}`;
               setTimeout(() => setActiveTabId(newId), 0);
               return currentTabs.map(tab => 
@@ -438,7 +469,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             }
           }
           
-          // 创建新标签
+          // 鍒涘缓鏂版爣绛?
           const newTab: EditorTab = {
             id: `file-${Date.now()}`,
             title: name || 'Untitled',
@@ -461,10 +492,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           return [...currentTabs, newTab];
         });
         
-        // 需要在状态更新后获取 existingTab.id 或 newTab.id 来设置活动标签
-        // 由于我们在函数式更新中无法直接访问，我们使用 setTimeout 在上面的代码中设置
+        // 闇€瑕佸湪鐘舵€佹洿鏂板悗鑾峰彇 existingTab.id 鎴?newTab.id 鏉ヨ缃椿鍔ㄦ爣绛?
+        // 鐢变簬鎴戜滑鍦ㄥ嚱鏁板紡鏇存柊涓棤娉曠洿鎺ヨ闂紝鎴戜滑浣跨敤 setTimeout 鍦ㄤ笂闈㈢殑浠ｇ爜涓缃?
         
-        // 如果指定了行号，触发定位事件
+        // 濡傛灉鎸囧畾浜嗚鍙凤紝瑙﹀彂瀹氫綅浜嬩欢
         if (lineNumber) {
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent('editor-reveal-line', {
@@ -473,19 +504,19 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           }, 100);
         }
       } else {
-        // 打开文件对话框（非预览模式）
+        // 鎵撳紑鏂囦欢瀵硅瘽妗嗭紙闈為瑙堟ā寮忥級
         try {
           const result = await window.electron?.file?.open();
           if (result?.success && result.data) {
             const { path, content, name, language } = result.data;
             
-            // 使用函数式更新
+            // 浣跨敤鍑芥暟寮忔洿鏂?
             setTabs(currentTabs => {
-              // 检查是否已经打开了该文件
+              // 妫€鏌ユ槸鍚﹀凡缁忔墦寮€浜嗚鏂囦欢
               const existingTab = currentTabs.find(tab => tab.path === path);
               
               if (existingTab) {
-                // 固定预览标签
+                // 鍥哄畾棰勮鏍囩
                 if (existingTab.isPreview) {
                   setTimeout(() => setActiveTabId(existingTab.id), 0);
                   return currentTabs.map(tab => 
@@ -511,7 +542,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             });
           }
         } catch (error) {
-          // 打开文件失败，静默处理
+          // 鎵撳紑鏂囦欢澶辫触锛岄潤榛樺鐞?
         }
       }
     };
@@ -595,20 +626,20 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
 
     const handleOpenSettings = () => {
-      // 使用函数式更新来访问最新的 tabs 状态
+      // 浣跨敤鍑芥暟寮忔洿鏂版潵璁块棶鏈€鏂扮殑 tabs 鐘舵€?
       setTabs(currentTabs => {
-        // 检查是否已经有设置标签页
+        // 妫€鏌ユ槸鍚﹀凡缁忔湁璁剧疆鏍囩椤?
         const settingsTab = currentTabs.find(tab => tab.type === 'settings');
         
         if (settingsTab) {
-          // 如果已存在，直接激活
+          // 濡傛灉宸插瓨鍦紝鐩存帴婵€娲?
           setTimeout(() => setActiveTabId(settingsTab.id), 0);
           return currentTabs;
         } else {
-          // 否则创建新的设置标签页
+          // 鍚﹀垯鍒涘缓鏂扮殑璁剧疆鏍囩椤?
           const newTab: EditorTab = {
             id: `settings-${Date.now()}`,
-            title: '设置',
+            title: '璁剧疆',
             path: 'settings:/',
             isDirty: false,
             type: 'settings'
@@ -629,7 +660,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         } else {
           const newTab: EditorTab = {
             id: `media-${Date.now()}`,
-            title: '素材管理',
+            title: '绱犳潗绠＄悊',
             path: 'media:/',
             isDirty: false,
             type: 'media'
@@ -641,21 +672,21 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
 
     const handleOpenExtensionManager = () => {
-      // 使用函数式更新来访问最新的 tabs 状态
+      // 浣跨敤鍑芥暟寮忔洿鏂版潵璁块棶鏈€鏂扮殑 tabs 鐘舵€?
       setTabs(currentTabs => {
-        // 检查是否已经有扩展管理标签页
+        // 妫€鏌ユ槸鍚﹀凡缁忔湁鎵╁睍绠＄悊鏍囩椤?
         const extensionManagerTab = currentTabs.find(tab => tab.type === 'extension-manager');
         
         if (extensionManagerTab) {
-          // 如果已存在，直接激活
+          // 濡傛灉宸插瓨鍦紝鐩存帴婵€娲?
           setTimeout(() => setActiveTabId(extensionManagerTab.id), 0);
-          console.log('[EditorArea] 激活现有扩展管理标签页');
+          console.log('[EditorArea] 婵€娲荤幇鏈夋墿灞曠鐞嗘爣绛鹃〉');
           return currentTabs;
         } else {
-          // 否则创建新的扩展管理标签页
+          // 鍚﹀垯鍒涘缓鏂扮殑鎵╁睍绠＄悊鏍囩椤?
           const newTab: EditorTab = {
             id: `extension-manager-${Date.now()}`,
-            title: '扩展管理',
+            title: '鎵╁睍绠＄悊',
             path: 'extension-manager:/',
             isDirty: false,
             type: 'extension-manager'
@@ -671,11 +702,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       const customEvent = event as CustomEvent<{ content: string }>;
       const jsonContent = customEvent.detail?.content || '{}';
       
-      // 检查是否已经有 settings.json 标签页
+      // 妫€鏌ユ槸鍚﹀凡缁忔湁 settings.json 鏍囩椤?
       const settingsJsonTab = tabs.find(tab => tab.path === 'settings:/settings.json');
       
       if (settingsJsonTab) {
-        // 如果已存在，更新内容并激活
+        // 濡傛灉宸插瓨鍦紝鏇存柊鍐呭骞舵縺娲?
         setTabs(prev => prev.map(tab => 
           tab.path === 'settings:/settings.json' 
             ? { ...tab, content: jsonContent }
@@ -683,13 +714,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         ));
         setActiveTabId(settingsJsonTab.id);
       } else {
-        // 否则创建新的 settings.json 标签页
+        // 鍚﹀垯鍒涘缓鏂扮殑 settings.json 鏍囩椤?
         const newTab: EditorTab = {
           id: `settings-json-${Date.now()}`,
           title: 'settings.json',
           path: 'settings:/settings.json',
           isDirty: false,
-          language: 'jsonc',  // 使用 jsonc 支持注释
+          language: 'jsonc',  // 浣跨敤 jsonc 鏀寔娉ㄩ噴
           content: jsonContent,
           type: 'file'
         };
@@ -706,10 +737,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }>;
       const { content, sourceTabId, title } = customEvent.detail;
       
-      // 在右侧编辑器组创建预览标签页
+      // 鍦ㄥ彸渚х紪杈戝櫒缁勫垱寤洪瑙堟爣绛鹃〉
       const previewTab: EditorTab = {
         id: `preview-${sourceTabId}`,
-        title: `预览 - ${title}`,
+        title: `棰勮 - ${title}`,
         path: `preview:/${sourceTabId}`,
         isDirty: false,
         language: 'markdown',
@@ -718,22 +749,22 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         sourceTabId: sourceTabId
       };
       
-      // 检查右侧是否已有该预览标签
+      // 妫€鏌ュ彸渚ф槸鍚﹀凡鏈夎棰勮鏍囩
       const existingPreview = rightTabs.find(tab => tab.sourceTabId === sourceTabId);
       
       if (existingPreview) {
-        // 更新内容
+        // 鏇存柊鍐呭
         setRightTabs(prev => prev.map(tab => 
           tab.id === existingPreview.id ? { ...tab, content } : tab
         ));
         setRightActiveTabId(existingPreview.id);
       } else {
-        // 创建新预览标签
+        // 鍒涘缓鏂伴瑙堟爣绛?
         setRightTabs(prev => [...prev, previewTab]);
         setRightActiveTabId(previewTab.id);
       }
       
-      // 激活分割视图
+      // 婵€娲诲垎鍓茶鍥?
       setIsSplitView(true);
     };
 
@@ -747,7 +778,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         } else {
           const newTab: EditorTab = {
             id: `lancedb-view-${Date.now()}`,
-            title: '查看分块数据',
+            title: '鏌ョ湅鍒嗗潡鏁版嵁',
             path: 'lancedb-view:/',
             isDirty: false,
             type: 'lancedb-view'
@@ -758,13 +789,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
-    // 打开表格设计器
+    // 鎵撳紑琛ㄦ牸璁捐鍣?
     const handleOpenTableDesigner = (event: Event) => {
       const customEvent = event as CustomEvent<{ formId?: string; formName?: string; newTab?: boolean }>;
       const { formId, formName, newTab } = customEvent.detail || {};
       
       setTabs(currentTabs => {
-        // 如果有 formId，检查是否已经打开
+        // 濡傛灉鏈?formId锛屾鏌ユ槸鍚﹀凡缁忔墦寮€
         if (formId && !newTab) {
           const existingTab = currentTabs.find(tab => tab.formId === formId);
           if (existingTab) {
@@ -788,7 +819,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
-    // 打开 Mermaid 流程图设计器
+    // 鎵撳紑 Mermaid 娴佺▼鍥捐璁″櫒
     const handleOpenMermaidDesigner = (event: Event) => {
       const customEvent = event as CustomEvent<{ code: string; title: string }>;
       const { code, title } = customEvent.detail;
@@ -796,7 +827,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       setTabs(currentTabs => {
         const newTab: EditorTab = {
           id: `mermaid-designer-${Date.now()}`,
-          title: title || '流程图设计器',
+          title: title || '娴佺▼鍥捐璁″櫒',
           path: `mermaid-designer:/${Date.now()}`,
           isDirty: false,
           type: 'mermaid-designer',
@@ -807,10 +838,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
-    // 打开 Skills 市场
+    // 鎵撳紑 Skills 甯傚満
     const handleOpenSkillsMarket = () => {
       setTabs(currentTabs => {
-        // 检查是否已经有 Skills 市场标签页
         const existingTab = currentTabs.find(tab => tab.type === 'skills-market');
 
         if (existingTab) {
@@ -819,7 +849,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         } else {
           const newTab: EditorTab = {
             id: `skills-market-${Date.now()}`,
-            title: 'Skills 市场',
+            title: 'Skills 甯傚満',
             path: 'skills-market:/',
             isDirty: false,
             type: 'skills-market'
@@ -863,7 +893,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
         const newTab: EditorTab = {
           id: `decomposition-rules-${Date.now()}`,
-          title: '拆解规则管理',
+          title: '鎷嗚В瑙勫垯绠＄悊',
           path: 'decomposition-rules:/',
           isDirty: false,
           type: 'decomposition-rules',
@@ -879,6 +909,32 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
+    const handleUpdateActiveTabTitle = (event: Event) => {
+      const customEvent = event as CustomEvent<UpdateActiveTabTitleDetail>;
+      const title = customEvent.detail?.title?.trim();
+      if (!title) return;
+
+      const leftActiveId = activeTabIdRef.current;
+      const leftActiveTab = leftActiveId
+        ? tabsRef.current.find(tab => tab.id === leftActiveId)
+        : undefined;
+      if (leftActiveTab?.type === 'ai-chat') {
+        setTabs(currentTabs => currentTabs.map(tab =>
+          tab.id === leftActiveId ? { ...tab, title } : tab
+        ));
+      }
+
+      const rightActiveId = rightActiveTabIdRef.current;
+      const rightActiveTab = rightActiveId
+        ? rightTabsRef.current.find(tab => tab.id === rightActiveId)
+        : undefined;
+      if (rightActiveTab?.type === 'ai-chat') {
+        setRightTabs(currentTabs => currentTabs.map(tab =>
+          tab.id === rightActiveId ? { ...tab, title } : tab
+        ));
+      }
+    };
+
     window.addEventListener('open-file', handleOpenFile as EventListener);
     window.addEventListener('editor:replace-active-tab-content', handleReplaceActiveTabContent as EventListener);
     window.addEventListener('open-settings', handleOpenSettings);
@@ -892,11 +948,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('open-decomposition-rules', handleOpenDecompositionRules as EventListener);
     window.addEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
+    window.addEventListener('editor:update-active-tab-title', handleUpdateActiveTabTitle as EventListener);
     
-    console.log('[EditorArea] ========== 所有事件监听器已注册 ==========');
-    console.log('[EditorArea] open-file 监听器:', handleOpenFile);
+    console.log('[EditorArea] ========== 鎵€鏈変簨浠剁洃鍚櫒宸叉敞鍐?==========');
+    console.log('[EditorArea] open-file 鐩戝惉鍣?', handleOpenFile);
 
-    // 监听关闭所有编辑器事件
+    // 鐩戝惉鍏抽棴鎵€鏈夌紪杈戝櫒浜嬩欢
     const handleCloseAllEditors = () => {
       console.log('[EditorArea] 关闭所有编辑器标签页');
       setTabs([]);
@@ -907,7 +964,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
     window.addEventListener('close-all-editors', handleCloseAllEditors);
 
-    // 监听切换编辑器类型事件
+    // 鐩戝惉鍒囨崲缂栬緫鍣ㄧ被鍨嬩簨浠?
     const handleToggleEditorType = () => {
       setEditorType(prev => {
         if (prev === 'monaco') return 'codemirror';
@@ -916,7 +973,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
     window.addEventListener('toggle-editor-type', handleToggleEditorType);
 
-    // 监听设置编辑器类型事件
+    // 鐩戝惉璁剧疆缂栬緫鍣ㄧ被鍨嬩簨浠?
     const handleSetEditorType = (event: Event) => {
       const customEvent = event as CustomEvent<'monaco' | 'codemirror'>;
       setEditorType(customEvent.detail);
@@ -937,6 +994,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-decomposition-rules', handleOpenDecompositionRules as EventListener);
       window.removeEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
+      window.removeEventListener('editor:update-active-tab-title', handleUpdateActiveTabTitle as EventListener);
       window.removeEventListener('close-all-editors', handleCloseAllEditors);
       window.removeEventListener('toggle-editor-type', handleToggleEditorType);
       window.removeEventListener('set-editor-type', handleSetEditorType as EventListener);
@@ -944,7 +1002,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 监听表格名称变更事件（独立的 useEffect）
+  // 鐩戝惉琛ㄦ牸鍚嶇О鍙樻洿浜嬩欢锛堢嫭绔嬬殑 useEffect锛?
   useEffect(() => {
     const handleTableNameChange = (event: Event) => {
       const customEvent = event as CustomEvent<{ formId: string; newName: string }>;
@@ -954,7 +1012,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         setTabs(currentTabs => 
           currentTabs.map(tab => 
             tab.formId === formId 
-              ? { ...tab, title: `表格 - ${newName}` }
+              ? { ...tab, title: `琛ㄦ牸 - ${newName}` }
               : tab
           )
         );
@@ -968,7 +1026,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 监听打开知识库事件（独立的 useEffect，无依赖）
+  // 鐩戝惉鎵撳紑鐭ヨ瘑搴撲簨浠讹紙鐙珛鐨?useEffect锛屾棤渚濊禆锛?
   useEffect(() => {
     const handleOpenKnowledge = (event: Event) => {
       const customEvent = event as CustomEvent<{ 
@@ -981,16 +1039,16 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       const { id, title, description, items } = customEvent.detail;
       
       setTabs(prev => {
-        // 查找是否已存在知识库类型的标签页（不区分 id）
+        // 鏌ユ壘鏄惁宸插瓨鍦ㄧ煡璇嗗簱绫诲瀷鐨勬爣绛鹃〉锛堜笉鍖哄垎 id锛?
         const existingKnowledgeTab = prev.find(tab => tab.type === 'knowledge');
         
-        // 标签页标题只显示知识库名称，不包含配置变化提示
-        const tabTitle = `知识库 - ${title}`;
+        // 鏍囩椤垫爣棰樺彧鏄剧ず鐭ヨ瘑搴撳悕绉帮紝涓嶅寘鍚厤缃彉鍖栨彁绀?
+        const tabTitle = `鐭ヨ瘑搴?- ${title}`;
         
         if (existingKnowledgeTab) {
-          // 如果已存在知识库标签页，更新其标题和数据
+          // 濡傛灉宸插瓨鍦ㄧ煡璇嗗簱鏍囩椤碉紝鏇存柊鍏舵爣棰樺拰鏁版嵁
           setActiveTabId(existingKnowledgeTab.id);
-          console.log('[EditorArea] 更新知识库标签页:', tabTitle);
+          console.log('[EditorArea] 鏇存柊鐭ヨ瘑搴撴爣绛鹃〉:', tabTitle);
           return prev.map(tab => 
             tab.id === existingKnowledgeTab.id 
               ? { 
@@ -1002,7 +1060,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               : tab
           );
         } else {
-          // 创建新的知识库标签页（首次打开）
+          // 鍒涘缓鏂扮殑鐭ヨ瘑搴撴爣绛鹃〉锛堥娆℃墦寮€锛?
           const newTab: EditorTab = {
             id: `knowledge-${Date.now()}`,
             title: tabTitle,
@@ -1012,7 +1070,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             knowledgeData: { id, items, description }
           };
           setActiveTabId(newTab.id);
-          console.log('[EditorArea] 创建知识库标签页:', tabTitle);
+          console.log('[EditorArea] 鍒涘缓鐭ヨ瘑搴撴爣绛鹃〉:', tabTitle);
           return [...prev, newTab];
         }
       });
@@ -1023,40 +1081,40 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('open-knowledge', handleOpenKnowledge as EventListener);
     };
-  }, []); // 无依赖，只注册一次
+  }, []); // 鏃犱緷璧栵紝鍙敞鍐屼竴娆?
 
-  // 监听关闭知识库标签页事件
+  // 鐩戝惉鍏抽棴鐭ヨ瘑搴撴爣绛鹃〉浜嬩欢
   useEffect(() => {
     const handleCloseKnowledgeTab = (event: Event) => {
       const customEvent = event as CustomEvent<{ knowledgeId: string }>;
       const { knowledgeId } = customEvent.detail;
       
       setTabs(prev => {
-        // 查找匹配的知识库标签页
+        // 鏌ユ壘鍖归厤鐨勭煡璇嗗簱鏍囩椤?
         const knowledgeTab = prev.find(
           tab => tab.type === 'knowledge' && 
                  (tab.knowledgeData?.id === knowledgeId || tab.path === `knowledge:/${knowledgeId}`)
         );
         
         if (knowledgeTab) {
-          console.log('[EditorArea] 关闭知识库标签页:', knowledgeTab.title, '知识库ID:', knowledgeId);
+          console.log('[EditorArea] 鍏抽棴鐭ヨ瘑搴撴爣绛鹃〉:', knowledgeTab.title, '鐭ヨ瘑搴揑D:', knowledgeId);
           
-          // 移除知识库标签页
+          // 绉婚櫎鐭ヨ瘑搴撴爣绛鹃〉
           const remainingTabs = prev.filter(tab => tab.id !== knowledgeTab.id);
           
-          // 使用函数式更新来获取最新的 activeTabId
+          // 浣跨敤鍑芥暟寮忔洿鏂版潵鑾峰彇鏈€鏂扮殑 activeTabId
           setActiveTabId(currentActiveTabId => {
-            // 如果关闭的是当前活动标签，需要切换到其他标签
+            // 濡傛灉鍏抽棴鐨勬槸褰撳墠娲诲姩鏍囩锛岄渶瑕佸垏鎹㈠埌鍏朵粬鏍囩
             if (currentActiveTabId === knowledgeTab.id) {
               if (remainingTabs.length > 0) {
-                // 切换到最后一个标签页
+                // 鍒囨崲鍒版渶鍚庝竴涓爣绛鹃〉
                 return remainingTabs[remainingTabs.length - 1].id;
               } else {
-                // 没有其他标签页了，清除活动标签
+                // 娌℃湁鍏朵粬鏍囩椤典簡锛屾竻闄ゆ椿鍔ㄦ爣绛?
                 return null;
               }
             }
-            // 不是活动标签，保持当前活动标签不变
+            // 涓嶆槸娲诲姩鏍囩锛屼繚鎸佸綋鍓嶆椿鍔ㄦ爣绛句笉鍙?
             return currentActiveTabId;
           });
           
@@ -1072,15 +1130,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('close-knowledge-tab', handleCloseKnowledgeTab as EventListener);
     };
-  }, []); // 无依赖，只注册一次
+  }, []); // 鏃犱緷璧栵紝鍙敞鍐屼竴娆?
 
-  // 修复函数：将进度为 100% 但状态仍为 processing 的文件更新为 completed
+  // 淇鍑芥暟锛氬皢杩涘害涓?100% 浣嗙姸鎬佷粛涓?processing 鐨勬枃浠舵洿鏂颁负 completed
   const fixProcessingFilesWith100Percent = useCallback(async (knowledgeBase: KnowledgeItem): Promise<boolean> => {
     if (!knowledgeBase.children) {
       return false;
     }
     
-    // 递归查找所有需要修复的文件（包括子文件夹中的文件）
+    // 閫掑綊鏌ユ壘鎵€鏈夐渶瑕佷慨澶嶇殑鏂囦欢锛堝寘鎷瓙鏂囦欢澶逛腑鐨勬枃浠讹級
     const collectFilesToFix = (items: KnowledgeItem[]): KnowledgeItem[] => {
       const filesToFix: KnowledgeItem[] = [];
       for (const item of items) {
@@ -1100,7 +1158,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     const filesToFix = collectFilesToFix(knowledgeBase.children);
     
     if (filesToFix.length > 0) {
-      console.log('[EditorArea] 发现需要修复的文件（processing 100%）:', filesToFix.length);
+      console.log('[EditorArea] 鍙戠幇闇€瑕佷慨澶嶇殑鏂囦欢锛坧rocessing 100%锛?', filesToFix.length);
       for (const file of filesToFix) {
         if (file.path) {
           try {
@@ -1109,18 +1167,18 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               'completed',
               100
             );
-            console.log('[EditorArea] 已修复文件状态:', file.title);
+            console.log('[EditorArea] 宸蹭慨澶嶆枃浠剁姸鎬?', file.title);
           } catch (error) {
-            console.error('[EditorArea] 修复文件状态失败:', file.title, error);
+            console.error('[EditorArea] 淇鏂囦欢鐘舵€佸け璐?', file.title, error);
           }
         }
       }
-      return true; // 表示有文件被修复
+      return true; // 琛ㄧず鏈夋枃浠惰淇
     }
-    return false; // 表示没有文件需要修复
+    return false; // 琛ㄧず娌℃湁鏂囦欢闇€瑕佷慨澶?
   }, []);
 
-  // 组件初始化时检查并修复所有知识库中的 processing 100% 文件
+  // 缁勪欢鍒濆鍖栨椂妫€鏌ュ苟淇鎵€鏈夌煡璇嗗簱涓殑 processing 100% 鏂囦欢
   useEffect(() => {
     const checkAndFixAllKnowledgeBases = async () => {
       try {
@@ -1135,63 +1193,63 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         }
         
         if (hasFixedAny) {
-          console.log('[EditorArea] 初始化时已修复所有知识库中的 processing 100% 文件');
-          // 触发知识库更新事件以刷新UI
+          console.log('[EditorArea] 鍒濆鍖栨椂宸蹭慨澶嶆墍鏈夌煡璇嗗簱涓殑 processing 100% 鏂囦欢');
+          // 瑙﹀彂鐭ヨ瘑搴撴洿鏂颁簨浠朵互鍒锋柊UI
           window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
             detail: { knowledgeId: 'all' }
           }));
         }
       } catch (error) {
-        console.error('[EditorArea] 初始化检查知识库文件状态失败:', error);
+        console.error('[EditorArea] 鍒濆鍖栨鏌ョ煡璇嗗簱鏂囦欢鐘舵€佸け璐?', error);
       }
     };
     
     checkAndFixAllKnowledgeBases();
   }, [fixProcessingFilesWith100Percent]);
 
-  // 监听知识库更新事件（刷新知识库数据）
+  // 鐩戝惉鐭ヨ瘑搴撴洿鏂颁簨浠讹紙鍒锋柊鐭ヨ瘑搴撴暟鎹級
   useEffect(() => {
     const handleKnowledgeBaseUpdated = async (event: Event) => {
       const customEvent = event as CustomEvent<{ knowledgeId: string }>;
       const { knowledgeId } = customEvent.detail;
       
-      console.log('[EditorArea] 知识库已更新，重新加载数据:', knowledgeId);
+      console.log('[EditorArea] 鐭ヨ瘑搴撳凡鏇存柊锛岄噸鏂板姞杞芥暟鎹?', knowledgeId);
       
-      // 重新加载知识库数据
+      // 閲嶆柊鍔犺浇鐭ヨ瘑搴撴暟鎹?
       const data = await knowledgeBaseService.loadFromStorage();
       
-      // 调试：检查数据中是否包含处理状态
+      // 璋冭瘯锛氭鏌ユ暟鎹腑鏄惁鍖呭惈澶勭悊鐘舵€?
       const knowledgeBase = data.created.find(kb => kb.id === knowledgeId);
       if (knowledgeBase && knowledgeBase.children) {
         const filesWithStatus = knowledgeBase.children.filter(
           (item: KnowledgeItem) => item.type === 'file' && item.metadata?.processingStatus
         );
-        console.log('[EditorArea] 找到带处理状态的文件:', filesWithStatus.length, filesWithStatus.map(item => ({
+        console.log('[EditorArea] 鎵惧埌甯﹀鐞嗙姸鎬佺殑鏂囦欢:', filesWithStatus.length, filesWithStatus.map(item => ({
           title: item.title,
           status: item.metadata?.processingStatus,
           progress: item.metadata?.processingProgress
         })));
         
-        // 自动修复：将进度为 100% 但状态仍为 processing 的文件更新为 completed
+        // 鑷姩淇锛氬皢杩涘害涓?100% 浣嗙姸鎬佷粛涓?processing 鐨勬枃浠舵洿鏂颁负 completed
         const hasFixed = await fixProcessingFilesWith100Percent(knowledgeBase);
         if (hasFixed) {
-          // 重新加载数据以反映修复后的状态
+          // 閲嶆柊鍔犺浇鏁版嵁浠ュ弽鏄犱慨澶嶅悗鐨勭姸鎬?
           const fixedData = await knowledgeBaseService.loadFromStorage();
-          // 更新 data 引用
+          // 鏇存柊 data 寮曠敤
           Object.assign(data, fixedData);
         }
       }
       
-      // 更新左侧对应的知识库标签页数据
+      // 鏇存柊宸︿晶瀵瑰簲鐨勭煡璇嗗簱鏍囩椤垫暟鎹?
       setTabs(prev => {
         const updated = prev.map(tab => {
           if (tab.type === 'knowledge' && tab.knowledgeData?.id === knowledgeId) {
-            // 查找知识库项，获取知识库名称
+            // 鏌ユ壘鐭ヨ瘑搴撻」锛岃幏鍙栫煡璇嗗簱鍚嶇О
             const knowledgeBase = data.created.find(kb => kb.id === knowledgeId);
             const baseTitle = knowledgeBase?.title || '';
             const configChanged = knowledgeBase?.metadata?.configChanged;
-            // 标签页标题只显示知识库名称，不包含配置变化提示
-            const newTitle = `知识库 - ${baseTitle}`;
+            // 鏍囩椤垫爣棰樺彧鏄剧ず鐭ヨ瘑搴撳悕绉帮紝涓嶅寘鍚厤缃彉鍖栨彁绀?
+            const newTitle = `鐭ヨ瘑搴?- ${baseTitle}`;
             
             const newTab = {
               ...tab,
@@ -1199,10 +1257,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               knowledgeData: {
                 id: knowledgeId,
                 items: data.created,
-                description: tab.knowledgeData?.description // 保留原有描述
+                description: tab.knowledgeData?.description // 淇濈暀鍘熸湁鎻忚堪
               }
             };
-            console.log('[EditorArea] 更新左侧知识库标签页数据:', {
+            console.log('[EditorArea] 鏇存柊宸︿晶鐭ヨ瘑搴撴爣绛鹃〉鏁版嵁:', {
               tabId: tab.id,
               knowledgeId,
               itemsCount: data.created.length,
@@ -1221,16 +1279,16 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         return updated;
       });
       
-      // 更新右侧对应的知识库标签页数据
+      // 鏇存柊鍙充晶瀵瑰簲鐨勭煡璇嗗簱鏍囩椤垫暟鎹?
       setRightTabs(prev => {
         const updated = prev.map(tab => {
           if (tab.type === 'knowledge' && tab.knowledgeData?.id === knowledgeId) {
-            // 查找更新后的知识库数据
+            // 鏌ユ壘鏇存柊鍚庣殑鐭ヨ瘑搴撴暟鎹?
             const updatedKnowledgeBase = data.created.find(kb => kb.id === knowledgeId);
             const baseTitle = updatedKnowledgeBase?.title || '';
             const configChanged = updatedKnowledgeBase?.metadata?.configChanged;
-            // 标签页标题只显示知识库名称，不包含配置变化提示
-            const newTitle = `知识库 - ${baseTitle}`;
+            // 鏍囩椤垫爣棰樺彧鏄剧ず鐭ヨ瘑搴撳悕绉帮紝涓嶅寘鍚厤缃彉鍖栨彁绀?
+            const newTitle = `鐭ヨ瘑搴?- ${baseTitle}`;
             
             const newTab = {
               ...tab,
@@ -1238,10 +1296,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               knowledgeData: {
                 id: knowledgeId,
                 items: data.created,
-                description: tab.knowledgeData?.description // 保留原有描述
+                description: tab.knowledgeData?.description // 淇濈暀鍘熸湁鎻忚堪
               }
             };
-            console.log('[EditorArea] 更新右侧知识库标签页数据:', {
+            console.log('[EditorArea] 鏇存柊鍙充晶鐭ヨ瘑搴撴爣绛鹃〉鏁版嵁:', {
               tabId: tab.id,
               knowledgeId,
               itemsCount: data.created.length,
@@ -1268,19 +1326,19 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 监听打开 AI 配置事件（独立的 useEffect，无依赖）
+  // 鐩戝惉鎵撳紑 AI 閰嶇疆浜嬩欢锛堢嫭绔嬬殑 useEffect锛屾棤渚濊禆锛?
   useEffect(() => {
     const handleOpenAIConfig = async (event: Event) => {
       const customEvent = event as CustomEvent<{ configId?: string; configIndex?: number }>;
-      // 优先使用 configId，如果没有则使用 configIndex（向后兼容）
+      // 浼樺厛浣跨敤 configId锛屽鏋滄病鏈夊垯浣跨敤 configIndex锛堝悜鍚庡吋瀹癸級
       const configId = customEvent?.detail?.configId;
       const configIndex = customEvent?.detail?.configIndex;
       
-      console.log('[EditorArea] 打开 AI 配置，配置ID:', configId, '配置索引(废弃):', configIndex);
+      console.log('[EditorArea] 鎵撳紑 AI 閰嶇疆锛岄厤缃甀D:', configId, '閰嶇疆绱㈠紩(搴熷純):', configIndex);
       
-      // 如果没有 configId，尝试从 configIndex 获取配置信息
+      // 濡傛灉娌℃湁 configId锛屽皾璇曚粠 configIndex 鑾峰彇閰嶇疆淇℃伅
       let actualConfigId = configId;
-      let configName = 'AI 模型配置';
+      let configName = 'AI 妯″瀷閰嶇疆';
       
       if (!actualConfigId && configIndex !== undefined) {
         try {
@@ -1290,11 +1348,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             configName = configs[configIndex].name || configName;
           }
         } catch (error) {
-          console.error('[EditorArea] 从索引获取配置ID失败:', error);
+          console.error('[EditorArea] 浠庣储寮曡幏鍙栭厤缃甀D澶辫触:', error);
         }
       }
       
-      // 如果没有 configId 也没有 configIndex，创建新配置
+      // 濡傛灉娌℃湁 configId 涔熸病鏈?configIndex锛屽垱寤烘柊閰嶇疆
       if (!actualConfigId) {
         console.log('[EditorArea] 没有配置ID，创建新的 AI 配置标签页');
         const tempConfigId = `temp-config-${Date.now()}`;
@@ -1302,7 +1360,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         setTabs(prev => {
           const newTab: EditorTab = {
             id: `ai-config-${Date.now()}`,
-            title: '新建配置',
+            title: '鏂板缓閰嶇疆',
             path: `ai-config:/${tempConfigId}`,
             isDirty: false,
             type: 'ai-config',
@@ -1310,13 +1368,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           };
           
           setActiveTabId(newTab.id);
-          console.log('[EditorArea] 创建新的 AI 配置标签页成功，标签ID:', newTab.id);
+          console.log('[EditorArea] 鍒涘缓鏂扮殑 AI 閰嶇疆鏍囩椤垫垚鍔燂紝鏍囩ID:', newTab.id);
           return [...prev, newTab];
         });
         return;
       }
       
-      // 获取配置信息（用于标题）
+      // 鑾峰彇閰嶇疆淇℃伅锛堢敤浜庢爣棰橈級
       if (configId && !configName) {
         try {
           const config = await window.electron?.ipcRenderer.invoke('ai-model:get', actualConfigId);
@@ -1324,38 +1382,38 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             configName = config.name;
           }
         } catch (error) {
-          console.error('[EditorArea] 获取配置名称失败:', error);
+          console.error('[EditorArea] 鑾峰彇閰嶇疆鍚嶇О澶辫触:', error);
         }
       }
       
       setTabs(prev => {
-        // 查找是否已存在相同configId的AI配置标签页
+        // 鏌ユ壘鏄惁宸插瓨鍦ㄧ浉鍚宑onfigId鐨凙I閰嶇疆鏍囩椤?
         const existingAIConfigTab = prev.find(tab => 
           tab.type === 'ai-config' && tab.configId === actualConfigId
         );
         
         if (existingAIConfigTab) {
-          // 如果已存在相同的AI配置标签页，直接激活它
+          // 濡傛灉宸插瓨鍦ㄧ浉鍚岀殑AI閰嶇疆鏍囩椤碉紝鐩存帴婵€娲诲畠
           setActiveTabId(existingAIConfigTab.id);
-          console.log('[EditorArea] 激活已存在的 AI 配置标签页，配置ID:', actualConfigId, '标签ID:', existingAIConfigTab.id);
-          return prev; // 不修改 tabs
+          console.log('[EditorArea] 婵€娲诲凡瀛樺湪鐨?AI 閰嶇疆鏍囩椤碉紝閰嶇疆ID:', actualConfigId, '鏍囩ID:', existingAIConfigTab.id);
+          return prev; // 涓嶄慨鏀?tabs
         } else {
-          // 不存在相同的AI配置标签页，创建新的
-          console.log('[EditorArea] 创建新的 AI 配置标签页，配置ID:', actualConfigId, '配置名称:', configName);
+          // 涓嶅瓨鍦ㄧ浉鍚岀殑AI閰嶇疆鏍囩椤碉紝鍒涘缓鏂扮殑
+          console.log('[EditorArea] 鍒涘缓鏂扮殑 AI 閰嶇疆鏍囩椤碉紝閰嶇疆ID:', actualConfigId, '閰嶇疆鍚嶇О:', configName);
           
           const tabPath = `ai-config:/${actualConfigId}`;
           const newTab: EditorTab = {
             id: `ai-config-${Date.now()}`,
-            title: `配置 - ${configName}`,
+            title: `閰嶇疆 - ${configName}`,
             path: tabPath,
             isDirty: false,
             type: 'ai-config',
             configId: actualConfigId,
-            configIndex // 保留用于向后兼容
+            configIndex // 淇濈暀鐢ㄤ簬鍚戝悗鍏煎
           };
           
           setActiveTabId(newTab.id);
-          console.log('[EditorArea] 创建新的 AI 配置标签页成功，标签ID:', newTab.id);
+          console.log('[EditorArea] 鍒涘缓鏂扮殑 AI 閰嶇疆鏍囩椤垫垚鍔燂紝鏍囩ID:', newTab.id);
           return [...prev, newTab];
         }
       });
@@ -1366,31 +1424,31 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('open-ai-config', handleOpenAIConfig as EventListener);
     };
-  }, []); // 无依赖，只注册一次
+  }, []); // 鏃犱緷璧栵紝鍙敞鍐屼竴娆?
 
-  // 监听 AI 配置保存事件，更新临时配置的 ID
+  // 鐩戝惉 AI 閰嶇疆淇濆瓨浜嬩欢锛屾洿鏂颁复鏃堕厤缃殑 ID
   useEffect(() => {
     const handleAIConfigSaved = (event: Event) => {
       const customEvent = event as CustomEvent<{ tempId: string; realId: string; configName: string }>;
       const { tempId, realId, configName } = customEvent.detail;
       
-      console.log('[EditorArea] 收到 AI 配置保存事件，更新临时配置ID:', { tempId, realId, configName });
+      console.log('[EditorArea] 鏀跺埌 AI 閰嶇疆淇濆瓨浜嬩欢锛屾洿鏂颁复鏃堕厤缃甀D:', { tempId, realId, configName });
       
       setTabs(prev => {
         return prev.map(tab => {
           if (tab.type === 'ai-config' && tab.configId === tempId) {
-            console.log('[EditorArea] 更新标签页 configId:', { oldId: tempId, newId: realId });
+            console.log('[EditorArea] 鏇存柊鏍囩椤?configId:', { oldId: tempId, newId: realId });
             return {
               ...tab,
               configId: realId,
-              title: `配置 - ${configName}`
+              title: `閰嶇疆 - ${configName}`
             };
           }
           return tab;
         });
       });
       
-      // 从未保存列表中移除（使用新的 realId）
+      // 浠庢湭淇濆瓨鍒楄〃涓Щ闄わ紙浣跨敤鏂扮殑 realId锛?
       setUnsavedConfigTabs(prev => {
         const newSet = new Set(prev);
         newSet.delete(tempId);
@@ -1403,13 +1461,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => window.removeEventListener('ai-config-saved', handleAIConfigSaved as EventListener);
   }, []);
 
-  // 监听 AI 配置未保存状态变化
+  // 鐩戝惉 AI 閰嶇疆鏈繚瀛樼姸鎬佸彉鍖?
   useEffect(() => {
     const handleUnsavedStatus = (event: Event) => {
       const customEvent = event as CustomEvent<{ configId: string; hasUnsavedChanges: boolean }>;
       const { configId, hasUnsavedChanges } = customEvent.detail;
       
-      console.log('[EditorArea] 收到 AI 配置未保存状态:', { configId, hasUnsavedChanges });
+      console.log('[EditorArea] 鏀跺埌 AI 閰嶇疆鏈繚瀛樼姸鎬?', { configId, hasUnsavedChanges });
       
       setUnsavedConfigTabs(prev => {
         const newSet = new Set(prev);
@@ -1426,44 +1484,44 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => window.removeEventListener('ai-config-unsaved-status', handleUnsavedStatus as EventListener);
   }, []);
 
-  // 监听 AI 配置更新事件，更新标签页标题（独立的 useEffect，无依赖）
+  // 鐩戝惉 AI 閰嶇疆鏇存柊浜嬩欢锛屾洿鏂版爣绛鹃〉鏍囬锛堢嫭绔嬬殑 useEffect锛屾棤渚濊禆锛?
   useEffect(() => {
     const handleAIConfigUpdated = async () => {
       try {
-        console.log('[EditorArea] 收到 AI 配置更新事件，开始更新标签页标题');
+        console.log('[EditorArea] 鏀跺埌 AI 閰嶇疆鏇存柊浜嬩欢锛屽紑濮嬫洿鏂版爣绛鹃〉鏍囬');
         
-        // 获取最新的配置列表
+        // 鑾峰彇鏈€鏂扮殑閰嶇疆鍒楄〃
         const configs = await window.electron?.ipcRenderer.invoke('ai-model:list');
         if (!configs || configs.length === 0) {
           console.log('[EditorArea] 未获取到配置列表，跳过标题更新');
           return;
         }
         
-        // 创建配置ID到配置对象的映射
+        // 鍒涘缓閰嶇疆ID鍒伴厤缃璞＄殑鏄犲皠
         const configMap = new Map<string, { id: string; name: string }>(
           configs.map((c: { id: string; name: string }) => [c.id, c])
         );
         
-        // 更新所有 AI 配置标签页的标题
+        // 鏇存柊鎵€鏈?AI 閰嶇疆鏍囩椤电殑鏍囬
         setTabs(prev => {
           const updated = prev.map(tab => {
             if (tab.type === 'ai-config') {
-              // 优先使用 configId
+              // 浼樺厛浣跨敤 configId
               if (tab.configId) {
                 const config = configMap.get(tab.configId);
                 if (config?.name) {
-                  const newTitle = `配置 - ${config.name}`;
-                  console.log('[EditorArea] 更新标签页标题(通过configId):', { oldTitle: tab.title, newTitle, configId: tab.configId });
+                  const newTitle = `閰嶇疆 - ${config.name}`;
+                  console.log('[EditorArea] 鏇存柊鏍囩椤垫爣棰?閫氳繃configId):', { oldTitle: tab.title, newTitle, configId: tab.configId });
                   return { ...tab, title: newTitle };
                 }
               } 
-              // 向后兼容：如果没有 configId，使用 configIndex
+              // 鍚戝悗鍏煎锛氬鏋滄病鏈?configId锛屼娇鐢?configIndex
               else if (tab.configIndex !== undefined) {
                 const config = configs[tab.configIndex];
                 if (config?.name) {
-                  const newTitle = `配置 - ${config.name}`;
-                  console.log('[EditorArea] 更新标签页标题(通过configIndex):', { oldTitle: tab.title, newTitle, configIndex: tab.configIndex });
-                  // 同时更新 configId 以便后续使用
+                  const newTitle = `閰嶇疆 - ${config.name}`;
+                  console.log('[EditorArea] 鏇存柊鏍囩椤垫爣棰?閫氳繃configIndex):', { oldTitle: tab.title, newTitle, configIndex: tab.configIndex });
+                  // 鍚屾椂鏇存柊 configId 浠ヤ究鍚庣画浣跨敤
                   return { ...tab, title: newTitle, configId: config.id };
                 }
               }
@@ -1475,13 +1533,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         
         console.log('[EditorArea] AI 配置标签页标题更新完成');
       } catch (error) {
-        console.error('[EditorArea] 更新 AI 配置标签页标题失败:', error);
+        console.error('[EditorArea] 鏇存柊 AI 閰嶇疆鏍囩椤垫爣棰樺け璐?', error);
       }
     };
 
     window.addEventListener('ai-config-updated', handleAIConfigUpdated);
     
-    // 监听 IPC 消息（用于主进程通知的更新）
+    // 鐩戝惉 IPC 娑堟伅锛堢敤浜庝富杩涚▼閫氱煡鐨勬洿鏂帮級
     const ipcRenderer = window.electron?.ipcRenderer;
     if (ipcRenderer) {
       ipcRenderer.on('ai-model-config-updated', handleAIConfigUpdated);
@@ -1493,9 +1551,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         ipcRenderer.removeListener('ai-model-config-updated', handleAIConfigUpdated);
       }
     };
-  }, []); // 无依赖，只注册一次
+  }, []); // 鏃犱緷璧栵紝鍙敞鍐屼竴娆?
 
-  // 当活动标签改变时，通知文件树更新选中状态
+  // 褰撴椿鍔ㄦ爣绛炬敼鍙樻椂锛岄€氱煡鏂囦欢鏍戞洿鏂伴€変腑鐘舵€?
   useEffect(() => {
     const activeTab = tabs.find(tab => tab.id === activeTabId);
     const previousTabsLength = previousTabsLengthRef.current;
@@ -1532,7 +1590,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }));
     
     if (activeTab && activeTab.type === 'file' && activeTab.path) {
-      // 派发自定义事件，通知文件树当前激活的文件
+      // 娲惧彂鑷畾涔変簨浠讹紝閫氱煡鏂囦欢鏍戝綋鍓嶆縺娲荤殑鏂囦欢
       window.dispatchEvent(new CustomEvent('editor-active-file-change', {
         detail: { path: activeTab.path }
       }));
@@ -1544,7 +1602,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
-  // 当活动标签页变化时，通知状态栏更新语言类型
+  // 褰撴椿鍔ㄦ爣绛鹃〉鍙樺寲鏃讹紝閫氱煡鐘舵€佹爮鏇存柊璇█绫诲瀷
   useEffect(() => {
     if (activeTab?.language) {
       const event = new CustomEvent('tab:language-changed', {
@@ -1554,27 +1612,27 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
   }, [activeTab?.language, activeTabId]);
 
-  // 处理标签页切换
+  // 澶勭悊鏍囩椤靛垏鎹?
   const handleTabClick = (tabId: string) => {
     tabChangeReasonOverrideRef.current = 'switch';
     setActiveTabId(tabId);
     
-    // 通知 FileExplorer 更新选中状态（仅针对文件类型的标签页）
+    // 閫氱煡 FileExplorer 鏇存柊閫変腑鐘舵€侊紙浠呴拡瀵规枃浠剁被鍨嬬殑鏍囩椤碉級
     const clickedTab = tabs.find(tab => tab.id === tabId);
     if (clickedTab?.type === 'file' && clickedTab?.path) {
       window.dispatchEvent(new CustomEvent('tab-switched', {
         detail: { path: clickedTab.path }
       }));
-      console.log('[EditorArea] 标签页切换:', clickedTab.path);
+      console.log('[EditorArea] 鏍囩椤靛垏鎹?', clickedTab.path);
     }
     
-    // 如果是表格设计器标签页，通知侧边栏更新表单选中状态
+    // 濡傛灉鏄〃鏍艰璁″櫒鏍囩椤碉紝閫氱煡渚ц竟鏍忔洿鏂拌〃鍗曢€変腑鐘舵€?
     if (clickedTab?.type === 'table-designer' && clickedTab?.formId) {
       window.dispatchEvent(new CustomEvent('form-tab-activated', {
         detail: { formId: clickedTab.formId }
       }));
     } else {
-      // 非表格设计器标签页，清除表单选中状态
+      // 闈炶〃鏍艰璁″櫒鏍囩椤碉紝娓呴櫎琛ㄥ崟閫変腑鐘舵€?
       window.dispatchEvent(new Event('form-tab-deactivated'));
     }
   };
@@ -1583,20 +1641,20 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     tabChangeReasonOverrideRef.current = 'close';
     const closingTab = tabs.find(tab => tab.id === tabId);
     
-    // 如果是 AI 配置标签页，检查是否有未保存的更改
+    // 濡傛灉鏄?AI 閰嶇疆鏍囩椤碉紝妫€鏌ユ槸鍚︽湁鏈繚瀛樼殑鏇存敼
     if (closingTab?.type === 'ai-config' && closingTab.configId) {
       if (unsavedConfigTabs.has(closingTab.configId)) {
-        // 显示确认对话框
+        // 鏄剧ず纭瀵硅瘽妗?
         const confirmed = window.confirm(
           '您有未保存的更改，关闭后将丢失。\n\n确定要关闭吗？'
         );
         
         if (!confirmed) {
-          console.log('[EditorArea] 用户取消关闭未保存的配置');
-          return; // 用户取消关闭
+          console.log('[EditorArea] 鐢ㄦ埛鍙栨秷鍏抽棴鏈繚瀛樼殑閰嶇疆');
+          return; // 鐢ㄦ埛鍙栨秷鍏抽棴
         }
         
-        // 用户确认关闭，从未保存列表中移除
+        // 鐢ㄦ埛纭鍏抽棴锛屼粠鏈繚瀛樺垪琛ㄤ腑绉婚櫎
         setUnsavedConfigTabs(prev => {
           const newSet = new Set(prev);
           newSet.delete(closingTab.configId!);
@@ -1605,13 +1663,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }
     }
     
-    // 如果是表格设计器标签页，自动保存数据
+    // 濡傛灉鏄〃鏍艰璁″櫒鏍囩椤碉紝鑷姩淇濆瓨鏁版嵁
     if (closingTab?.type === 'table-designer' && closingTab.formId) {
       saveAndRemoveTableDataService(closingTab.formId).then(success => {
         if (success) {
-          console.log('[EditorArea] 表格数据自动保存成功:', closingTab.formId);
+          console.log('[EditorArea] 琛ㄦ牸鏁版嵁鑷姩淇濆瓨鎴愬姛:', closingTab.formId);
         } else {
-          console.warn('[EditorArea] 表格数据自动保存失败:', closingTab.formId);
+          console.warn('[EditorArea] 琛ㄦ牸鏁版嵁鑷姩淇濆瓨澶辫触:', closingTab.formId);
         }
       });
     }
@@ -1619,21 +1677,21 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     const newTabs = tabs.filter(tab => tab.id !== tabId);
     setTabs(newTabs);
     
-    // 通知 FileExplorer 移除对应的编辑器（仅针对文件类型的标签页）
+    // 閫氱煡 FileExplorer 绉婚櫎瀵瑰簲鐨勭紪杈戝櫒锛堜粎閽堝鏂囦欢绫诲瀷鐨勬爣绛鹃〉锛?
     if (closingTab?.type === 'file' && closingTab?.path) {
       window.dispatchEvent(new CustomEvent('remove-editor', {
         detail: { path: closingTab.path }
       }));
-      console.log('[EditorArea] 通知 FileExplorer 移除编辑器:', closingTab.path);
+      console.log('[EditorArea] 閫氱煡 FileExplorer 绉婚櫎缂栬緫鍣?', closingTab.path);
     }
     
-    // 如果关闭的是 AI 配置标签页，通知侧边栏清除选中状态
+    // 濡傛灉鍏抽棴鐨勬槸 AI 閰嶇疆鏍囩椤碉紝閫氱煡渚ц竟鏍忔竻闄ら€変腑鐘舵€?
     if (closingTab?.type === 'ai-config') {
       window.dispatchEvent(new Event('ai-config-tab-closed'));
-      console.log('[EditorArea] AI 配置标签页已关闭');
+      console.log('[EditorArea] AI 閰嶇疆鏍囩椤靛凡鍏抽棴');
     }
     
-    // 如果关闭的是表格设计器标签页，通知侧边栏清除表单选中状态
+    // 濡傛灉鍏抽棴鐨勬槸琛ㄦ牸璁捐鍣ㄦ爣绛鹃〉锛岄€氱煡渚ц竟鏍忔竻闄よ〃鍗曢€変腑鐘舵€?
     if (closingTab?.type === 'table-designer') {
       window.dispatchEvent(new CustomEvent('form-tab-closed', {
         detail: { formId: closingTab.formId }
@@ -1643,27 +1701,27 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     if (activeTabId === tabId && newTabs.length > 0) {
       setActiveTabId(newTabs[0].id);
       
-      // 通知 FileExplorer 更新选中状态到下一个标签页
+      // 閫氱煡 FileExplorer 鏇存柊閫変腑鐘舵€佸埌涓嬩竴涓爣绛鹃〉
       const nextTab = newTabs[0];
       if (nextTab.type === 'file' && nextTab.path) {
         window.dispatchEvent(new CustomEvent('tab-switched', {
           detail: { path: nextTab.path }
         }));
-        console.log('[EditorArea] 关闭后切换到下一个标签页:', nextTab.path);
+        console.log('[EditorArea] 鍏抽棴鍚庡垏鎹㈠埌涓嬩竴涓爣绛鹃〉:', nextTab.path);
       }
     }
     
-    // 关闭源文档时，同时关闭对应的预览标签页
+    // 鍏抽棴婧愭枃妗ｆ椂锛屽悓鏃跺叧闂搴旂殑棰勮鏍囩椤?
     const newRightTabs = rightTabs.filter(tab => tab.sourceTabId !== tabId);
     if (newRightTabs.length !== rightTabs.length) {
       setRightTabs(newRightTabs);
       
-      // 如果关闭的预览标签是当前激活的，切换到第一个
+      // 濡傛灉鍏抽棴鐨勯瑙堟爣绛炬槸褰撳墠婵€娲荤殑锛屽垏鎹㈠埌绗竴涓?
       if (rightActiveTabId && !newRightTabs.find(tab => tab.id === rightActiveTabId)) {
         if (newRightTabs.length > 0) {
           setRightActiveTabId(newRightTabs[0].id);
         } else {
-          // 右侧没有标签页了，关闭分割视图
+          // 鍙充晶娌℃湁鏍囩椤典簡锛屽叧闂垎鍓茶鍥?
           setIsSplitView(false);
         }
       }
@@ -1677,73 +1735,73 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     if (rightActiveTabId === tabId && newRightTabs.length > 0) {
       setRightActiveTabId(newRightTabs[0].id);
     } else if (newRightTabs.length === 0) {
-      // 右侧没有标签页了，关闭分割视图
+      // 鍙充晶娌℃湁鏍囩椤典簡锛屽叧闂垎鍓茶鍥?
       setIsSplitView(false);
     }
   };
 
   const rightActiveTab = rightTabs.find(tab => tab.id === rightActiveTabId);
 
-  // 保存文件函数
+  // 淇濆瓨鏂囦欢鍑芥暟
   const saveFile = async (tab: EditorTab) => {
     if (!tab || tab.type !== 'file') {
       return;
     }
 
-    // 如果是 settings.json，已经自动保存，不需要再次保存
+    // 濡傛灉鏄?settings.json锛屽凡缁忚嚜鍔ㄤ繚瀛橈紝涓嶉渶瑕佸啀娆′繚瀛?
     if (tab.path === 'settings:/settings.json') {
       setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
       return;
     }
 
-    // 如果是片段文件，已经自动保存，不需要再次保存
+    // 濡傛灉鏄墖娈垫枃浠讹紝宸茬粡鑷姩淇濆瓨锛屼笉闇€瑕佸啀娆′繚瀛?
     if (tab.path.startsWith('snippet:/')) {
       setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
       return;
     }
 
-    // 检查是否是主题覆盖文件（theme-override:// 协议）
+    // 妫€鏌ユ槸鍚︽槸涓婚瑕嗙洊鏂囦欢锛坱heme-override:// 鍗忚锛?
     const isThemeOverride = tab.path.startsWith('theme-override://');
     
-    // 如果是主题覆盖文件，使用主题覆盖保存API
+    // 濡傛灉鏄富棰樿鐩栨枃浠讹紝浣跨敤涓婚瑕嗙洊淇濆瓨API
     if (isThemeOverride) {
       try {
-        console.log('[EditorArea] 处理主题覆盖文件保存:', tab.path);
+        console.log('[EditorArea] 澶勭悊涓婚瑕嗙洊鏂囦欢淇濆瓨:', tab.path);
         
-        // 从路径提取基础主题ID
-        // 例如：theme-override://quiet-light.json → quiet-light
+        // 浠庤矾寰勬彁鍙栧熀纭€涓婚ID
+        // 渚嬪锛歵heme-override://quiet-light.json 鈫?quiet-light
         const baseThemeId = tab.path.replace('theme-override://', '').replace('.json', '');
-        console.log('[EditorArea] 基础主题ID:', baseThemeId);
+        console.log('[EditorArea] 鍩虹涓婚ID:', baseThemeId);
         
-        // 解析颜色覆盖内容
+        // 瑙ｆ瀽棰滆壊瑕嗙洊鍐呭
         const parseErrors: jsonc.ParseError[] = [];
         const parsedConfig = jsonc.parse(tab.content || '', parseErrors, {
           allowTrailingComma: true,
           allowEmptyContent: false
         });
         
-        // 检查解析错误
+        // 妫€鏌ヨВ鏋愰敊璇?
         if (parseErrors.length > 0) {
           console.warn('[EditorArea] 主题覆盖配置 JSON 解析错误，仅清除脏标记');
           setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
           return;
         }
         
-        // 验证格式：必须包含 colors 对象
+        // 楠岃瘉鏍煎紡锛氬繀椤诲寘鍚?colors 瀵硅薄
         if (!parsedConfig || !parsedConfig.colors) {
-          console.warn('[EditorArea] 主题覆盖配置结构不完整，需要包含 colors 字段');
-          toastService.error('保存失败', {
-            description: '主题覆盖文件必须包含 colors 字段'
+          console.warn('[EditorArea] 涓婚瑕嗙洊閰嶇疆缁撴瀯涓嶅畬鏁达紝闇€瑕佸寘鍚?colors 瀛楁');
+          toastService.error('淇濆瓨澶辫触', {
+            description: '涓婚瑕嗙洊鏂囦欢蹇呴』鍖呭惈 colors 瀛楁'
           });
           return;
         }
         
-        console.log('[EditorArea] 准备保存主题颜色覆盖');
-        console.log('[EditorArea] 基础主题:', baseThemeId);
-        console.log('[EditorArea] 覆盖颜色数量:', Object.keys(parsedConfig.colors || {}).length);
+        console.log('[EditorArea] 鍑嗗淇濆瓨涓婚棰滆壊瑕嗙洊');
+        console.log('[EditorArea] 鍩虹涓婚:', baseThemeId);
+        console.log('[EditorArea] 瑕嗙洊棰滆壊鏁伴噺:', Object.keys(parsedConfig.colors || {}).length);
         
-        // 调用 IPC 保存主题覆盖到文件系统
-        // 传递：基础主题ID + 覆盖的颜色
+        // 璋冪敤 IPC 淇濆瓨涓婚瑕嗙洊鍒版枃浠剁郴缁?
+        // 浼犻€掞細鍩虹涓婚ID + 瑕嗙洊鐨勯鑹?
         try {
           const result = await window.electron?.ipcRenderer.invoke('theme:save-override', {
             baseThemeId,
@@ -1751,33 +1809,33 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           });
           
           if (result?.success) {
-            console.log('[EditorArea] ✓ 主题覆盖已成功保存:', baseThemeId);
-            toastService.success('主题覆盖保存成功', {
+            console.log('[EditorArea] 鉁?涓婚瑕嗙洊宸叉垚鍔熶繚瀛?', baseThemeId);
+            toastService.success('涓婚瑕嗙洊淇濆瓨鎴愬姛', {
               description: `已保存 ${Object.keys(parsedConfig.colors || {}).length} 个颜色覆盖`
             });
-            // 清除脏标记，表示已保存
+            // 娓呴櫎鑴忔爣璁帮紝琛ㄧず宸蹭繚瀛?
             setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
           } else {
-            console.error('[EditorArea] 保存主题覆盖失败:', result?.error);
-            toastService.error('保存主题覆盖失败', {
-              description: result?.error || '未知错误'
+            console.error('[EditorArea] 淇濆瓨涓婚瑕嗙洊澶辫触:', result?.error);
+            toastService.error('淇濆瓨涓婚瑕嗙洊澶辫触', {
+              description: result?.error || '鏈煡閿欒'
             });
           }
         } catch (error) {
-          console.error('[EditorArea] 调用主题覆盖保存 IPC 失败:', error);
-          toastService.error('保存主题覆盖失败', {
-            description: error instanceof Error ? error.message : '调用保存接口失败'
+          console.error('[EditorArea] 璋冪敤涓婚瑕嗙洊淇濆瓨 IPC 澶辫触:', error);
+          toastService.error('淇濆瓨涓婚瑕嗙洊澶辫触', {
+            description: error instanceof Error ? error.message : '璋冪敤淇濆瓨鎺ュ彛澶辫触'
           });
         }
       } catch (error) {
-        console.error('[EditorArea] 处理主题覆盖保存时发生错误:', error);
-        // 发生错误时仍然清除脏标记
+        console.error('[EditorArea] 澶勭悊涓婚瑕嗙洊淇濆瓨鏃跺彂鐢熼敊璇?', error);
+        // 鍙戠敓閿欒鏃朵粛鐒舵竻闄よ剰鏍囪
         setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
       }
       return;
     }
 
-    // 如果是无路径文件或 Agent 临时文档，使用另存为
+    // 濡傛灉鏄棤璺緞鏂囦欢鎴?Agent 涓存椂鏂囨。锛屼娇鐢ㄥ彟瀛樹负
     const requiresSaveAs = !tab.path
       || tab.path === ''
       || tab.path.startsWith(AGENT_DRAFT_PATH_PREFIX);
@@ -1861,7 +1919,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
         const result = await window.electron?.file?.saveAs(tab.content || '', saveAsOptions);
         if (result?.success && result.data) {
-          // 更新标签页信息
           setTabs(prev => prev.map(t =>
             t.id === tab.id
               ? { ...t, path: result.data!.path, title: result.data!.name, isDirty: false }
@@ -1874,14 +1931,14 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           ));
         }
       } catch (error) {
-        // 另存为文件失败，静默处理
+        // 鍙﹀瓨涓烘枃浠跺け璐ワ紝闈欓粯澶勭悊
       }
       return;
     }
 
-    // 保存文件
+    // 淇濆瓨鏂囦欢
     try {
-      // 如果内容是 HTML 格式，转换为 Markdown 保存
+      // 濡傛灉鍐呭鏄?HTML 鏍煎紡锛岃浆鎹负 Markdown 淇濆瓨
       let contentToSave = tab.content || '';
       if (isHtmlContent(contentToSave)) {
         contentToSave = htmlToMarkdown(contentToSave);
@@ -1889,24 +1946,23 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       
       const result = await window.electron?.file?.save(tab.path, contentToSave);
       if (result?.success) {
-        // 清除脏标记
+        // 娓呴櫎鑴忔爣璁?
         setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
         setRightTabs(rightTabs.map(t => t.sourceTabId === tab.id ? { ...t, isDirty: false } : t));
       }
     } catch (error) {
-      // 保存文件异常，静默处理
+      // 淇濆瓨鏂囦欢寮傚父锛岄潤榛樺鐞?
     }
   };
 
-  // 监听活动标签页变化，通知状态栏和大纲
+  // 鐩戝惉娲诲姩鏍囩椤靛彉鍖栵紝閫氱煡鐘舵€佹爮鍜屽ぇ绾?
   useEffect(() => {
     const activeTab = tabs.find(tab => tab.id === activeTabId);
 
-    // 同步全局当前标签上下文，供 AI 面板等全局组件读取
+    // 鍚屾鍏ㄥ眬褰撳墠鏍囩涓婁笅鏂囷紝渚?AI 闈㈡澘绛夊叏灞€缁勪欢璇诲彇
     (window as any).__currentTabTitle = activeTab?.title || '';
     (window as any).__currentTabPath = activeTab?.path || '';
     
-    // 发送全局事件，告知状态栏当前标签页类型
     window.dispatchEvent(new CustomEvent('editor:active-tab-changed', {
       detail: {
         tabType: activeTab?.type || null,
@@ -1919,7 +1975,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }
     }));
 
-    // 通知大纲组件更新
+    // 閫氱煡澶х翰缁勪欢鏇存柊
     if (activeTab && activeTab.type === 'file') {
       window.dispatchEvent(new CustomEvent('editor:content-changed', {
         detail: {
@@ -1929,7 +1985,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         }
       }));
     } else {
-      // 非文件标签页，清空大纲
+      // 闈炴枃浠舵爣绛鹃〉锛屾竻绌哄ぇ绾?
       window.dispatchEvent(new CustomEvent('editor:content-changed', {
         detail: {
           content: '',
@@ -1940,7 +1996,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
   }, [activeTabId, tabs]);
 
-  // 监听保存事件
+  // 鐩戝惉淇濆瓨浜嬩欢
   useEffect(() => {
     const handleSaveFile = (event: Event) => {
       const customEvent = event as CustomEvent<{ tabId?: string }>;
@@ -1950,7 +2006,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         return;
       }
 
-      // 查找要保存的标签页
+      // 鏌ユ壘瑕佷繚瀛樼殑鏍囩椤?
       const tabToSave = tabs.find(tab => tab.id === targetTabId);
       if (tabToSave) {
         saveFile(tabToSave);
@@ -1964,13 +2020,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, [tabs, activeTabId, rightTabs]);
 
-  // 监听关闭文件事件
+  // 鐩戝惉鍏抽棴鏂囦欢浜嬩欢
   useEffect(() => {
     const handleCloseFile = (event: Event) => {
       const customEvent = event as CustomEvent<{ path: string }>;
       const { path } = customEvent.detail;
       
-      // 查找对应的标签页并关闭
+      // 鏌ユ壘瀵瑰簲鐨勬爣绛鹃〉骞跺叧闂?
       const tabToClose = tabs.find(tab => tab.path === path);
       if (tabToClose) {
         handleTabClose(tabToClose.id);
@@ -1984,7 +2040,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, [tabs]);
 
-  // 将保存函数暴露到全局，供快捷键使用
+  // 灏嗕繚瀛樺嚱鏁版毚闇插埌鍏ㄥ眬锛屼緵蹇嵎閿娇鐢?
   useEffect(() => {
     (window as any).__editorSaveFile = () => {
       if (activeTabId) {
@@ -2002,14 +2058,14 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
   return (
     <div className={`editor-area ${className}`}>
-      {/* 编辑器组容器 - 支持左右分割 */}
+      {/* 缂栬緫鍣ㄧ粍瀹瑰櫒 - 鏀寔宸﹀彸鍒嗗壊 */}
       <div className="editor-area-groups">
-        {/* 左侧编辑器组 */}
+        {/* 宸︿晶缂栬緫鍣ㄧ粍 */}
         <div 
           className={`editor-area-group ${isSplitView ? 'split-left' : 'full'}`}
           style={isSplitView && leftWidth !== null ? { width: `${leftWidth}px`, flex: 'none' } : undefined}
         >
-          {/* 左侧标签栏 - 始终显示，即使没有标签 */}
+          {/* 宸︿晶鏍囩鏍?- 濮嬬粓鏄剧ず锛屽嵆浣挎病鏈夋爣绛?*/}
           {tabs.length > 0 ? (
             <TabBar
               tabs={tabs}
@@ -2021,27 +2077,27 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             <div className="tab-bar-placeholder" />
           )}
 
-          {/* 左侧面包屑 */}
-          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && (
+          {/* 宸︿晶闈㈠寘灞?*/}
+          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && activeTab.type !== 'ai-chat' && (
             <Breadcrumb path={activeTab.path} />
           )}
 
-          {/* 左侧编辑器内容 */}
+          {/* 宸︿晶缂栬緫鍣ㄥ唴瀹?*/}
           <div className="editor-area-content">
-            {/* 空状态 */}
+            {/* 绌虹姸鎬?*/}
             {!activeTab && (
               <div className="editor-area-empty">
                 <div className="editor-area-empty-content">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <p className="title">没有打开的编辑器</p>
+                  <p className="title">娌℃湁鎵撳紑鐨勭紪杈戝櫒</p>
                   <p className="subtitle">从文件浏览器打开文件开始编辑</p>
                 </div>
               </div>
             )}
 
-            {/* 渲染所有标签页，通过 display 控制可见性，避免重新加载 */}
+            {/* 娓叉煋鎵€鏈夋爣绛鹃〉锛岄€氳繃 display 鎺у埗鍙鎬э紝閬垮厤閲嶆柊鍔犺浇 */}
             {tabs.map((tab) => {
               const isActive = tab.id === activeTabId;
               
@@ -2077,6 +2133,14 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
                   {tab.type === 'media' && <MediaPanel />}
 
+                  {tab.type === 'ai-chat' && (
+                    <AIChatPanel
+                      mode="editor-tab"
+                      onClose={() => handleTabClose(tab.id)}
+                      position="right"
+                    />
+                  )}
+
                   {tab.type === 'ai-config' && (
                     <AIConfigView configId={tab.configId} configIndex={tab.configIndex} />
                   )}
@@ -2096,10 +2160,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       knowledgeDescription={tab.knowledgeData?.description || ''}
                       items={tab.knowledgeData?.items || []}
                       onFileOpen={async (item) => {
-                        // 在编辑器中打开文件
+                        // 鍦ㄧ紪杈戝櫒涓墦寮€鏂囦欢
                         if (item.type === 'file' && item.path) {
                           try {
-                            // 读取文件内容
+                            // 璇诲彇鏂囦欢鍐呭
                             const result = await window.electron?.file?.read(item.path);
                             if (result?.success && result.data) {
                               window.dispatchEvent(new CustomEvent('open-file', {
@@ -2113,12 +2177,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                               }));
                             }
                           } catch (error) {
-                            console.error('[EditorArea] 读取文件失败:', error);
+                            console.error('[EditorArea] 璇诲彇鏂囦欢澶辫触:', error);
                           }
                         }
                       }}
                       onFileDelete={(item) => {
-                        // 触发删除事件
+                        // 瑙﹀彂鍒犻櫎浜嬩欢
                         window.dispatchEvent(new CustomEvent('delete-knowledge-item', {
                           detail: { itemId: item.id }
                         }));
@@ -2137,7 +2201,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                             : t
                         ));
                         
-                        // 如果右侧有预览该文件的标签页，实时更新预览内容
+                        // 濡傛灉鍙充晶鏈夐瑙堣鏂囦欢鐨勬爣绛鹃〉锛屽疄鏃舵洿鏂伴瑙堝唴瀹?
                         const previewTab = rightTabs.find(t => t.sourceTabId === tab.id);
                         if (previewTab) {
                           setRightTabs(prev => prev.map(t => 
@@ -2145,7 +2209,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                           ));
                         }
 
-                        // 如果是当前活动标签页，触发大纲更新事件
+                        // 濡傛灉鏄綋鍓嶆椿鍔ㄦ爣绛鹃〉锛岃Е鍙戝ぇ绾叉洿鏂颁簨浠?
                         if (tab.id === activeTabId) {
                           window.dispatchEvent(new CustomEvent('editor:content-changed', {
                             detail: {
@@ -2163,7 +2227,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     <CodeMirrorEditor
                       content={(() => {
                         const rawContent = tab.content || '';
-                        // CodeMirror 使用 Markdown 源码
+                        // CodeMirror 浣跨敤 Markdown 婧愮爜
                         const isHtml = isHtmlContent(rawContent);
                         return isHtml ? htmlToMarkdown(rawContent) : rawContent;
                       })()}
@@ -2174,7 +2238,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                             : t
                         ));
                         
-                        // 如果右侧有预览该文件的标签页，实时更新预览内容
+                        // 濡傛灉鍙充晶鏈夐瑙堣鏂囦欢鐨勬爣绛鹃〉锛屽疄鏃舵洿鏂伴瑙堝唴瀹?
                         const previewTab = rightTabs.find(t => t.sourceTabId === tab.id);
                         if (previewTab) {
                           setRightTabs(prev => prev.map(t => 
@@ -2182,7 +2246,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                           ));
                         }
 
-                        // 如果是当前活动标签页，触发大纲更新事件
+                        // 濡傛灉鏄綋鍓嶆椿鍔ㄦ爣绛鹃〉锛岃Е鍙戝ぇ绾叉洿鏂颁簨浠?
                         if (tab.id === activeTabId) {
                           window.dispatchEvent(new CustomEvent('editor:content-changed', {
                             detail: {
@@ -2203,7 +2267,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           </div>
         </div>
 
-        {/* 可调整大小的分隔条 */}
+        {/* 鍙皟鏁村ぇ灏忕殑鍒嗛殧鏉?*/}
         {isSplitView && (
           <ResizableDivider
             onResize={setLeftWidth}
@@ -2212,13 +2276,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           />
         )}
 
-        {/* 右侧编辑器组 */}
+        {/* 鍙充晶缂栬緫鍣ㄧ粍 */}
         {isSplitView && (
           <div 
             className="editor-area-group split-right"
             style={{ flex: 1, minWidth: 0 }}
           >
-            {/* 右侧标签栏 */}
+            {/* 鍙充晶鏍囩鏍?*/}
             {rightTabs.length > 0 && (
               <TabBar
                 tabs={rightTabs}
@@ -2228,14 +2292,14 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               />
             )}
 
-            {/* 右侧面包屑 */}
-            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && rightActiveTab.type !== 'decomposition-rules' && (
+            {/* 鍙充晶闈㈠寘灞?*/}
+            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && rightActiveTab.type !== 'decomposition-rules' && rightActiveTab.type !== 'ai-chat' && (
               <Breadcrumb path={rightActiveTab.path} />
             )}
 
-            {/* 右侧编辑器内容 */}
+            {/* 鍙充晶缂栬緫鍣ㄥ唴瀹?*/}
             <div className="editor-area-content">
-              {/* 渲染所有右侧标签页，通过 display 控制可见性，避免重新加载 */}
+              {/* 娓叉煋鎵€鏈夊彸渚ф爣绛鹃〉锛岄€氳繃 display 鎺у埗鍙鎬э紝閬垮厤閲嶆柊鍔犺浇 */}
               {rightTabs.map((tab) => {
                 const isActive = tab.id === rightActiveTabId;
                 
@@ -2266,6 +2330,14 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       <DecompositionRulesView
                         initialRules={tab.decompositionRulesData?.rules}
                         initialWritingRuleDocuments={tab.decompositionRulesData?.writingRuleDocuments}
+                      />
+                    )}
+
+                    {tab.type === 'ai-chat' && (
+                      <AIChatPanel
+                        mode="editor-tab"
+                        onClose={() => handleRightTabClose(tab.id)}
+                        position="right"
                       />
                     )}
 
@@ -2302,7 +2374,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                                 }));
                               }
                             } catch (error) {
-                              console.error('[EditorArea] 读取文件失败:', error);
+                              console.error('[EditorArea] 璇诲彇鏂囦欢澶辫触:', error);
                             }
                           }
                         }}
@@ -2336,3 +2408,4 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     </div>
   );
 };
+

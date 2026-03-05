@@ -36,6 +36,28 @@ export const TabBar: React.FC<TabBarProps> = ({
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
+  const handleTabBarWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const scrollContainer = scrollContainerRef.current?.getContentElement();
+    if (!scrollContainer) return;
+
+    const maxScrollLeft = Math.max(scrollContainer.scrollWidth - scrollContainer.clientWidth, 0);
+    if (maxScrollLeft <= 0) return;
+
+    const horizontalDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ? event.deltaX
+      : event.deltaY;
+
+    if (horizontalDelta === 0) return;
+
+    const nextScrollLeft = Math.min(
+      Math.max(scrollContainer.scrollLeft + horizontalDelta, 0),
+      maxScrollLeft
+    );
+
+    event.preventDefault();
+    scrollContainerRef.current?.setScrollLeft(nextScrollLeft);
+  }, []);
+
   const ensureTabFullyVisible = useCallback((tabId: string) => {
     const scrollContainer = scrollContainerRef.current?.getContentElement();
     if (!scrollContainer) return;
@@ -171,14 +193,13 @@ export const TabBar: React.FC<TabBarProps> = ({
     }
   };
 
-  // 鏇村鎿嶄綔鑿滃崟
   const moreMenuGroups: MenuGroup[] = [
     {
       id: 'close-group',
       items: [
         {
           id: 'close-all',
-          label: '鍏ㄩ儴鍏抽棴',
+          label: '\u5168\u90e8\u5173\u95ed',
           action: () => {
             tabs.forEach(tab => onTabClose(tab.id));
           },
@@ -186,7 +207,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         },
         {
           id: 'close-saved',
-          label: '关闭已保存',
+          label: '\u5173\u95ed\u5df2\u4fdd\u5b58',
           action: () => {
             tabs.filter(tab => !tab.isDirty).forEach(tab => onTabClose(tab.id));
           },
@@ -194,10 +215,10 @@ export const TabBar: React.FC<TabBarProps> = ({
         },
         {
           id: 'lock-current',
-          label: '閿佸畾褰撳墠',
+          label: '\u9501\u5b9a\u5f53\u524d',
           action: () => {
-            console.log('閿佸畾褰撳墠');
-            // TODO: 瀹炵幇閿佸畾鍔熻兘
+            console.log('\u9501\u5b9a\u5f53\u524d');
+            // TODO: implement lock feature
           },
           disabled: !activeTab
         }
@@ -208,16 +229,16 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'show-backlinks',
-          label: '鏄剧ず鍙嶅悜閾炬帴',
+          label: '\u663e\u793a\u53cd\u5411\u94fe\u63a5',
           action: () => {
-            console.log('鏄剧ず鍙嶅悜閾炬帴');
-            // TODO: 瀹炵幇鍙嶅悜閾炬帴鍔熻兘
+            console.log('\u663e\u793a\u53cd\u5411\u94fe\u63a5');
+            // TODO: implement backlinks
           },
           disabled: !activeTab
         },
         {
           id: 'source-mode',
-          label: codeMirrorMode === 'source' ? '棰勮妯″紡' : '婧愮爜妯″紡',
+          label: codeMirrorMode === 'source' ? '\u9884\u89c8\u6a21\u5f0f' : '\u6e90\u7801\u6a21\u5f0f',
           action: toggleCodeMirrorMode,
           disabled: !activeTab
         }
@@ -228,28 +249,28 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'split-horizontal',
-          label: '宸﹀彸鍒嗗睆',
+          label: '\u5de6\u53f3\u5206\u5c4f',
           action: () => {
-            console.log('宸﹀彸鍒嗗睆');
-            // TODO: 瀹炵幇宸﹀彸鍒嗗睆
+            console.log('\u5de6\u53f3\u5206\u5c4f');
+            // TODO: implement split horizontal
           },
           disabled: !activeTab
         },
         {
           id: 'split-vertical',
-          label: '涓婁笅鍒嗗睆',
+          label: '\u4e0a\u4e0b\u5206\u5c4f',
           action: () => {
-            console.log('涓婁笅鍒嗗睆');
-            // TODO: 瀹炵幇涓婁笅鍒嗗睆
+            console.log('\u4e0a\u4e0b\u5206\u5c4f');
+            // TODO: implement split vertical
           },
           disabled: !activeTab
         },
         {
           id: 'open-in-new-window',
-          label: '鍦ㄦ柊绐楀彛涓墦寮€',
+          label: '\u5728\u65b0\u7a97\u53e3\u4e2d\u6253\u5f00',
           action: () => {
-            console.log('鍦ㄦ柊绐楀彛涓墦寮€');
-            // TODO: 瀹炵幇鍦ㄦ柊绐楀彛涓墦寮€
+            console.log('\u5728\u65b0\u7a97\u53e3\u4e2d\u6253\u5f00');
+            // TODO: implement open in new window
           },
           disabled: !activeTab
         }
@@ -260,28 +281,28 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'rename',
-          label: '重命名',
+          label: '\u91cd\u547d\u540d',
           action: () => {
-            console.log('重命名');
-            // TODO: 瀹炵幇閲嶅懡鍚嶅姛鑳?
+            console.log('\u91cd\u547d\u540d');
+            // TODO: implement rename
           },
           disabled: !activeTab
         },
         {
           id: 'move-file',
-          label: '灏嗘枃浠剁Щ鍔ㄥ埌...',
+          label: '\u5c06\u6587\u4ef6\u79fb\u52a8\u5230...',
           action: () => {
-            console.log('灏嗘枃浠剁Щ鍔ㄥ埌...');
-            // TODO: 瀹炵幇绉诲姩鏂囦欢鍔熻兘
+            console.log('\u5c06\u6587\u4ef6\u79fb\u52a8\u5230...');
+            // TODO: implement move file
           },
           disabled: !activeTab
         },
         {
           id: 'mark-important',
-          label: '鏍囪閲嶈鏂囦欢',
+          label: '\u6807\u8bb0\u91cd\u8981\u6587\u4ef6',
           action: () => {
-            console.log('鏍囪閲嶈鏂囦欢');
-            // TODO: 瀹炵幇鏍囪閲嶈鏂囦欢鍔熻兘
+            console.log('\u6807\u8bb0\u91cd\u8981\u6587\u4ef6');
+            // TODO: implement mark important
           },
           disabled: !activeTab
         }
@@ -292,13 +313,13 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'reveal-in-explorer',
-          label: '鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€',
+          label: '\u5728\u8d44\u6e90\u7ba1\u7406\u5668\u4e2d\u6253\u5f00',
           action: async () => {
             if (activeTab?.path) {
               try {
                 await window.electron?.ipcRenderer.invoke('open-in-explorer', activeTab.path);
               } catch (error) {
-                console.error('鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€澶辫触:', error);
+                console.error('\u5728\u8d44\u6e90\u7ba1\u7406\u5668\u4e2d\u6253\u5f00\u5931\u8d25:', error);
               }
             }
           },
@@ -311,17 +332,17 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'delete-file',
-          label: '鍒犻櫎鏂囦欢',
+          label: '\u5220\u9664\u6587\u4ef6',
           action: async () => {
             if (activeTab?.path) {
-              const confirmed = confirm(`确定要删除文档 "${activeTab.title}" 吗？`);
+              const confirmed = confirm(`\u786e\u5b9a\u8981\u5220\u9664\u6587\u6863 "${activeTab.title}" \u5417\uff1f`);
               if (confirmed) {
                 try {
                   await window.electron?.ipcRenderer.invoke('delete-file', activeTab.path);
                   onTabClose(activeTab.id);
                 } catch (error) {
-                  console.error('鍒犻櫎鏂囦欢澶辫触:', error);
-                  alert('鍒犻櫎鏂囦欢澶辫触');
+                  console.error('\u5220\u9664\u6587\u4ef6\u5931\u8d25:', error);
+                  alert('\u5220\u9664\u6587\u4ef6\u5931\u8d25');
                 }
               }
             }
@@ -341,6 +362,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         scrollbarWidth={3}
         defaultOpacity={0.6}
         fadeOutDelay={800}
+        onWheel={handleTabBarWheel}
       >
         {tabs.map((tab) => {
           const isActive = activeTabId === tab.id;
@@ -374,7 +396,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                 <button
                   className="tab-item-close"
                   onClick={(e) => handleTabClose(e, tab.id)}
-                  title="鍏抽棴"
+                  title={'\u5173\u95ed'}
                 >
                   <Icon name="close" size={16} />
                 </button>
@@ -390,7 +412,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           <button 
             className="tab-bar-action-btn"
             onClick={handleOpenSettingsJson}
-            title="鎵撳紑璁剧疆 (JSON)"
+            title={'\u6253\u5f00\u8bbe\u7f6e (JSON)'}
           >
             <Icon name="file-code" size={16} />
           </button>
@@ -416,7 +438,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         <button 
           ref={moreButtonRef}
           className="tab-bar-action-btn"
-          title="鏇村鎿嶄綔"
+          title={'\u66f4\u591a\u64cd\u4f5c'}
           onClick={handleMoreClick}
         >
           <Icon name="more-vert" size={16} />

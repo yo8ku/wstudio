@@ -1,8 +1,13 @@
-
+﻿/**
+ * Breadcrumb styles.
+ * Keeps breadcrumb in a single line and truncates long segments.
+ */
 
 .breadcrumb {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
   overflow: hidden;
   padding: 0 12px;
   font-size: 12px;
@@ -13,31 +18,45 @@
   opacity: 0.8;
   margin: 0;
   position: relative;
-  z-index: 10; /* 确保在 ai-zone-border 上方 */
+  z-index: 10;
+}
 
+.breadcrumb-item {
+  border: none;
+  cursor: pointer;
+  padding: 1px 3px;
+  max-width: 180px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background-color: transparent;
+  color: inherit;
+  flex-shrink: 1;
+  text-align: left;
+}
 
-
-  &-separator {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    opacity: 0.5;
+.breadcrumb--two-level {
+  .breadcrumb-item--parent {
+    max-width: 120px;
+    flex: 0 1 auto;
   }
 
-  &-ellipsis {
-    padding: 0 4px;
-    opacity: 0.5;
-  }
-
-  button {
-    border: none;
-    cursor: pointer;
-    padding: 1px 3px;
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    background-color: transparent !important;
+  .breadcrumb-item--leaf {
+    max-width: none;
+    flex: 1 1 auto;
   }
 }
 
+.breadcrumb-separator {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.breadcrumb-ellipsis {
+  padding: 0 4px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}

@@ -52,10 +52,144 @@
     background-color: var(--ws-toolbar-activeBackground, var(--ws-toolbar-active-background, rgba(127, 127, 127, 0.24)));
   }
 
-  .explorer-section-chevron {
+  .explorer-section-toggle-icon {
     width: 16px;
     height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
+
+    .explorer-section-chevron,
+    .explorer-section-folder-icon,
+    .explorer-section-form-icon,
+    .explorer-section-editors-icon {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .explorer-section-folder-icon {
+      display: none;
+      font-size: 16px;
+      color: var(--ws-icon-foreground);
+    }
+
+    .explorer-section-form-icon {
+      display: none;
+      color: var(--ws-icon-foreground);
+    }
+
+    .explorer-section-editors-icon {
+      display: none;
+      font-size: 16px;
+      color: var(--ws-icon-foreground);
+    }
+  }
+
+  &.explorer-section-trigger--folder-idle {
+    .explorer-section-toggle-icon {
+      position: relative;
+
+      .explorer-section-chevron,
+      .explorer-section-folder-icon,
+      .explorer-section-form-icon,
+      .explorer-section-editors-icon {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+    }
+
+    .explorer-section-chevron {
+      opacity: 0;
+    }
+
+    .explorer-section-folder-icon {
+      display: inline-flex;
+      opacity: 1;
+    }
+
+    &:hover {
+      .explorer-section-chevron {
+        opacity: 1;
+      }
+
+      .explorer-section-folder-icon {
+        opacity: 0;
+      }
+    }
+  }
+
+  &.explorer-section-trigger--form-idle {
+    .explorer-section-toggle-icon {
+      position: relative;
+
+      .explorer-section-chevron,
+      .explorer-section-folder-icon,
+      .explorer-section-form-icon,
+      .explorer-section-editors-icon {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+    }
+
+    .explorer-section-chevron {
+      opacity: 0;
+    }
+
+    .explorer-section-form-icon {
+      display: inline-flex;
+      opacity: 1;
+    }
+
+    &:hover {
+      .explorer-section-chevron {
+        opacity: 1;
+      }
+
+      .explorer-section-form-icon {
+        opacity: 0;
+      }
+    }
+  }
+
+  &.explorer-section-trigger--editors-idle {
+    .explorer-section-toggle-icon {
+      position: relative;
+
+      .explorer-section-chevron,
+      .explorer-section-folder-icon,
+      .explorer-section-form-icon,
+      .explorer-section-editors-icon {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+    }
+
+    .explorer-section-chevron {
+      opacity: 0;
+    }
+
+    .explorer-section-editors-icon {
+      display: inline-flex;
+      opacity: 1;
+    }
+
+    &:hover {
+      .explorer-section-chevron {
+        opacity: 1;
+      }
+
+      .explorer-section-editors-icon {
+        opacity: 0;
+      }
+    }
   }
 }
 
@@ -77,6 +211,10 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+}
+
+.explorer-section-title-text--preserve-case {
+  text-transform: none;
 }
 
 .explorer-section-actions {

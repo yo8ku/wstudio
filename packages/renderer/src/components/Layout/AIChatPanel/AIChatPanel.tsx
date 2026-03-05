@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AI 对话面板组件  - Note WStudio 2.0使用的是这个组件
  */
 
@@ -99,7 +99,10 @@ interface AIChatPanelProps {
   onMoveLeft?: () => void;
   onMoveRight?: () => void;
   position?: 'left' | 'right'; // 当前位置
+  mode?: 'sidebar' | 'editor-tab';
 }
+
+const AI_CHAT_EDITOR_TAB_PATH = 'ai-chat:/main';
 
 interface PendingToolConfirmation {
   id: string;
@@ -546,8 +549,13 @@ const normalizeDecompositionRules = (value: unknown): DecompositionRule[] => {
     if (!ruleId || seenIds.has(ruleId)) continue;
 
     const defaultRule = defaultsById.get(ruleId);
-    const name = rawName || defaultRule?.name || '';
-    const instruction = rawInstruction || defaultRule?.instruction || '';
+    const isBuiltinRule = defaultRule?.builtin === true;
+    const name = isBuiltinRule
+      ? defaultRule.name
+      : (rawName || defaultRule?.name || '');
+    const instruction = isBuiltinRule
+      ? defaultRule.instruction
+      : (rawInstruction || defaultRule?.instruction || '');
     if (!name || !instruction) continue;
 
     const enabled = typeof item.enabled === 'boolean'
@@ -1101,7 +1109,7 @@ const buildCompactConversationSummary = (history: Message[]): string => {
 
   const summaryItems: string[] = [];
   for (const item of normalizedHistory.slice(-COMPACT_SUMMARY_ITEM_LIMIT)) {
-    const prefix = item.role === 'user' ? 'û' : '';
+    const prefix = item.role === 'user' ? '用户' : '助手';
     const brief = item.text.length > 96 ? `${item.text.slice(0, 96)}...` : item.text;
     summaryItems.push(`- ${prefix}: ${brief}`);
   }
@@ -1180,13 +1188,13 @@ const buildToolCallDetail = (toolName: string, params: Record<string, unknown>):
   return stringifyActDetail(params) || '';
 };
 
-const EDIT_TASK_HINT_REGEX = /(修改|改写|重写|润色|优化|修复|编辑|edit|rewrite|refactor|fix|patch)/i;
-const QUERY_TASK_HINT_REGEX = /(\?|||ʲô|Ϊʲô|Ϊ|||Щ|ѯ|||ͳ||г|ܽ|compare|difference|explain|show|list|find|query|search|count)/i;
-const WRITE_TASK_HINT_REGEX = /(鍐檤鎾板啓|鐢熸垚|鍒涘缓|璧疯崏|缂栧啓|娑﹁壊|鏀瑰啓|淇敼|瀹屽杽|浼樺寲|寮€鍙憒瀹炵幇|write|draft|compose|create|implement|build)/i;
-const NON_TASK_SMALLTALK_REGEX = /^(?:\u4f60\u597d|\u60a8\u597d|\u55e8|\u54c8\u55bd|\u563f|\u5728\u5417|\u5728\u561b|hello|hi|hey|thanks|thank you|thx|\u8c22\u8c22|\u591a\u8c22|\u597d\u7684|ok|okay|\u6536\u5230|\u660e\u767d\u4e86|\u55ef|\u54e6|\u5662)\s*[!！。?？~～]*$/i;
+const EDIT_TASK_HINT_REGEX = /(?:\u4fee\u6539|\u6539\u5199|\u91cd\u5199|\u6da6\u8272|\u4f18\u5316|\u4fee\u590d|\u7f16\u8f91|edit|rewrite|refactor|fix|patch)/i;
+const QUERY_TASK_HINT_REGEX = /(?:\?|\uFF1F|\u4ec0\u4e48|\u4e3a\u4ec0\u4e48|\u5982\u4f55|\u54ea\u4e9b|\u67e5\u8be2|\u68c0\u7d22|\u7edf\u8ba1|\u5bf9\u6bd4|compare|difference|explain|show|list|find|query|search|count)/i;
+const WRITE_TASK_HINT_REGEX = /(?:\u5199\u4f5c|\u64b0\u5199|\u521b\u4f5c|\u751f\u6210|\u5b9e\u73b0|\u5f00\u53d1|write|draft|compose|create|implement|build)/i;
+const NON_TASK_SMALLTALK_REGEX = /^(?:\u4f60\u597d|\u60a8\u597d|\u55e8|\u54c8\u55bd|\u563f|\u5728\u5417|\u5728\u561b|hello|hi|hey|thanks|thank you|thx|\u8c22\u8c22|\u591a\u8c22|\u597d\u7684|ok|okay|\u6536\u5230|\u660e\u767d\u4e86|\u55ef|\u54e6|\u5662)\s*[\u0021\uFF01\u003F\u002E\u3002\u007E\uFF5E]*$/i;
 const NON_TASK_META_QUERY_REGEX = /(?:\u4f60\u662f\u4ec0\u4e48\u6a21\u578b|\u4f60\u662f\u5565\u6a21\u578b|\u4f60\u7528\u7684\u4ec0\u4e48\u6a21\u578b|\u5f53\u524d\u662f\u4ec0\u4e48\u6a21\u578b|\u73b0\u5728\u662f\u4ec0\u4e48\u6a21\u578b|\u4f60\u662f\u8c01|\u4f60\u80fd\u505a\u4ec0\u4e48|\u4f60\u4f1a\u4ec0\u4e48|what\s+model\s+are\s+you|which\s+model\s+are\s+you|who\s+are\s+you|what\s+can\s+you\s+do)/i;
 const TASK_EXECUTION_HINT_REGEX = /(?:\u5199|\u6539|\u91cd\u5199|\u6da6\u8272|\u751f\u6210|\u521b\u5efa|\u65b0\u5efa|\u6574\u7406|\u603b\u7ed3|\u5f52\u7eb3|\u5206\u6790|\u63d0\u53d6|\u62c6\u89e3|\u6267\u884c|\u8fd0\u884c|\u6253\u5f00|\u8bfb\u53d6|\u7f16\u8f91|\u4fee\u6539|\u4fdd\u5b58|\u5bfc\u5165|\u6784\u5efa|\u7f16\u8bd1|\u6d4b\u8bd5|\u4fee\u590d|\u6392\u67e5|\u5b9e\u73b0|\u5f00\u53d1|\u8c03\u7528|\u67e5\u8be2|\u68c0\u7d22|\u7ffb\u8bd1|write|rewrite|generate|create|draft|compose|edit|modify|save|run|execute|build|compile|test|fix|implement|refactor|analy[sz]e|summari[sz]e|extract|search|query|translate)/i;
-const DECOMPOSITION_STEP_REGEX = /(拆解|decompos|framework|小标题|段落|句式|用词|风格|过渡|场景|案例)/i;
+const DECOMPOSITION_STEP_REGEX = /(?:\u62c6\u89e3|decompos|framework|\u5c0f\u6807\u9898|\u6bb5\u843d|\u53e5\u5f0f|\u7528\u8bcd|\u98ce\u683c|\u8fc7\u6e21|\u573a\u666f|\u6848\u4f8b)/i;
 const SHOW_DECOMPOSITION_STREAM_BLOCK = false;
 const SHOW_DECOMPOSITION_STEP_LOG = false;
 
@@ -1867,8 +1875,8 @@ interface ThinkingBlockProps {
 
 const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ toolCalls, thinkingContent, isDeepThinking, isThinkingPhase, isExpanded, onToggle }) => {
   const headerText = isDeepThinking
-    ? (isThinkingPhase ? '˼...' : '˼')
-    : (isThinkingPhase ? '˼...' : '˼');
+    ? (isThinkingPhase ? '思考中...' : '思考')
+    : (isThinkingPhase ? '思考中...' : '思考');
 
   // 进行中时默认展开
   const effectiveExpanded = isThinkingPhase ? true : isExpanded;
@@ -1899,7 +1907,7 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ toolCalls, thinkingConten
 };
 
 /**
- * 解析消息内容，将 [TOOL_CALL:uiId] 占位符与文字块交错渲?
+ * 解析消息内容，将 [TOOL_CALL:uiId] 占位符与文字块交错渲染
  */
 interface DecompositionBlockProps {
   title: string;
@@ -1983,11 +1991,12 @@ function renderMessageBlocks(
   );
 }
 
-export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, onMoveRight, position = 'right' }) => {
+export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, onMoveRight, position = 'right', mode = 'sidebar' }) => {
+  const isEditorTabMode = mode === 'editor-tab';
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isMaximized, setIsMaximized] = useState(false);
+  const isMaximized = false;
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [subMenuType, setSubMenuType] = useState<'none' | 'model' | 'knowledge' | 'form' | 'skills' | 'memory' | 'decompositionRules' | 'writingRules' | 'mcpServer' | 'files'>('none');
   const [searchQuery, setSearchQuery] = useState('');
@@ -2000,7 +2009,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
   const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(() => {
+    return Boolean((window as any).__aiChatHistoryOpen);
+  });
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat'); // 当前视图状态
   const [chatSettings, setChatSettings] = useState<AIChatSettingsConfig>(DEFAULT_CHAT_SETTINGS);
   const [toolThinkingExpanded, setToolThinkingExpanded] = useState<Map<string, boolean>>(new Map()); // 思考块展开状态（工具调用 + 深度思考）
@@ -2063,6 +2074,21 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     () => writingRuleDocuments.filter(document => document.enabled && document.path.trim().length > 0),
     [writingRuleDocuments],
   );
+  const getSelectedModelTabTitle = useCallback((): string => {
+    if (!selectedModel) return '未选择模型';
+    const selected = availableModels.find(model => model.modelId === selectedModel);
+    const displayName = (selected?.displayName || formatModelDisplayName(selectedModel)).trim();
+    return displayName || '未选择模型';
+  }, [availableModels, selectedModel]);
+  const openInEditorTab = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('open-editor-tab', {
+      detail: {
+        path: AI_CHAT_EDITOR_TAB_PATH,
+        type: 'ai-chat',
+        title: getSelectedModelTabTitle(),
+      },
+    }));
+  }, [getSelectedModelTabTitle]);
 
   const refreshAgentMemoryStats = useCallback(() => {
     try {
@@ -3001,6 +3027,23 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       window.removeEventListener('model-enabled-changed', handleModelEnabledChanged);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isEditorTabMode) return;
+    window.dispatchEvent(new CustomEvent('editor:update-active-tab-title', {
+      detail: { title: getSelectedModelTabTitle() },
+    }));
+  }, [getSelectedModelTabTitle, isEditorTabMode]);
+
+  useEffect(() => {
+    (window as any).__aiChatHistoryOpen = isHistoryOpen;
+  }, [isHistoryOpen]);
+
+  useEffect(() => {
+    if (currentView !== 'chat' && isHistoryOpen) {
+      setIsHistoryOpen(false);
+    }
+  }, [currentView, isHistoryOpen]);
 
   // 加载AI聊天设置
   useEffect(() => {
@@ -5705,7 +5748,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   };
 
   const toggleMaximize = () => {
-    setIsMaximized(!isMaximized);
+    if (isEditorTabMode) {
+      window.dispatchEvent(new Event('restore-ai-chat-panel'));
+      onClose();
+      return;
+    }
+    openInEditorTab();
+    onClose();
   };
 
   const handleHeaderRightClick = (e: React.MouseEvent) => {
@@ -5731,8 +5780,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     }
   };
 
+  const handleClosePanel = () => {
+    setIsHistoryOpen(false);
+    onClose();
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (isMaximized) return; // 最大化时禁用拖拽调整
+    if (isMaximized || isEditorTabMode) return; // 标签页模式禁用拖拽调整
     e.preventDefault();
     setIsResizing(true);
   };
@@ -5835,8 +5889,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   return (
     <div 
       ref={panelRef}
-      className={`ai-chat-panel ${isMaximized ? 'maximized' : ''}`} 
-      style={!isMaximized ? { 
+      className={`ai-chat-panel ${isEditorTabMode ? 'editor-tab' : ''} ${isMaximized ? 'maximized' : ''}`.trim()}
+      style={!isMaximized && !isEditorTabMode ? { 
         width: `${width}px`,
         minWidth: `${MIN_WIDTH}px`,
         maxWidth: `${MAX_WIDTH}px`
@@ -5845,7 +5899,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       
        <div className='ai-chat-panel-border'></div>
       {/* 拖拽手柄 */}
-      {!isMaximized && (
+      {!isMaximized && !isEditorTabMode && (
         <div
           className={`ai-chat-panel-resize-handle ${isResizing ? 'resizing' : ''}`}
           style={{
@@ -5868,7 +5922,26 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         onContextMenu={handleHeaderRightClick}
       >
         <div className="ai-chat-panel-header-left">
-          <span>{currentView === 'chat' ? '' : ''}</span>
+          {currentView === 'chat' && (
+            <button
+              ref={historyButtonRef}
+              className={`history-dropdown-trigger ${isHistoryOpen ? 'active' : ''}`}
+              onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+              title="历史记录"
+            >
+              <Icon name="history" size={14} />
+              <span>历史记录</span>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path
+                  d={isHistoryOpen ? 'M3 7L6 4L9 7' : 'M3 5L6 8L9 5'}
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
         </div>
         <div className="ai-chat-panel-header-right">
           {currentView === 'chat' ? (
@@ -5880,14 +5953,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 <Icon name="plus" size={16} />
               </button>
               <button
-                ref={historyButtonRef}
-                className={isHistoryOpen ? 'active' : ''}
-                onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-                title="历史记录"
-              >
-                <Icon name="history" size={16} />
-              </button>
-              <button
                 onClick={() => setCurrentView('settings')}
                 title="聊天设置"
               >
@@ -5896,9 +5961,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               <div className="ai-chat-panel-header-divider"></div>
               <button
                 onClick={toggleMaximize}
-                title={isMaximized ? 'Restore' : 'Maximize'}
+                title={isEditorTabMode ? '还原到侧边栏' : '在标签页打开'}
               >
-                {isMaximized ? (
+                {isEditorTabMode ? (
                   <svg width="16" height="16" viewBox="0 0 24 24">
                     <path d="M9 9V3H7v2.59L3.91 2.5L2.5 3.91L5.59 7H3v2h6zm12 0V7h-2.59l3.09-3.09l-1.41-1.41L17 5.59V3h-2v6h6zM3 15v2h2.59L2.5 20.09l1.41 1.41L7 18.41V21h2v-6H3zm12 0v6h2v-2.59l3.09 3.09l1.41-1.41L18.41 17H21v-2h-6z" fill="currentColor" />
                   </svg>
@@ -5909,7 +5974,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 )}
               </button>
               <button
-                onClick={onClose}
+                onClick={handleClosePanel}
                 title="关闭"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
@@ -7045,7 +7110,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         onClose={() => setIsHistoryOpen(false)}
         onSelectSession={loadHistorySession}
         buttonRef={historyButtonRef}
-        panelPosition={position}
       />
 
       {/* Assistant 文本选择右键菜单 */}

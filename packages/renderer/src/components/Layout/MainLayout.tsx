@@ -120,6 +120,18 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     };
   }, []);
 
+  // 监听从标签页还原 AI 面板到侧边栏
+  useEffect(() => {
+    const handleRestoreAIChatPanel = () => {
+      setIsAIChatVisible(true);
+    };
+
+    window.addEventListener('restore-ai-chat-panel', handleRestoreAIChatPanel);
+    return () => {
+      window.removeEventListener('restore-ai-chat-panel', handleRestoreAIChatPanel);
+    };
+  }, []);
+
   // 初始化主题系统
   const initializeTheme = useThemeStore((state) => state.initialize);
   const currentTheme = useThemeStore((state) => state.currentTheme);

@@ -3,6 +3,7 @@ import { EditorItem, EditorItemProps } from './EditorItem';
 
 export interface EditorGroupProps {
   groupName?: string;
+  hideGroupName?: boolean;
   editors: Omit<EditorItemProps, 'onClick' | 'onClose'>[];
   onEditorClick: (path: string) => void;
   onEditorClose: (path: string) => void;
@@ -14,13 +15,14 @@ export interface EditorGroupProps {
  */
 export const EditorGroup: React.FC<EditorGroupProps> = ({
   groupName,
+  hideGroupName = false,
   editors,
   onEditorClick,
   onEditorClose,
 }) => {
   return (
     <div className="editor-group">
-      {groupName && <div className="editor-group-name">{groupName}</div>}
+      {!hideGroupName && groupName && <div className="editor-group-name">{groupName}</div>}
       <div className="editor-group-items">
         {editors.map((editor) => (
           <EditorItem

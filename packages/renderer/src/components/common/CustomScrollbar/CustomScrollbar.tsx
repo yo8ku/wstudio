@@ -35,6 +35,8 @@ export interface CustomScrollbarProps {
   onContextMenu?: (event: React.MouseEvent<HTMLDivElement>) => void;
   /** 点击事件 */
   onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  /** 滚轮事件 */
+  onWheel?: (event: React.WheelEvent<HTMLDivElement>) => void;
 }
 
 export interface CustomScrollbarRef {
@@ -69,6 +71,7 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
       onScroll,
       onContextMenu,
       onClick,
+      onWheel,
     },
     ref
   ) => {
@@ -526,6 +529,7 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
           style={contentOverflowStyle}
           onContextMenu={onContextMenu}
           onClick={onClick}
+          onWheel={onWheel}
         >
           {children}
         </div>

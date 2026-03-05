@@ -917,8 +917,8 @@ ipcMain.handle('folder:read-tree', async (event, folderPath) => {
       const nodes = [];
       
       for (const entry of entries) {
-        // 忽略隐藏文件和特殊目录（但保留 .wstudio 目录）
-        if ((entry.name.startsWith('.') && entry.name !== '.wstudio') || entry.name === 'node_modules') {
+        // Keep hidden folders visible in workspace tree; only skip node_modules.
+        if (entry.name === 'node_modules') {
           continue;
         }
         
@@ -997,7 +997,7 @@ ipcMain.handle('folder:get-all-notes', async (event, folderPath) => {
       const entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
       
       for (const entry of entries) {
-        // 忽略隐藏文件和特殊目录（但保留 .wstudio 目录）
+        // Ignore hidden entries when collecting note files.
         if ((entry.name.startsWith('.') && entry.name !== '.wstudio') || entry.name === 'node_modules') {
           continue;
         }
@@ -1217,8 +1217,8 @@ ipcMain.handle('folder:expand', async (event, folderPath, rootPath) => {
       const nodes = [];
       
       for (const entry of entries) {
-        // 忽略隐藏文件和特殊目录（但保留 .wstudio 目录）
-        if ((entry.name.startsWith('.') && entry.name !== '.wstudio') || entry.name === 'node_modules') {
+        // Keep hidden folders visible in workspace tree; only skip node_modules.
+        if (entry.name === 'node_modules') {
           continue;
         }
         

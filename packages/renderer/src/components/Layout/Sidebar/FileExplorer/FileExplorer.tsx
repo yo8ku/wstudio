@@ -1,62 +1,46 @@
 /**
- * 文件浏览器组件
- * 功能：集成资源管理器，包括打开的编辑器、文件树、大纲
+ * 文件浏览器组�?
+ * 功能：集成资源管理器，包括打开的编辑器、文件树、大�?
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ExplorerView } from '../../../Explorer';
-import type { EditorInfo, FileTreeNode } from '../../../Explorer';
+import type { FileTreeNode } from '../../../Explorer';
 import { electronStore } from '../../../../services/ElectronStoreService';
 import { useExplorerStore } from '../../../../stores/explorerStore';
 import { modal } from '../../../../stores/modalStore';
 import { toastService } from '../../../../services/ToastService';
 
 export const FileExplorer: React.FC = () => {
-  // 从 store 获取文件树数据
+  // �?store 获取文件树数�?
   const { 
     fileTreeData: storeFileTreeData, 
     workspacePath: storeWorkspacePath,
     setFileTreeData,
-    setWorkspacePath,
-    updateFileTreeNode
+    setWorkspacePath
   } = useExplorerStore();
   
-  // 文件树状态 - 优先使用 store 中的数据
+  // 文件树状�?- 优先使用 store 中的数据
   const [fileTree, setFileTree] = useState<FileTreeNode[]>(storeFileTreeData || []);
   const fileTreeRef = useRef<FileTreeNode[]>(storeFileTreeData || []);
   const [rootFolderPath, setRootFolderPath] = useState<string>(storeWorkspacePath);
   const [rootFolderName, setRootFolderName] = useState<string>('');
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
   
-  // 内联编辑状态 - 使用 ref 避免闭包陷阱
+  // 内联编辑状�?- 使用 ref 避免闭包陷阱
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
   const isInlineEditingRef = useRef<boolean>(false);
   
-  // 同步 fileTree 到 ref 和 store
+  // 同步 fileTree �?ref �?store
   useEffect(() => {
     fileTreeRef.current = fileTree;
-    // 使用 useEffect 同步到 store，避免在渲染期间更新
+    // 使用 useEffect 同步�?store，避免在渲染期间更新
     setFileTreeData(fileTree);
   }, [fileTree, setFileTreeData]);
-  
-  // 辅助函数：更新 fileTree（store 会通过 useEffect 自动同步）
-  const updateFileTree = useCallback((updater: (prev: FileTreeNode[]) => FileTreeNode[]) => {
-    setFileTree(prevTree => {
-      const newTree = updater(prevTree);
-      fileTreeRef.current = newTree; // 同步更新 ref
-      return newTree;
-    });
-  }, []);
-  
-  // 打开的编辑器
-  const [openEditors, setOpenEditors] = useState<EditorInfo[]>([]);
-  
-  // 是否显示"打开的编辑器"列表（由菜单控制）
-  const [showOpenEditors, setShowOpenEditors] = useState<boolean>(true);
   // 表单区域展开状态（持久化）
   const [initialFormExpanded, setInitialFormExpanded] = useState<boolean>(false);
 
-  // 辅助函数：根据路径查找节点
+  // 辅助函数：根据路径查找节�?
   const findNodeByPath = useCallback((path: string | null | undefined): FileTreeNode | null => {
     if (!path) {
       return null;
@@ -78,15 +62,15 @@ export const FileExplorer: React.FC = () => {
     return traverse(fileTreeRef.current || []);
   }, []);
 
-  // 加载文件树
+  // 加载文件�?
   const loadFileTree = useCallback(async (folderPath: string, preserveExpandedState: boolean = true) => {
     try {
       console.log('[FileExplorer] 开始加载文件树:', folderPath);
       
-      // 如果保留展开状态，从 store 中获取当前展开状态（和左右移动侧边栏一样）
+      // 如果保留展开状态，�?store 中获取当前展开状态（和左右移动侧边栏一样）
       const expandedPaths = new Set<string>();
       if (preserveExpandedState) {
-        // 优先从 store 中获取，如果没有则从 ref 中获取
+        // 优先�?store 中获取，如果没有则从 ref 中获�?
         const currentTree = storeFileTreeData || fileTreeRef.current;
         if (currentTree && currentTree.length > 0) {
           const collectExpandedPaths = (nodes: FileTreeNode[]) => {
@@ -100,16 +84,16 @@ export const FileExplorer: React.FC = () => {
             });
           };
           collectExpandedPaths(currentTree);
-          console.log('[FileExplorer] 从 store 保存展开状态:', Array.from(expandedPaths));
+          console.log('[FileExplorer] �?store 保存展开状�?', Array.from(expandedPaths));
         }
       }
       
       const result = await window.electron?.folder?.readTree(folderPath);
       
       if (result?.success && result.data) {
-        console.log('[FileExplorer] 文件树加载成功', result.data);
+        console.log('[FileExplorer] File tree loaded.', result.data);
         
-        // 转换后端返回的数据结构为前端使用的结构，并添加 depth 属性
+        // 转换后端返回的数据结构为前端使用的结构，并添�?depth 属�?
         const convertToFileTreeNode = (item: any, depth: number = 0): FileTreeNode => {
           const isExpanded = preserveExpandedState && expandedPaths.has(item.path) 
             ? true 
@@ -129,7 +113,7 @@ export const FileExplorer: React.FC = () => {
         setFileTree(treeData);
         fileTreeRef.current = treeData; // 同步更新 ref
         setRootFolderPath(folderPath);
-        // 同步到 store
+        // 同步�?store
         setFileTreeData(treeData);
         setWorkspacePath(folderPath);
         
@@ -164,7 +148,7 @@ export const FileExplorer: React.FC = () => {
                         
                         const children = expandResult.data.map((item: any) => convertToFileTreeNode(item, parentDepth + 1));
                         
-                        // 更新树结构
+                        // 更新树结�?
                         setFileTree(prevTree => {
                           const updateTreeWithChildren = (items: FileTreeNode[]): FileTreeNode[] => {
                             return items.map(item => {
@@ -183,16 +167,16 @@ export const FileExplorer: React.FC = () => {
                           return newTree;
                         });
                         
-                        // 递归加载子节点的子节点
+                        // 递归加载子节点的子节�?
                         if (children.length > 0) {
                           await loadExpandedChildren(children);
                         }
                       }
                     } catch (error) {
-                      console.error('[FileExplorer] 恢复展开状态时加载子目录失败:', error);
+                      console.error('[FileExplorer] 恢复展开状态时加载子目录失�?', error);
                     }
                   } else if (node.children) {
-                    // 如果子节点不为空，递归处理子节点
+                    // 如果子节点不为空，递归处理子节�?
                     await loadExpandedChildren(node.children);
                   }
                 }
@@ -205,31 +189,31 @@ export const FileExplorer: React.FC = () => {
           }, 100);
         }
         
-        // 从路径中提取文件夹名称
+        // 从路径中提取文件夹名�?
         const folderName = folderPath.split(/[/\\]/).pop() || 'ROOT';
         setRootFolderName(folderName);
       } else {
-        console.error('[FileExplorer] 文件树加载失败', result?.error);
+        console.error('[FileExplorer] Failed to load file tree.', result?.error);
       }
     } catch (error) {
-      console.error('[FileExplorer] 加载文件树出错', error);
+      console.error('[FileExplorer] Error while loading file tree.', error);
     }
   }, [storeFileTreeData, setFileTreeData, setWorkspacePath]);
 
-  // 刷新文件树（保持当前状态，只更新新增/删除的文件，不闪烁）
+  // 刷新文件树（保持当前状态，只更新新�?删除的文件，不闪烁）
   const refreshFileTree = useCallback(async (folderPath: string) => {
     try {
       console.log('[FileExplorer] 刷新文件树（无闪烁）:', folderPath);
       
-      // 获取当前文件树状态
+      // 获取当前文件树状�?
       const currentTree = fileTreeRef.current;
       if (!currentTree || currentTree.length === 0) {
-        // 如果当前没有数据，直接加载
+        // 如果当前没有数据，直接加�?
         loadFileTree(folderPath, false);
         return;
       }
       
-      // 收集当前展开状态
+      // 收集当前展开状�?
       const expandedPaths = new Set<string>();
       const collectExpandedPaths = (nodes: FileTreeNode[]) => {
         nodes.forEach(node => {
@@ -243,43 +227,43 @@ export const FileExplorer: React.FC = () => {
       };
       collectExpandedPaths(currentTree);
       
-      // 加载新的文件树
+      // 加载新的文件�?
       const result = await window.electron?.folder?.readTree(folderPath);
       
       if (result?.success && result.data) {
-        // 转换后端数据，恢复展开状态
+        // 转换后端数据，恢复展开状�?
         const convertToFileTreeNode = (item: { name: string; path: string; type: string; children?: { name: string; path: string; type: string }[] }, depth: number = 0): FileTreeNode => ({
           name: item.name,
           path: item.path,
           isDirectory: item.type === 'directory',
-          isExpanded: expandedPaths.has(item.path), // 恢复展开状态
+          isExpanded: expandedPaths.has(item.path), // 恢复展开状�?
           depth: depth,
           children: item.children?.map((child: { name: string; path: string; type: string; children?: { name: string; path: string; type: string }[] }) => convertToFileTreeNode(child, depth + 1)) || []
         });
         
         const newTreeData = result.data.map((item: { name: string; path: string; type: string; children?: { name: string; path: string; type: string }[] }) => convertToFileTreeNode(item, 0));
         
-        // 为展开的文件夹加载子节点
+        // 为展开的文件夹加载子节�?
         const loadChildrenForExpanded = async (nodes: FileTreeNode[]): Promise<FileTreeNode[]> => {
           const result: FileTreeNode[] = [];
           
           for (const node of nodes) {
             if (node.isDirectory && node.isExpanded) {
-              // 加载子节点
+              // 加载子节�?
               try {
                 const expandResult = await window.electron?.folder?.expand(node.path, folderPath);
                 if (expandResult?.success && expandResult.data) {
                   const children = expandResult.data.map((item: { name: string; path: string; type: string }) => 
                     convertToFileTreeNode(item, (node.depth || 0) + 1)
                   );
-                  // 递归加载子节点的子节点
+                  // 递归加载子节点的子节�?
                   const loadedChildren = await loadChildrenForExpanded(children);
                   result.push({ ...node, children: loadedChildren });
                 } else {
                   result.push(node);
                 }
               } catch (error) {
-                console.error('[FileExplorer] 加载子目录失败:', node.path, error);
+                console.error('[FileExplorer] 加载子目录失�?', node.path, error);
                 result.push(node);
               }
             } else {
@@ -290,7 +274,7 @@ export const FileExplorer: React.FC = () => {
           return result;
         };
         
-        // 加载所有展开文件夹的子节点
+        // 加载所有展开文件夹的子节�?
         const mergedTree = await loadChildrenForExpanded(newTreeData);
         
         // 更新状态（一次性更新，不闪烁）
@@ -298,10 +282,10 @@ export const FileExplorer: React.FC = () => {
         fileTreeRef.current = mergedTree;
         setFileTreeData(mergedTree);
         
-        console.log('[FileExplorer] 刷新完成，保持展开状态');
+        console.log('[FileExplorer] Refresh completed with expanded state preserved.');
       }
     } catch (error) {
-      console.error('[FileExplorer] 刷新文件树出错:', error);
+      console.error('[FileExplorer] 刷新文件树出�?', error);
     }
   }, [loadFileTree, setFileTreeData]);
 
@@ -324,9 +308,6 @@ export const FileExplorer: React.FC = () => {
   useEffect(() => {
     const loadConfig = async () => {
       const config = await electronStore.get('explorer-config');
-      if (config?.showOpenEditors !== undefined) {
-        setShowOpenEditors(config.showOpenEditors);
-      }
       if (config?.isFormExpanded !== undefined) {
         setInitialFormExpanded(config.isFormExpanded);
       }
@@ -334,39 +315,15 @@ export const FileExplorer: React.FC = () => {
     loadConfig();
   }, []);
 
-  // 监听菜单中的"打开的编辑器"显示切换事件
-  useEffect(() => {
-    const handleToggleOpenEditors = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ show: boolean }>;
-      const show = customEvent.detail.show;
-      console.log('[FileExplorer] 切换"打开的编辑器"显示:', show);
-      
-      setShowOpenEditors(show);
-
-      // 持久化配置（合并写入，保留其他字段）
-      const currentConfig = await electronStore.get('explorer-config') ?? {};
-      await electronStore.set('explorer-config', {
-        ...currentConfig,
-        showOpenEditors: show,
-      });
-    };
-
-    window.addEventListener('toggle-open-editors', handleToggleOpenEditors as EventListener);
-
-    return () => {
-      window.removeEventListener('toggle-open-editors', handleToggleOpenEditors as EventListener);
-    };
-  }, []);
-
-  // 在组件挂载时检查是否有工作区路径
+  // 在组件挂载时检查是否有工作区路�?
   useEffect(() => {
     const loadWorkspace = async () => {
       try {
-        // 如果 store 中已有数据且路径匹配，直接使用 store 中的数据
+        // 如果 store 中已有数据且路径匹配，直接使�?store 中的数据
         if (storeFileTreeData && storeWorkspacePath) {
           const result = await window.electron?.workspace?.getDir();
           if (result?.success && result.data === storeWorkspacePath) {
-            console.log('[FileExplorer] 使用 store 中的文件树数据');
+            console.log('[FileExplorer] Using file tree data from store.');
             setFileTree(storeFileTreeData);
             fileTreeRef.current = storeFileTreeData; // 同步更新 ref
             setRootFolderPath(storeWorkspacePath);
@@ -376,14 +333,14 @@ export const FileExplorer: React.FC = () => {
           }
         }
         
-        // 否则加载工作区
+        // 否则加载工作�?
         const result = await window.electron?.workspace?.getDir();
         if (result?.success && result.data) {
-          console.log('[FileExplorer] 加载工作区', result.data);
+          console.log('[FileExplorer] Workspace loaded.', result.data);
           loadFileTree(result.data);
         }
       } catch (error) {
-        console.error('[FileExplorer] 加载工作区失败', error);
+        console.error('[FileExplorer] Failed to load workspace.', error);
       }
     };
 
@@ -394,7 +351,7 @@ export const FileExplorer: React.FC = () => {
   const handleFolderToggle = useCallback(async (node: FileTreeNode) => {
     if (!node.isDirectory) return;
 
-    // 先更新展开状态
+    // 先更新展开状�?
     const updateTree = (items: FileTreeNode[]): FileTreeNode[] => {
       return items.map(item => {
         if (item.path === node.path && item.isDirectory) {
@@ -414,9 +371,9 @@ export const FileExplorer: React.FC = () => {
         const result = await window.electron?.folder?.expand(node.path, rootFolderPath);
         
         if (result?.success && result.data) {
-          console.log('[FileExplorer] 子目录加载成功', result.data);
+          console.log('[FileExplorer] Child directory loaded.', result.data);
           
-          // 转换数据结构，设置子节点的 depth
+          // 转换数据结构，设置子节点�?depth
           const parentDepth = node.depth || 0;
           const convertToFileTreeNode = (item: any, depth: number): FileTreeNode => ({
             name: item.name,
@@ -448,10 +405,10 @@ export const FileExplorer: React.FC = () => {
           });
         }
       } catch (error) {
-        console.error('[FileExplorer] 加载子目录失败', error);
+        console.error('[FileExplorer] Failed to load child directory.', error);
       }
     } else {
-      // 只是切换展开状态
+      // 只是切换展开状�?
       setFileTree(prevTree => {
         const newTree = updateTree(prevTree);
         return newTree;
@@ -459,9 +416,9 @@ export const FileExplorer: React.FC = () => {
     }
   }, [rootFolderPath, setFileTreeData]);
 
-  // 处理文件/文件夹点击（单击选中，文件同时打开）
+  // 处理文件/文件夹点击（单击选中，文件同时打开�?
   const handleFileClick = useCallback(async (node: FileTreeNode) => {
-    // 设置选中状态（文件和文件夹都可以被选中）
+    // 设置选中状态（文件和文件夹都可以被选中�?
     setSelectedFilePath(node.path);
     
     // 如果是文件，则打开文件
@@ -488,7 +445,7 @@ export const FileExplorer: React.FC = () => {
         console.error('[FileExplorer] 读取文件出错:', error);
       }
     } else {
-      console.log('[FileExplorer] 选中文件夹:', node.path);
+      console.log('[FileExplorer] 选中文件�?', node.path);
     }
   }, []);
 
@@ -518,64 +475,20 @@ export const FileExplorer: React.FC = () => {
     }
   }, []);
 
-  // 处理点击空白区域：清除选中状态
+  // 处理点击空白区域：清除选中状�?
   const handleBlankAreaClick = useCallback(() => {
-    console.log('[FileExplorer] 点击文件树空白区域，清除选中状态');
+    console.log('[FileExplorer] Blank area clicked, clearing selection.');
     setSelectedFilePath('');
   }, []);
-
-  // 监听编辑器打开文件事件
-  useEffect(() => {
-    const handleOpenFile = (event: Event) => {
-      const customEvent = event as CustomEvent<{ path?: string; name?: string }>;
-      if (customEvent.detail?.path && customEvent.detail?.name) {
-        // 检查文件是否已经打开
-        const existingIndex = openEditors.findIndex(
-          editor => editor.path === customEvent.detail.path
-        );
-
-        if (existingIndex === -1) {
-          // 添加新的编辑器，并将其他编辑器设置为非活动状态
-          setOpenEditors(prev => [
-            ...prev.map(editor => ({ ...editor, isActive: false })),
-            {
-              path: customEvent.detail.path!,
-              title: customEvent.detail.name!,
-              isDirty: false,
-              isActive: true,
-            }
-          ]);
-        } else {
-          // 设置为活动编辑器
-          setOpenEditors(prev => prev.map((editor, index) => ({
-            ...editor,
-            isActive: index === existingIndex,
-          })));
-        }
-      }
-    };
-
-    window.addEventListener('open-file', handleOpenFile as EventListener);
-
-    return () => {
-      window.removeEventListener('open-file', handleOpenFile as EventListener);
-    };
-  }, [openEditors]);
 
   // 监听编辑器标签页切换事件
   useEffect(() => {
     const handleTabSwitch = (event: Event) => {
       const customEvent = event as CustomEvent<{ path: string }>;
       if (customEvent.detail?.path) {
-        // 更新打开的编辑器列表的活动状态
-        setOpenEditors(prev => prev.map(editor => ({
-          ...editor,
-          isActive: editor.path === customEvent.detail.path,
-        })));
-        
         // 同步更新文件树的选中状态
         setSelectedFilePath(customEvent.detail.path);
-        console.log('[FileExplorer] 标签页切换，更新文件树选中状态:', customEvent.detail.path);
+        console.log('[FileExplorer] 标签页切换，更新文件树选中状�?', customEvent.detail.path);
       }
     };
 
@@ -591,9 +504,9 @@ export const FileExplorer: React.FC = () => {
     const handleActiveFileChange = (event: Event) => {
       const customEvent = event as CustomEvent<{ path: string }>;
       if (customEvent.detail?.path) {
-        // 同步更新文件树的选中状态
+        // 同步更新文件树的选中状�?
         setSelectedFilePath(customEvent.detail.path);
-        console.log('[FileExplorer] 活动文件变化，更新文件树选中状态:', customEvent.detail.path);
+        console.log('[FileExplorer] 活动文件变化，更新文件树选中状�?', customEvent.detail.path);
       }
     };
 
@@ -604,66 +517,6 @@ export const FileExplorer: React.FC = () => {
     };
   }, []);
 
-  // 监听编辑器关闭事件
-  useEffect(() => {
-    const handleRemoveEditor = (event: Event) => {
-      const customEvent = event as CustomEvent<{ path: string }>;
-      if (customEvent.detail?.path) {
-        console.log('[FileExplorer] 收到移除编辑器事件', customEvent.detail.path);
-        // 从打开的编辑器列表中移除对应项
-        setOpenEditors(prev => prev.filter(editor => editor.path !== customEvent.detail.path));
-      }
-    };
-
-    window.addEventListener('remove-editor', handleRemoveEditor as EventListener);
-
-    return () => {
-      window.removeEventListener('remove-editor', handleRemoveEditor as EventListener);
-    };
-  }, []);
-
-  // 处理编辑器点击
-  const handleEditorClick = (editor: EditorInfo) => {
-    console.log('切换到编辑器:', editor.path);
-    // 设置为活动编辑器
-    setOpenEditors(prev => prev.map(e => ({
-      ...e,
-      isActive: e.path === editor.path,
-    })));
-    
-    // 触发编辑器切换事件
-    window.dispatchEvent(new CustomEvent('editor-active-file-change', {
-      detail: { path: editor.path }
-    }));
-  };
-
-  // 处理编辑器关闭
-  const handleEditorClose = (editor: EditorInfo) => {
-    console.log('关闭编辑器', editor.path);
-    setOpenEditors(prev => {
-      const filtered = prev.filter(e => e.path !== editor.path);
-      
-      // 如果关闭的是活动编辑器，激活第一个编辑器
-      if (editor.isActive && filtered.length > 0) {
-        filtered[0].isActive = true;
-        window.dispatchEvent(new CustomEvent('editor-active-file-change', {
-          detail: { path: filtered[0].path }
-        }));
-      }
-      
-      return filtered;
-    });
-  };
-
-  // 处理关闭所有编辑器
-  const handleCloseAll = () => {
-    console.log('[FileExplorer] 关闭所有编辑器');
-    // 派发事件通知 EditorArea 关闭所有标签页
-    window.dispatchEvent(new CustomEvent('close-all-editors'));
-    // 清空本地的编辑器列表
-    setOpenEditors([]);
-  };
-  
   // 监听编辑器内容变化，更新大纲
   useEffect(() => {
     const handleContentChanged = (event: Event) => {
@@ -691,8 +544,8 @@ export const FileExplorer: React.FC = () => {
     };
   }, []);
 
-  // 在指定文件夹中添加创建节点
-  // 移除任何正在创建的临时节点
+  // 在指定文件夹中添加创建节�?
+  // 移除任何正在创建的临时节�?
   const removeCreatingNode = useCallback(() => {
     setFileTree(prevTree => {
       const remove = (nodes: FileTreeNode[]): FileTreeNode[] =>
@@ -711,7 +564,7 @@ export const FileExplorer: React.FC = () => {
 
   const addCreatingNodeInFolder = useCallback((targetFolderPath: string | null, type: 'file' | 'folder') => {
     if (!rootFolderPath) {
-      console.warn('[FileExplorer] 没有打开文件夹');
+      console.warn('[FileExplorer] No workspace is open.');
       return;
     }
 
@@ -726,7 +579,7 @@ export const FileExplorer: React.FC = () => {
     setIsInlineEditing(true);
 
     setFileTree(prevTree => {
-      // 如果 targetFolderPath 为 null，在根目录创建
+      // 如果 targetFolderPath �?null，在根目录创�?
       if (!targetFolderPath) {
         const creatingNode: FileTreeNode = {
           path: '',
@@ -734,7 +587,7 @@ export const FileExplorer: React.FC = () => {
           isDirectory: type === 'folder',
           isCreating: true,
           creatingType: type,
-          parentPath: rootFolderPath, // 父目录为根目录
+          parentPath: rootFolderPath, // 父目录为根目�?
           depth: 0,
           children: []
         };
@@ -752,7 +605,7 @@ export const FileExplorer: React.FC = () => {
         }
       }
 
-      // 在指定文件夹中创建
+      // 在指定文件夹中创�?
       const addCreatingNode = (nodes: FileTreeNode[]): FileTreeNode[] => {
         return nodes.map(node => {
           if (node.path === targetFolderPath && node.isDirectory) {
@@ -763,7 +616,7 @@ export const FileExplorer: React.FC = () => {
               isDirectory: type === 'folder',
               isCreating: true,
               creatingType: type,
-              parentPath: targetFolderPath, // 记录父目录路径
+              parentPath: targetFolderPath, // 记录父目录路�?
               depth: parentDepth + 1,
               children: []
             };
@@ -812,9 +665,9 @@ export const FileExplorer: React.FC = () => {
     addCreatingNodeInFolder(targetFolderPath, 'file');
   }, [addCreatingNodeInFolder, findNodeByPath, selectedFilePath]);
 
-  // 处理新建文件夹（在根目录）
+  // 处理新建文件夹（在根目录�?
   const handleNewFolder = useCallback(() => {
-    console.log('[FileExplorer] 新建文件夹按钮点击');
+    console.log('[FileExplorer] New folder action triggered.');
     let targetFolderPath: string | null = null;
     const selectedNode = findNodeByPath(selectedFilePath);
     if (selectedNode?.isDirectory) {
@@ -836,12 +689,12 @@ export const FileExplorer: React.FC = () => {
     console.log('[FileExplorer] 创建确认:', { node, name, parentPath: node.parentPath });
     
     if (!rootFolderPath || !name.trim()) {
-      console.warn('[FileExplorer] 无效的创建参数');
+      console.warn('[FileExplorer] Invalid create arguments.');
       handleCreateCancel(node);
       return;
     }
     
-    // 确定创建目录：如果有 parentPath 则在该目录下创建，否则在根目录创建
+    // 确定创建目录：如果有 parentPath 则在该目录下创建，否则在根目录创�?
     const targetPath = node.parentPath || rootFolderPath;
     
     try {
@@ -860,17 +713,17 @@ export const FileExplorer: React.FC = () => {
           handleCreateCancel(node);
         }
       } else if (node.creatingType === 'folder') {
-        // 创建文件夹
+        // 创建文件�?
         const result = await window.electron?.folder?.createFolder(targetPath, name);
         
         if (result?.success) {
-          console.log('[FileExplorer] 文件夹创建成功');
+          console.log('[FileExplorer] Folder created successfully.');
           isInlineEditingRef.current = false;
           setIsInlineEditing(false);
           // 刷新文件树（保持状态）
           await refreshFileTree(rootFolderPath);
         } else {
-          console.error('[FileExplorer] 文件夹创建失败', result?.error);
+          console.error('[FileExplorer] Failed to create folder.', result?.error);
           handleCreateCancel(node);
         }
       }
@@ -883,7 +736,7 @@ export const FileExplorer: React.FC = () => {
   // 处理全部折叠
   const handleCollapseAll = useCallback(() => {
     console.log('[FileExplorer] 全部折叠');
-    // 折叠所有节点
+    // 折叠所有节�?
     const collapseTree = (items: FileTreeNode[]): FileTreeNode[] => {
       return items.map(item => ({
         ...item,
@@ -927,14 +780,14 @@ export const FileExplorer: React.FC = () => {
     });
   }, [setFileTreeData]);
 
-  // 处理重命名确认/取消
+  // 处理重命名确�?取消
   const handleRename = useCallback(async (node: FileTreeNode, newName: string) => {
-    console.log('[FileExplorer] 重命名:', { oldName: node.name, newName, path: node.path });
+    console.log('[FileExplorer] 重命�?', { oldName: node.name, newName, path: node.path });
     
     isInlineEditingRef.current = false;
     setIsInlineEditing(false);
 
-    // 如果名称没有变化，直接取消编辑状态
+    // 如果名称没有变化，直接取消编辑状�?
     if (newName === node.name) {
       setFileTree(prevTree => {
         const clearEditing = (nodes: FileTreeNode[]): FileTreeNode[] => {
@@ -956,23 +809,23 @@ export const FileExplorer: React.FC = () => {
       return;
     }
 
-    // 执行重命名
+    // 执行重命�?
     try {
-      // 检查 API 是否可用
+      // 检�?API 是否可用
       if (!window.electron?.folder?.rename) {
-        console.error('[FileExplorer] rename API 不可用，请重启应用');
-        throw new Error('rename API 不可用，请重启应用');
+        console.error('[FileExplorer] rename API unavailable, restart required.');
+        throw new Error('rename API unavailable, restart required.');
       }
 
       const result = await window.electron.folder.rename(node.path, newName);
       
       if (result?.success) {
-        console.log('[FileExplorer] 重命名成功:', result.data);
-        // 刷新文件树
+        console.log('[FileExplorer] 重命名成�?', result.data);
+        // 刷新文件�?
         await refreshFileTree(rootFolderPath);
       } else {
-        console.error('[FileExplorer] 重命名失败:', result?.error);
-        // 恢复编辑状态
+        console.error('[FileExplorer] 重命名失�?', result?.error);
+        // 恢复编辑状�?
         setFileTree(prevTree => {
           const clearEditing = (nodes: FileTreeNode[]): FileTreeNode[] => {
             return nodes.map(n => {
@@ -992,8 +845,8 @@ export const FileExplorer: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('[FileExplorer] 重命名出错:', error);
-      // 恢复编辑状态
+      console.error('[FileExplorer] 重命名出�?', error);
+      // 恢复编辑状�?
       setFileTree(prevTree => {
         const clearEditing = (nodes: FileTreeNode[]): FileTreeNode[] => {
           return nodes.map(n => {
@@ -1017,39 +870,34 @@ export const FileExplorer: React.FC = () => {
   // 显示删除确认对话框（使用全局 modal.confirm，和知识库保持一致）
   const handleDelete = useCallback((node: FileTreeNode) => {
     if (!node.path) {
-      console.warn('[FileExplorer] 无效的删除路径');
+      console.warn('[FileExplorer] Invalid delete path.');
       return;
     }
 
-    // 使用全局 modal.confirm，和知识库保持一致
     modal.confirm({
-      title: `删除${node.isDirectory ? '文件夹' : '文件'}`,
-      description: `确定要删除"${node.name}"吗？${node.isDirectory ? '此操作将删除文件夹及其所有内容，' : ''}此操作无法撤销。`,
-      confirmText: '删除',
-      cancelText: '取消',
+      title: `Delete ${node.isDirectory ? 'Folder' : 'File'}`,
+      description: `Are you sure you want to delete "${node.name}"? ${node.isDirectory ? 'This will delete the folder and all its contents. ' : ''}This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
       onConfirm: async () => {
         try {
-          // 检查 API 是否可用
           if (!window.electron?.folder?.delete) {
-            console.error('[FileExplorer] delete API 不可用，请重启应用');
+            console.error('[FileExplorer] delete API unavailable, restart required.');
             return;
           }
 
           const result = await window.electron.folder.delete(node.path);
-          
+
           if (result?.success) {
-            console.log('[FileExplorer] 删除成功:', node.path);
-            // 刷新文件树（保持状态）
+            console.log('[FileExplorer] Delete success:', node.path);
             if (rootFolderPath) {
               await refreshFileTree(rootFolderPath);
             }
           } else {
-            console.error('[FileExplorer] 删除失败:', result?.error);
-            // TODO: 显示错误提示
+            console.error('[FileExplorer] Delete failed:', result?.error);
           }
         } catch (error) {
-          console.error('[FileExplorer] 删除出错:', error);
-          // TODO: 显示错误提示
+          console.error('[FileExplorer] Delete error:', error);
         }
       },
     });
@@ -1060,9 +908,9 @@ export const FileExplorer: React.FC = () => {
     try {
       console.log('[FileExplorer] 在资源管理器中打开:', targetPath);
       
-      // 检查 API 是否可用
+      // 检�?API 是否可用
       if (!window.electron?.folder?.revealInExplorer) {
-        console.error('[FileExplorer] revealInExplorer API 不可用，请重启应用');
+        console.error('[FileExplorer] revealInExplorer API unavailable, restart required.');
         return;
       }
 
@@ -1083,68 +931,62 @@ export const FileExplorer: React.FC = () => {
   // 立即索引文件
   const handleIndexFile = useCallback(async (targetPath: string) => {
     try {
-      console.log('[FileExplorer] 立即索引文件:', targetPath);
-      
+      console.log('[FileExplorer] Index file now:', targetPath);
+
       const ipcRenderer = window.electron?.ipcRenderer;
       if (!ipcRenderer) {
-        console.error('[FileExplorer] IPC 不可用');
-        toastService.error('索引失败', { description: 'IPC 不可用' });
+        console.error('[FileExplorer] IPC unavailable.');
+        toastService.error('Index failed', { description: 'IPC unavailable.' });
         return;
       }
 
-      // 显示开始索引提示
       const fileName = targetPath.split(/[/\\]/).pop() || targetPath;
-      toastService.info('开始索引', { description: fileName, duration: 2000 });
+      toastService.info('Indexing started', { description: fileName, duration: 2000 });
 
-      // 使用单文件索引 API，只索引选中的文件
       const result = await ipcRenderer.invoke('workspace-vector-index:index-file', targetPath);
-      
+
       if (result?.success) {
-        console.log('[FileExplorer] 文件索引完成');
-        // 通知由 MainLayout 的进度监听处理
+        console.log('[FileExplorer] File indexing completed.');
       } else {
-        console.error('[FileExplorer] 文件索引失败:', result?.error);
-        toastService.error('索引失败', { description: result?.error || '未知错误' });
+        console.error('[FileExplorer] File indexing failed:', result?.error);
+        toastService.error('Index failed', { description: result?.error || 'Unknown error' });
       }
     } catch (error) {
-      console.error('[FileExplorer] 索引文件出错:', error);
-      toastService.error('索引失败', { description: String(error) });
+      console.error('[FileExplorer] Error indexing file:', error);
+      toastService.error('Index failed', { description: String(error) });
     }
   }, []);
 
-  // 立即索引文件夹
+  // 立即索引文件�?
   const handleIndexFolder = useCallback(async (targetPath: string) => {
     try {
-      console.log('[FileExplorer] 立即索引文件夹:', targetPath);
-      
+      console.log('[FileExplorer] Index folder now:', targetPath);
+
       const ipcRenderer = window.electron?.ipcRenderer;
       if (!ipcRenderer) {
-        console.error('[FileExplorer] IPC 不可用');
-        toastService.error('索引失败', { description: 'IPC 不可用' });
+        console.error('[FileExplorer] IPC unavailable.');
+        toastService.error('Index failed', { description: 'IPC unavailable.' });
         return;
       }
 
-      // 显示开始索引提示
       const folderName = targetPath.split(/[/\\]/).pop() || targetPath;
-      toastService.info('开始索引文件夹', { description: folderName, duration: 2000 });
+      toastService.info('Folder indexing started', { description: folderName, duration: 2000 });
 
-      // 触发指定文件夹的索引
       const result = await ipcRenderer.invoke('workspace-vector-index:start', targetPath);
-      
+
       if (result?.success) {
-        console.log('[FileExplorer] 索引已启动');
-        // 通知由 MainLayout 的进度监听处理
+        console.log('[FileExplorer] Folder indexing started.');
       } else {
-        console.error('[FileExplorer] 启动索引失败:', result?.error);
-        toastService.error('索引失败', { description: result?.error || '未知错误' });
+        console.error('[FileExplorer] Failed to start indexing:', result?.error);
+        toastService.error('Index failed', { description: result?.error || 'Unknown error' });
       }
     } catch (error) {
-      console.error('[FileExplorer] 索引文件夹出错:', error);
-      toastService.error('索引失败', { description: String(error) });
+      console.error('[FileExplorer] Error indexing folder:', error);
+      toastService.error('Index failed', { description: String(error) });
     }
   }, []);
 
-  // 监听右键菜单的文件操作事件
+  // 监听右键菜单的文件操作事�?
   useEffect(() => {
     const handleFileAction = (event: Event) => {
       const customEvent = event as CustomEvent<{ action: string; node: FileTreeNode }>;
@@ -1154,7 +996,7 @@ export const FileExplorer: React.FC = () => {
       
       switch (action) {
         case 'new-file-in-folder':
-          // 在指定文件夹中新建文件
+          // 在指定文件夹中新建文�?
           if (node?.isDirectory) {
             addCreatingNodeInFolder(node.path, 'file');
           }
@@ -1167,7 +1009,7 @@ export const FileExplorer: React.FC = () => {
           break;
         case 'rename-file':
         case 'rename-folder':
-          // 重命名文件或文件夹
+          // 重命名文件或文件�?
           if (node?.path) {
             startRename(node.path);
           }
@@ -1192,7 +1034,7 @@ export const FileExplorer: React.FC = () => {
           }
           break;
         case 'index-folder':
-          // 立即索引文件夹
+          // 立即索引文件�?
           if (node?.path) {
             handleIndexFolder(node.path);
           }
@@ -1213,14 +1055,6 @@ export const FileExplorer: React.FC = () => {
   return (
     <>
       <ExplorerView
-        // 打开的编辑器
-        openEditors={openEditors}
-        showOpenEditors={showOpenEditors}
-        onEditorClick={handleEditorClick}
-        onEditorClose={handleEditorClose}
-        onCloseAll={handleCloseAll}
-        
-        // 文件树
         rootName={rootFolderName}
         rootPath={rootFolderPath}
         fileTreeNodes={fileTree}
@@ -1231,7 +1065,7 @@ export const FileExplorer: React.FC = () => {
         onNewFile={handleNewFile}
         onNewFolder={handleNewFolder}
         onRefresh={() => {
-          // 刷新时保持当前状态，只更新新增/删除的文件，不闪烁
+          // 刷新时保持当前状态，只更新新�?删除的文件，不闪�?
           if (rootFolderPath) {
             refreshFileTree(rootFolderPath);
           }
@@ -1253,3 +1087,4 @@ export const FileExplorer: React.FC = () => {
     </>
   );
 };
+

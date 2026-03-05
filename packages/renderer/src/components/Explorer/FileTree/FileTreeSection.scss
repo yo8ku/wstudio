@@ -9,7 +9,7 @@
   flex: 1 1 auto;
   overflow: hidden;
   min-height: 0;
-  background-color: var(--ws-sideBarSectionHeader-background, var(--ws-sideBar-background));
+  background-color: transparent;
 
   .explorer-section-accordion {
     display: flex;
@@ -17,6 +17,27 @@
     flex: 1;
     overflow: hidden;
     min-height: 0;
+  }
+
+  .explorer-section-trigger--folder-idle {
+    gap: 6px;
+  }
+
+  .explorer-section-trigger {
+    background-color: transparent;
+  }
+
+  .explorer-section-header-wrapper {
+    .explorer-section-actions {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    &:hover .explorer-section-actions,
+    &:focus-within .explorer-section-actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
   }
 }
 
@@ -33,63 +54,6 @@
     flex-direction: column;
     width: 100%;
     gap: 1px;
-  }
-
-  .file-tree-workspace-label {
-    margin: 0 6px 4px;
-    padding: 2px 8px;
-    min-height: 20px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.2px;
-    text-transform: uppercase;
-    color: var(--ws-sideBarTitle-foreground, var(--ws-descriptionForeground));
-    background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
-    cursor: pointer;
-    outline: none;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-
-    &:hover {
-      background-color: var(--ws-list-hoverBackground, var(--ws-list-hover-background, rgba(127, 127, 127, 0.16)));
-    }
-
-    &:focus-visible {
-      box-shadow: inset 0 0 0 1px var(--ws-focusBorder, var(--ws-focus-border));
-    }
-
-    .file-tree-workspace-chevron {
-      font-size: 14px;
-      width: 14px;
-      flex-shrink: 0;
-    }
-
-    .file-tree-workspace-name {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
-
-  .file-tree-workspace-root {
-    margin: 0 6px 4px;
-    padding: 2px 8px 2px 26px;
-    min-height: 20px;
-    display: flex;
-    align-items: center;
-    border-radius: 6px;
-    font-size: 11px;
-    color: var(--ws-sideBarTitle-foreground, var(--ws-descriptionForeground));
-    background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .file-tree-empty {

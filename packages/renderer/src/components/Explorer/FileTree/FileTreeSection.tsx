@@ -3,7 +3,7 @@
  * 鏄剧ず宸ヤ綔鍖虹殑鏂囦欢鍜屾枃浠跺す缁撴瀯
  */
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import ExplorerSection from '../ExplorerSection';
 import { FileTreeNode, FileTreeCallbacks } from './types';
 import { InlineInput } from '../Common/InlineInput';
@@ -44,7 +44,6 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
 }) => {
   const scrollbarRef = useRef<CustomScrollbarRef>(null);
   const isRestoringScrollRef = useRef<boolean>(false);
-  const [isWorkspaceExpanded, setIsWorkspaceExpanded] = useState(true);
   
   // 浠?store 鑾峰彇婊氬姩浣嶇疆
   const { fileTreeScrollTop, setFileTreeScrollTop, workspacePath } = useExplorerStore();
@@ -266,11 +265,15 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     }
   };
 
+  const fileTreeTitle = rootPath && rootName ? rootName : '文件夹';
+
   return (
     <div className="file-tree-section">
       <ExplorerSection
-        title={rootName}
+        title={fileTreeTitle}
         defaultExpanded={true}
+        preserveTitleCase={true}
+        toggleIconMode="folder-on-idle"
         actions={actions}
         onExpandChange={onExpandedChange}
       >
@@ -281,37 +284,12 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
           onClick={handleContentClick}
           onContextMenu={onContainerContextMenu}
         >
-          <div
-            className={`file-tree-workspace-label ${isWorkspaceExpanded ? 'expanded' : 'collapsed'}`}
-            title={rootPath || '工作区'}
-            role="button"
-            tabIndex={0}
-            onClick={() => setIsWorkspaceExpanded((prev) => !prev)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                setIsWorkspaceExpanded((prev) => !prev);
-              }
-            }}
-          >
-            <i
-              className={`codicon ${
-                isWorkspaceExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'
-              } file-tree-workspace-chevron`}
-            />
-            <span className="file-tree-workspace-name">工作区</span>
-          </div>
-          {isWorkspaceExpanded && rootPath && (
-            <div className="file-tree-workspace-root" title={rootPath}>
-              {rootName}
-            </div>
-          )}
-          {isWorkspaceExpanded && nodes.length === 0 ? (
+          {nodes.length === 0 ? (
             <div className="file-tree-empty">
               {rootPath ? '文件夹为空' : '尚未打开文件夹'}
             </div>
           ) : null}
-          {isWorkspaceExpanded && nodes.length > 0 && (
+          {nodes.length > 0 && (
             <div className="tree-view">
               {nodes.map((node) => renderNode(node))}
             </div>

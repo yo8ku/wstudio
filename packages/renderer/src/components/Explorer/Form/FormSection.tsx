@@ -1,6 +1,6 @@
-/**
- * 表单Section组件
- * 在资源管理器中显示表单和分组列表，支持折叠展开和拖动调整高度
+﻿/**
+ * 琛ㄥ崟Section缁勪欢
+ * 鍦ㄨ祫婧愮鐞嗗櫒涓樉绀鸿〃鍗曞拰鍒嗙粍鍒楄〃锛屾敮鎸佹姌鍙犲睍寮€鍜屾嫋鍔ㄨ皟鏁撮珮搴?
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -11,52 +11,52 @@ import { CustomScrollbar } from '../../common/CustomScrollbar';
 import { FormItem, FormGroupItem } from './types';
 import './FormSection.scss';
 
-// 默认高度配置
+// 榛樿楂樺害閰嶇疆
 const DEFAULT_HEIGHT = 200;
 const MIN_HEIGHT = 100;
 const MAX_HEIGHT = 500;
-const COLLAPSE_THRESHOLD = 50; // 低于此高度时自动折叠
+const COLLAPSE_THRESHOLD = 50; // 浣庝簬姝ら珮搴︽椂鑷姩鎶樺彔
 
 export interface FormSectionProps {
-  /** 表单列表 */
+  /** 琛ㄥ崟鍒楄〃 */
   forms?: FormItem[];
-  /** 分组列表 */
+  /** 鍒嗙粍鍒楄〃 */
   groups?: FormGroupItem[];
-  /** 选中的表单ID */
+  /** 閫変腑鐨勮〃鍗旾D */
   selectedFormId?: string;
-  /** 选中的分组ID */
+  /** 閫変腑鐨勫垎缁処D */
   selectedGroupId?: string;
-  /** 点击表单项 */
+  /** 鐐瑰嚮琛ㄥ崟椤?*/
   onFormClick?: (item: FormItem) => void;
-  /** 双击表单项 */
+  /** 鍙屽嚮琛ㄥ崟椤?*/
   onFormDoubleClick?: (item: FormItem) => void;
-  /** 点击分组项 */
+  /** 鐐瑰嚮鍒嗙粍椤?*/
   onGroupClick?: (item: FormGroupItem) => void;
-  /** 切换分组展开状态 */
+  /** 鍒囨崲鍒嗙粍灞曞紑鐘舵€?*/
   onGroupToggle?: (item: FormGroupItem) => void;
-  /** 新建表单（可选传入分组ID） */
+  /** 鏂板缓琛ㄥ崟锛堝彲閫変紶鍏ュ垎缁処D锛?*/
   onNewForm?: (groupId?: string | null) => void;
-  /** 新建分组 */
+  /** 鏂板缓鍒嗙粍 */
   onNewGroup?: (name: string) => void;
-  /** 展开状态变化 */
+  /** 灞曞紑鐘舵€佸彉鍖?*/
   onExpandedChange?: (expanded: boolean) => void;
-  /** 打开表单 */
+  /** 鎵撳紑琛ㄥ崟 */
   onOpenForm?: (item: FormItem) => void;
-  /** 在新选项卡打开表单 */
+  /** 鍦ㄦ柊閫夐」鍗℃墦寮€琛ㄥ崟 */
   onOpenFormInNewTab?: (item: FormItem) => void;
-  /** 重命名表单（传入新名称） */
+  /** 閲嶅懡鍚嶈〃鍗曪紙浼犲叆鏂板悕绉帮級 */
   onRenameForm?: (item: FormItem, newName: string) => void;
-  /** 删除表单 */
+  /** 鍒犻櫎琛ㄥ崟 */
   onDeleteForm?: (item: FormItem) => void;
-  /** 重命名分组（传入新名称） */
+  /** 閲嶅懡鍚嶅垎缁勶紙浼犲叆鏂板悕绉帮級 */
   onRenameGroup?: (item: FormGroupItem, newName: string) => void;
-  /** 删除分组 */
+  /** 鍒犻櫎鍒嗙粍 */
   onDeleteGroup?: (item: FormGroupItem) => void;
 }
 
 /**
- * 表单面板
- * 显示工作区中的表单和分组列表
+ * 琛ㄥ崟闈㈡澘
+ * 鏄剧ず宸ヤ綔鍖轰腑鐨勮〃鍗曞拰鍒嗙粍鍒楄〃
  */
 export const FormSection: React.FC<FormSectionProps> = ({
   forms = [],
@@ -79,24 +79,24 @@ export const FormSection: React.FC<FormSectionProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
-  // 右键菜单状态
+  // 鍙抽敭鑿滃崟鐘舵€?
   const [contextMenuState, setContextMenuState] = useState<{
     position: { x: number; y: number };
     items: ContextMenuItem[];
   } | null>(null);
-  // 内联编辑状态
+  // 鍐呰仈缂栬緫鐘舵€?
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingType, setEditingType] = useState<'form' | 'group' | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  // 拖动调整高度状态
+  // 鎷栧姩璋冩暣楂樺害鐘舵€?
   const [contentHeight, setContentHeight] = useState(DEFAULT_HEIGHT);
   const [isResizing, setIsResizing] = useState(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
 
-  // 处理新建按钮点击，显示菜单
+  // 澶勭悊鏂板缓鎸夐挳鐐瑰嚮锛屾樉绀鸿彍鍗?
   const handleNewClick = useCallback((event?: React.MouseEvent<HTMLButtonElement>) => {
     if (!event) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -106,31 +106,31 @@ export const FormSection: React.FC<FormSectionProps> = ({
     });
   }, []);
 
-  // 关闭菜单
+  // 鍏抽棴鑿滃崟
   const handleCloseMenu = useCallback(() => {
     setMenuPosition(null);
   }, []);
 
-  // 关闭右键菜单
+  // 鍏抽棴鍙抽敭鑿滃崟
   const handleCloseContextMenu = useCallback(() => {
     setContextMenuState(null);
   }, []);
 
-  // 开始编辑表单名称
+  // 寮€濮嬬紪杈戣〃鍗曞悕绉?
   const startEditForm = useCallback((form: FormItem) => {
     setEditingId(form.id);
     setEditingType('form');
     setEditingValue(form.name);
   }, []);
 
-  // 开始编辑分组名称
+  // 寮€濮嬬紪杈戝垎缁勫悕绉?
   const startEditGroup = useCallback((group: FormGroupItem) => {
     setEditingId(group.id);
     setEditingType('group');
     setEditingValue(group.name);
   }, []);
 
-  // 确认编辑
+  // 纭缂栬緫
   const confirmEdit = useCallback(() => {
     if (!editingId || !editingType || !editingValue.trim()) {
       setEditingId(null);
@@ -156,14 +156,14 @@ export const FormSection: React.FC<FormSectionProps> = ({
     setEditingValue('');
   }, [editingId, editingType, editingValue, forms, groups, onRenameForm, onRenameGroup]);
 
-  // 取消编辑
+  // 鍙栨秷缂栬緫
   const cancelEdit = useCallback(() => {
     setEditingId(null);
     setEditingType(null);
     setEditingValue('');
   }, []);
 
-  // 处理编辑输入框键盘事件
+  // 澶勭悊缂栬緫杈撳叆妗嗛敭鐩樹簨浠?
   const handleEditKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -174,7 +174,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
     }
   }, [confirmEdit, cancelEdit]);
 
-  // 编辑输入框自动聚焦
+  // 缂栬緫杈撳叆妗嗚嚜鍔ㄨ仛鐒?
   useEffect(() => {
     if (editingId && editInputRef.current) {
       editInputRef.current.focus();
@@ -182,7 +182,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
     }
   }, [editingId]);
 
-  // 拖动调整高度的鼠标事件处理
+  // 鎷栧姩璋冩暣楂樺害鐨勯紶鏍囦簨浠跺鐞?
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -191,17 +191,17 @@ export const FormSection: React.FC<FormSectionProps> = ({
     startHeightRef.current = contentHeight;
   }, [contentHeight]);
 
-  // 拖动过程中的鼠标移动和释放事件
+  // 鎷栧姩杩囩▼涓殑榧犳爣绉诲姩鍜岄噴鏀句簨浠?
   useEffect(() => {
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      // 向上拖动是负数，向下拖动是正数
-      // 因为手柄在顶部，向上拖应该增加高度
+      // 鍚戜笂鎷栧姩鏄礋鏁帮紝鍚戜笅鎷栧姩鏄鏁?
+      // 鍥犱负鎵嬫焺鍦ㄩ《閮紝鍚戜笂鎷栧簲璇ュ鍔犻珮搴?
       const deltaY = startYRef.current - e.clientY;
       let newHeight = startHeightRef.current + deltaY;
       
-      // 如果高度低于折叠阈值，自动折叠
+      // 濡傛灉楂樺害浣庝簬鎶樺彔闃堝€硷紝鑷姩鎶樺彔
       if (newHeight < COLLAPSE_THRESHOLD) {
         setIsResizing(false);
         setIsExpanded(false);
@@ -230,12 +230,12 @@ export const FormSection: React.FC<FormSectionProps> = ({
     };
   }, [isResizing, onExpandedChange]);
 
-  // 构建分组右键菜单
+  // 鏋勫缓鍒嗙粍鍙抽敭鑿滃崟
   const buildGroupContextMenu = useCallback((group: FormGroupItem): ContextMenuItem[] => {
     return [
       {
         id: 'new-form-in-group',
-        label: '新建表单',
+        label: '鏂板缓琛ㄥ崟',
         icon: 'table-properties',
         onClick: () => {
           onNewForm?.(group.id);
@@ -248,7 +248,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
       },
       {
         id: 'rename-group',
-        label: '重命名',
+        label: '\u91CD\u547D\u540D',
         icon: 'edit',
         onClick: () => {
           startEditGroup(group);
@@ -256,7 +256,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
       },
       {
         id: 'delete-group',
-        label: '删除分组',
+        label: '鍒犻櫎鍒嗙粍',
         icon: 'delete',
         onClick: () => {
           onDeleteGroup?.(group);
@@ -265,12 +265,12 @@ export const FormSection: React.FC<FormSectionProps> = ({
     ];
   }, [onNewForm, startEditGroup, onDeleteGroup]);
 
-  // 构建表单右键菜单
+  // 鏋勫缓琛ㄥ崟鍙抽敭鑿滃崟
   const buildFormContextMenu = useCallback((form: FormItem): ContextMenuItem[] => {
     return [
       {
         id: 'open-form',
-        label: '打开表单',
+        label: '鎵撳紑琛ㄥ崟',
         icon: 'table-properties',
         onClick: () => {
           onOpenForm?.(form);
@@ -278,7 +278,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
       },
       {
         id: 'open-form-in-new-tab',
-        label: '在新选项卡打开',
+        label: '鍦ㄦ柊閫夐」鍗℃墦寮€',
         icon: 'new-file',
         onClick: () => {
           onOpenFormInNewTab?.(form);
@@ -291,7 +291,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
       },
       {
         id: 'rename-form',
-        label: '重命名',
+        label: '\u91CD\u547D\u540D',
         icon: 'edit',
         onClick: () => {
           startEditForm(form);
@@ -299,7 +299,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
       },
       {
         id: 'delete-form',
-        label: '删除表单',
+        label: '鍒犻櫎琛ㄥ崟',
         icon: 'delete',
         onClick: () => {
           onDeleteForm?.(form);
@@ -308,7 +308,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
     ];
   }, [onOpenForm, onOpenFormInNewTab, startEditForm, onDeleteForm]);
 
-  // 处理分组右键菜单
+  // 澶勭悊鍒嗙粍鍙抽敭鑿滃崟
   const handleGroupContextMenu = useCallback((e: React.MouseEvent, group: FormGroupItem) => {
     e.preventDefault();
     e.stopPropagation();
@@ -318,7 +318,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
     });
   }, [buildGroupContextMenu]);
 
-  // 处理表单右键菜单
+  // 澶勭悊琛ㄥ崟鍙抽敭鑿滃崟
   const handleFormContextMenu = useCallback((e: React.MouseEvent, form: FormItem) => {
     e.preventDefault();
     e.stopPropagation();
@@ -328,50 +328,50 @@ export const FormSection: React.FC<FormSectionProps> = ({
     });
   }, [buildFormContextMenu]);
 
-  // 计算下一个分组编号
+  // 璁＄畻涓嬩竴涓垎缁勭紪鍙?
   const getNextGroupNumber = useCallback((): number => {
-    // 查找所有以"分组"开头的分组名称，提取数字
+    // 鏌ユ壘鎵€鏈変互"鍒嗙粍"寮€澶寸殑鍒嗙粍鍚嶇О锛屾彁鍙栨暟瀛?
     const groupNumbers = groups
       .map(g => {
-        const match = g.name.match(/^分组(\d+)$/);
+        const match = g.name.match(/^鍒嗙粍(\d+)$/);
         return match ? parseInt(match[1], 10) : 0;
       })
       .filter(n => n > 0);
     
-    // 返回最大数字 + 1，如果没有则返回 1
+    // 杩斿洖鏈€澶ф暟瀛?+ 1锛屽鏋滄病鏈夊垯杩斿洖 1
     return groupNumbers.length > 0 ? Math.max(...groupNumbers) + 1 : 1;
   }, [groups]);
 
-  // 构建菜单项
+  // 鏋勫缓鑿滃崟椤?
   const buildMenuItems = useCallback((): ContextMenuItem[] => {
     return [
       {
         id: 'new-form',
-        label: '新建表单',
+        label: '鏂板缓琛ㄥ崟',
         icon: 'table-properties',
         onClick: () => {
-          // 如果选中了分组，则在该分组下创建表单
+          // 濡傛灉閫変腑浜嗗垎缁勶紝鍒欏湪璇ュ垎缁勪笅鍒涘缓琛ㄥ崟
           onNewForm?.(selectedGroupId || null);
         },
       },
       {
         id: 'new-group',
-        label: '新建分组',
+        label: '鏂板缓鍒嗙粍',
         icon: 'form-folder',
         onClick: () => {
-          const groupName = `分组${getNextGroupNumber()}`;
+          const groupName = `鍒嗙粍${getNextGroupNumber()}`;
           onNewGroup?.(groupName);
         },
       },
     ];
   }, [onNewForm, onNewGroup, selectedGroupId, getNextGroupNumber]);
 
-  // 构建空白区域右键菜单
+  // 鏋勫缓绌虹櫧鍖哄煙鍙抽敭鑿滃崟
   const buildBlankAreaContextMenu = useCallback((): ContextMenuItem[] => {
     return [
       {
         id: 'new-form',
-        label: '新建表单',
+        label: '鏂板缓琛ㄥ崟',
         icon: 'table-properties',
         onClick: () => {
           onNewForm?.(null);
@@ -379,17 +379,17 @@ export const FormSection: React.FC<FormSectionProps> = ({
       },
       {
         id: 'new-group',
-        label: '新建分组',
+        label: '鏂板缓鍒嗙粍',
         icon: 'form-folder',
         onClick: () => {
-          const groupName = `分组${getNextGroupNumber()}`;
+          const groupName = `鍒嗙粍${getNextGroupNumber()}`;
           onNewGroup?.(groupName);
         },
       },
     ];
   }, [onNewForm, onNewGroup, getNextGroupNumber]);
 
-  // 处理空白区域右键菜单
+  // 澶勭悊绌虹櫧鍖哄煙鍙抽敭鑿滃崟
   const handleBlankAreaContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -403,7 +403,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
     {
       id: 'new-form',
       icon: <Icon name="plus" size={14} />,
-      tooltip: '新建',
+      tooltip: '鏂板缓',
       onClick: handleNewClick,
     },
   ];
@@ -413,7 +413,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
     onExpandedChange?.(expanded);
   };
 
-  // 渲染分组项
+  // 娓叉煋鍒嗙粍椤?
   const renderGroupItem = (group: FormGroupItem, depth: number = 0) => {
     const groupForms = forms.filter(f => f.groupId === group.id);
     const childGroups = groups.filter(g => g.parentId === group.id);
@@ -467,9 +467,9 @@ export const FormSection: React.FC<FormSectionProps> = ({
     );
   };
 
-  // 渲染表单项
+  // 娓叉煋琛ㄥ崟椤?
   const renderFormItem = (item: FormItem, depth: number = 0) => {
-    // 表单项需要额外缩进以与分组名称对齐（跳过折叠图标宽度 20px）
+    // 琛ㄥ崟椤归渶瑕侀澶栫缉杩涗互涓庡垎缁勫悕绉板榻愶紙璺宠繃鎶樺彔鍥炬爣瀹藉害 20px锛?
     const baseIndent = depth * 12 + 8;
     const formIndent = baseIndent + 20;
     const isEditing = editingId === item.id && editingType === 'form';
@@ -502,7 +502,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
     );
   };
 
-  // 获取根级别的分组和表单
+  // 鑾峰彇鏍圭骇鍒殑鍒嗙粍鍜岃〃鍗?
   const rootGroups = groups.filter(g => g.parentId === null);
   const rootForms = forms.filter(f => f.groupId === null);
   const hasContent = rootGroups.length > 0 || rootForms.length > 0;
@@ -511,11 +511,11 @@ export const FormSection: React.FC<FormSectionProps> = ({
     <div 
       className={`form-section ${isExpanded ? 'form-section--expanded' : 'form-section--collapsed'}`}
     >
-      {/* 拖动时的全局遮罩层，防止鼠标样式切换 */}
+      {/* 鎷栧姩鏃剁殑鍏ㄥ眬閬僵灞傦紝闃叉榧犳爣鏍峰紡鍒囨崲 */}
       {isResizing && (
         <div className="form-resize-overlay" />
       )}
-      {/* 拖动手柄 - 只在展开时显示 */}
+      {/* 鎷栧姩鎵嬫焺 - 鍙湪灞曞紑鏃舵樉绀?*/}
       {isExpanded && (
         <div 
           className={`form-resize-handle ${isResizing ? 'resizing' : ''}`}
@@ -523,8 +523,9 @@ export const FormSection: React.FC<FormSectionProps> = ({
         />
       )}
       <ExplorerSection
-        title="表单"
+        title={'\u6570\u636E'}
         expanded={isExpanded}
+        toggleIconMode="form-on-idle"
         actions={isExpanded ? actions : []}
         onExpandChange={handleExpandChange}
       >
@@ -536,7 +537,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
           {!hasContent ? (
             <div className="form-empty">
               <Icon name="table-properties" size={24} className="empty-icon" />
-              <span>暂无表单</span>
+              <span>鏆傛棤琛ㄥ崟</span>
             </div>
           ) : (
             <div className="form-list">
@@ -547,7 +548,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
         </CustomScrollbar>
       </ExplorerSection>
 
-      {/* 新建菜单 */}
+      {/* 鏂板缓鑿滃崟 */}
       {menuPosition && (
         <ContextMenu
           items={buildMenuItems()}
@@ -556,7 +557,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
         />
       )}
 
-      {/* 右键菜单 */}
+      {/* 鍙抽敭鑿滃崟 */}
       {contextMenuState && (
         <ContextMenu
           items={contextMenuState.items}
@@ -569,3 +570,4 @@ export const FormSection: React.FC<FormSectionProps> = ({
 };
 
 export default FormSection;
+

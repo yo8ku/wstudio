@@ -8,6 +8,30 @@
   flex-direction: column;
   flex-shrink: 0;
   overflow: hidden;
+  background-color: transparent;
+
+  .explorer-section-trigger {
+    background-color: transparent;
+    gap: 0;
+    cursor: default;
+  }
+
+  .explorer-section-toggle-icon {
+    display: none;
+  }
+
+  .explorer-section-header-wrapper {
+    .explorer-section-actions {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    &:hover .explorer-section-actions,
+    &:focus-within .explorer-section-actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
 }
 
 .open-editors-content {
