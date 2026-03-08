@@ -162,7 +162,6 @@
         padding: 6px 10px;
         border-radius: 3px !important;
         font-size: 13px;
-        font-family: inherit;
 
         &:focus {
           outline: none;
@@ -269,7 +268,6 @@
           padding: 0 8px 0 8px;
           height: 40px;
           font-size: 14px;
-          font-family: inherit;
 
           .accordion-title {
             font-weight: 500;
@@ -293,7 +291,6 @@
           border: none;
           cursor: pointer;
           font-size: 13px;
-          font-family: inherit;
           width: 100%;
           .accordion-title {
             font-weight: 500;
@@ -345,7 +342,6 @@
             border: none;
             cursor: pointer;
             font-size: 14px;
-            font-family: inherit;
             .ai-provider-icon {
               flex-shrink: 0;
             }
@@ -723,7 +719,6 @@
     .model-id-text {
       flex: 1;
       font-size: 13px;
-      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
       color: var(--ws-text-primary);
       overflow: hidden;
       text-overflow: ellipsis;

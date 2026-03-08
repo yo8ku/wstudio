@@ -358,7 +358,6 @@
 
   // 本地技能包路径样式
   &.skill-path {
-    font-family: var(--ws-editor-font-family, 'Consolas', 'Monaco', monospace);
     font-size: 12px;
     -webkit-line-clamp: 1;
     word-break: break-all;
@@ -879,7 +878,6 @@
 .skill-content-text {
   margin: 0;
   padding: 16px;
-  font-family: var(--ws-editor-font-family, 'Consolas', 'Monaco', monospace);
   font-size: 13px;
   line-height: 1.6;
   color: var(--ws-editor-foreground);

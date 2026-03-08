@@ -1,6 +1,7 @@
 /**
- * Monaco 编辑器样式
- * 确保编辑器正确填充容器
+ * Monaco editor layout overrides.
+ * Keep the wrapper stable, but leave line width calculation to Monaco so
+ * built-in wrapping can work normally.
  */
 
 .monaco-editor-wrapper {
@@ -13,9 +14,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background-color: var(--vscode-editor-background);
-  
-  /* Monaco Editor 根容器样式修复 */
+  background-color: var(--ws-editor-background);
+
   > div {
     width: 100% !important;
     height: 100% !important;
@@ -24,127 +24,70 @@
     min-width: 0;
     position: relative;
   }
-  
-  /* 确保 Monaco Editor 本身正确填充 */
+
   :global {
     .monaco-editor {
       width: 100% !important;
       height: 100% !important;
       position: relative !important;
-      
-      .overflow-guard {
-        width: 100% !important;
-        height: 100% !important;
-        position: relative !important;
-      }
-      
-      .monaco-scrollable-element {
-        width: 100% !important;
-        height: 100% !important;
-      }
-      
-      /* 禁用横向滚动条 */
-      .monaco-scrollable-element > .scrollbar {
-        &.horizontal {
-          display: none !important;
-          visibility: hidden !important;
-          opacity: 0 !important;
-          height: 0 !important;
-        }
-      }
-      
-      /* 隐藏横向滚动条滑块 */
-      .monaco-scrollable-element > .scrollbar.horizontal {
-        display: none !important;
-      }
-      
-      /* 确保横向滚动条容器不占用空间 */
-      .monaco-scrollable-element > .scrollbar.horizontal,
-      .monaco-scrollable-element > .slider.horizontal {
-        display: none !important;
-        height: 0 !important;
-        max-height: 0 !important;
-      }
-      
-      /* 确保内容区域不会溢出到滚动条 - 调整背景区域宽度 */
-      .monaco-editor-background {
-        width: calc(100% - 16px) !important;
-        box-sizing: border-box;
-      }
-      
-      /* 确保编辑器视图区域正确显示 */
-      .view-lines {
-        width: 100% !important;
-        min-height: 100%;
-        box-sizing: border-box;
-      }
-      
-      /* 为代码内容整体预留出与滚动条同宽的空间，避免行内容被覆盖 */
-      .lines-content {
-        padding-right: 16px !important;
-        box-sizing: border-box;
-        width: 100% !important;
-      }
-      
-      /* 确保视图容器正确计算宽度 */
-      .view-overlays {
-        width: 100% !important;
-        box-sizing: border-box;
-      }
-      
-      /* 确保行号区域可见 */
-      .margin,
-      .line-numbers {
-        opacity: 1 !important;
-      }
-      
-      /* 🎯 完全禁用颜色选择器 Widget（默认隐藏） */
-      .colorpicker-widget,
-      .monaco-color-picker,
-      .color-picker-widget {
-        /* 🎯 核心：彻底禁用所有过渡和动画（防止延迟消失） */
-        transition: none !important;
-        animation: none !important;
-        transition-duration: 0s !important;
-        animation-duration: 0s !important;
-        transition-delay: 0s !important;
-        animation-delay: 0s !important;
-        transition-property: none !important;
-        
-        /* 默认完全隐藏 */
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-        
-        /* 🎯 只有当 JS 明确添加 .show-picker 类时才显示 */
-        &.show-picker {
-          /* 强制立即显示，无过渡 */
-          display: block !important;
-          visibility: visible !important;
-          opacity: 1 !important;
-          pointer-events: auto !important;
-          
-          /* 再次确保无过渡 */
-          transition: none !important;
-          animation: none !important;
-        }
-      }
-      
-      /* 🎯 子元素也彻底禁用过渡（防止子元素动画导致延迟） */
-      .colorpicker-body,
-      .colorpicker-header,
-      .colorpicker-color-bg,
-      .colorpicker-color-border,
-      .colorpicker-color-preview {
-        transition: none !important;
-        animation: none !important;
-        transition-duration: 0s !important;
-        animation-duration: 0s !important;
-        transition-delay: 0s !important;
-        animation-delay: 0s !important;
-      }
+      background-color: var(--ws-editor-background) !important;
+    }
 
+    .monaco-editor .overflow-guard,
+    .monaco-editor .monaco-scrollable-element {
+      width: 100% !important;
+      height: 100% !important;
+      position: relative !important;
+      background-color: var(--ws-editor-background) !important;
+    }
+
+    .monaco-editor .monaco-editor-background,
+    .monaco-editor .margin,
+    .monaco-editor .margin-view-overlays {
+      background-color: var(--ws-editor-background) !important;
+    }
+
+    .monaco-editor .margin,
+    .monaco-editor .line-numbers {
+      opacity: 1 !important;
+    }
+
+    .monaco-editor .colorpicker-widget,
+    .monaco-editor .monaco-color-picker,
+    .monaco-editor .color-picker-widget {
+      transition: none !important;
+      animation: none !important;
+      transition-duration: 0s !important;
+      animation-duration: 0s !important;
+      transition-delay: 0s !important;
+      animation-delay: 0s !important;
+      transition-property: none !important;
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+
+      &.show-picker {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        transition: none !important;
+        animation: none !important;
+      }
+    }
+
+    .monaco-editor .colorpicker-body,
+    .monaco-editor .colorpicker-header,
+    .monaco-editor .colorpicker-color-bg,
+    .monaco-editor .colorpicker-color-border,
+    .monaco-editor .colorpicker-color-preview {
+      transition: none !important;
+      animation: none !important;
+      transition-duration: 0s !important;
+      animation-duration: 0s !important;
+      transition-delay: 0s !important;
+      animation-delay: 0s !important;
     }
   }
 }

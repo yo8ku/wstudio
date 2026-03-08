@@ -371,52 +371,48 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     );
   }, []);
 
-  // 鏈€灏忔枃浠跺ぇ灏忥紙瀛楄妭锛夛紝涓庡悗绔繚鎸佷竴鑷?
+  // 最小文件大小（字节），与后端保持一致
   const MIN_FILE_SIZE = 2 * 1024; // 2KB
 
   const buildSelectedFileMenuItems = useCallback(
     async (node: FileTreeNode): Promise<ContextMenuItem[]> => {
-      // 妫€鏌ユ枃浠舵槸鍚﹀凡绱㈠紩鍜屾枃浠跺ぇ灏?
       let isIndexed = false;
       let fileSize = 0;
-      
+
       try {
         const ipcRenderer = window.electron?.ipcRenderer;
         if (ipcRenderer) {
-          // 妫€鏌ユ枃浠舵槸鍚﹀凡绱㈠紩
           const indexResult = await ipcRenderer.invoke('workspace-index-db:is-file-indexed', node.path);
           isIndexed = indexResult?.success === true && indexResult?.data === true;
-          
-          // 鑾峰彇鏂囦欢澶у皬
+
           const statsResult = await ipcRenderer.invoke('file-stat', node.path);
           fileSize = statsResult?.size || 0;
         }
       } catch (e) {
-        console.warn('[ExplorerView] 妫€鏌ユ枃浠剁储寮曠姸鎬佸け璐?', e);
+        console.warn('[ExplorerView] 检查文件索引状态失败:', e);
       }
 
-      // 鍒ゆ柇鏄惁绂佺敤绔嬪嵆绱㈠紩锛氬凡绱㈠紩 鎴?鏂囦欢灏忎簬2KB
       const disableIndex = isIndexed || fileSize < MIN_FILE_SIZE;
 
       return [
         {
           id: 'open-to-side',
-          label: '鍦ㄤ晶杈规墦寮€',
+          label: '在侧边打开',
           onClick: () => emitFileAction('open-to-side', node),
         },
         {
           id: 'add-to-chat',
-          label: '\u6DFB\u52A0\u5230\u804A\u5929',
+          label: '添加到聊天',
           onClick: () => emitFileAction('add-to-chat', node),
         },
         {
           id: 'add-to-new-chat',
-          label: '\u6DFB\u52A0\u5230\u65B0\u7684\u804A\u5929',
+          label: '添加到新的聊天',
           onClick: () => emitFileAction('add-to-new-chat', node),
         },
         {
           id: 'reveal-in-explorer',
-          label: '鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€',
+          label: '在资源管理器中打开',
           onClick: () => emitFileAction('reveal-in-explorer', node),
         },
         {
@@ -426,7 +422,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         },
         {
           id: 'open-timeline',
-          label: '\u6253\u5F00\u65F6\u95F4\u7EBF',
+          label: '打开时间线',
           onClick: () => emitFileAction('open-timeline', node),
         },
         {
@@ -436,12 +432,12 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         },
         {
           id: 'cut-file',
-          label: '鍓垏',
+          label: '剪切',
           onClick: () => emitFileAction('cut-file', node),
         },
         {
           id: 'copy-file',
-          label: '澶嶅埗',
+          label: '复制',
           onClick: () => emitFileAction('copy-file', node),
         },
         {
@@ -451,12 +447,12 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         },
         {
           id: 'rename-file',
-          label: '\u91CD\u547D\u540D',
+          label: '重命名',
           onClick: () => emitFileAction('rename-file', node),
         },
         {
           id: 'delete-file',
-          label: '鍒犻櫎',
+          label: '删除',
           onClick: () => emitFileAction('delete-file', node),
         },
         {
@@ -466,7 +462,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         },
         {
           id: 'index-file',
-          label: '绔嬪嵆绱㈠紩',
+          label: '立即索引',
           disabled: disableIndex,
           onClick: () => emitFileAction('index-file', node),
         },
@@ -479,151 +475,131 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     (node: FileTreeNode): ContextMenuItem[] => {
       const items: ContextMenuItem[] = [];
 
-      // 鏂板缓鏂囦欢...
       if (onNewFile) {
         items.push({
           id: 'new-file-in-folder',
-          label: '鏂板缓鏂囦欢...',
+          label: '新建文件...',
           onClick: () => emitFileAction('new-file-in-folder', node),
         });
       }
 
-      // 鏂板缓鏂囦欢澶?..
       if (onNewFolder) {
         items.push({
           id: 'new-folder-in-folder',
-          label: '鏂板缓鏂囦欢澶?..',
+          label: '新建文件夹...',
           onClick: () => emitFileAction('new-folder-in-folder', node),
         });
       }
 
-      // 鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€
       items.push({
         id: 'reveal-folder-in-explorer',
-        label: '鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€',
+        label: '在资源管理器中打开',
         onClick: () => emitFileAction('reveal-in-explorer', node),
       });
 
-      // 鍒嗗壊绾?
       items.push({
         id: 'folder-menu-separator-1',
         label: '',
         separator: true,
       });
 
-      // 鎶樺彔鏂囦欢澶?
       if (onFolderToggle && node.isExpanded) {
         items.push({
           id: 'collapse-folder',
-          label: '\u6298\u53E0\u6587\u4EF6\u5939',
+          label: '折叠文件夹',
           onClick: () => onFolderToggle(node),
         });
       }
 
-      // 鎶樺彔鎵€鏈?
       if (onCollapseAll) {
         items.push({
           id: 'collapse-all',
-          label: '\u6298\u53E0\u6240\u6709',
+          label: '折叠所有',
           onClick: () => onCollapseAll(),
         });
       }
 
-      // 鍒嗗壊绾?
       items.push({
         id: 'folder-menu-separator-2',
         label: '',
         separator: true,
       });
 
-      // 娣诲姞鍒拌亰澶?
       items.push({
         id: 'add-folder-to-chat',
-        label: '\u6DFB\u52A0\u5230\u804A\u5929',
+        label: '添加到聊天',
         onClick: () => emitFileAction('add-to-chat', node),
       });
 
-      // 娣诲姞鍒版柊鐨勮亰澶?
       items.push({
         id: 'add-folder-to-new-chat',
-        label: '\u6DFB\u52A0\u5230\u65B0\u7684\u804A\u5929',
+        label: '添加到新的聊天',
         onClick: () => emitFileAction('add-to-new-chat', node),
       });
 
-      // 鍒嗗壊绾?
       items.push({
         id: 'folder-menu-separator-3',
         label: '',
         separator: true,
       });
 
-      // 鍦ㄦ枃浠跺す涓煡鎵?..
       items.push({
         id: 'find-in-folder',
-        label: '鍦ㄦ枃浠跺す涓煡鎵?..',
+        label: '在文件夹中查找...',
         onClick: () => emitFileAction('find-in-folder', node),
       });
 
-      // 鍒嗗壊绾?
       items.push({
         id: 'folder-menu-separator-4',
         label: '',
         separator: true,
       });
 
-      // 鍓垏
       items.push({
         id: 'cut-folder',
-        label: '鍓垏',
+        label: '剪切',
         onClick: () => emitFileAction('cut-folder', node),
       });
 
-      // 澶嶅埗
       items.push({
         id: 'copy-folder',
-        label: '澶嶅埗',
+        label: '复制',
         onClick: () => emitFileAction('copy-folder', node),
       });
 
-      // 绮樿创
       items.push({
         id: 'paste-folder',
-        label: '绮樿创',
+        label: '粘贴',
         onClick: () => emitFileAction('paste-folder', node),
       });
 
-      // 鍒嗗壊绾?
       items.push({
         id: 'folder-menu-separator-5',
         label: '',
         separator: true,
       });
 
-      // 閲嶅懡鍚?
       items.push({
         id: 'rename-folder',
-        label: '\u91CD\u547D\u540D',
+        label: '重命名',
         onClick: () => emitFileAction('rename-folder', node),
       });
 
-      // 鍒犻櫎
       items.push({
         id: 'delete-folder',
-        label: '鍒犻櫎',
+        label: '删除',
         onClick: () => emitFileAction('delete-folder', node),
       });
 
-      // 鍒嗗壊绾?
       items.push({
         id: 'folder-menu-separator-6',
         label: '',
         separator: true,
       });
 
-      // 绔嬪嵆绱㈠紩
       items.push({
         id: 'index-folder',
-        label: '绔嬪嵆绱㈠紩',
+        label: '立即索引',
         onClick: () => emitFileAction('index-folder', node),
       });
 
@@ -637,19 +613,19 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     const utilityItems: ContextMenuItem[] = [];
 
     if (onNewFile) {
-      creationItems.push(createMenuItem('new-file', '鏂板缓鏂囦欢', onNewFile));
+      creationItems.push(createMenuItem('new-file', '新建文件', onNewFile));
     }
 
     if (onNewFolder) {
-      creationItems.push(createMenuItem('new-folder', '\u65B0\u5EFA\u6587\u4EF6\u5939', onNewFolder));
+      creationItems.push(createMenuItem('new-folder', '新建文件夹', onNewFolder));
     }
 
     if (onRefresh) {
-      utilityItems.push(createMenuItem('refresh', '鍒锋柊', onRefresh));
+      utilityItems.push(createMenuItem('refresh', '刷新', onRefresh));
     }
 
     if (onCollapseAll) {
-      utilityItems.push(createMenuItem('collapse-all', '\u6298\u53E0\u6240\u6709', onCollapseAll));
+      utilityItems.push(createMenuItem('collapse-all', '折叠所有', onCollapseAll));
     }
 
     const composedItems: ContextMenuItem[] = [...creationItems];
@@ -696,48 +672,39 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
   const buildBlankAreaMenuItems = useCallback(async (): Promise<ContextMenuItem[]> => {
     const items: ContextMenuItem[] = [];
-    
-    // 妫€鏌ュ壀璐存澘鏄惁鏈夋暟鎹?
+
     let hasClipboardData = false;
     try {
       const clipboardText = await navigator.clipboard.readText();
       hasClipboardData = clipboardText.trim().length > 0;
     } catch (error) {
-      // 鍓创鏉胯闂け璐ユ垨娌℃湁鏉冮檺锛岄粯璁や负 false
       hasClipboardData = false;
     }
 
-    // 鏂板缓鏂囦欢...
     if (onNewFile) {
       items.push({
         id: 'new-file',
-        label: '鏂板缓鏂囦欢...',
+        label: '新建文件...',
         onClick: () => {
-          if (onNewFile) {
-            onNewFile();
-          }
+          onNewFile?.();
         },
       });
     }
 
-    // 鏂板缓鏂囦欢澶?..
     if (onNewFolder) {
       items.push({
         id: 'new-folder',
-        label: '鏂板缓鏂囦欢澶?..',
+        label: '新建文件夹...',
         onClick: () => {
-          if (onNewFolder) {
-            onNewFolder();
-          }
+          onNewFolder?.();
         },
       });
     }
 
-    // 鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€
     if (rootPath) {
       items.push({
         id: 'reveal-workspace-in-explorer',
-        label: '鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€',
+        label: '在资源管理器中打开',
         onClick: () => {
           const workspaceNode: FileTreeNode = {
             path: rootPath,
@@ -750,51 +717,42 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       });
     }
 
-    // 鍒嗗壊绾?
     items.push({
       id: 'blank-menu-separator-1',
-        label: '',
-        separator: true,
-      });
+      label: '',
+      separator: true,
+    });
 
-    // 鍒锋柊
     if (onRefresh) {
       items.push({
         id: 'refresh',
-        label: '鍒锋柊',
+        label: '刷新',
         onClick: () => {
-          if (onRefresh) {
-            onRefresh();
-          }
+          onRefresh?.();
         },
       });
     }
 
-    // 鎶樺彔鎵€鏈夋枃浠跺す
     if (onCollapseAll) {
       items.push({
         id: 'collapse-all-folders',
-        label: '鎶樺彔鎵€鏈夋枃浠跺す',
+        label: '折叠所有文件夹',
         onClick: () => {
-          if (onCollapseAll) {
-            onCollapseAll();
-    }
+          onCollapseAll?.();
         },
       });
     }
 
-    // 鍒嗗壊绾?
     items.push({
       id: 'blank-menu-separator-2',
       label: '',
       separator: true,
     });
 
-    // 鍦ㄦ枃浠跺す涓煡鎵?
     if (rootPath) {
       items.push({
         id: 'find-in-workspace',
-        label: '\u5728\u6587\u4EF6\u5939\u4E2D\u67E5\u627E',
+        label: '在文件夹中查找',
         onClick: () => {
           const workspaceNode: FileTreeNode = {
             path: rootPath,
@@ -807,17 +765,15 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       });
     }
 
-    // 鍒嗗壊绾?
     items.push({
       id: 'blank-menu-separator-3',
       label: '',
       separator: true,
     });
 
-    // 绮樿创
     items.push({
       id: 'paste',
-      label: '绮樿创',
+      label: '粘贴',
       disabled: !hasClipboardData,
       onClick: () => {
         if (rootPath && hasClipboardData) {
@@ -832,18 +788,16 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       },
     });
 
-    // 鍒嗗壊绾?
     items.push({
       id: 'blank-menu-separator-4',
       label: '',
       separator: true,
     });
 
-    // 澶嶅埗璺緞
     if (rootPath) {
       items.push({
         id: 'copy-path',
-        label: '澶嶅埗璺緞',
+        label: '复制路径',
         onClick: () => {
           emitFileAction('copy-path', {
             path: rootPath,
@@ -855,11 +809,10 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       });
     }
 
-    // 澶嶅埗鐩稿璺緞
     if (rootPath) {
       items.push({
         id: 'copy-relative-path',
-        label: '澶嶅埗鐩稿璺緞',
+        label: '复制相对路径',
         onClick: () => {
           emitFileAction('copy-relative-path', {
             path: rootPath,

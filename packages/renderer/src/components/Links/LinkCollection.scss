@@ -179,7 +179,6 @@
     font-size: 12px;
     line-height: 1.5;
     word-break: break-word;
-    font-family: var(--ws-editor-font-family, ui-monospace, 'SFMono-Regular', Consolas, monospace);
 
     &.is-source-line {
       color: var(--ws-foreground);

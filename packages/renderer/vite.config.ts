@@ -40,7 +40,17 @@ export default defineConfig({
     dedupe: ['@note-studio/shared', '@note-studio/global-rag', '@note-studio/theme']
   },
   optimizeDeps: {
-    exclude: ['jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events']
+    exclude: [
+      'monaco-editor',
+      '@monaco-editor/react',
+      'jsdom',
+      'fs/promises',
+      'path',
+      'crypto',
+      'child_process',
+      'chokidar',
+      'events'
+    ]
   },
   css: {
     preprocessorOptions: {

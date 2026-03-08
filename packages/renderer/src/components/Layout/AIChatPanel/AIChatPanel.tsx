@@ -2983,6 +2983,35 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     console.log('[AIChatPanel] Added text to chat input');
   }, []);
 
+  useEffect(() => {
+    const handleAddFileContext = (event: Event) => {
+      const customEvent = event as CustomEvent<{ path?: string; name?: string }>;
+      const filePath = customEvent.detail?.path?.trim();
+      if (!filePath) {
+        return;
+      }
+
+      const fileName = customEvent.detail?.name?.trim() || filePath.split(/[\\/]/).pop() || filePath;
+      const referenceText = `@${fileName} (${filePath})`;
+
+      setInput((prevInput) => {
+        if (prevInput.trim()) {
+          return `${prevInput}\n${referenceText}`;
+        }
+        return referenceText;
+      });
+
+      setTimeout(() => {
+        tiptapRef.current?.focus();
+      }, 0);
+    };
+
+    window.addEventListener('ai-chat:add-file-context', handleAddFileContext as EventListener);
+    return () => {
+      window.removeEventListener('ai-chat:add-file-context', handleAddFileContext as EventListener);
+    };
+  }, []);
+
   // 处理插入到内联编辑
   const handleInsertToInlineEdit = useCallback((text: string) => {
     try {

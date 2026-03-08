@@ -169,7 +169,6 @@ export class AIResponseFormatter {
           'font-size': [/^\d+(?:px|em|rem|pt)$/],
           'font-weight': [/^\d{3}$/, /^(?:normal|bold|bolder|lighter)$/],
           'font-style': [/^(?:normal|italic|oblique)$/],
-          'font-family': [/.*/],
           'line-height': [/^\d+(?:\.\d+)?(?:px|em|rem)?$/],
           'text-align': [/^(?:left|right|center|justify)$/],
           'text-decoration': [/^(?:none|underline|overline|line-through)$/],

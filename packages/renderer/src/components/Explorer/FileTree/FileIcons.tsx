@@ -1,6 +1,6 @@
 /**
- * 文件图标映射 - 使用 xicons 图标系统
- * 模仿 VSCode 的文件图标系统
+ * 闁哄倸娲ｅ▎銏ゅ炊閻愵剛鍨奸柡鍕Т閻?- 濞达綀娉曢弫?xicons 闁搞儳鍋撻悥锝囧寲閼姐倗鍩?
+ * 婵☆垪鈧尪闆?VSCode 闁汇劌瀚弸鍐╃鐠虹儤绂堥柡宥呮川闁绱?
  */
 
 import React from 'react';
@@ -9,13 +9,13 @@ import { useIconTheme } from '../../../contexts/IconThemeContext';
 import { iconThemeLoader } from '../../../services/IconThemeLoader';
 
 export interface FileIconConfig {
-  iconName: string; // 图标名称
-  color?: string;   // 图标颜色
+  iconName: string; // 闁搞儳鍋撻悥锝夊触瀹ュ泦?
+  color?: string;   // 闁搞儳鍋撻悥锝嗭紣濠婂棗顥?
 }
 
-// 文件夹图标映射
+// 闁哄倸娲ｅ▎銏″緞閻熺増绂堥柡宥呮处濡惭呬焊?
 export const getFolderIcon = (expanded: boolean, folderName?: string): FileIconConfig => {
-  // 特殊文件夹
+  // 闁绘顫夐悾鈺呭棘閸ワ附顐藉?
   const specialFolders: Record<string, FileIconConfig> = {
     '.git': { iconName: 'git', color: '#f34f29' },
     '.vscode': { iconName: 'settings', color: '#007acc' },
@@ -39,19 +39,19 @@ export const getFolderIcon = (expanded: boolean, folderName?: string): FileIconC
     return specialFolders[folderName];
   }
 
-  // 默认文件夹图标
+  // 濮掓稒顭堥濠氬棘閸ワ附顐藉鍓佹嚀濞存﹢寮?
   return {
     iconName: expanded ? 'folder-open' : 'folder',
     color: '#dcb67a',
   };
 };
 
-// 文件图标映射
+// 闁哄倸娲ｅ▎銏ゅ炊閻愵剛鍨奸柡鍕Т閻?
 export const getFileIcon = (fileName: string): FileIconConfig => {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
   const baseName = fileName.toLowerCase();
 
-  // 特殊文件名映射
+  // 闁绘顫夐悾鈺呭棘閸ワ附顐介柛姘У濡惭呬焊?
   const specialFiles: Record<string, FileIconConfig> = {
     'package.json': { iconName: 'file-json', color: '#8bc34a' },
     'package-lock.json': { iconName: 'lock', color: '#8bc34a' },
@@ -75,7 +75,7 @@ export const getFileIcon = (fileName: string): FileIconConfig => {
     return specialFiles[baseName];
   }
 
-  // 扩展名映射
+  // 闁圭鏅涢惈宥夊触瀹ュ棙衼閻?
   const extensionMap: Record<string, FileIconConfig> = {
     // TypeScript
     'ts': { iconName: 'file-ts', color: '#3178c6' },
@@ -200,7 +200,7 @@ export const getFileIcon = (fileName: string): FileIconConfig => {
 };
 
 /**
- * 文件图标组件
+ * 闁哄倸娲ｅ▎銏ゅ炊閻愵剛鍨肩紓浣稿濞?
  */
 interface FileIconProps {
   fileName?: string;
@@ -223,7 +223,7 @@ export const FileIcon: React.FC<FileIconProps> = ({
   const [iconDef, setIconDef] = React.useState<any>(null);
   const [svgContent, setSvgContent] = React.useState<string | null>(null);
 
-  // 根据当前图标主题获取图标定义
+  // 闁哄秷顫夊畵浣姐亹閹惧啿顤呴柛銉у亾閻栵絾绋夋繝姘兼毌闁兼儳鍢茶ぐ鍥炊閻愵剛鍨奸悗瑙勭煯缁?
   React.useEffect(() => {
     if (!currentIconThemeConfig) {
       setIconDef(null);
@@ -248,25 +248,25 @@ export const FileIcon: React.FC<FileIconProps> = ({
       
       setIconDef(def);
       
-      // 如果有 iconPath，检查文件类型并加载
+      // 濠碘€冲€归悘澶愬嫉?iconPath闁挎稑鏈ˉ鍛村蓟閵夛附鐎ù鐘插鐞氼偊宕圭€ｎ亣瀚欓柛鏃傚Ь濞?
       if (def && def.iconPath) {
         try {
-          // 从路径中提取相对路径（去掉 extensions/ 之前的部分）
+          // 濞寸姴姘﹂惌鎯ь嚗閸曨亣鍘柟缁樺姇瑜板洭鎯勭粙娆惧殸閻犱警鍨扮欢鐐烘晬閸繂绠甸柟?extensions/ 濞戞柨顑呮晶鐘绘儍閸曨垰鍔ラ柛鎺戞４缁?
           let iconPath = def.iconPath;
-          // 如果路径不是以 extensions/ 开头，尝试修复
+          // 濠碘€冲€归悘澶屾崉椤栨氨绐炲☉鎾崇У濡插憡绂?extensions/ 鐎殿喒鍋撳鎯版彧缁辨繄浜稿┑濠勬Ц濞ｅ浂鍠栭ˇ?
           if (!iconPath.startsWith('extensions/')) {
-            // 路径可能是相对于某个基础路径的，尝试查找 extensions/
+            // 閻犱警鍨扮欢鐐哄矗椤栨繂鍘撮柡鍕靛灣濞村鈧敻鈧稓鑹鹃柡灞惧姃闁叉粓宕洪搹璇℃敤閻犱警鍨扮欢鐐烘儍閸曞墎绀夐悘蹇旂箚閻︻垶寮婚妷锕€顥?extensions/
             const extensionsIndex = iconPath.indexOf('extensions/');
             if (extensionsIndex >= 0) {
               iconPath = iconPath.substring(extensionsIndex);
             }
           }
           
-          // 判断文件类型
+          // 闁告帇鍊栭弻鍥棘閸ワ附顐界紒顐ヮ嚙閻?
           const fileExt = iconPath.split('.').pop()?.toLowerCase();
           
           if (fileExt === 'svg') {
-            // SVG 文件：读取内容后内联渲染
+            // SVG 闁哄倸娲ｅ▎銏ゆ晬濮樻剚鍤㈤柛娆愮墪閸炲鈧湱鎳撻幃妤呭礃閸涢绮撴繛鎾冲级閻?
             const content = await window.electronAPI?.fs?.readFile?.(iconPath, 'utf-8');
             if (content) {
               setSvgContent(content);
@@ -274,7 +274,7 @@ export const FileIcon: React.FC<FileIconProps> = ({
               setSvgContent(null);
             }
           } else if (fileExt === 'png' || fileExt === 'jpg' || fileExt === 'jpeg' || fileExt === 'gif') {
-            // 图片文件：读取为 base64 并转换为 data URL
+            // 闁搞儱澧芥晶鏍棘閸ワ附顐介柨娑欎亢椤曚即宕ｉ弽锕佺 base64 妤犵偞鍎煎ù鍡涘箲椤叀绀?data URL
             const buffer = await window.electronAPI?.fs?.readFile?.(iconPath, 'base64');
             if (buffer) {
               const mimeType = fileExt === 'png' ? 'image/png' : 
@@ -286,12 +286,12 @@ export const FileIcon: React.FC<FileIconProps> = ({
               setSvgContent(null);
             }
           } else {
-            // 其他格式暂不支持
-            console.warn('[FileIcon] 不支持的图标文件格式:', fileExt);
+            // 闁稿繑婀圭划顒勫冀閻撳海纭€闁哄棗鍊风粭澶愬绩椤栨稑鐦?
+            console.warn('[FileIcon] 濞戞挸绉甸弫顕€骞愭担鐑樼暠闁搞儳鍋撻悥锝夊棘閸ワ附顐介柡宥囧帶缁?', fileExt);
             setSvgContent(null);
           }
         } catch (error) {
-          console.error('[FileIcon] 加载图标失败:', def.iconPath, error);
+          console.error('[FileIcon] 闁告梻濮惧ù鍥炊閻愵剛鍨煎鎯扮簿鐟?', def.iconPath, error);
           setSvgContent(null);
         }
       } else {
@@ -302,24 +302,24 @@ export const FileIcon: React.FC<FileIconProps> = ({
     loadIcon();
   }, [currentIconThemeConfig, fileName, folderName, isFolder, isExpanded]);
 
-  // 监听图标主题变化
+  // 闁烩晜鍨甸幆澶愬炊閻愵剛鍨煎☉鎾愁煼椤ｄ粙宕ｅΟ鍝勵嚙
   React.useEffect(() => {
     const handleIconThemeChange = () => {
-      // 触发重新计算图标
-      console.log('[FileIcon] 图标主题已更改，重新加载图标');
+      // 閻熸瑱绠戣ぐ鍌炴煂瀹ュ棙鐓€閻犱緤绱曢悾濠氬炊閻愵剛鍨?
+      console.log('[FileIcon] 图标主题已变化，重新加载图标');
     };
 
     window.addEventListener('iconThemeChanged', handleIconThemeChange);
     return () => window.removeEventListener('iconThemeChanged', handleIconThemeChange);
   }, []);
 
-  // 如果有图标主题配置
+  // 濠碘€冲€归悘澶愬嫉婢跺﹥绂堥柡宥呮矗鐎靛本锛愬鈧崢銈囩磾?
   if (iconDef) {
-    // 基于图像的图标（iconPath）- 使用加载的内容
+    // 闁糕晞妗ㄧ花顒勫炊閹冨壖闁汇劌瀚ù姗€寮介崶椋庣iconPath闁? 濞达綀娉曢弫銈夊礉閻樼儤绁伴柣銊ュ閸炲鈧?
     if (iconDef.iconPath && svgContent) {
-      // 判断是 SVG 内容还是 data URL
+      // 闁告帇鍊栭弻鍥及?SVG 闁告劕鎳庨鎰交濡粯笑 data URL
       if (svgContent.startsWith('data:')) {
-        // 图片文件（PNG/JPG 等）- 使用 data URL
+        // 闁搞儱澧芥晶鏍棘閸ワ附顐介柨娑樻恭NG/JPG 缂佹稑顧€缁? 濞达綀娉曢弫?data URL
         return (
           <img
             src={svgContent}
@@ -334,8 +334,8 @@ export const FileIcon: React.FC<FileIconProps> = ({
           />
         );
       } else {
-        // SVG 文件 - 内联渲染
-        // 修改 SVG 以添加正确的尺寸
+        // SVG 闁哄倸娲ｅ▎?- 闁告劕鎳撴禒鍫濄€掗崣澶屽帬
+        // 濞ｅ浂鍠楅弫?SVG 濞寸姰鍎查崸濠囧礉閻樻剚鍔€缁绢収鍠氬▓鎴犱焊閸濆嫷鍤?
         const modifiedSvg = svgContent.replace(
           /<svg/,
           `<svg width="${size}" height="${size}" style="display: block;"`
@@ -357,75 +357,10 @@ export const FileIcon: React.FC<FileIconProps> = ({
         );
       }
     }
-    
-    // 基于字体的图标（fontCharacter）
-    if (iconDef.fontCharacter) {
-      const fontFamily = currentIconThemeConfig?.fonts?.[0]?.id || 'monokai-pro-icons';
-      // size 是像素值，fontSize 也应该是像素值
-      const fontSize = currentIconThemeConfig?.fonts?.[0]?.size 
-        ? (typeof currentIconThemeConfig.fonts[0].size === 'string' 
-           ? currentIconThemeConfig.fonts[0].size 
-           : `${currentIconThemeConfig.fonts[0].size}px`)
-        : `${size}px`;
-      
-      // 将 \EAXX 格式的字符串转换为实际的 Unicode 字符
-      // 例如: "\\EA14" -> "\uEA14" 的实际字符
-      let character = iconDef.fontCharacter;
-      
-      // 检查是否是转义序列格式（例如 "\EA14"）
-      if (character.startsWith('\\')) {
-        // 提取十六进制代码点
-        let hexCode = '';
-        if (character.startsWith('\\u') || character.startsWith('\\U')) {
-          // \uEAXX 或 \UEAXX 格式
-          hexCode = character.substring(2);
-        } else if (character.startsWith('\\E')) {
-          // \EAXX 格式 (常见于 VS Code 图标主题)
-          hexCode = character.substring(1);
-        }
-        
-        if (hexCode) {
-          // 将十六进制转换为实际的 Unicode 字符
-          const codePoint = parseInt(hexCode, 16);
-          if (!isNaN(codePoint)) {
-            character = String.fromCharCode(codePoint);
-          }
-        }
-      }
-      
-      console.log('[FileIcon] 渲染字体图标:', {
-        fileName: fileName || folderName,
-        fontFamily,
-        fontSize,
-        fontCharacter: iconDef.fontCharacter,
-        convertedChar: character,
-        charCode: character.charCodeAt(0).toString(16),
-        fontColor: iconDef.fontColor,
-        fontsLoaded: Array.from(document.fonts).map(f => f.family)
-      });
-      
-      return (
-        <span
-          className={className}
-          style={{
-            fontFamily,
-            fontSize,
-            color: iconDef.fontColor || 'var(--vscode-foreground)',
-            width: size,
-            height: size,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            lineHeight: 1,
-          }}
-        >
-          {character}
-        </span>
-      );
-    }
   }
 
-  // 否则使用默认的内置图标
+
+  // 闁告熬绠戦崹顖涙媴鐠恒劍鏆忓娑欘焾椤撳鎯冮崟顐㈡暥缂傚喚鍠栧ù姗€寮?
   const iconConfig = isFolder
     ? getFolderIcon(isExpanded, folderName)
     : getFileIcon(fileName || '');

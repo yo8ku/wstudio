@@ -51,14 +51,6 @@ export const SettingsEditor: React.FC<SettingsEditorProps> = ({ onClose }) => {
       default: 14,
     },
     {
-      key: 'editor.fontFamily',
-      title: 'Font Family',
-      description: '控制字体系列',
-      type: 'string',
-      category: '编辑器',
-      default: 'Consolas, "Courier New", monospace',
-    },
-    {
       key: 'editor.lineHeight',
       title: 'Line Height',
       description: '控制行高',

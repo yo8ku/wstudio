@@ -25,7 +25,6 @@
     border-radius: 4px;
     resize: none;
     outline: none;
-    font-family: inherit;
     background-color: var(--ws-input-background);
     color: var(--ws-input-foreground);
     border: 1px solid var(--ws-input-border);
@@ -138,7 +137,6 @@
 
   &__file-status {
     width: 20px;
-    font-family: monospace;
     font-size: 11px;
     font-weight: 600;
     margin-right: 8px;

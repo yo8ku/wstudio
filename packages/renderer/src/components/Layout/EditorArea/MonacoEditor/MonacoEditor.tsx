@@ -93,6 +93,53 @@ interface MonacoEditorProps {
   filePath?: string;  // 褰撳墠鏂囦欢璺緞
 }
 
+const BOOTSTRAP_MONACO_THEME_ID = 'note-studio-editor-theme-bootstrap';
+
+const sanitizeMonacoThemeId = (rawId: string | undefined, fallback = 'note-studio-editor-theme'): string => {
+  const normalized = (rawId || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return normalized || fallback;
+};
+
+const resolveThemeMode = (): 'light' | 'dark' => {
+  if (typeof document === 'undefined') {
+    return 'dark';
+  }
+  const mode =
+    document.documentElement.getAttribute('data-theme-mode') ||
+    document.body.getAttribute('data-theme-type');
+  return mode === 'light' ? 'light' : 'dark';
+};
+
+const readCssVariable = (name: string): string => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+};
+
+const applyBootstrapMonacoTheme = (monacoInstance: Monaco) => {
+  const mode = resolveThemeMode();
+  const isLight = mode === 'light';
+  const background = readCssVariable('--ws-editor-background') || (isLight ? '#ffffff' : '#1e1e1e');
+  const foreground = readCssVariable('--ws-editor-foreground') || (isLight ? '#1f1f1f' : '#d4d4d4');
+
+  monacoInstance.editor.defineTheme(BOOTSTRAP_MONACO_THEME_ID, {
+    base: isLight ? 'vs' : 'vs-dark',
+    inherit: true,
+    rules: [],
+    colors: {
+      'editor.background': background,
+      'editor.foreground': foreground,
+    },
+  });
+  monacoInstance.editor.setTheme(BOOTSTRAP_MONACO_THEME_ID);
+};
+
 export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   value,
   language = 'markdown',
@@ -101,7 +148,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   tabTitle,
   filePath
 }) => {
-  const [currentTheme, setCurrentTheme] = useState<string>('__note-studio-editor-theme__');
+  const [currentTheme, setCurrentTheme] = useState<string>(BOOTSTRAP_MONACO_THEME_ID);
   const [monacoInstance, setMonacoInstance] = useState<Monaco | null>(null);
   const [pendingTheme, setPendingTheme] = useState<any>(null);
   const [isEditorReady, setIsEditorReady] = useState<boolean>(false);
@@ -1901,6 +1948,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   // Monaco 缂栬緫鍣ㄦ寕杞藉墠 - 閰嶇疆璇█鏀寔
   const handleEditorWillMount = (monaco: Monaco) => {
     console.log('[MonacoEditor] 缂栬緫鍣ㄦ寕杞藉墠閰嶇疆');
+    applyBootstrapMonacoTheme(monaco);
     
     // 閰嶇疆 JSON/JSONC 璇█鐨勮瘖鏂€夐」锛堝惎鐢ㄥ疄鏃惰娉曢敊璇彁绀猴級
     // 瀹氫箟鐗囨锟?JSON Schema锛堢敤浜庨獙璇佺墖娈垫牸寮忥級
@@ -3033,7 +3081,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         });
         
         // 瀹氫箟骞舵敞鍐屼富棰樺埌 Monaco Editor
-        const themeId = `custom-${themeData.id}`;
+        const themeId = `custom-${sanitizeMonacoThemeId(themeData?.id)}`;
         
         // 杈呭姪鍑芥暟锛氳鑼冨寲棰滆壊鍊硷紙淇濈暀 # 鍙凤級
         const normalizeColorWithHash = (color: string | undefined, fallback?: string): string => {
@@ -3851,7 +3899,6 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         theme={currentTheme}
         options={{
           fontSize: 14,
-          fontFamily: "'Cascadia Mono', '寰蒋闆呴粦', 'MonoLisa', 'Consolas', monospace",
           fontLigatures: true,
           lineNumbers: 'on',
           glyphMargin: true, // 鍚敤 glyph margin锛屼緵 AIRewriteWidget 浣跨敤
@@ -3860,12 +3907,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             enabled: false
           },
           scrollbar: {
-            horizontal: 'hidden',
+            horizontal: 'auto',
             vertical: 'auto',
             verticalScrollbarSize: 14,
           },
           scrollBeyondLastLine: false,
           wordWrap: 'on',
+          wrappingStrategy: 'advanced',
+          wrappingIndent: 'same',
           automaticLayout: true,
           padding: {
             top: 16,

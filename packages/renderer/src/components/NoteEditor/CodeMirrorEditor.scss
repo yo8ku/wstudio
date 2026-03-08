@@ -204,7 +204,6 @@
     box-sizing: border-box;
     max-width: 100%;
     min-width: 0;
-    font-family: inherit; // 覆盖 CodeMirror 默认的 monospace 字体
   }
 
   // 让 gutter 和内容一起居中
@@ -236,11 +235,11 @@
   .cm-content {
     max-width: 100%;
     min-width: 0;
+    font-family: none;
   }
 
   .cm-line {
     padding: 0 4px;
-    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', '微软雅黑');
     position: relative; // 为子折叠图标绝对定位提供上下文
     line-height: 1.6; // 增加行高，让行之间有更多间距
     max-width: 100%;
@@ -329,7 +328,6 @@
   }
 
   .cm-inline-code {
-    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
     color: var(--ws-textPreformat-foreground, var(--ws-foreground));
     font-size: 0.9em;
   }
@@ -811,7 +809,6 @@
   // 代码块标记
   .cm-monospace {
     color: var(--ws-textPreformat-foreground, var(--ws-foreground));
-    font-family: var(--ws-font-mono, 'Consolas', 'Monaco', monospace);
   }
 
   // 分隔线

@@ -7,7 +7,7 @@
     "version": "1.0.0",
     "colors": {
         "activityBar.activeFocusBorder": "#ce4770",
-        "activityBar.background": "#ded5d0",
+        "activityBar.background": "#f8efe7",
         "activityBar.border": "#ded5d0",
         "activityBar.foreground": "#72696d",
         "activityBar.inactiveForeground": "#a59c9c",

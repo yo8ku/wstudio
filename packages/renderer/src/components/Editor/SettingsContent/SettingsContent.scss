@@ -161,7 +161,6 @@
     .setting-key {
       display: inline-block;
       font-size: 11px;
-      font-family: var(--ws-editor-font-family, monospace);
       padding: 2px 6px;
       border-radius: 4px;
       background-color: var(--ws-text-code-block-background);
@@ -284,7 +283,6 @@
     .extension-id {
       display: inline-block;
       font-size: 11px;
-      font-family: var(--ws-editor-font-family, monospace);
       padding: 2px 6px;
       border-radius: 4px;
       background-color: var(--ws-text-code-block-background);

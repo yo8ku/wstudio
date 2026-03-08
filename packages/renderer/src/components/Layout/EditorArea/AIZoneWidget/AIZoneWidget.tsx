@@ -5109,7 +5109,6 @@ export class AIZoneWidget {
       div.style.wordWrap = 'break-word';
       div.style.font = style.font;
       div.style.fontSize = style.fontSize;
-      div.style.fontFamily = style.fontFamily;
       div.style.fontWeight = style.fontWeight;
       div.style.fontStyle = style.fontStyle;
       div.style.letterSpacing = style.letterSpacing;

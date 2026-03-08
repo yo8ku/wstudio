@@ -180,11 +180,6 @@
     "configuration": {
       "title": "Markdown 编辑器",
       "properties": {
-        "mdEditor.preview.fontFamily": {
-          "type": "string",
-          "default":"\"Cascadia Mono\", 微软雅黑, MonoLisa, Consolas, Consolas, \"Courier New\", monospace",
-          "description": "预览窗口的字体"
-        },
         "mdEditor.preview.fontSize": {
           "type": "number",
           "default": 14,

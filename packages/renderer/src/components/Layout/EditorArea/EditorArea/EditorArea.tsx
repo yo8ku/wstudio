@@ -49,6 +49,7 @@ export interface EditorTab {
   type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat';
   isPreview?: boolean;  // 鏂板锛氭槸鍚︿负棰勮妯″紡锛堝崟鍑绘墦寮€锛?
   sourceTabId?: string;  // 鏂板锛氶瑙堟爣绛鹃〉鍏宠仈鐨勬簮鏂囦欢鏍囩椤礗D
+  splitSourceTabId?: string;  // 分屏标签关联的源文件标签页 ID
   knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 鐭ヨ瘑搴撴暟鎹紙鐢ㄤ簬 knowledge 绫诲瀷锛?
   configId?: string;  // 鏂板锛欰I閰嶇疆ID锛堢敤浜?ai-config 绫诲瀷锛屼紭鍏堜娇鐢ㄦ瀛楁锛?
   configIndex?: number;  // 宸插簾寮冿細AI閰嶇疆绱㈠紩锛堢敤浜?ai-config 绫诲瀷锛屼繚鐣欑敤浜庡悜鍚庡吋瀹癸級
@@ -76,6 +77,12 @@ interface EditorAreaProps {
 }
 
 type EditorTabsChangeReason = 'open' | 'close' | 'switch' | 'update';
+type SplitDirection = 'horizontal' | 'vertical';
+type EditorPaneId = 'left-top' | 'left-bottom' | 'right-top' | 'right-bottom';
+type PaneDropPlacement = 'full' | 'left' | 'right' | 'top' | 'bottom';
+type PaneMoveDirection = 'left' | 'right' | 'up' | 'down';
+
+const TAB_DRAG_MIME = 'application/x-note-studio-tab';
 
 interface EditorTabsStateItem {
   id: string;
@@ -167,6 +174,8 @@ const getMostRecentTabId = (history: string[], currentTabs: EditorTab[]): string
   return currentTabs[0]?.id ?? null;
 };
 
+const buildExtraSplitTabId = (paneId: string): string => `extra-split-${paneId}`;
+
 export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   console.log('========================================');
   console.log('[EditorArea 组件] 组件函数被调用（渲染）');
@@ -179,27 +188,50 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   // 鍙充晶缂栬緫鍣ㄧ粍锛堢敤浜庡垎鍓茶鍥撅級
   const [rightTabs, setRightTabs] = useState<EditorTab[]>([]);
   const [rightActiveTabId, setRightActiveTabId] = useState<string | null>(null);
+  const [leftBottomTabs, setLeftBottomTabs] = useState<EditorTab[]>([]);
+  const [leftBottomActiveTabId, setLeftBottomActiveTabId] = useState<string | null>(null);
+  const [rightBottomTabs, setRightBottomTabs] = useState<EditorTab[]>([]);
+  const [rightBottomActiveTabId, setRightBottomActiveTabId] = useState<string | null>(null);
+  const [extraRightSplitPanes, setExtraRightSplitPanes] = useState<Array<{ id: string; sourcePath: string }>>([]);
+  const [focusedPaneId, setFocusedPaneId] = useState<EditorPaneId>('left-top');
+  const [draggingTab, setDraggingTab] = useState<{ tabId: string; sourcePaneId: EditorPaneId } | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<{ paneId: EditorPaneId; placement: PaneDropPlacement } | null>(null);
   
   // 鍒嗗壊瑙嗗浘鏄惁婵€娲?
   const [isSplitView, setIsSplitView] = useState(false);
+  const [leftVerticalSplit, setLeftVerticalSplit] = useState(false);
+  const [rightVerticalSplit, setRightVerticalSplit] = useState(false);
   
   // 宸︿晶缂栬緫鍣ㄧ粍瀹藉害锛堝儚绱狅級
   const [leftWidth, setLeftWidth] = useState<number | null>(null);
+  const [leftTopHeight, setLeftTopHeight] = useState<number | null>(null);
+  const [rightTopHeight, setRightTopHeight] = useState<number | null>(null);
+  const [rightColumnWidths, setRightColumnWidths] = useState<Record<string, number>>({});
+  const [hasCustomizedHorizontalSplit, setHasCustomizedHorizontalSplit] = useState(false);
 
   // 璺熻釜鍝簺閰嶇疆鏍囩椤垫湁鏈繚瀛樼殑鏇存敼
   const [unsavedConfigTabs, setUnsavedConfigTabs] = useState<Set<string>>(new Set());
 
   // 缂栬緫鍣ㄧ被鍨嬬姸鎬侊細'monaco' | 'codemirror'
   const [editorType, setEditorType] = useState<'monaco' | 'codemirror'>('monaco');
+  const editorGroupsRef = useRef<HTMLDivElement | null>(null);
   const previousTabsLengthRef = useRef<number>(0);
   const previousActiveTabIdRef = useRef<string | null>(null);
   const tabChangeReasonOverrideRef = useRef<EditorTabsChangeReason | null>(null);
   const activeTabIdRef = useRef<string | null>(null);
   const rightActiveTabIdRef = useRef<string | null>(null);
+  const leftBottomActiveTabIdRef = useRef<string | null>(null);
+  const rightBottomActiveTabIdRef = useRef<string | null>(null);
+  const focusedPaneIdRef = useRef<EditorPaneId>('left-top');
   const tabsRef = useRef<EditorTab[]>([]);
   const rightTabsRef = useRef<EditorTab[]>([]);
+  const leftBottomTabsRef = useRef<EditorTab[]>([]);
+  const rightBottomTabsRef = useRef<EditorTab[]>([]);
   const tabActivationHistoryRef = useRef<string[]>([]);
   const rightTabActivationHistoryRef = useRef<string[]>([]);
+  const leftBottomTabActivationHistoryRef = useRef<string[]>([]);
+  const rightBottomTabActivationHistoryRef = useRef<string[]>([]);
+  const previousHorizontalSplitStructureKeyRef = useRef<string | null>(null);
   const setCurrentNote = useNoteStore(state => state.setCurrentNote);
   const resetLinkState = useLinkStore(state => state.reset);
 
@@ -254,6 +286,34 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   }, [rightActiveTabId]);
 
   useEffect(() => {
+    leftBottomActiveTabIdRef.current = leftBottomActiveTabId;
+  }, [leftBottomActiveTabId]);
+
+  useEffect(() => {
+    if (!leftBottomActiveTabId) return;
+    leftBottomTabActivationHistoryRef.current = pushTabIdToHistory(
+      leftBottomTabActivationHistoryRef.current,
+      leftBottomActiveTabId
+    );
+  }, [leftBottomActiveTabId]);
+
+  useEffect(() => {
+    rightBottomActiveTabIdRef.current = rightBottomActiveTabId;
+  }, [rightBottomActiveTabId]);
+
+  useEffect(() => {
+    if (!rightBottomActiveTabId) return;
+    rightBottomTabActivationHistoryRef.current = pushTabIdToHistory(
+      rightBottomTabActivationHistoryRef.current,
+      rightBottomActiveTabId
+    );
+  }, [rightBottomActiveTabId]);
+
+  useEffect(() => {
+    focusedPaneIdRef.current = focusedPaneId;
+  }, [focusedPaneId]);
+
+  useEffect(() => {
     tabsRef.current = tabs;
     const currentTabIds = new Set(tabs.map(tab => tab.id));
     tabActivationHistoryRef.current = tabActivationHistoryRef.current.filter(id => currentTabIds.has(id));
@@ -264,6 +324,382 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     const currentTabIds = new Set(rightTabs.map(tab => tab.id));
     rightTabActivationHistoryRef.current = rightTabActivationHistoryRef.current.filter(id => currentTabIds.has(id));
   }, [rightTabs]);
+
+  useEffect(() => {
+    leftBottomTabsRef.current = leftBottomTabs;
+    const currentTabIds = new Set(leftBottomTabs.map(tab => tab.id));
+    leftBottomTabActivationHistoryRef.current = leftBottomTabActivationHistoryRef.current.filter(id => currentTabIds.has(id));
+  }, [leftBottomTabs]);
+
+  useEffect(() => {
+    rightBottomTabsRef.current = rightBottomTabs;
+    const currentTabIds = new Set(rightBottomTabs.map(tab => tab.id));
+    rightBottomTabActivationHistoryRef.current = rightBottomTabActivationHistoryRef.current.filter(id => currentTabIds.has(id));
+  }, [rightBottomTabs]);
+
+  useEffect(() => {
+    if (rightTabs.length === 0 && rightBottomTabs.length === 0 && extraRightSplitPanes.length === 0) {
+      setIsSplitView(false);
+      setRightVerticalSplit(false);
+      setRightActiveTabId(null);
+      setRightBottomActiveTabId(null);
+      setLeftWidth(null);
+      setRightColumnWidths({});
+      setHasCustomizedHorizontalSplit(false);
+    }
+  }, [rightTabs.length, rightBottomTabs.length, extraRightSplitPanes.length]);
+
+  useEffect(() => {
+    if (leftBottomTabs.length === 0) {
+      setLeftVerticalSplit(false);
+      setLeftBottomActiveTabId(null);
+      setLeftTopHeight(null);
+    }
+  }, [leftBottomTabs.length]);
+
+  useEffect(() => {
+    if (rightBottomTabs.length === 0) {
+      setRightVerticalSplit(false);
+      setRightBottomActiveTabId(null);
+      setRightTopHeight(null);
+    }
+  }, [rightBottomTabs.length]);
+
+  useEffect(() => {
+    const openFilePaths = new Set(
+      [...tabs, ...leftBottomTabs, ...rightTabs, ...rightBottomTabs]
+        .filter(tab => tab.type === 'file' && !!tab.path)
+        .map(tab => tab.path)
+    );
+
+    setExtraRightSplitPanes(prev => {
+      const next = prev.filter(pane => openFilePaths.has(pane.sourcePath));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [tabs, leftBottomTabs, rightTabs, rightBottomTabs]);
+
+  useEffect(() => {
+    const validColumnIds = new Set(['right-main', ...extraRightSplitPanes.map(pane => pane.id)]);
+    setRightColumnWidths(prev => {
+      let changed = false;
+      const next: Record<string, number> = {};
+      Object.entries(prev).forEach(([key, value]) => {
+        if (validColumnIds.has(key)) {
+          next[key] = value;
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [extraRightSplitPanes]);
+
+  useEffect(() => {
+    // 仅在存在分屏状态时才尝试自动收敛，避免对普通单标签场景造成干扰
+    if (!isSplitView && !leftVerticalSplit && !rightVerticalSplit && extraRightSplitPanes.length === 0) {
+      return;
+    }
+
+    const paneSnapshots: Array<{ paneId: EditorPaneId; tabs: EditorTab[] }> = [
+      { paneId: 'left-top', tabs },
+      { paneId: 'left-bottom', tabs: leftBottomTabs },
+      { paneId: 'right-top', tabs: rightTabs },
+      { paneId: 'right-bottom', tabs: rightBottomTabs },
+    ];
+    const allTabs = paneSnapshots.flatMap(pane => pane.tabs);
+    if (allTabs.length !== 1) {
+      return;
+    }
+
+    const remainingPane = paneSnapshots.find(pane => pane.tabs.length > 0);
+    const remainingTab = remainingPane?.tabs[0];
+    if (!remainingPane || !remainingTab) {
+      return;
+    }
+
+    if (remainingPane.paneId !== 'left-top') {
+      setTabs([remainingTab]);
+      setActiveTabId(remainingTab.id);
+      tabActivationHistoryRef.current = [remainingTab.id];
+    } else if (activeTabId !== remainingTab.id) {
+      setActiveTabId(remainingTab.id);
+    }
+
+    if (leftBottomTabs.length > 0) {
+      setLeftBottomTabs([]);
+    }
+    if (rightTabs.length > 0) {
+      setRightTabs([]);
+    }
+    if (rightBottomTabs.length > 0) {
+      setRightBottomTabs([]);
+    }
+    setLeftBottomActiveTabId(null);
+    setRightActiveTabId(null);
+    setRightBottomActiveTabId(null);
+    leftBottomTabActivationHistoryRef.current = [];
+    rightTabActivationHistoryRef.current = [];
+    rightBottomTabActivationHistoryRef.current = [];
+
+    if (extraRightSplitPanes.length > 0) {
+      setExtraRightSplitPanes([]);
+    }
+    setIsSplitView(false);
+    setLeftVerticalSplit(false);
+    setRightVerticalSplit(false);
+    setLeftWidth(null);
+    setLeftTopHeight(null);
+    setRightTopHeight(null);
+    setRightColumnWidths({});
+    setHasCustomizedHorizontalSplit(false);
+    setFocusedPaneId('left-top');
+  }, [
+    tabs,
+    activeTabId,
+    leftBottomTabs,
+    rightTabs,
+    rightBottomTabs,
+    isSplitView,
+    leftVerticalSplit,
+    rightVerticalSplit,
+    extraRightSplitPanes,
+  ]);
+
+  const getPaneTabs = useCallback((paneId: EditorPaneId): EditorTab[] => {
+    switch (paneId) {
+      case 'left-top':
+        return tabs;
+      case 'left-bottom':
+        return leftBottomTabs;
+      case 'right-top':
+        return rightTabs;
+      case 'right-bottom':
+        return rightBottomTabs;
+      default:
+        return [];
+    }
+  }, [tabs, leftBottomTabs, rightTabs, rightBottomTabs]);
+
+  const getPaneActiveTabId = useCallback((paneId: EditorPaneId): string | null => {
+    switch (paneId) {
+      case 'left-top':
+        return activeTabId;
+      case 'left-bottom':
+        return leftBottomActiveTabId;
+      case 'right-top':
+        return rightActiveTabId;
+      case 'right-bottom':
+        return rightBottomActiveTabId;
+      default:
+        return null;
+    }
+  }, [activeTabId, leftBottomActiveTabId, rightActiveTabId, rightBottomActiveTabId]);
+
+  const setPaneActiveTabId = useCallback((paneId: EditorPaneId, tabId: string | null) => {
+    if (paneId === 'left-top') {
+      setActiveTabId(tabId);
+      return;
+    }
+    if (paneId === 'left-bottom') {
+      setLeftBottomActiveTabId(tabId);
+      return;
+    }
+    if (paneId === 'right-top') {
+      setRightActiveTabId(tabId);
+      return;
+    }
+    setRightBottomActiveTabId(tabId);
+  }, []);
+
+  const setPaneTabs = useCallback((paneId: EditorPaneId, updater: (prev: EditorTab[]) => EditorTab[]) => {
+    if (paneId === 'left-top') {
+      setTabs(updater);
+      return;
+    }
+    if (paneId === 'left-bottom') {
+      setLeftBottomTabs(updater);
+      return;
+    }
+    if (paneId === 'right-top') {
+      setRightTabs(updater);
+      return;
+    }
+    setRightBottomTabs(updater);
+  }, []);
+
+  const getPaneHistoryRef = useCallback((paneId: EditorPaneId) => {
+    if (paneId === 'left-top') {
+      return tabActivationHistoryRef;
+    }
+    if (paneId === 'left-bottom') {
+      return leftBottomTabActivationHistoryRef;
+    }
+    if (paneId === 'right-top') {
+      return rightTabActivationHistoryRef;
+    }
+    return rightBottomTabActivationHistoryRef;
+  }, []);
+
+  const updateTabInAllPanes = useCallback((tabId: string, updater: (tab: EditorTab) => EditorTab) => {
+    const allTabs = [
+      ...tabsRef.current,
+      ...leftBottomTabsRef.current,
+      ...rightTabsRef.current,
+      ...rightBottomTabsRef.current,
+    ];
+    const sourceTab = allTabs.find(tab => tab.id === tabId) || null;
+    const syncPath = sourceTab?.type === 'file' ? sourceTab.path : null;
+
+    const shouldUpdate = (tab: EditorTab): boolean => {
+      if (tab.id === tabId) {
+        return true;
+      }
+      return !!syncPath && tab.type === 'file' && tab.path === syncPath;
+    };
+
+    setTabs(prev => prev.map(tab => shouldUpdate(tab) ? updater(tab) : tab));
+    setLeftBottomTabs(prev => prev.map(tab => shouldUpdate(tab) ? updater(tab) : tab));
+    setRightTabs(prev => prev.map(tab => shouldUpdate(tab) ? updater(tab) : tab));
+    setRightBottomTabs(prev => prev.map(tab => shouldUpdate(tab) ? updater(tab) : tab));
+  }, []);
+
+  const findPaneByTabId = useCallback((tabId: string): { paneId: EditorPaneId; tab: EditorTab } | null => {
+    const paneOrder: Array<{ paneId: EditorPaneId; tabs: EditorTab[] }> = [
+      { paneId: 'left-top', tabs },
+      { paneId: 'left-bottom', tabs: leftBottomTabs },
+      { paneId: 'right-top', tabs: rightTabs },
+      { paneId: 'right-bottom', tabs: rightBottomTabs },
+    ];
+
+    for (const pane of paneOrder) {
+      const found = pane.tabs.find(tab => tab.id === tabId);
+      if (found) {
+        return { paneId: pane.paneId, tab: found };
+      }
+    }
+
+    return null;
+  }, [tabs, leftBottomTabs, rightTabs, rightBottomTabs]);
+
+  const findPaneByPath = useCallback((path: string, type: EditorTab['type']): { paneId: EditorPaneId; tab: EditorTab } | null => {
+    const paneOrder: Array<{ paneId: EditorPaneId; tabs: EditorTab[] }> = [
+      { paneId: 'left-top', tabs },
+      { paneId: 'left-bottom', tabs: leftBottomTabs },
+      { paneId: 'right-top', tabs: rightTabs },
+      { paneId: 'right-bottom', tabs: rightBottomTabs },
+    ];
+
+    for (const pane of paneOrder) {
+      const found = pane.tabs.find(tab => tab.path === path && (tab.type || 'file') === type);
+      if (found) {
+        return { paneId: pane.paneId, tab: found };
+      }
+    }
+
+    return null;
+  }, [tabs, leftBottomTabs, rightTabs, rightBottomTabs]);
+
+  const removeTabFromPane = useCallback((paneId: EditorPaneId, tabId: string) => {
+    setPaneTabs(paneId, prev => prev.filter(tab => tab.id !== tabId));
+
+    const historyRef = paneId === 'left-top'
+      ? tabActivationHistoryRef
+      : paneId === 'left-bottom'
+        ? leftBottomTabActivationHistoryRef
+        : paneId === 'right-top'
+          ? rightTabActivationHistoryRef
+          : rightBottomTabActivationHistoryRef;
+    historyRef.current = removeTabIdFromHistory(historyRef.current, tabId);
+  }, [setPaneTabs]);
+
+  const pickNextActiveForPane = useCallback((paneId: EditorPaneId, nextTabs: EditorTab[]) => {
+    const history = paneId === 'left-top'
+      ? tabActivationHistoryRef.current
+      : paneId === 'left-bottom'
+        ? leftBottomTabActivationHistoryRef.current
+        : paneId === 'right-top'
+          ? rightTabActivationHistoryRef.current
+          : rightBottomTabActivationHistoryRef.current;
+
+    const nextActive = getMostRecentTabId(history, nextTabs);
+    setPaneActiveTabId(paneId, nextActive);
+  }, [setPaneActiveTabId]);
+
+  const ensurePaneVisibleForDrop = useCallback((paneId: EditorPaneId) => {
+    if (paneId.startsWith('right-')) {
+      setIsSplitView(true);
+    }
+    if (paneId === 'left-bottom') {
+      setLeftVerticalSplit(true);
+    }
+    if (paneId === 'right-bottom') {
+      setIsSplitView(true);
+      setRightVerticalSplit(true);
+    }
+  }, []);
+
+  const moveTabToPane = useCallback((tabId: string, targetPaneId: EditorPaneId) => {
+    const located = findPaneByTabId(tabId);
+    if (!located) {
+      return;
+    }
+
+    const { paneId: sourcePaneId, tab } = located;
+    if (sourcePaneId === targetPaneId) {
+      setPaneActiveTabId(targetPaneId, tabId);
+      setFocusedPaneId(targetPaneId);
+      return;
+    }
+
+    if (tab.type !== 'file' && targetPaneId !== 'left-top') {
+      toastService.info('仅文件标签支持分屏移动');
+      return;
+    }
+
+    if (tab.type === 'file') {
+      const paneOrder: Array<{ paneId: EditorPaneId; tabs: EditorTab[] }> = [
+        { paneId: 'left-top', tabs },
+        { paneId: 'left-bottom', tabs: leftBottomTabs },
+        { paneId: 'right-top', tabs: rightTabs },
+        { paneId: 'right-bottom', tabs: rightBottomTabs },
+      ];
+      const existingSamePath = paneOrder
+        .flatMap(pane => pane.tabs.map(item => ({ paneId: pane.paneId, tab: item })))
+        .find(item =>
+          item.tab.id !== tab.id &&
+          item.tab.type === 'file' &&
+          item.tab.path === tab.path
+        );
+      if (existingSamePath) {
+        removeTabFromPane(sourcePaneId, tabId);
+        setPaneActiveTabId(existingSamePath.paneId, existingSamePath.tab.id);
+        setFocusedPaneId(existingSamePath.paneId);
+        return;
+      }
+    }
+
+    ensurePaneVisibleForDrop(targetPaneId);
+    removeTabFromPane(sourcePaneId, tabId);
+
+    setPaneTabs(targetPaneId, prev => [...prev, tab]);
+    setPaneActiveTabId(targetPaneId, tabId);
+    setFocusedPaneId(targetPaneId);
+
+    const sourceNextTabs = getPaneTabs(sourcePaneId).filter(item => item.id !== tabId);
+    pickNextActiveForPane(sourcePaneId, sourceNextTabs);
+  }, [
+    findPaneByTabId,
+    tabs,
+    leftBottomTabs,
+    rightTabs,
+    rightBottomTabs,
+    setPaneActiveTabId,
+    ensurePaneVisibleForDrop,
+    removeTabFromPane,
+    setPaneTabs,
+    getPaneTabs,
+    pickNextActiveForPane
+  ]);
 
 
   // 澶勭悊鍒涘缓鏂扮墖娈?
@@ -344,28 +780,17 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     const resolvedType: EditorTab['type'] = type === 'ai-chat' ? 'ai-chat' : 'file';
     console.log('[EditorArea] 打开编辑器标签页:', title, resolvedType);
 
-    // 检查是否已经打开相同路径的标签页（左右分组都需要检查）
-    const existingLeftTab = tabs.find(tab => tab.path === path && (tab.type || 'file') === resolvedType);
-    if (existingLeftTab) {
-      if (resolvedType === 'ai-chat' && title && existingLeftTab.title !== title) {
-        setTabs(prev => prev.map(tab =>
-          tab.id === existingLeftTab.id ? { ...tab, title } : tab
+    // 检查是否已经打开相同路径的标签页（四个分区都检查）
+    const existingTabResult = findPaneByPath(path, resolvedType);
+    if (existingTabResult) {
+      const { paneId, tab } = existingTabResult;
+      if (resolvedType === 'ai-chat' && title && tab.title !== title) {
+        setPaneTabs(paneId, prev => prev.map(item =>
+          item.id === tab.id ? { ...item, title } : item
         ));
       }
-      console.log('[EditorArea] 标签页已存在，激活该标签页');
-      setActiveTabId(existingLeftTab.id);
-      return;
-    }
-
-    const existingRightTab = rightTabs.find(tab => tab.path === path && (tab.type || 'file') === resolvedType);
-    if (existingRightTab) {
-      if (resolvedType === 'ai-chat' && title && existingRightTab.title !== title) {
-        setRightTabs(prev => prev.map(tab =>
-          tab.id === existingRightTab.id ? { ...tab, title } : tab
-        ));
-      }
-      console.log('[EditorArea] 右侧标签页已存在，激活该标签页');
-      setRightActiveTabId(existingRightTab.id);
+      setPaneActiveTabId(paneId, tab.id);
+      setFocusedPaneId(paneId);
       return;
     }
 
@@ -382,7 +807,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newTab.id);
-  }, [rightTabs, tabs]);
+    setFocusedPaneId('left-top');
+  }, [findPaneByPath, setPaneTabs, setPaneActiveTabId]);
 
   // 娉ㄥ唽鐗囨浜嬩欢鐩戝惉鍣紙鐙珛鐨?useEffect锛?
   useEffect(() => {
@@ -479,6 +905,53 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           contentPreview: content?.substring(0, 100),
           isPreview
         });
+
+        const paneSnapshots: Array<{
+          paneId: EditorPaneId;
+          tabs: EditorTab[];
+          setTabs: React.Dispatch<React.SetStateAction<EditorTab[]>>;
+          setActive: React.Dispatch<React.SetStateAction<string | null>>;
+        }> = [
+          { paneId: 'left-top', tabs: tabsRef.current, setTabs, setActive: setActiveTabId },
+          { paneId: 'left-bottom', tabs: leftBottomTabsRef.current, setTabs: setLeftBottomTabs, setActive: setLeftBottomActiveTabId },
+          { paneId: 'right-top', tabs: rightTabsRef.current, setTabs: setRightTabs, setActive: setRightActiveTabId },
+          { paneId: 'right-bottom', tabs: rightBottomTabsRef.current, setTabs: setRightBottomTabs, setActive: setRightBottomActiveTabId },
+        ];
+
+        const existingPane = paneSnapshots.find(pane => pane.tabs.some(tab => tab.path === path));
+        if (existingPane) {
+          const existingTab = existingPane.tabs.find(tab => tab.path === path)!;
+          existingPane.setActive(existingTab.id);
+          setFocusedPaneId(existingPane.paneId);
+          if (existingPane.paneId.startsWith('right-')) {
+            setIsSplitView(true);
+          }
+          if (existingPane.paneId === 'left-bottom') {
+            setLeftVerticalSplit(true);
+          }
+          if (existingPane.paneId === 'right-bottom') {
+            setRightVerticalSplit(true);
+          }
+          if (!isPreview && existingTab.isPreview) {
+            existingPane.setTabs(prev => prev.map(tab =>
+              tab.id === existingTab.id
+                ? {
+                    ...tab,
+                    isPreview: false,
+                    content: content !== undefined ? content : tab.content,
+                    language: language || tab.language
+                  }
+                : tab
+            ));
+          } else if (content !== undefined) {
+            existingPane.setTabs(prev => prev.map(tab =>
+              tab.id === existingTab.id
+                ? { ...tab, content, language: language || tab.language }
+                : tab
+            ));
+          }
+          return;
+        }
         
         // 浣跨敤鍑芥暟寮忔洿鏂版潵璁块棶鏈€鏂扮殑 tabs 鐘舵€侊紝閬垮厤闂寘闂
         setTabs(currentTabs => {
@@ -580,6 +1053,33 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           const result = await window.electron?.file?.open();
           if (result?.success && result.data) {
             const { path, content, name, language } = result.data;
+
+            const paneSnapshots: Array<{
+              paneId: EditorPaneId;
+              tabs: EditorTab[];
+              setActive: React.Dispatch<React.SetStateAction<string | null>>;
+            }> = [
+              { paneId: 'left-top', tabs: tabsRef.current, setActive: setActiveTabId },
+              { paneId: 'left-bottom', tabs: leftBottomTabsRef.current, setActive: setLeftBottomActiveTabId },
+              { paneId: 'right-top', tabs: rightTabsRef.current, setActive: setRightActiveTabId },
+              { paneId: 'right-bottom', tabs: rightBottomTabsRef.current, setActive: setRightBottomActiveTabId },
+            ];
+            const existingPane = paneSnapshots.find(pane => pane.tabs.some(tab => tab.path === path));
+            if (existingPane) {
+              const existingTab = existingPane.tabs.find(tab => tab.path === path)!;
+              existingPane.setActive(existingTab.id);
+              setFocusedPaneId(existingPane.paneId);
+              if (existingPane.paneId.startsWith('right-')) {
+                setIsSplitView(true);
+              }
+              if (existingPane.paneId === 'left-bottom') {
+                setLeftVerticalSplit(true);
+              }
+              if (existingPane.paneId === 'right-bottom') {
+                setRightVerticalSplit(true);
+              }
+              return;
+            }
             
             // 浣跨敤鍑芥暟寮忔洿鏂?
             setTabs(currentTabs => {
@@ -659,8 +1159,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
       const leftSnapshot = tabsRef.current;
       const rightSnapshot = rightTabsRef.current;
+      const leftBottomSnapshot = leftBottomTabsRef.current;
+      const rightBottomSnapshot = rightBottomTabsRef.current;
       const leftResult = applyToTabs(leftSnapshot, activeTabIdRef.current);
       const rightResult = applyToTabs(rightSnapshot, rightActiveTabIdRef.current);
+      const leftBottomResult = applyToTabs(leftBottomSnapshot, leftBottomActiveTabIdRef.current);
+      const rightBottomResult = applyToTabs(rightBottomSnapshot, rightBottomActiveTabIdRef.current);
 
       if (leftResult.matched) {
         setTabs(leftResult.tabs);
@@ -676,7 +1180,21 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         }
       }
 
-      if (leftResult.matched || rightResult.matched) {
+      if (leftBottomResult.matched) {
+        setLeftBottomTabs(leftBottomResult.tabs);
+        if (leftBottomResult.resolvedId) {
+          setTimeout(() => setLeftBottomActiveTabId(leftBottomResult.resolvedId), 0);
+        }
+      }
+
+      if (rightBottomResult.matched) {
+        setRightBottomTabs(rightBottomResult.tabs);
+        if (rightBottomResult.resolvedId) {
+          setTimeout(() => setRightBottomActiveTabId(rightBottomResult.resolvedId), 0);
+        }
+      }
+
+      if (leftResult.matched || rightResult.matched || leftBottomResult.matched || rightBottomResult.matched) {
         return;
       }
 
@@ -1053,7 +1571,19 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       setActiveTabId(null);
       setRightTabs([]);
       setRightActiveTabId(null);
+      setLeftBottomTabs([]);
+      setLeftBottomActiveTabId(null);
+      setRightBottomTabs([]);
+      setRightBottomActiveTabId(null);
       setIsSplitView(false);
+      setLeftVerticalSplit(false);
+      setRightVerticalSplit(false);
+      setLeftWidth(null);
+      setLeftTopHeight(null);
+      setRightTopHeight(null);
+      setRightColumnWidths({});
+      setHasCustomizedHorizontalSplit(false);
+      setFocusedPaneId('left-top');
     };
     window.addEventListener('close-all-editors', handleCloseAllEditors);
 
@@ -1710,6 +2240,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const handleTabClick = (tabId: string) => {
     tabChangeReasonOverrideRef.current = 'switch';
     setActiveTabId(tabId);
+    setFocusedPaneId('left-top');
     
     // 閫氱煡 FileExplorer 鏇存柊閫変腑鐘舵€侊紙浠呴拡瀵规枃浠剁被鍨嬬殑鏍囩椤碉級
     const clickedTab = tabs.find(tab => tab.id === tabId);
@@ -1729,6 +2260,56 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       // 闈炶〃鏍艰璁″櫒鏍囩椤碉紝娓呴櫎琛ㄥ崟閫変腑鐘舵€?
       window.dispatchEvent(new Event('form-tab-deactivated'));
     }
+  };
+
+  const handleSplit = (tabId: string, direction: SplitDirection) => {
+    const located = findPaneByTabId(tabId);
+    if (!located || located.tab.type !== 'file') {
+      return;
+    }
+
+    const sourcePaneId = located.paneId;
+    let targetPaneId: EditorPaneId = sourcePaneId;
+
+    if (direction === 'horizontal') {
+      setIsSplitView(true);
+      targetPaneId = sourcePaneId === 'left-top'
+        ? 'right-top'
+        : sourcePaneId === 'left-bottom'
+          ? (rightVerticalSplit ? 'right-bottom' : 'right-top')
+          : sourcePaneId === 'right-top'
+            ? 'left-top'
+            : (leftVerticalSplit ? 'left-bottom' : 'left-top');
+    } else {
+      if (sourcePaneId === 'left-top' || sourcePaneId === 'left-bottom') {
+        setLeftVerticalSplit(true);
+        targetPaneId = sourcePaneId === 'left-top' ? 'left-bottom' : 'left-top';
+      } else {
+        setIsSplitView(true);
+        setRightVerticalSplit(true);
+        targetPaneId = sourcePaneId === 'right-top' ? 'right-bottom' : 'right-top';
+      }
+    }
+
+    moveTabToPane(tabId, targetPaneId);
+  };
+
+  const handleSplitHorizontal = (tabId: string) => {
+    handleSplit(tabId, 'horizontal');
+  };
+
+  const handleSplitVertical = (tabId: string) => {
+    handleSplit(tabId, 'vertical');
+  };
+
+  const handleOpenTabInNewWindow = (tabId: string) => {
+    const sourceTab = findPaneByTabId(tabId)?.tab;
+    if (!sourceTab || sourceTab.type !== 'file') {
+      return;
+    }
+
+    toastService.info('暂不支持在新窗口打开，已为你在右侧分屏打开');
+    handleSplitHorizontal(tabId);
   };
 
   const handleTabClose = (tabId: string) => {
@@ -1811,11 +2392,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
     
     // 鍏抽棴婧愭枃妗ｆ椂锛屽悓鏃跺叧闂搴旂殑棰勮鏍囩椤?
-    const newRightTabs = rightTabs.filter(tab => tab.sourceTabId !== tabId);
+    const newRightTabs = rightTabs.filter(
+      tab => tab.sourceTabId !== tabId && tab.splitSourceTabId !== tabId
+    );
     if (newRightTabs.length !== rightTabs.length) {
       const removedRightTabIds = new Set(
         rightTabs
-          .filter(tab => tab.sourceTabId === tabId)
+          .filter(tab => tab.sourceTabId === tabId || tab.splitSourceTabId === tabId)
           .map(tab => tab.id)
       );
       const nextRightHistory = rightTabActivationHistoryRef.current.filter(id => !removedRightTabIds.has(id));
@@ -1830,7 +2413,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         } else {
           setRightActiveTabId(null);
           // 鍙充晶娌℃湁鏍囩椤典簡锛屽叧闂垎鍓茶鍥?
-          setIsSplitView(false);
+          if (rightBottomTabs.length === 0 && extraRightSplitPanes.length === 0) {
+            setIsSplitView(false);
+          }
         }
       }
     }
@@ -1845,31 +2430,387 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     if (rightActiveTabId === tabId) {
       const nextRightActiveTabId = getMostRecentTabId(nextRightHistory, newRightTabs);
       setRightActiveTabId(nextRightActiveTabId);
-      if (!nextRightActiveTabId) {
+      if (!nextRightActiveTabId && rightBottomTabs.length === 0 && extraRightSplitPanes.length === 0) {
         setIsSplitView(false);
       }
-    } else if (newRightTabs.length === 0) {
+    } else if (newRightTabs.length === 0 && rightBottomTabs.length === 0 && extraRightSplitPanes.length === 0) {
       setRightActiveTabId(null);
       // 鍙充晶娌℃湁鏍囩椤典簡锛屽叧闂垎鍓茶鍥?
       setIsSplitView(false);
     }
   };
 
+  const handleLeftBottomTabClose = (tabId: string) => {
+    const newTabs = leftBottomTabs.filter(tab => tab.id !== tabId);
+    const nextHistory = removeTabIdFromHistory(leftBottomTabActivationHistoryRef.current, tabId);
+    leftBottomTabActivationHistoryRef.current = nextHistory;
+    setLeftBottomTabs(newTabs);
+
+    if (leftBottomActiveTabId === tabId) {
+      const nextActive = getMostRecentTabId(nextHistory, newTabs);
+      setLeftBottomActiveTabId(nextActive);
+    }
+
+    if (newTabs.length === 0) {
+      setLeftVerticalSplit(false);
+      setLeftBottomActiveTabId(null);
+      setLeftTopHeight(null);
+    }
+  };
+
+  const handleRightBottomTabClose = (tabId: string) => {
+    const newTabs = rightBottomTabs.filter(tab => tab.id !== tabId);
+    const nextHistory = removeTabIdFromHistory(rightBottomTabActivationHistoryRef.current, tabId);
+    rightBottomTabActivationHistoryRef.current = nextHistory;
+    setRightBottomTabs(newTabs);
+
+    if (rightBottomActiveTabId === tabId) {
+      const nextActive = getMostRecentTabId(nextHistory, newTabs);
+      setRightBottomActiveTabId(nextActive);
+    }
+
+    if (newTabs.length === 0) {
+      setRightVerticalSplit(false);
+      setRightBottomActiveTabId(null);
+      setRightTopHeight(null);
+      if (rightTabs.length === 0 && extraRightSplitPanes.length === 0) {
+        setIsSplitView(false);
+      }
+    }
+  };
+
+  const handleRightTabClick = (tabId: string) => {
+    setRightActiveTabId(tabId);
+    setFocusedPaneId('right-top');
+
+    const clickedTab = rightTabs.find(tab => tab.id === tabId);
+    if (!clickedTab) {
+      return;
+    }
+
+    if (clickedTab.splitSourceTabId) {
+      tabChangeReasonOverrideRef.current = 'switch';
+      setActiveTabId(clickedTab.splitSourceTabId);
+    }
+  };
+
+  const handleLeftBottomTabClick = (tabId: string) => {
+    setLeftBottomActiveTabId(tabId);
+    setFocusedPaneId('left-bottom');
+  };
+
+  const handleRightBottomTabClick = (tabId: string) => {
+    setRightBottomActiveTabId(tabId);
+    setFocusedPaneId('right-bottom');
+  };
+
+  const closeTabByPane = useCallback((paneId: EditorPaneId, tabId: string) => {
+    if (paneId === 'left-top') {
+      handleTabClose(tabId);
+      return;
+    }
+    if (paneId === 'left-bottom') {
+      handleLeftBottomTabClose(tabId);
+      return;
+    }
+    if (paneId === 'right-top') {
+      handleRightTabClose(tabId);
+      return;
+    }
+    handleRightBottomTabClose(tabId);
+  }, [handleTabClose, handleLeftBottomTabClose, handleRightTabClose, handleRightBottomTabClose]);
+
+  const closeMultipleTabsByPane = useCallback((paneId: EditorPaneId, tabIds: string[]) => {
+    if (tabIds.length === 0) {
+      return;
+    }
+
+    const existingPaneTabs = getPaneTabs(paneId);
+    const targetIdSet = new Set(tabIds);
+    const closingTabs = existingPaneTabs.filter(tab => targetIdSet.has(tab.id));
+    if (closingTabs.length === 0) {
+      return;
+    }
+
+    for (const tab of closingTabs) {
+      removeTabFromPane(paneId, tab.id);
+
+      if (tab.type === 'file' && tab.path) {
+        window.dispatchEvent(new CustomEvent('remove-editor', {
+          detail: { path: tab.path }
+        }));
+      }
+
+      if (tab.type === 'table-designer') {
+        window.dispatchEvent(new CustomEvent('form-tab-closed', {
+          detail: { formId: tab.formId }
+        }));
+      }
+    }
+
+    if (closingTabs.some(tab => tab.type === 'ai-config')) {
+      window.dispatchEvent(new Event('ai-config-tab-closed'));
+    }
+
+    const nextTabs = existingPaneTabs.filter(tab => !targetIdSet.has(tab.id));
+    const currentActiveTabId = getPaneActiveTabId(paneId);
+    if (currentActiveTabId && targetIdSet.has(currentActiveTabId)) {
+      const historyRef = getPaneHistoryRef(paneId);
+      const nextActiveTabId = getMostRecentTabId(historyRef.current, nextTabs);
+      setPaneActiveTabId(paneId, nextActiveTabId);
+    }
+  }, [
+    getPaneTabs,
+    removeTabFromPane,
+    getPaneActiveTabId,
+    getPaneHistoryRef,
+    setPaneActiveTabId
+  ]);
+
+  const resolveDirectionalTargetPane = useCallback((sourcePaneId: EditorPaneId, direction: PaneMoveDirection): EditorPaneId | null => {
+    if (direction === 'right') {
+      if (sourcePaneId === 'left-top') return 'right-top';
+      if (sourcePaneId === 'left-bottom') return 'right-bottom';
+      return null;
+    }
+    if (direction === 'left') {
+      if (sourcePaneId === 'right-top') return 'left-top';
+      if (sourcePaneId === 'right-bottom') return 'left-bottom';
+      return null;
+    }
+    if (direction === 'down') {
+      if (sourcePaneId === 'left-top') return 'left-bottom';
+      if (sourcePaneId === 'right-top') return 'right-bottom';
+      return null;
+    }
+    if (sourcePaneId === 'left-bottom') return 'left-top';
+    if (sourcePaneId === 'right-bottom') return 'right-top';
+    return null;
+  }, []);
+
+  const prependExtraRightSplitPane = useCallback((sourcePath: string, excludePath?: string) => {
+    if (!sourcePath) {
+      return;
+    }
+
+    setIsSplitView(true);
+    setExtraRightSplitPanes(prev => {
+      const base = prev.filter(pane => !excludePath || pane.sourcePath !== excludePath);
+      if (base.length === 0) {
+        const paneId = `right-extra-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        return [{ id: paneId, sourcePath }];
+      }
+
+      const existingIndex = base.findIndex(pane => pane.sourcePath === sourcePath);
+      if (existingIndex === 0) {
+        return base;
+      }
+
+      if (existingIndex > 0) {
+        const reorderedPaths = [
+          sourcePath,
+          ...base.slice(0, existingIndex).map(pane => pane.sourcePath),
+          ...base.slice(existingIndex + 1).map(pane => pane.sourcePath),
+        ];
+        return base.map((pane, index) => ({
+          ...pane,
+          sourcePath: reorderedPaths[index] ?? pane.sourcePath
+        }));
+      }
+
+      const shifted = base.map((pane, index) => ({
+        ...pane,
+        sourcePath: index === 0 ? sourcePath : base[index - 1].sourcePath
+      }));
+      const paneId = `right-extra-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const carryPath = base[base.length - 1].sourcePath;
+      return [...shifted, { id: paneId, sourcePath: carryPath }];
+    });
+  }, []);
+
+  const closeExtraRightSplitPane = useCallback((paneId: string) => {
+    setExtraRightSplitPanes(prev => prev.filter(pane => pane.id !== paneId));
+  }, []);
+
+  const splitTabToDirection = useCallback((tabId: string, direction: PaneMoveDirection) => {
+    const located = findPaneByTabId(tabId);
+    if (!located || located.tab.type !== 'file') {
+      return;
+    }
+
+    if (direction === 'right') {
+      const hasPrimaryRightPane =
+        rightTabsRef.current.length > 0 ||
+        rightBottomTabsRef.current.length > 0 ||
+        extraRightSplitPanes.length > 0;
+      if (!hasPrimaryRightPane) {
+        ensurePaneVisibleForDrop('right-top');
+        const splitTab: EditorTab = {
+          ...located.tab,
+          id: `split-${located.tab.id}-${Date.now()}`,
+          isPreview: false,
+        };
+        setPaneTabs('right-top', prev => [...prev, splitTab]);
+        setPaneActiveTabId('right-top', splitTab.id);
+        setFocusedPaneId('right-top');
+        return;
+      }
+
+      prependExtraRightSplitPane(located.tab.path);
+      return;
+    }
+
+    const targetPaneId = resolveDirectionalTargetPane(located.paneId, direction);
+    if (!targetPaneId) {
+      toastService.info('当前方向无法分屏');
+      return;
+    }
+    ensurePaneVisibleForDrop(targetPaneId);
+
+    const existingInTarget = getPaneTabs(targetPaneId).find(tab =>
+      tab.type === 'file' && tab.path === located.tab.path
+    );
+    if (existingInTarget) {
+      setPaneActiveTabId(targetPaneId, existingInTarget.id);
+      setFocusedPaneId(targetPaneId);
+      return;
+    }
+
+    const splitTab: EditorTab = {
+      ...located.tab,
+      id: `split-${located.tab.id}-${Date.now()}`,
+      isPreview: false,
+    };
+
+    setPaneTabs(targetPaneId, prev => [...prev, splitTab]);
+    setPaneActiveTabId(targetPaneId, splitTab.id);
+    setFocusedPaneId(targetPaneId);
+  }, [
+    prependExtraRightSplitPane,
+    findPaneByTabId,
+    resolveDirectionalTargetPane,
+    getPaneTabs,
+    ensurePaneVisibleForDrop,
+    setPaneTabs,
+    setPaneActiveTabId,
+    extraRightSplitPanes.length
+  ]);
+
+  const moveTabByDirection = useCallback((tabId: string, direction: PaneMoveDirection) => {
+    const located = findPaneByTabId(tabId);
+    if (!located) {
+      return;
+    }
+
+    const targetPaneId = resolveDirectionalTargetPane(located.paneId, direction);
+    if (!targetPaneId) {
+      toastService.info('当前方向无法移动');
+      return;
+    }
+
+    moveTabToPane(tabId, targetPaneId);
+  }, [findPaneByTabId, moveTabToPane, resolveDirectionalTargetPane]);
+
+  const addTabToChatContext = useCallback((tabId: string) => {
+    const located = findPaneByTabId(tabId);
+    if (!located || located.tab.type !== 'file' || !located.tab.path) {
+      return;
+    }
+
+    window.dispatchEvent(new Event('restore-ai-chat-panel'));
+    window.dispatchEvent(new CustomEvent('ai-chat:add-file-context', {
+      detail: {
+        path: located.tab.path,
+        name: located.tab.title,
+      },
+    }));
+  }, [findPaneByTabId]);
+
+  const openTabInSystemExplorer = useCallback(async (tabId: string) => {
+    const located = findPaneByTabId(tabId);
+    if (!located || located.tab.type !== 'file' || !located.tab.path) {
+      return;
+    }
+
+    try {
+      if (window.electron?.folder?.revealInExplorer) {
+        await window.electron.folder.revealInExplorer(located.tab.path);
+        return;
+      }
+      await window.electron?.ipcRenderer.invoke('open-in-explorer', located.tab.path);
+    } catch (error) {
+      console.error('[EditorArea] 在资源管理器中打开失败:', error);
+    }
+  }, [findPaneByTabId]);
+
+  const revealTabInExplorerView = useCallback((tabId: string) => {
+    const located = findPaneByTabId(tabId);
+    if (!located || located.tab.type !== 'file' || !located.tab.path) {
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent('tab-switched', {
+      detail: { path: located.tab.path }
+    }));
+    window.dispatchEvent(new CustomEvent('file-tree-reveal', {
+      detail: { path: located.tab.path }
+    }));
+  }, [findPaneByTabId]);
+
   const rightActiveTab = rightTabs.find(tab => tab.id === rightActiveTabId);
+  const leftBottomActiveTab = leftBottomTabs.find(tab => tab.id === leftBottomActiveTabId);
+  const rightBottomActiveTab = rightBottomTabs.find(tab => tab.id === rightBottomActiveTabId);
+
+  const handleExtraRightPaneTabClick = useCallback((sourcePaneId: EditorPaneId, sourceTabId: string) => {
+    setPaneActiveTabId(sourcePaneId, sourceTabId);
+    setFocusedPaneId(sourcePaneId);
+  }, [setPaneActiveTabId]);
+
+  const handleExtraRightPaneSplitToDirection = useCallback((sourceTabId: string, direction: PaneMoveDirection) => {
+    splitTabToDirection(sourceTabId, direction);
+  }, [splitTabToDirection]);
+
+  const handleExtraRightPaneMoveToDirection = useCallback((sourceTabId: string, direction: PaneMoveDirection) => {
+    moveTabByDirection(sourceTabId, direction);
+  }, [moveTabByDirection]);
+
+  const getFocusedActiveTab = useCallback((): EditorTab | null => {
+    if (focusedPaneId === 'left-top') {
+      return tabs.find(tab => tab.id === activeTabId) || null;
+    }
+    if (focusedPaneId === 'left-bottom') {
+      return leftBottomTabs.find(tab => tab.id === leftBottomActiveTabId) || null;
+    }
+    if (focusedPaneId === 'right-top') {
+      return rightTabs.find(tab => tab.id === rightActiveTabId) || null;
+    }
+    return rightBottomTabs.find(tab => tab.id === rightBottomActiveTabId) || null;
+  }, [
+    focusedPaneId,
+    tabs,
+    activeTabId,
+    leftBottomTabs,
+    leftBottomActiveTabId,
+    rightTabs,
+    rightActiveTabId,
+    rightBottomTabs,
+    rightBottomActiveTabId
+  ]);
 
   // 将当前活动文件同步到 note-system，供双向链接/反向链接查询使用
   useEffect(() => {
     let cancelled = false;
 
     const syncCurrentTabNote = async () => {
-      if (!activeTab || !isLinkableFile(activeTab)) {
+      const focusedTab = getFocusedActiveTab();
+      if (!focusedTab || !isLinkableFile(focusedTab)) {
         setCurrentNote(null);
         resetLinkState();
         return;
       }
 
       try {
-        const note = await getNoteByPath(activeTab.path) || await syncFileTabToNoteSystem(activeTab);
+        const note = await getNoteByPath(focusedTab.path) || await syncFileTabToNoteSystem(focusedTab);
         if (cancelled) {
           return;
         }
@@ -1897,6 +2838,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     activeTab?.path,
     activeTab?.title,
     activeTab?.type,
+    rightActiveTabId,
+    leftBottomActiveTabId,
+    rightBottomActiveTabId,
+    focusedPaneId,
+    getFocusedActiveTab,
     resetLinkState,
     setCurrentNote,
     syncFileTabToNoteSystem
@@ -1910,13 +2856,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     // 濡傛灉鏄?settings.json锛屽凡缁忚嚜鍔ㄤ繚瀛橈紝涓嶉渶瑕佸啀娆′繚瀛?
     if (tab.path === 'settings:/settings.json') {
-      setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
+      updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
       return;
     }
 
     // 濡傛灉鏄墖娈垫枃浠讹紝宸茬粡鑷姩淇濆瓨锛屼笉闇€瑕佸啀娆′繚瀛?
     if (tab.path.startsWith('snippet:/')) {
-      setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
+      updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
       return;
     }
 
@@ -1943,7 +2889,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         // 妫€鏌ヨВ鏋愰敊璇?
         if (parseErrors.length > 0) {
           console.warn('[EditorArea] 主题覆盖配置 JSON 解析错误，仅清除脏标记');
-          setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
+          updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
           return;
         }
         
@@ -1974,7 +2920,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               description: `已保存 ${Object.keys(parsedConfig.colors || {}).length} 个颜色覆盖`
             });
             // 娓呴櫎鑴忔爣璁帮紝琛ㄧず宸蹭繚瀛?
-            setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
+            updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
           } else {
             console.error('[EditorArea] 淇濆瓨涓婚瑕嗙洊澶辫触:', result?.error);
             toastService.error('淇濆瓨涓婚瑕嗙洊澶辫触', {
@@ -1990,7 +2936,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       } catch (error) {
         console.error('[EditorArea] 澶勭悊涓婚瑕嗙洊淇濆瓨鏃跺彂鐢熼敊璇?', error);
         // 鍙戠敓閿欒鏃朵粛鐒舵竻闄よ剰鏍囪
-        setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
+        updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
       }
       return;
     }
@@ -2051,16 +2997,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     content: contentToSave,
                     previousPath: tab.path
                   });
-                  setTabs(prev => prev.map(t =>
-                    t.id === tab.id
-                      ? { ...t, path: targetPath, title: savedName, isDirty: false }
-                      : t
-                  ));
-                  setRightTabs(prev => prev.map(t =>
-                    t.sourceTabId === tab.id
-                      ? { ...t, path: targetPath, title: savedName, isDirty: false }
-                      : t
-                  ));
+                  updateTabInAllPanes(tab.id, current => ({
+                    ...current,
+                    path: targetPath,
+                    title: savedName,
+                    isDirty: false
+                  }));
                   if (syncedNote) {
                     setCurrentNote(syncedNote);
                   }
@@ -2099,16 +3041,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             content: contentToSave,
             previousPath: tab.path
           });
-          setTabs(prev => prev.map(t =>
-            t.id === tab.id
-              ? { ...t, path: result.data!.path, title: result.data!.name, isDirty: false }
-              : t
-          ));
-          setRightTabs(prev => prev.map(t =>
-            t.sourceTabId === tab.id
-              ? { ...t, path: result.data!.path, title: result.data!.name, isDirty: false }
-              : t
-          ));
+          updateTabInAllPanes(tab.id, current => ({
+            ...current,
+            path: result.data!.path,
+            title: result.data!.name,
+            isDirty: false
+          }));
           if (syncedNote) {
             setCurrentNote(syncedNote);
           }
@@ -2135,8 +3073,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           content: contentToSave
         });
         // 娓呴櫎鑴忔爣璁?
-        setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
-        setRightTabs(rightTabs.map(t => t.sourceTabId === tab.id ? { ...t, isDirty: false } : t));
+        updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
         if (syncedNote) {
           setCurrentNote(syncedNote);
         }
@@ -2148,31 +3085,31 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
   // 鐩戝惉娲诲姩鏍囩椤靛彉鍖栵紝閫氱煡鐘舵€佹爮鍜屽ぇ绾?
   useEffect(() => {
-    const activeTab = tabs.find(tab => tab.id === activeTabId);
+    const currentActiveTab = getFocusedActiveTab();
 
     // 鍚屾鍏ㄥ眬褰撳墠鏍囩涓婁笅鏂囷紝渚?AI 闈㈡澘绛夊叏灞€缁勪欢璇诲彇
-    (window as any).__currentTabTitle = activeTab?.title || '';
-    (window as any).__currentTabPath = activeTab?.path || '';
+    (window as any).__currentTabTitle = currentActiveTab?.title || '';
+    (window as any).__currentTabPath = currentActiveTab?.path || '';
     
     window.dispatchEvent(new CustomEvent('editor:active-tab-changed', {
       detail: {
-        tabType: activeTab?.type || null,
-        isSettingsTab: activeTab?.type === 'settings',
-        isFileTab: activeTab?.type === 'file',
-        isAIConfigTab: activeTab?.type === 'ai-config',
-        language: activeTab?.language,
-        path: activeTab?.path,
-        title: activeTab?.title || ''
+        tabType: currentActiveTab?.type || null,
+        isSettingsTab: currentActiveTab?.type === 'settings',
+        isFileTab: currentActiveTab?.type === 'file',
+        isAIConfigTab: currentActiveTab?.type === 'ai-config',
+        language: currentActiveTab?.language,
+        path: currentActiveTab?.path,
+        title: currentActiveTab?.title || ''
       }
     }));
 
     // 閫氱煡澶х翰缁勪欢鏇存柊
-    if (activeTab && activeTab.type === 'file') {
+    if (currentActiveTab && currentActiveTab.type === 'file') {
       window.dispatchEvent(new CustomEvent('editor:content-changed', {
         detail: {
-          content: activeTab.content || '',
-          language: activeTab.language || 'plaintext',
-          path: activeTab.path
+          content: currentActiveTab.content || '',
+          language: currentActiveTab.language || 'plaintext',
+          path: currentActiveTab.path
         }
       }));
     } else {
@@ -2185,22 +3122,23 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         }
       }));
     }
-  }, [activeTabId, tabs]);
+  }, [activeTabId, tabs, rightActiveTabId, rightTabs, leftBottomActiveTabId, leftBottomTabs, rightBottomActiveTabId, rightBottomTabs, focusedPaneId, getFocusedActiveTab]);
 
   // 鐩戝惉淇濆瓨浜嬩欢
   useEffect(() => {
     const handleSaveFile = (event: Event) => {
       const customEvent = event as CustomEvent<{ tabId?: string }>;
-      const targetTabId = customEvent.detail?.tabId || activeTabId;
+      const focusedTab = getFocusedActiveTab();
+      const targetTabId = customEvent.detail?.tabId || focusedTab?.id || activeTabId;
       
       if (!targetTabId) {
         return;
       }
 
       // 鏌ユ壘瑕佷繚瀛樼殑鏍囩椤?
-      const tabToSave = tabs.find(tab => tab.id === targetTabId);
-      if (tabToSave) {
-        saveFile(tabToSave);
+      const located = findPaneByTabId(targetTabId);
+      if (located) {
+        saveFile(located.tab);
       }
     };
 
@@ -2209,7 +3147,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('save-file', handleSaveFile as EventListener);
     };
-  }, [tabs, activeTabId, rightTabs]);
+  }, [tabs, activeTabId, rightTabs, leftBottomTabs, rightBottomTabs, getFocusedActiveTab, findPaneByTabId]);
 
   // 鐩戝惉鍏抽棴鏂囦欢浜嬩欢
   useEffect(() => {
@@ -2218,9 +3156,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       const { path } = customEvent.detail;
       
       // 鏌ユ壘瀵瑰簲鐨勬爣绛鹃〉骞跺叧闂?
-      const tabToClose = tabs.find(tab => tab.path === path);
-      if (tabToClose) {
-        handleTabClose(tabToClose.id);
+      const filePane = findPaneByPath(path, 'file');
+      if (filePane) {
+        closeTabByPane(filePane.paneId, filePane.tab.id);
       }
     };
 
@@ -2229,33 +3167,433 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('close-file', handleCloseFile as EventListener);
     };
-  }, [tabs]);
+  }, [tabs, rightTabs, leftBottomTabs, rightBottomTabs, findPaneByPath, closeTabByPane]);
 
   // 灏嗕繚瀛樺嚱鏁版毚闇插埌鍏ㄥ眬锛屼緵蹇嵎閿娇鐢?
   useEffect(() => {
     (window as any).__editorSaveFile = () => {
-      if (activeTabId) {
-        const tabToSave = tabs.find(tab => tab.id === activeTabId);
-        if (tabToSave) {
-          saveFile(tabToSave);
-        }
+      const focusedTab = getFocusedActiveTab();
+      if (focusedTab) {
+        saveFile(focusedTab);
       }
     };
 
     return () => {
       delete (window as any).__editorSaveFile;
     };
-  }, [tabs, activeTabId, rightTabs]);
+  }, [tabs, activeTabId, rightTabs, leftBottomTabs, rightBottomTabs, getFocusedActiveTab]);
+
+  const handleResizeMainSplit = useCallback((primarySize: number) => {
+    setHasCustomizedHorizontalSplit(true);
+    setLeftWidth(primarySize);
+  }, []);
+
+  const leftColumnStyle: React.CSSProperties | undefined = (() => {
+    if (!isSplitView) {
+      return undefined;
+    }
+    if (hasCustomizedHorizontalSplit && leftWidth !== null) {
+      return { width: `${leftWidth}px`, flex: 'none' };
+    }
+    // 默认等分：未拖动主分隔线时，左侧也参与平均分配宽度。
+    return {
+      flex: '1 1 0',
+      width: 'auto',
+      minWidth: 0,
+      minHeight: 0,
+    };
+  })();
+  const leftTopStyle = leftVerticalSplit && leftTopHeight !== null
+    ? { height: `${leftTopHeight}px`, flex: 'none' }
+    : undefined;
+  const rightTopStyle = rightVerticalSplit && rightTopHeight !== null
+    ? { height: `${rightTopHeight}px`, flex: 'none' }
+    : undefined;
+  const isMainRightPaneVisible = rightTabs.length > 0 || rightBottomTabs.length > 0 || extraRightSplitPanes.length === 0;
+  const visibleRightColumnIds = [
+    ...extraRightSplitPanes.map(pane => pane.id),
+    ...(isMainRightPaneVisible ? ['right-main'] : [])
+  ];
+  const trailingRightColumnId = visibleRightColumnIds[visibleRightColumnIds.length - 1] ?? null;
+  const horizontalSplitStructureKey = isSplitView
+    ? `split:${visibleRightColumnIds.join('|')}`
+    : 'single';
+
+  const getRightColumnStyle = useCallback((columnId: string): React.CSSProperties => {
+    if (trailingRightColumnId === columnId) {
+      return {
+        flex: '1 1 0',
+        width: 'auto',
+        minWidth: 0,
+        minHeight: 0
+      };
+    }
+
+    const width = hasCustomizedHorizontalSplit ? rightColumnWidths[columnId] : undefined;
+    if (typeof width === 'number' && width > 0) {
+      return {
+        width: `${width}px`,
+        flex: 'none',
+        minWidth: 0,
+        minHeight: 0
+      };
+    }
+    return {
+      flex: '1 1 0',
+      width: 'auto',
+      minWidth: 0,
+      minHeight: 0
+    };
+  }, [hasCustomizedHorizontalSplit, rightColumnWidths, trailingRightColumnId]);
+
+  const handleResizeRightPanePair = useCallback((
+    leftColumnId: string,
+    rightColumnId: string,
+    leftSize: number,
+    rightSize?: number
+  ) => {
+    if (typeof rightSize !== 'number') {
+      return;
+    }
+    setHasCustomizedHorizontalSplit(true);
+    setRightColumnWidths(prev => ({
+      ...prev,
+      [leftColumnId]: leftSize,
+      [rightColumnId]: rightSize
+    }));
+  }, []);
+
+  useEffect(() => {
+    const previousKey = previousHorizontalSplitStructureKeyRef.current;
+    previousHorizontalSplitStructureKeyRef.current = horizontalSplitStructureKey;
+    if (previousKey === null || previousKey === horizontalSplitStructureKey) {
+      return;
+    }
+    setLeftWidth(null);
+    setRightColumnWidths({});
+    setHasCustomizedHorizontalSplit(false);
+  }, [horizontalSplitStructureKey]);
+
+  useEffect(() => {
+    if (hasCustomizedHorizontalSplit) {
+      return;
+    }
+    setLeftWidth(prev => (prev === null ? prev : null));
+    setRightColumnWidths(prev => (Object.keys(prev).length === 0 ? prev : {}));
+  }, [hasCustomizedHorizontalSplit]);
+
+  useEffect(() => {
+    const container = editorGroupsRef.current;
+    if (!container) {
+      return;
+    }
+
+    const horizontalDividerSize = 8;
+    const minLeftWidth = 300;
+    const minRightWidth = 300;
+    const minTrailingRightColumnWidth = 160;
+    const minFixedRightColumnWidth = 120;
+
+    const clampEditorLayoutSizes = () => {
+      const containerWidth = container.clientWidth;
+      if (!Number.isFinite(containerWidth) || containerWidth <= 0) {
+        return;
+      }
+
+      let effectiveLeftWidth = containerWidth;
+      if (isSplitView) {
+        const maxLeftWidth = Math.max(minLeftWidth, containerWidth - horizontalDividerSize - minRightWidth);
+        const fallbackLeftWidth = Math.max(
+          minLeftWidth,
+          Math.min(maxLeftWidth, Math.floor((containerWidth - horizontalDividerSize) / 2))
+        );
+        const currentLeft = hasCustomizedHorizontalSplit && leftWidth !== null
+          ? leftWidth
+          : fallbackLeftWidth;
+        const clampedLeft = Math.min(Math.max(currentLeft, minLeftWidth), maxLeftWidth);
+        effectiveLeftWidth = clampedLeft;
+
+        setLeftWidth(prev => {
+          if (!hasCustomizedHorizontalSplit || prev === null) {
+            return prev;
+          }
+          return Math.abs(prev - clampedLeft) < 0.5 ? prev : clampedLeft;
+        });
+      }
+
+      const visibleColumns = [
+        ...extraRightSplitPanes.map(pane => pane.id),
+        ...(isMainRightPaneVisible ? ['right-main'] : []),
+      ];
+      if (visibleColumns.length <= 1) {
+        return;
+      }
+
+      const trailingColumnId = visibleColumns[visibleColumns.length - 1];
+      const fixedColumnIds = visibleColumns.filter(id => id !== trailingColumnId);
+      if (fixedColumnIds.length === 0) {
+        return;
+      }
+      if (!hasCustomizedHorizontalSplit) {
+        return;
+      }
+
+      const rightAreaWidth = isSplitView
+        ? Math.max(minRightWidth, containerWidth - horizontalDividerSize - effectiveLeftWidth)
+        : containerWidth;
+      const reservedDividerSpace = horizontalDividerSize * Math.max(0, fixedColumnIds.length);
+      const maxFixedColumnsTotalWidth = Math.max(
+        minFixedRightColumnWidth * fixedColumnIds.length,
+        rightAreaWidth - minTrailingRightColumnWidth - reservedDividerSpace
+      );
+
+      setRightColumnWidths(prev => {
+        const currentFixedWidths = fixedColumnIds
+          .map(id => prev[id])
+          .filter((value): value is number => typeof value === 'number' && value > 0);
+        if (currentFixedWidths.length === 0) {
+          return prev;
+        }
+
+        const currentTotalWidth = currentFixedWidths.reduce((sum, value) => sum + value, 0);
+        if (currentTotalWidth <= maxFixedColumnsTotalWidth) {
+          return prev;
+        }
+
+        const scale = maxFixedColumnsTotalWidth / currentTotalWidth;
+        let changed = false;
+        const next: Record<string, number> = { ...prev };
+
+        fixedColumnIds.forEach(id => {
+          const currentWidth = prev[id];
+          if (typeof currentWidth !== 'number' || currentWidth <= 0) {
+            return;
+          }
+          const scaledWidth = Math.max(minFixedRightColumnWidth, Math.floor(currentWidth * scale));
+          if (scaledWidth !== currentWidth) {
+            next[id] = scaledWidth;
+            changed = true;
+          }
+        });
+
+        return changed ? next : prev;
+      });
+    };
+
+    clampEditorLayoutSizes();
+
+    const observer = new ResizeObserver(() => {
+      clampEditorLayoutSizes();
+    });
+
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    isSplitView,
+    leftWidth,
+    hasCustomizedHorizontalSplit,
+    extraRightSplitPanes,
+    isMainRightPaneVisible,
+  ]);
+
+  const readDraggedTabPayload = (event: React.DragEvent<HTMLElement>): { tabId: string; sourceGroupId: EditorPaneId } | null => {
+    const raw = event.dataTransfer.getData(TAB_DRAG_MIME);
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { tabId?: string; sourceGroupId?: EditorPaneId };
+      if (!parsed.tabId || !parsed.sourceGroupId) {
+        return null;
+      }
+      return { tabId: parsed.tabId, sourceGroupId: parsed.sourceGroupId };
+    } catch {
+      return null;
+    }
+  };
+
+  const handleTabDragStart = useCallback((payload: { tabId: string; sourceGroupId: string }) => {
+    if (
+      payload.sourceGroupId !== 'left-top' &&
+      payload.sourceGroupId !== 'left-bottom' &&
+      payload.sourceGroupId !== 'right-top' &&
+      payload.sourceGroupId !== 'right-bottom'
+    ) {
+      return;
+    }
+    setDraggingTab({
+      tabId: payload.tabId,
+      sourcePaneId: payload.sourceGroupId,
+    });
+  }, []);
+
+  const handleTabDragEnd = useCallback(() => {
+    setDraggingTab(null);
+    setDropIndicator(null);
+  }, []);
+
+  const resolveDropPlacement = (
+    sourcePaneId: EditorPaneId,
+    targetPaneId: EditorPaneId,
+    targetElement: HTMLElement,
+    clientX: number,
+    clientY: number
+  ): PaneDropPlacement | null => {
+    const rect = targetElement.getBoundingClientRect();
+    const ratioX = rect.width > 0 ? (clientX - rect.left) / rect.width : 0.5;
+    const ratioY = rect.height > 0 ? (clientY - rect.top) / rect.height : 0.5;
+
+    if (sourcePaneId !== targetPaneId) {
+      if (ratioY <= 0.25) return 'top';
+      if (ratioY >= 0.75) return 'bottom';
+      return 'full';
+    }
+
+    const sourcePaneTabCount = getPaneTabs(sourcePaneId).length;
+    if (sourcePaneTabCount <= 1) {
+      return null;
+    }
+
+    if (ratioX <= 0.25) return 'left';
+    if (ratioX >= 0.75) return 'right';
+    if (ratioY <= 0.25) return 'top';
+    if (ratioY >= 0.75) return 'bottom';
+    return null;
+  };
+
+  const resolveCrossPaneDropTarget = useCallback((
+    targetPaneId: EditorPaneId,
+    placement: PaneDropPlacement
+  ): EditorPaneId => {
+    if (placement === 'top') {
+      return targetPaneId.startsWith('left') ? 'left-top' : 'right-top';
+    }
+    if (placement === 'bottom') {
+      return targetPaneId.startsWith('left') ? 'left-bottom' : 'right-bottom';
+    }
+    return targetPaneId;
+  }, []);
+
+  const resolvePaneDropTargetElement = useCallback((paneElement: HTMLElement): HTMLElement => {
+    const directContentElement = Array.from(paneElement.children).find((child): child is HTMLElement => (
+      child instanceof HTMLElement && child.classList.contains('editor-area-content')
+    ));
+    return directContentElement ?? paneElement;
+  }, []);
+
+  const handlePaneDragOver = (targetPaneId: EditorPaneId, event: React.DragEvent<HTMLElement>) => {
+    const payload = readDraggedTabPayload(event) || (
+      draggingTab
+        ? { tabId: draggingTab.tabId, sourceGroupId: draggingTab.sourcePaneId }
+        : null
+    );
+    if (!payload) {
+      return;
+    }
+
+    const currentLocated = findPaneByTabId(payload.tabId);
+    const sourcePaneId = currentLocated?.paneId ?? payload.sourceGroupId;
+    const dropTargetElement = resolvePaneDropTargetElement(event.currentTarget as HTMLElement);
+    const placement = resolveDropPlacement(
+      sourcePaneId,
+      targetPaneId,
+      dropTargetElement,
+      event.clientX,
+      event.clientY
+    );
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = placement ? 'move' : 'none';
+
+    if (placement) {
+      setDropIndicator({ paneId: targetPaneId, placement });
+    } else {
+      setDropIndicator(null);
+    }
+  };
+
+  const handlePaneDragLeave = (targetPaneId: EditorPaneId, event: React.DragEvent<HTMLElement>) => {
+    const current = event.currentTarget as HTMLElement;
+    const related = event.relatedTarget as Node | null;
+    if (related && current.contains(related)) {
+      return;
+    }
+    if (dropIndicator?.paneId === targetPaneId) {
+      setDropIndicator(null);
+    }
+  };
+
+  const handlePaneDrop = (targetPaneId: EditorPaneId, event: React.DragEvent<HTMLElement>) => {
+    const payload = readDraggedTabPayload(event) || (
+      draggingTab
+        ? { tabId: draggingTab.tabId, sourceGroupId: draggingTab.sourcePaneId }
+        : null
+    );
+    if (!payload) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const currentLocated = findPaneByTabId(payload.tabId);
+    const sourcePaneId = currentLocated?.paneId ?? payload.sourceGroupId;
+    const dropTargetElement = resolvePaneDropTargetElement(event.currentTarget as HTMLElement);
+    const placement = resolveDropPlacement(
+      sourcePaneId,
+      targetPaneId,
+      dropTargetElement,
+      event.clientX,
+      event.clientY
+    );
+    setDropIndicator(null);
+    setDraggingTab(null);
+
+    if (!placement) {
+      return;
+    }
+
+    const { tabId } = payload;
+    if (sourcePaneId === targetPaneId) {
+      if (placement === 'left' || placement === 'right') {
+        handleSplitHorizontal(tabId);
+        return;
+      }
+      if (placement === 'top' || placement === 'bottom') {
+        handleSplitVertical(tabId);
+      }
+      return;
+    }
+
+    const crossPaneTarget = resolveCrossPaneDropTarget(targetPaneId, placement);
+    moveTabToPane(tabId, crossPaneTarget);
+  };
+
+  const renderDropIndicator = (paneId: EditorPaneId) => {
+    if (!dropIndicator || dropIndicator.paneId !== paneId) {
+      return null;
+    }
+    return <div className={`editor-area-drop-indicator ${dropIndicator.placement}`} />;
+  };
 
   return (
-    <div className={`editor-area ${className}`}>
-      {/* 缂栬緫鍣ㄧ粍瀹瑰櫒 - 鏀寔宸﹀彸鍒嗗壊 */}
-      <div className="editor-area-groups">
+    <div className={`editor-area ${draggingTab ? 'is-tab-dragging' : ''} ${className}`}>
+      {/* 缂栬緫鍣ㄧ粍瀹瑰櫒 - 鏀寔鍒嗗睆 */}
+      <div className="editor-area-groups" ref={editorGroupsRef}>
         {/* 宸︿晶缂栬緫鍣ㄧ粍 */}
         <div 
           className={`editor-area-group ${isSplitView ? 'split-left' : 'full'}`}
-          style={isSplitView && leftWidth !== null ? { width: `${leftWidth}px`, flex: 'none' } : undefined}
+          style={leftColumnStyle}
         >
+          <div
+            className="editor-area-subgroup"
+            style={leftTopStyle}
+            onDragOver={(event) => handlePaneDragOver('left-top', event)}
+            onDragLeave={(event) => handlePaneDragLeave('left-top', event)}
+            onDrop={(event) => handlePaneDrop('left-top', event)}
+          >
           {/* 宸︿晶鏍囩鏍?- 濮嬬粓鏄剧ず锛屽嵆浣挎病鏈夋爣绛?*/}
           {tabs.length > 0 ? (
             <TabBar
@@ -2263,6 +3601,18 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               activeTabId={activeTabId}
               onTabClick={handleTabClick}
               onTabClose={handleTabClose}
+              dragGroupId="left-top"
+              onTabDragStart={handleTabDragStart}
+              onTabDragEnd={handleTabDragEnd}
+              onSplitHorizontal={handleSplitHorizontal}
+              onSplitVertical={handleSplitVertical}
+              onSplitToDirection={splitTabToDirection}
+              onMoveToDirection={moveTabByDirection}
+              onAddTabToChat={addTabToChatContext}
+              onOpenTabInExplorer={openTabInSystemExplorer}
+              onRevealTabInExplorerView={revealTabInExplorerView}
+              onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('left-top', tabIds)}
+              onOpenInNewWindow={handleOpenTabInNewWindow}
             />
           ) : (
             <div className="tab-bar-placeholder" />
@@ -2275,6 +3625,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
           {/* 宸︿晶缂栬緫鍣ㄥ唴瀹?*/}
           <div className="editor-area-content">
+            {renderDropIndicator('left-top')}
             {/* 绌虹姸鎬?*/}
             {!activeTab && (
               <div className="editor-area-empty">
@@ -2388,19 +3739,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       file={tab}
                       onContentChange={(content) => {
                         console.log('[EditorArea] Monaco content change, hasNewlines:', content.includes('\n'));
-                        setTabs(prev => prev.map(t => 
-                          t.id === tab.id 
-                            ? { ...t, content, isDirty: true, isPreview: false }
-                            : t
-                        ));
-                        
-                        // 濡傛灉鍙充晶鏈夐瑙堣鏂囦欢鐨勬爣绛鹃〉锛屽疄鏃舵洿鏂伴瑙堝唴瀹?
-                        const previewTab = rightTabs.find(t => t.sourceTabId === tab.id);
-                        if (previewTab) {
-                          setRightTabs(prev => prev.map(t => 
-                            t.id === previewTab.id ? { ...t, content } : t
-                          ));
-                        }
+                        updateTabInAllPanes(tab.id, current => ({
+                          ...current,
+                          content,
+                          isDirty: true,
+                          isPreview: false
+                        }));
 
                         // 濡傛灉鏄綋鍓嶆椿鍔ㄦ爣绛鹃〉锛岃Е鍙戝ぇ绾叉洿鏂颁簨浠?
                         if (tab.id === activeTabId) {
@@ -2425,19 +3769,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                         return isHtml ? htmlToMarkdown(rawContent) : rawContent;
                       })()}
                       onChange={(markdownContent) => {
-                        setTabs(prev => prev.map(t => 
-                          t.id === tab.id 
-                            ? { ...t, content: markdownContent, isDirty: true, isPreview: false }
-                            : t
-                        ));
-                        
-                        // 濡傛灉鍙充晶鏈夐瑙堣鏂囦欢鐨勬爣绛鹃〉锛屽疄鏃舵洿鏂伴瑙堝唴瀹?
-                        const previewTab = rightTabs.find(t => t.sourceTabId === tab.id);
-                        if (previewTab) {
-                          setRightTabs(prev => prev.map(t => 
-                            t.id === previewTab.id ? { ...t, content: markdownContent } : t
-                          ));
-                        }
+                        updateTabInAllPanes(tab.id, current => ({
+                          ...current,
+                          content: markdownContent,
+                          isDirty: true,
+                          isPreview: false
+                        }));
 
                         // 濡傛灉鏄綋鍓嶆椿鍔ㄦ爣绛鹃〉锛岃Е鍙戝ぇ绾叉洿鏂颁簨浠?
                         if (tab.id === activeTabId) {
@@ -2458,30 +3795,248 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               );
             })}
           </div>
+          </div>
+
+          {leftVerticalSplit && (
+            <>
+              <ResizableDivider
+                onResize={setLeftTopHeight}
+                orientation="vertical"
+                minPrimarySize={220}
+                minSecondarySize={220}
+              />
+
+              <div
+                className="editor-area-subgroup"
+                onDragOver={(event) => handlePaneDragOver('left-bottom', event)}
+                onDragLeave={(event) => handlePaneDragLeave('left-bottom', event)}
+                onDrop={(event) => handlePaneDrop('left-bottom', event)}
+              >
+                {leftBottomTabs.length > 0 ? (
+                  <TabBar
+                    tabs={leftBottomTabs}
+                    activeTabId={leftBottomActiveTabId}
+                    onTabClick={handleLeftBottomTabClick}
+                    onTabClose={handleLeftBottomTabClose}
+                    dragGroupId="left-bottom"
+                    onTabDragStart={handleTabDragStart}
+                    onTabDragEnd={handleTabDragEnd}
+                    onSplitHorizontal={handleSplitHorizontal}
+                    onSplitVertical={handleSplitVertical}
+                    onSplitToDirection={splitTabToDirection}
+                    onMoveToDirection={moveTabByDirection}
+                    onAddTabToChat={addTabToChatContext}
+                    onOpenTabInExplorer={openTabInSystemExplorer}
+                    onRevealTabInExplorerView={revealTabInExplorerView}
+                    onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('left-bottom', tabIds)}
+                    onOpenInNewWindow={handleOpenTabInNewWindow}
+                  />
+                ) : (
+                  <div className="tab-bar-placeholder" />
+                )}
+
+                {leftBottomActiveTab && leftBottomActiveTab.type === 'file' && (
+                  <Breadcrumb path={leftBottomActiveTab.path} />
+                )}
+
+                <div className="editor-area-content">
+                  {renderDropIndicator('left-bottom')}
+                  {!leftBottomActiveTab && (
+                    <div className="editor-area-empty">
+                      <div className="editor-area-empty-content">
+                        <p className="title">没有打开的编辑器</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {leftBottomTabs.map((tab) => {
+                    const isActive = tab.id === leftBottomActiveTabId;
+                    return (
+                      <div
+                        key={tab.id}
+                        className="editor-tab-content"
+                        style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}
+                      >
+                        {tab.type === 'file' && editorType === 'monaco' && (
+                          <EditorGroup
+                            file={tab}
+                            onContentChange={(content) => {
+                              updateTabInAllPanes(tab.id, current => ({
+                                ...current,
+                                content,
+                                isDirty: true,
+                                isPreview: false
+                              }));
+                            }}
+                          />
+                        )}
+
+                        {tab.type === 'file' && editorType === 'codemirror' && (
+                          <CodeMirrorEditor
+                            content={(() => {
+                              const rawContent = tab.content || '';
+                              const isHtml = isHtmlContent(rawContent);
+                              return isHtml ? htmlToMarkdown(rawContent) : rawContent;
+                            })()}
+                            onChange={(markdownContent) => {
+                              updateTabInAllPanes(tab.id, current => ({
+                                ...current,
+                                content: markdownContent,
+                                isDirty: true,
+                                isPreview: false
+                              }));
+                            }}
+                            editable={true}
+                            isActive={isActive}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* 鍙皟鏁村ぇ灏忕殑鍒嗛殧鏉?*/}
         {isSplitView && (
           <ResizableDivider
-            onResize={setLeftWidth}
-            minLeftWidth={300}
-            minRightWidth={300}
+            onResize={handleResizeMainSplit}
+            orientation="horizontal"
+            minPrimarySize={300}
+            minSecondarySize={300}
           />
         )}
 
         {/* 鍙充晶缂栬緫鍣ㄧ粍 */}
-        {isSplitView && (
-          <div 
-            className="editor-area-group split-right"
-            style={{ flex: 1, minWidth: 0 }}
-          >
+        {isSplitView && extraRightSplitPanes.map((pane, index) => {
+          const sourceLocated = findPaneByPath(pane.sourcePath, 'file');
+          if (!sourceLocated || sourceLocated.tab.type !== 'file') {
+            return null;
+          }
+
+          const sourceTab = sourceLocated.tab;
+          const extraTab: EditorTab = {
+            ...sourceTab,
+            id: buildExtraSplitTabId(pane.id),
+            splitSourceTabId: sourceTab.id,
+            isPreview: false,
+          };
+          const previousColumnId = index === 0 ? null : extraRightSplitPanes[index - 1]?.id ?? null;
+
+          return (
+            <React.Fragment key={pane.id}>
+              {previousColumnId && (
+                <ResizableDivider
+                  onResize={(leftSize, rightSize) => handleResizeRightPanePair(previousColumnId, pane.id, leftSize, rightSize)}
+                  orientation="horizontal"
+                  minPrimarySize={220}
+                  minSecondarySize={220}
+                  resizeScope="adjacent"
+                />
+              )}
+              <div
+                className="editor-area-group split-right extra-right-split-pane"
+                style={getRightColumnStyle(pane.id)}
+              >
+                <div className="editor-area-subgroup">
+                  <TabBar
+                    tabs={[extraTab]}
+                    activeTabId={extraTab.id}
+                    onTabClick={() => handleExtraRightPaneTabClick(sourceLocated.paneId, sourceTab.id)}
+                    onTabClose={() => closeExtraRightSplitPane(pane.id)}
+                    onSplitToDirection={(_, direction) => handleExtraRightPaneSplitToDirection(sourceTab.id, direction)}
+                    onMoveToDirection={(_, direction) => handleExtraRightPaneMoveToDirection(sourceTab.id, direction)}
+                    onAddTabToChat={() => addTabToChatContext(sourceTab.id)}
+                    onOpenTabInExplorer={() => openTabInSystemExplorer(sourceTab.id)}
+                    onRevealTabInExplorerView={() => revealTabInExplorerView(sourceTab.id)}
+                    onCloseMultipleTabs={() => closeExtraRightSplitPane(pane.id)}
+                    onOpenInNewWindow={() => handleOpenTabInNewWindow(sourceTab.id)}
+                  />
+
+                  <Breadcrumb path={sourceTab.path} />
+
+                  <div className="editor-area-content">
+                    {editorType === 'monaco' ? (
+                      <EditorGroup
+                        file={extraTab}
+                        onContentChange={(content) => {
+                          updateTabInAllPanes(sourceTab.id, current => ({
+                            ...current,
+                            content,
+                            isDirty: true,
+                            isPreview: false
+                          }));
+                        }}
+                      />
+                    ) : (
+                      <CodeMirrorEditor
+                        content={(() => {
+                          const rawContent = sourceTab.content || '';
+                          const isHtml = isHtmlContent(rawContent);
+                          return isHtml ? htmlToMarkdown(rawContent) : rawContent;
+                        })()}
+                        onChange={(markdownContent) => {
+                          updateTabInAllPanes(sourceTab.id, current => ({
+                            ...current,
+                            content: markdownContent,
+                            isDirty: true,
+                            isPreview: false
+                          }));
+                        }}
+                        editable={true}
+                        isActive={true}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </React.Fragment>
+          );
+        })}
+
+        {isSplitView && isMainRightPaneVisible && (
+          <React.Fragment key="right-main-pane">
+            {extraRightSplitPanes.length > 0 && (
+              <ResizableDivider
+                onResize={(leftSize, rightSize) => handleResizeRightPanePair(extraRightSplitPanes[extraRightSplitPanes.length - 1].id, 'right-main', leftSize, rightSize)}
+                orientation="horizontal"
+                minPrimarySize={220}
+                minSecondarySize={220}
+                resizeScope="adjacent"
+              />
+            )}
+            <div 
+              className="editor-area-group split-right"
+              style={getRightColumnStyle('right-main')}
+            >
+            <div
+              className="editor-area-subgroup"
+              style={rightTopStyle}
+              onDragOver={(event) => handlePaneDragOver('right-top', event)}
+              onDragLeave={(event) => handlePaneDragLeave('right-top', event)}
+              onDrop={(event) => handlePaneDrop('right-top', event)}
+            >
             {/* 鍙充晶鏍囩鏍?*/}
             {rightTabs.length > 0 && (
               <TabBar
                 tabs={rightTabs}
                 activeTabId={rightActiveTabId}
-                onTabClick={setRightActiveTabId}
+                onTabClick={handleRightTabClick}
                 onTabClose={handleRightTabClose}
+                dragGroupId="right-top"
+                onTabDragStart={handleTabDragStart}
+                onTabDragEnd={handleTabDragEnd}
+                onSplitHorizontal={handleSplitHorizontal}
+                onSplitVertical={handleSplitVertical}
+                onSplitToDirection={splitTabToDirection}
+                onMoveToDirection={moveTabByDirection}
+                onAddTabToChat={addTabToChatContext}
+                onOpenTabInExplorer={openTabInSystemExplorer}
+                onRevealTabInExplorerView={revealTabInExplorerView}
+                onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('right-top', tabIds)}
+                onOpenInNewWindow={handleOpenTabInNewWindow}
               />
             )}
 
@@ -2492,6 +4047,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
             {/* 鍙充晶缂栬緫鍣ㄥ唴瀹?*/}
             <div className="editor-area-content">
+              {renderDropIndicator('right-top')}
               {/* 娓叉煋鎵€鏈夊彸渚ф爣绛鹃〉锛岄€氳繃 display 鎺у埗鍙鎬э紝閬垮厤閲嶆柊鍔犺浇 */}
               {rightTabs.map((tab) => {
                 const isActive = tab.id === rightActiveTabId;
@@ -2585,11 +4141,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       <EditorGroup
                         file={tab}
                         onContentChange={(content) => {
-                          setRightTabs(prev => prev.map(t => 
-                            t.id === tab.id 
-                              ? { ...t, content, isDirty: true, isPreview: false }
-                              : t
-                          ));
+                          updateTabInAllPanes(tab.id, current => ({
+                            ...current,
+                            content,
+                            isDirty: true,
+                            isPreview: false
+                          }));
                         }}
                       />
                     )}
@@ -2597,7 +4154,110 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                 );
               })}
             </div>
-          </div>
+            </div>
+
+            {rightVerticalSplit && (
+              <>
+                <ResizableDivider
+                  onResize={setRightTopHeight}
+                  orientation="vertical"
+                  minPrimarySize={220}
+                  minSecondarySize={220}
+                />
+
+                <div
+                  className="editor-area-subgroup"
+                  onDragOver={(event) => handlePaneDragOver('right-bottom', event)}
+                  onDragLeave={(event) => handlePaneDragLeave('right-bottom', event)}
+                  onDrop={(event) => handlePaneDrop('right-bottom', event)}
+                >
+                  {rightBottomTabs.length > 0 ? (
+                    <TabBar
+                      tabs={rightBottomTabs}
+                      activeTabId={rightBottomActiveTabId}
+                      onTabClick={handleRightBottomTabClick}
+                      onTabClose={handleRightBottomTabClose}
+                      dragGroupId="right-bottom"
+                      onTabDragStart={handleTabDragStart}
+                      onTabDragEnd={handleTabDragEnd}
+                      onSplitHorizontal={handleSplitHorizontal}
+                      onSplitVertical={handleSplitVertical}
+                      onSplitToDirection={splitTabToDirection}
+                      onMoveToDirection={moveTabByDirection}
+                      onAddTabToChat={addTabToChatContext}
+                      onOpenTabInExplorer={openTabInSystemExplorer}
+                      onRevealTabInExplorerView={revealTabInExplorerView}
+                      onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('right-bottom', tabIds)}
+                      onOpenInNewWindow={handleOpenTabInNewWindow}
+                    />
+                  ) : (
+                    <div className="tab-bar-placeholder" />
+                  )}
+
+                  {rightBottomActiveTab && rightBottomActiveTab.type === 'file' && (
+                    <Breadcrumb path={rightBottomActiveTab.path} />
+                  )}
+
+                  <div className="editor-area-content">
+                    {renderDropIndicator('right-bottom')}
+                    {!rightBottomActiveTab && (
+                      <div className="editor-area-empty">
+                        <div className="editor-area-empty-content">
+                          <p className="title">没有打开的编辑器</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {rightBottomTabs.map((tab) => {
+                      const isActive = tab.id === rightBottomActiveTabId;
+                      return (
+                        <div
+                          key={tab.id}
+                          className="editor-tab-content"
+                          style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}
+                        >
+                          {tab.type === 'file' && editorType === 'monaco' && (
+                            <EditorGroup
+                              file={tab}
+                              onContentChange={(content) => {
+                                updateTabInAllPanes(tab.id, current => ({
+                                  ...current,
+                                  content,
+                                  isDirty: true,
+                                  isPreview: false
+                                }));
+                              }}
+                            />
+                          )}
+
+                          {tab.type === 'file' && editorType === 'codemirror' && (
+                            <CodeMirrorEditor
+                              content={(() => {
+                                const rawContent = tab.content || '';
+                                const isHtml = isHtmlContent(rawContent);
+                                return isHtml ? htmlToMarkdown(rawContent) : rawContent;
+                              })()}
+                              onChange={(markdownContent) => {
+                                updateTabInAllPanes(tab.id, current => ({
+                                  ...current,
+                                  content: markdownContent,
+                                  isDirty: true,
+                                  isPreview: false
+                                }));
+                              }}
+                              editable={true}
+                              isActive={isActive}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+            </div>
+          </React.Fragment>
         )}
       </div>
     </div>

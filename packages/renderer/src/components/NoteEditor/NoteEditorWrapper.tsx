@@ -108,7 +108,7 @@ export const NoteEditorWrapper: React.FC<NoteEditorWrapperProps> = ({
                 }
               }}
             >
-              <Icon name="code" size={14} />
+              <Icon iconSet="ui" name="editor-switch" size={14} />
               <span>CodeMirror</span>
             </div>
             <div

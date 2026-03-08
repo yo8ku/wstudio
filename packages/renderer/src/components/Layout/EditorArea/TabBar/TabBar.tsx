@@ -4,27 +4,105 @@
  * 鎻忚堪锛氭彁渚涙枃浠舵爣绛惧垏鎹€佸叧闂€佹偓鍋滄晥鏋滅瓑鍔熻兘
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { EditorTab } from '../EditorArea';
 import { Icon } from '../../../Icons/Icon';
 import { MonacoContextMenu } from '../MonacoContextMenu/MonacoContextMenu';
 import type { MenuGroup } from '../MonacoContextMenu/MonacoContextMenu';
 import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
+import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
+import { useExplorerStore } from '../../../../stores/explorerStore';
 import { FileParser } from '@note-studio/global-rag';
 import './TabBar.scss';
+
+type SplitMoveDirection = 'left' | 'right' | 'up' | 'down';
 
 export interface TabBarProps {
   tabs: EditorTab[];
   activeTabId: string | null;
   onTabClick: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
+  onCloseMultipleTabs?: (tabIds: string[]) => void;
+  dragGroupId?: string;
+  onTabDragStart?: (payload: { tabId: string; sourceGroupId: string }) => void;
+  onTabDragEnd?: () => void;
+  onSplitHorizontal?: (tabId: string) => void;
+  onSplitVertical?: (tabId: string) => void;
+  onSplitToDirection?: (tabId: string, direction: SplitMoveDirection) => void;
+  onMoveToDirection?: (tabId: string, direction: SplitMoveDirection) => void;
+  onAddTabToChat?: (tabId: string) => void;
+  onOpenTabInExplorer?: (tabId: string) => void;
+  onRevealTabInExplorerView?: (tabId: string) => void;
+  onOpenInNewWindow?: (tabId: string) => void;
 }
+
+const normalizePath = (value: string): string => value.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+
+const getLastSegment = (value: string): string => {
+  const segments = normalizePath(value).split('/').filter(Boolean);
+  return segments[segments.length - 1] || '';
+};
+
+const toRelativePath = (fullPath: string, workspacePath: string): string => {
+  const normalizedFullPath = normalizePath(fullPath);
+  const normalizedWorkspace = normalizePath(workspacePath || '');
+  if (!normalizedWorkspace) {
+    return normalizedFullPath;
+  }
+  if (normalizedFullPath === normalizedWorkspace) {
+    return '';
+  }
+  if (normalizedFullPath.startsWith(`${normalizedWorkspace}/`)) {
+    return normalizedFullPath.slice(normalizedWorkspace.length + 1);
+  }
+  return normalizedFullPath;
+};
+
+const toBreadcrumbPathText = (fullPath: string, workspacePath: string): string => {
+  const normalizedPath = normalizePath(fullPath || '');
+  if (!normalizedPath) {
+    return '';
+  }
+
+  const normalizedWorkspace = normalizePath(workspacePath || '');
+  if (
+    normalizedWorkspace &&
+    (normalizedPath === normalizedWorkspace || normalizedPath.startsWith(`${normalizedWorkspace}/`))
+  ) {
+    const rootFolderName = getLastSegment(normalizedWorkspace);
+    const relativePath =
+      normalizedPath === normalizedWorkspace
+        ? ''
+        : normalizedPath.slice(normalizedWorkspace.length + 1);
+    const relativeSegments = relativePath ? relativePath.split('/').filter(Boolean) : [];
+    const segments = rootFolderName ? [rootFolderName, ...relativeSegments] : relativeSegments;
+    return segments.join(' / ');
+  }
+
+  const fallbackSegments = normalizedPath.split('/').filter(Boolean);
+  if (fallbackSegments.length > 0 && /^[A-Za-z]:$/.test(fallbackSegments[0])) {
+    fallbackSegments.shift();
+  }
+  return fallbackSegments.slice(-4).join(' / ');
+};
 
 export const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTabId,
   onTabClick,
-  onTabClose
+  onTabClose,
+  onCloseMultipleTabs,
+  dragGroupId,
+  onTabDragStart,
+  onTabDragEnd,
+  onSplitHorizontal,
+  onSplitVertical,
+  onSplitToDirection,
+  onMoveToDirection,
+  onAddTabToChat,
+  onOpenTabInExplorer,
+  onRevealTabInExplorerView,
+  onOpenInNewWindow
 }) => {
   const [isEditorFocused, setIsEditorFocused] = useState(true);
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
@@ -34,6 +112,8 @@ export const TabBar: React.FC<TabBarProps> = ({
   const [moreMenuPosition, setMoreMenuPosition] = useState({ x: 0, y: 0 });
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const [codeMirrorMode, setCodeMirrorMode] = useState<'source' | 'preview'>('source');
+  const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
+  const workspacePath = useExplorerStore((state) => state.workspacePath);
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
   const isEditableDocumentTab = (() => {
@@ -157,6 +237,16 @@ export const TabBar: React.FC<TabBarProps> = ({
     return () => window.cancelAnimationFrame(rafId);
   }, [tabs, ensureTabFullyVisible]);
 
+  useEffect(() => {
+    if (!tabContextMenu) {
+      return;
+    }
+    const exists = tabs.some(tab => tab.id === tabContextMenu.tabId);
+    if (!exists) {
+      setTabContextMenu(null);
+    }
+  }, [tabContextMenu, tabs]);
+
   // 鑾峰彇鏂囦欢鍥炬爣锛堢畝鍖栫増锛屼娇鐢ㄩ€氱敤鏂囦欢鍥炬爣锛?
   const getFileIcon = (language?: string) => {
     return (
@@ -201,6 +291,118 @@ export const TabBar: React.FC<TabBarProps> = ({
     onTabClose(tabId);
   };
 
+  const closeTabs = useCallback((tabIds: string[]) => {
+    if (tabIds.length === 0) {
+      return;
+    }
+    if (onCloseMultipleTabs) {
+      onCloseMultipleTabs(tabIds);
+      return;
+    }
+    tabIds.forEach((tabId) => onTabClose(tabId));
+  }, [onCloseMultipleTabs, onTabClose]);
+
+  const copyText = useCallback(async (text: string) => {
+    if (!text) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error('[TabBar] 复制失败:', error);
+    }
+  }, []);
+
+  const handleOpenInExplorerByTab = useCallback(async (tab: EditorTab) => {
+    if (!tab.path || tab.type !== 'file') {
+      return;
+    }
+    if (onOpenTabInExplorer) {
+      onOpenTabInExplorer(tab.id);
+      return;
+    }
+    try {
+      if (window.electron?.folder?.revealInExplorer) {
+        await window.electron.folder.revealInExplorer(tab.path);
+        return;
+      }
+      await window.electron?.ipcRenderer.invoke('open-in-explorer', tab.path);
+    } catch (error) {
+      console.error('[TabBar] 在资源管理器中打开失败:', error);
+    }
+  }, [onOpenTabInExplorer]);
+
+  const handleRevealInExplorerViewByTab = useCallback((tab: EditorTab) => {
+    if (!tab.path || tab.type !== 'file') {
+      return;
+    }
+    if (onRevealTabInExplorerView) {
+      onRevealTabInExplorerView(tab.id);
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('tab-switched', { detail: { path: tab.path } }));
+    window.dispatchEvent(new CustomEvent('file-tree-reveal', { detail: { path: tab.path } }));
+  }, [onRevealTabInExplorerView]);
+
+  const handleAddTabToChatClick = useCallback((tab: EditorTab) => {
+    if (!tab.path || tab.type !== 'file') {
+      return;
+    }
+    if (onAddTabToChat) {
+      onAddTabToChat(tab.id);
+      return;
+    }
+    window.dispatchEvent(new Event('restore-ai-chat-panel'));
+    window.dispatchEvent(new CustomEvent('ai-chat:add-file-context', {
+      detail: {
+        path: tab.path,
+        name: tab.title,
+      },
+    }));
+  }, [onAddTabToChat]);
+
+  const handleTabContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>, tabId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setShowMoreMenu(false);
+    setTabContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      tabId,
+    });
+  }, []);
+
+  const handleTabDragStart = useCallback((event: React.DragEvent<HTMLDivElement>, tabId: string) => {
+    if (!dragGroupId) {
+      return;
+    }
+
+    event.dataTransfer.clearData();
+    const payload = JSON.stringify({ tabId, sourceGroupId: dragGroupId });
+    event.dataTransfer.setData('application/x-note-studio-tab', payload);
+    event.dataTransfer.effectAllowed = 'move';
+    onTabDragStart?.({ tabId, sourceGroupId: dragGroupId });
+  }, [dragGroupId, onTabDragStart]);
+
+  const handleTabDragEnd = useCallback(() => {
+    onTabDragEnd?.();
+  }, [onTabDragEnd]);
+
+  const handleSplitHorizontal = useCallback(() => {
+    if (!activeTab) return;
+    onSplitHorizontal?.(activeTab.id);
+  }, [activeTab, onSplitHorizontal]);
+
+  const handleSplitVertical = useCallback(() => {
+    if (!activeTab) return;
+    onSplitVertical?.(activeTab.id);
+  }, [activeTab, onSplitVertical]);
+
+  const handleOpenInNewWindow = useCallback(() => {
+    if (!activeTab) return;
+    onOpenInNewWindow?.(activeTab.id);
+  }, [activeTab, onOpenInNewWindow]);
+
   // 澶勭悊鏇村鎿嶄綔鎸夐挳鐐瑰嚮
   const handleMoreClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -222,7 +424,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           id: 'close-all',
           label: '\u5168\u90e8\u5173\u95ed',
           action: () => {
-            tabs.forEach(tab => onTabClose(tab.id));
+            closeTabs(tabs.map(tab => tab.id));
           },
           disabled: tabs.length === 0
         },
@@ -230,7 +432,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           id: 'close-saved',
           label: '\u5173\u95ed\u5df2\u4fdd\u5b58',
           action: () => {
-            tabs.filter(tab => !tab.isDirty).forEach(tab => onTabClose(tab.id));
+            closeTabs(tabs.filter(tab => !tab.isDirty).map(tab => tab.id));
           },
           disabled: tabs.length === 0
         },
@@ -263,8 +465,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           id: 'split-horizontal',
           label: '\u5de6\u53f3\u5206\u5c4f',
           action: () => {
-            console.log('\u5de6\u53f3\u5206\u5c4f');
-            // TODO: implement split horizontal
+            handleSplitHorizontal();
           },
           disabled: !activeTab
         },
@@ -272,8 +473,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           id: 'split-vertical',
           label: '\u4e0a\u4e0b\u5206\u5c4f',
           action: () => {
-            console.log('\u4e0a\u4e0b\u5206\u5c4f');
-            // TODO: implement split vertical
+            handleSplitVertical();
           },
           disabled: !activeTab
         },
@@ -281,8 +481,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           id: 'open-in-new-window',
           label: '\u5728\u65b0\u7a97\u53e3\u4e2d\u6253\u5f00',
           action: () => {
-            console.log('\u5728\u65b0\u7a97\u53e3\u4e2d\u6253\u5f00');
-            // TODO: implement open in new window
+            handleOpenInNewWindow();
           },
           disabled: !activeTab
         }
@@ -365,6 +564,215 @@ export const TabBar: React.FC<TabBarProps> = ({
     }
   ];
 
+  const contextTargetTab = useMemo(
+    () => (tabContextMenu ? tabs.find(tab => tab.id === tabContextMenu.tabId) || null : null),
+    [tabContextMenu, tabs]
+  );
+
+  const tabContextMenuItems = useMemo<ContextMenuItem[]>(() => {
+    if (!contextTargetTab) {
+      return [];
+    }
+
+    const clickedIndex = tabs.findIndex(tab => tab.id === contextTargetTab.id);
+    const rightTabIds = clickedIndex >= 0 ? tabs.slice(clickedIndex + 1).map(tab => tab.id) : [];
+    const closeOtherTabIds = tabs.filter(tab => tab.id !== contextTargetTab.id).map(tab => tab.id);
+    const closeSavedTabIds = tabs.filter(tab => !tab.isDirty).map(tab => tab.id);
+    const closeAllTabIds = tabs.map(tab => tab.id);
+    const canOperateFile = contextTargetTab.type === 'file' && !!contextTargetTab.path;
+    const relativePathText = canOperateFile
+      ? toRelativePath(contextTargetTab.path, workspacePath || '')
+      : '';
+    const breadcrumbPathText = canOperateFile
+      ? toBreadcrumbPathText(contextTargetTab.path, workspacePath || '')
+      : '';
+
+    return [
+      {
+        id: 'close',
+        label: '关闭',
+        onClick: () => onTabClose(contextTargetTab.id),
+      },
+      {
+        id: 'close-others',
+        label: '关闭其他',
+        disabled: closeOtherTabIds.length === 0,
+        onClick: () => closeTabs(closeOtherTabIds),
+      },
+      {
+        id: 'close-right',
+        label: '关闭右侧',
+        disabled: rightTabIds.length === 0,
+        onClick: () => closeTabs(rightTabIds),
+      },
+      {
+        id: 'close-saved',
+        label: '关闭已保存',
+        disabled: closeSavedTabIds.length === 0,
+        onClick: () => closeTabs(closeSavedTabIds),
+      },
+      {
+        id: 'close-all',
+        label: '关闭全部',
+        disabled: closeAllTabIds.length === 0,
+        onClick: () => closeTabs(closeAllTabIds),
+      },
+      {
+        id: 'separator-close-copy',
+        label: '',
+        separator: true,
+      },
+      {
+        id: 'copy-path',
+        label: '复制路径',
+        disabled: !canOperateFile,
+        onClick: () => {
+          if (canOperateFile) {
+            void copyText(contextTargetTab.path);
+          }
+        },
+      },
+      {
+        id: 'copy-relative-path',
+        label: '复制相对路径',
+        disabled: !canOperateFile,
+        onClick: () => {
+          if (canOperateFile) {
+            void copyText(relativePathText);
+          }
+        },
+      },
+      {
+        id: 'copy-breadcrumb-path',
+        label: '复制面包屑路径',
+        disabled: !canOperateFile,
+        onClick: () => {
+          if (canOperateFile) {
+            void copyText(breadcrumbPathText);
+          }
+        },
+      },
+      {
+        id: 'separator-copy-chat',
+        label: '',
+        separator: true,
+      },
+      {
+        id: 'add-to-chat',
+        label: '将文件添加到聊天',
+        disabled: !canOperateFile,
+        onClick: () => {
+          if (canOperateFile) {
+            handleAddTabToChatClick(contextTargetTab);
+          }
+        },
+      },
+      {
+        id: 'open-in-system-explorer',
+        label: '在资源管理器打开',
+        disabled: !canOperateFile,
+        onClick: () => {
+          if (canOperateFile) {
+            void handleOpenInExplorerByTab(contextTargetTab);
+          }
+        },
+      },
+      {
+        id: 'reveal-in-explorer-view',
+        label: '在资源管理器视图显示',
+        disabled: !canOperateFile,
+        onClick: () => {
+          if (canOperateFile) {
+            handleRevealInExplorerViewByTab(contextTargetTab);
+          }
+        },
+      },
+      {
+        id: 'split-right',
+        label: '向右分割',
+        disabled: !canOperateFile || !onSplitToDirection,
+        onClick: () => {
+          if (canOperateFile) {
+            onSplitToDirection?.(contextTargetTab.id, 'right');
+          }
+        },
+      },
+      {
+        id: 'split-and-move',
+        label: '分割 & 移动',
+        disabled: !canOperateFile,
+        submenuType: 'hover',
+        submenu: [
+          {
+            id: 'split-to-right',
+            label: '向右分屏',
+            disabled: !onSplitToDirection,
+            onClick: () => onSplitToDirection?.(contextTargetTab.id, 'right'),
+          },
+          {
+            id: 'split-to-left',
+            label: '向左分屏',
+            disabled: !onSplitToDirection,
+            onClick: () => onSplitToDirection?.(contextTargetTab.id, 'left'),
+          },
+          {
+            id: 'split-to-down',
+            label: '向下分屏',
+            disabled: !onSplitToDirection,
+            onClick: () => onSplitToDirection?.(contextTargetTab.id, 'down'),
+          },
+          {
+            id: 'split-to-up',
+            label: '向上分屏',
+            disabled: !onSplitToDirection,
+            onClick: () => onSplitToDirection?.(contextTargetTab.id, 'up'),
+          },
+          {
+            id: 'split-move-separator',
+            label: '',
+            separator: true,
+          },
+          {
+            id: 'move-to-up',
+            label: '移动到上方',
+            disabled: !onMoveToDirection,
+            onClick: () => onMoveToDirection?.(contextTargetTab.id, 'up'),
+          },
+          {
+            id: 'move-to-down',
+            label: '移动到下方',
+            disabled: !onMoveToDirection,
+            onClick: () => onMoveToDirection?.(contextTargetTab.id, 'down'),
+          },
+          {
+            id: 'move-to-left',
+            label: '向左移动',
+            disabled: !onMoveToDirection,
+            onClick: () => onMoveToDirection?.(contextTargetTab.id, 'left'),
+          },
+          {
+            id: 'move-to-right',
+            label: '向右移动',
+            disabled: !onMoveToDirection,
+            onClick: () => onMoveToDirection?.(contextTargetTab.id, 'right'),
+          },
+        ],
+      },
+    ];
+  }, [
+    closeTabs,
+    contextTargetTab,
+    copyText,
+    handleAddTabToChatClick,
+    handleOpenInExplorerByTab,
+    handleRevealInExplorerViewByTab,
+    onMoveToDirection,
+    onSplitToDirection,
+    onTabClose,
+    tabs,
+    workspacePath,
+  ]);
+
   return (
     <div className="tab-bar">
       <CustomScrollbar
@@ -386,8 +794,12 @@ export const TabBar: React.FC<TabBarProps> = ({
               data-tab-id={tab.id}
               className={`tab-item ${isActive ? 'active' : ''} ${isHovered ? 'hovered' : ''} ${tab.isDirty ? 'dirty' : ''} ${tab.isPreview ? 'preview' : ''}`}
               onClick={() => handleTabClick(tab.id)}
+              draggable={!!dragGroupId}
+              onDragStart={(event) => handleTabDragStart(event, tab.id)}
+              onDragEnd={handleTabDragEnd}
               onMouseEnter={() => setHoveredTabId(tab.id)}
               onMouseLeave={() => setHoveredTabId(null)}
+              onContextMenu={(event) => handleTabContextMenu(event, tab.id)}
               title={tab.path}
             >
               {/* 娲诲姩鏍囩椤堕儴鎸囩ず渚?/}
@@ -435,6 +847,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             <button 
               className="tab-bar-action-btn"
               title="拆分编辑器"
+              onClick={handleSplitHorizontal}
             >
               <Icon name="split-vertical" size={16} />
             </button>
@@ -446,7 +859,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                 window.dispatchEvent(new CustomEvent('set-editor-type', { detail: 'codemirror' }));
               }}
             >
-              <Icon name="code" size={16} />
+              <Icon name="editor-switch" size={16} />
             </button>
             
             <button 
@@ -469,6 +882,14 @@ export const TabBar: React.FC<TabBarProps> = ({
         menuGroups={moreMenuGroups}
         onClose={() => setShowMoreMenu(false)}
       />
+
+      {tabContextMenu && contextTargetTab && (
+        <ContextMenu
+          items={tabContextMenuItems}
+          position={{ x: tabContextMenu.x, y: tabContextMenu.y }}
+          onClose={() => setTabContextMenu(null)}
+        />
+      )}
     </div>
   );
 };

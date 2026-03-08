@@ -41,7 +41,6 @@ export class TerminalSession {
       cursorBlink: false, // 禁用原生闪烁，使用自定义实现
       cursorStyle: 'block',
       fontSize: 14,
-      fontFamily: '"Cascadia Mono", "Microsoft YaHei", monospace',
       theme: {
         background: '#1e1e1e',
         foreground: '#cccccc',

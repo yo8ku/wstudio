@@ -7481,6 +7481,30 @@ const markdownHideDecorations = StateField.define<DecorationSet>({
   provide: f => EditorView.decorations.from(f),
 });
 
+const isCodeMirrorLineElement = (element: Element): element is HTMLElement => {
+  return element instanceof HTMLElement && element.classList.contains('cm-line');
+};
+
+const removeCodeMirrorLineFontFamily = (lineElement: HTMLElement) => {
+  if (!lineElement.style.getPropertyValue('font-family')) {
+    return;
+  }
+
+  lineElement.style.removeProperty('font-family');
+  if (!lineElement.getAttribute('style')) {
+    lineElement.removeAttribute('style');
+  }
+};
+
+const sanitizeCodeMirrorLineFontFamily = (root: ParentNode) => {
+  const lineElements = root.querySelectorAll('.cm-line');
+  lineElements.forEach((lineElement) => {
+    if (lineElement instanceof HTMLElement) {
+      removeCodeMirrorLineFontFamily(lineElement);
+    }
+  });
+};
+
 export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
   content,
   onChange,
@@ -8704,6 +8728,39 @@ sequenceDiagram
     viewRef.current = view;
     globalEditorView = view;
 
+    sanitizeCodeMirrorLineFontFamily(view.dom);
+    const cmLineFontObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && mutation.target instanceof Element) {
+          if (isCodeMirrorLineElement(mutation.target)) {
+            removeCodeMirrorLineFontFamily(mutation.target);
+          }
+          continue;
+        }
+
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach((node) => {
+            if (!(node instanceof Element)) {
+              return;
+            }
+
+            if (isCodeMirrorLineElement(node)) {
+              removeCodeMirrorLineFontFamily(node);
+            }
+
+            sanitizeCodeMirrorLineFontFamily(node);
+          });
+        }
+      }
+    });
+
+    cmLineFontObserver.observe(view.dom, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    });
+
     // 鍒濆鍖栧ぇ绾?
     updateOutline();
 
@@ -8712,6 +8769,7 @@ sequenceDiagram
     }
 
     return () => {
+      cmLineFontObserver.disconnect();
       view.destroy();
       viewRef.current = null;
       globalEditorView = null;

@@ -10,6 +10,78 @@ import { registerMonacoTableReferenceProvider } from '../services/tableReference
 
 // 全局标记，确保只初始化一次
 let monacoInitialized = false;
+let monacoViewLinesFontGuardInstalled = false;
+
+const isMonacoViewLinesElement = (element: Element): element is HTMLElement => {
+  return (
+    element instanceof HTMLElement &&
+    element.classList.contains('view-lines') &&
+    element.classList.contains('monaco-mouse-cursor-text')
+  );
+};
+
+const removeMonacoViewLinesFontFamily = (element: HTMLElement) => {
+  if (element.style.getPropertyValue('font-family')) {
+    element.style.removeProperty('font-family');
+  }
+};
+
+const sanitizeMonacoViewLinesFontFamily = (root: ParentNode) => {
+  const viewLinesElements = root.querySelectorAll('.view-lines.monaco-mouse-cursor-text');
+  viewLinesElements.forEach((node) => {
+    if (node instanceof HTMLElement) {
+      removeMonacoViewLinesFontFamily(node);
+    }
+  });
+};
+
+const installMonacoViewLinesFontFamilyGuard = () => {
+  if (monacoViewLinesFontGuardInstalled || typeof document === 'undefined') {
+    return;
+  }
+
+  if (!document.body) {
+    setTimeout(installMonacoViewLinesFontFamilyGuard, 0);
+    return;
+  }
+
+  sanitizeMonacoViewLinesFontFamily(document);
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes' && mutation.target instanceof Element) {
+        if (isMonacoViewLinesElement(mutation.target)) {
+          removeMonacoViewLinesFontFamily(mutation.target);
+        }
+        continue;
+      }
+
+      if (mutation.type === 'childList') {
+        mutation.addedNodes.forEach((node) => {
+          if (!(node instanceof Element)) {
+            return;
+          }
+
+          if (isMonacoViewLinesElement(node)) {
+            removeMonacoViewLinesFontFamily(node);
+          }
+
+          sanitizeMonacoViewLinesFontFamily(node);
+        });
+      }
+    }
+  });
+
+  observer.observe(document.body, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['style', 'class']
+  });
+
+  monacoViewLinesFontGuardInstalled = true;
+  console.log('[Monaco] view-lines font-family guard installed');
+};
 
 /**
  * 配置 Monaco Editor 的 Web Worker 环境
@@ -120,6 +192,7 @@ export const initializeMonaco = async (monaco: Monaco) => {
 
   // 配置 Worker 环境
   setupMonacoWorkers();
+  installMonacoViewLinesFontFamilyGuard();
 
   // 验证语言支持
   verifyLanguageSupport(monaco);
