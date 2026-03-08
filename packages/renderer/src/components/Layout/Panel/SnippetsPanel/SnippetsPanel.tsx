@@ -1,177 +1,175 @@
 /**
- * 常用片段面板组件
- * 功能：管理和显示代码片段
- * 描述：支持搜索、添加、编辑和使用代码片段
+ * SnippetsPanel.tsx
+ * 底部链接面板。
+ * 功能：显示当前文件的出链、反向链接和提到当前文件名。
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useEffect } from 'react';
+import { useLinkStore } from '../../../../stores/linkStore';
+import { useNoteStore } from '../../../../stores/noteStore';
+import { openNoteInEditor } from '../../../../utils/noteLinking';
+import {
+  LinkCollection,
+  LinkViewToolbar,
+  createBacklinkCollectionItems,
+  createMentionCollectionItems,
+  createOutlinkCollectionItems
+} from '../../../Links';
+import { Icon } from '../../../Icons';
 import './SnippetsPanel.scss';
 
-interface Snippet {
-  id: string;
-  title: string;
-  description: string;
-  code: string;
-  language: string;
+import type { LinkCollectionSort } from '../../../Links';
+
+interface SnippetsPanelProps {
+  query?: string;
+  sortBy?: LinkCollectionSort;
+  isSearchVisible?: boolean;
+  showFullContext?: boolean;
+  onQueryChange?: (query: string) => void;
+  onToggleSearch?: () => void;
+  onSortChange?: (sortBy: LinkCollectionSort) => void;
+  onToggleContext?: () => void;
 }
 
-export const SnippetsPanel: React.FC = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [snippets, setSnippets] = useState<Snippet[]>([
-    {
-      id: '1',
-      title: 'React Component',
-      description: 'Basic React functional component template',
-      code: `import React from 'react';\n\ninterface Props {\n  // Add your props here\n}\n\nexport const Component: React.FC<Props> = (props) => {\n  return (\n    <div>\n      {/* Your component content */}\n    </div>\n  );\n};`,
-      language: 'tsx'
-    },
-    {
-      id: '2',
-      title: 'useState Hook',
-      description: 'React useState hook example',
-      code: `const [state, setState] = useState<Type>(initialValue);`,
-      language: 'tsx'
-    },
-    {
-      id: '3',
-      title: 'useEffect Hook',
-      description: 'React useEffect hook example',
-      code: `useEffect(() => {\n  // Effect logic here\n  \n  return () => {\n    // Cleanup logic\n  };\n}, [dependencies]);`,
-      language: 'tsx'
-    },
-    {
-      id: '4',
-      title: 'Try-Catch',
-      description: 'Error handling with try-catch',
-      code: `try {\n  // Code that might throw an error\n} catch (error) {\n  console.error('Error:', error);\n}`,
-      language: 'typescript'
-    },
-    {
-      id: '5',
-      title: 'Async Function',
-      description: 'Async/await function template',
-      code: `async function asyncFunction() {\n  try {\n    const result = await someAsyncOperation();\n    return result;\n  } catch (error) {\n    console.error('Error:', error);\n    throw error;\n  }\n}`,
-      language: 'typescript'
+export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
+  query = '',
+  sortBy = 'default',
+  isSearchVisible = false,
+  showFullContext = false,
+  onQueryChange = () => {},
+  onToggleSearch = () => {},
+  onSortChange = () => {},
+  onToggleContext = () => {}
+}) => {
+  const {
+    outlinks,
+    backlinks,
+    unlinkedMentions,
+    isLoading,
+    loadLinks,
+    findUnlinkedMentions,
+    convertUnlinkedMention
+  } = useLinkStore();
+  const { currentNote, setCurrentNote } = useNoteStore();
+
+  useEffect(() => {
+    if (currentNote) {
+      void Promise.all([
+        loadLinks(currentNote.id),
+        findUnlinkedMentions(currentNote.id)
+      ]);
     }
-  ]);
+  }, [currentNote, findUnlinkedMentions, loadLinks]);
 
-  // 过滤片段
-  const filteredSnippets = snippets.filter(snippet => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
+  const handleOpenNote = async (noteId?: string, lineNumber?: number) => {
+    if (!noteId) {
+      return;
+    }
+
+    try {
+      await openNoteInEditor(noteId, {
+        lineNumber,
+        column: 1,
+        setCurrentNote
+      });
+    } catch (error) {
+      console.error('[SnippetsPanel] 打开笔记失败:', error);
+    }
+  };
+
+  const handleConvertMention = async (
+    sourceNoteId: string,
+    position: { start: number; end: number },
+    matchedText: string
+  ) => {
+    if (!currentNote) {
+      return;
+    }
+
+    await convertUnlinkedMention(sourceNoteId, currentNote.id, position, matchedText);
+  };
+
+  if (!currentNote) {
     return (
-      snippet.title.toLowerCase().includes(query) ||
-      snippet.description.toLowerCase().includes(query) ||
-      snippet.code.toLowerCase().includes(query)
+      <div className="snippets-panel snippets-panel-empty-state">
+        <div className="snippets-panel-empty">
+          <Icon name="links" size={42} />
+          <div className="snippets-panel-empty-title">当前文件还没有链接索引</div>
+          <div className="snippets-panel-empty-description">
+            打开或保存一个可索引的文本文件后，这里会显示它的双向链接。
+          </div>
+        </div>
+      </div>
     );
-  });
+  }
 
-  // 复制到剪贴板
-  const handleCopy = useCallback((code: string) => {
-    navigator.clipboard.writeText(code).then(() => {
-      // TODO: 显示成功提示
-      console.log('Copied to clipboard');
-    }).catch(err => {
-      console.error('Failed to copy:', err);
-    });
-  }, []);
-
-  // 插入到编辑器
-  const handleInsert = useCallback((code: string) => {
-    // TODO: 集成 Monaco 编辑API 插入代码
-    console.log('Insert code:', code);
-    handleCopy(code);
-  }, [handleCopy]);
-
-  // 添加新片段
-  const handleAddSnippet = useCallback(async () => {
-    console.log('[SnippetsPanel] 打开命令中心添加片段...');
-    
-    // 动态导入SnippetsCommandProvider
-    const { SnippetsCommandProvider } = await import('../../../../command-center/SnippetsCommandProvider');
-    
-    // 使用静态方法显示片段选择器（会自动添加事件监听器）
-    await SnippetsCommandProvider.showSnippetSelector();
-  }, []);
+  const mentionTitle = '提到当前文件名';
 
   return (
     <div className="snippets-panel">
-      {/* 工具栏*/}
-      <div className="snippets-panel-toolbar">
-        <input
-          type="text"
-          className="snippets-panel-search"
-          placeholder="搜索片段..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        <button 
-          className="snippets-panel-add-btn"
-          onClick={handleAddSnippet}
-        >
-          添加片段
-        </button>
-      </div>
-
-      {/* 内容区域 */}
       <div className="snippets-panel-content">
-        {filteredSnippets.length > 0 ? (
-          <div className="snippets-panel-list">
-            {filteredSnippets.map((snippet) => (
-              <div 
-                key={snippet.id} 
-                className="snippets-panel-item"
-                onClick={() => handleInsert(snippet.code)}
-              >
-                <div className="snippets-panel-item-header">
-                  <div className="snippets-panel-item-title">{snippet.title}</div>
-                  <div className="snippets-panel-item-language">{snippet.language}</div>
-                </div>
-                <div className="snippets-panel-item-description">
-                  {snippet.description}
-                </div>
-                <div className="snippets-panel-item-code">
-                  {snippet.code}
-                </div>
-                <div className="snippets-panel-item-actions">
-                  <button
-                    className="snippets-panel-item-action-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCopy(snippet.code);
-                    }}
-                  >
-                    复制
-                  </button>
-                  <button
-                    className="snippets-panel-item-action-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleInsert(snippet.code);
-                    }}
-                  >
-                    插入
-                  </button>
-                </div>
-              </div>
-            ))}
+        {isLoading ? (
+          <div className="snippets-panel-empty">
+            <div className="snippets-panel-empty-title">加载中...</div>
           </div>
         ) : (
-          <div className="snippets-panel-empty">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-            </svg>
-            <div className="snippets-panel-empty-title">
-              {searchQuery ? '未找到匹配的片段' : '暂无代码片段'}
-            </div>
-            <div className="snippets-panel-empty-description">
-              {searchQuery ? '尝试使用其他关键词搜索 ': "点击`添加片段`创建您的第一个代码片"}
-            </div>
-          </div>
+          <>
+            <LinkViewToolbar
+              query={query}
+              sortBy={sortBy}
+              isSearchVisible={isSearchVisible}
+              showFullContext={showFullContext}
+              searchPlaceholder="搜索链接、来源、锚点或上下文"
+              stats={[
+                { label: '出链', count: outlinks.length },
+                { label: '反链', count: backlinks.length },
+                { label: '提到', count: unlinkedMentions.length }
+              ]}
+              onQueryChange={onQueryChange}
+              onToggleSearch={onToggleSearch}
+              onSortChange={onSortChange}
+              onToggleContext={onToggleContext}
+            />
+
+            <LinkCollection
+              title="出链"
+              items={createOutlinkCollectionItems(outlinks, handleOpenNote)}
+              emptyText="暂无出链到其他文件"
+              defaultCollapsed
+              resetKey={`${currentNote.id}-outlinks`}
+              query={query}
+              sortBy={sortBy}
+              showFullContext={showFullContext}
+            />
+
+            <LinkCollection
+              title="反链"
+              items={createBacklinkCollectionItems(backlinks, handleOpenNote)}
+              emptyText="没有笔记链接当前文件"
+              defaultCollapsed
+              resetKey={`${currentNote.id}-backlinks`}
+              query={query}
+              sortBy={sortBy}
+              showFullContext={showFullContext}
+            />
+
+            <LinkCollection
+              title={mentionTitle}
+              items={createMentionCollectionItems(
+                unlinkedMentions,
+                handleOpenNote,
+                handleConvertMention
+              )}
+              emptyText="没有笔记提到当前文件名"
+              defaultCollapsed
+              resetKey={`${currentNote.id}-mentions`}
+              query={query}
+              sortBy={sortBy}
+              showFullContext={showFullContext}
+            />
+          </>
         )}
       </div>
     </div>
   );
 };
-
-

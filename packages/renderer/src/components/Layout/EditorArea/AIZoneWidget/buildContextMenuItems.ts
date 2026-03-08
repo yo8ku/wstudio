@@ -8,6 +8,7 @@ import type { SelectGroup, SelectItem } from '../../../common/Select/Select';
 import { snippetService } from '../../../../services/SnippetService';
 import { knowledgeBaseService } from '../../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
 import { tableReferenceService } from '../../../../services/tableReference/TableReferenceService';
+import { getPromptTemplates } from '../../../../services/PromptTemplateService';
 import { Icon } from '../../../Icons/Icon';
 import React from 'react';
 
@@ -410,34 +411,46 @@ export async function buildLevel2MenuItems(
       }
     }
   } else if (category === 'category-prompts') {
-    // 提示词二级菜单（移除代码相关的）
-    const promptItems: SelectItem[] = [
-      {
-        value: 'prompt-doc-summary',
-        label: '文档摘要',
-        icon: React.createElement(Icon, { iconSet: 'ui', name: 'file-text', size: 14 }),
-      },
-      {
-        value: 'prompt-doc-translate',
-        label: '文档翻译',
-        icon: React.createElement(Icon, { iconSet: 'ui', name: 'file-text', size: 14 }),
-      },
-      {
-        value: 'prompt-summarize',
-        label: '总结',
-        icon: React.createElement(Icon, { iconSet: 'ui', name: 'message-circle', size: 14 }),
-      },
-      {
-        value: 'prompt-rewrite',
-        label: '重写',
-        icon: React.createElement(Icon, { iconSet: 'ui', name: 'message-circle', size: 14 }),
-      },
-    ];
+    try {
+      const promptTemplates = await getPromptTemplates();
+      if (promptTemplates.length === 0) {
+        groups.push({
+          groupName: '提示词',
+          items: [
+            {
+              value: 'no-prompts',
+              label: '暂无提示词',
+              icon: React.createElement(Icon, { iconSet: 'ui', name: 'message-circle', size: 14 }),
+              disabled: true,
+            },
+          ],
+        });
+      } else {
+        const promptItems: SelectItem[] = promptTemplates.map(template => ({
+          value: `prompt-${template.id}`,
+          label: template.name,
+          icon: React.createElement(Icon, { iconSet: 'ui', name: 'message-circle', size: 14 }),
+        }));
 
-    groups.push({
-      groupName: '提示词',
-      items: promptItems,
-    });
+        groups.push({
+          groupName: '提示词',
+          items: promptItems,
+        });
+      }
+    } catch (error) {
+      console.error('[buildContextMenuItems] 获取提示词失败:', error);
+      groups.push({
+        groupName: '提示词',
+        items: [
+          {
+            value: 'prompt-error',
+            label: '获取提示词失败',
+            icon: React.createElement(Icon, { iconSet: 'ui', name: 'message-circle', size: 14 }),
+            disabled: true,
+          },
+        ],
+      });
+    }
   } else if (category === 'category-knowledge-base') {
     // 知识库二级菜单
     try {

@@ -1,12 +1,14 @@
 /**
- * Monaco 编辑器右键菜单Hook
- * 功能：管理右键菜单的状态和菜单项
- * 描述：提供可扩展的菜单项配置和管理机制
+ * useMonacoContextMenu.tsx
+ * Monaco 编辑器右键菜单 Hook
+ * 功能：管理 Monaco 右键菜单的位置、显示状态与菜单项行为。
  */
 
 import { useState, useCallback, useMemo } from 'react';
 import * as monaco from 'monaco-editor';
-import type { MenuItem, MenuGroup } from './MonacoContextMenu';
+import type { MenuGroup } from './MonacoContextMenu';
+import { openBidirectionalLinksPanel } from '../../../../utils/noteLinking';
+import { buildBidirectionalLinkText } from '../../../../utils/bidirectionalLink';
 
 export interface UseMonacoContextMenuOptions {
   editor: monaco.editor.IStandaloneCodeEditor | null;
@@ -17,13 +19,13 @@ export interface UseMonacoContextMenuOptions {
 }
 
 export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
-  const { editor, onOpenInlineChat, onUploadToKnowledgeBase, tabId, tabTitle } = options;
+  const { editor, onOpenInlineChat, onUploadToKnowledgeBase, tabId } = options;
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
 
-  // 剪切
   const handleCut = useCallback(() => {
     if (!editor) return;
+
     const selection = editor.getSelection();
     if (!selection || selection.isEmpty()) return;
 
@@ -39,9 +41,9 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
     editor.focus();
   }, [editor]);
 
-  // 复制
   const handleCopy = useCallback(() => {
     if (!editor) return;
+
     const selection = editor.getSelection();
     if (!selection || selection.isEmpty()) return;
 
@@ -53,10 +55,9 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
     editor.focus();
   }, [editor]);
 
-  // 粘贴
   const handlePaste = useCallback(async () => {
     if (!editor) return;
-    
+
     try {
       const text = await navigator.clipboard.readText();
       const selection = editor.getSelection();
@@ -64,37 +65,63 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
 
       editor.executeEdits('context-menu', [{
         range: selection,
-        text: text
+        text
       }]);
       editor.focus();
     } catch (error) {
-
+      console.error('[useMonacoContextMenu] 读取剪贴板失败:', error);
     }
   }, [editor]);
 
-  // 全选
   const handleSelectAll = useCallback(() => {
     if (!editor) return;
+
     const model = editor.getModel();
     if (!model) return;
 
-    const fullRange = model.getFullModelRange();
-    editor.setSelection(fullRange);
+    editor.setSelection(model.getFullModelRange());
     editor.focus();
   }, [editor]);
 
-  // 构建菜单
-  const menuGroups: MenuGroup[] = useMemo(() => {
-    const hasText = editor ? (() => {
-      const selection = editor.getSelection();
-      return selection ? !selection.isEmpty() : false;
-    })() : false;
+  const handleSetBidirectionalLink = useCallback(() => {
+    if (!editor) return;
 
-    // 检查是否是文件（不是片段文件）
-    const isFile = tabId && !tabId.startsWith('snippet-') && !tabId.includes('snippet');
-    
-    const groups: MenuGroup[] = [
-      // AI 操作
+    const selection = editor.getSelection();
+    if (!selection || selection.isEmpty()) return;
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    const selectedText = model.getValueInRange(selection);
+    const linkText = buildBidirectionalLinkText(selectedText);
+    if (!linkText) return;
+
+    editor.pushUndoStop();
+    editor.executeEdits('context-menu', [{
+      range: selection,
+      text: linkText
+    }]);
+    editor.pushUndoStop();
+    editor.focus();
+  }, [editor]);
+
+  const menuGroups: MenuGroup[] = useMemo(() => {
+    const selectedText = editor ? (() => {
+      const selection = editor.getSelection();
+      const model = editor.getModel();
+
+      if (!selection || selection.isEmpty() || !model) {
+        return '';
+      }
+
+      return model.getValueInRange(selection);
+    })() : '';
+
+    const hasText = selectedText.length > 0;
+    const hasLinkableText = Boolean(buildBidirectionalLinkText(selectedText));
+    const isFile = Boolean(tabId && !tabId.startsWith('snippet-') && !tabId.includes('snippet'));
+
+    return [
       {
         id: 'ai',
         items: [
@@ -110,10 +137,7 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
               </svg>
             ),
             shortcut: 'Ctrl+I',
-            action: onOpenInlineChat ? (() => {
-              onOpenInlineChat();
-            }) : (() => {
-            }),
+            action: onOpenInlineChat || (() => {}),
             disabled: !onOpenInlineChat
           },
           {
@@ -129,10 +153,37 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
           }
         ]
       },
-      // 编辑操作
       {
         id: 'edit',
         items: [
+          {
+            id: 'open-bidirectional-links',
+            label: '打开双向链接',
+            icon: (
+              <svg viewBox="0 0 16 16" fill="currentColor">
+                <path d="M4.5 5A2.5 2.5 0 0 1 7 2.5h2a2.5 2.5 0 1 1 0 5H7V6h2a1 1 0 1 0 0-2H7a1 1 0 1 0 0 2H5.5V5zm4 6a1 1 0 1 0 0 2h2a1 1 0 1 0 0-2H8.5v-1.5h2A2.5 2.5 0 1 1 10.5 14h-2a2.5 2.5 0 1 1 0-5h2V11h-2z" />
+              </svg>
+            ),
+            action: openBidirectionalLinksPanel,
+            disabled: !isFile
+          },
+          {
+            id: 'set-bidirectional-link',
+            label: '设置双链',
+            icon: (
+              <svg viewBox="0 0 16 16" fill="currentColor">
+                <path d="M4.5 5A2.5 2.5 0 0 1 7 2.5h2a2.5 2.5 0 1 1 0 5H7V6h2a1 1 0 1 0 0-2H7a1 1 0 1 0 0 2H5.5V5zm4 6a1 1 0 1 0 0 2h2a1 1 0 1 0 0-2H8.5v-1.5h2A2.5 2.5 0 1 1 10.5 14h-2a2.5 2.5 0 1 1 0-5h2V11h-2z" />
+              </svg>
+            ),
+            action: handleSetBidirectionalLink,
+            disabled: !hasLinkableText
+          },
+          {
+            id: 'open-bidirectional-links-separator',
+            label: '',
+            action: () => {},
+            separator: true
+          },
           {
             id: 'cut',
             label: '剪切',
@@ -172,7 +223,6 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
           }
         ]
       },
-      // 选择操作
       {
         id: 'selection',
         items: [
@@ -191,17 +241,23 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
         ]
       }
     ];
+  }, [
+    editor,
+    handleCopy,
+    handleCut,
+    handlePaste,
+    handleSelectAll,
+    handleSetBidirectionalLink,
+    onOpenInlineChat,
+    onUploadToKnowledgeBase,
+    tabId
+  ]);
 
-    return groups;
-  }, [editor, handleCut, handleCopy, handlePaste, handleSelectAll, onOpenInlineChat, onUploadToKnowledgeBase, tabId]);
-
-  // 显示菜单
   const showMenu = useCallback((x: number, y: number) => {
     setPosition({ x, y });
     setVisible(true);
-  }, [menuGroups]);
+  }, []);
 
-  // 隐藏菜单
   const hideMenu = useCallback(() => {
     setVisible(false);
   }, []);
@@ -214,4 +270,3 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
     hideMenu
   };
 };
-

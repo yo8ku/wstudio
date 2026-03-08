@@ -127,7 +127,6 @@ function registerCommonAliases(): void {
     'new-file': 'ui:new-file',
     'new-folder': 'ui:new-folder',
     'collapse-all': 'ui:collapse-all',
-    'more-tools': 'ui:more-tools',
     'extensions-manager': 'ui:extensions-manager',
     'background-settings': 'ui:background-settings',
     

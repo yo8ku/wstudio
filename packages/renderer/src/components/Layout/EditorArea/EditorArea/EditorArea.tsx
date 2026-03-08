@@ -26,6 +26,7 @@ import { CodeMirrorEditor } from '../../../NoteEditor/CodeMirrorEditor';
 import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
 import { SkillsMarketView } from '../SkillsMarketView';
 import { DecompositionRulesView } from '../DecompositionRulesView';
+import { PromptManagementView } from '../PromptManagementView';
 import { AIChatPanel } from '../../AIChatPanel/AIChatPanel';
 import { MediaPanel } from '../../Sidebar/MediaPanel';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
@@ -33,6 +34,9 @@ import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseS
 import { saveAndRemoveTableDataService } from '../../../../services/tableData';
 import type { KnowledgeItem } from '../../Sidebar/KnowledgeBase/types';
 import { toastService } from '../../../../services/ToastService';
+import { useLinkStore } from '../../../../stores/linkStore';
+import { useNoteStore } from '../../../../stores/noteStore';
+import { getNoteByPath, isLinkableFile, upsertNoteByPath } from '../../../../utils/noteLinking';
 import './EditorArea.scss';
 
 export interface EditorTab {
@@ -42,7 +46,7 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'media' | 'ai-chat';
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat';
   isPreview?: boolean;  // 鏂板锛氭槸鍚︿负棰勮妯″紡锛堝崟鍑绘墦寮€锛?
   sourceTabId?: string;  // 鏂板锛氶瑙堟爣绛鹃〉鍏宠仈鐨勬簮鏂囦欢鏍囩椤礗D
   knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 鐭ヨ瘑搴撴暟鎹紙鐢ㄤ簬 knowledge 绫诲瀷锛?
@@ -146,6 +150,23 @@ const appendNumericSuffixToPath = (filePath: string, index: number): string => {
   return filePath.includes('\\') ? joined.replace(/\//g, '\\') : joined;
 };
 
+const pushTabIdToHistory = (history: string[], tabId: string): string[] =>
+  [...history.filter(id => id !== tabId), tabId];
+
+const removeTabIdFromHistory = (history: string[], tabId: string): string[] =>
+  history.filter(id => id !== tabId);
+
+const getMostRecentTabId = (history: string[], currentTabs: EditorTab[]): string | null => {
+  const currentTabIds = new Set(currentTabs.map(tab => tab.id));
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const tabId = history[index];
+    if (currentTabIds.has(tabId)) {
+      return tabId;
+    }
+  }
+  return currentTabs[0]?.id ?? null;
+};
+
 export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   console.log('========================================');
   console.log('[EditorArea 组件] 组件函数被调用（渲染）');
@@ -177,9 +198,50 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const rightActiveTabIdRef = useRef<string | null>(null);
   const tabsRef = useRef<EditorTab[]>([]);
   const rightTabsRef = useRef<EditorTab[]>([]);
+  const tabActivationHistoryRef = useRef<string[]>([]);
+  const rightTabActivationHistoryRef = useRef<string[]>([]);
+  const setCurrentNote = useNoteStore(state => state.setCurrentNote);
+  const resetLinkState = useLinkStore(state => state.reset);
+
+  const syncFileTabToNoteSystem = useCallback(async (
+    tab: EditorTab,
+    options?: {
+      path?: string;
+      title?: string;
+      content?: string;
+      previousPath?: string;
+    }
+  ) => {
+    const candidateTab: EditorTab = {
+      ...tab,
+      path: options?.path ?? tab.path,
+      title: options?.title ?? tab.title
+    };
+
+    if (!isLinkableFile(candidateTab)) {
+      return null;
+    }
+
+    const path = (candidateTab.path ?? '').trim();
+    if (!path) {
+      return null;
+    }
+
+    return upsertNoteByPath({
+      path,
+      previousPath: options?.previousPath,
+      title: candidateTab.title,
+      content: options?.content ?? tab.content ?? ''
+    });
+  }, []);
 
   useEffect(() => {
     activeTabIdRef.current = activeTabId;
+  }, [activeTabId]);
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    tabActivationHistoryRef.current = pushTabIdToHistory(tabActivationHistoryRef.current, activeTabId);
   }, [activeTabId]);
 
   useEffect(() => {
@@ -187,11 +249,20 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   }, [rightActiveTabId]);
 
   useEffect(() => {
+    if (!rightActiveTabId) return;
+    rightTabActivationHistoryRef.current = pushTabIdToHistory(rightTabActivationHistoryRef.current, rightActiveTabId);
+  }, [rightActiveTabId]);
+
+  useEffect(() => {
     tabsRef.current = tabs;
+    const currentTabIds = new Set(tabs.map(tab => tab.id));
+    tabActivationHistoryRef.current = tabActivationHistoryRef.current.filter(id => currentTabIds.has(id));
   }, [tabs]);
 
   useEffect(() => {
     rightTabsRef.current = rightTabs;
+    const currentTabIds = new Set(rightTabs.map(tab => tab.id));
+    rightTabActivationHistoryRef.current = rightTabActivationHistoryRef.current.filter(id => currentTabIds.has(id));
   }, [rightTabs]);
 
 
@@ -909,6 +980,27 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
+    const handleOpenPromptManagement = () => {
+      setTabs(currentTabs => {
+        const existingTab = currentTabs.find(tab => tab.type === 'prompt-management');
+
+        if (existingTab) {
+          setTimeout(() => setActiveTabId(existingTab.id), 0);
+          return currentTabs;
+        }
+
+        const newTab: EditorTab = {
+          id: `prompt-management-${Date.now()}`,
+          title: '提示词管理',
+          path: 'prompt-management:/',
+          isDirty: false,
+          type: 'prompt-management',
+        };
+        setTimeout(() => setActiveTabId(newTab.id), 0);
+        return [...currentTabs, newTab];
+      });
+    };
+
     const handleUpdateActiveTabTitle = (event: Event) => {
       const customEvent = event as CustomEvent<UpdateActiveTabTitleDetail>;
       const title = customEvent.detail?.title?.trim();
@@ -946,6 +1038,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
     window.addEventListener('open-skill-market', handleOpenSkillsMarket);
     window.addEventListener('open-decomposition-rules', handleOpenDecompositionRules as EventListener);
+    window.addEventListener('open-prompt-management', handleOpenPromptManagement);
     window.addEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
     window.addEventListener('editor:update-active-tab-title', handleUpdateActiveTabTitle as EventListener);
@@ -992,6 +1085,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('open-mermaid-designer', handleOpenMermaidDesigner as EventListener);
       window.removeEventListener('open-skill-market', handleOpenSkillsMarket);
       window.removeEventListener('open-decomposition-rules', handleOpenDecompositionRules as EventListener);
+      window.removeEventListener('open-prompt-management', handleOpenPromptManagement);
       window.removeEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
       window.removeEventListener('editor:update-active-tab-title', handleUpdateActiveTabTitle as EventListener);
@@ -1675,6 +1769,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
     
     const newTabs = tabs.filter(tab => tab.id !== tabId);
+    const nextTabHistory = removeTabIdFromHistory(tabActivationHistoryRef.current, tabId);
+    tabActivationHistoryRef.current = nextTabHistory;
     setTabs(newTabs);
     
     // 閫氱煡 FileExplorer 绉婚櫎瀵瑰簲鐨勭紪杈戝櫒锛堜粎閽堝鏂囦欢绫诲瀷鐨勬爣绛鹃〉锛?
@@ -1698,12 +1794,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }));
     }
     
-    if (activeTabId === tabId && newTabs.length > 0) {
-      setActiveTabId(newTabs[0].id);
+    if (activeTabId === tabId) {
+      const nextActiveTabId = getMostRecentTabId(nextTabHistory, newTabs);
+      setActiveTabId(nextActiveTabId);
       
       // 閫氱煡 FileExplorer 鏇存柊閫変腑鐘舵€佸埌涓嬩竴涓爣绛鹃〉
-      const nextTab = newTabs[0];
-      if (nextTab.type === 'file' && nextTab.path) {
+      const nextTab = nextActiveTabId
+        ? newTabs.find(tab => tab.id === nextActiveTabId)
+        : null;
+      if (nextTab?.type === 'file' && nextTab.path) {
         window.dispatchEvent(new CustomEvent('tab-switched', {
           detail: { path: nextTab.path }
         }));
@@ -1714,13 +1813,22 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     // 鍏抽棴婧愭枃妗ｆ椂锛屽悓鏃跺叧闂搴旂殑棰勮鏍囩椤?
     const newRightTabs = rightTabs.filter(tab => tab.sourceTabId !== tabId);
     if (newRightTabs.length !== rightTabs.length) {
+      const removedRightTabIds = new Set(
+        rightTabs
+          .filter(tab => tab.sourceTabId === tabId)
+          .map(tab => tab.id)
+      );
+      const nextRightHistory = rightTabActivationHistoryRef.current.filter(id => !removedRightTabIds.has(id));
+      rightTabActivationHistoryRef.current = nextRightHistory;
       setRightTabs(newRightTabs);
       
       // 濡傛灉鍏抽棴鐨勯瑙堟爣绛炬槸褰撳墠婵€娲荤殑锛屽垏鎹㈠埌绗竴涓?
       if (rightActiveTabId && !newRightTabs.find(tab => tab.id === rightActiveTabId)) {
-        if (newRightTabs.length > 0) {
-          setRightActiveTabId(newRightTabs[0].id);
+        const nextRightActiveTabId = getMostRecentTabId(nextRightHistory, newRightTabs);
+        if (nextRightActiveTabId) {
+          setRightActiveTabId(nextRightActiveTabId);
         } else {
+          setRightActiveTabId(null);
           // 鍙充晶娌℃湁鏍囩椤典簡锛屽叧闂垎鍓茶鍥?
           setIsSplitView(false);
         }
@@ -1730,17 +1838,69 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
   const handleRightTabClose = (tabId: string) => {
     const newRightTabs = rightTabs.filter(tab => tab.id !== tabId);
+    const nextRightHistory = removeTabIdFromHistory(rightTabActivationHistoryRef.current, tabId);
+    rightTabActivationHistoryRef.current = nextRightHistory;
     setRightTabs(newRightTabs);
     
-    if (rightActiveTabId === tabId && newRightTabs.length > 0) {
-      setRightActiveTabId(newRightTabs[0].id);
+    if (rightActiveTabId === tabId) {
+      const nextRightActiveTabId = getMostRecentTabId(nextRightHistory, newRightTabs);
+      setRightActiveTabId(nextRightActiveTabId);
+      if (!nextRightActiveTabId) {
+        setIsSplitView(false);
+      }
     } else if (newRightTabs.length === 0) {
+      setRightActiveTabId(null);
       // 鍙充晶娌℃湁鏍囩椤典簡锛屽叧闂垎鍓茶鍥?
       setIsSplitView(false);
     }
   };
 
   const rightActiveTab = rightTabs.find(tab => tab.id === rightActiveTabId);
+
+  // 将当前活动文件同步到 note-system，供双向链接/反向链接查询使用
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncCurrentTabNote = async () => {
+      if (!activeTab || !isLinkableFile(activeTab)) {
+        setCurrentNote(null);
+        resetLinkState();
+        return;
+      }
+
+      try {
+        const note = await getNoteByPath(activeTab.path) || await syncFileTabToNoteSystem(activeTab);
+        if (cancelled) {
+          return;
+        }
+
+        setCurrentNote(note);
+        if (!note) {
+          resetLinkState();
+        }
+      } catch (error) {
+        console.error('[EditorArea] 同步当前文件到 note-system 失败:', error);
+        if (!cancelled) {
+          setCurrentNote(null);
+          resetLinkState();
+        }
+      }
+    };
+
+    void syncCurrentTabNote();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab?.id,
+    activeTab?.path,
+    activeTab?.title,
+    activeTab?.type,
+    resetLinkState,
+    setCurrentNote,
+    syncFileTabToNoteSystem
+  ]);
 
   // 淇濆瓨鏂囦欢鍑芥暟
   const saveFile = async (tab: EditorTab) => {
@@ -1885,6 +2045,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                 const autoSaveResult = await window.electron?.file?.save(targetPath, contentToSave);
                 if (autoSaveResult?.success) {
                   const savedName = getFileNameFromPath(targetPath);
+                  const syncedNote = await syncFileTabToNoteSystem(tab, {
+                    path: targetPath,
+                    title: savedName,
+                    content: contentToSave,
+                    previousPath: tab.path
+                  });
                   setTabs(prev => prev.map(t =>
                     t.id === tab.id
                       ? { ...t, path: targetPath, title: savedName, isDirty: false }
@@ -1895,6 +2061,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       ? { ...t, path: targetPath, title: savedName, isDirty: false }
                       : t
                   ));
+                  if (syncedNote) {
+                    setCurrentNote(syncedNote);
+                  }
                   return;
                 }
               }
@@ -1917,8 +2086,19 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           }
         }
 
-        const result = await window.electron?.file?.saveAs(tab.content || '', saveAsOptions);
+        let contentToSave = tab.content || '';
+        if (isHtmlContent(contentToSave)) {
+          contentToSave = htmlToMarkdown(contentToSave);
+        }
+
+        const result = await window.electron?.file?.saveAs(contentToSave, saveAsOptions);
         if (result?.success && result.data) {
+          const syncedNote = await syncFileTabToNoteSystem(tab, {
+            path: result.data.path,
+            title: result.data.name,
+            content: contentToSave,
+            previousPath: tab.path
+          });
           setTabs(prev => prev.map(t =>
             t.id === tab.id
               ? { ...t, path: result.data!.path, title: result.data!.name, isDirty: false }
@@ -1929,6 +2109,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               ? { ...t, path: result.data!.path, title: result.data!.name, isDirty: false }
               : t
           ));
+          if (syncedNote) {
+            setCurrentNote(syncedNote);
+          }
         }
       } catch (error) {
         // 鍙﹀瓨涓烘枃浠跺け璐ワ紝闈欓粯澶勭悊
@@ -1946,9 +2129,17 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       
       const result = await window.electron?.file?.save(tab.path, contentToSave);
       if (result?.success) {
+        const syncedNote = await syncFileTabToNoteSystem(tab, {
+          path: tab.path,
+          title: tab.title,
+          content: contentToSave
+        });
         // 娓呴櫎鑴忔爣璁?
         setTabs(tabs.map(t => t.id === tab.id ? { ...t, isDirty: false } : t));
         setRightTabs(rightTabs.map(t => t.sourceTabId === tab.id ? { ...t, isDirty: false } : t));
+        if (syncedNote) {
+          setCurrentNote(syncedNote);
+        }
       }
     } catch (error) {
       // 淇濆瓨鏂囦欢寮傚父锛岄潤榛樺鐞?
@@ -2078,7 +2269,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           )}
 
           {/* 宸︿晶闈㈠寘灞?*/}
-          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && activeTab.type !== 'ai-chat' && (
+          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && activeTab.type !== 'prompt-management' && activeTab.type !== 'ai-chat' && (
             <Breadcrumb path={activeTab.path} />
           )}
 
@@ -2130,6 +2321,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       initialWritingRuleDocuments={tab.decompositionRulesData?.writingRuleDocuments}
                     />
                   )}
+
+                  {tab.type === 'prompt-management' && <PromptManagementView />}
 
                   {tab.type === 'media' && <MediaPanel />}
 
@@ -2293,7 +2486,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             )}
 
             {/* 鍙充晶闈㈠寘灞?*/}
-            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && rightActiveTab.type !== 'decomposition-rules' && rightActiveTab.type !== 'ai-chat' && (
+            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && rightActiveTab.type !== 'decomposition-rules' && rightActiveTab.type !== 'prompt-management' && rightActiveTab.type !== 'ai-chat' && (
               <Breadcrumb path={rightActiveTab.path} />
             )}
 
@@ -2332,6 +2525,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                         initialWritingRuleDocuments={tab.decompositionRulesData?.writingRuleDocuments}
                       />
                     )}
+
+                    {tab.type === 'prompt-management' && <PromptManagementView />}
 
                     {tab.type === 'ai-chat' && (
                       <AIChatPanel

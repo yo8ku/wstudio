@@ -6,6 +6,8 @@
 .explorer-view {
    background-color: var(--ws-sidebar-background);
   color:var(--ws-sideBar-foreground);
+    --explorer-surface-bg: var(--ws-sideBar-background);
+  --explorer-group-bg: var(--ws-sideBarSectionHeader-background, var(--ws-sideBar-background));
 }
 
 .explorer-section {

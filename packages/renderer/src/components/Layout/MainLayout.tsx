@@ -11,8 +11,6 @@ import { EditorArea } from './EditorArea/EditorArea/EditorArea';
 import { StatusBar } from './StatusBar/StatusBar';
 import { AIChatPanel } from './AIChatPanel/AIChatPanel';
 import { Panel } from './Panel';
-import { RightActivityBar } from './RightActivityBar';
-import { RightSidebar } from './RightSidebar';
 import { VSCodeCommandCenter } from '../../command-center/VSCodeCommandCenter';
 import { IconThemeCommandProvider } from '../../command-center/IconThemeCommandProvider';
 import { ThemeCommandProvider } from '../../command-center/ThemeCommandProvider';
@@ -24,7 +22,6 @@ import { IconThemeProvider } from '../../contexts/IconThemeContext';
 import { BackgroundImage } from '../BackgroundImage';
 import { GlobalModal } from '../GlobalModal';
 import { useBackgroundStore } from '../../stores/backgroundStore';
-import { useRightSidebarStore } from '../../stores/rightSidebarStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useActivityBarStore } from '../../stores/activityBarStore';
 import { snippetService } from '../../services/SnippetService';
@@ -50,8 +47,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const backgroundEnabled = config.enabled && !!config.imagePath;
   
   // 获取右侧活动栏的显示状态
-  const { isActivityBarVisible } = useRightSidebarStore();
-  
   // 获取主侧栏位置
   const { sidebarPosition, setSidebarPosition } = useActivityBarStore();
   
@@ -106,8 +101,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   // 监听打开底部面板事件
   useEffect(() => {
     const handleOpenPanel = (event: Event) => {
-      const customEvent = event as CustomEvent<{ view?: 'snippets' | 'timeline' | 'terminal' }>;
-      const view = customEvent.detail?.view || 'terminal';
+      const customEvent = event as CustomEvent<{ view?: 'snippets' | 'links' | 'timeline' | 'terminal' }>;
+      const requestedView = customEvent.detail?.view || 'terminal';
+      const view = requestedView === 'links' ? 'snippets' : requestedView;
       
       console.log('[MainLayout] 打开底部面板:', view);
       setPanelActiveView(view);
@@ -514,26 +510,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
             </div>
 
           {/* 右侧边栏 */}
-          <div style={{ 
-            order: 10,
-            height: '100%',
-            flexShrink: 0
-          }}>
-            <RightSidebar />
-          </div>
-
           {/* 右侧活动栏 - 根据状态显示隐藏 */}
-          {isActivityBarVisible && (
-            <div className='RightActivityBar' style={{ 
-              flexShrink: 0, 
-              width: '48px', 
-              height: '100%', 
-              position: 'relative', 
-              order: 11 
-            }}>
-              <RightActivityBar />
-            </div>
-          )}
         </div>
         
         {/* 状态栏 */}

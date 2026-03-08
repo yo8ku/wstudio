@@ -117,8 +117,14 @@ function buildGraphData(
 
   // 构建边并计算链接数
   const edges: GraphEdge[] = [];
+  const edgeKeys = new Set<string>();
   for (const link of links) {
     if (link.targetId && nodeMap.has(link.sourceId) && nodeMap.has(link.targetId)) {
+      const edgeKey = `${link.sourceId}:${link.targetId}`;
+      if (edgeKeys.has(edgeKey)) {
+        continue;
+      }
+      edgeKeys.add(edgeKey);
       edges.push({
         id: link.id,
         source: link.sourceId,

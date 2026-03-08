@@ -7,7 +7,9 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import {
+  buildWikilinkTarget,
   parseWikilinksFromContent,
+  parseWikilinkTarget,
   findUnlinkedMentions,
   extractUniqueLinks,
   createWikilink,
@@ -23,7 +25,10 @@ const noteTitle = fc.stringOf(
     fc.char().filter((c: string) => /[\w\u4e00-\u9fa5\s]/.test(c) && c !== '[' && c !== ']' && c !== '|')
   ),
   { minLength: 1, maxLength: 30 }
-).filter((s: string) => s.trim().length > 0);
+).filter((s: string) => s.trim().length > 0 && s === s.trim());
+
+const nonLinkText = fc.string({ minLength: 0, maxLength: 50 })
+  .filter((s: string) => !s.includes('[') && !s.includes(']'));
 
 /**
  * 生成 Wikilink
@@ -48,7 +53,7 @@ describe('LinkParser Property Tests', () => {
       fc.assert(
         fc.property(
           fc.array(wikilink, { minLength: 0, maxLength: 10 }),
-          fc.string({ minLength: 0, maxLength: 50 }).filter((s: string) => !s.includes('[[') && !s.includes(']]')),
+          nonLinkText,
           (links: string[], filler: string) => {
             const content = links.join(` ${filler} `);
             const parsed = parseWikilinksFromContent(content);
@@ -94,11 +99,32 @@ describe('LinkParser Property Tests', () => {
       );
     });
 
+    it('标题级引用应正确解析', () => {
+      const content = '[[项目计划#实施阶段]]';
+      const parsed = parseWikilinksFromContent(content);
+
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].targetTitle).toBe('项目计划');
+      expect(parsed[0].targetKind).toBe('heading');
+      expect(parsed[0].targetAnchor).toBe('实施阶段');
+    });
+
+    it('块级引用应正确解析', () => {
+      const content = '[[项目计划#^block-1|当前任务]]';
+      const parsed = parseWikilinksFromContent(content);
+
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].targetTitle).toBe('项目计划');
+      expect(parsed[0].targetKind).toBe('block');
+      expect(parsed[0].targetAnchor).toBe('block-1');
+      expect(parsed[0].displayText).toBe('当前任务');
+    });
+
     it('链接位置信息应正确', () => {
       fc.assert(
         fc.property(
           noteTitle,
-          fc.string({ minLength: 0, maxLength: 50 }).filter((s: string) => !s.includes('[[') && !s.includes(']]')),
+          nonLinkText,
           (title: string, prefix: string) => {
             const link = `[[${title}]]`;
             const content = `${prefix}${link}`;
@@ -127,8 +153,7 @@ describe('LinkParser Property Tests', () => {
         fc.property(
           fc.stringOf(fc.char().filter((c: string) => /[a-zA-Z]/.test(c)), { minLength: 3, maxLength: 15 }),
           (title: string) => {
-            // 内容中包含标题但不是链接
-            const content = `这是关于 ${title} 的内容`;
+            const content = `这是关于 [${title}] 的内容`;
             const mentions = findUnlinkedMentions(content, [title]);
             
             expect(mentions.length).toBe(1);
@@ -160,7 +185,7 @@ describe('LinkParser Property Tests', () => {
         fc.property(
           fc.stringOf(fc.char().filter((c: string) => /[a-zA-Z]/.test(c)), { minLength: 3, maxLength: 15 }),
           (title: string) => {
-            const content = `这是 ${title} 笔记的内容`;
+            const content = `这是 [${title}] 笔记的内容`;
             const mentions = findUnlinkedMentions(content, [title], title);
             
             expect(mentions.length).toBe(0);
@@ -168,6 +193,26 @@ describe('LinkParser Property Tests', () => {
         ),
         { numRuns: 50 }
       );
+    });
+
+    it('未链接提及上下文应返回命中所在原始行', () => {
+      const content = [
+        '第一行内容',
+        'Second line mentions [ProjectRoadmap] and continues',
+        '第三行内容'
+      ].join('\n');
+
+      const mentions = findUnlinkedMentions(content, ['ProjectRoadmap']);
+
+      expect(mentions).toHaveLength(1);
+      expect(mentions[0].context).toBe('Second line mentions [ProjectRoadmap] and continues');
+      expect(mentions[0].matchedText).toBe('ProjectRoadmap');
+    });
+
+    it('Markdown 链接文本不应被当作提到当前文件名', () => {
+      const mentions = findUnlinkedMentions('[ProjectRoadmap](https://example.com)', ['ProjectRoadmap']);
+
+      expect(mentions).toHaveLength(0);
     });
   });
 
@@ -227,6 +272,11 @@ describe('LinkParser Property Tests', () => {
         { numRuns: 50 }
       );
     });
+
+    it('buildWikilinkTarget 应创建标题和块级目标', () => {
+      expect(buildWikilinkTarget('项目计划', 'heading', '实施阶段')).toBe('项目计划#实施阶段');
+      expect(buildWikilinkTarget('项目计划', 'block', 'block-1')).toBe('项目计划#^block-1');
+    });
   });
 
   /**
@@ -271,8 +321,8 @@ describe('LinkParser Property Tests', () => {
       fc.assert(
         fc.property(
           noteTitle,
-          fc.string({ minLength: 10, maxLength: 100 }).filter((s: string) => !s.includes('[[') && !s.includes(']]')),
-          fc.string({ minLength: 10, maxLength: 100 }).filter((s: string) => !s.includes('[[') && !s.includes(']]')),
+          nonLinkText.filter((s: string) => s.length >= 10),
+          nonLinkText.filter((s: string) => s.length >= 10),
           (title: string, before: string, after: string) => {
             const link = `[[${title}]]`;
             const content = `${before}${link}${after}`;
@@ -286,6 +336,36 @@ describe('LinkParser Property Tests', () => {
         ),
         { numRuns: 50 }
       );
+    });
+
+    it('应返回链接所在原始行', () => {
+      const content = [
+        '第一行内容',
+        '前缀 [[项目计划]] 后缀',
+        '第三行内容'
+      ].join('\n');
+      const parsed = parseWikilinksFromContent(content);
+
+      expect(parsed).toHaveLength(1);
+      expect(getLinkContext(content, parsed[0].position)).toBe('前缀 [[项目计划]] 后缀');
+    });
+  });
+
+  describe('parseWikilinkTarget', () => {
+    it('应解析普通标题引用', () => {
+      expect(parseWikilinkTarget('项目计划')).toEqual({
+        targetReference: '项目计划',
+        targetTitle: '项目计划',
+        targetKind: 'note'
+      });
+    });
+
+    it('应解析路径引用', () => {
+      expect(parseWikilinkTarget('area/project/roadmap')).toEqual({
+        targetReference: 'area/project/roadmap',
+        targetTitle: 'area/project/roadmap',
+        targetKind: 'note'
+      });
     });
   });
 });

@@ -10,6 +10,7 @@ import { Icon } from '../../../Icons/Icon';
 import { MonacoContextMenu } from '../MonacoContextMenu/MonacoContextMenu';
 import type { MenuGroup } from '../MonacoContextMenu/MonacoContextMenu';
 import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
+import { FileParser } from '@note-studio/global-rag';
 import './TabBar.scss';
 
 export interface TabBarProps {
@@ -35,6 +36,26 @@ export const TabBar: React.FC<TabBarProps> = ({
   const [codeMirrorMode, setCodeMirrorMode] = useState<'source' | 'preview'>('source');
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
+  const isEditableDocumentTab = (() => {
+    if (!activeTab || activeTab.type !== 'file') return false;
+    const title = activeTab.title?.trim() || '';
+    const path = activeTab.path?.trim() || '';
+    const hasExtension = (value: string) => /\.[^./\\]+$/.test(value);
+    if (FileParser.isSupportedFileType(title) || FileParser.isSupportedFileType(path)) {
+      return true;
+    }
+    // 无扩展名的新文件也按可编辑处理
+    if (!hasExtension(title) && !hasExtension(path)) {
+      return true;
+    }
+    return false;
+  })();
+
+  useEffect(() => {
+    if (!isEditableDocumentTab && showMoreMenu) {
+      setShowMoreMenu(false);
+    }
+  }, [isEditableDocumentTab, showMoreMenu]);
 
   const handleTabBarWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const scrollContainer = scrollContainerRef.current?.getContentElement();
@@ -228,15 +249,6 @@ export const TabBar: React.FC<TabBarProps> = ({
       id: 'view-group',
       items: [
         {
-          id: 'show-backlinks',
-          label: '\u663e\u793a\u53cd\u5411\u94fe\u63a5',
-          action: () => {
-            console.log('\u663e\u793a\u53cd\u5411\u94fe\u63a5');
-            // TODO: implement backlinks
-          },
-          disabled: !activeTab
-        },
-        {
           id: 'source-mode',
           label: codeMirrorMode === 'source' ? '\u9884\u89c8\u6a21\u5f0f' : '\u6e90\u7801\u6a21\u5f0f',
           action: toggleCodeMirrorMode,
@@ -418,31 +430,35 @@ export const TabBar: React.FC<TabBarProps> = ({
           </button>
         )}
         
-        <button 
-          className="tab-bar-action-btn"
-          title="拆分编辑器"
-        >
-          <Icon name="split-vertical" size={16} />
-        </button>
-        
-        <button 
-          className="tab-bar-action-btn"
-          title="CodeMirror 编辑器"
-          onClick={() => {
-            window.dispatchEvent(new CustomEvent('set-editor-type', { detail: 'codemirror' }));
-          }}
-        >
-          <Icon name="code" size={16} />
-        </button>
-        
-        <button 
-          ref={moreButtonRef}
-          className="tab-bar-action-btn"
-          title={'\u66f4\u591a\u64cd\u4f5c'}
-          onClick={handleMoreClick}
-        >
-          <Icon name="more-vert" size={16} />
-        </button>
+        {isEditableDocumentTab && (
+          <>
+            <button 
+              className="tab-bar-action-btn"
+              title="拆分编辑器"
+            >
+              <Icon name="split-vertical" size={16} />
+            </button>
+            
+            <button 
+              className="tab-bar-action-btn"
+              title="CodeMirror 编辑器"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('set-editor-type', { detail: 'codemirror' }));
+              }}
+            >
+              <Icon name="code" size={16} />
+            </button>
+            
+            <button 
+              ref={moreButtonRef}
+              className="tab-bar-action-btn"
+              title={'\u66f4\u591a\u64cd\u4f5c'}
+              onClick={handleMoreClick}
+            >
+              <Icon name="more-vert" size={16} />
+            </button>
+          </>
+        )}
       </div>
 
       {/* 鏇村鎿嶄綔鑿滃崟 */}

@@ -1,15 +1,13 @@
 /**
- * Agent Shell IPC 处理器
- * 功能：为 Agent 提供安全的 Shell 命令执行接口
- * 描述：通过 child_process.exec 执行命令，有超时、输出大小和安全限制
+ * Agent Shell IPC handlers.
+ * Provides a controlled shell execution bridge for Agent tools.
  */
 
 import { ipcMain } from 'electron';
-import { exec } from 'child_process';
-import * as path from 'path';
+import { exec, type ExecException } from 'child_process';
+import * as fs from 'fs';
 import { TextDecoder } from 'util';
 
-/** Shell 执行结果 */
 interface ShellExecuteResult {
   success: boolean;
   data?: {
@@ -20,10 +18,8 @@ interface ShellExecuteResult {
   error?: string;
 }
 
-/** 最大输出缓冲区大小（1MB） */
 const MAX_BUFFER = 1024 * 1024;
 
-/** 禁止的命令模式（主进程二次校验） */
 const FORBIDDEN_COMMANDS: RegExp[] = [
   /rm\s+-rf\s+\//i,
   /format\s+/i,
@@ -130,7 +126,6 @@ function decodeShellOutput(
     }
   }
 
-  // Prefer strict UTF-8 when scores are close to avoid mis-detecting valid UTF-8 as GBK.
   if (strictUtf8Text) {
     const utf8Score = scoreDecodedText(strictUtf8Text);
     if (utf8Score >= bestScore - 2) {
@@ -141,24 +136,50 @@ function decodeShellOutput(
   return bestText;
 }
 
-/**
- * 验证路径是否在工作区内
- */
-function isPathInWorkspace(targetPath: string, workspacePath: string): boolean {
-  const normalizedTarget = path.normalize(targetPath).toLowerCase();
-  const normalizedWorkspace = path.normalize(workspacePath).toLowerCase();
-  return normalizedTarget.startsWith(normalizedWorkspace);
+function isShellSpawnNotFound(error: ExecException | null): boolean {
+  if (!error) return false;
+  const code = String(error.code ?? '').toUpperCase();
+  if (code === 'ENOENT') return true;
+  return /spawn .* ENOENT/i.test(error.message || '');
 }
 
-/**
- * 注册 Agent Shell IPC 处理器
- */
+function getWindowsShellCandidates(): string[] {
+  const systemRoot = process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows';
+  const rawCandidates = [
+    process.env.ComSpec,
+    `${systemRoot}\\System32\\cmd.exe`,
+    `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
+    'powershell.exe',
+    'pwsh.exe',
+    'cmd.exe',
+  ];
+
+  const dedup = new Set<string>();
+  const candidates: string[] = [];
+
+  for (const value of rawCandidates) {
+    if (typeof value !== 'string') continue;
+    const candidate = value.trim();
+    if (!candidate) continue;
+
+    const key = candidate.toLowerCase();
+    if (dedup.has(key)) continue;
+
+    const isAbsolute = /^(?:[a-zA-Z]:\\|\\\\)/.test(candidate);
+    if (isAbsolute && !fs.existsSync(candidate)) continue;
+
+    dedup.add(key);
+    candidates.push(candidate);
+  }
+
+  return candidates;
+}
+
 export function registerAgentShellHandlers(): void {
-  // 移除可能存在的旧处理器
   try {
     ipcMain.removeHandler('agent:shell:execute');
   } catch {
-    // 忽略未注册的处理器
+    // ignore
   }
 
   ipcMain.handle(
@@ -170,82 +191,125 @@ export function registerAgentShellHandlers(): void {
       timeout: number = 30000
     ): Promise<ShellExecuteResult> => {
       try {
-        // 安全检查：禁止危险命令
         for (const pattern of FORBIDDEN_COMMANDS) {
           if (pattern.test(command)) {
             return { success: false, error: `命令被安全策略禁止: ${command}` };
           }
         }
 
-        // 验证工作区路径
         if (!workspacePath) {
           return { success: false, error: '工作区路径不能为空' };
         }
 
-        console.log('[AgentShell] 执行命令:', command, '工作区:', workspacePath);
+        console.log('[AgentShell] execute:', command, 'workspace:', workspacePath);
 
-        return await new Promise<ShellExecuteResult>((resolve) => {
-          exec(
-            command,
-            {
-              cwd: workspacePath,
-              timeout: Math.min(timeout, 120000),
-              maxBuffer: MAX_BUFFER,
-              encoding: 'buffer',
-              env: { ...process.env },
-              windowsHide: true,
-            },
-            (error, stdout, stderr) => {
-              const preferUtf8 = hasUtf8OutputHint(command);
-              const decodedStdout = decodeShellOutput(
-                stdout as Buffer | string | undefined,
-                { preferUtf8 }
-              );
-              const decodedStderr = decodeShellOutput(
-                stderr as Buffer | string | undefined,
-                { preferUtf8 }
-              );
+        const runExecWithShell = async (
+          shellOverride: string | undefined
+        ): Promise<{ result: ShellExecuteResult; shellNotFound: boolean }> =>
+          new Promise(resolve => {
+            exec(
+              command,
+              {
+                cwd: workspacePath,
+                timeout: Math.min(timeout, 120000),
+                maxBuffer: MAX_BUFFER,
+                encoding: 'buffer',
+                env: { ...process.env },
+                windowsHide: true,
+                shell: shellOverride,
+              },
+              (
+                error: ExecException | null,
+                stdout: string | Buffer,
+                stderr: string | Buffer
+              ) => {
+                const preferUtf8 = hasUtf8OutputHint(command);
+                const decodedStdout = decodeShellOutput(stdout as Buffer | string | undefined, { preferUtf8 });
+                const decodedStderr = decodeShellOutput(stderr as Buffer | string | undefined, { preferUtf8 });
 
-              if (error) {
-                // 超时或其他错误
-                if (error.killed) {
+                if (error) {
+                  if (error.killed) {
+                    resolve({
+                      shellNotFound: false,
+                      result: {
+                        success: false,
+                        error: `命令执行超时 (${timeout}ms)`,
+                        data: { stdout: decodedStdout, stderr: decodedStderr, exitCode: -1 },
+                      },
+                    });
+                    return;
+                  }
+
+                  if (isShellSpawnNotFound(error)) {
+                    resolve({
+                      shellNotFound: true,
+                      result: {
+                        success: false,
+                        error: error.message,
+                        data: {
+                          stdout: decodedStdout,
+                          stderr: decodedStderr || error.message,
+                          exitCode: -1,
+                        },
+                      },
+                    });
+                    return;
+                  }
+
                   resolve({
-                    success: false,
-                    error: `命令执行超时 (${timeout}ms)`,
-                    data: { stdout: decodedStdout, stderr: decodedStderr, exitCode: -1 },
+                    shellNotFound: false,
+                    result: {
+                      success: true,
+                      data: {
+                        stdout: decodedStdout,
+                        stderr: decodedStderr || error.message,
+                        exitCode: typeof error.code === 'number' ? error.code : 1,
+                      },
+                    },
                   });
                   return;
                 }
 
-                // 命令执行失败但有输出
                 resolve({
-                  success: true,
-                  data: {
-                    stdout: decodedStdout,
-                    stderr: decodedStderr || error.message,
-                    exitCode: error.code ?? 1,
+                  shellNotFound: false,
+                  result: {
+                    success: true,
+                    data: {
+                      stdout: decodedStdout,
+                      stderr: decodedStderr,
+                      exitCode: 0,
+                    },
                   },
                 });
-                return;
               }
+            );
+          });
 
-              resolve({
-                success: true,
-                data: {
-                  stdout: decodedStdout,
-                  stderr: decodedStderr,
-                  exitCode: 0,
-                },
-              });
-            }
-          );
-        });
+        const shellCandidates: Array<string | undefined> = process.platform === 'win32'
+          ? [undefined, ...getWindowsShellCandidates()]
+          : [undefined];
+        let lastShellNotFoundError = '';
+
+        for (const shellCandidate of shellCandidates) {
+          const attempt = await runExecWithShell(shellCandidate);
+          if (!attempt.shellNotFound) {
+            return attempt.result;
+          }
+          if (attempt.result.error) {
+            lastShellNotFoundError = attempt.result.error;
+          }
+        }
+
+        return {
+          success: false,
+          error: lastShellNotFoundError || '命令执行失败: 无可用 shell',
+        };
       } catch (error) {
-        console.error('[AgentShell] 命令执行失败:', error);
+        console.error('[AgentShell] execute failed:', error);
         return { success: false, error: String(error) };
       }
     }
   );
 
-  console.log('[AgentShell] Agent Shell IPC 处理器已注册');
+  console.log('[AgentShell] handler registered');
 }

@@ -76,6 +76,16 @@ interface StoreSchema {
   
   // Embedding 自动索引开关
   'embedding-auto-index': boolean;
+
+  // AI 提示词模板
+  'ai-chat-prompt-templates': Array<{
+    id: string;
+    name: string;
+    content: string;
+    description: string;
+    createdAt: number;
+    updatedAt: number;
+  }>;
 }
 
 /**
@@ -109,7 +119,8 @@ export class ElectronStoreService {
         'theme-config': {},
         'downloaded-themes': {},
         'user-preferences': {},
-        'embedding-auto-index': true
+        'embedding-auto-index': true,
+        'ai-chat-prompt-templates': []
       },
       // 启用加密（可选）
       encryptionKey: 'wiseai-secure-key-2024'

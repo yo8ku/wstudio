@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icon } from '../Icons';
-import { useRightSidebarStore } from '../../stores/rightSidebarStore';
 import './TitleBar.scss';
 
 const logIconSrc = new URL('../../../../../log/log.png', import.meta.url).href;
@@ -36,7 +35,6 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const submenuTimerRef = useRef<NodeJS.Timeout | null>(null);
   const menuHoverTimerRef = useRef<NodeJS.Timeout | null>(null); // 用于菜单悬停延迟
-  const { toggleActivityBar } = useRightSidebarStore();
 
   // 监听窗口焦点变化（从 Electron 主进程）
   useEffect(() => {
@@ -300,7 +298,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     <div className={`titlebar${!isWindowActive ? ' inactive' : ''}`}>
       <div className="titlebar-drag-region">
         <div className="titlebar-icon">
-          <img src={logIconSrc} alt="Note WStudio" />
+            {/* 隐藏侧边活动栏图标*/}
         </div>
         
         {/* 菜单*/}
@@ -338,7 +336,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
       <div className="titlebar-controls">
         {/* AI 助手按钮 */}
         <div 
-          className="titlebar-ai-button" 
+          className={'titlebar-ai-button'}
           onClick={onToggleAIPanel}
           title="AI 助手 (Ctrl+Shift+A)"
         >
@@ -347,7 +345,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
         {/* 终端按钮 */}
         <div 
-          className="titlebar-ai-button" 
+          className={'titlebar-ai-button'}
           onClick={onTogglePanel}
           title="终端"
         >
@@ -356,7 +354,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
         {/* 扩展管理按钮 */}
         <div 
-          className="titlebar-ai-button" 
+          className={'titlebar-ai-button'}
           onClick={handleOpenExtensions}
           title="扩展管理"
         >
@@ -365,11 +363,9 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
         {/* 更多工具按钮 - 切换右侧活动*/}
         <div 
-          className="titlebar-ai-button" 
-          onClick={toggleActivityBar}
+          style={{ display: 'none' }}
           title="更多工具"
         >
-          <Icon name="more-tools" size={16} />
         </div>
 
         <div 

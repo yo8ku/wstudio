@@ -22,6 +22,7 @@ import { buildContextMenuItems, buildLevel1MenuItems, buildLevel2MenuItems } fro
 import { snippetService } from '../../../../services/SnippetService';
 import { inlineChatHistoryService } from '../../../../services';
 import { knowledgeBaseService } from '../../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
+import { getPromptTemplateById } from '../../../../services/PromptTemplateService';
 import { SEARCH_ENGINES, type SearchEngine } from '../../../AIChatSettings/AIChatSettings';
 import { CodeDecorationManager } from '../CodeDecorationManager/CodeDecorationManager';
 import { TipTapInput, type TipTapInputRef } from './TipTapInput';
@@ -5769,7 +5770,7 @@ export class AIZoneWidget {
       // 提取提示词ID（去掉prompt-前缀）
       this.closeContextMenu();
       const promptId = value.replace('prompt-', '');
-      this.handlePromptSelect(promptId);
+      await this.handlePromptSelect(promptId);
     } else if (value.startsWith('snippet-')) {
       // 提取片段ID（去掉snippet-前缀）
       this.closeContextMenu();
@@ -6783,24 +6784,20 @@ export class AIZoneWidget {
   /**
    * 处理提示词选择
    */
-  private handlePromptSelect(promptId: string): void {
-    // 根据提示词ID插入对应的提示词模板（已移除代码相关的）
-    const promptTemplates: Record<string, string> = {
-      'doc-summary': '请为以下文档生成摘要：\n\n',
-      'doc-translate': '请将以下文档翻译成中文：\n\n',
-      'summarize': '请总结以下内容：\n\n',
-      'rewrite': '请重写以下内容，使其更加清晰和易读：\n\n',
-    };
+  private async handlePromptSelect(promptId: string): Promise<void> {
+    try {
+      const promptTemplate = await getPromptTemplateById(promptId);
+      const templateContent = promptTemplate?.content?.trim() ?? '';
+      if (!this.inputElement || !templateContent) return;
 
-    const template = promptTemplates[promptId] || '';
-    
-    if (this.inputElement && template) {
       const currentValue = this.inputElement.value;
       const cursorPos = this.inputElement.selectionStart || currentValue.length;
-      const newValue = currentValue.slice(0, cursorPos) + template + currentValue.slice(cursorPos);
+      const newValue = currentValue.slice(0, cursorPos) + templateContent + currentValue.slice(cursorPos);
       this.inputElement.value = newValue;
       this.inputElement.focus();
-      this.inputElement.setSelectionRange(cursorPos + template.length, cursorPos + template.length);
+      this.inputElement.setSelectionRange(cursorPos + templateContent.length, cursorPos + templateContent.length);
+    } catch (error) {
+      console.error(`[AIZoneWidget] 插入提示词失败: ${promptId}`, error);
     }
   }
 

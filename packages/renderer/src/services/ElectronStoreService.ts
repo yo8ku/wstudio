@@ -118,6 +118,15 @@ interface StoreSchema {
     path: string;
     enabled: boolean;
   }>;
+
+  'ai-chat-prompt-templates': Array<{
+    id: string;
+    name: string;
+    content: string;
+    description: string;
+    createdAt: number;
+    updatedAt: number;
+  }>;
 }
 
 /**

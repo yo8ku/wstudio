@@ -75,6 +75,7 @@ export class SQLiteDatabase {
   private dbPath: string;
   private initialized: boolean = false;
   private initializing: Promise<void> | null = null;
+  private transactionDepth: number = 0;
 
   /**
    * 构造函数
@@ -127,8 +128,9 @@ export class SQLiteDatabase {
             }
           }
 
-          console.warn('[SQLiteDatabase] 未找到 wasm 文件，使用默认路径');
-          return file;
+          const fallbackPath = possiblePaths[possiblePaths.length - 1];
+          console.warn('[SQLiteDatabase] 未找到 wasm 文件，使用回退路径:', fallbackPath);
+          return fallbackPath || file;
         }
       });
 
@@ -171,6 +173,15 @@ export class SQLiteDatabase {
   }
 
   /**
+   * 仅在事务外持久化数据库，避免事务中间态落盘
+   */
+  private saveIfNeeded(): void {
+    if (this.transactionDepth === 0) {
+      this.save();
+    }
+  }
+
+  /**
    * 执行 SQL 语句（不返回结果）
    * @param sql SQL 语句
    * @param params 参数数组
@@ -181,7 +192,7 @@ export class SQLiteDatabase {
 
     try {
       this.db.run(sql, toSqlValues(params));
-      this.save();
+      this.saveIfNeeded();
     } catch (error) {
       console.error('[SQLiteDatabase] 执行 SQL 失败:', error);
       throw error;
@@ -269,7 +280,7 @@ export class SQLiteDatabase {
 
       const sql = `INSERT INTO ${tableName} (${columns}) VALUES (${placeholders})`;
       this.db.run(sql, toSqlValues(values));
-      this.save();
+      this.saveIfNeeded();
 
       // 返回受影响的行数
       return this.db.getRowsModified();
@@ -304,7 +315,7 @@ export class SQLiteDatabase {
         totalRows += this.db.getRowsModified();
       }
 
-      this.save();
+      this.saveIfNeeded();
       return totalRows;
     } catch (error) {
       console.error('[SQLiteDatabase] 批量插入数据失败:', error);
@@ -357,7 +368,7 @@ export class SQLiteDatabase {
       }
 
       this.db.run(sql, toSqlValues([...values, ...conditionValues]));
-      this.save();
+      this.saveIfNeeded();
 
       return this.db.getRowsModified();
     } catch (error) {
@@ -406,7 +417,7 @@ export class SQLiteDatabase {
       this.db.run(sql, toSqlValues(values));
       const rowsModified = this.db.getRowsModified();
       console.log('[SQLiteDatabase] 删除影响行数:', rowsModified);
-      this.save();
+      this.saveIfNeeded();
 
       return rowsModified;
     } catch (error) {
@@ -423,14 +434,25 @@ export class SQLiteDatabase {
     await this.ensureInitialized();
     if (!this.db) throw new Error('数据库未初始化');
 
+    const isOutermostTransaction = this.transactionDepth === 0;
+
     try {
-      this.db.run('BEGIN TRANSACTION');
+      if (isOutermostTransaction) {
+        this.db.run('BEGIN TRANSACTION');
+      }
+      this.transactionDepth += 1;
       const result = await callback();
-      this.db.run('COMMIT');
-      this.save();
+      this.transactionDepth -= 1;
+      if (isOutermostTransaction) {
+        this.db.run('COMMIT');
+        this.save();
+      }
       return result;
     } catch (error) {
-      this.db.run('ROLLBACK');
+      this.transactionDepth = Math.max(0, this.transactionDepth - 1);
+      if (isOutermostTransaction) {
+        this.db.run('ROLLBACK');
+      }
       console.error('[SQLiteDatabase] 事务执行失败:', error);
       throw error;
     }
@@ -446,7 +468,7 @@ export class SQLiteDatabase {
 
     try {
       this.db.exec(sql);
-      this.save();
+      this.saveIfNeeded();
     } catch (error) {
       console.error('[SQLiteDatabase] 执行 SQL 失败:', error);
       throw error;

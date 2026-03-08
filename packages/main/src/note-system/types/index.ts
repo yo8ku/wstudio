@@ -38,12 +38,22 @@ export interface TagItem {
 /**
  * 链接项
  */
+export type LinkTargetKind = 'note' | 'heading' | 'block';
+
 export interface LinkItem {
   id: string;
   sourceId: string;
   targetId?: string;
   targetTitle: string;
   context: string;
+  displayText?: string;
+  targetKind?: LinkTargetKind;
+  targetAnchor?: string;
+  sourceStart?: number;
+  sourceEnd?: number;
+  sourceNoteTitle?: string;
+  sourceLine?: number;
+  isResolved?: boolean;
   createdAt: number;
 }
 

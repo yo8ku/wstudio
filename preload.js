@@ -73,6 +73,27 @@ contextBridge.exposeInMainWorld('electron', {
     addRecentFile: (filePath) => ipcRenderer.invoke('workspace:add-recent-file', filePath),
     clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files')
   },
+
+  agentChat: {
+    startThread: (input) => ipcRenderer.invoke('agent-chat:thread:start', input),
+    listThreads: (input) => ipcRenderer.invoke('agent-chat:thread:list', input),
+    getThread: (input) => ipcRenderer.invoke('agent-chat:thread:get', input),
+    syncLegacySession: (input) => ipcRenderer.invoke('agent-chat:thread:sync-legacy-session', input),
+    startTurn: (input) => ipcRenderer.invoke('agent-chat:turn:start', input),
+    updateTurn: (input) => ipcRenderer.invoke('agent-chat:turn:update', input),
+    appendTurnItems: (input) => ipcRenderer.invoke('agent-chat:turn:append-items', input),
+    runTurn: (input) => ipcRenderer.invoke('agent-chat:turn:run', input),
+    interruptTurn: (input) => ipcRenderer.invoke('agent-chat:turn:interrupt', input),
+    resumeTurn: (input) => ipcRenderer.invoke('agent-chat:turn:resume', input),
+    createApprovalRequest: (input) => ipcRenderer.invoke('agent-chat:request:create-approval', input),
+    createUserInputRequest: (input) => ipcRenderer.invoke('agent-chat:request:create-user-input', input),
+    respondToRequest: (input) => ipcRenderer.invoke('agent-chat:request:respond', input),
+    onEvent: (callback) => {
+      const subscription = (event, payload) => callback(payload);
+      ipcRenderer.on('agent-chat:event', subscription);
+      return () => ipcRenderer.removeListener('agent-chat:event', subscription);
+    }
+  },
   
   // 知识库 API
   knowledgeBase: {
@@ -100,6 +121,8 @@ contextBridge.exposeInMainWorld('electron', {
     initialize: () => ipcRenderer.invoke('builtin-ai:initialize'),
     getModels: () => ipcRenderer.invoke('builtin-ai:get-models'),
     updateModels: (models) => ipcRenderer.invoke('builtin-ai:update-models', models),
+    updateUserModels: (models) => ipcRenderer.invoke('builtin-ai:update-user-models', models),
+    updateUserModelConfigs: (configs) => ipcRenderer.invoke('builtin-ai:update-user-model-configs', configs),
     chat: (model, messages) => ipcRenderer.invoke('builtin-ai:chat', { model, messages })
   },
   
@@ -304,7 +327,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   builtinAI: {
     getModels: () => ipcRenderer.invoke('builtin-ai:get-models'),
     refreshModels: () => ipcRenderer.invoke('builtin-ai:refresh-models'),
-    updateUserModels: (models) => ipcRenderer.invoke('builtin-ai:update-user-models', models)
+    updateUserModels: (models) => ipcRenderer.invoke('builtin-ai:update-user-models', models),
+    updateUserModelConfigs: (configs) => ipcRenderer.invoke('builtin-ai:update-user-model-configs', configs)
   },
   
   // 聊天历史 API（SQLite）
@@ -317,6 +341,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
     addMessage: (message) => ipcRenderer.invoke('chat-history:add-message', message),
     getMessages: (sessionId) => ipcRenderer.invoke('chat-history:get-messages', sessionId),
     clearAll: () => ipcRenderer.invoke('chat-history:clear-all')
+  },
+
+  agentChat: {
+    startThread: (input) => ipcRenderer.invoke('agent-chat:thread:start', input),
+    listThreads: (input) => ipcRenderer.invoke('agent-chat:thread:list', input),
+    getThread: (input) => ipcRenderer.invoke('agent-chat:thread:get', input),
+    syncLegacySession: (input) => ipcRenderer.invoke('agent-chat:thread:sync-legacy-session', input),
+    startTurn: (input) => ipcRenderer.invoke('agent-chat:turn:start', input),
+    updateTurn: (input) => ipcRenderer.invoke('agent-chat:turn:update', input),
+    appendTurnItems: (input) => ipcRenderer.invoke('agent-chat:turn:append-items', input),
+    runTurn: (input) => ipcRenderer.invoke('agent-chat:turn:run', input),
+    interruptTurn: (input) => ipcRenderer.invoke('agent-chat:turn:interrupt', input),
+    resumeTurn: (input) => ipcRenderer.invoke('agent-chat:turn:resume', input),
+    createApprovalRequest: (input) => ipcRenderer.invoke('agent-chat:request:create-approval', input),
+    createUserInputRequest: (input) => ipcRenderer.invoke('agent-chat:request:create-user-input', input),
+    respondToRequest: (input) => ipcRenderer.invoke('agent-chat:request:respond', input),
+    onEvent: (callback) => {
+      const subscription = (event, payload) => callback(payload);
+      ipcRenderer.on('agent-chat:event', subscription);
+      return () => ipcRenderer.removeListener('agent-chat:event', subscription);
+    }
   },
   
   // 常用片段配置 API

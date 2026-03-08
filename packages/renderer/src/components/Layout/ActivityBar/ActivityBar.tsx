@@ -119,7 +119,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
               <div className="activity-bar-indicator" />
             )}
             <span className="activity-bar-icon">
-              <Icon name={activity.iconName} size={24} />
+              <Icon name={activity.iconName} size={21} />
             </span>
           </button>
         ))}

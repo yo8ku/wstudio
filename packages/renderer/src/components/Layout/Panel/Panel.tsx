@@ -1,15 +1,12 @@
-/**
- * 面板容器组件
- * 功能：管理底部面板的多个视图（常用片段、时间线、终端）
- * 描述：VSCode 风格的可调整大小的底部面板 */
-
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SnippetsPanel } from './SnippetsPanel';
 import { TimelinePanel } from './TimelinePanel';
-import { TerminalPanel, TerminalPanelRef, ShellType } from './TerminalPanel';
+import { TerminalPanel, type TerminalPanelRef, type ShellType } from './TerminalPanel';
 import { ResizeHandle } from '../ResizeHandle';
 import { DropdownMenu } from '../../common/DropdownMenu';
 import './Panel.scss';
+
+import type { LinkCollectionSort } from '../../Links';
 
 export type PanelView = 'snippets' | 'timeline' | 'terminal';
 
@@ -31,39 +28,34 @@ export const Panel: React.FC<PanelProps> = ({
   const [activeView, setActiveView] = useState<PanelView>(initialActiveView);
   const [height, setHeight] = useState(initialHeight);
   const [shell, setShell] = useState<ShellType>('powershell');
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkSortBy, setLinkSortBy] = useState<LinkCollectionSort>('default');
+  const [isLinkSearchVisible, setIsLinkSearchVisible] = useState(false);
+  const [showLinkFullContext, setShowLinkFullContext] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<TerminalPanelRef | null>(null);
 
-  // 当外部传入的 activeView 改变时，更新内部状态
-  React.useEffect(() => {
+  useEffect(() => {
     setActiveView(initialActiveView);
   }, [initialActiveView]);
 
-  // 切换视图
   const handleViewChange = (view: PanelView) => {
     setActiveView(view);
   };
 
-  // 新建终端
   const handleNewTerminal = () => {
-    if (terminalRef.current) {
-      terminalRef.current.createNewTerminal();
-    }
+    terminalRef.current?.createNewTerminal();
   };
 
-  // 清除终端
   const handleClearTerminal = () => {
-    if (terminalRef.current) {
-      terminalRef.current.clearTerminal();
-    }
+    terminalRef.current?.clearTerminal();
   };
 
-  // Shell 选择器选项
   const shellOptions = [
     { value: 'powershell', label: 'PowerShell' },
     { value: 'cmd', label: 'CMD' },
     { value: 'bash', label: 'Bash' },
-    { value: 'git-bash', label: 'Git Bash' },
+    { value: 'git-bash', label: 'Git Bash' }
   ];
 
   return (
@@ -72,7 +64,6 @@ export const Panel: React.FC<PanelProps> = ({
       className="panel-container"
       style={{ height: `${height}px` }}
     >
-      {/* 调整大小手柄 */}
       <ResizeHandle
         direction="vertical"
         initialSize={height}
@@ -81,14 +72,13 @@ export const Panel: React.FC<PanelProps> = ({
         onResize={setHeight}
       />
 
-      {/* 顶部标签页*/}
       <div className="panel-container-header">
         <div className="panel-container-tabs">
           <div
             className={`panel-container-tab ${activeView === 'snippets' ? 'active' : ''}`}
             onClick={() => handleViewChange('snippets')}
           >
-            常用片段
+            链接
           </div>
           <div
             className={`panel-container-tab ${activeView === 'timeline' ? 'active' : ''}`}
@@ -104,12 +94,9 @@ export const Panel: React.FC<PanelProps> = ({
           </div>
         </div>
 
-        {/* 操作按钮 */}
         <div className="panel-container-actions">
-          {/* 终端操作按钮 - 只在终端视图时显示 */}
           {activeView === 'terminal' && (
             <>
-              {/* Shell 选择器 */}
               <DropdownMenu
                 value={shell}
                 onChange={(value) => setShell(value as ShellType)}
@@ -148,17 +135,27 @@ export const Panel: React.FC<PanelProps> = ({
         </div>
       </div>
 
-      {/* 内容区域 */}
       <div className="panel-container-content">
         <div className={`panel-container-view ${activeView === 'snippets' ? 'active' : ''}`}>
-          <SnippetsPanel />
+          <SnippetsPanel
+            query={linkQuery}
+            sortBy={linkSortBy}
+            isSearchVisible={isLinkSearchVisible}
+            showFullContext={showLinkFullContext}
+            onQueryChange={setLinkQuery}
+            onToggleSearch={() => setIsLinkSearchVisible((previous) => !previous)}
+            onSortChange={setLinkSortBy}
+            onToggleContext={() => setShowLinkFullContext((previous) => !previous)}
+          />
         </div>
         <div className={`panel-container-view ${activeView === 'timeline' ? 'active' : ''}`}>
           <TimelinePanel />
         </div>
         <div className={`panel-container-view ${activeView === 'terminal' ? 'active' : ''}`}>
           <TerminalPanel
-            onRefChange={(ref) => (terminalRef.current = ref)}
+            onRefChange={(ref) => {
+              terminalRef.current = ref;
+            }}
             shell={shell}
             onShellChange={setShell}
           />
@@ -167,5 +164,3 @@ export const Panel: React.FC<PanelProps> = ({
     </div>
   );
 };
-
-

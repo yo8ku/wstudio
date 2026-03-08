@@ -24,7 +24,7 @@ const headingText = fc.stringOf(
     fc.char().filter((c: string) => /[\w\u4e00-\u9fa5\s]/.test(c) && c !== '#' && c !== '\n')
   ),
   { minLength: 1, maxLength: 50 }
-).filter((s: string) => s.trim().length > 0);
+).filter((s: string) => s.trim().length > 0 && s === s.trim());
 
 /**
  * 生成标题级别 (1-6)

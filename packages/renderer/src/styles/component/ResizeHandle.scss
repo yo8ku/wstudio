@@ -71,11 +71,6 @@
 }
 
 // 右侧边栏拖动手柄（水平，左侧）
-.right-sidebar-resize-handle {
-  @extend %resize-handle-horizontal;
-  left: 0;
-}
-
 // AI 聊天面板拖动手柄（水平）
 .ai-chat-panel-resize-handle {
   @extend %resize-handle-horizontal;

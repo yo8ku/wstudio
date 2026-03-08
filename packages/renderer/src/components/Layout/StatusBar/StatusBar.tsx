@@ -1,6 +1,6 @@
-/**
- * 状态栏组件
- * 功能：显示编辑器状态、扩展信息等
+﻿/**
+ * 鐘舵€佹爮缁勪欢
+ * 鍔熻兘锛氭樉绀虹紪杈戝櫒鐘舵€併€佹墿灞曚俊鎭瓑
  */
 
 import React, { useState, useEffect, useRef } from "react";
@@ -8,34 +8,40 @@ import "./StatusBar.scss";
 import { BackgroundImageSettings } from "../../BackgroundImageSettings/index";
 import { Icon } from "../../Icons/Icon";
 import { useActivityBarStore } from "../../../stores/activityBarStore";
+import { useLinkStore } from "../../../stores/linkStore";
+import { useNoteStore } from "../../../stores/noteStore";
 import { notification } from "../../Notification";
 
 interface StatusBarProps {}
 
 export const StatusBar: React.FC<StatusBarProps> = () => {
   const { sidebarPosition } = useActivityBarStore();
+  const currentNote = useNoteStore((state) => state.currentNote);
+  const outlinks = useLinkStore((state) => state.outlinks);
+  const backlinks = useLinkStore((state) => state.backlinks);
+  const loadLinks = useLinkStore((state) => state.loadLinks);
   const [pluginStatusBarItems, setPluginStatusBarItems] = useState<any[]>([]);
   const [wordCount, setWordCount] = useState<number>(0);
 
-  // 新增：监听显示背景图片设置面板事件
+  // 鏂板锛氱洃鍚樉绀鸿儗鏅浘鐗囪缃潰鏉夸簨浠?
   const [showBackgroundSettings, setShowBackgroundSettings] = useState(false);
 
-  // 新增：监听当前标签页的语言类型
+  // 鏂板锛氱洃鍚綋鍓嶆爣绛鹃〉鐨勮瑷€绫诲瀷
   const [currentLanguage, setCurrentLanguage] = useState<string>("Markdown");
 
-  // 新增：监听当前标签页类型（用于决定状态栏显示内容）
+  // 鏂板锛氱洃鍚綋鍓嶆爣绛鹃〉绫诲瀷锛堢敤浜庡喅瀹氱姸鎬佹爮鏄剧ず鍐呭锛?
   const [currentTabType, setCurrentTabType] = useState<
     "file" | "settings" | "ai-config" | "markdown-preview" | "knowledge" | null
   >("file");
 
-  // 工作区向量索引进度状态
+  // 宸ヤ綔鍖哄悜閲忕储寮曡繘搴︾姸鎬?
   const [vectorIndexingProgress, setVectorIndexingProgress] = useState<{
     totalFiles: number;
     processedFiles: number;
     currentFile: string | null;
     status: 'idle' | 'scanning' | 'indexing' | 'paused' | 'completed' | 'error';
-    workspaceTotalFiles?: number;  // 工作区总文件数
-    indexedTotalFiles?: number;    // 已索引完成的文件总数
+    workspaceTotalFiles?: number;  // 宸ヤ綔鍖烘€绘枃浠舵暟
+    indexedTotalFiles?: number;    // 宸茬储寮曞畬鎴愮殑鏂囦欢鎬绘暟
     vectorization?: {
       status: 'idle' | 'running' | 'completed';
       totalFiles: number;
@@ -44,7 +50,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   } | null>(null);
 
-  // 索引进度状态（主进程的文件索引）
+  // 绱㈠紩杩涘害鐘舵€侊紙涓昏繘绋嬬殑鏂囦欢绱㈠紩锛?
   const [indexingProgress, setIndexingProgress] = useState<{
     totalFiles: number;
     processedFiles: number;
@@ -52,16 +58,16 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
   } | null>(null);
 
 
-  // 监听显示背景图片设置面板的事件（单独处理，避免闭包问题）
+  // 鐩戝惉鏄剧ず鑳屾櫙鍥剧墖璁剧疆闈㈡澘鐨勪簨浠讹紙鍗曠嫭澶勭悊锛岄伩鍏嶉棴鍖呴棶棰橈級
   useEffect(() => {
     const ipcRenderer = (window as any).electron?.ipcRenderer;
     if (!ipcRenderer) {
-      console.error("[StatusBar] ========== ipcRenderer 未找到==========");
+      console.error("[StatusBar] ========== ipcRenderer 鏈壘鍒?=========");
       console.error("[StatusBar] window.electron:", (window as any).electron);
-      console.error("[StatusBar] 这可能是因为 preload.js 没有正确加载");
+      console.error("[StatusBar] 杩欏彲鑳芥槸鍥犱负 preload.js 娌℃湁姝ｇ‘鍔犺浇");
       return;
     }
-    // 监听显示背景图片设置面板的事件
+    // 鐩戝惉鏄剧ず鑳屾櫙鍥剧墖璁剧疆闈㈡澘鐨勪簨浠?
     const handleShowBackgroundSettings = (event: any, ...args: any[]) => {
       setShowBackgroundSettings(true);
     };
@@ -73,7 +79,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       );
 
     } catch (error) {
-      console.error("[StatusBar] ❌ 注册事件监听器失败:", error);
+      console.error("[StatusBar] 鉂?娉ㄥ唽浜嬩欢鐩戝惉鍣ㄥけ璐?", error);
     }
 
     return () => {
@@ -83,44 +89,44 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
           handleShowBackgroundSettings
         );
       } catch (error) {
-        console.error("[StatusBar] ❌ 移除事件监听器失败:", error);
+        console.error("[StatusBar] 鉂?绉婚櫎浜嬩欢鐩戝惉鍣ㄥけ璐?", error);
       }
     };
-  }, []); // 只在组件挂载时注册一次
+  }, []); // 鍙湪缁勪欢鎸傝浇鏃舵敞鍐屼竴娆?
 
-  // 监听插件系统的状态栏项
+  // 鐩戝惉鎻掍欢绯荤粺鐨勭姸鎬佹爮椤?
   useEffect(() => {
     const ipcRenderer = (window as any).electron?.ipcRenderer;
     if (!ipcRenderer) {
-      console.error("[StatusBar] ========== ipcRenderer 未找到==========");
+      console.error("[StatusBar] ========== ipcRenderer 鏈壘鍒?=========");
       console.error("[StatusBar] window.electron:", (window as any).electron);
-      console.error("[StatusBar] 这可能是因为 preload.js 没有正确加载");
+      console.error("[StatusBar] 杩欏彲鑳芥槸鍥犱负 preload.js 娌℃湁姝ｇ‘鍔犺浇");
       return;
     }
 
-    // 通知主进程渲染进程已准备就绪
+    // 閫氱煡涓昏繘绋嬫覆鏌撹繘绋嬪凡鍑嗗灏辩华
     ipcRenderer.send("renderer:loaded");
 
-    // 初始化：获取所有已注册的状态栏项
+    // 鍒濆鍖栵細鑾峰彇鎵€鏈夊凡娉ㄥ唽鐨勭姸鎬佹爮椤?
     const loadStatusBarItems = async () => {
       try {
         const items = await ipcRenderer.invoke("plugin:get-status-bar-items");
         setPluginStatusBarItems(items);
       } catch (error) {
-        console.error("[StatusBar] 加载状态栏项失败", error);
+        console.error("[StatusBar] Failed to load status bar items", error);
       }
     };
 
-    // 等待主进程初始化完成后再加载状态栏项
+    // 绛夊緟涓昏繘绋嬪垵濮嬪寲瀹屾垚鍚庡啀鍔犺浇鐘舵€佹爮椤?
     const handleMainProcessReady = () => {
       loadStatusBarItems();
     };
 
-    // 监听主进程准备就绪事件
+    // 鐩戝惉涓昏繘绋嬪噯澶囧氨缁簨浠?
     ipcRenderer.once("main-process:ready", handleMainProcessReady);
 
-    // 如果主进程已经就绪（热重载场景），直接加载
-    // 设置一个短暂的延迟，给主进程一些初始化时间
+    // 濡傛灉涓昏繘绋嬪凡缁忓氨缁紙鐑噸杞藉満鏅級锛岀洿鎺ュ姞杞?
+    // 璁剧疆涓€涓煭鏆傜殑寤惰繜锛岀粰涓昏繘绋嬩竴浜涘垵濮嬪寲鏃堕棿
     const timeoutId = setTimeout(() => {
      
       loadStatusBarItems();
@@ -130,7 +136,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     
       setPluginStatusBarItems((prev) => {
         if (data.action === "add") {
-          // 检查是否已存在，避免重复添加
+          // 妫€鏌ユ槸鍚﹀凡瀛樺湪锛岄伩鍏嶉噸澶嶆坊鍔?
           const exists = prev.some((item) => item.id === data.item.id);
           if (exists) {
           
@@ -158,12 +164,12 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   }, []);
 
-  // 监听当前标签页语言变化
+  // 鐩戝惉褰撳墠鏍囩椤佃瑷€鍙樺寲
   useEffect(() => {
     const handleTabLanguageChange = (event: Event) => {
       const customEvent = event as CustomEvent<{ language: string }>;
       if (customEvent.detail?.language) {
-        // 将语言类型转换为更友好的显示名称
+        // 灏嗚瑷€绫诲瀷杞崲涓烘洿鍙嬪ソ鐨勬樉绀哄悕绉?
         const languageMap: Record<string, string> = {
           markdown: "Markdown",
           json: "JSON",
@@ -191,7 +197,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   }, []);
 
-  // 监听活动标签页类型变化
+  // 鐩戝惉娲诲姩鏍囩椤电被鍨嬪彉鍖?
   useEffect(() => {
     const calculateWordCount = (content: string): number => {
       if (!content) return 0;
@@ -234,14 +240,14 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       if (customEvent.detail) {
         const { tabType, language } = customEvent.detail;
 
-        // 使用 React.startTransition 来优化状态更新，避免闪烁
+        // 浣跨敤 React.startTransition 鏉ヤ紭鍖栫姸鎬佹洿鏂帮紝閬垮厤闂儊
         React.startTransition(() => {
           setCurrentTabType(tabType);
           if (tabType !== "file") {
             setWordCount(0);
           }
 
-          // 同时更新语言信息
+          // 鍚屾椂鏇存柊璇█淇℃伅
           if (language) {
             const languageMap: Record<string, string> = {
               markdown: "Markdown",
@@ -273,16 +279,24 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   }, []);
 
-  // 防止重复显示完成通知
+  useEffect(() => {
+    if (currentTabType !== "file" || !currentNote?.id) {
+      return;
+    }
+
+    void loadLinks(currentNote.id);
+  }, [currentNote, currentTabType, loadLinks]);
+
+  // 闃叉閲嶅鏄剧ず瀹屾垚閫氱煡
   const hasShownCompletedRef = useRef<boolean>(false);
-  // 记录是否有文件被处理过（用于判断是否需要显示完成通知）
+  // 璁板綍鏄惁鏈夋枃浠惰澶勭悊杩囷紙鐢ㄤ簬鍒ゆ柇鏄惁闇€瑕佹樉绀哄畬鎴愰€氱煡锛?
   const hasProcessedFilesRef = useRef<boolean>(false);
 
-  // 监听工作区向量索引服务进度（通过 IPC）
+  // 鐩戝惉宸ヤ綔鍖哄悜閲忕储寮曟湇鍔¤繘搴︼紙閫氳繃 IPC锛?
   useEffect(() => {
     const ipcRenderer = window.electron?.ipcRenderer;
     if (!ipcRenderer) {
-      console.warn("[StatusBar] IPC 不可用，无法监听向量索引进度");
+      console.warn("[StatusBar] IPC 涓嶅彲鐢紝鏃犳硶鐩戝惉鍚戦噺绱㈠紩杩涘害");
       return;
     }
 
@@ -301,18 +315,18 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
         currentFile: string | null;
       };
     }) => {
-      // 当开始新的索引时，重置完成标志
+      // 褰撳紑濮嬫柊鐨勭储寮曟椂锛岄噸缃畬鎴愭爣蹇?
       if (progress.status === 'scanning' || progress.status === 'indexing') {
         hasShownCompletedRef.current = false;
         hasProcessedFilesRef.current = progress.processedFiles > 0 || progress.totalFiles > 0;
       }
       
-      // 记录是否有文件被处理
+      // 璁板綍鏄惁鏈夋枃浠惰澶勭悊
       if (progress.processedFiles > 0 || progress.totalFiles > 0) {
         hasProcessedFilesRef.current = true;
       }
       
-      // 检测完成：索引完成且向量化也完成（或没有向量化任务）
+      // 妫€娴嬪畬鎴愶細绱㈠紩瀹屾垚涓斿悜閲忓寲涔熷畬鎴愶紙鎴栨病鏈夊悜閲忓寲浠诲姟锛?
       const indexCompleted = progress.status === 'completed';
       const vectorizationCompleted = !progress.vectorization || progress.vectorization.status === 'completed';
       
@@ -320,7 +334,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
           hasProcessedFilesRef.current && 
           !hasShownCompletedRef.current) {
         hasShownCompletedRef.current = true;
-        notification.success('索引完成');
+        notification.success('绱㈠紩瀹屾垚');
       }
       
       setVectorIndexingProgress(progress);
@@ -331,11 +345,11 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   }, []);
 
-  // 监听索引进度事件（主进程的文件索引）
+  // 鐩戝惉绱㈠紩杩涘害浜嬩欢锛堜富杩涚▼鐨勬枃浠剁储寮曪級
   useEffect(() => {
     const electron = (window as any).electron;
     if (!electron?.workspaceIndex?.onProgress) {
-      console.warn("[StatusBar] workspaceIndex.onProgress 不可用");
+      console.warn("[StatusBar] workspaceIndex.onProgress is unavailable");
       return;
     }
 
@@ -359,26 +373,25 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   }, []);
 
-  // 执行插件命令
+  // 鎵ц鎻掍欢鍛戒护
   const executePluginCommand = async (commandId: string) => {
     try {
       const ipcRenderer = (window as any).electron?.ipcRenderer;
       if (ipcRenderer) {
         await ipcRenderer.invoke("plugin:execute-command", commandId);
       } else {
-        console.error("[StatusBar] 无法执行命令，ipcRenderer 不可用");
+        console.error("[StatusBar] Cannot execute plugin command: ipcRenderer unavailable");
       }
     } catch (error) {
-      console.error("[StatusBar] 执行命令失败:", commandId, error);
+      console.error("[StatusBar] 鎵ц鍛戒护澶辫触:", commandId, error);
     }
   };
 
 
-  // 大纲图标组件
+  // 澶х翰鍥炬爣缁勪欢
   const OutlineIcon = () => (
-    <div className="status-bar-icon-btn" title="大纲">
+    <div className="status-bar-info-btn" title="澶х翰">
       <svg
-        className="status-bar-icon"
         width="14"
         height="14"
         fill="none"
@@ -400,9 +413,18 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
   return (
     <>
       <div className="status-bar">
-        {/* 左侧：扩展状态*/}
-        <div className="status-bar-left">
-          {/* 主进程索引进度显示 */}
+        {/* 宸︿晶锛氭墿灞曠姸鎬*/}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            height: "100%",
+            flexShrink: 0,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {/* 涓昏繘绋嬬储寮曡繘搴︽樉绀?*/}
           {indexingProgress && (
             <div className="status-bar-indexing">
               <Icon
@@ -413,11 +435,11 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                   display: "inline-flex",
                 }}
               />
-              <span className="status-bar-text">正在分析文件...</span>
+              <span className="status-bar-text">姝ｅ湪鍒嗘瀽鏂囦欢...</span>
             </div>
           )}
 
-          {/* 插件系统的状态栏 */}
+          {/* 鎻掍欢绯荤粺鐨勭姸鎬佹爮 */}
           {pluginStatusBarItems
             .filter((item) => item.alignment === "left" || !item.alignment)
             .sort((a, b) => (b.priority || 0) - (a.priority || 0))
@@ -436,15 +458,12 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
               );
             })}
 
-          {/* 大纲 - 当侧边栏在左边时显示在左边 */}
-          {sidebarPosition === 'left' && <OutlineIcon />}
-
-          {/* 向量索引进度显示 - 在大纲图标右侧 */}
+          {/* 鍚戦噺绱㈠紩杩涘害鏄剧ず - 鍦ㄥぇ绾插浘鏍囧彸渚?*/}
           {vectorIndexingProgress && (vectorIndexingProgress.status === 'scanning' || vectorIndexingProgress.status === 'indexing') && (
             <div 
               className="status-bar-indexing" 
               style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}
-              title={vectorIndexingProgress.currentFile || '正在索引工作区文件...'}
+              title={vectorIndexingProgress.currentFile || '姝ｅ湪绱㈠紩宸ヤ綔鍖烘枃浠?..'}
             >
               <Icon
                 name="sync"
@@ -456,9 +475,9 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                 }}
               />
               <span className="status-bar-text" style={{ fontSize: '11px', opacity: 0.9 }}>
-                {vectorIndexingProgress.status === 'scanning' ? '扫描中' : '索引'}
+                {vectorIndexingProgress.status === 'scanning' ? 'Scanning' : 'Indexing'}
               </span>
-              {/* 进度条 - 使用本次已处理/本次需要索引的数量 */}
+              {/* 杩涘害鏉?- 浣跨敤鏈宸插鐞?鏈闇€瑕佺储寮曠殑鏁伴噺 */}
               <div style={{ 
                 width: '60px', 
                 height: '4px', 
@@ -476,19 +495,19 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                   transition: 'width 0.3s ease'
                 }} />
               </div>
-              {/* 显示：本次已处理/本次需要索引的数量 */}
+              {/* 鏄剧ず锛氭湰娆″凡澶勭悊/鏈闇€瑕佺储寮曠殑鏁伴噺 */}
               <span className="status-bar-text" style={{ fontSize: '10px', opacity: 0.7 }}>
                 {vectorIndexingProgress.processedFiles ?? 0}/{vectorIndexingProgress.totalFiles ?? 0}
               </span>
             </div>
           )}
 
-          {/* 索引进度显示 - 后台索引运行时显示 */}
+          {/* 绱㈠紩杩涘害鏄剧ず - 鍚庡彴绱㈠紩杩愯鏃舵樉绀?*/}
           {vectorIndexingProgress?.vectorization?.status === 'running' && (
             <div 
               className="status-bar-indexing" 
               style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}
-              title={vectorIndexingProgress.vectorization.currentFile || '正在索引...'}
+              title={vectorIndexingProgress.vectorization.currentFile || '姝ｅ湪绱㈠紩...'}
             >
               <Icon
                 name="sync"
@@ -500,9 +519,9 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                 }}
               />
               <span className="status-bar-text" style={{ fontSize: '11px', opacity: 0.8 }}>
-                索引
+                绱㈠紩
               </span>
-              {/* 索引进度条 */}
+              {/* 绱㈠紩杩涘害鏉?*/}
               <div style={{ 
                 width: '50px', 
                 height: '4px', 
@@ -520,7 +539,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                   transition: 'width 0.3s ease'
                 }} />
               </div>
-              {/* 显示：已索引/总数 */}
+              {/* 鏄剧ず锛氬凡绱㈠紩/鎬绘暟 */}
               <span className="status-bar-text" style={{ fontSize: '10px', opacity: 0.6 }}>
                 {vectorIndexingProgress.vectorization.processedFiles ?? 0}/{vectorIndexingProgress.vectorization.totalFiles ?? 0}
               </span>
@@ -528,12 +547,12 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
           )}
         </div>
 
-        {/* 右侧：编辑器状态*/}
+        {/* 鍙充晶锛氱紪杈戝櫒鐘舵€*/}
         <div className="status-bar-right">
-          {/* 文件标签页时显示的状态信息（包括插件项） */}
+          {/* 鏂囦欢鏍囩椤垫椂鏄剧ず鐨勭姸鎬佷俊鎭紙鍖呮嫭鎻掍欢椤癸級 */}
           {currentTabType === "file" && (
             <>
-              {/* 插件系统的右侧状态栏 */}
+              {/* 鎻掍欢绯荤粺鐨勫彸渚х姸鎬佹爮 */}
               {pluginStatusBarItems
                 .filter((item) => item.alignment === "right")
                 .sort((a, b) => (b.priority || 0) - (a.priority || 0))
@@ -552,47 +571,50 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                   );
                 })}
 
-              {/* 光标位置 */}
-              <div className="status-bar-info-btn">字数 {wordCount}</div>
+              {currentNote && (
+                <div className="status-bar-info-btn">
+                  {backlinks.length}条反链 {outlinks.length}条出链
+                </div>
+              )}
 
-              {/* 文件编码 */}
+              {/* 鍏夋爣浣嶇疆 */}
+              <div className="status-bar-info-btn">瀛楁暟 {wordCount}</div>
 
-              {/* 语言模式 */}
+              {/* 鏂囦欢缂栫爜 */}
+
+              {/* 璇█妯″紡 */}
               <div className="status-bar-info-btn">{currentLanguage}</div>
             </>
           )}
 
-          {/* 大纲 - 当侧边栏在右边时显示在右边 */}
+          {/* 澶х翰 - 褰撲晶杈规爮鍦ㄥ彸杈规椂鏄剧ず鍦ㄥ彸杈?*/}
           {sidebarPosition === 'right' && <OutlineIcon />}
 
-          {/* 背景设置 - 始终显示 */}
+          {/* 鑳屾櫙璁剧疆 - 濮嬬粓鏄剧ず */}
           <div
-            className="status-bar-icon-btn"
-            title="背景设置"
+            className="status-bar-info-btn"
+            title="鑳屾櫙璁剧疆"
             onClick={() => setShowBackgroundSettings(true)}
           >
             <Icon
               name="background-settings"
               iconSet="ui"
               size={14}
-              className="status-bar-icon"
             />
           </div>
 
-          {/* 通知中心 - 始终显示 */}
-          <div className="status-bar-icon-btn" title="通知中心">
+          {/* 閫氱煡涓績 - 濮嬬粓鏄剧ず */}
+          <div className="status-bar-info-btn" title="閫氱煡涓績">
             <Icon
               name="notification"
               iconSet="ui"
               size={14}
-              className="status-bar-icon"
             />
           </div>
 
-          {/* 反馈 - 始终显示 */}
-          <div className="status-bar-icon-btn" title="反馈">
+          {/* 鍙嶉 - 濮嬬粓鏄剧ず */}
+          <div className="status-bar-info-btn" title="鍙嶉">
             <svg
-              className="status-bar-icon"
               width="14"
               height="14"
               fill="currentColor"
@@ -608,7 +630,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
         </div>
       </div>
 
-      {/* 背景图片设置面板 */}
+      {/* 鑳屾櫙鍥剧墖璁剧疆闈㈡澘 */}
       <BackgroundImageSettings
         visible={showBackgroundSettings}
         onClose={() => {
@@ -618,3 +640,5 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     </>
   );
 };
+
+

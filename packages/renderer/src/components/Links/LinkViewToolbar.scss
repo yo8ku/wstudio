@@ -1,0 +1,129 @@
+.link-view-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+
+  &-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1 1 auto;
+    color: var(--ws-icon-foreground, var(--ws-description-foreground));
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  &-summary-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
+    white-space: nowrap;
+  }
+
+  &-summary-count {
+    color: inherit;
+  }
+
+  &-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+    margin-left: auto;
+    color: var(--ws-description-foreground);
+  }
+
+  &-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    flex-shrink: 0;
+
+    &:hover {
+      color: var(--ws-foreground);
+      background-color: var(--ws-list-hover-background);
+    }
+
+    &.is-active {
+      color: var(--ws-list-active-selection-foreground, var(--ws-foreground));
+      background-color: color-mix(
+        in srgb,
+        var(--ws-list-active-selection-background, var(--ws-list-hover-background)) 72%,
+        transparent
+      );
+    }
+
+    svg {
+      display: block;
+    }
+  }
+
+
+  &-search-control.search-input-container {
+    height: 28px;
+    flex-shrink: 0;
+    border: 0;
+    background: transparent;
+
+    &.collapsed {
+      width: 28px !important;
+
+      &:hover {
+        background: transparent;
+      }
+
+      .search-input-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        color: inherit;
+
+        &:hover {
+          color: var(--ws-foreground);
+          background-color: var(--ws-list-hover-background);
+        }
+
+        > span {
+          width: 15px !important;
+          height: 15px !important;
+        }
+
+        svg,
+        svg * {
+          stroke-width: 3;
+        }
+      }
+    }
+
+    &.expanded {
+      border: 1px solid var(--ws-input-border, var(--ws-panel-border));
+      border-radius: 8px;
+      background-color: var(--ws-input-background, var(--ws-editor-background));
+      color: var(--ws-input-foreground, var(--ws-foreground));
+    }
+
+    .search-input-field {
+      font-size: 12px;
+    }
+
+    .search-input-clear {
+      color: var(--ws-description-foreground);
+
+      &:hover {
+        color: var(--ws-foreground);
+      }
+    }
+  }
+}

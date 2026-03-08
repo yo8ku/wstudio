@@ -6,3 +6,4 @@
 export * from './tagParser';
 export * from './linkParser';
 export * from './outlineParser';
+export * from './anchorParser';

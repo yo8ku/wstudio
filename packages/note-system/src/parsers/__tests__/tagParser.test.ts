@@ -39,6 +39,9 @@ const tagWithPrefix = fc.oneof(
   nestedTagName.map((name: string) => `#${name}`)
 );
 
+const nonTagText = fc.string({ minLength: 0, maxLength: 100 })
+  .filter((s: string) => !s.includes('#'));
+
 describe('TagParser Property Tests', () => {
   /**
    * **Feature: note-system, Property 1: 标签解析一致性**
@@ -51,7 +54,7 @@ describe('TagParser Property Tests', () => {
       fc.assert(
         fc.property(
           fc.array(tagWithPrefix, { minLength: 0, maxLength: 10 }),
-          fc.string({ minLength: 0, maxLength: 100 }),
+          nonTagText,
           (tags: string[], filler: string) => {
             // 构建包含标签的内容
             const content = tags.join(` ${filler} `);
@@ -87,7 +90,7 @@ describe('TagParser Property Tests', () => {
       fc.assert(
         fc.property(
           simpleTagName,
-          fc.string({ minLength: 0, maxLength: 50 }),
+          nonTagText.filter((s: string) => s.length <= 50),
           (tagName: string, prefix: string) => {
             const tag = `#${tagName}`;
             const content = `${prefix}${tag}`;

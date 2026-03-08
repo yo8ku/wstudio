@@ -8,4 +8,17 @@
 export * from './types';
 
 // 导出解析器
-export * from './parsers';
+export * from './parsers/tagParser';
+export * from './parsers/outlineParser';
+export * from './parsers/anchorParser';
+export {
+  buildWikilinkTarget,
+  createWikilink,
+  extractUniqueLinks,
+  findUnlinkedMentions,
+  getLinkContext,
+  hasLinkTo,
+  parseWikilinkTarget,
+  parseWikilinksFromContent
+} from './parsers/linkParser';
+export type { ParsedLink, UnlinkedMention } from './parsers/linkParser';

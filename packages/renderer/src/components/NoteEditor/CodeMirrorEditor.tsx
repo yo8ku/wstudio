@@ -1,12 +1,13 @@
 /**
- * CodeMirror 编辑器组件
- * 功能：基于 CodeMirror 6 的 Markdown 编辑器
- * 描述：提供源码级别的 Markdown 编辑体验，支持语法高亮、图片拖拽、图片内联渲染、图片大小调整和背景色块
- * 支持源码模式和预览模式切换
+ * CodeMirror 缂栬緫鍣ㄧ粍浠?
+ * 鍔熻兘锛氬熀浜?CodeMirror 6 鐨?Markdown 缂栬緫鍣?
+ * 鎻忚堪锛氭彁渚涙簮鐮佺骇鍒殑 Markdown 缂栬緫浣撻獙锛屾敮鎸佽娉曢珮浜€佸浘鐗囨嫋鎷姐€佸浘鐗囧唴鑱旀覆鏌撱€佸浘鐗囧ぇ灏忚皟鏁村拰鑳屾櫙鑹插潡
+ * 鏀寔婧愮爜妯″紡鍜岄瑙堟ā寮忓垏鎹?
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { EditorState, StateField, RangeSet, StateEffect, Prec, RangeSetBuilder, Range } from '@codemirror/state';
+import { autocompletion, Completion, CompletionContext, startCompletion } from '@codemirror/autocomplete';
 import {
   EditorView,
   keymap,
@@ -37,6 +38,9 @@ import { useCodeBlockStore, applyPendingUpdatesToContent } from '../../stores/co
 import { themeService } from '../../services/ThemeService';
 import { codeRunnerService } from '../../services/CodeRunnerService';
 import type { SupportedLanguage } from '../../services/CodeRunnerService';
+import type { LinkAnchorSuggestionItem, LinkTargetSuggestionItem } from '../../types/electron';
+import { openBidirectionalLinksPanel } from '../../utils/noteLinking';
+import { buildBidirectionalLinkText } from '../../utils/bidirectionalLink';
 import './CodeMirrorEditor.scss';
 import './TableReferenceWidget/InlineTablePreview.scss';
 import './InlineAIChat/InlineAIChat.scss';
@@ -45,12 +49,12 @@ import hljs from 'highlight.js';
 import mermaid from 'mermaid';
 
 /**
- * 编辑器模式类型
+ * 缂栬緫鍣ㄦā寮忕被鍨?
  */
 export type EditorMode = 'source' | 'preview';
 
 /**
- * 大纲项类型
+ * 澶х翰椤圭被鍨?
  */
 interface OutlineItem {
   id: string;
@@ -61,7 +65,7 @@ interface OutlineItem {
 }
 
 /**
- * 色块大纲项类型
+ * 鑹插潡澶х翰椤圭被鍨?
  */
 interface ColorBlockItem {
   id: string;
@@ -77,16 +81,16 @@ export interface CodeMirrorEditorProps {
   placeholder?: string;
   editable?: boolean;
   autoFocus?: boolean;
-  /** 初始模式，默认为 source */
+  /** 鍒濆妯″紡锛岄粯璁や负 source */
   initialMode?: EditorMode;
-  /** 是否显示大纲面板，默认为 true */
+  /** 鏄惁鏄剧ず澶х翰闈㈡澘锛岄粯璁や负 true */
   showOutline?: boolean;
-  /** 是否是当前激活的编辑器 */
+  /** 鏄惁鏄綋鍓嶆縺娲荤殑缂栬緫鍣?*/
   isActive?: boolean;
 }
 
 /**
- * 解析文档中的标题，生成大纲
+ * 瑙ｆ瀽鏂囨。涓殑鏍囬锛岀敓鎴愬ぇ绾?
  */
 function parseOutline(doc: string): OutlineItem[] {
   const items: OutlineItem[] = [];
@@ -111,14 +115,14 @@ function parseOutline(doc: string): OutlineItem[] {
 }
 
 /**
- * 解析文档中的色块
+ * 瑙ｆ瀽鏂囨。涓殑鑹插潡
  */
 function parseColorBlocks(backgrounds: Map<number, string>, doc: string): ColorBlockItem[] {
   const items: ColorBlockItem[] = [];
   const lines = doc.split('\n');
   let position = 0;
 
-  // 按行号分组连续的色块
+  // 鎸夎鍙峰垎缁勮繛缁殑鑹插潡
   const colorGroups: { startLine: number; endLine: number; color: string }[] = [];
   let currentGroup: { startLine: number; endLine: number; color: string } | null = null;
 
@@ -139,24 +143,24 @@ function parseColorBlocks(backgrounds: Map<number, string>, doc: string): ColorB
     colorGroups.push(currentGroup);
   }
 
-  // 为每个色块组生成大纲项
+  // 涓烘瘡涓壊鍧楃粍鐢熸垚澶х翰椤?
   colorGroups.forEach((group, index) => {
     const lineIndex = group.startLine - 1;
     if (lineIndex >= 0 && lineIndex < lines.length) {
-      // 计算位置
+      // 璁＄畻浣嶇疆
       let pos = 0;
       for (let i = 0; i < lineIndex; i++) {
         pos += lines[i].length + 1;
       }
 
-      // 获取第一行文本作为预览
+      // 鑾峰彇绗竴琛屾枃鏈綔涓洪瑙?
       const previewText = lines[lineIndex].substring(0, 30) + (lines[lineIndex].length > 30 ? '...' : '');
 
       items.push({
         id: `colorblock-${index}`,
         color: group.color,
         lineNumber: group.startLine,
-        text: previewText || `第 ${group.startLine} 行`,
+        text: previewText || `第${group.startLine} 行`,
         position: pos,
       });
     }
@@ -165,14 +169,32 @@ function parseColorBlocks(backgrounds: Map<number, string>, doc: string): ColorB
   return items;
 }
 
-// 存储 EditorView 引用，供 Widget 使用
+/**
+ * Wikilink 鑷姩琛ュ叏鏃惰ˉ榻愰棴鍚堟嫭鍙凤紝閬垮厤閲嶅鎻掑叆 ]]
+ */
+function applyWikilinkCompletionText(
+  view: EditorView,
+  from: number,
+  to: number,
+  insertText: string
+): void {
+  const trailingText = view.state.doc.sliceString(to, to + 2);
+  const finalText = trailingText === ']]' ? insertText : insertText + ']]';
+
+  view.dispatch({
+    changes: { from, to, insert: finalText },
+    selection: { anchor: from + finalText.length }
+  });
+}
+
+// 瀛樺偍 EditorView 寮曠敤锛屼緵 Widget 浣跨敤
 let globalEditorView: EditorView | null = null;
 
-// 当前选中的图片 src（用于在 Widget 重建后恢复选中状态）
+// 褰撳墠閫変腑鐨勫浘鐗?src锛堢敤浜庡湪 Widget 閲嶅缓鍚庢仮澶嶉€変腑鐘舵€侊級
 let selectedImageSrc: string | null = null;
 
 /**
- * 获取行的缩进级别（空格数）
+ * 鑾峰彇琛岀殑缂╄繘绾у埆锛堢┖鏍兼暟锛?
  */
 function getIndentLevel(line: string): number {
   const match = line.match(/^(\s*)/);
@@ -180,7 +202,7 @@ function getIndentLevel(line: string): number {
 }
 
 /**
- * 检测行是否为标题
+ * 妫€娴嬭鏄惁涓烘爣棰?
  */
 function getHeadingLevel(line: string): number {
   const match = line.match(/^(#{1,6})\s/);
@@ -188,22 +210,22 @@ function getHeadingLevel(line: string): number {
 }
 
 /**
- * 检测行是否为列表项（有序或无序）
+ * 妫€娴嬭鏄惁涓哄垪琛ㄩ」锛堟湁搴忔垨鏃犲簭锛?
  */
 function isListItem(line: string): boolean {
   const trimmed = line.trimStart();
-  // 无序列表: - item, * item, + item
-  // 有序列表: 1. item, 2. item, etc.
+  // 鏃犲簭鍒楄〃: - item, * item, + item
+  // 鏈夊簭鍒楄〃: 1. item, 2. item, etc.
   return /^[-*+]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed);
 }
 
 /**
- * 计算标题折叠范围
- * 标题折叠逻辑：
- * - 只有标题行可以折叠
- * - 折叠范围从标题行末尾到下一个同级或更高级标题之前
- * - 只有当标题是文档最后一行（后面没有任何行）时才不能折叠
- * - 只要后面有任何行（包括空行），就可以折叠
+ * 璁＄畻鏍囬鎶樺彔鑼冨洿
+ * 鏍囬鎶樺彔閫昏緫锛?
+ * - 鍙湁鏍囬琛屽彲浠ユ姌鍙?
+ * - 鎶樺彔鑼冨洿浠庢爣棰樿鏈熬鍒颁笅涓€涓悓绾ф垨鏇撮珮绾ф爣棰樹箣鍓?
+ * - 鍙湁褰撴爣棰樻槸鏂囨。鏈€鍚庝竴琛岋紙鍚庨潰娌℃湁浠讳綍琛岋級鏃舵墠涓嶈兘鎶樺彔
+ * - 鍙鍚庨潰鏈変换浣曡锛堝寘鎷┖琛岋級锛屽氨鍙互鎶樺彔
  */
 function computeHeadingFoldRange(state: EditorState, lineStart: number): { from: number; to: number } | null {
   const doc = state.doc;
@@ -220,12 +242,12 @@ function computeHeadingFoldRange(state: EditorState, lineStart: number): { from:
     return null;
   }
 
-  // 如果是最后一行，不能折叠（后面没有任何行）
+  // 濡傛灉鏄渶鍚庝竴琛岋紝涓嶈兘鎶樺彔锛堝悗闈㈡病鏈変换浣曡锛?
   if (line.number >= doc.lines) {
     return null;
   }
 
-  // 标题折叠：折叠到下一个同级或更高级标题之前
+  // 鏍囬鎶樺彔锛氭姌鍙犲埌涓嬩竴涓悓绾ф垨鏇撮珮绾ф爣棰樹箣鍓?
   let foldEnd = line.to;
   let hasAnyLine = false;
 
@@ -233,21 +255,21 @@ function computeHeadingFoldRange(state: EditorState, lineStart: number): { from:
     const nextLine = doc.line(i);
     const nextHeadingLevel = getHeadingLevel(nextLine.text);
 
-    // 遇到同级或更高级标题，停止折叠
+    // 閬囧埌鍚岀骇鎴栨洿楂樼骇鏍囬锛屽仠姝㈡姌鍙?
     if (nextHeadingLevel > 0 && nextHeadingLevel <= headingLevel) {
-      // 折叠到上一行末尾（如果有内容的话）
+      // 鎶樺彔鍒颁笂涓€琛屾湯灏撅紙濡傛灉鏈夊唴瀹圭殑璇濓級
       if (hasAnyLine && i > line.number + 1) {
         foldEnd = doc.line(i - 1).to;
       }
       break;
     }
 
-    // 标记有任何行（包括空行）
+    // 鏍囪鏈変换浣曡锛堝寘鎷┖琛岋級
     hasAnyLine = true;
     foldEnd = nextLine.to;
   }
 
-  // 只要有任何行且折叠范围有效就返回
+  // 鍙鏈変换浣曡涓旀姌鍙犺寖鍥存湁鏁堝氨杩斿洖
   if (hasAnyLine && foldEnd > line.to) {
     return { from: line.to, to: foldEnd };
   }
@@ -256,11 +278,11 @@ function computeHeadingFoldRange(state: EditorState, lineStart: number): { from:
 }
 
 /**
- * 计算列表项折叠范围（Obsidian 风格）
- * 逻辑：
- * 1. 当前行不能是空行
- * 2. 后面必须有缩进大于当前行的行（跳过空行检查）
- * 3. 折叠范围包含所有缩进大于当前行的连续行（包括中间的空行）
+ * 璁＄畻鍒楄〃椤规姌鍙犺寖鍥达紙Obsidian 椋庢牸锛?
+ * 閫昏緫锛?
+ * 1. 褰撳墠琛屼笉鑳芥槸绌鸿
+ * 2. 鍚庨潰蹇呴』鏈夌缉杩涘ぇ浜庡綋鍓嶈鐨勮锛堣烦杩囩┖琛屾鏌ワ級
+ * 3. 鎶樺彔鑼冨洿鍖呭惈鎵€鏈夌缉杩涘ぇ浜庡綋鍓嶈鐨勮繛缁锛堝寘鎷腑闂寸殑绌鸿锛?
  */
 function computeListFoldRange(state: EditorState, lineStart: number): { from: number; to: number } | null {
   const doc = state.doc;
@@ -272,24 +294,24 @@ function computeListFoldRange(state: EditorState, lineStart: number): { from: nu
   const line = doc.lineAt(lineStart);
   const lineText = line.text;
   
-  // 标题行使用标题折叠
+  // 鏍囬琛屼娇鐢ㄦ爣棰樻姌鍙?
   if (getHeadingLevel(lineText) > 0) {
     return null;
   }
   
-  // 空行不能折叠
+  // 绌鸿涓嶈兘鎶樺彔
   if (lineText.trim().length === 0) {
     return null;
   }
   
   const currentIndent = getIndentLevel(lineText);
   
-  // 检查下一行是否存在
+  // 妫€鏌ヤ笅涓€琛屾槸鍚﹀瓨鍦?
   if (line.number >= doc.lines) {
     return null;
   }
   
-  // 查找第一个非空行，检查其缩进是否大于当前行
+  // 鏌ユ壘绗竴涓潪绌鸿锛屾鏌ュ叾缂╄繘鏄惁澶т簬褰撳墠琛?
   let hasChildIndent = false;
   let foldEnd = line.to;
   
@@ -297,7 +319,7 @@ function computeListFoldRange(state: EditorState, lineStart: number): { from: nu
     const checkLine = doc.line(i);
     const checkText = checkLine.text.trim();
     
-    // 空行继续包含在折叠范围内（如果已经找到子缩进）
+    // 绌鸿缁х画鍖呭惈鍦ㄦ姌鍙犺寖鍥村唴锛堝鏋滃凡缁忔壘鍒板瓙缂╄繘锛?
     if (checkText.length === 0) {
       if (hasChildIndent) {
         foldEnd = checkLine.to;
@@ -307,17 +329,17 @@ function computeListFoldRange(state: EditorState, lineStart: number): { from: nu
     
     const checkIndent = getIndentLevel(checkLine.text);
     
-    // 如果缩进小于等于当前行，停止折叠
+    // 濡傛灉缂╄繘灏忎簬绛変簬褰撳墠琛岋紝鍋滄鎶樺彔
     if (checkIndent <= currentIndent) {
       break;
     }
     
-    // 找到了缩进大于当前行的行
+    // 鎵惧埌浜嗙缉杩涘ぇ浜庡綋鍓嶈鐨勮
     hasChildIndent = true;
     foldEnd = checkLine.to;
   }
   
-  // 只有找到子缩进行才返回折叠范围
+  // 鍙湁鎵惧埌瀛愮缉杩涜鎵嶈繑鍥炴姌鍙犺寖鍥?
   if (hasChildIndent && foldEnd > line.to) {
     return { from: line.to, to: foldEnd };
   }
@@ -326,7 +348,7 @@ function computeListFoldRange(state: EditorState, lineStart: number): { from: nu
 }
 
 /**
- * 计算折叠范围 - 支持标题折叠和列表折叠（Obsidian 风格）
+ * 璁＄畻鎶樺彔鑼冨洿 - 鏀寔鏍囬鎶樺彔鍜屽垪琛ㄦ姌鍙狅紙Obsidian 椋庢牸锛?
  */
 function computeFoldRange(state: EditorState, lineStart: number, _lineEnd: number): { from: number; to: number } | null {
   const doc = state.doc;
@@ -338,24 +360,24 @@ function computeFoldRange(state: EditorState, lineStart: number, _lineEnd: numbe
   const line = doc.lineAt(lineStart);
   const headingLevel = getHeadingLevel(line.text);
   
-  // 标题行使用标题折叠
+  // 鏍囬琛屼娇鐢ㄦ爣棰樻姌鍙?
   if (headingLevel > 0) {
     return computeHeadingFoldRange(state, lineStart);
   }
   
-  // 非标题行使用列表折叠
+  // 闈炴爣棰樿浣跨敤鍒楄〃鎶樺彔
   return computeListFoldRange(state, lineStart);
 }
 
 /**
- * 自定义折叠服务 - 支持标题折叠和列表折叠
+ * 鑷畾涔夋姌鍙犳湇鍔?- 鏀寔鏍囬鎶樺彔鍜屽垪琛ㄦ姌鍙?
  */
 const customFoldService = foldService.of((state, lineStart, lineEnd) => {
   return computeFoldRange(state, lineStart, lineEnd);
 });
 
 /**
- * 折叠图标 GutterMarker - 展开状态（仅用于标题）
+ * 鎶樺彔鍥炬爣 GutterMarker - 灞曞紑鐘舵€侊紙浠呯敤浜庢爣棰橈級
  */
 class FoldOpenMarker extends GutterMarker {
   toDOM(): HTMLElement {
@@ -367,7 +389,7 @@ class FoldOpenMarker extends GutterMarker {
 }
 
 /**
- * 折叠图标 GutterMarker - 折叠状态（仅用于标题）
+ * 鎶樺彔鍥炬爣 GutterMarker - 鎶樺彔鐘舵€侊紙浠呯敤浜庢爣棰橈級
  */
 class FoldClosedMarker extends GutterMarker {
   toDOM(): HTMLElement {
@@ -382,7 +404,7 @@ const foldOpenMarker = new FoldOpenMarker();
 const foldClosedMarker = new FoldClosedMarker();
 
 /**
- * 构建标题折叠 Gutter 标记（仅标题）
+ * 鏋勫缓鏍囬鎶樺彔 Gutter 鏍囪锛堜粎鏍囬锛?
  */
 function buildHeadingFoldMarkers(state: EditorState): RangeSet<GutterMarker> {
   const builder: { from: number; marker: GutterMarker }[] = [];
@@ -414,7 +436,7 @@ function buildHeadingFoldMarkers(state: EditorState): RangeSet<GutterMarker> {
 }
 
 /**
- * 标题折叠 Gutter 标记 StateField
+ * 鏍囬鎶樺彔 Gutter 鏍囪 StateField
  */
 const headingFoldMarkers = StateField.define<RangeSet<GutterMarker>>({
   create(state) {
@@ -430,7 +452,7 @@ const headingFoldMarkers = StateField.define<RangeSet<GutterMarker>>({
 });
 
 /**
- * 标题折叠 Gutter
+ * 鏍囬鎶樺彔 Gutter
  */
 const headingFoldGutter = gutter({
   class: 'cm-foldGutter',
@@ -446,7 +468,7 @@ const headingFoldGutter = gutter({
         const foldRange = computeHeadingFoldRange(view.state, lineObj.from);
         if (!foldRange) return false;
 
-        // 验证折叠范围有效性
+        // 楠岃瘉鎶樺彔鑼冨洿鏈夋晥鎬?
         if (foldRange.from >= foldRange.to || foldRange.to > view.state.doc.length) {
           return false;
         }
@@ -457,23 +479,23 @@ const headingFoldGutter = gutter({
           existingFold = { from, to };
         });
 
-        // 使用 requestAnimationFrame 延迟执行，避免 markdown 解析器的内部错误
+        // 浣跨敤 requestAnimationFrame 寤惰繜鎵ц锛岄伩鍏?markdown 瑙ｆ瀽鍣ㄧ殑鍐呴儴閿欒
         requestAnimationFrame(() => {
           try {
-            // 重新验证状态，确保编辑器仍然有效
+            // 閲嶆柊楠岃瘉鐘舵€侊紝纭繚缂栬緫鍣ㄤ粛鐒舵湁鏁?
             if (!view.dom || !view.dom.isConnected) return;
             
-            // 重新计算折叠范围，因为状态可能已经改变
+            // 閲嶆柊璁＄畻鎶樺彔鑼冨洿锛屽洜涓虹姸鎬佸彲鑳藉凡缁忔敼鍙?
             const currentFoldRange = computeHeadingFoldRange(view.state, lineObj.from);
             if (!currentFoldRange) return;
             
-            // 再次验证范围有效性
+            // 鍐嶆楠岃瘉鑼冨洿鏈夋晥鎬?
             if (currentFoldRange.from >= currentFoldRange.to || currentFoldRange.to > view.state.doc.length) {
               return;
             }
 
             if (existingFold) {
-              // 展开时，验证 existingFold 范围仍然有效
+              // 灞曞紑鏃讹紝楠岃瘉 existingFold 鑼冨洿浠嶇劧鏈夋晥
               if (existingFold.from <= view.state.doc.length && existingFold.to <= view.state.doc.length) {
                 view.dispatch({ effects: unfoldEffect.of(existingFold) });
               }
@@ -495,9 +517,9 @@ const headingFoldGutter = gutter({
 });
 
 /**
- * 子折叠图标 Widget（绝对定位，跟随缩进动态更新）
- * 所有子折叠图标都使用绝对定位，不占用文本空间
- * 通过 left 值来跟随缩进位置
+ * 瀛愭姌鍙犲浘鏍?Widget锛堢粷瀵瑰畾浣嶏紝璺熼殢缂╄繘鍔ㄦ€佹洿鏂帮級
+ * 鎵€鏈夊瓙鎶樺彔鍥炬爣閮戒娇鐢ㄧ粷瀵瑰畾浣嶏紝涓嶅崰鐢ㄦ枃鏈┖闂?
+ * 閫氳繃 left 鍊兼潵璺熼殢缂╄繘浣嶇疆
  */
 class ListFoldWidget extends WidgetType {
   constructor(
@@ -513,18 +535,18 @@ class ListFoldWidget extends WidgetType {
     const span = document.createElement('span');
     span.className = `cm-list-fold-marker ${this.isFolded ? 'cm-list-fold-marker-folded' : 'cm-list-fold-marker-open'}`;
 
-    // 获取实际的字符宽度
+    // 鑾峰彇瀹為檯鐨勫瓧绗﹀搴?
     const charWidth = view.defaultCharacterWidth;
 
-    // 所有子折叠图标都使用绝对定位
-    // 根据缩进计算 left 位置
-    // indent=0 时放在 gutter 位置（left: -24px）
-    // indent>0 时放在缩进空格的左边
+    // 鎵€鏈夊瓙鎶樺彔鍥炬爣閮戒娇鐢ㄧ粷瀵瑰畾浣?
+    // 鏍规嵁缂╄繘璁＄畻 left 浣嶇疆
+    // indent=0 鏃舵斁鍦?gutter 浣嶇疆锛坙eft: -24px锛?
+    // indent>0 鏃舵斁鍦ㄧ缉杩涚┖鏍肩殑宸﹁竟
     if (this.indent === 0) {
       span.style.left = '-24px';
     } else {
-      // 折叠图标放在缩进空格之前，图标宽度 20px
-      // 缩进位置 = indent * charWidth，图标左边 = 缩进位置 - 图标宽度
+      // 鎶樺彔鍥炬爣鏀惧湪缂╄繘绌烘牸涔嬪墠锛屽浘鏍囧搴?20px
+      // 缂╄繘浣嶇疆 = indent * charWidth锛屽浘鏍囧乏杈?= 缂╄繘浣嶇疆 - 鍥炬爣瀹藉害
       const indentPos = this.indent * charWidth;
       span.style.left = `${indentPos - 20}px`;
     }
@@ -549,7 +571,7 @@ class ListFoldWidget extends WidgetType {
       const foldRange = computeListFoldRange(view.state, this.lineFrom);
       if (!foldRange) return;
 
-      // 验证折叠范围有效性
+      // 楠岃瘉鎶樺彔鑼冨洿鏈夋晥鎬?
       if (foldRange.from >= foldRange.to || foldRange.to > view.state.doc.length) {
         return;
       }
@@ -562,23 +584,23 @@ class ListFoldWidget extends WidgetType {
 
       const lineFrom = this.lineFrom;
 
-      // 使用 requestAnimationFrame 延迟执行，避免 markdown 解析器的内部错误
+      // 浣跨敤 requestAnimationFrame 寤惰繜鎵ц锛岄伩鍏?markdown 瑙ｆ瀽鍣ㄧ殑鍐呴儴閿欒
       requestAnimationFrame(() => {
         try {
-          // 重新验证状态，确保编辑器仍然有效
+          // 閲嶆柊楠岃瘉鐘舵€侊紝纭繚缂栬緫鍣ㄤ粛鐒舵湁鏁?
           if (!view.dom || !view.dom.isConnected) return;
           
-          // 重新计算折叠范围，因为状态可能已经改变
+          // 閲嶆柊璁＄畻鎶樺彔鑼冨洿锛屽洜涓虹姸鎬佸彲鑳藉凡缁忔敼鍙?
           const currentFoldRange = computeListFoldRange(view.state, lineFrom);
           if (!currentFoldRange) return;
           
-          // 再次验证范围有效性
+          // 鍐嶆楠岃瘉鑼冨洿鏈夋晥鎬?
           if (currentFoldRange.from >= currentFoldRange.to || currentFoldRange.to > view.state.doc.length) {
             return;
           }
 
           if (existingFold) {
-            // 展开时，验证 existingFold 范围仍然有效
+            // 灞曞紑鏃讹紝楠岃瘉 existingFold 鑼冨洿浠嶇劧鏈夋晥
             if (existingFold.from <= view.state.doc.length && existingFold.to <= view.state.doc.length) {
               view.dispatch({ effects: unfoldEffect.of(existingFold) });
             }
@@ -607,8 +629,8 @@ class ListFoldWidget extends WidgetType {
 }
 
 /**
- * 构建子折叠内联装饰器
- * 所有图标都使用绝对定位，不占用文本空间
+ * 鏋勫缓瀛愭姌鍙犲唴鑱旇楗板櫒
+ * 鎵€鏈夊浘鏍囬兘浣跨敤缁濆瀹氫綅锛屼笉鍗犵敤鏂囨湰绌洪棿
  */
 function buildListFoldDecorations(state: EditorState): DecorationSet {
   const decorations: { from: number; decoration: Decoration }[] = [];
@@ -626,20 +648,20 @@ function buildListFoldDecorations(state: EditorState): DecorationSet {
     const line = doc.line(i);
     const lineText = line.text;
 
-    // 跳过标题行
+    // 璺宠繃鏍囬琛?
     if (getHeadingLevel(lineText) > 0) continue;
 
-    // 跳过空行
+    // 璺宠繃绌鸿
     if (lineText.trim().length === 0) continue;
 
     const foldRange = computeListFoldRange(state, line.from);
     
-    // 只有当 foldRange 存在时才添加折叠图标
+    // 鍙湁褰?foldRange 瀛樺湪鏃舵墠娣诲姞鎶樺彔鍥炬爣
     if (foldRange) {
       const isFolded = foldedMap.has(line.to);
       const indent = getIndentLevel(lineText);
 
-      // 在缩进之后插入折叠图标（或行首，如果无缩进）
+      // 鍦ㄧ缉杩涗箣鍚庢彃鍏ユ姌鍙犲浘鏍囷紙鎴栬棣栵紝濡傛灉鏃犵缉杩涳級
       const insertPos = line.from + indent;
 
       decorations.push({
@@ -665,7 +687,7 @@ function buildListFoldDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 子折叠内联装饰器 StateField
+ * 瀛愭姌鍙犲唴鑱旇楗板櫒 StateField
  */
 const listFoldDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -684,43 +706,43 @@ const listFoldDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 序号高亮装饰器 - 匹配各种格式的序号
- * 为这些序号添加主题颜色
+ * 搴忓彿楂樹寒瑁呴グ鍣?- 鍖归厤鍚勭鏍煎紡鐨勫簭鍙?
+ * 涓鸿繖浜涘簭鍙锋坊鍔犱富棰橀鑹?
  */
 const numberingMark = Decoration.mark({ class: 'cm-numbering' });
 
 /**
- * 构建序号高亮装饰器
- * 匹配行首（可能有缩进）的序号格式：
- * - 单个数字加点（如 1.、2.、10.）
- * - 数字.数字 或更多层级（如 4.2、4.2.1、4.2.1.1）
- * - 单个大写字母加点（如 A.、B.、C.）
- * - 单个小写字母加点（如 a.、b.、c.）
- * - 字母+数字加点（如 A1.、A100.、B2.）
- * - 中文数字序号（如 一、二、三、）
- * - 圆点无序列表（如 •）
+ * 鏋勫缓搴忓彿楂樹寒瑁呴グ鍣?
+ * 鍖归厤琛岄锛堝彲鑳芥湁缂╄繘锛夌殑搴忓彿鏍煎紡锛?
+ * - 鍗曚釜鏁板瓧鍔犵偣锛堝 1.銆?.銆?0.锛?
+ * - 鏁板瓧.鏁板瓧 鎴栨洿澶氬眰绾э紙濡?4.2銆?.2.1銆?.2.1.1锛?
+ * - 鍗曚釜澶у啓瀛楁瘝鍔犵偣锛堝 A.銆丅.銆丆.锛?
+ * - 鍗曚釜灏忓啓瀛楁瘝鍔犵偣锛堝 a.銆乥.銆乧.锛?
+ * - 瀛楁瘝+鏁板瓧鍔犵偣锛堝 A1.銆丄100.銆丅2.锛?
+ * - 涓枃鏁板瓧搴忓彿锛堝 涓€銆佷簩銆佷笁銆侊級
+ * - 鍦嗙偣鏃犲簭鍒楄〃锛堝 鈥級
  */
 function buildNumberingDecorations(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number }[] = [];
   const doc = state.doc;
 
-  // 匹配序号格式：
-  // 1. 单个数字加点（如 1.、2.、10.、100.）
-  // 2. 数字.数字 或更多层级（如 4.2、4.2.1、4.2.1.1）
-  // 3. 单个字母加点（如 A.、B.、a.、b.）
-  // 4. 字母+数字加点（如 A1.、A100.、B2.）
-  // 5. 中文数字序号（如 一、二、三、十、百）
-  // 6. 圆点无序列表（如 •）
-  // 序号必须在行首（可能有缩进空格），后面跟空格或其他内容
-  const numberingRegex = /^(\s*)(\d+\.|[A-Za-z]\.|[A-Za-z]\d{1,3}\.|[一二三四五六七八九十百千万零]+、|\d+(?:\.\d+)+|•)\s/;
+  // 鍖归厤搴忓彿鏍煎紡锛?
+  // 1. 鍗曚釜鏁板瓧鍔犵偣锛堝 1.銆?.銆?0.銆?00.锛?
+  // 2. 鏁板瓧.鏁板瓧 鎴栨洿澶氬眰绾э紙濡?4.2銆?.2.1銆?.2.1.1锛?
+  // 3. 鍗曚釜瀛楁瘝鍔犵偣锛堝 A.銆丅.銆乤.銆乥.锛?
+  // 4. 瀛楁瘝+鏁板瓧鍔犵偣锛堝 A1.銆丄100.銆丅2.锛?
+  // 5. 涓枃鏁板瓧搴忓彿锛堝 涓€銆佷簩銆佷笁銆佸崄銆佺櫨锛?
+  // 6. 鍦嗙偣鏃犲簭鍒楄〃锛堝 鈥級
+  // 搴忓彿蹇呴』鍦ㄨ棣栵紙鍙兘鏈夌缉杩涚┖鏍硷級锛屽悗闈㈣窡绌烘牸鎴栧叾浠栧唴瀹?
+  const numberingRegex = /^(\s*)(\d+\.|[A-Za-z]\.|[A-Za-z]\d{1,3}\.|[一二三四五六七八九十百千万零]+、|\d+(?:\.\d+)+)\s/;
   
-  // 待办清单正则：跳过 • [ ] 或 • [x] 格式
+  // 寰呭姙娓呭崟姝ｅ垯锛氳烦杩?鈥?[ ] 鎴?鈥?[x] 鏍煎紡
   const todoRegex = /^[\t ]*[-*+•]\s\[[ xX]\](\s|$)/;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     
-    // 跳过待办清单行
+    // 璺宠繃寰呭姙娓呭崟琛?
     if (todoRegex.test(line.text)) {
       continue;
     }
@@ -742,7 +764,7 @@ function buildNumberingDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 序号高亮 StateField
+ * 搴忓彿楂樹寒 StateField
  */
 const numberingDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -758,11 +780,11 @@ const numberingDecorations = StateField.define<DecorationSet>({
 });
 
 // ============================================================================
-// 文本颜色系统 - 纯 StateField + Decoration 方案（不使用正则）
+// 鏂囨湰棰滆壊绯荤粺 - 绾?StateField + Decoration 鏂规锛堜笉浣跨敤姝ｅ垯锛?
 // ============================================================================
 
 /**
- * 颜色标记数据结构
+ * 棰滆壊鏍囪鏁版嵁缁撴瀯
  */
 interface ColorMark {
   from: number;
@@ -772,18 +794,18 @@ interface ColorMark {
 }
 
 /**
- * 添加/更新颜色的 StateEffect
+ * 娣诲姞/鏇存柊棰滆壊鐨?StateEffect
  */
 const addColorEffect = StateEffect.define<ColorMark>();
 
 /**
- * 清除颜色的 StateEffect
+ * 娓呴櫎棰滆壊鐨?StateEffect
  */
 const clearColorEffect = StateEffect.define<{ from: number; to: number }>();
 
 /**
- * 颜色标记 StateField
- * 存储所有文本颜色信息，不依赖文档中的 HTML 标签
+ * 棰滆壊鏍囪 StateField
+ * 瀛樺偍鎵€鏈夋枃鏈鑹蹭俊鎭紝涓嶄緷璧栨枃妗ｄ腑鐨?HTML 鏍囩
  */
 const colorMarksField = StateField.define<ColorMark[]>({
   create() {
@@ -792,14 +814,14 @@ const colorMarksField = StateField.define<ColorMark[]>({
   update(marks, tr) {
     let newMarks = marks;
 
-    // 处理文档变化 - 更新所有标记的位置
+    // 澶勭悊鏂囨。鍙樺寲 - 鏇存柊鎵€鏈夋爣璁扮殑浣嶇疆
     if (tr.docChanged) {
       newMarks = marks
         .map(mark => {
-          // 使用 mapPos 更新位置
+          // 浣跨敤 mapPos 鏇存柊浣嶇疆
           const newFrom = tr.changes.mapPos(mark.from, 1);
           const newTo = tr.changes.mapPos(mark.to, -1);
-          // 如果范围无效（被删除），返回 null
+          // 濡傛灉鑼冨洿鏃犳晥锛堣鍒犻櫎锛夛紝杩斿洖 null
           if (newFrom >= newTo) {
             return null;
           }
@@ -808,24 +830,24 @@ const colorMarksField = StateField.define<ColorMark[]>({
         .filter((mark): mark is ColorMark => mark !== null);
     }
 
-    // 处理颜色效果
+    // 澶勭悊棰滆壊鏁堟灉
     for (const effect of tr.effects) {
       if (effect.is(addColorEffect)) {
         const newMark = effect.value;
-        // 查找所有重叠的标记
+        // 鏌ユ壘鎵€鏈夐噸鍙犵殑鏍囪
         const overlappingMarks = newMarks.filter(
           m => !(m.to <= newMark.from || m.from >= newMark.to)
         );
 
         if (overlappingMarks.length > 0) {
-          // 移除所有重叠的标记
+          // 绉婚櫎鎵€鏈夐噸鍙犵殑鏍囪
           newMarks = newMarks.filter(
             m => m.to <= newMark.from || m.from >= newMark.to
           );
 
-          // 处理每个重叠标记，可能需要分割
+          // 澶勭悊姣忎釜閲嶅彔鏍囪锛屽彲鑳介渶瑕佸垎鍓?
           for (const existing of overlappingMarks) {
-            // 如果旧标记在新标记之前有部分
+            // 濡傛灉鏃ф爣璁板湪鏂版爣璁颁箣鍓嶆湁閮ㄥ垎
             if (existing.from < newMark.from) {
               newMarks.push({
                 from: existing.from,
@@ -834,7 +856,7 @@ const colorMarksField = StateField.define<ColorMark[]>({
                 textColor: existing.textColor,
               });
             }
-            // 如果旧标记在新标记之后有部分
+            // 濡傛灉鏃ф爣璁板湪鏂版爣璁颁箣鍚庢湁閮ㄥ垎
             if (existing.to > newMark.to) {
               newMarks.push({
                 from: newMark.to,
@@ -845,7 +867,7 @@ const colorMarksField = StateField.define<ColorMark[]>({
             }
           }
 
-          // 合并颜色：新标记使用新颜色，保留旧标记中未被覆盖的颜色
+          // 鍚堝苟棰滆壊锛氭柊鏍囪浣跨敤鏂伴鑹诧紝淇濈暀鏃ф爣璁颁腑鏈瑕嗙洊鐨勯鑹?
           const firstOverlap = overlappingMarks[0];
           const merged: ColorMark = {
             from: newMark.from,
@@ -855,12 +877,12 @@ const colorMarksField = StateField.define<ColorMark[]>({
           };
           newMarks.push(merged);
         } else {
-          // 添加新标记
+          // 娣诲姞鏂版爣璁?
           newMarks = [...newMarks, newMark];
         }
       } else if (effect.is(clearColorEffect)) {
         const { from, to } = effect.value;
-        // 移除范围内的标记
+        // 绉婚櫎鑼冨洿鍐呯殑鏍囪
         newMarks = newMarks.filter(m => m.to <= from || m.from >= to);
       }
     }
@@ -870,7 +892,7 @@ const colorMarksField = StateField.define<ColorMark[]>({
 });
 
 /**
- * 预览范围数据 - 用于在预览时暂时隐藏已有背景色
+ * 棰勮鑼冨洿鏁版嵁 - 鐢ㄤ簬鍦ㄩ瑙堟椂鏆傛椂闅愯棌宸叉湁鑳屾櫙鑹?
  */
 interface PreviewRange {
   from: number;
@@ -879,12 +901,12 @@ interface PreviewRange {
 }
 
 /**
- * 设置预览范围的 StateEffect
+ * 璁剧疆棰勮鑼冨洿鐨?StateEffect
  */
 const setPreviewRangeEffect = StateEffect.define<PreviewRange | null>();
 
 /**
- * 预览范围 StateField
+ * 棰勮鑼冨洿 StateField
  */
 const previewRangeField = StateField.define<PreviewRange | null>({
   create() {
@@ -901,9 +923,9 @@ const previewRangeField = StateField.define<PreviewRange | null>({
 });
 
 /**
- * 从 ColorMark 数组生成 DecorationSet
- * @param marks 颜色标记数组
- * @param previewRange 预览范围（如果有，则在该范围内隐藏对应类型的颜色）
+ * 浠?ColorMark 鏁扮粍鐢熸垚 DecorationSet
+ * @param marks 棰滆壊鏍囪鏁扮粍
+ * @param previewRange 棰勮鑼冨洿锛堝鏋滄湁锛屽垯鍦ㄨ鑼冨洿鍐呴殣钘忓搴旂被鍨嬬殑棰滆壊锛?
  */
 function buildColorDecorations(
   marks: ColorMark[],
@@ -912,15 +934,15 @@ function buildColorDecorations(
   const decorations: Range<Decoration>[] = [];
 
   for (const mark of marks) {
-    // 检查是否与预览范围重叠
+    // 妫€鏌ユ槸鍚︿笌棰勮鑼冨洿閲嶅彔
     const overlapsPreview =
       previewRange &&
       !(mark.to <= previewRange.from || mark.from >= previewRange.to);
 
     if (overlapsPreview && previewRange) {
-      // 需要分割标记：预览范围内隐藏对应颜色，范围外保持原样
+      // 闇€瑕佸垎鍓叉爣璁帮細棰勮鑼冨洿鍐呴殣钘忓搴旈鑹诧紝鑼冨洿澶栦繚鎸佸師鏍?
       
-      // 1. 预览范围之前的部分（保持原样）
+      // 1. 棰勮鑼冨洿涔嬪墠鐨勯儴鍒嗭紙淇濇寔鍘熸牱锛?
       if (mark.from < previewRange.from) {
         const styleAttrs: string[] = [];
         if (mark.bgColor) {
@@ -942,12 +964,12 @@ function buildColorDecorations(
         }
       }
 
-      // 2. 预览范围内的部分（隐藏对应类型的颜色）
+      // 2. 棰勮鑼冨洿鍐呯殑閮ㄥ垎锛堥殣钘忓搴旂被鍨嬬殑棰滆壊锛?
       const overlapFrom = Math.max(mark.from, previewRange.from);
       const overlapTo = Math.min(mark.to, previewRange.to);
       if (overlapFrom < overlapTo) {
         const styleAttrs: string[] = [];
-        // 只保留不被预览的颜色类型
+        // 鍙繚鐣欎笉琚瑙堢殑棰滆壊绫诲瀷
         if (mark.bgColor && previewRange.type !== 'background-color') {
           styleAttrs.push(`background-color: ${mark.bgColor}`);
           styleAttrs.push('border-radius: 3px');
@@ -967,7 +989,7 @@ function buildColorDecorations(
         }
       }
 
-      // 3. 预览范围之后的部分（保持原样）
+      // 3. 棰勮鑼冨洿涔嬪悗鐨勯儴鍒嗭紙淇濇寔鍘熸牱锛?
       if (mark.to > previewRange.to) {
         const styleAttrs: string[] = [];
         if (mark.bgColor) {
@@ -989,7 +1011,7 @@ function buildColorDecorations(
         }
       }
     } else {
-      // 不与预览范围重叠，正常显示
+      // 涓嶄笌棰勮鑼冨洿閲嶅彔锛屾甯告樉绀?
       const styleAttrs: string[] = [];
       if (mark.bgColor) {
         styleAttrs.push(`background-color: ${mark.bgColor}`);
@@ -1012,22 +1034,22 @@ function buildColorDecorations(
     }
   }
 
-  // 按位置排序
+  // 鎸変綅缃帓搴?
   decorations.sort((a, b) => a.from - b.from);
 
   return Decoration.set(decorations);
 }
 
 /**
- * 颜色装饰器 StateField
- * 从 colorMarksField 生成装饰器
+ * 棰滆壊瑁呴グ鍣?StateField
+ * 浠?colorMarksField 鐢熸垚瑁呴グ鍣?
  */
 const colorDecorationsField = StateField.define<DecorationSet>({
   create(state) {
     return buildColorDecorations(state.field(colorMarksField), null);
   },
   update(decorations, tr) {
-    // 如果有颜色相关的效果、文档变化或预览范围变化，重新构建装饰器
+    // 濡傛灉鏈夐鑹茬浉鍏崇殑鏁堟灉銆佹枃妗ｅ彉鍖栨垨棰勮鑼冨洿鍙樺寲锛岄噸鏂版瀯寤鸿楗板櫒
     const hasColorEffect = tr.effects.some(
       e => e.is(addColorEffect) || e.is(clearColorEffect) || e.is(setPreviewRangeEffect)
     );
@@ -1041,25 +1063,25 @@ const colorDecorationsField = StateField.define<DecorationSet>({
 });
 
 /**
- * 利用语法树判断位置是否在 Markdown 标记内（标题、列表标记等）
- * 这些位置不应该应用颜色
+ * 鍒╃敤璇硶鏍戝垽鏂綅缃槸鍚﹀湪 Markdown 鏍囪鍐咃紙鏍囬銆佸垪琛ㄦ爣璁扮瓑锛?
+ * 杩欎簺浣嶇疆涓嶅簲璇ュ簲鐢ㄩ鑹?
  */
 function isInMarkdownSyntax(state: EditorState, pos: number): boolean {
   const tree = syntaxTree(state);
   let node = tree.resolveInner(pos, 1);
 
-  // 遍历节点及其父节点
+  // 閬嶅巻鑺傜偣鍙婂叾鐖惰妭鐐?
   while (node) {
     const name = node.type.name;
-    // 检查是否是 Markdown 语法标记
+    // 妫€鏌ユ槸鍚︽槸 Markdown 璇硶鏍囪
     if (
-      name === 'HeaderMark' ||      // # ## ### 等
-      name === 'ListMark' ||        // - * + 1. 等
+      name === 'HeaderMark' ||      // # ## ### 绛?
+      name === 'ListMark' ||        // - * + 1. 绛?
       name === 'QuoteMark' ||       // >
       name === 'CodeMark' ||        // ` ```
       name === 'EmphasisMark' ||    // * _ ** __
       name === 'LinkMark' ||        // [ ] ( )
-      name === 'URL'                // 链接 URL
+      name === 'URL'                // 閾炬帴 URL
     ) {
       return true;
     }
@@ -1071,39 +1093,39 @@ function isInMarkdownSyntax(state: EditorState, pos: number): boolean {
 }
 
 /**
- * 获取行首的 Markdown 标记结束位置
- * 返回内容开始的位置（跳过标题符号、列表标记等）
- * 支持多种序号格式：
- * - 标准 Markdown：# ## - * + 1. 等
- * - 多级数字：1.1、1.2.1、4.1 等
- * - 字母序号：A. B. a. b. A1. B2. 等
- * - 字母+数字混合：A1、B2、A1.1 等
- * - 中文序号：一、二、三、等
- * - 支持任意缩进（空格或 TAB）
+ * 鑾峰彇琛岄鐨?Markdown 鏍囪缁撴潫浣嶇疆
+ * 杩斿洖鍐呭寮€濮嬬殑浣嶇疆锛堣烦杩囨爣棰樼鍙枫€佸垪琛ㄦ爣璁扮瓑锛?
+ * 鏀寔澶氱搴忓彿鏍煎紡锛?
+ * - 鏍囧噯 Markdown锛? ## - * + 1. 绛?
+ * - 澶氱骇鏁板瓧锛?.1銆?.2.1銆?.1 绛?
+ * - 瀛楁瘝搴忓彿锛欰. B. a. b. A1. B2. 绛?
+ * - 瀛楁瘝+鏁板瓧娣峰悎锛欰1銆丅2銆丄1.1 绛?
+ * - 涓枃搴忓彿锛氫竴銆佷簩銆佷笁銆佺瓑
+ * - 鏀寔浠绘剰缂╄繘锛堢┖鏍兼垨 TAB锛?
  */
 function getContentStartPos(state: EditorState, lineFrom: number): number {
   const line = state.doc.lineAt(lineFrom);
   const tree = syntaxTree(state);
   const lineText = line.text;
 
-  // 从行首开始查找
+  // 浠庤棣栧紑濮嬫煡鎵?
   let contentStart = line.from;
 
-  // 先用语法树检测标准 Markdown 标记
-  // 增加检测范围以支持深度缩进
+  // 鍏堢敤璇硶鏍戞娴嬫爣鍑?Markdown 鏍囪
+  // 澧炲姞妫€娴嬭寖鍥翠互鏀寔娣卞害缂╄繘
   tree.iterate({
     from: line.from,
     to: line.to,
     enter(node) {
-      // 如果是标记节点
+      // 濡傛灉鏄爣璁拌妭鐐?
       if (
         node.type.name === 'HeaderMark' ||
         node.type.name === 'ListMark' ||
         node.type.name === 'QuoteMark'
       ) {
-        // 内容从标记后面开始
+        // 鍐呭浠庢爣璁板悗闈㈠紑濮?
         contentStart = Math.max(contentStart, node.to);
-        // 跳过标记后的空格
+        // 璺宠繃鏍囪鍚庣殑绌烘牸
         const text = state.doc.sliceString(node.to, Math.min(node.to + 2, line.to));
         if (text.startsWith(' ')) {
           contentStart = node.to + 1;
@@ -1112,24 +1134,24 @@ function getContentStartPos(state: EditorState, lineFrom: number): number {
     },
   });
 
-  // 额外检测各种序号格式（语法树可能不识别）
-  // 使用 [\t ]* 明确匹配 TAB 和空格
+  // 棰濆妫€娴嬪悇绉嶅簭鍙锋牸寮忥紙璇硶鏍戝彲鑳戒笉璇嗗埆锛?
+  // 浣跨敤 [\t ]* 鏄庣‘鍖归厤 TAB 鍜岀┖鏍?
   const listPatterns = [
-    // 多级数字序号：1.1、1.2.1、4.1.2 等（支持任意缩进）
+    // 澶氱骇鏁板瓧搴忓彿锛?.1銆?.2.1銆?.1.2 绛夛紙鏀寔浠绘剰缂╄繘锛?
     /^([\t ]*)((\d+\.)+\d*\s+)/,
-    // 单个数字序号：1. 2. 10. 等（支持任意缩进）
+    // 鍗曚釜鏁板瓧搴忓彿锛?. 2. 10. 绛夛紙鏀寔浠绘剰缂╄繘锛?
     /^([\t ]*)(\d+\.\s+)/,
-    // 字母+数字+多级：A1.1、B2.3 等
+    // 瀛楁瘝+鏁板瓧+澶氱骇锛欰1.1銆丅2.3 绛?
     /^([\t ]*)([A-Za-z]\d+(?:\.\d+)*\.?\s+)/,
-    // 字母+数字序号：A1、B2、A1.、B2. 等
+    // 瀛楁瘝+鏁板瓧搴忓彿锛欰1銆丅2銆丄1.銆丅2. 绛?
     /^([\t ]*)([A-Za-z]\d+\.?\s+)/,
-    // 单字母序号：A. B. a. b. 等
+    // 鍗曞瓧姣嶅簭鍙凤細A. B. a. b. 绛?
     /^([\t ]*)([A-Za-z]\.\s+)/,
-    // 中文序号：一、二、三、等
-    /^([\t ]*)([一二三四五六七八九十百千万零]+[、.]\s*)/,
-    // 无序列表符号：- * + •
+    // 涓枃搴忓彿锛氫竴銆佷簩銆佷笁銆佺瓑
+    /^([\t ]*)([一二三四五六七八九十百千万零]+、\s*)/,
+    // 鏃犲簭鍒楄〃绗﹀彿锛? * + 鈥?
     /^([\t ]*)([-*+•]\s+)/,
-    // 标题符号：# ## ### 等
+    // 鏍囬绗﹀彿锛? ## ### 绛?
     /^([\t ]*)(#{1,6}\s+)/,
   ];
 
@@ -1138,7 +1160,7 @@ function getContentStartPos(state: EditorState, lineFrom: number): number {
     if (match) {
       const matchEnd = line.from + match[0].length;
       contentStart = Math.max(contentStart, matchEnd);
-      break; // 匹配到一个就停止
+      break; // 鍖归厤鍒颁竴涓氨鍋滄
     }
   }
 
@@ -1146,7 +1168,7 @@ function getContentStartPos(state: EditorState, lineFrom: number): number {
 }
 
 /**
- * 跳过文本首尾的空白字符，返回实际内容的范围
+ * 璺宠繃鏂囨湰棣栧熬鐨勭┖鐧藉瓧绗︼紝杩斿洖瀹為檯鍐呭鐨勮寖鍥?
  */
 function trimTextRange(
   state: EditorState,
@@ -1155,7 +1177,7 @@ function trimTextRange(
 ): { from: number; to: number } {
   const text = state.sliceDoc(from, to);
   
-  // 计算前导空白
+  // 璁＄畻鍓嶅绌虹櫧
   let leadingSpaces = 0;
   for (let i = 0; i < text.length; i++) {
     if (text[i] === ' ' || text[i] === '\t') {
@@ -1165,7 +1187,7 @@ function trimTextRange(
     }
   }
   
-  // 计算尾部空白
+  // 璁＄畻灏鹃儴绌虹櫧
   let trailingSpaces = 0;
   for (let i = text.length - 1; i >= leadingSpaces; i--) {
     if (text[i] === ' ' || text[i] === '\t') {
@@ -1182,10 +1204,10 @@ function trimTextRange(
 }
 
 /**
- * 应用颜色样式到选中文本（纯 StateField 方案）
- * @param view EditorView 实例
- * @param styleType 样式类型：'color' 或 'background-color'
- * @param newColor 新的颜色值
+ * 搴旂敤棰滆壊鏍峰紡鍒伴€変腑鏂囨湰锛堢函 StateField 鏂规锛?
+ * @param view EditorView 瀹炰緥
+ * @param styleType 鏍峰紡绫诲瀷锛?color' 鎴?'background-color'
+ * @param newColor 鏂扮殑棰滆壊鍊?
  */
 function applyColorStyle(
   view: EditorView,
@@ -1197,7 +1219,7 @@ function applyColorStyle(
   let targetTo: number;
 
   if (from === to) {
-    // 没有选中文本，选中整行内容（跳过 Markdown 标记）
+    // 娌℃湁閫変腑鏂囨湰锛岄€変腑鏁磋鍐呭锛堣烦杩?Markdown 鏍囪锛?
     const line = view.state.doc.lineAt(from);
     targetFrom = getContentStartPos(view.state, line.from);
     targetTo = line.to;
@@ -1205,7 +1227,7 @@ function applyColorStyle(
     targetFrom = from;
     targetTo = to;
 
-    // 检查选区起始位置是否在 Markdown 标记内
+    // 妫€鏌ラ€夊尯璧峰浣嶇疆鏄惁鍦?Markdown 鏍囪鍐?
     const startLine = view.state.doc.lineAt(from);
     const contentStart = getContentStartPos(view.state, startLine.from);
     if (targetFrom < contentStart) {
@@ -1213,22 +1235,22 @@ function applyColorStyle(
     }
   }
 
-  // 跳过首尾空白
+  // 璺宠繃棣栧熬绌虹櫧
   const trimmed = trimTextRange(view.state, targetFrom, targetTo);
   targetFrom = trimmed.from;
   targetTo = trimmed.to;
 
-  // 如果范围无效，直接返回
+  // 濡傛灉鑼冨洿鏃犳晥锛岀洿鎺ヨ繑鍥?
   if (targetFrom >= targetTo) {
     return;
   }
 
-  // 检查是否包含多行
+  // 妫€鏌ユ槸鍚﹀寘鍚琛?
   const targetText = view.state.sliceDoc(targetFrom, targetTo);
   const hasMultipleLines = targetText.includes('\n');
 
   if (hasMultipleLines) {
-    // 多行处理：对每一行分别应用颜色
+    // 澶氳澶勭悊锛氬姣忎竴琛屽垎鍒簲鐢ㄩ鑹?
     const doc = view.state.doc;
     const startLine = doc.lineAt(targetFrom);
     const endLine = doc.lineAt(targetTo);
@@ -1239,38 +1261,38 @@ function applyColorStyle(
       let lineFrom = line.from;
       let lineTo = line.to;
 
-      // 如果是第一行，从选中位置开始
+      // 濡傛灉鏄涓€琛岋紝浠庨€変腑浣嶇疆寮€濮?
       if (lineNum === startLine.number) {
         lineFrom = Math.max(targetFrom, line.from);
       }
-      // 如果是最后一行，到选中位置结束
+      // 濡傛灉鏄渶鍚庝竴琛岋紝鍒伴€変腑浣嶇疆缁撴潫
       if (lineNum === endLine.number) {
         lineTo = Math.min(targetTo, line.to);
       }
 
-      // 跳过 Markdown 标记
+      // 璺宠繃 Markdown 鏍囪
       const contentStart = getContentStartPos(view.state, line.from);
       if (lineFrom < contentStart) {
         lineFrom = contentStart;
       }
 
-      // 跳过首尾空白
+      // 璺宠繃棣栧熬绌虹櫧
       const lineTrimmed = trimTextRange(view.state, lineFrom, lineTo);
       lineFrom = lineTrimmed.from;
       lineTo = lineTrimmed.to;
 
-      // 如果这一行没有内容，跳过
+      // 濡傛灉杩欎竴琛屾病鏈夊唴瀹癸紝璺宠繃
       if (lineFrom >= lineTo) {
         continue;
       }
 
-      // 查找已有的颜色标记（查找与新范围重叠的所有标记，合并它们的颜色）
+      // 鏌ユ壘宸叉湁鐨勯鑹叉爣璁帮紙鏌ユ壘涓庢柊鑼冨洿閲嶅彔鐨勬墍鏈夋爣璁帮紝鍚堝苟瀹冧滑鐨勯鑹诧級
       const existingMarks = view.state.field(colorMarksField);
       const overlappingMarks = existingMarks.filter(
         m => !(m.to <= lineFrom || m.from >= lineTo)
       );
 
-      // 从所有重叠标记中收集颜色
+      // 浠庢墍鏈夐噸鍙犳爣璁颁腑鏀堕泦棰滆壊
       let existingBgColor: string | undefined;
       let existingTextColor: string | undefined;
       for (const m of overlappingMarks) {
@@ -1282,7 +1304,7 @@ function applyColorStyle(
         }
       }
 
-      // 创建新的颜色标记
+      // 鍒涘缓鏂扮殑棰滆壊鏍囪
       const newMark: ColorMark = {
         from: lineFrom,
         to: lineTo,
@@ -1299,14 +1321,14 @@ function applyColorStyle(
     return;
   }
 
-  // 单行处理
-  // 查找已有的颜色标记（查找与新范围重叠的所有标记，合并它们的颜色）
+  // 鍗曡澶勭悊
+  // 鏌ユ壘宸叉湁鐨勯鑹叉爣璁帮紙鏌ユ壘涓庢柊鑼冨洿閲嶅彔鐨勬墍鏈夋爣璁帮紝鍚堝苟瀹冧滑鐨勯鑹诧級
   const existingMarks = view.state.field(colorMarksField);
   const overlappingMarks = existingMarks.filter(
     m => !(m.to <= targetFrom || m.from >= targetTo)
   );
 
-  // 从所有重叠标记中收集颜色
+  // 浠庢墍鏈夐噸鍙犳爣璁颁腑鏀堕泦棰滆壊
   let existingBgColor: string | undefined;
   let existingTextColor: string | undefined;
   for (const m of overlappingMarks) {
@@ -1318,7 +1340,7 @@ function applyColorStyle(
     }
   }
 
-  // 创建新的颜色标记
+  // 鍒涘缓鏂扮殑棰滆壊鏍囪
   const newMark: ColorMark = {
     from: targetFrom,
     to: targetTo,
@@ -1332,10 +1354,10 @@ function applyColorStyle(
 }
 
 /**
- * 获取当前选中文本的现有颜色
- * @param view EditorView 实例
- * @param styleType 样式类型：'color' 或 'background-color'
- * @returns 现有颜色值，如果没有则返回 undefined
+ * 鑾峰彇褰撳墠閫変腑鏂囨湰鐨勭幇鏈夐鑹?
+ * @param view EditorView 瀹炰緥
+ * @param styleType 鏍峰紡绫诲瀷锛?color' 鎴?'background-color'
+ * @returns 鐜版湁棰滆壊鍊硷紝濡傛灉娌℃湁鍒欒繑鍥?undefined
  */
 function getExistingColor(
   view: EditorView,
@@ -1344,7 +1366,7 @@ function getExistingColor(
   const { from, to } = view.state.selection.main;
   const marks = view.state.field(colorMarksField);
 
-  // 查找包含选区的颜色标记
+  // 鏌ユ壘鍖呭惈閫夊尯鐨勯鑹叉爣璁?
   const mark = marks.find(m => m.from <= from && m.to >= to);
 
   if (mark) {
@@ -1355,7 +1377,7 @@ function getExistingColor(
 }
 
 /**
- * 颜色预览 StateEffect - 用于更新预览装饰器
+ * 棰滆壊棰勮 StateEffect - 鐢ㄤ簬鏇存柊棰勮瑁呴グ鍣?
  */
 interface ColorPreviewData {
   type: 'color' | 'background-color';
@@ -1367,8 +1389,8 @@ interface ColorPreviewData {
 const setColorPreviewEffect = StateEffect.define<ColorPreviewData | null>();
 
 /**
- * 颜色预览装饰器 StateField
- * 用于在拖动颜色选择器时显示临时预览效果
+ * 棰滆壊棰勮瑁呴グ鍣?StateField
+ * 鐢ㄤ簬鍦ㄦ嫋鍔ㄩ鑹查€夋嫨鍣ㄦ椂鏄剧ず涓存椂棰勮鏁堟灉
  */
 const colorPreviewDecorations = StateField.define<DecorationSet>({
   create() {
@@ -1399,8 +1421,8 @@ const colorPreviewDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 缩进线 Widget - 显示缩进层级的垂直线
- * 只显示一条缩进线，与父级折叠图标对齐
+ * 缂╄繘绾?Widget - 鏄剧ず缂╄繘灞傜骇鐨勫瀭鐩寸嚎
+ * 鍙樉绀轰竴鏉＄缉杩涚嚎锛屼笌鐖剁骇鎶樺彔鍥炬爣瀵归綈
  */
 class IndentGuideWidget extends WidgetType {
   constructor(readonly indentLevel: number, readonly hasFoldIcon: boolean = false) {
@@ -1411,28 +1433,28 @@ class IndentGuideWidget extends WidgetType {
     const container = document.createElement('span');
     container.className = 'cm-indent-guides';
     
-    // 获取主题缩进线颜色
+    // 鑾峰彇涓婚缂╄繘绾块鑹?
     const themeColor = getComputedStyle(document.documentElement)
       .getPropertyValue('--ws-mirrorIndentGuide-background')
       .trim();
     
-    // 检测是否是暗色主题
+    // 妫€娴嬫槸鍚︽槸鏆楄壊涓婚
     const isDarkTheme = document.body.classList.contains('ws-theme-dark') ||
       document.documentElement.getAttribute('data-theme') === 'dark';
     
-    // 确定最终颜色
+    // 纭畾鏈€缁堥鑹?
     let finalColor: string;
     if (themeColor) {
-      // 检测颜色是否已包含透明度
+      // 妫€娴嬮鑹叉槸鍚﹀凡鍖呭惈閫忔槑搴?
       const hasAlpha = themeColor.includes('rgba') || 
         themeColor.includes('hsla') ||
         (themeColor.startsWith('#') && themeColor.length === 9);
       
       if (hasAlpha) {
-        // 已有透明度，直接使用主题颜色
+        // 宸叉湁閫忔槑搴︼紝鐩存帴浣跨敤涓婚棰滆壊
         finalColor = themeColor;
       } else {
-        // 没有透明度，尝试解析 RGB 值并添加 0.6 透明度
+        // 娌℃湁閫忔槑搴︼紝灏濊瘯瑙ｆ瀽 RGB 鍊煎苟娣诲姞 0.6 閫忔槑搴?
         const rgbMatch = themeColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
         const hexMatch = themeColor.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
         const shortHexMatch = themeColor.match(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/);
@@ -1450,33 +1472,33 @@ class IndentGuideWidget extends WidgetType {
           const b = parseInt(shortHexMatch[3] + shortHexMatch[3], 16);
           finalColor = `rgba(${r}, ${g}, ${b}, 0.6)`;
         } else {
-          // 无法解析，使用默认颜色
+          // 鏃犳硶瑙ｆ瀽锛屼娇鐢ㄩ粯璁ら鑹?
           finalColor = isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)';
         }
       }
     } else {
-      // 没有主题颜色，使用默认颜色
+      // 娌℃湁涓婚棰滆壊锛屼娇鐢ㄩ粯璁ら鑹?
       finalColor = isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)';
     }
     
-    // 只创建一条缩进线，位置与父级折叠图标对齐
-    // 折叠图标位置计算（来自 ListFoldWidget）：
-    // - indent=0 时：left = -24px
-    // - indent>0 时：left = (indent - 1) * 8 - 8
-    // 折叠图标宽度 20px，中心在 left + 10
+    // 鍙垱寤轰竴鏉＄缉杩涚嚎锛屼綅缃笌鐖剁骇鎶樺彔鍥炬爣瀵归綈
+    // 鎶樺彔鍥炬爣浣嶇疆璁＄畻锛堟潵鑷?ListFoldWidget锛夛細
+    // - indent=0 鏃讹細left = -24px
+    // - indent>0 鏃讹細left = (indent - 1) * 8 - 8
+    // 鎶樺彔鍥炬爣瀹藉害 20px锛屼腑蹇冨湪 left + 10
     // 
-    // 当前行的 indentLevel 表示缩进级别（每级 2 空格）
-    // 父级的缩进级别 = indentLevel - 1
-    // 父级的空格数 = (indentLevel - 1) * 2
+    // 褰撳墠琛岀殑 indentLevel 琛ㄧず缂╄繘绾у埆锛堟瘡绾?2 绌烘牸锛?
+    // 鐖剁骇鐨勭缉杩涚骇鍒?= indentLevel - 1
+    // 鐖剁骇鐨勭┖鏍兼暟 = (indentLevel - 1) * 2
     if (this.indentLevel >= 1) {
       const guide = document.createElement('span');
       guide.className = 'cm-indent-guide cm-indent-guide-single';
       
-      // 父级的空格数
+      // 鐖剁骇鐨勭┖鏍兼暟
       const parentSpaces = (this.indentLevel - 1) * 2;
-      // 父级折叠图标的 left 位置
+      // 鐖剁骇鎶樺彔鍥炬爣鐨?left 浣嶇疆
       const foldIconLeft = parentSpaces > 0 ? (parentSpaces - 1) * 8 - 8 : -24;
-      // 缩进线位置 = 折叠图标左边 + 5px（折叠图标中心偏左一点）
+      // 缂╄繘绾夸綅缃?= 鎶樺彔鍥炬爣宸﹁竟 + 5px锛堟姌鍙犲浘鏍囦腑蹇冨亸宸︿竴鐐癸級
       const leftPos = foldIconLeft + 5;
       
       guide.style.left = `${leftPos}px`;
@@ -1490,7 +1512,7 @@ class IndentGuideWidget extends WidgetType {
   }
 
   eq(_other: IndentGuideWidget): boolean {
-    // 强制重新渲染以应用新的位置计算
+    // 寮哄埗閲嶆柊娓叉煋浠ュ簲鐢ㄦ柊鐨勪綅缃绠?
     return false;
   }
 
@@ -1500,29 +1522,29 @@ class IndentGuideWidget extends WidgetType {
 }
 
 /**
- * 构建缩进线装饰器
- * 规则：最少缩进4个空格（或1个tab）才显示缩进线
+ * 鏋勫缓缂╄繘绾胯楗板櫒
+ * 瑙勫垯锛氭渶灏戠缉杩?涓┖鏍硷紙鎴?涓猼ab锛夋墠鏄剧ず缂╄繘绾?
  */
 function buildIndentGuideDecorations(state: EditorState): DecorationSet {
   const decorations: { from: number; decoration: Decoration }[] = [];
   
   try {
     const doc = state.doc;
-    const TAB_SIZE = 2; // 1个tab = 2个空格（与编辑器 indentUnit 一致）
+    const TAB_SIZE = 2; // 1涓猼ab = 2涓┖鏍硷紙涓庣紪杈戝櫒 indentUnit 涓€鑷达級
 
     for (let i = 1; i <= doc.lines; i++) {
       const line = doc.line(i);
       const lineText = line.text;
       
-      // 跳过标题行
+      // 璺宠繃鏍囬琛?
       if (getHeadingLevel(lineText) > 0) continue;
       
-      // 计算缩进级别（每2个空格或1个tab为一级）
+      // 璁＄畻缂╄繘绾у埆锛堟瘡2涓┖鏍兼垨1涓猼ab涓轰竴绾э級
       let indent = getIndentLevel(lineText);
       
-      // 如果是空行，根据上下文确定缩进级别
+      // 濡傛灉鏄┖琛岋紝鏍规嵁涓婁笅鏂囩‘瀹氱缉杩涚骇鍒?
       if (lineText.trim().length === 0) {
-        // 向上查找最近的非空行来确定上下文缩进
+        // 鍚戜笂鏌ユ壘鏈€杩戠殑闈炵┖琛屾潵纭畾涓婁笅鏂囩缉杩?
         for (let j = i - 1; j >= 1; j--) {
           const prevLine = doc.line(j);
           if (prevLine.text.trim().length > 0) {
@@ -1534,10 +1556,10 @@ function buildIndentGuideDecorations(state: EditorState): DecorationSet {
       
       const indentLevel = Math.floor(indent / TAB_SIZE);
       
-      // 检测该行是否有子折叠图标（非标题行且有子缩进内容）
+      // 妫€娴嬭琛屾槸鍚︽湁瀛愭姌鍙犲浘鏍囷紙闈炴爣棰樿涓旀湁瀛愮缉杩涘唴瀹癸級
       const hasFoldIcon = computeListFoldRange(state, line.from) !== null;
       
-      // 只要有缩进就创建缩进线（indentLevel >= 1）
+      // 鍙鏈夌缉杩涘氨鍒涘缓缂╄繘绾匡紙indentLevel >= 1锛?
       if (indentLevel >= 1) {
         decorations.push({
           from: line.from,
@@ -1562,7 +1584,7 @@ function buildIndentGuideDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 缩进线装饰器 StateField
+ * 缂╄繘绾胯楗板櫒 StateField
  */
 const indentGuideDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -1578,27 +1600,27 @@ const indentGuideDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 查找包含当前行的折叠组（父行 + 所有子行 + 空行）
- * 父行是缩进比当前行少的最近非空行
- * 返回 { parentLine: 父行号, childLines: 子行号数组（包含空行） } 或 null
+ * 鏌ユ壘鍖呭惈褰撳墠琛岀殑鎶樺彔缁勶紙鐖惰 + 鎵€鏈夊瓙琛?+ 绌鸿锛?
+ * 鐖惰鏄缉杩涙瘮褰撳墠琛屽皯鐨勬渶杩戦潪绌鸿
+ * 杩斿洖 { parentLine: 鐖惰鍙? childLines: 瀛愯鍙锋暟缁勶紙鍖呭惈绌鸿锛?} 鎴?null
  */
 function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: number; childLines: number[] } | null {
   const currentLine = state.doc.line(lineNumber);
   let currentIndent = getIndentLevel(currentLine.text);
   const totalLines = state.doc.lines;
   
-  // 标题行不参与折叠组
+  // 鏍囬琛屼笉鍙備笌鎶樺彔缁?
   if (getHeadingLevel(currentLine.text) > 0) return null;
   
-  // 如果是空行，尝试根据上下文确定缩进级别
+  // 濡傛灉鏄┖琛岋紝灏濊瘯鏍规嵁涓婁笅鏂囩‘瀹氱缉杩涚骇鍒?
   if (currentLine.text.trim().length === 0) {
-    // 向上查找最近的非空行来确定上下文
+    // 鍚戜笂鏌ユ壘鏈€杩戠殑闈炵┖琛屾潵纭畾涓婁笅鏂?
     let contextIndent = -1;
     let contextIsHeading = false;
     for (let i = lineNumber - 1; i >= 1; i--) {
       const line = state.doc.line(i);
       if (line.text.trim().length > 0) {
-        // 如果上下文是标题行，不显示缩进线
+        // 濡傛灉涓婁笅鏂囨槸鏍囬琛岋紝涓嶆樉绀虹缉杩涚嚎
         if (getHeadingLevel(line.text) > 0) {
           contextIsHeading = true;
         }
@@ -1609,12 +1631,12 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     
     if (contextIndent < 0 || contextIsHeading) return null;
     
-    // 使用上下文缩进作为当前缩进
+    // 浣跨敤涓婁笅鏂囩缉杩涗綔涓哄綋鍓嶇缉杩?
     currentIndent = contextIndent;
   }
   
-  // 情况1：当前行是父行（有子行）
-  // 向下查找是否有缩进比当前行多的行
+  // 鎯呭喌1锛氬綋鍓嶈鏄埗琛岋紙鏈夊瓙琛岋級
+  // 鍚戜笅鏌ユ壘鏄惁鏈夌缉杩涙瘮褰撳墠琛屽鐨勮
   const childLines: number[] = [];
   let hasRealChild = false;
   
@@ -1622,18 +1644,18 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     const line = state.doc.line(i);
     const lineIndent = getIndentLevel(line.text);
     
-    // 空行也收集（如果在子行区域内）
+    // 绌鸿涔熸敹闆嗭紙濡傛灉鍦ㄥ瓙琛屽尯鍩熷唴锛?
     if (line.text.trim().length === 0) {
       childLines.push(i);
       continue;
     }
     
-    // 如果缩进小于等于当前行，说明已经离开了子行区域
+    // 濡傛灉缂╄繘灏忎簬绛変簬褰撳墠琛岋紝璇存槑宸茬粡绂诲紑浜嗗瓙琛屽尯鍩?
     if (lineIndent <= currentIndent) {
       break;
     }
     
-    // 收集所有缩进比当前行多的行作为子行
+    // 鏀堕泦鎵€鏈夌缉杩涙瘮褰撳墠琛屽鐨勮浣滀负瀛愯
     childLines.push(i);
     hasRealChild = true;
   }
@@ -1642,8 +1664,8 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     return { parentLine: lineNumber, childLines };
   }
   
-  // 情况2：当前行是子行，需要找到父行
-  // 父行是缩进比当前行少的最近非空行（且不是标题行）
+  // 鎯呭喌2锛氬綋鍓嶈鏄瓙琛岋紝闇€瑕佹壘鍒扮埗琛?
+  // 鐖惰鏄缉杩涙瘮褰撳墠琛屽皯鐨勬渶杩戦潪绌鸿锛堜笖涓嶆槸鏍囬琛岋級
   if (currentIndent <= 0) return null;
   
   let parentLine: number | null = null;
@@ -1655,10 +1677,10 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     
     if (line.text.trim().length === 0) continue;
     
-    // 跳过标题行，标题行不能作为折叠组的父行
+    // 璺宠繃鏍囬琛岋紝鏍囬琛屼笉鑳戒綔涓烘姌鍙犵粍鐨勭埗琛?
     if (getHeadingLevel(line.text) > 0) continue;
     
-    // 找到缩进比当前行少的行作为父行
+    // 鎵惧埌缂╄繘姣斿綋鍓嶈灏戠殑琛屼綔涓虹埗琛?
     if (lineIndent < currentIndent) {
       parentLine = i;
       parentIndent = lineIndent;
@@ -1668,8 +1690,8 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
   
   if (parentLine === null) return null;
   
-  // 验证父行是否真的有子行（即有折叠功能）
-  // 检查父行下面是否有缩进更多的非空行
+  // 楠岃瘉鐖惰鏄惁鐪熺殑鏈夊瓙琛岋紙鍗虫湁鎶樺彔鍔熻兘锛?
+  // 妫€鏌ョ埗琛屼笅闈㈡槸鍚︽湁缂╄繘鏇村鐨勯潪绌鸿
   let parentHasRealChildren = false;
   for (let i = parentLine + 1; i <= totalLines; i++) {
     const line = state.doc.line(i);
@@ -1679,43 +1701,43 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     
     if (lineIndent <= parentIndent) break;
     
-    // 找到了缩进更多的非空行，说明父行有子行
+    // 鎵惧埌浜嗙缉杩涙洿澶氱殑闈炵┖琛岋紝璇存槑鐖惰鏈夊瓙琛?
     parentHasRealChildren = true;
     break;
   }
   
   if (!parentHasRealChildren) return null;
   
-  // 找到父行后，收集所有子行和空行
+  // 鎵惧埌鐖惰鍚庯紝鏀堕泦鎵€鏈夊瓙琛屽拰绌鸿
   const allChildLines: number[] = [];
   for (let i = parentLine + 1; i <= totalLines; i++) {
     const line = state.doc.line(i);
     const lineIndent = getIndentLevel(line.text);
     
-    // 空行也收集
+    // 绌鸿涔熸敹闆?
     if (line.text.trim().length === 0) {
       allChildLines.push(i);
       continue;
     }
     
-    // 如果缩进小于等于父行，说明已经离开了子行区域
+    // 濡傛灉缂╄繘灏忎簬绛変簬鐖惰锛岃鏄庡凡缁忕寮€浜嗗瓙琛屽尯鍩?
     if (lineIndent <= parentIndent) {
       break;
     }
     
-    // 收集所有缩进比父行多的行
+    // 鏀堕泦鎵€鏈夌缉杩涙瘮鐖惰澶氱殑琛?
     allChildLines.push(i);
   }
   
   return { parentLine, childLines: allChildLines };
 }
 
-// 折叠组高亮的行装饰器
+// 鎶樺彔缁勯珮浜殑琛岃楗板櫒
 const foldParentHighlight = Decoration.line({ class: 'cm-fold-parent-highlighted' });
 
 /**
- * 折叠组缩进线 Widget
- * 使用 parentIndent 在 toDOM 中动态计算位置
+ * 鎶樺彔缁勭缉杩涚嚎 Widget
+ * 浣跨敤 parentIndent 鍦?toDOM 涓姩鎬佽绠椾綅缃?
  */
 class FoldIndentLineWidget extends WidgetType {
   constructor(readonly parentIndent: number) {
@@ -1726,16 +1748,16 @@ class FoldIndentLineWidget extends WidgetType {
     const line = document.createElement('span');
     line.className = 'cm-fold-indent-line';
 
-    // 获取实际的字符宽度
+    // 鑾峰彇瀹為檯鐨勫瓧绗﹀搴?
     const charWidth = view.defaultCharacterWidth;
 
-    // 计算缩进线位置（与父级折叠图标对齐）
-    // 折叠图标位置：parentIndent > 0 ? parentIndent * charWidth - 20 : -24
-    // 缩进线应该在折叠图标中心位置（图标宽度 20px，中心在 +10）
+    // 璁＄畻缂╄繘绾夸綅缃紙涓庣埗绾ф姌鍙犲浘鏍囧榻愶級
+    // 鎶樺彔鍥炬爣浣嶇疆锛歱arentIndent > 0 ? parentIndent * charWidth - 20 : -24
+    // 缂╄繘绾垮簲璇ュ湪鎶樺彔鍥炬爣涓績浣嶇疆锛堝浘鏍囧搴?20px锛屼腑蹇冨湪 +10锛?
     let linePos: number;
     if (this.parentIndent > 0) {
       const foldIconLeft = this.parentIndent * charWidth - 20;
-      linePos = foldIconLeft + 10; // 折叠图标中心
+      linePos = foldIconLeft + 10; // 鎶樺彔鍥炬爣涓績
     } else {
       linePos = -24 + 10; // -14px
     }
@@ -1753,7 +1775,7 @@ class FoldIndentLineWidget extends WidgetType {
   }
 }
 
-// 创建带有父级缩进信息的子行高亮装饰器
+// 鍒涘缓甯︽湁鐖剁骇缂╄繘淇℃伅鐨勫瓙琛岄珮浜楗板櫒
 function createFoldChildDecorations(parentIndent: number): Decoration[] {
   return [
     Decoration.line({ class: 'cm-fold-child-highlighted' }),
@@ -1765,30 +1787,30 @@ function createFoldChildDecorations(parentIndent: number): Decoration[] {
 }
 
 /**
- * 构建折叠组高亮装饰器
+ * 鏋勫缓鎶樺彔缁勯珮浜楗板櫒
  */
 function buildFoldGroupDecorations(state: EditorState): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   
-  // 获取当前光标所在行
+  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
   const selection = state.selection;
   const cursorLine = state.doc.lineAt(selection.main.head).number;
   
-  // 查找折叠组
+  // 鏌ユ壘鎶樺彔缁?
   const foldGroup = findFoldGroup(state, cursorLine);
   
   if (foldGroup) {
-    // 获取父行的缩进（空格数）
+    // 鑾峰彇鐖惰鐨勭缉杩涳紙绌烘牸鏁帮級
     const parentLineObj = state.doc.line(foldGroup.parentLine);
     const parentIndent = getIndentLevel(parentLineObj.text);
     
-    // 收集所有需要高亮的行，按位置排序
+    // 鏀堕泦鎵€鏈夐渶瑕侀珮浜殑琛岋紝鎸変綅缃帓搴?
     const allLines: { from: number; decoration: Decoration }[] = [];
     
-    // 父行高亮
+    // 鐖惰楂樹寒
     allLines.push({ from: parentLineObj.from, decoration: foldParentHighlight });
     
-    // 子行高亮（带有缩进线 Widget）
+    // 瀛愯楂樹寒锛堝甫鏈夌缉杩涚嚎 Widget锛?
     for (const childLineNum of foldGroup.childLines) {
       const childLineObj = state.doc.line(childLineNum);
       const childDecorations = createFoldChildDecorations(parentIndent);
@@ -1797,10 +1819,10 @@ function buildFoldGroupDecorations(state: EditorState): DecorationSet {
       }
     }
     
-    // 按位置排序
+    // 鎸変綅缃帓搴?
     allLines.sort((a, b) => a.from - b.from);
     
-    // 添加到 builder
+    // 娣诲姞鍒?builder
     for (const item of allLines) {
       builder.add(item.from, item.from, item.decoration);
     }
@@ -1810,14 +1832,14 @@ function buildFoldGroupDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 折叠组高亮 StateField
+ * 鎶樺彔缁勯珮浜?StateField
  */
 const foldGroupHighlightField = StateField.define<DecorationSet>({
   create(state) {
     return buildFoldGroupDecorations(state);
   },
   update(decorations, tr) {
-    // 选择变化或文档变化时重新计算
+    // 閫夋嫨鍙樺寲鎴栨枃妗ｅ彉鍖栨椂閲嶆柊璁＄畻
     if (tr.selection || tr.docChanged) {
       return buildFoldGroupDecorations(tr.state);
     }
@@ -1827,34 +1849,34 @@ const foldGroupHighlightField = StateField.define<DecorationSet>({
 });
 
 /**
- * 自定义 Markdown 语法高亮样式
- * 覆盖默认高亮，让有序列表数字等使用主题配色
+ * 鑷畾涔?Markdown 璇硶楂樹寒鏍峰紡
+ * 瑕嗙洊榛樿楂樹寒锛岃鏈夊簭鍒楄〃鏁板瓧绛変娇鐢ㄤ富棰橀厤鑹?
  */
 const customHighlightStyle = HighlightStyle.define([
-  // 有序列表数字标记（如 1. 2. 3.）
+  // 鏈夊簭鍒楄〃鏁板瓧鏍囪锛堝 1. 2. 3.锛?
   { tag: tags.processingInstruction, color: 'var(--ws-textLink-foreground)' },
-  // 标题
+  // 鏍囬
   { tag: tags.heading, color: 'var(--ws-textLink-foreground)', fontWeight: '700' },
-  // 强调
+  // 寮鸿皟
   { tag: tags.emphasis, fontStyle: 'italic' },
   { tag: tags.strong, fontWeight: '700' },
-  // 链接
+  // 閾炬帴
   { tag: tags.link, color: 'var(--ws-textLink-foreground)' },
   { tag: tags.url, color: 'var(--ws-textLink-foreground)' },
-  // 引用
+  // 寮曠敤
   { tag: tags.quote, color: 'var(--ws-descriptionForeground)', fontStyle: 'italic' },
-  // 代码 - 使用普通文本颜色，避免缩进超过4空格时颜色变化
+  // 浠ｇ爜 - 浣跨敤鏅€氭枃鏈鑹诧紝閬垮厤缂╄繘瓒呰繃4绌烘牸鏃堕鑹插彉鍖?
   { tag: tags.monospace, color: 'inherit' },
-  // 注释
+  // 娉ㄩ噴
   { tag: tags.comment, color: 'var(--ws-descriptionForeground)' },
-  // 元信息（如 > 引用标记）
+  // 鍏冧俊鎭紙濡?> 寮曠敤鏍囪锛?
   { tag: tags.meta, color: 'var(--ws-textLink-foreground)' },
 ]);
 
 /**
- * 自定义回车键处理 - 智能引用块换行
- * 1. 在引用行末尾按回车时，自动添加 > 到新行（保持缩进）
- * 2. 如果当前行只有 > （没有其他内容），按回车时删除 > 并退出引用模式
+ * 鑷畾涔夊洖杞﹂敭澶勭悊 - 鏅鸿兘寮曠敤鍧楁崲琛?
+ * 1. 鍦ㄥ紩鐢ㄨ鏈熬鎸夊洖杞︽椂锛岃嚜鍔ㄦ坊鍔?> 鍒版柊琛岋紙淇濇寔缂╄繘锛?
+ * 2. 濡傛灉褰撳墠琛屽彧鏈?> 锛堟病鏈夊叾浠栧唴瀹癸級锛屾寜鍥炶溅鏃跺垹闄?> 骞堕€€鍑哄紩鐢ㄦā寮?
  */
 function handleBlockquoteEnter(view: EditorView): boolean {
   const { state } = view;
@@ -1864,29 +1886,29 @@ function handleBlockquoteEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
   
-  // 检查是否是引用行 - 支持行首有空格的情况（TAB 缩进）
+  // 妫€鏌ユ槸鍚︽槸寮曠敤琛?- 鏀寔琛岄鏈夌┖鏍肩殑鎯呭喌锛圱AB 缂╄繘锛?
   const blockquoteMatch = lineText.match(/^(\s*)(>+)(\s*)/);
   if (!blockquoteMatch) {
-    return false; // 不是引用行，使用默认行为
+    return false; // 涓嶆槸寮曠敤琛岋紝浣跨敤榛樿琛屼负
   }
   
-  const indent = blockquoteMatch[1]; // 缩进空格
-  const markers = blockquoteMatch[2]; // > 符号
-  const spaces = blockquoteMatch[3]; // > 后面的空格
+  const indent = blockquoteMatch[1]; // 缂╄繘绌烘牸
+  const markers = blockquoteMatch[2]; // > 绗﹀彿
+  const spaces = blockquoteMatch[3]; // > 鍚庨潰鐨勭┖鏍?
   const prefixLength = indent.length + markers.length + spaces.length;
   const content = lineText.slice(prefixLength);
   
-  // 如果引用行只有 > 没有内容（或只有空格），删除 > 标记并退出引用模式
+  // 濡傛灉寮曠敤琛屽彧鏈?> 娌℃湁鍐呭锛堟垨鍙湁绌烘牸锛夛紝鍒犻櫎 > 鏍囪骞堕€€鍑哄紩鐢ㄦā寮?
   if (content.trim() === '') {
-    // 删除当前行的 > 标记，并在前面插入空行来断开引用块
+    // 鍒犻櫎褰撳墠琛岀殑 > 鏍囪锛屽苟鍦ㄥ墠闈㈡彃鍏ョ┖琛屾潵鏂紑寮曠敤鍧?
     if (line.from > 0) {
-      // 不是第一行：删除当前行（包括前面的换行符），然后插入两个换行符
+      // 涓嶆槸绗竴琛岋細鍒犻櫎褰撳墠琛岋紙鍖呮嫭鍓嶉潰鐨勬崲琛岀锛夛紝鐒跺悗鎻掑叆涓や釜鎹㈣绗?
       view.dispatch({
         changes: { from: line.from - 1, to: line.to, insert: '\n\n' },
         selection: { anchor: line.from + 1 },
       });
     } else {
-      // 第一行：直接删除 > 标记
+      // 绗竴琛岋細鐩存帴鍒犻櫎 > 鏍囪
       view.dispatch({
         changes: { from: line.from, to: line.to, insert: '' },
         selection: { anchor: line.from },
@@ -1895,7 +1917,7 @@ function handleBlockquoteEnter(view: EditorView): boolean {
     return true;
   }
   
-  // 在引用行末尾按回车，自动添加缩进 + > 到新行
+  // 鍦ㄥ紩鐢ㄨ鏈熬鎸夊洖杞︼紝鑷姩娣诲姞缂╄繘 + > 鍒版柊琛?
   const level = markers.length;
   const newPrefix = indent + '>'.repeat(level) + ' ';
   
@@ -1908,10 +1930,10 @@ function handleBlockquoteEnter(view: EditorView): boolean {
 }
 
 /**
- * 自定义回车键处理 - 智能待办清单换行
- * 1. 在待办清单行末尾按回车时，自动添加待办清单标记到新行
- * 2. 如果当前行只有待办清单标记没有内容，按回车时删除标记并退出待办清单模式
- * 支持 - [ ] 格式
+ * 鑷畾涔夊洖杞﹂敭澶勭悊 - 鏅鸿兘寰呭姙娓呭崟鎹㈣
+ * 1. 鍦ㄥ緟鍔炴竻鍗曡鏈熬鎸夊洖杞︽椂锛岃嚜鍔ㄦ坊鍔犲緟鍔炴竻鍗曟爣璁板埌鏂拌
+ * 2. 濡傛灉褰撳墠琛屽彧鏈夊緟鍔炴竻鍗曟爣璁版病鏈夊唴瀹癸紝鎸夊洖杞︽椂鍒犻櫎鏍囪骞堕€€鍑哄緟鍔炴竻鍗曟ā寮?
+ * 鏀寔 - [ ] 鏍煎紡
  */
 function handleTodoListEnter(view: EditorView): boolean {
   const { state } = view;
@@ -1921,19 +1943,19 @@ function handleTodoListEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
 
-  // 检查是否是待办清单行（支持 - [ ] 或 - [x] 或 • [ ] 或 • [x] 格式）
+  // 妫€鏌ユ槸鍚︽槸寰呭姙娓呭崟琛岋紙鏀寔 - [ ] 鎴?- [x] 鎴?鈥?[ ] 鎴?鈥?[x] 鏍煎紡锛?
   const todoMatch = lineText.match(/^(\s*)([-*+•])\s\[[ xX]\]\s?/);
   if (!todoMatch) {
-    return false; // 不是待办清单行，使用默认行为
+    return false; // 涓嶆槸寰呭姙娓呭崟琛岋紝浣跨敤榛樿琛屼负
   }
 
   const indent = todoMatch[1];
-  // 始终使用 - 作为待办清单标记
+  // 濮嬬粓浣跨敤 - 浣滀负寰呭姙娓呭崟鏍囪
   const prefix = indent + '- [ ] ';
   const matchedPrefix = todoMatch[0];
   const content = lineText.slice(matchedPrefix.length).trim();
 
-  // 如果待办清单行只有标记没有内容，删除标记并退出待办清单模式
+  // 濡傛灉寰呭姙娓呭崟琛屽彧鏈夋爣璁版病鏈夊唴瀹癸紝鍒犻櫎鏍囪骞堕€€鍑哄緟鍔炴竻鍗曟ā寮?
   if (content === '') {
     view.dispatch({
       changes: { from: line.from, to: line.to, insert: indent },
@@ -1942,7 +1964,7 @@ function handleTodoListEnter(view: EditorView): boolean {
     return true;
   }
 
-  // 在待办清单行末尾按回车，自动添加待办清单标记到新行
+  // 鍦ㄥ緟鍔炴竻鍗曡鏈熬鎸夊洖杞︼紝鑷姩娣诲姞寰呭姙娓呭崟鏍囪鍒版柊琛?
   view.dispatch({
     changes: { from: head, insert: '\n' + prefix },
     selection: { anchor: head + 1 + prefix.length },
@@ -1952,10 +1974,10 @@ function handleTodoListEnter(view: EditorView): boolean {
 }
 
 /**
- * 自定义回车键处理 - 智能无序列表换行
- * 1. 在列表行末尾按回车时，自动添加列表标记到新行
- * 2. 如果当前行只有列表标记没有内容，按回车时删除标记并退出列表模式
- * 支持 -、*、+、• 作为列表标记
+ * 鑷畾涔夊洖杞﹂敭澶勭悊 - 鏅鸿兘鏃犲簭鍒楄〃鎹㈣
+ * 1. 鍦ㄥ垪琛ㄨ鏈熬鎸夊洖杞︽椂锛岃嚜鍔ㄦ坊鍔犲垪琛ㄦ爣璁板埌鏂拌
+ * 2. 濡傛灉褰撳墠琛屽彧鏈夊垪琛ㄦ爣璁版病鏈夊唴瀹癸紝鎸夊洖杞︽椂鍒犻櫎鏍囪骞堕€€鍑哄垪琛ㄦā寮?
+ * 鏀寔 -銆?銆?銆佲€?浣滀负鍒楄〃鏍囪
  */
 function handleListEnter(view: EditorView): boolean {
   const { state } = view;
@@ -1965,10 +1987,10 @@ function handleListEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
 
-  // 检查是否是无序列表行（支持 -、*、+、• 作为标记）
+  // 妫€鏌ユ槸鍚︽槸鏃犲簭鍒楄〃琛岋紙鏀寔 -銆?銆?銆佲€?浣滀负鏍囪锛?
   const listMatch = lineText.match(/^(\s*)([-*+•])\s/);
   if (!listMatch) {
-    return false; // 不是列表行，使用默认行为
+    return false; // 涓嶆槸鍒楄〃琛岋紝浣跨敤榛樿琛屼负
   }
 
   const indent = listMatch[1];
@@ -1976,7 +1998,7 @@ function handleListEnter(view: EditorView): boolean {
   const prefix = indent + marker + ' ';
   const content = lineText.slice(prefix.length).trim();
 
-  // 如果列表行只有标记没有内容，删除标记并退出列表模式
+  // 濡傛灉鍒楄〃琛屽彧鏈夋爣璁版病鏈夊唴瀹癸紝鍒犻櫎鏍囪骞堕€€鍑哄垪琛ㄦā寮?
   if (content === '') {
     view.dispatch({
       changes: { from: line.from, to: line.to, insert: indent },
@@ -1985,7 +2007,7 @@ function handleListEnter(view: EditorView): boolean {
     return true;
   }
 
-  // 在列表行末尾按回车，自动添加列表标记到新行
+  // 鍦ㄥ垪琛ㄨ鏈熬鎸夊洖杞︼紝鑷姩娣诲姞鍒楄〃鏍囪鍒版柊琛?
   view.dispatch({
     changes: { from: head, insert: '\n' + prefix },
     selection: { anchor: head + 1 + prefix.length },
@@ -1995,7 +2017,7 @@ function handleListEnter(view: EditorView): boolean {
 }
 
 /**
- * 获取下一个字母序号
+ * 鑾峰彇涓嬩竴涓瓧姣嶅簭鍙?
  * A -> B, Z -> AA, AA -> AB, AZ -> BA
  */
 function getNextLetter(letter: string): string {
@@ -2003,7 +2025,7 @@ function getNextLetter(letter: string): string {
   const base = isUpper ? 'A'.charCodeAt(0) : 'a'.charCodeAt(0);
   const chars = letter.toUpperCase().split('');
 
-  // 从最后一个字符开始进位
+  // 浠庢渶鍚庝竴涓瓧绗﹀紑濮嬭繘浣?
   let carry = true;
   for (let i = chars.length - 1; i >= 0 && carry; i--) {
     const code = chars[i].charCodeAt(0) - 'A'.charCodeAt(0);
@@ -2024,9 +2046,9 @@ function getNextLetter(letter: string): string {
 }
 
 /**
- * 自定义回车键处理 - 智能字母序号换行
- * 1. 在字母序号行末尾按回车时，自动添加下一个字母序号到新行
- * 2. 如果当前行只有字母序号没有内容，按回车时删除序号并退出序号模式
+ * 鑷畾涔夊洖杞﹂敭澶勭悊 - 鏅鸿兘瀛楁瘝搴忓彿鎹㈣
+ * 1. 鍦ㄥ瓧姣嶅簭鍙疯鏈熬鎸夊洖杞︽椂锛岃嚜鍔ㄦ坊鍔犱笅涓€涓瓧姣嶅簭鍙峰埌鏂拌
+ * 2. 濡傛灉褰撳墠琛屽彧鏈夊瓧姣嶅簭鍙锋病鏈夊唴瀹癸紝鎸夊洖杞︽椂鍒犻櫎搴忓彿骞堕€€鍑哄簭鍙锋ā寮?
  */
 function handleLetterListEnter(view: EditorView): boolean {
   const { state } = view;
@@ -2036,10 +2058,10 @@ function handleLetterListEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
 
-  // 检查是否是字母序号行（如 A. B. a. b.）
+  // 妫€鏌ユ槸鍚︽槸瀛楁瘝搴忓彿琛岋紙濡?A. B. a. b.锛?
   const letterMatch = lineText.match(/^(\s*)([A-Za-z])\.(\s)/);
   if (!letterMatch) {
-    return false; // 不是字母序号行，使用默认行为
+    return false; // 涓嶆槸瀛楁瘝搴忓彿琛岋紝浣跨敤榛樿琛屼负
   }
 
   const indent = letterMatch[1];
@@ -2048,7 +2070,7 @@ function handleLetterListEnter(view: EditorView): boolean {
   const prefix = indent + letter + '.' + space;
   const content = lineText.slice(prefix.length).trim();
 
-  // 如果序号行只有标记没有内容，删除标记并退出序号模式
+  // 濡傛灉搴忓彿琛屽彧鏈夋爣璁版病鏈夊唴瀹癸紝鍒犻櫎鏍囪骞堕€€鍑哄簭鍙锋ā寮?
   if (content === '') {
     view.dispatch({
       changes: { from: line.from, to: line.to, insert: indent },
@@ -2057,7 +2079,7 @@ function handleLetterListEnter(view: EditorView): boolean {
     return true;
   }
 
-  // 在序号行末尾按回车，自动添加下一个字母序号到新行
+  // 鍦ㄥ簭鍙疯鏈熬鎸夊洖杞︼紝鑷姩娣诲姞涓嬩竴涓瓧姣嶅簭鍙峰埌鏂拌
   const nextLetter = getNextLetter(letter);
   const newPrefix = indent + nextLetter + '. ';
 
@@ -2070,8 +2092,8 @@ function handleLetterListEnter(view: EditorView): boolean {
 }
 
 /**
- * 自定义回车键处理 - 保持缩进
- * 在有缩进的行按回车时，新行保持相同的缩进
+ * 鑷畾涔夊洖杞﹂敭澶勭悊 - 淇濇寔缂╄繘
+ * 鍦ㄦ湁缂╄繘鐨勮鎸夊洖杞︽椂锛屾柊琛屼繚鎸佺浉鍚岀殑缂╄繘
  */
 function handleIndentedEnter(view: EditorView): boolean {
   const { state } = view;
@@ -2081,15 +2103,15 @@ function handleIndentedEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
   
-  // 获取当前行的缩进
+  // 鑾峰彇褰撳墠琛岀殑缂╄繘
   const indentMatch = lineText.match(/^(\s+)/);
   if (!indentMatch) {
-    return false; // 没有缩进，使用默认行为
+    return false; // 娌℃湁缂╄繘锛屼娇鐢ㄩ粯璁よ涓?
   }
   
   const indent = indentMatch[1];
   
-  // 在当前位置插入换行和缩进
+  // 鍦ㄥ綋鍓嶄綅缃彃鍏ユ崲琛屽拰缂╄繘
   view.dispatch({
     changes: { from: head, insert: '\n' + indent },
     selection: { anchor: head + 1 + indent.length },
@@ -2099,80 +2121,80 @@ function handleIndentedEnter(view: EditorView): boolean {
 }
 
 /**
- * 自定义 TAB 键处理 - 检测 TAB 缩进后是否会导致内容超出编辑器宽度
- * 如果 TAB 缩进后行宽度超出编辑器宽度，则禁止 TAB
+ * 鑷畾涔?TAB 閿鐞?- 妫€娴?TAB 缂╄繘鍚庢槸鍚︿細瀵艰嚧鍐呭瓒呭嚭缂栬緫鍣ㄥ搴?
+ * 濡傛灉 TAB 缂╄繘鍚庤瀹藉害瓒呭嚭缂栬緫鍣ㄥ搴︼紝鍒欑姝?TAB
  */
 function handleTabBoundary(view: EditorView): boolean {
   const { state } = view;
   const { selection } = state;
   
-  // 获取编辑器可用宽度
+  // 鑾峰彇缂栬緫鍣ㄥ彲鐢ㄥ搴?
   const contentElement = view.dom.querySelector('.cm-content');
   const editorWidth = contentElement?.clientWidth || 800;
-  const charWidth = 8; // 估算每个字符宽度（等宽字体）
-  const tabWidth = 2 * charWidth; // TAB = 2 空格
-  const maxChars = Math.floor((editorWidth - 40) / charWidth); // 留出一些边距
+  const charWidth = 8; // 浼扮畻姣忎釜瀛楃瀹藉害锛堢瓑瀹藉瓧浣擄級
+  const tabWidth = 2 * charWidth; // TAB = 2 绌烘牸
+  const maxChars = Math.floor((editorWidth - 40) / charWidth); // 鐣欏嚭涓€浜涜竟璺?
   
-  // 检查选区涉及的所有行
+  // 妫€鏌ラ€夊尯娑夊強鐨勬墍鏈夎
   const startLine = state.doc.lineAt(selection.main.from);
   const endLine = state.doc.lineAt(selection.main.to);
   
   for (let i = startLine.number; i <= endLine.number; i++) {
     const line = state.doc.line(i);
-    // 计算 TAB 后的行长度（TAB = 2 空格）
+    // 璁＄畻 TAB 鍚庣殑琛岄暱搴︼紙TAB = 2 绌烘牸锛?
     const newLength = line.text.length + 2;
     if (newLength > maxChars) {
-      // 会导致换行，禁止 TAB
+      // 浼氬鑷存崲琛岋紝绂佹 TAB
       return true;
     }
   }
   
-  // 允许 TAB，使用默认行为
+  // 鍏佽 TAB锛屼娇鐢ㄩ粯璁よ涓?
   return false;
 }
 
 /**
- * 自定义 Ctrl+X 处理 - 剪切整行后保持光标在缩进位置
- * 当剪切整行（无选区）时：
- * - 如果下面还有行，光标留在下一行的缩进位置
- * - 如果是最后一行，光标移到上一行的缩进位置
+ * 鑷畾涔?Ctrl+X 澶勭悊 - 鍓垏鏁磋鍚庝繚鎸佸厜鏍囧湪缂╄繘浣嶇疆
+ * 褰撳壀鍒囨暣琛岋紙鏃犻€夊尯锛夋椂锛?
+ * - 濡傛灉涓嬮潰杩樻湁琛岋紝鍏夋爣鐣欏湪涓嬩竴琛岀殑缂╄繘浣嶇疆
+ * - 濡傛灉鏄渶鍚庝竴琛岋紝鍏夋爣绉诲埌涓婁竴琛岀殑缂╄繘浣嶇疆
  */
 function handleCutLine(view: EditorView): boolean {
   const { state } = view;
   const { selection } = state;
 
-  // 只处理无选区的情况（剪切整行）
+  // 鍙鐞嗘棤閫夊尯鐨勬儏鍐碉紙鍓垏鏁磋锛?
   if (!selection.main.empty) {
-    return false; // 有选区，使用默认行为
+    return false; // 鏈夐€夊尯锛屼娇鐢ㄩ粯璁よ涓?
   }
 
   const line = state.doc.lineAt(selection.main.head);
   const lineText = line.text;
 
-  // 复制当前行内容到剪贴板（包含换行符）
+  // 澶嶅埗褰撳墠琛屽唴瀹瑰埌鍓创鏉匡紙鍖呭惈鎹㈣绗︼級
   const textToCopy = lineText + '\n';
   navigator.clipboard.writeText(textToCopy);
 
-  // 计算删除范围和光标位置
+  // 璁＄畻鍒犻櫎鑼冨洿鍜屽厜鏍囦綅缃?
   let deleteFrom = line.from;
   let deleteTo = line.to;
   let newCursorPos = line.from;
 
   if (line.number < state.doc.lines) {
-    // 不是最后一行：删除当前行（包含换行符），光标留在下一行的缩进位置
+    // 涓嶆槸鏈€鍚庝竴琛岋細鍒犻櫎褰撳墠琛岋紙鍖呭惈鎹㈣绗︼級锛屽厜鏍囩暀鍦ㄤ笅涓€琛岀殑缂╄繘浣嶇疆
     deleteTo = line.to + 1;
     const nextLine = state.doc.line(line.number + 1);
     const nextIndent = getIndentLevel(nextLine.text);
-    // 删除后，下一行会变成当前位置，光标放在缩进位置
+    // 鍒犻櫎鍚庯紝涓嬩竴琛屼細鍙樻垚褰撳墠浣嶇疆锛屽厜鏍囨斁鍦ㄧ缉杩涗綅缃?
     newCursorPos = line.from + Math.min(nextIndent, nextLine.text.length);
   } else if (line.number > 1) {
-    // 是最后一行且不是第一行：删除前面的换行符，光标移到上一行末尾
+    // 鏄渶鍚庝竴琛屼笖涓嶆槸绗竴琛岋細鍒犻櫎鍓嶉潰鐨勬崲琛岀锛屽厜鏍囩Щ鍒颁笂涓€琛屾湯灏?
     deleteFrom = line.from - 1;
     const prevLine = state.doc.line(line.number - 1);
     newCursorPos = prevLine.to;
   }
 
-  // 执行删除
+  // 鎵ц鍒犻櫎
   view.dispatch({
     changes: { from: deleteFrom, to: deleteTo },
     selection: { anchor: newCursorPos },
@@ -2182,34 +2204,34 @@ function handleCutLine(view: EditorView): boolean {
 }
 
 /**
- * 自定义 Ctrl+- 处理 - 减少光标行或选中行的缩进
- * 每次减少 2 个空格（1 个 TAB 单位）
- * 边界检查：
- * - 单行时：如果当前行缩进 < TAB_SIZE，不允许减少
- * - 多行时：如果任何非空行缩进 < TAB_SIZE，不允许减少
+ * 鑷畾涔?Ctrl+- 澶勭悊 - 鍑忓皯鍏夋爣琛屾垨閫変腑琛岀殑缂╄繘
+ * 姣忔鍑忓皯 2 涓┖鏍硷紙1 涓?TAB 鍗曚綅锛?
+ * 杈圭晫妫€鏌ワ細
+ * - 鍗曡鏃讹細濡傛灉褰撳墠琛岀缉杩?< TAB_SIZE锛屼笉鍏佽鍑忓皯
+ * - 澶氳鏃讹細濡傛灉浠讳綍闈炵┖琛岀缉杩?< TAB_SIZE锛屼笉鍏佽鍑忓皯
  */
 function handleDecreaseIndent(view: EditorView): boolean {
   const { state } = view;
   const { selection } = state;
   const TAB_SIZE = 2;
 
-  // 获取选区涉及的所有行（无选区时是光标所在行）
+  // 鑾峰彇閫夊尯娑夊強鐨勬墍鏈夎锛堟棤閫夊尯鏃舵槸鍏夋爣鎵€鍦ㄨ锛?
   const startLine = state.doc.lineAt(selection.main.from);
   const endLine = state.doc.lineAt(selection.main.to);
   const isSingleLine = startLine.number === endLine.number;
 
   if (isSingleLine) {
-    // 单行模式：只处理当前行
+    // 鍗曡妯″紡锛氬彧澶勭悊褰撳墠琛?
     const line = startLine;
     const lineText = line.text;
     const indent = getIndentLevel(lineText);
 
-    // 如果没有缩进，不做任何改变
+    // 濡傛灉娌℃湁缂╄繘锛屼笉鍋氫换浣曟敼鍙?
     if (indent < TAB_SIZE) {
       return true;
     }
 
-    // 减少缩进
+    // 鍑忓皯缂╄繘
     const reduceAmount = Math.min(indent, TAB_SIZE);
     view.dispatch({
       changes: { from: line.from, to: line.from + reduceAmount, insert: '' },
@@ -2218,18 +2240,18 @@ function handleDecreaseIndent(view: EditorView): boolean {
     return true;
   }
 
-  // 多行模式：检查所有行的最小缩进
+  // 澶氳妯″紡锛氭鏌ユ墍鏈夎鐨勬渶灏忕缉杩?
   let minIndent = Infinity;
   for (let i = startLine.number; i <= endLine.number; i++) {
     const line = state.doc.line(i);
     const lineText = line.text;
-    // 跳过空行
+    // 璺宠繃绌鸿
     if (lineText.trim().length === 0) continue;
     const indent = getIndentLevel(lineText);
     minIndent = Math.min(minIndent, indent);
   }
 
-  // 如果最小缩进小于 TAB_SIZE，不允许减少
+  // 濡傛灉鏈€灏忕缉杩涘皬浜?TAB_SIZE锛屼笉鍏佽鍑忓皯
   if (minIndent < TAB_SIZE) {
     return true;
   }
@@ -2241,10 +2263,10 @@ function handleDecreaseIndent(view: EditorView): boolean {
     const lineText = line.text;
     const indent = getIndentLevel(lineText);
 
-    // 如果没有缩进或是空行，跳过
+    // 濡傛灉娌℃湁缂╄繘鎴栨槸绌鸿锛岃烦杩?
     if (indent === 0 || lineText.trim().length === 0) continue;
 
-    // 减少的空格数
+    // 鍑忓皯鐨勭┖鏍兼暟
     const reduceAmount = Math.min(indent, TAB_SIZE);
     changes.push({
       from: line.from,
@@ -2261,7 +2283,7 @@ function handleDecreaseIndent(view: EditorView): boolean {
 }
 
 /**
- * 自定义键盘映射 - 使用最高优先级确保在所有其他处理之前执行
+ * 鑷畾涔夐敭鐩樻槧灏?- 浣跨敤鏈€楂樹紭鍏堢骇纭繚鍦ㄦ墍鏈夊叾浠栧鐞嗕箣鍓嶆墽琛?
  */
 const customKeymap = Prec.highest(
   keymap.of([
@@ -2272,24 +2294,24 @@ const customKeymap = Prec.highest(
         const { selection } = state;
         const { head } = selection.main;
         
-        // 如果有选区，使用默认行为
+        // 濡傛灉鏈夐€夊尯锛屼娇鐢ㄩ粯璁よ涓?
         if (!selection.main.empty) {
           return false;
         }
 
-        // 检查光标前面是否是视频语法
+        // 妫€鏌ュ厜鏍囧墠闈㈡槸鍚︽槸瑙嗛璇硶
         const doc = state.doc.toString();
         const videoRegex = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
         let match;
         while ((match = videoRegex.exec(doc)) !== null) {
           const videoEnd = match.index + match[0].length;
-          // 如果光标紧邻视频语法后面
+          // 濡傛灉鍏夋爣绱ч偦瑙嗛璇硶鍚庨潰
           if (head === videoEnd) {
-            // 检查是否是视频链接
+            // 妫€鏌ユ槸鍚︽槸瑙嗛閾炬帴
             const url = match[2];
             const videoInfo = parseVideoUrl(url);
             if (videoInfo) {
-              // 删除整个视频语法
+              // 鍒犻櫎鏁翠釜瑙嗛璇硶
               view.dispatch({
                 changes: { from: match.index, to: videoEnd },
                 selection: { anchor: match.index },
@@ -2299,15 +2321,15 @@ const customKeymap = Prec.highest(
           }
         }
         
-        // 获取当前行
+        // 鑾峰彇褰撳墠琛?
         const line = state.doc.lineAt(head);
         const text = line.text;
         const cursorOffset = head - line.from;
         
-        // 检查是否是待办清单行
-        const todoMatch = text.match(/^([\t ]*)([-*+•])\s\[([ xX])\](\s|$)/);
+        // 妫€鏌ユ槸鍚︽槸寰呭姙娓呭崟琛?
+        const todoMatch = text.match(/^([\t ]*)([-*+鈥)\s\[([ xX])\](\s|$)/);
         if (!todoMatch) {
-          return false; // 不是待办清单，使用默认行为
+          return false; // 涓嶆槸寰呭姙娓呭崟锛屼娇鐢ㄩ粯璁よ涓?
         }
         
         const bracketIndex = text.indexOf('[');
@@ -2315,16 +2337,16 @@ const customKeymap = Prec.highest(
           return false;
         }
         
-        // 计算复选框区域结束位置（包括 ] 后面的空格）
-        const checkboxEndOffset = bracketIndex + 4; // [ ] 加空格共4个字符
+        // 璁＄畻澶嶉€夋鍖哄煙缁撴潫浣嶇疆锛堝寘鎷?] 鍚庨潰鐨勭┖鏍硷級
+        const checkboxEndOffset = bracketIndex + 4; // [ ] 鍔犵┖鏍煎叡4涓瓧绗?
         
-        // 如果光标在复选框区域后面（内容区域），正常删除一个字符
+        // 濡傛灉鍏夋爣鍦ㄥ閫夋鍖哄煙鍚庨潰锛堝唴瀹瑰尯鍩燂級锛屾甯稿垹闄や竴涓瓧绗?
         if (cursorOffset > checkboxEndOffset) {
-          // 使用默认行为删除一个字符
+          // 浣跨敤榛樿琛屼负鍒犻櫎涓€涓瓧绗?
           return false;
         }
         
-        // 如果光标在复选框区域内或紧邻复选框后面，正常删除一个字符
+        // 濡傛灉鍏夋爣鍦ㄥ閫夋鍖哄煙鍐呮垨绱ч偦澶嶉€夋鍚庨潰锛屾甯稿垹闄や竴涓瓧绗?
         if (cursorOffset > 0) {
           view.dispatch({
             changes: { from: head - 1, to: head },
@@ -2339,79 +2361,79 @@ const customKeymap = Prec.highest(
     {
       key: 'Enter',
       run: (view) => {
-        // 先尝试处理引用块
+        // 鍏堝皾璇曞鐞嗗紩鐢ㄥ潡
         if (handleBlockquoteEnter(view)) {
           return true;
         }
-        // 尝试处理待办清单（优先于普通无序列表）
+        // 灏濊瘯澶勭悊寰呭姙娓呭崟锛堜紭鍏堜簬鏅€氭棤搴忓垪琛級
         if (handleTodoListEnter(view)) {
           return true;
         }
-        // 再尝试处理无序列表
+        // 鍐嶅皾璇曞鐞嗘棤搴忓垪琛?
         if (handleListEnter(view)) {
           return true;
         }
-        // 尝试处理字母序号列表
+        // 灏濊瘯澶勭悊瀛楁瘝搴忓彿鍒楄〃
         if (handleLetterListEnter(view)) {
           return true;
         }
-        // 最后处理普通缩进行，保持缩进
+        // 鏈€鍚庡鐞嗘櫘閫氱缉杩涜锛屼繚鎸佺缉杩?
         if (handleIndentedEnter(view)) {
           return true;
         }
-        // 使用默认行为
+        // 浣跨敤榛樿琛屼负
         return false;
       },
     },
     {
       key: 'Tab',
       run: (view) => {
-        // 检查 TAB 是否会导致内容超出编辑器宽度
+        // 妫€鏌?TAB 鏄惁浼氬鑷村唴瀹硅秴鍑虹紪杈戝櫒瀹藉害
         if (handleTabBoundary(view)) {
-          return true; // 禁止 TAB
+          return true; // 绂佹 TAB
         }
-        // 使用默认行为
+        // 浣跨敤榛樿琛屼负
         return false;
       },
     },
     {
       key: 'Mod-x',
       run: (view) => {
-        // 自定义剪切整行行为，保持光标在缩进位置
+        // 鑷畾涔夊壀鍒囨暣琛岃涓猴紝淇濇寔鍏夋爣鍦ㄧ缉杩涗綅缃?
         return handleCutLine(view);
       },
     },
     {
       key: 'Mod--',
       run: (view) => {
-        // 减少选中行的缩进
+        // 鍑忓皯閫変腑琛岀殑缂╄繘
         return handleDecreaseIndent(view);
       },
     },
     {
       key: ' ',
       run: (view) => {
-        // 检查是否需要将 "- " 转换为 "• "
+        // 妫€鏌ユ槸鍚﹂渶瑕佸皢 "- " 杞崲涓?"鈥?"
         const { state } = view;
         const { selection } = state;
         const { head } = selection.main;
 
-        // 获取当前行
+        // 鑾峰彇褰撳墠琛?
         const line = state.doc.lineAt(head);
         const textBeforeCursor = line.text.slice(0, head - line.from);
         const textAfterCursor = line.text.slice(head - line.from);
 
-        // 检查是否是待办清单格式 "- [ ]" 或 "• [ ]" 后面输入空格
-        // 由于 ] 后面本身就有空格，所以不需要插入空格，只需要移动光标到空格后面
-        if (/^[\t ]*[-•]\s\[[ xX]\]$/.test(textBeforeCursor)) {
-          // 检查光标后面是否已经有空格
+        // 妫€鏌ユ槸鍚︽槸寰呭姙娓呭崟鏍煎紡 "- [ ]" 鎴?"鈥?[ ]" 鍚庨潰杈撳叆绌烘牸
+        // 鐢变簬 ] 鍚庨潰鏈韩灏辨湁绌烘牸锛屾墍浠ヤ笉闇€瑕佹彃鍏ョ┖鏍硷紝鍙渶瑕佺Щ鍔ㄥ厜鏍囧埌绌烘牸鍚庨潰
+        if (/^[\t ]*[-鈥\s\[[ xX]\]$/.test(textBeforeCursor)) {
+          // 妫€鏌ュ厜鏍囧悗闈㈡槸鍚﹀凡缁忔湁绌烘牸
           if (textAfterCursor.startsWith(' ')) {
-            // 已经有空格，只移动光标
+            // 宸茬粡鏈夌┖鏍硷紝鍙Щ鍔ㄥ厜鏍?
             view.dispatch({
               selection: { anchor: head + 1 },
             });
           } else {
-            // 没有空格，插入空格
+            // 娌℃湁绌烘牸锛屾彃鍏ョ┖鏍?
             view.dispatch({
               changes: { from: head, insert: ' ' },
               selection: { anchor: head + 1 },
@@ -2420,46 +2442,46 @@ const customKeymap = Prec.highest(
           return true;
         }
 
-        // 检查是否匹配 "缩进 + -" 的模式
+        // 妫€鏌ユ槸鍚﹀尮閰?"缂╄繘 + -" 鐨勬ā寮?
         if (/^\s*-$/.test(textBeforeCursor)) {
-          // 检查光标后面是否是待办清单格式 [ ] 或 [x]
-          // 如果是，不替换 - 为 •，让待办清单解析器处理
+          // 妫€鏌ュ厜鏍囧悗闈㈡槸鍚︽槸寰呭姙娓呭崟鏍煎紡 [ ] 鎴?[x]
+          // 濡傛灉鏄紝涓嶆浛鎹?- 涓?鈥紝璁╁緟鍔炴竻鍗曡В鏋愬櫒澶勭悊
           if (/^\s*\[[ xX]\]/.test(textAfterCursor)) {
-            return false; // 使用默认行为，不替换
+            return false; // 浣跨敤榛樿琛屼负锛屼笉鏇挎崲
           }
           
           const dashPos = head - 1;
-          // 替换 "-" 为 "•" 并插入空格
+          // 鏇挎崲 "-" 涓?"鈥? 骞舵彃鍏ョ┖鏍?
           view.dispatch({
-            changes: { from: dashPos, to: head, insert: '• ' },
+            changes: { from: dashPos, to: head, insert: '鈥?' },
             selection: { anchor: dashPos + 2 },
           });
           return true;
         }
 
-        // 使用默认行为
+        // 浣跨敤榛樿琛屼负
         return false;
       },
     },
     {
       key: ']',
       run: (view) => {
-        // 检查是否需要将 "• [ " 转换为 "- [ ]"（待办清单格式）
+        // 妫€鏌ユ槸鍚﹂渶瑕佸皢 "鈥?[ " 杞崲涓?"- [ ]"锛堝緟鍔炴竻鍗曟牸寮忥級
         const { state } = view;
         const { selection } = state;
         const { head } = selection.main;
 
-        // 获取当前行
+        // 鑾峰彇褰撳墠琛?
         const line = state.doc.lineAt(head);
         const textBeforeCursor = line.text.slice(0, head - line.from);
 
-        // 检查是否匹配 "- [ " 或 "- [x" 或 "• [ " 或 "• [x" 的模式
-        const todoMatch = textBeforeCursor.match(/^(\s*)([-•])\s\[[ xX]$/);
+        // 妫€鏌ユ槸鍚﹀尮閰?"- [ " 鎴?"- [x" 鎴?"鈥?[ " 鎴?"鈥?[x" 鐨勬ā寮?
+        const todoMatch = textBeforeCursor.match(/^(\s*)([-*+•])\s\[[ xX]$/);
         if (todoMatch) {
           const indent = todoMatch[1];
           const marker = todoMatch[2];
           
-          // 如果是 •，替换为 -
+          // 濡傛灉鏄?鈥紝鏇挎崲涓?-
           if (marker === '•') {
             const bulletPos = line.from + indent.length;
             view.dispatch({
@@ -2472,7 +2494,7 @@ const customKeymap = Prec.highest(
             return true;
           }
           
-          // 如果已经是 -，只插入 ]
+          // 濡傛灉宸茬粡鏄?-锛屽彧鎻掑叆 ]
           view.dispatch({
             changes: { from: head, insert: ']' },
             selection: { anchor: head + 1 },
@@ -2480,12 +2502,12 @@ const customKeymap = Prec.highest(
           return true;
         }
 
-        // 使用默认行为
+        // 浣跨敤榛樿琛屼负
         return false;
       },
     },
     {
-      // Ctrl+I 或 Cmd+I 打开内联 AI 聊天
+      // Ctrl+I 鎴?Cmd+I 鎵撳紑鍐呰仈 AI 鑱婂ぉ
       key: 'Mod-i',
       run: (view) => {
         if (isInlineAIChatOpen(view)) {
@@ -2500,7 +2522,7 @@ const customKeymap = Prec.highest(
 );
 
 /**
- * 检测 URL 是否为图片链接
+ * 妫€娴?URL 鏄惁涓哄浘鐗囬摼鎺?
  */
 function isImageUrl(url: string): boolean {
   const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
@@ -2509,7 +2531,7 @@ function isImageUrl(url: string): boolean {
 }
 
 /**
- * 在指定位置插入文本
+ * 鍦ㄦ寚瀹氫綅缃彃鍏ユ枃鏈?
  */
 function insertTextAtPosition(view: EditorView, pos: number, text: string): void {
   view.dispatch({
@@ -2519,14 +2541,14 @@ function insertTextAtPosition(view: EditorView, pos: number, text: string): void
 }
 
 /**
- * 处理图片文件，转换为 base64 并插入 Markdown 图片语法（带尺寸）
+ * 澶勭悊鍥剧墖鏂囦欢锛岃浆鎹负 base64 骞舵彃鍏?Markdown 鍥剧墖璇硶锛堝甫灏哄锛?
  */
 function handleImageFile(file: File, view: EditorView, pos: number): void {
   const reader = new FileReader();
   reader.onload = (e) => {
     const base64 = e.target?.result as string;
     if (base64) {
-      // 加载图片获取原始尺寸，设置为 25%
+      // 鍔犺浇鍥剧墖鑾峰彇鍘熷灏哄锛岃缃负 25%
       const img = new Image();
       img.onload = () => {
         const width = Math.round(img.naturalWidth * 0.25);
@@ -2541,7 +2563,7 @@ function handleImageFile(file: File, view: EditorView, pos: number): void {
 }
 
 /**
- * 处理图片 URL，插入 Markdown 图片语法
+ * 澶勭悊鍥剧墖 URL锛屾彃鍏?Markdown 鍥剧墖璇硶
  */
 function handleImageUrl(url: string, view: EditorView, pos: number): void {
   const fileName = url.split('/').pop() || 'image';
@@ -2550,8 +2572,8 @@ function handleImageUrl(url: string, view: EditorView, pos: number): void {
 }
 
 /**
- * 解析图片 alt 文本中的尺寸信息
- * 格式: alt|widthxheight 或 alt|width
+ * 瑙ｆ瀽鍥剧墖 alt 鏂囨湰涓殑灏哄淇℃伅
+ * 鏍煎紡: alt|widthxheight 鎴?alt|width
  */
 function parseImageSize(alt: string): { alt: string; width?: number; height?: number } {
   const sizeMatch = alt.match(/^(.+?)\|(\d+)(?:x(\d+))?$/);
@@ -2566,7 +2588,7 @@ function parseImageSize(alt: string): { alt: string; width?: number; height?: nu
 }
 
 /**
- * 图片 Widget 类 - 用于在编辑器中渲染可调整大小的图片
+ * 鍥剧墖 Widget 绫?- 鐢ㄤ簬鍦ㄧ紪杈戝櫒涓覆鏌撳彲璋冩暣澶у皬鐨勫浘鐗?
  */
 class ResizableImageWidget extends WidgetType {
   private rotation: number = 0;
@@ -2584,12 +2606,12 @@ class ResizableImageWidget extends WidgetType {
     readonly originalMatch: string
   ) {
     super();
-    // 解析 alt 中的旋转、对齐和显示样式信息
+    // 瑙ｆ瀽 alt 涓殑鏃嬭浆銆佸榻愬拰鏄剧ず鏍峰紡淇℃伅
     this.parseAltAttributes();
   }
 
   private parseAltAttributes(): void {
-    // 格式: alt|widthxheight|r90|center|style:link
+    // 鏍煎紡: alt|widthxheight|r90|center|style:link
     const parts = this.alt.split('|');
     for (const part of parts) {
       if (part.startsWith('r') && !isNaN(parseInt(part.slice(1)))) {
@@ -2606,7 +2628,7 @@ class ResizableImageWidget extends WidgetType {
   }
 
   private getCleanAlt(): string {
-    // 移除尺寸、旋转、对齐、样式信息，只保留原始 alt
+    // 绉婚櫎灏哄銆佹棆杞€佸榻愩€佹牱寮忎俊鎭紝鍙繚鐣欏師濮?alt
     const parts = this.alt.split('|');
     const cleanParts = parts.filter(part => {
       if (/^\d+x\d+$/.test(part)) return false;
@@ -2633,7 +2655,7 @@ class ResizableImageWidget extends WidgetType {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-image-widget';
     
-    // 设置对齐方式
+    // 璁剧疆瀵归綈鏂瑰紡
     wrapper.setAttribute('data-align', this.align);
 
     const container = document.createElement('div');
@@ -2644,17 +2666,17 @@ class ResizableImageWidget extends WidgetType {
     img.alt = this.getCleanAlt();
     img.className = 'cm-inline-image';
     if (this.width) img.style.width = `${this.width}px`;
-    // 不设置固定高度，让图片保持原始宽高比
+    // 涓嶈缃浐瀹氶珮搴︼紝璁╁浘鐗囦繚鎸佸師濮嬪楂樻瘮
     if (this.rotation) img.style.transform = `rotate(${this.rotation}deg)`;
 
-    // 创建工具栏（在图片上方）
+    // 鍒涘缓宸ュ叿鏍忥紙鍦ㄥ浘鐗囦笂鏂癸級
     const toolbar = document.createElement('div');
     toolbar.className = 'cm-image-toolbar';
 
-    // 旋转按钮
+    // 鏃嬭浆鎸夐挳
     const rotateBtn = document.createElement('div');
     rotateBtn.className = 'cm-image-toolbar-btn';
-    rotateBtn.title = '旋转';
+    rotateBtn.title = '鏃嬭浆';
     rotateBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>`;
     rotateBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2662,13 +2684,13 @@ class ResizableImageWidget extends WidgetType {
       this.rotateImage(img);
     });
 
-    // 尺寸下拉菜单
+    // 灏哄涓嬫媺鑿滃崟
     const sizeDropdown = document.createElement('div');
     sizeDropdown.className = 'cm-image-toolbar-dropdown';
     
     const sizeBtn = document.createElement('div');
     sizeBtn.className = 'cm-image-toolbar-btn';
-    sizeBtn.title = '尺寸';
+    sizeBtn.title = '灏哄';
     sizeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h18"/></svg>`;
     
     const sizeMenu = document.createElement('div');
@@ -2698,7 +2720,7 @@ class ResizableImageWidget extends WidgetType {
     sizeBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 关闭其他菜单
+      // 鍏抽棴鍏朵粬鑿滃崟
       document.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
         if (menu !== sizeMenu) (menu as HTMLElement).style.display = 'none';
       });
@@ -2708,13 +2730,13 @@ class ResizableImageWidget extends WidgetType {
     sizeDropdown.appendChild(sizeBtn);
     sizeDropdown.appendChild(sizeMenu);
 
-    // 对齐下拉菜单
+    // 瀵归綈涓嬫媺鑿滃崟
     const alignDropdown = document.createElement('div');
     alignDropdown.className = 'cm-image-toolbar-dropdown';
     
     const alignBtn = document.createElement('div');
     alignBtn.className = 'cm-image-toolbar-btn';
-    alignBtn.title = '对齐方式';
+    alignBtn.title = '瀵归綈鏂瑰紡';
     alignBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>`;
     
     const alignMenu = document.createElement('div');
@@ -2723,7 +2745,7 @@ class ResizableImageWidget extends WidgetType {
     
     const alignOptions = [
       { label: '左对齐', value: 'left', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>` },
-      { label: '居中', value: 'center', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>` },
+      { label: '居中对齐', value: 'center', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>` },
       { label: '右对齐', value: 'right', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg>` },
     ];
     
@@ -2736,7 +2758,7 @@ class ResizableImageWidget extends WidgetType {
         e.stopPropagation();
         this.setAlignment(wrapper, option.value as 'left' | 'center' | 'right');
         alignMenu.style.display = 'none';
-        // 更新菜单项的 active 状态
+        // 鏇存柊鑿滃崟椤圭殑 active 鐘舵€?
         alignMenu.querySelectorAll('.cm-image-toolbar-menu-item').forEach(el => el.classList.remove('active'));
         item.classList.add('active');
       });
@@ -2746,7 +2768,7 @@ class ResizableImageWidget extends WidgetType {
     alignBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 关闭其他菜单
+      // 鍏抽棴鍏朵粬鑿滃崟
       document.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
         if (menu !== alignMenu) (menu as HTMLElement).style.display = 'none';
       });
@@ -2756,13 +2778,13 @@ class ResizableImageWidget extends WidgetType {
     alignDropdown.appendChild(alignBtn);
     alignDropdown.appendChild(alignMenu);
 
-    // 描述按钮
+    // 鎻忚堪鎸夐挳
     const captionBtn = document.createElement('div');
     captionBtn.className = `cm-image-toolbar-btn ${this.getCleanAlt() !== 'image' ? 'active' : ''}`;
-    captionBtn.title = '添加描述';
+    captionBtn.title = '娣诲姞鎻忚堪';
     captionBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6.1H3"/><path d="M21 12.1H3"/><path d="M15.1 18H3"/></svg>`;
     
-    // 描述输入容器
+    // 鎻忚堪杈撳叆瀹瑰櫒
     const captionContainer = document.createElement('div');
     captionContainer.className = 'cm-image-caption-container';
     captionContainer.style.display = 'none';
@@ -2770,7 +2792,7 @@ class ResizableImageWidget extends WidgetType {
     const captionInput = document.createElement('input');
     captionInput.type = 'text';
     captionInput.className = 'cm-image-caption-input';
-    captionInput.placeholder = '添加图片描述...';
+    captionInput.placeholder = '娣诲姞鍥剧墖鎻忚堪...';
     captionInput.value = this.getCleanAlt() !== 'image' ? this.getCleanAlt() : '';
     
     captionInput.addEventListener('keydown', (e) => {
@@ -2794,7 +2816,7 @@ class ResizableImageWidget extends WidgetType {
     captionBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 关闭其他菜单
+      // 鍏抽棴鍏朵粬鑿滃崟
       document.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
         (menu as HTMLElement).style.display = 'none';
       });
@@ -2805,13 +2827,13 @@ class ResizableImageWidget extends WidgetType {
       }
     });
 
-    // 显示样式下拉菜单
+    // 鏄剧ず鏍峰紡涓嬫媺鑿滃崟
     const styleDropdown = document.createElement('div');
     styleDropdown.className = 'cm-image-toolbar-dropdown';
     
     const styleBtn = document.createElement('div');
     styleBtn.className = 'cm-image-toolbar-btn';
-    styleBtn.title = '显示样式';
+    styleBtn.title = '鏄剧ず鏍峰紡';
     styleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
     
     const styleMenu = document.createElement('div');
@@ -2819,9 +2841,9 @@ class ResizableImageWidget extends WidgetType {
     styleMenu.style.display = 'none';
     
     const styleOptions = [
-      { label: '默认', value: 'default', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>` },
-      { label: '链接', value: 'link', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>` },
-      { label: '卡片', value: 'card', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="15" x2="21" y2="15"/></svg>` },
+      { label: '榛樿', value: 'default', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>` },
+      { label: '閾炬帴', value: 'link', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>` },
+      { label: '鍗＄墖', value: 'card', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="15" x2="21" y2="15"/></svg>` },
     ];
     
     styleOptions.forEach(option => {
@@ -2833,7 +2855,7 @@ class ResizableImageWidget extends WidgetType {
         e.stopPropagation();
         this.setDisplayStyle(wrapper, container, img, option.value as 'default' | 'link' | 'card');
         styleMenu.style.display = 'none';
-        // 更新菜单项的 active 状态
+        // 鏇存柊鑿滃崟椤圭殑 active 鐘舵€?
         styleMenu.querySelectorAll('.cm-image-toolbar-menu-item').forEach(el => el.classList.remove('active'));
         item.classList.add('active');
       });
@@ -2843,7 +2865,7 @@ class ResizableImageWidget extends WidgetType {
     styleBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 关闭其他菜单
+      // 鍏抽棴鍏朵粬鑿滃崟
       document.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
         if (menu !== styleMenu) (menu as HTMLElement).style.display = 'none';
       });
@@ -2853,10 +2875,10 @@ class ResizableImageWidget extends WidgetType {
     styleDropdown.appendChild(styleBtn);
     styleDropdown.appendChild(styleMenu);
 
-    // 裁剪按钮
+    // 瑁佸壀鎸夐挳
     const cropBtn = document.createElement('div');
     cropBtn.className = 'cm-image-toolbar-btn';
-    cropBtn.title = '裁剪';
+    cropBtn.title = '瑁佸壀';
     cropBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/></svg>`;
     cropBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2864,14 +2886,14 @@ class ResizableImageWidget extends WidgetType {
       this.showCropDialog(img);
     });
 
-    // 分隔线
+    // 鍒嗛殧绾?
     const divider = document.createElement('div');
     divider.className = 'cm-image-toolbar-divider';
 
-    // 全屏按钮
+    // 鍏ㄥ睆鎸夐挳
     const fullscreenBtn = document.createElement('div');
     fullscreenBtn.className = 'cm-image-toolbar-btn';
-    fullscreenBtn.title = '全屏查看';
+    fullscreenBtn.title = '鍏ㄥ睆鏌ョ湅';
     fullscreenBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
     fullscreenBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2879,10 +2901,10 @@ class ResizableImageWidget extends WidgetType {
       this.showFullscreen(img.src);
     });
 
-    // 删除按钮
+    // 鍒犻櫎鎸夐挳
     const deleteBtn = document.createElement('div');
     deleteBtn.className = 'cm-image-toolbar-btn cm-image-toolbar-btn-danger';
-    deleteBtn.title = '删除图片';
+    deleteBtn.title = '鍒犻櫎鍥剧墖';
     deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
     deleteBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2900,39 +2922,39 @@ class ResizableImageWidget extends WidgetType {
     toolbar.appendChild(fullscreenBtn);
     toolbar.appendChild(deleteBtn);
 
-    // 创建调整大小的手柄
+    // 鍒涘缓璋冩暣澶у皬鐨勬墜鏌?
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'cm-image-resize-handle';
 
-    // 点击图片选中（使用 mousedown 确保第一时间响应）
+    // 鐐瑰嚮鍥剧墖閫変腑锛堜娇鐢?mousedown 纭繚绗竴鏃堕棿鍝嶅簲锛?
     container.addEventListener('mousedown', (e) => {
       e.stopPropagation();
-      // 移除其他图片的选中状态
+      // 绉婚櫎鍏朵粬鍥剧墖鐨勯€変腑鐘舵€?
       document.querySelectorAll('.cm-image-container.selected').forEach(el => {
         if (el !== container) el.classList.remove('selected');
       });
       container.classList.add('selected');
-      // 记录选中的图片 src
+      // 璁板綍閫変腑鐨勫浘鐗?src
       selectedImageSrc = this.src;
     });
 
-    // 工具栏点击时阻止冒泡，保持选中状态
+    // 宸ュ叿鏍忕偣鍑绘椂闃绘鍐掓场锛屼繚鎸侀€変腑鐘舵€?
     toolbar.addEventListener('mousedown', (e) => {
       e.stopPropagation();
     });
 
-    // 点击其他地方取消选中和关闭菜单
+    // 鐐瑰嚮鍏朵粬鍦版柟鍙栨秷閫変腑鍜屽叧闂彍鍗?
     this.documentClickHandler = (e: MouseEvent) => {
       const target = e.target as Node;
-      // 如果点击在 container 或 toolbar 内，不取消选中
+      // 濡傛灉鐐瑰嚮鍦?container 鎴?toolbar 鍐咃紝涓嶅彇娑堥€変腑
       if (!container.contains(target) && !toolbar.contains(target)) {
         container.classList.remove('selected');
-        // 清除选中的图片 src
+        // 娓呴櫎閫変腑鐨勫浘鐗?src
         if (selectedImageSrc === this.src) {
           selectedImageSrc = null;
         }
       }
-      // 关闭所有菜单（除非点击在菜单内）
+      // 鍏抽棴鎵€鏈夎彍鍗曪紙闄ら潪鐐瑰嚮鍦ㄨ彍鍗曞唴锛?
       if (!toolbar.contains(target)) {
         toolbar.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
           (menu as HTMLElement).style.display = 'none';
@@ -2948,15 +2970,15 @@ class ResizableImageWidget extends WidgetType {
     container.appendChild(resizeHandle);
     wrapper.appendChild(container);
 
-    // 如果这个图片之前被选中，恢复选中状态
+    // 濡傛灉杩欎釜鍥剧墖涔嬪墠琚€変腑锛屾仮澶嶉€変腑鐘舵€?
     if (selectedImageSrc === this.src) {
       container.classList.add('selected');
     }
 
-    // 添加调整大小的事件处理
+    // 娣诲姞璋冩暣澶у皬鐨勪簨浠跺鐞?
     this.setupResizeHandler(resizeHandle, img, container);
 
-    // 如果初始显示样式不是默认，直接应用对应样式
+    // 濡傛灉鍒濆鏄剧ず鏍峰紡涓嶆槸榛樿锛岀洿鎺ュ簲鐢ㄥ搴旀牱寮?
     if (this.displayStyle !== 'default') {
       wrapper.setAttribute('data-style', this.displayStyle);
       img.style.display = 'none';
@@ -2982,7 +3004,7 @@ class ResizableImageWidget extends WidgetType {
           </div>
           <div class="cm-image-card-info">
             <span class="cm-image-card-name">${this.getCleanAlt() !== 'image' ? this.getCleanAlt() : this.getFileName()}</span>
-            <span class="cm-image-card-type">图片</span>
+            <span class="cm-image-card-type">鍥剧墖</span>
           </div>
         `;
         container.insertBefore(cardDisplay, toolbar);
@@ -3018,27 +3040,27 @@ class ResizableImageWidget extends WidgetType {
     const view = globalEditorView;
     if (!view) return;
 
-    // 构建新的 alt 属性
+    // 鏋勫缓鏂扮殑 alt 灞炴€?
     let newAlt = caption || 'image';
     
-    // 添加尺寸
+    // 娣诲姞灏哄
     if (this.width && this.height) {
       newAlt += `|${this.width}x${this.height}`;
     }
     
-    // 添加旋转
+    // 娣诲姞鏃嬭浆
     if (this.rotation) {
       newAlt += `|r${this.rotation}`;
     }
     
-    // 添加对齐
+    // 娣诲姞瀵归綈
     if (this.align !== 'left') {
       newAlt += `|${this.align}`;
     }
 
     const newMarkdown = `![${newAlt}](${this.src})`;
 
-    // 查找并替换原始图片语法
+    // 鏌ユ壘骞舵浛鎹㈠師濮嬪浘鐗囪娉?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3064,33 +3086,33 @@ class ResizableImageWidget extends WidgetType {
     const view = globalEditorView;
     if (!view) return;
 
-    // 构建新的 alt 属性
+    // 鏋勫缓鏂扮殑 alt 灞炴€?
     const cleanAlt = this.getCleanAlt();
     let newAlt = cleanAlt;
     
-    // 添加尺寸
+    // 娣诲姞灏哄
     if (this.width && this.height) {
       newAlt += `|${this.width}x${this.height}`;
     }
     
-    // 添加旋转
+    // 娣诲姞鏃嬭浆
     if (this.rotation) {
       newAlt += `|r${this.rotation}`;
     }
     
-    // 添加对齐
+    // 娣诲姞瀵归綈
     if (this.align !== 'left') {
       newAlt += `|${this.align}`;
     }
 
-    // 添加显示样式
+    // 娣诲姞鏄剧ず鏍峰紡
     if (this.displayStyle !== 'default') {
       newAlt += `|style:${this.displayStyle}`;
     }
 
     const newMarkdown = `![${newAlt}](${this.src})`;
 
-    // 查找并替换原始图片语法
+    // 鏌ユ壘骞舵浛鎹㈠師濮嬪浘鐗囪娉?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3121,24 +3143,24 @@ class ResizableImageWidget extends WidgetType {
     this.displayStyle = style;
     wrapper.setAttribute('data-style', style);
     
-    // 移除旧的显示内容
+    // 绉婚櫎鏃х殑鏄剧ず鍐呭
     const oldLinkDisplay = container.querySelector('.cm-image-link-display');
     const oldCardDisplay = container.querySelector('.cm-image-card-display');
     if (oldLinkDisplay) oldLinkDisplay.remove();
     if (oldCardDisplay) oldCardDisplay.remove();
     
-    // 获取工具栏和调整手柄的引用
+    // 鑾峰彇宸ュ叿鏍忓拰璋冩暣鎵嬫焺鐨勫紩鐢?
     const toolbar = container.querySelector('.cm-image-toolbar');
     const resizeHandle = container.querySelector('.cm-image-resize-handle');
     
-    // 根据样式显示/隐藏图片
+    // 鏍规嵁鏍峰紡鏄剧ず/闅愯棌鍥剧墖
     if (style === 'default') {
       img.style.display = 'block';
-      // 显示调整手柄
+      // 鏄剧ず璋冩暣鎵嬫焺
       if (resizeHandle) (resizeHandle as HTMLElement).style.display = '';
     } else if (style === 'link') {
       img.style.display = 'none';
-      // 隐藏调整手柄
+      // 闅愯棌璋冩暣鎵嬫焺
       if (resizeHandle) (resizeHandle as HTMLElement).style.display = 'none';
       
       const linkDisplay = document.createElement('div');
@@ -3150,11 +3172,11 @@ class ResizableImageWidget extends WidgetType {
         </svg>
         <span class="cm-image-link-text">${this.getCleanAlt() !== 'image' ? this.getCleanAlt() : this.getFileName()}</span>
       `;
-      // 插入到图片之后
+      // 鎻掑叆鍒板浘鐗囦箣鍚?
       img.insertAdjacentElement('afterend', linkDisplay);
     } else if (style === 'card') {
       img.style.display = 'none';
-      // 隐藏调整手柄
+      // 闅愯棌璋冩暣鎵嬫焺
       if (resizeHandle) (resizeHandle as HTMLElement).style.display = 'none';
       
       const cardDisplay = document.createElement('div');
@@ -3165,10 +3187,10 @@ class ResizableImageWidget extends WidgetType {
         </div>
         <div class="cm-image-card-info">
           <span class="cm-image-card-name">${this.getCleanAlt() !== 'image' ? this.getCleanAlt() : this.getFileName()}</span>
-          <span class="cm-image-card-type">图片</span>
+          <span class="cm-image-card-type">鍥剧墖</span>
         </div>
       `;
-      // 插入到图片之后
+      // 鎻掑叆鍒板浘鐗囦箣鍚?
       img.insertAdjacentElement('afterend', cardDisplay);
     }
     
@@ -3176,7 +3198,7 @@ class ResizableImageWidget extends WidgetType {
   }
 
   private showCropDialog(img: HTMLImageElement): void {
-    // 创建裁剪对话框
+    // 鍒涘缓瑁佸壀瀵硅瘽妗?
     const overlay = document.createElement('div');
     overlay.className = 'cm-image-crop-overlay';
     
@@ -3185,7 +3207,7 @@ class ResizableImageWidget extends WidgetType {
     
     const title = document.createElement('div');
     title.className = 'cm-image-crop-title';
-    title.textContent = '裁剪图片';
+    title.textContent = '瑁佸壀鍥剧墖';
     
     const cropContainer = document.createElement('div');
     cropContainer.className = 'cm-image-crop-container';
@@ -3197,7 +3219,7 @@ class ResizableImageWidget extends WidgetType {
     const cropBox = document.createElement('div');
     cropBox.className = 'cm-image-crop-box';
     
-    // 裁剪框的四个角
+    // 瑁佸壀妗嗙殑鍥涗釜瑙?
     const handles = ['nw', 'ne', 'sw', 'se'];
     handles.forEach(pos => {
       const handle = document.createElement('div');
@@ -3208,22 +3230,22 @@ class ResizableImageWidget extends WidgetType {
     cropContainer.appendChild(cropImg);
     cropContainer.appendChild(cropBox);
     
-    // 按钮区域
+    // 鎸夐挳鍖哄煙
     const buttons = document.createElement('div');
     buttons.className = 'cm-image-crop-buttons';
     
     const cancelBtn = document.createElement('div');
     cancelBtn.className = 'cm-image-crop-btn';
-    cancelBtn.textContent = '取消';
+    cancelBtn.textContent = '鍙栨秷';
     cancelBtn.addEventListener('click', () => {
       overlay.remove();
     });
     
     const confirmBtn = document.createElement('div');
     confirmBtn.className = 'cm-image-crop-btn cm-image-crop-btn-primary';
-    confirmBtn.textContent = '确定';
+    confirmBtn.textContent = '纭畾';
     confirmBtn.addEventListener('click', () => {
-      // 获取裁剪区域并应用
+      // 鑾峰彇瑁佸壀鍖哄煙骞跺簲鐢?
       this.applyCrop(cropImg, cropBox, img);
       overlay.remove();
     });
@@ -3236,7 +3258,7 @@ class ResizableImageWidget extends WidgetType {
     dialog.appendChild(buttons);
     overlay.appendChild(dialog);
     
-    // ESC 关闭
+    // ESC 鍏抽棴
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         overlay.remove();
@@ -3245,7 +3267,7 @@ class ResizableImageWidget extends WidgetType {
     };
     document.addEventListener('keydown', handleKeyDown);
     
-    // 点击遮罩关闭
+    // 鐐瑰嚮閬僵鍏抽棴
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
         overlay.remove();
@@ -3254,7 +3276,7 @@ class ResizableImageWidget extends WidgetType {
     
     document.body.appendChild(overlay);
     
-    // 初始化裁剪框拖拽
+    // 鍒濆鍖栬鍓鎷栨嫿
     this.setupCropBoxDrag(cropBox, cropImg);
   }
 
@@ -3291,7 +3313,7 @@ class ResizableImageWidget extends WidgetType {
   }
 
   private applyCrop(cropImg: HTMLImageElement, cropBox: HTMLElement, targetImg: HTMLImageElement): void {
-    // 计算裁剪比例
+    // 璁＄畻瑁佸壀姣斾緥
     const scaleX = cropImg.naturalWidth / cropImg.offsetWidth;
     const scaleY = cropImg.naturalHeight / cropImg.offsetHeight;
     
@@ -3300,7 +3322,7 @@ class ResizableImageWidget extends WidgetType {
     const cropWidth = cropBox.offsetWidth * scaleX;
     const cropHeight = cropBox.offsetHeight * scaleY;
     
-    // 使用 Canvas 裁剪图片
+    // 浣跨敤 Canvas 瑁佸壀鍥剧墖
     const canvas = document.createElement('canvas');
     canvas.width = cropWidth;
     canvas.height = cropHeight;
@@ -3309,13 +3331,13 @@ class ResizableImageWidget extends WidgetType {
     
     ctx.drawImage(cropImg, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
     
-    // 转换为 base64
+    // 杞崲涓?base64
     const croppedSrc = canvas.toDataURL('image/png');
     
-    // 更新图片
+    // 鏇存柊鍥剧墖
     targetImg.src = croppedSrc;
     
-    // 更新 Markdown
+    // 鏇存柊 Markdown
     this.updateImageSrc(croppedSrc);
   }
 
@@ -3323,7 +3345,7 @@ class ResizableImageWidget extends WidgetType {
     const view = globalEditorView;
     if (!view) return;
 
-    // 构建新的 Markdown
+    // 鏋勫缓鏂扮殑 Markdown
     let newAlt = this.getCleanAlt();
     if (this.width && this.height) {
       newAlt += `|${this.width}x${this.height}`;
@@ -3340,7 +3362,7 @@ class ResizableImageWidget extends WidgetType {
 
     const newMarkdown = `![${newAlt}](${newSrc})`;
 
-    // 查找并替换原始图片语法
+    // 鏌ユ壘骞舵浛鎹㈠師濮嬪浘鐗囪娉?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3363,7 +3385,7 @@ class ResizableImageWidget extends WidgetType {
   }
 
   private showFullscreen(src: string): void {
-    // 创建全屏遮罩
+    // 鍒涘缓鍏ㄥ睆閬僵
     const overlay = document.createElement('div');
     overlay.className = 'cm-image-fullscreen-overlay';
 
@@ -3371,7 +3393,7 @@ class ResizableImageWidget extends WidgetType {
     fullImg.src = src;
     fullImg.className = 'cm-image-fullscreen-img';
 
-    // 关闭按钮
+    // 鍏抽棴鎸夐挳
     const closeBtn = document.createElement('div');
     closeBtn.className = 'cm-image-fullscreen-close';
     closeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
@@ -3379,14 +3401,14 @@ class ResizableImageWidget extends WidgetType {
       overlay.remove();
     });
 
-    // 点击遮罩关闭
+    // 鐐瑰嚮閬僵鍏抽棴
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
         overlay.remove();
       }
     });
 
-    // ESC 键关闭
+    // ESC 閿叧闂?
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         overlay.remove();
@@ -3404,7 +3426,7 @@ class ResizableImageWidget extends WidgetType {
     const view = globalEditorView;
     if (!view) return;
 
-    // 查找并删除图片语法
+    // 鏌ユ壘骞跺垹闄ゅ浘鐗囪娉?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3415,7 +3437,7 @@ class ResizableImageWidget extends WidgetType {
       if (match[2] === this.src) {
         targetFrom = match.index;
         targetTo = match.index + match[0].length;
-        // 检查前后是否有换行符，一并删除
+        // 妫€鏌ュ墠鍚庢槸鍚︽湁鎹㈣绗︼紝涓€骞跺垹闄?
         if (targetFrom > 0 && doc[targetFrom - 1] === '\n') {
           targetFrom--;
         }
@@ -3469,11 +3491,11 @@ class ResizableImageWidget extends WidgetType {
 
       container.classList.remove('resizing');
 
-      // 获取最终尺寸
+      // 鑾峰彇鏈€缁堝昂瀵?
       const finalWidth = img.offsetWidth;
       const finalHeight = img.offsetHeight;
 
-      // 更新 Markdown 中的图片尺寸
+      // 鏇存柊 Markdown 涓殑鍥剧墖灏哄
       this.updateImageSize(finalWidth, finalHeight);
     };
 
@@ -3484,11 +3506,11 @@ class ResizableImageWidget extends WidgetType {
     const view = globalEditorView;
     if (!view) return;
 
-    // 构建新的 Markdown 图片语法
+    // 鏋勫缓鏂扮殑 Markdown 鍥剧墖璇硶
     const newAlt = `${this.alt}|${width}x${height}`;
     const newMarkdown = `![${newAlt}](${this.src})`;
 
-    // 查找并替换原始图片语法
+    // 鏌ユ壘骞舵浛鎹㈠師濮嬪浘鐗囪娉?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3526,7 +3548,7 @@ class ResizableImageWidget extends WidgetType {
   }
 
   destroy(): void {
-    // 清理事件监听器
+    // 娓呯悊浜嬩欢鐩戝惉鍣?
     if (this.documentClickHandler) {
       document.removeEventListener('mousedown', this.documentClickHandler);
       this.documentClickHandler = null;
@@ -3535,11 +3557,11 @@ class ResizableImageWidget extends WidgetType {
 }
 
 /**
- * 解析文档中的图片语法并创建装饰器
+ * 瑙ｆ瀽鏂囨。涓殑鍥剧墖璇硶骞跺垱寤鸿楗板櫒
  */
 function parseImages(doc: string): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
-  // 匹配 Markdown 图片语法: ![alt](src) 或 ![alt|widthxheight](src)
+  // 鍖归厤 Markdown 鍥剧墖璇硶: ![alt](src) 鎴?![alt|widthxheight](src)
   const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   let match;
 
@@ -3549,15 +3571,15 @@ function parseImages(doc: string): DecorationSet {
     const from = match.index;
     const to = from + match[0].length;
 
-    // 跳过视频链接，让视频装饰器处理
+    // 璺宠繃瑙嗛閾炬帴锛岃瑙嗛瑁呴グ鍣ㄥ鐞?
     if (isVideoUrl(src)) {
       continue;
     }
 
-    // 解析尺寸信息
+    // 瑙ｆ瀽灏哄淇℃伅
     const { alt, width, height } = parseImageSize(rawAlt);
 
-    // 隐藏原始图片语法文本
+    // 闅愯棌鍘熷鍥剧墖璇硶鏂囨湰
     decorations.push({
       from,
       to,
@@ -3567,28 +3589,28 @@ function parseImages(doc: string): DecorationSet {
     });
   }
 
-  // 按位置排序
+  // 鎸変綅缃帓搴?
   decorations.sort((a, b) => a.from - b.from);
 
   return RangeSet.of(decorations.map(d => d.decoration.range(d.from, d.to)));
 }
 
 /**
- * 检查 URL 是否为视频链接
+ * 妫€鏌?URL 鏄惁涓鸿棰戦摼鎺?
  */
 function isVideoUrl(url: string): boolean {
-  // B站
+  // B绔?
   if (/bilibili\.com\/video\/(BV[\w]+|av\d+)/i.test(url)) return true;
   if (/b23\.tv\//i.test(url)) return true;
   // YouTube
   if (/(?:youtube\.com\/watch\?v=|youtu\.be\/)/i.test(url)) return true;
-  // 优酷
+  // 浼橀叿
   if (/youku\.com\/v_show\/id_/i.test(url)) return true;
   return false;
 }
 
 /**
- * 图片装饰器 StateField
+ * 鍥剧墖瑁呴グ鍣?StateField
  */
 const imageDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -3604,16 +3626,16 @@ const imageDecorations = StateField.define<DecorationSet>({
 });
 
 // ============================================================================
-// 视频嵌入渲染系统
+// 瑙嗛宓屽叆娓叉煋绯荤粺
 // ============================================================================
 
 /**
- * 视频平台类型
+ * 瑙嗛骞冲彴绫诲瀷
  */
 type VideoPlatform = 'bilibili' | 'youtube' | 'youku' | 'qq' | 'iqiyi' | 'xigua' | 'douyin' | 'local' | 'other';
 
 /**
- * 视频信息结构
+ * 瑙嗛淇℃伅缁撴瀯
  */
 interface VideoInfo {
   platform: VideoPlatform;
@@ -3622,13 +3644,13 @@ interface VideoInfo {
 }
 
 /**
- * 解析视频链接，转换为嵌入链接
+ * 瑙ｆ瀽瑙嗛閾炬帴锛岃浆鎹负宓屽叆閾炬帴
  */
 function parseVideoUrl(url: string): VideoInfo | null {
-  console.log('[parseVideoUrl] 解析视频链接:', url);
+  console.log('[parseVideoUrl] 瑙ｆ瀽瑙嗛閾炬帴:', url);
   
-  // B站链接解析
-  // 支持格式: 
+  // B绔欓摼鎺ヨВ鏋?
+  // 鏀寔鏍煎紡: 
   // - https://www.bilibili.com/video/BVxxxxxxx
   // - https://b23.tv/xxxxxxx
   // - https://www.bilibili.com/video/avxxxxxxx
@@ -3642,18 +3664,18 @@ function parseVideoUrl(url: string): VideoInfo | null {
     return { platform: 'bilibili', embedUrl, originalUrl: url };
   }
 
-  // B站短链接
+  // B绔欑煭閾炬帴
   const b23Match = url.match(/b23\.tv\/([\w]+)/i);
   if (b23Match) {
-    // 短链接需要重定向，暂时使用原链接
+    // 鐭摼鎺ラ渶瑕侀噸瀹氬悜锛屾殏鏃朵娇鐢ㄥ師閾炬帴
     return { platform: 'bilibili', embedUrl: url, originalUrl: url };
   }
 
-  // YouTube 链接解析
-  // 支持格式:
+  // YouTube 閾炬帴瑙ｆ瀽
+  // 鏀寔鏍煎紡:
   // - https://www.youtube.com/watch?v=xxxxxxx
   // - https://youtu.be/xxxxxxx
-  // 使用 youtube-nocookie.com 隐私增强模式，避免嵌入限制
+  // 浣跨敤 youtube-nocookie.com 闅愮澧炲己妯″紡锛岄伩鍏嶅祵鍏ラ檺鍒?
   const youtubeMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/i);
   if (youtubeMatch) {
     const videoId = youtubeMatch[1];
@@ -3661,8 +3683,8 @@ function parseVideoUrl(url: string): VideoInfo | null {
     return { platform: 'youtube', embedUrl, originalUrl: url };
   }
 
-  // 优酷链接解析
-  // 支持格式: https://v.youku.com/v_show/id_xxxxxxx.html
+  // 浼橀叿閾炬帴瑙ｆ瀽
+  // 鏀寔鏍煎紡: https://v.youku.com/v_show/id_xxxxxxx.html
   const youkuMatch = url.match(/youku\.com\/v_show\/id_([\w=]+)/i);
   if (youkuMatch) {
     const videoId = youkuMatch[1];
@@ -3670,68 +3692,68 @@ function parseVideoUrl(url: string): VideoInfo | null {
     return { platform: 'youku', embedUrl, originalUrl: url };
   }
 
-  // 腾讯视频链接解析
-  // 支持格式: https://v.qq.com/x/cover/xxx/xxx.html
+  // 鑵捐瑙嗛閾炬帴瑙ｆ瀽
+  // 鏀寔鏍煎紡: https://v.qq.com/x/cover/xxx/xxx.html
   const qqMatch = url.match(/v\.qq\.com/i);
   if (qqMatch) {
     return { platform: 'qq', embedUrl: url, originalUrl: url };
   }
 
-  // 爱奇艺链接解析
-  // 支持格式: https://www.iqiyi.com/v_xxx.html
+  // 鐖卞鑹洪摼鎺ヨВ鏋?
+  // 鏀寔鏍煎紡: https://www.iqiyi.com/v_xxx.html
   const iqiyiMatch = url.match(/iqiyi\.com/i);
   if (iqiyiMatch) {
     return { platform: 'iqiyi', embedUrl: url, originalUrl: url };
   }
 
-  // 西瓜视频链接解析
-  // 支持格式: https://www.ixigua.com/xxx
+  // 瑗跨摐瑙嗛閾炬帴瑙ｆ瀽
+  // 鏀寔鏍煎紡: https://www.ixigua.com/xxx
   const xiguaMatch = url.match(/ixigua\.com/i);
   if (xiguaMatch) {
     return { platform: 'xigua', embedUrl: url, originalUrl: url };
   }
 
-  // 抖音链接解析
-  // 支持格式: https://www.douyin.com/video/xxx
+  // 鎶栭煶閾炬帴瑙ｆ瀽
+  // 鏀寔鏍煎紡: https://www.douyin.com/video/xxx
   const douyinMatch = url.match(/douyin\.com/i);
   if (douyinMatch) {
     return { platform: 'douyin', embedUrl: url, originalUrl: url };
   }
 
-  // 本地视频文件
-  // 支持格式: file:///path/to/video.mp4 或 C:\path\to\video.mp4 或 /path/to/video.mp4
+  // 鏈湴瑙嗛鏂囦欢
+  // 鏀寔鏍煎紡: file:///path/to/video.mp4 鎴?C:\path\to\video.mp4 鎴?/path/to/video.mp4
   const localVideoExtensions = /\.(mp4|webm|ogg|mov|avi|mkv)$/i;
-  // 先解码 URL 编码的路径
+  // 鍏堣В鐮?URL 缂栫爜鐨勮矾寰?
   let decodedUrl = url;
   try {
     decodedUrl = decodeURIComponent(url);
   } catch {
-    // 解码失败则使用原始 URL
+    // 瑙ｇ爜澶辫触鍒欎娇鐢ㄥ師濮?URL
   }
-  console.log('[parseVideoUrl] 检查本地视频, url:', url, 'decodedUrl:', decodedUrl);
-  console.log('[parseVideoUrl] file:// 匹配:', url.match(/^file:\/\//i));
-  console.log('[parseVideoUrl] Windows路径匹配:', url.match(/^[A-Za-z]:[\\\/]/));
-  console.log('[parseVideoUrl] 扩展名匹配:', localVideoExtensions.test(decodedUrl));
-  // 检查是否为本地视频路径
+  console.log('[parseVideoUrl] 妫€鏌ユ湰鍦拌棰? url:', url, 'decodedUrl:', decodedUrl);
+  console.log('[parseVideoUrl] file:// 鍖归厤:', url.match(/^file:\/\//i));
+  console.log('[parseVideoUrl] Windows璺緞鍖归厤:', url.match(/^[A-Za-z]:[\\\/]/));
+  console.log('[parseVideoUrl] 鎵╁睍鍚嶅尮閰?', localVideoExtensions.test(decodedUrl));
+  // 妫€鏌ユ槸鍚︿负鏈湴瑙嗛璺緞
   const isLocalPath = 
     url.match(/^file:\/\//i) || 
     decodedUrl.match(/^file:\/\//i) || 
-    url.match(/^[A-Za-z]:[\\\/]/) ||  // Windows 路径: C:\ 或 C:/
+    url.match(/^[A-Za-z]:[\\\/]/) ||  // Windows 璺緞: C:\ 鎴?C:/
     decodedUrl.match(/^[A-Za-z]:[\\\/]/) ||
     (url.startsWith('/') && localVideoExtensions.test(decodedUrl));
   
   if (isLocalPath) {
-    console.log('[parseVideoUrl] 识别为本地视频');
+    console.log('[parseVideoUrl] 检测到本地视频路径:', url);
     return { platform: 'local', embedUrl: url, originalUrl: url };
   }
-  // 也支持不带协议的本地路径（有视频扩展名且不是 http/https）
+  // 涔熸敮鎸佷笉甯﹀崗璁殑鏈湴璺緞锛堟湁瑙嗛鎵╁睍鍚嶄笖涓嶆槸 http/https锛?
   if (localVideoExtensions.test(decodedUrl) && !url.match(/^https?:\/\//i)) {
-    console.log('[parseVideoUrl] 识别为本地视频(无协议)');
+    console.log('[parseVideoUrl] 璇嗗埆涓烘湰鍦拌棰?鏃犲崗璁?');
     return { platform: 'local', embedUrl: url, originalUrl: url };
   }
 
-  // 通用视频链接 - 支持任意 http/https 链接
-  // 使用增强型浏览器可以直接加载任意网页
+  // 閫氱敤瑙嗛閾炬帴 - 鏀寔浠绘剰 http/https 閾炬帴
+  // 浣跨敤澧炲己鍨嬫祻瑙堝櫒鍙互鐩存帴鍔犺浇浠绘剰缃戦〉
   if (url.match(/^https?:\/\//i)) {
     return { platform: 'other', embedUrl: url, originalUrl: url };
   }
@@ -3740,10 +3762,10 @@ function parseVideoUrl(url: string): VideoInfo | null {
 }
 
 // ============================================================================
-// Mermaid 图表渲染系统
+// Mermaid 鍥捐〃娓叉煋绯荤粺
 // ============================================================================
 
-// 初始化 Mermaid
+// 鍒濆鍖?Mermaid
 let mermaidInitialized = false;
 const initMermaid = () => {
   if (mermaidInitialized) return;
@@ -3762,11 +3784,11 @@ const initMermaid = () => {
   mermaidInitialized = true;
 };
 
-// Mermaid Widget DOM 缓存
+// Mermaid Widget DOM 缂撳瓨
 const mermaidWidgetDomCache = new WeakMap<MermaidWidget, HTMLElement>();
 
 /**
- * Mermaid 图表 Widget 类
+ * Mermaid 鍥捐〃 Widget 绫?
  */
 class MermaidWidget extends WidgetType {
   private code: string;
@@ -3786,7 +3808,7 @@ class MermaidWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    // 检查缓存
+    // 妫€鏌ョ紦瀛?
     if (this.domElement) {
       return this.domElement;
     }
@@ -3802,30 +3824,30 @@ class MermaidWidget extends WidgetType {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-mermaid-widget';
 
-    // 工具栏
+    // 宸ュ叿鏍?
     const toolbar = document.createElement('div');
     toolbar.className = 'cm-mermaid-toolbar';
 
-    // 左侧：标题
+    // 宸︿晶锛氭爣棰?
     const toolbarLeft = document.createElement('div');
     toolbarLeft.className = 'cm-mermaid-toolbar-left';
 
-    // 标题显示
+    // 鏍囬鏄剧ず
     const title = document.createElement('span');
     title.className = 'cm-mermaid-title';
     title.textContent = '流程图';
 
-    // 标题编辑输入框
+    // 鏍囬缂栬緫杈撳叆妗?
     const titleInput = document.createElement('input');
     titleInput.type = 'text';
     titleInput.className = 'cm-mermaid-title-input';
     titleInput.value = '流程图';
     titleInput.style.display = 'none';
 
-    // 编辑状态
+    // 缂栬緫鐘舵€?
     let isEditing = false;
 
-    // 进入编辑模式
+    // 杩涘叆缂栬緫妯″紡
     const enterEditMode = () => {
       isEditing = true;
       title.style.display = 'none';
@@ -3835,7 +3857,7 @@ class MermaidWidget extends WidgetType {
       titleInput.select();
     };
 
-    // 退出编辑模式
+    // 閫€鍑虹紪杈戞ā寮?
     const exitEditMode = (save: boolean) => {
       if (!isEditing) return;
       isEditing = false;
@@ -3846,7 +3868,7 @@ class MermaidWidget extends WidgetType {
       }
     };
 
-    // 输入框事件
+    // 杈撳叆妗嗕簨浠?
     titleInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') {
@@ -3867,72 +3889,72 @@ class MermaidWidget extends WidgetType {
     toolbarLeft.appendChild(title);
     toolbarLeft.appendChild(titleInput);
 
-    // 右侧：工具栏按钮
+    // 鍙充晶锛氬伐鍏锋爮鎸夐挳
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'cm-mermaid-toolbar-right';
 
-    // 编辑按钮
+    // 缂栬緫鎸夐挳
     const editBtn = document.createElement('span');
     editBtn.className = 'cm-mermaid-toolbar-btn';
-    editBtn.title = '编辑';
+    editBtn.title = '缂栬緫';
     editBtn.innerHTML = `<svg viewBox="0 0 32 32" fill="currentColor" width="16" height="16"><path d="M2 26h28v2H2z"></path><path d="M25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10l3.6 3.6l-10 10H6z"></path></svg>`;
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       enterEditMode();
     });
 
-    // 卡片按钮
+    // 鍗＄墖鎸夐挳
     const cardBtn = document.createElement('span');
     cardBtn.className = 'cm-mermaid-toolbar-btn';
-    cardBtn.title = '卡片';
+    cardBtn.title = '鍗＄墖';
     cardBtn.innerHTML = `<svg viewBox="0 0 1024 1024" fill="currentColor" width="16" height="16"><path d="M341.333333 106.666667a128 128 0 0 1 128 128v106.666666a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666z m0 85.333333h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L192 234.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L234.666667 384h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L384 341.333333v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L341.333333 192z m0 362.666667a128 128 0 0 1 128 128v106.666666a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666z m0 85.333333h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L192 682.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L234.666667 832h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L384 789.333333v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L341.333333 640z m576-298.666667a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666a128 128 0 0 1 128 128v106.666666z m-85.333333 0v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L789.333333 192h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L640 234.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L682.666667 384h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L832 341.333333z m-42.666667 213.333334a128 128 0 0 1 128 128v106.666666a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666z m0 85.333333h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L640 682.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L682.666667 832h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L832 789.333333v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L789.333333 640z" /></svg>`;
     cardBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 实现卡片视图功能
-      console.log('切换卡片视图');
+      // TODO: 瀹炵幇鍗＄墖瑙嗗浘鍔熻兘
+      console.log('鍒囨崲鍗＄墖瑙嗗浘');
     });
 
-    // 设计按钮
+    // 璁捐鎸夐挳
     const designBtn = document.createElement('span');
     designBtn.className = 'cm-mermaid-toolbar-btn';
-    designBtn.title = '设计';
+    designBtn.title = '璁捐';
     designBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></svg>`;
     designBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 实现设计功能
-      console.log('打开设计视图');
+      // TODO: 瀹炵幇璁捐鍔熻兘
+      console.log('鎵撳紑璁捐瑙嗗浘');
     });
 
-    // 主题按钮
+    // 涓婚鎸夐挳
     const themeBtn = document.createElement('span');
     themeBtn.className = 'cm-mermaid-toolbar-btn';
-    themeBtn.title = '主题';
+    themeBtn.title = '涓婚';
     themeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>`;
     themeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 实现主题切换功能
-      console.log('切换主题');
+      // TODO: 瀹炵幇涓婚鍒囨崲鍔熻兘
+      console.log('鍒囨崲涓婚');
     });
 
-    // 代码按钮
+    // 浠ｇ爜鎸夐挳
     const codeBtn = document.createElement('span');
     codeBtn.className = 'cm-mermaid-toolbar-btn';
-    codeBtn.title = '代码';
+    codeBtn.title = '浠ｇ爜';
     codeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>`;
     codeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 实现查看代码功能
-      console.log('查看代码');
+      // TODO: 瀹炵幇鏌ョ湅浠ｇ爜鍔熻兘
+      console.log('鏌ョ湅浠ｇ爜');
     });
 
-    // 扩大按钮
+    // 鎵╁ぇ鎸夐挳
     const expandBtn = document.createElement('span');
     expandBtn.className = 'cm-mermaid-toolbar-btn';
-    expandBtn.title = '扩大';
+    expandBtn.title = '鎵╁ぇ';
     expandBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/></svg>`;
     expandBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // 打开流程图设计器标签页
+      // 鎵撳紑娴佺▼鍥捐璁″櫒鏍囩椤?
       window.dispatchEvent(new CustomEvent('open-mermaid-designer', {
         detail: {
           code: this.code,
@@ -3941,14 +3963,14 @@ class MermaidWidget extends WidgetType {
       }));
     });
 
-    // 删除按钮
+    // 鍒犻櫎鎸夐挳
     const deleteBtn = document.createElement('span');
     deleteBtn.className = 'cm-mermaid-toolbar-btn cm-mermaid-toolbar-btn-danger';
-    deleteBtn.title = '删除';
+    deleteBtn.title = '鍒犻櫎';
     deleteBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 7v4a.5.5 0 0 0 1 0V7a.5.5 0 0 0-1 0zM9 6.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V7a.5.5 0 0 1 .5-.5zM10 4h3a.5.5 0 0 1 0 1h-.553l-.752 6.776A2.5 2.5 0 0 1 9.21 14H6.79a2.5 2.5 0 0 1-2.485-2.224L3.552 5H3a.5.5 0 0 1 0-1h3a2 2 0 1 1 4 0zM8 3a1 1 0 0 0-1 1h2a1 1 0 0 0-1-1zM4.559 5l.74 6.666A1.5 1.5 0 0 0 6.79 13h2.42a1.5 1.5 0 0 0 1.49-1.334L11.442 5H4.56z" fill="currentColor"/></svg>`;
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // 删除 Mermaid 代码块
+      // 鍒犻櫎 Mermaid 浠ｇ爜鍧?
       if (globalEditorView) {
         globalEditorView.dispatch({
           changes: { from: this.from, to: this.to, insert: '' }
@@ -3968,15 +3990,15 @@ class MermaidWidget extends WidgetType {
     toolbar.appendChild(toolbarRight);
     wrapper.appendChild(toolbar);
 
-    // 内容区域（包含左侧工具栏和图表）
+    // 鍐呭鍖哄煙锛堝寘鍚乏渚у伐鍏锋爮鍜屽浘琛級
     const content = document.createElement('div');
     content.className = 'cm-mermaid-content';
 
-    // 左侧垂直工具栏
+    // 宸︿晶鍨傜洿宸ュ叿鏍?
     const sideToolbar = document.createElement('div');
     sideToolbar.className = 'cm-mermaid-side-toolbar';
 
-    // 拖拽状态
+    // 鎷栨嫿鐘舵€?
     let isDragMode = false;
     let isDragging = false;
     let startX = 0;
@@ -3984,22 +4006,22 @@ class MermaidWidget extends WidgetType {
     let translateX = 0;
     let translateY = 0;
 
-    // 缩放状态
+    // 缂╂斁鐘舵€?
     let scale = 1;
     const minScale = 0.2;
     const maxScale = 2;
     const scaleStep = 0.25;
 
-    // 更新变换
+    // 鏇存柊鍙樻崲
     const updateTransform = () => {
       svgWrapper.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
       zoomLabel.textContent = `${Math.round(scale * 100)}%`;
     };
 
-    // 拖拽按钮
+    // 鎷栨嫿鎸夐挳
     const dragBtn = document.createElement('span');
     dragBtn.className = 'cm-mermaid-side-btn';
-    dragBtn.title = '拖拽';
+    dragBtn.title = '鎷栨嫿';
     dragBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`;
     dragBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -4008,19 +4030,19 @@ class MermaidWidget extends WidgetType {
       container.classList.toggle('cm-mermaid-drag-mode', isDragMode);
     });
 
-    // 百分比显示
+    // 鐧惧垎姣旀樉绀?
     const zoomLabel = document.createElement('span');
     zoomLabel.className = 'cm-mermaid-zoom-label';
     zoomLabel.textContent = '100%';
 
-    // 缩放菜单
+    // 缂╂斁鑿滃崟
     const zoomPresets = [20, 50, 75, 100, 150, 200];
     let zoomMenu: HTMLElement | null = null;
 
     const showZoomMenu = (e: MouseEvent) => {
       e.stopPropagation();
       
-      // 如果菜单已存在，先移除
+      // 濡傛灉鑿滃崟宸插瓨鍦紝鍏堢Щ闄?
       if (zoomMenu) {
         zoomMenu.remove();
         zoomMenu = null;
@@ -4049,7 +4071,7 @@ class MermaidWidget extends WidgetType {
         zoomMenu!.appendChild(item);
       });
 
-      // 定位菜单
+      // 瀹氫綅鑿滃崟
       const rect = zoomLabel.getBoundingClientRect();
       zoomMenu.style.position = 'fixed';
       zoomMenu.style.left = `${rect.right + 4}px`;
@@ -4057,7 +4079,7 @@ class MermaidWidget extends WidgetType {
 
       document.body.appendChild(zoomMenu);
 
-      // 点击其他地方关闭菜单
+      // 鐐瑰嚮鍏朵粬鍦版柟鍏抽棴鑿滃崟
       const closeMenu = (ev: MouseEvent) => {
         if (zoomMenu && !zoomMenu.contains(ev.target as Node)) {
           zoomMenu.remove();
@@ -4070,14 +4092,14 @@ class MermaidWidget extends WidgetType {
 
     zoomLabel.addEventListener('click', showZoomMenu);
 
-    // 图表内容包装器（用于变换）- 提前声明
+    // 鍥捐〃鍐呭鍖呰鍣紙鐢ㄤ簬鍙樻崲锛? 鎻愬墠澹版槑
     const svgWrapper = document.createElement('div');
     svgWrapper.className = 'cm-mermaid-svg-wrapper';
 
-    // 放大按钮
+    // 鏀惧ぇ鎸夐挳
     const zoomInBtn = document.createElement('span');
     zoomInBtn.className = 'cm-mermaid-side-btn';
-    zoomInBtn.title = '放大';
+    zoomInBtn.title = '鏀惧ぇ';
     zoomInBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`;
     zoomInBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -4087,10 +4109,10 @@ class MermaidWidget extends WidgetType {
       }
     });
 
-    // 缩小按钮
+    // 缂╁皬鎸夐挳
     const zoomOutBtn = document.createElement('span');
     zoomOutBtn.className = 'cm-mermaid-side-btn';
-    zoomOutBtn.title = '缩小';
+    zoomOutBtn.title = '缂╁皬';
     zoomOutBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>`;
     zoomOutBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -4100,18 +4122,18 @@ class MermaidWidget extends WidgetType {
       }
     });
 
-    // 素材库按钮
+    // 绱犳潗搴撴寜閽?
     const materialBtn = document.createElement('span');
     materialBtn.className = 'cm-mermaid-side-btn';
     materialBtn.title = '素材库';
     materialBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3"/><path d="M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4"/><path d="M5 21h14"/></svg>`;
     materialBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 打开素材库面板
-      console.log('打开素材库');
+      // TODO: 鎵撳紑绱犳潗搴撻潰鏉?
+      console.log('素材库功能待实现');
     });
 
-    // 分隔线
+    // 鍒嗛殧绾?
     const divider = document.createElement('div');
     divider.className = 'cm-mermaid-side-divider';
 
@@ -4122,11 +4144,11 @@ class MermaidWidget extends WidgetType {
     sideToolbar.appendChild(zoomLabel);
     sideToolbar.appendChild(zoomInBtn);
 
-    // 图表容器
+    // 鍥捐〃瀹瑰櫒
     const container = document.createElement('div');
     container.className = 'cm-mermaid-container';
 
-    // 拖拽事件处理
+    // 鎷栨嫿浜嬩欢澶勭悊
     const handleMouseDown = (e: MouseEvent) => {
       if (!isDragMode) return;
       isDragging = true;
@@ -4152,13 +4174,13 @@ class MermaidWidget extends WidgetType {
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
 
-    // 渲染 Mermaid 图表
+    // 娓叉煋 Mermaid 鍥捐〃
     const id = `mermaid-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     
     mermaid.render(id, this.code).then(({ svg }) => {
       svgWrapper.innerHTML = svg;
     }).catch((error: Error) => {
-      svgWrapper.innerHTML = `<div class="cm-mermaid-error">Mermaid 渲染错误: ${error.message}</div>`;
+      svgWrapper.innerHTML = `<div class="cm-mermaid-error">Mermaid 娓叉煋閿欒: ${error.message}</div>`;
     });
 
     container.appendChild(svgWrapper);
@@ -4166,7 +4188,7 @@ class MermaidWidget extends WidgetType {
     content.appendChild(container);
     wrapper.appendChild(content);
 
-    // 底部拖动手柄
+    // 搴曢儴鎷栧姩鎵嬫焺
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'cm-mermaid-resize-handle';
     
@@ -4174,7 +4196,7 @@ class MermaidWidget extends WidgetType {
     resizeBar.className = 'cm-mermaid-resize-bar';
     resizeHandle.appendChild(resizeBar);
 
-    // 高度调整状态
+    // 楂樺害璋冩暣鐘舵€?
     let isResizing = false;
     let startResizeY = 0;
     let startHeight = 0;
@@ -4212,7 +4234,7 @@ class MermaidWidget extends WidgetType {
 
     wrapper.appendChild(resizeHandle);
 
-    // 阻止事件冒泡
+    // 闃绘浜嬩欢鍐掓场
     wrapper.addEventListener('mousedown', (e) => e.stopPropagation());
 
     this.domElement = wrapper;
@@ -4231,11 +4253,11 @@ class MermaidWidget extends WidgetType {
 }
 
 /**
- * 解析文档中的 Mermaid 代码块
+ * 瑙ｆ瀽鏂囨。涓殑 Mermaid 浠ｇ爜鍧?
  */
 function parseMermaidBlocks(doc: string): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
-  // 匹配 ```mermaid ... ``` 代码块
+  // 鍖归厤 ```mermaid ... ``` 浠ｇ爜鍧?
   const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
   let match;
 
@@ -4260,7 +4282,7 @@ function parseMermaidBlocks(doc: string): DecorationSet {
 }
 
 /**
- * 获取 Mermaid 代码块签名
+ * 鑾峰彇 Mermaid 浠ｇ爜鍧楃鍚?
  */
 function getMermaidSignature(doc: string): string {
   const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
@@ -4273,7 +4295,7 @@ function getMermaidSignature(doc: string): string {
 }
 
 /**
- * Mermaid 装饰器 StateField
+ * Mermaid 瑁呴グ鍣?StateField
  */
 const mermaidDecorations = StateField.define<{ decorations: DecorationSet; signature: string }>({
   create(state) {
@@ -4315,15 +4337,15 @@ const mermaidDecorations = StateField.define<{ decorations: DecorationSet; signa
 });
 
 // ============================================================================
-// 视频渲染系统
+// 瑙嗛娓叉煋绯荤粺
 // ============================================================================
 
-// 视频 Widget DOM 缓存，使用 WeakMap 将 widget 实例与 DOM 元素关联
+// 瑙嗛 Widget DOM 缂撳瓨锛屼娇鐢?WeakMap 灏?widget 瀹炰緥涓?DOM 鍏冪礌鍏宠仈
 const videoWidgetDomCache = new WeakMap<VideoWidget, HTMLElement>();
 
 /**
- * 视频 Widget 类 - 用于在编辑器中渲染视频播放器
- * 使用 Electron webview 标签绕过 CSP 限制
+ * 瑙嗛 Widget 绫?- 鐢ㄤ簬鍦ㄧ紪杈戝櫒涓覆鏌撹棰戞挱鏀惧櫒
+ * 浣跨敤 Electron webview 鏍囩缁曡繃 CSP 闄愬埗
  */
 class VideoWidget extends WidgetType {
   private displayMode: 'embed' | 'card' | 'link' = 'embed';
@@ -4337,12 +4359,12 @@ class VideoWidget extends WidgetType {
     readonly originalMatch: string
   ) {
     super();
-    // 解析 alt 中的显示模式
+    // 瑙ｆ瀽 alt 涓殑鏄剧ず妯″紡
     this.parseDisplayMode();
   }
 
   private parseDisplayMode(): void {
-    // 格式: 标题|mode:card
+    // 鏍煎紡: 鏍囬|mode:card
     const parts = this.alt.split('|');
     for (const part of parts) {
       if (part.startsWith('mode:')) {
@@ -4355,16 +4377,16 @@ class VideoWidget extends WidgetType {
   }
 
   private getCleanTitle(): string {
-    // 移除模式信息，只保留标题
+    // 绉婚櫎妯″紡淇℃伅锛屽彧淇濈暀鏍囬
     const parts = this.alt.split('|');
     const cleanParts = parts.filter(part => !part.startsWith('mode:'));
-    return cleanParts.join('|') || '视频';
+    return cleanParts.join('|') || '瑙嗛';
   }
 
   toDOM(): HTMLElement {
-    // 如果已有 DOM 元素，直接返回（避免重复创建）
+    // 濡傛灉宸叉湁 DOM 鍏冪礌锛岀洿鎺ヨ繑鍥烇紙閬垮厤閲嶅鍒涘缓锛?
     if (this.domElement) {
-      // 更新标题（可能已更改）
+      // 鏇存柊鏍囬锛堝彲鑳藉凡鏇存敼锛?
       const titleEl = this.domElement.querySelector('.cm-video-title');
       if (titleEl) {
         titleEl.textContent = this.getCleanTitle();
@@ -4372,7 +4394,7 @@ class VideoWidget extends WidgetType {
       return this.domElement;
     }
 
-    // 检查 WeakMap 缓存
+    // 妫€鏌?WeakMap 缂撳瓨
     const cached = videoWidgetDomCache.get(this);
     if (cached) {
       this.domElement = cached;
@@ -4382,7 +4404,7 @@ class VideoWidget extends WidgetType {
     const wrapper = document.createElement('div');
     wrapper.className = `cm-video-widget cm-video-mode-${this.displayMode}`;
 
-    // 工具栏
+    // 宸ュ叿鏍?
     const toolbar = document.createElement('div');
     toolbar.className = 'cm-video-toolbar';
 
@@ -4393,19 +4415,19 @@ class VideoWidget extends WidgetType {
     platformBadge.className = 'cm-video-platform-badge';
     platformBadge.textContent = this.getPlatformName();
 
-    // 标题显示元素
+    // 鏍囬鏄剧ず鍏冪礌
     const title = document.createElement('span');
     title.className = 'cm-video-title';
     title.textContent = this.getCleanTitle();
 
-    // 标题编辑输入框（默认隐藏）
+    // 鏍囬缂栬緫杈撳叆妗嗭紙榛樿闅愯棌锛?
     const titleInput = document.createElement('input');
     titleInput.className = 'cm-video-title-input';
     titleInput.type = 'text';
     titleInput.value = this.getCleanTitle();
     titleInput.style.display = 'none';
 
-    // 阻止输入框事件冒泡
+    // 闃绘杈撳叆妗嗕簨浠跺啋娉?
     titleInput.addEventListener('mousedown', (e) => e.stopPropagation());
     titleInput.addEventListener('mouseup', (e) => e.stopPropagation());
     titleInput.addEventListener('click', (e) => e.stopPropagation());
@@ -4413,12 +4435,12 @@ class VideoWidget extends WidgetType {
       e.stopPropagation();
       if (e.key === 'Enter') {
         e.preventDefault();
-        // 保存标题
-        const newTitle = titleInput.value.trim() || '视频';
+        // 淇濆瓨鏍囬
+        const newTitle = titleInput.value.trim() || '瑙嗛';
         title.textContent = newTitle;
         titleInput.style.display = 'none';
         title.style.display = '';
-        // 触发标题更新事件
+        // 瑙﹀彂鏍囬鏇存柊浜嬩欢
         const event = new CustomEvent('video-title-change', {
           detail: {
             from: this.from,
@@ -4431,7 +4453,7 @@ class VideoWidget extends WidgetType {
         window.dispatchEvent(event);
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        // 取消编辑
+        // 鍙栨秷缂栬緫
         titleInput.value = this.getCleanTitle();
         titleInput.style.display = 'none';
         title.style.display = '';
@@ -4440,12 +4462,12 @@ class VideoWidget extends WidgetType {
     titleInput.addEventListener('keyup', (e) => e.stopPropagation());
     titleInput.addEventListener('keypress', (e) => e.stopPropagation());
     titleInput.addEventListener('blur', () => {
-      // 失焦时保存
-      const newTitle = titleInput.value.trim() || '视频';
+      // 澶辩劍鏃朵繚瀛?
+      const newTitle = titleInput.value.trim() || '瑙嗛';
       title.textContent = newTitle;
       titleInput.style.display = 'none';
       title.style.display = '';
-      // 触发标题更新事件
+      // 瑙﹀彂鏍囬鏇存柊浜嬩欢
       const event = new CustomEvent('video-title-change', {
         detail: {
           from: this.from,
@@ -4465,26 +4487,26 @@ class VideoWidget extends WidgetType {
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'cm-video-toolbar-right';
 
-    // 编辑按钮
+    // 缂栬緫鎸夐挳
     const editBtn = document.createElement('span');
     editBtn.className = 'cm-video-toolbar-btn';
-    editBtn.title = '编辑';
+    editBtn.title = '缂栬緫';
     editBtn.innerHTML = `<svg viewBox="0 0 32 32" width="14" height="14" fill="currentColor"><path d="M2 26h28v2H2z"></path><path d="M25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"></path></svg>`;
     editBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 切换到编辑模式
+      // 鍒囨崲鍒扮紪杈戞ā寮?
       title.style.display = 'none';
       titleInput.style.display = '';
-      titleInput.value = title.textContent || '视频';
+      titleInput.value = title.textContent || '瑙嗛';
       titleInput.focus();
       titleInput.select();
     });
 
-    // 卡片模式按钮
+    // 鍗＄墖妯″紡鎸夐挳
     const cardBtn = document.createElement('span');
     cardBtn.className = `cm-video-toolbar-btn ${this.displayMode === 'card' ? 'active' : ''}`;
-    cardBtn.title = '卡片';
+    cardBtn.title = '鍗＄墖';
     cardBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h18"/><rect width="18" height="12" x="3" y="6" rx="2"/><path d="M3 22h18"/></svg>`;
     cardBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -4492,10 +4514,10 @@ class VideoWidget extends WidgetType {
       this.changeDisplayMode('card');
     });
 
-    // 链接模式按钮
+    // 閾炬帴妯″紡鎸夐挳
     const linkBtn = document.createElement('span');
     linkBtn.className = `cm-video-toolbar-btn ${this.displayMode === 'link' ? 'active' : ''}`;
-    linkBtn.title = '链接';
+    linkBtn.title = '閾炬帴';
     linkBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>`;
     linkBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -4503,10 +4525,10 @@ class VideoWidget extends WidgetType {
       this.changeDisplayMode('link');
     });
 
-    // 视频嵌入模式按钮
+    // 瑙嗛宓屽叆妯″紡鎸夐挳
     const embedBtn = document.createElement('span');
     embedBtn.className = `cm-video-toolbar-btn ${this.displayMode === 'embed' ? 'active' : ''}`;
-    embedBtn.title = '视频';
+    embedBtn.title = '瑙嗛';
     embedBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21.25 13a.75.75 0 0 1 .743.648l.007.102v5a3.25 3.25 0 0 1-3.066 3.245L18.75 22h-4.668c.536-.385.973-.9 1.265-1.499l3.403-.001a1.75 1.75 0 0 0 1.744-1.607l.006-.143v-5a.75.75 0 0 1 .75-.75zm-9.5-4A3.25 3.25 0 0 1 15 12.25v6.5A3.25 3.25 0 0 1 11.75 22h-6.5A3.25 3.25 0 0 1 2 18.75v-6.5A3.25 3.25 0 0 1 5.25 9h6.5zm0 1.5h-6.5a1.75 1.75 0 0 0-1.75 1.75v6.5c0 .966.783 1.75 1.75 1.75h6.5a1.75 1.75 0 0 0 1.75-1.75v-6.5a1.75 1.75 0 0 0-1.75-1.75zM6.06 13.103a.5.5 0 0 1 .596-.236l.082.036l3.956 2.158a.5.5 0 0 1 .075.828l-.075.05l-3.956 2.158a.5.5 0 0 1-.731-.35L6 17.658v-4.315a.5.5 0 0 1 .061-.24zM18.75 2a3.25 3.25 0 0 1 3.245 3.066L22 5.25v5a.75.75 0 0 1-1.493.102l-.007-.102v-5a1.75 1.75 0 0 0-1.607-1.744L18.75 3.5h-5a.75.75 0 0 1-.102-1.493L13.75 2h5zm-8.5 0a.75.75 0 0 1 .102 1.493l-.102.007h-5a1.75 1.75 0 0 0-1.744 1.606L3.5 5.25v3.402c-.6.292-1.115.73-1.5 1.266V5.25a3.25 3.25 0 0 1 3.065-3.245L5.25 2h5z"/></svg>`;
     embedBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -4514,10 +4536,10 @@ class VideoWidget extends WidgetType {
       this.changeDisplayMode('embed');
     });
 
-    // 在浏览器中打开按钮
+    // 鍦ㄦ祻瑙堝櫒涓墦寮€鎸夐挳
     const openBtn = document.createElement('span');
     openBtn.className = 'cm-video-toolbar-btn';
-    openBtn.title = '在浏览器中打开';
+    openBtn.title = '鍦ㄦ祻瑙堝櫒涓墦寮€';
     openBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
     openBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -4525,15 +4547,15 @@ class VideoWidget extends WidgetType {
       window.open(this.videoInfo.originalUrl, '_blank');
     });
 
-    // 更多菜单按钮
+    // 鏇村鑿滃崟鎸夐挳
     const moreBtn = document.createElement('span');
     moreBtn.className = 'cm-video-toolbar-btn';
-    moreBtn.title = '更多';
+    moreBtn.title = '鏇村';
     moreBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`;
     moreBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 显示更多菜单
+      // 鏄剧ず鏇村鑿滃崟
       this.showMoreMenu(moreBtn, wrapper);
     });
 
@@ -4548,9 +4570,9 @@ class VideoWidget extends WidgetType {
 
     wrapper.appendChild(toolbar);
 
-    // 根据显示模式渲染内容
+    // 鏍规嵁鏄剧ず妯″紡娓叉煋鍐呭
     if (this.displayMode === 'embed') {
-      // 本地视频使用 HTML5 video 标签
+      // 鏈湴瑙嗛浣跨敤 HTML5 video 鏍囩
       if (this.videoInfo.platform === 'local') {
         const localContainer = document.createElement('div');
         localContainer.className = 'cm-video-local-player';
@@ -4558,22 +4580,22 @@ class VideoWidget extends WidgetType {
         const video = document.createElement('video');
         video.className = 'cm-video-local-video';
         
-        // 将本地文件路径转换为 local-file:// 协议
+        // 灏嗘湰鍦版枃浠惰矾寰勮浆鎹负 local-file:// 鍗忚
         let videoSrc = this.videoInfo.originalUrl;
-        console.log('[VideoWidget] 本地视频原始路径:', videoSrc);
+        console.log('[VideoWidget] 鏈湴瑙嗛鍘熷璺緞:', videoSrc);
         if (videoSrc.startsWith('file:///')) {
-          // file:/// 转换为 local-file:///
+          // file:/// 杞崲涓?local-file:///
           videoSrc = videoSrc.replace('file:///', 'local-file:///');
         } else if (videoSrc.startsWith('file://')) {
-          // file:// 转换为 local-file://
+          // file:// 杞崲涓?local-file://
           videoSrc = videoSrc.replace('file://', 'local-file://');
         } else if (!videoSrc.startsWith('local-file://')) {
-          // Windows 路径转换: C:\path\to\video.mp4 -> local-file:///C:/path/to/video.mp4
-          // 需要对路径进行 URL 编码（但保留斜杠和冒号）
+          // Windows 璺緞杞崲: C:\path\to\video.mp4 -> local-file:///C:/path/to/video.mp4
+          // 闇€瑕佸璺緞杩涜 URL 缂栫爜锛堜絾淇濈暀鏂滄潬鍜屽啋鍙凤級
           const normalizedPath = videoSrc.replace(/\\/g, '/');
           const parts = normalizedPath.split('/');
           const encodedParts = parts.map((part, index) => {
-            // 第一部分是盘符（如 C:），不编码
+            // 绗竴閮ㄥ垎鏄洏绗︼紙濡?C:锛夛紝涓嶇紪鐮?
             if (index === 0 && /^[A-Za-z]:$/.test(part)) {
               return part;
             }
@@ -4581,66 +4603,66 @@ class VideoWidget extends WidgetType {
           });
           videoSrc = 'local-file:///' + encodedParts.join('/');
         }
-        console.log('[VideoWidget] 本地视频转换后路径:', videoSrc);
+        console.log('[VideoWidget] 鏈湴瑙嗛杞崲鍚庤矾寰?', videoSrc);
         video.src = videoSrc;
         video.controls = true;
         video.preload = 'metadata';
 
-        // 添加错误处理
+        // 娣诲姞閿欒澶勭悊
         video.addEventListener('error', (e) => {
-          console.error('[VideoWidget] 视频加载错误:', e, video.error);
+          console.error('[VideoWidget] 瑙嗛鍔犺浇閿欒:', e, video.error);
         });
 
-        // 阻止事件冒泡
+        // 闃绘浜嬩欢鍐掓场
         video.addEventListener('mousedown', (e) => e.stopPropagation());
         video.addEventListener('click', (e) => e.stopPropagation());
 
         localContainer.appendChild(video);
         wrapper.appendChild(localContainer);
       } else {
-        // 增强型内嵌浏览器
+        // 澧炲己鍨嬪唴宓屾祻瑙堝櫒
         const browserContainer = document.createElement('div');
         browserContainer.className = 'cm-video-browser';
 
-      // 浏览器导航栏
+      // 娴忚鍣ㄥ鑸爮
       const browserNav = document.createElement('div');
       browserNav.className = 'cm-video-browser-nav';
 
-      // 后退按钮
+      // 鍚庨€€鎸夐挳
       const backBtn = document.createElement('span');
       backBtn.className = 'cm-video-browser-btn';
-      backBtn.title = '后退';
+      backBtn.title = '鍚庨€€';
       backBtn.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M5.928 7.976l4.357 4.357-.618.62L5 8.284v-.618L9.667 3l.618.619-4.357 4.357z"/></svg>`;
 
-      // 前进按钮
+      // 鍓嶈繘鎸夐挳
       const forwardBtn = document.createElement('span');
       forwardBtn.className = 'cm-video-browser-btn';
-      forwardBtn.title = '前进';
+      forwardBtn.title = '鍓嶈繘';
       forwardBtn.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/></svg>`;
 
-      // 刷新按钮
+      // 鍒锋柊鎸夐挳
       const refreshBtn = document.createElement('span');
       refreshBtn.className = 'cm-video-browser-btn';
-      refreshBtn.title = '刷新';
+      refreshBtn.title = '鍒锋柊';
       refreshBtn.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M5.56253 2.51577C6.22874 2.18616 6.96524 2 7.74856 2C9.08973 2 10.347 2.54555 11.2554 3.45393C11.6244 3.82283 11.9297 4.25217 12.1575 4.72382L12.1575 3L13.1575 3V6.74856L9.40897 6.74856V5.74856H11.3161C11.1284 5.27466 10.8435 4.84603 10.4839 4.48638C9.78661 3.78908 8.81981 3.35862 7.74856 3.35862C7.14565 3.35862 6.58195 3.50551 6.08841 3.76641L5.56253 2.51577ZM4.34253 10.2516C4.13064 9.77756 4.01561 9.25774 4.01561 8.71143C4.01561 7.64018 4.44607 6.67338 5.14337 5.97609L6.20399 7.03671C5.71713 7.52357 5.42142 8.18538 5.42142 8.91703C5.42142 9.35023 5.51636 9.76027 5.68652 10.1272L4.34253 10.2516ZM8.03663 12.7916C8.6395 12.632 9.19129 12.3302 9.65221 11.9204L10.7128 12.981C10.0466 13.5904 9.23861 14.0316 8.35253 14.2405L8.03663 12.7916ZM4.15743 6L6.84257 6L6.84257 7L4.93542 7C5.123 7.47391 5.40791 7.90253 5.76756 8.26218C6.46485 8.95948 7.43165 9.38994 8.5029 9.38994C9.10581 9.38994 9.66951 9.24305 10.1631 8.98215L10.6889 10.2328C10.0227 10.5624 9.28622 10.7486 8.5029 10.7486C7.16173 10.7486 5.90447 10.203 4.99609 9.29467C4.62719 8.92577 4.32189 8.49643 4.09412 8.02478L4.09411 9.74856L3.09411 9.74856L3.09412 6L4.15743 6Z"/></svg>`;
 
-      // 地址栏
+      // 鍦板潃鏍?
       const addressBar = document.createElement('input');
       addressBar.className = 'cm-video-browser-address';
       addressBar.type = 'text';
       addressBar.value = this.videoInfo.originalUrl;
       addressBar.spellcheck = false;
 
-      // 阻止地址栏鼠标事件冒泡，防止触发编辑器选择
+      // 闃绘鍦板潃鏍忛紶鏍囦簨浠跺啋娉★紝闃叉瑙﹀彂缂栬緫鍣ㄩ€夋嫨
       addressBar.addEventListener('mousedown', (e) => e.stopPropagation());
       addressBar.addEventListener('mouseup', (e) => e.stopPropagation());
       addressBar.addEventListener('click', (e) => e.stopPropagation());
       addressBar.addEventListener('dblclick', (e) => e.stopPropagation());
 
-      // 阻止键盘事件冒泡，防止 CodeMirror 拦截快捷键
+      // 闃绘閿洏浜嬩欢鍐掓场锛岄槻姝?CodeMirror 鎷︽埅蹇嵎閿?
       addressBar.addEventListener('keydown', (e) => {
         e.stopPropagation();
-        // 回车跳转
+        // 鍥炶溅璺宠浆
         if (e.key === 'Enter') {
           e.preventDefault();
           let url = addressBar.value.trim();
@@ -4658,10 +4680,10 @@ class VideoWidget extends WidgetType {
       addressBar.addEventListener('keyup', (e) => e.stopPropagation());
       addressBar.addEventListener('keypress', (e) => e.stopPropagation());
 
-      // 在外部浏览器打开
+      // 鍦ㄥ閮ㄦ祻瑙堝櫒鎵撳紑
       const externalBtn = document.createElement('span');
       externalBtn.className = 'cm-video-browser-btn';
-      externalBtn.title = '在浏览器中打开';
+      externalBtn.title = '鍦ㄦ祻瑙堝櫒涓墦寮€';
       externalBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
 
       browserNav.appendChild(backBtn);
@@ -4670,14 +4692,14 @@ class VideoWidget extends WidgetType {
       browserNav.appendChild(addressBar);
       browserNav.appendChild(externalBtn);
 
-      // 加载进度条
+      // 鍔犺浇杩涘害鏉?
       const progressBar = document.createElement('div');
       progressBar.className = 'cm-video-browser-progress';
       const progressInner = document.createElement('div');
       progressInner.className = 'cm-video-browser-progress-inner';
       progressBar.appendChild(progressInner);
 
-      // Webview 容器
+      // Webview 瀹瑰櫒
       const webviewContainer = document.createElement('div');
       webviewContainer.className = 'cm-video-browser-content';
 
@@ -4687,7 +4709,7 @@ class VideoWidget extends WidgetType {
       webview.setAttribute('allowpopups', 'true');
       webview.setAttribute('partition', 'persist:video');
 
-      // 绑定导航事件
+      // 缁戝畾瀵艰埅浜嬩欢
       webview.addEventListener('did-start-loading', () => {
         progressBar.classList.add('loading');
       });
@@ -4710,7 +4732,7 @@ class VideoWidget extends WidgetType {
         }
       });
 
-      // 绑定按钮事件
+      // 缁戝畾鎸夐挳浜嬩欢
       backBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -4757,7 +4779,7 @@ class VideoWidget extends WidgetType {
       wrapper.appendChild(browserContainer);
       }
     } else if (this.displayMode === 'card') {
-      // 卡片模式 - 显示缩略图和信息
+      // 鍗＄墖妯″紡 - 鏄剧ず缂╃暐鍥惧拰淇℃伅
       const cardContainer = document.createElement('div');
       cardContainer.className = 'cm-video-card';
       cardContainer.addEventListener('click', () => {
@@ -4785,9 +4807,9 @@ class VideoWidget extends WidgetType {
       cardContainer.appendChild(cardInfo);
       wrapper.appendChild(cardContainer);
     }
-    // link 模式不显示额外内容，只显示工具栏
+    // link 妯″紡涓嶆樉绀洪澶栧唴瀹癸紝鍙樉绀哄伐鍏锋爮
 
-    // 存入缓存
+    // 瀛樺叆缂撳瓨
     this.domElement = wrapper;
     videoWidgetDomCache.set(this, wrapper);
 
@@ -4795,23 +4817,23 @@ class VideoWidget extends WidgetType {
   }
 
   private showMoreMenu(anchorEl: HTMLElement, wrapperEl: HTMLElement): void {
-    // 移除已存在的菜单
+    // 绉婚櫎宸插瓨鍦ㄧ殑鑿滃崟
     const existingMenu = document.querySelector('.cm-video-more-menu');
     if (existingMenu) {
       existingMenu.remove();
     }
 
-    // 创建菜单
+    // 鍒涘缓鑿滃崟
     const menu = document.createElement('div');
     menu.className = 'cm-video-more-menu';
 
     const menuItems = [
-      { label: '本地视频', action: 'local-video' },
-      { label: '在浏览器中打开', action: 'open-external' },
-      { label: '拷贝原始链接', action: 'copy-url' },
-      { label: '拷贝区块链接', action: 'copy-block' },
-      { label: '移动到...', action: 'move-to' },
-      { label: '删除', action: 'delete', danger: true },
+      { label: '鏈湴瑙嗛', action: 'local-video' },
+      { label: '鍦ㄦ祻瑙堝櫒涓墦寮€', action: 'open-external' },
+      { label: '鎷疯礉鍘熷閾炬帴', action: 'copy-url' },
+      { label: '鎷疯礉鍖哄潡閾炬帴', action: 'copy-block' },
+      { label: '绉诲姩鍒?..', action: 'move-to' },
+      { label: '鍒犻櫎', action: 'delete', danger: true },
     ];
 
     menuItems.forEach(item => {
@@ -4827,24 +4849,24 @@ class VideoWidget extends WidgetType {
       menu.appendChild(menuItem);
     });
 
-    // 先添加到 DOM 以获取菜单高度
+    // 鍏堟坊鍔犲埌 DOM 浠ヨ幏鍙栬彍鍗曢珮搴?
     menu.style.position = 'fixed';
     menu.style.visibility = 'hidden';
     document.body.appendChild(menu);
 
-    // 定位菜单
+    // 瀹氫綅鑿滃崟
     const rect = anchorEl.getBoundingClientRect();
     const menuHeight = menu.offsetHeight;
     const viewportHeight = window.innerHeight;
 
-    // 检查是否会超出底部
+    // 妫€鏌ユ槸鍚︿細瓒呭嚭搴曢儴
     let top = rect.bottom + 4;
     if (top + menuHeight > viewportHeight - 10) {
-      // 向上显示
+      // 鍚戜笂鏄剧ず
       top = rect.top - menuHeight - 4;
     }
 
-    // 检查左侧位置
+    // 妫€鏌ュ乏渚т綅缃?
     let left = rect.right - 140;
     if (left < 10) {
       left = 10;
@@ -4854,7 +4876,7 @@ class VideoWidget extends WidgetType {
     menu.style.left = `${left}px`;
     menu.style.visibility = 'visible';
 
-    // 点击外部关闭菜单
+    // 鐐瑰嚮澶栭儴鍏抽棴鑿滃崟
     const closeMenu = (e: MouseEvent) => {
       if (!menu.contains(e.target as Node)) {
         menu.remove();
@@ -4869,7 +4891,7 @@ class VideoWidget extends WidgetType {
   private handleMenuAction(action: string): void {
     switch (action) {
       case 'local-video':
-        // 触发本地视频选择事件
+        // 瑙﹀彂鏈湴瑙嗛閫夋嫨浜嬩欢
         window.dispatchEvent(new CustomEvent('video-select-local', {
           detail: { from: this.from, to: this.to, title: this.getCleanTitle() },
         }));
@@ -4884,13 +4906,13 @@ class VideoWidget extends WidgetType {
         navigator.clipboard.writeText(this.originalMatch);
         break;
       case 'move-to':
-        // 触发移动事件
+        // 瑙﹀彂绉诲姩浜嬩欢
         window.dispatchEvent(new CustomEvent('video-move-to', {
           detail: { from: this.from, to: this.to, content: this.originalMatch },
         }));
         break;
       case 'delete':
-        // 触发删除事件
+        // 瑙﹀彂鍒犻櫎浜嬩欢
         window.dispatchEvent(new CustomEvent('video-delete', {
           detail: { from: this.from, to: this.to },
         }));
@@ -4899,7 +4921,7 @@ class VideoWidget extends WidgetType {
   }
 
   private changeDisplayMode(mode: 'embed' | 'card' | 'link'): void {
-    // 通过自定义事件通知编辑器更新文档
+    // 閫氳繃鑷畾涔変簨浠堕€氱煡缂栬緫鍣ㄦ洿鏂版枃妗?
     const event = new CustomEvent('video-display-mode-change', {
       detail: {
         from: this.from,
@@ -4917,18 +4939,18 @@ class VideoWidget extends WidgetType {
       case 'bilibili': return 'B站';
       case 'youtube': return 'YouTube';
       case 'youku': return '优酷';
-      case 'qq': return '腾讯';
+      case 'qq': return '腾讯视频';
       case 'iqiyi': return '爱奇艺';
-      case 'xigua': return '西瓜';
-      case 'douyin': return '抖音';
-      case 'local': return '本地';
-      case 'other': return '网页';
-      default: return '视频';
+      case 'xigua': return '西瓜视频';
+      case 'douyin': return '鎶栭煶';
+      case 'local': return '鏈湴';
+      case 'other': return '缃戦〉';
+      default: return '瑙嗛';
     }
   }
 
   eq(other: VideoWidget): boolean {
-    // 只比较视频内容，不比较位置，避免文档变化时重建 widget
+    // 鍙瘮杈冭棰戝唴瀹癸紝涓嶆瘮杈冧綅缃紝閬垮厤鏂囨。鍙樺寲鏃堕噸寤?widget
     return (
       other.videoInfo.originalUrl === this.videoInfo.originalUrl &&
       other.displayMode === this.displayMode
@@ -4941,14 +4963,14 @@ class VideoWidget extends WidgetType {
 }
 
 /**
- * 解析文档中的视频语法并创建装饰器
- * 视频语法: ![视频](视频链接)
- * 只有当链接是支持的视频平台时才渲染为视频播放器
+ * 瑙ｆ瀽鏂囨。涓殑瑙嗛璇硶骞跺垱寤鸿楗板櫒
+ * 瑙嗛璇硶: ![瑙嗛](瑙嗛閾炬帴)
+ * 鍙湁褰撻摼鎺ユ槸鏀寔鐨勮棰戝钩鍙版椂鎵嶆覆鏌撲负瑙嗛鎾斁鍣?
  */
 function parseVideos(doc: string): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
-  // 匹配 Markdown 图片语法，支持 http/https 链接和本地文件路径
-  // 本地路径格式: C:\path\to\file.mp4 或 file:///path/to/file.mp4
+  // 鍖归厤 Markdown 鍥剧墖璇硶锛屾敮鎸?http/https 閾炬帴鍜屾湰鍦版枃浠惰矾寰?
+  // 鏈湴璺緞鏍煎紡: C:\path\to\file.mp4 鎴?file:///path/to/file.mp4
   const videoRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   let match;
 
@@ -4958,7 +4980,7 @@ function parseVideos(doc: string): DecorationSet {
     const from = match.index;
     const to = from + match[0].length;
 
-    // 尝试解析为视频链接
+    // 灏濊瘯瑙ｆ瀽涓鸿棰戦摼鎺?
     const videoInfo = parseVideoUrl(url);
     if (videoInfo) {
       decorations.push({
@@ -4971,14 +4993,14 @@ function parseVideos(doc: string): DecorationSet {
     }
   }
 
-  // 按位置排序
+  // 鎸変綅缃帓搴?
   decorations.sort((a, b) => a.from - b.from);
 
   return RangeSet.of(decorations.map(d => d.decoration.range(d.from, d.to)));
 }
 
 /**
- * 提取文档中所有视频链接的签名（用于比较是否需要重新解析）
+ * 鎻愬彇鏂囨。涓墍鏈夎棰戦摼鎺ョ殑绛惧悕锛堢敤浜庢瘮杈冩槸鍚﹂渶瑕侀噸鏂拌В鏋愶級
  */
 function getVideoSignature(doc: string): string {
   const videoRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -4995,8 +5017,8 @@ function getVideoSignature(doc: string): string {
 }
 
 /**
- * 视频装饰器 StateField
- * 优化：只在视频内容变化时才重新解析，避免频繁重建 webview
+ * 瑙嗛瑁呴グ鍣?StateField
+ * 浼樺寲锛氬彧鍦ㄨ棰戝唴瀹瑰彉鍖栨椂鎵嶉噸鏂拌В鏋愶紝閬垮厤棰戠箒閲嶅缓 webview
  */
 const videoDecorations = StateField.define<{ decorations: DecorationSet; signature: string }>({
   create(state) {
@@ -5007,7 +5029,7 @@ const videoDecorations = StateField.define<{ decorations: DecorationSet; signatu
     };
   },
   update(value, tr) {
-    // 如果文档没有变化，直接返回原值
+    // 濡傛灉鏂囨。娌℃湁鍙樺寲锛岀洿鎺ヨ繑鍥炲師鍊?
     if (!tr.docChanged) {
       return value;
     }
@@ -5015,7 +5037,7 @@ const videoDecorations = StateField.define<{ decorations: DecorationSet; signatu
     const newDoc = tr.newDoc.toString();
     const newSignature = getVideoSignature(newDoc);
 
-    // 只有视频内容变化时才重新解析
+    // 鍙湁瑙嗛鍐呭鍙樺寲鏃舵墠閲嶆柊瑙ｆ瀽
     if (newSignature !== value.signature) {
       return {
         decorations: parseVideos(newDoc),
@@ -5023,8 +5045,8 @@ const videoDecorations = StateField.define<{ decorations: DecorationSet; signatu
       };
     }
 
-    // 视频内容未变化，尝试映射位置
-    // 如果映射失败（装饰器数量为0但签名不为空），重新解析
+    // 瑙嗛鍐呭鏈彉鍖栵紝灏濊瘯鏄犲皠浣嶇疆
+    // 濡傛灉鏄犲皠澶辫触锛堣楗板櫒鏁伴噺涓?浣嗙鍚嶄笉涓虹┖锛夛紝閲嶆柊瑙ｆ瀽
     const mappedDecorations = value.decorations.map(tr.changes);
     if (mappedDecorations.size === 0 && newSignature !== '') {
       return {
@@ -5042,11 +5064,11 @@ const videoDecorations = StateField.define<{ decorations: DecorationSet; signatu
 });
 
 // ============================================================================
-// Markdown 表格渲染系统
+// Markdown 琛ㄦ牸娓叉煋绯荤粺
 // ============================================================================
 
 /**
- * 表格数据结构
+ * 琛ㄦ牸鏁版嵁缁撴瀯
  */
 interface TableData {
   headers: string[];
@@ -5057,7 +5079,7 @@ interface TableData {
 }
 
 /**
- * 解析 Markdown 表格
+ * 瑙ｆ瀽 Markdown 琛ㄦ牸
  */
 function parseMarkdownTable(doc: string): TableData[] {
   const tables: TableData[] = [];
@@ -5069,57 +5091,57 @@ function parseMarkdownTable(doc: string): TableData[] {
     const line = lines[i];
     const lineStart = position;
 
-    // 检测表格头部行（包含 | 的行）
+    // 妫€娴嬭〃鏍煎ご閮ㄨ锛堝寘鍚?| 鐨勮锛?
     if (line.includes('|') && i + 1 < lines.length) {
       const nextLine = lines[i + 1];
       
-      // 检测分隔行（包含 --- 和 |）
+      // 妫€娴嬪垎闅旇锛堝寘鍚?--- 鍜?|锛?
       if (/^\|?\s*:?-+:?\s*\|/.test(nextLine) || /\|\s*:?-+:?\s*\|?$/.test(nextLine)) {
-        // 解析表头
+        // 瑙ｆ瀽琛ㄥご
         const headers = parseTableRow(line);
         
         if (headers.length > 0) {
-          // 解析对齐方式
+          // 瑙ｆ瀽瀵归綈鏂瑰紡
           const alignments = parseAlignments(nextLine, headers.length);
           
-          // 解析数据行
+          // 瑙ｆ瀽鏁版嵁琛?
           const rows: string[][] = [];
           let j = i + 2;
-          // 计算表格结束位置（包含表头行和分隔行及其换行符）
+          // 璁＄畻琛ㄦ牸缁撴潫浣嶇疆锛堝寘鍚〃澶磋鍜屽垎闅旇鍙婂叾鎹㈣绗︼級
           let lastLineEnd = lineStart + line.length + 1 + nextLine.length;
           
           while (j < lines.length) {
             const dataLine = lines[j];
             
-            // 检测是否是新表格的开始（下一行是分隔行）
+            // 妫€娴嬫槸鍚︽槸鏂拌〃鏍肩殑寮€濮嬶紙涓嬩竴琛屾槸鍒嗛殧琛岋級
             if (j + 1 < lines.length) {
               const potentialSeparator = lines[j + 1];
               if (/^\|?\s*:?-+:?\s*\|/.test(potentialSeparator) || /\|\s*:?-+:?\s*\|?$/.test(potentialSeparator)) {
-                // 这是新表格的表头，结束当前表格
+                // 杩欐槸鏂拌〃鏍肩殑琛ㄥご锛岀粨鏉熷綋鍓嶈〃鏍?
                 break;
               }
             }
             
-            // 检测是否还是表格行（必须包含 | 且不是空行）
+            // 妫€娴嬫槸鍚﹁繕鏄〃鏍艰锛堝繀椤诲寘鍚?| 涓斾笉鏄┖琛岋級
             if (!dataLine.includes('|') || dataLine.trim() === '') {
               break;
             }
             const rowData = parseTableRow(dataLine);
-            // 如果解析出的数据为空，跳过（但允许所有单元格为空字符串的行）
+            // 濡傛灉瑙ｆ瀽鍑虹殑鏁版嵁涓虹┖锛岃烦杩囷紙浣嗗厑璁告墍鏈夊崟鍏冩牸涓虹┖瀛楃涓茬殑琛岋級
             if (rowData.length === 0) {
               break;
             }
-            // 确保行数据与表头列数一致
+            // 纭繚琛屾暟鎹笌琛ㄥご鍒楁暟涓€鑷?
             while (rowData.length < headers.length) {
               rowData.push('');
             }
             rows.push(rowData.slice(0, headers.length));
-            // 更新最后一行的结束位置（加上前一行的换行符和当前行的长度）
+            // 鏇存柊鏈€鍚庝竴琛岀殑缁撴潫浣嶇疆锛堝姞涓婂墠涓€琛岀殑鎹㈣绗﹀拰褰撳墠琛岀殑闀垮害锛?
             lastLineEnd += 1 + dataLine.length;
             j++;
           }
           
-          // 添加表格（允许没有数据行的表格）
+          // 娣诲姞琛ㄦ牸锛堝厑璁告病鏈夋暟鎹鐨勮〃鏍硷級
           tables.push({
             headers,
             alignments,
@@ -5128,7 +5150,7 @@ function parseMarkdownTable(doc: string): TableData[] {
             to: lastLineEnd,
           });
           
-          // 跳过已处理的行
+          // 璺宠繃宸插鐞嗙殑琛?
           position = lastLineEnd + (j < lines.length ? 1 : 0);
           i = j;
           continue;
@@ -5144,10 +5166,10 @@ function parseMarkdownTable(doc: string): TableData[] {
 }
 
 /**
- * 解析表格行
+ * 瑙ｆ瀽琛ㄦ牸琛?
  */
 function parseTableRow(line: string): string[] {
-  // 移除首尾的 |
+  // 绉婚櫎棣栧熬鐨?|
   let trimmed = line.trim();
   if (trimmed.startsWith('|')) {
     trimmed = trimmed.slice(1);
@@ -5156,12 +5178,12 @@ function parseTableRow(line: string): string[] {
     trimmed = trimmed.slice(0, -1);
   }
   
-  // 按 | 分割并清理空格
+  // 鎸?| 鍒嗗壊骞舵竻鐞嗙┖鏍?
   return trimmed.split('|').map(cell => cell.trim());
 }
 
 /**
- * 解析对齐方式
+ * 瑙ｆ瀽瀵归綈鏂瑰紡
  */
 function parseAlignments(line: string, columnCount: number): ('left' | 'center' | 'right')[] {
   const alignments: ('left' | 'center' | 'right')[] = [];
@@ -5184,7 +5206,7 @@ function parseAlignments(line: string, columnCount: number): ('left' | 'center' 
 }
 
 /**
- * 表格 Widget 类 - 用于在编辑器中渲染可视化表格
+ * 琛ㄦ牸 Widget 绫?- 鐢ㄤ簬鍦ㄧ紪杈戝櫒涓覆鏌撳彲瑙嗗寲琛ㄦ牸
  */
 class TableWidget extends WidgetType {
   constructor(
@@ -5197,27 +5219,27 @@ class TableWidget extends WidgetType {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-table-widget';
     
-    // 创建工具栏
+    // 鍒涘缓宸ュ叿鏍?
     const toolbar = document.createElement('div');
     toolbar.className = 'cm-table-toolbar';
     
-    // 左侧：数据库名称和添加按钮
+    // 宸︿晶锛氭暟鎹簱鍚嶇О鍜屾坊鍔犳寜閽?
     const toolbarLeft = document.createElement('div');
     toolbarLeft.className = 'cm-table-toolbar-left';
     
     const tableName = document.createElement('span');
     tableName.className = 'cm-table-name';
-    tableName.textContent = '数据表';
+    tableName.textContent = '数据库';
     toolbarLeft.appendChild(tableName);
     
     const addBtn = document.createElement('span');
     addBtn.className = 'cm-table-toolbar-btn';
-    addBtn.title = '添加新表格';
+    addBtn.title = '新增列';
     addBtn.textContent = '+';
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // 在当前表格后插入新表格模板
-      const newTableTemplate = '\n\n| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n';
+      // 鍦ㄥ綋鍓嶈〃鏍煎悗鎻掑叆鏂拌〃鏍兼ā鏉?
+      const newTableTemplate = '\n\n| 鍒?1 | 鍒?2 |\n| --- | --- |\n|  |  |\n';
       view.dispatch({
         changes: { from: this.tableData.to, insert: newTableTemplate },
       });
@@ -5226,7 +5248,7 @@ class TableWidget extends WidgetType {
     
     toolbar.appendChild(toolbarLeft);
     
-    // 右侧：筛选、排序、窗口显示、删除
+    // 鍙充晶锛氱瓫閫夈€佹帓搴忋€佺獥鍙ｆ樉绀恒€佸垹闄?
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'cm-table-toolbar-right';
     
@@ -5236,41 +5258,41 @@ class TableWidget extends WidgetType {
     filterBtn.textContent = '筛选';
     filterBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 实现筛选功能
+      // TODO: 瀹炵幇绛涢€夊姛鑳?
     });
     toolbarRight.appendChild(filterBtn);
     
     const sortBtn = document.createElement('span');
     sortBtn.className = 'cm-table-toolbar-btn';
-    sortBtn.title = '排序';
-    sortBtn.textContent = '排序';
+    sortBtn.title = '鎺掑簭';
+    sortBtn.textContent = '鎺掑簭';
     sortBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 实现排序功能
+      // TODO: 瀹炵幇鎺掑簭鍔熻兘
     });
     toolbarRight.appendChild(sortBtn);
     
     const expandBtn = document.createElement('span');
     expandBtn.className = 'cm-table-toolbar-btn';
-    expandBtn.title = '窗口显示';
-    expandBtn.textContent = '窗口';
+    expandBtn.title = '绐楀彛鏄剧ず';
+    expandBtn.textContent = '绐楀彛';
     expandBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 实现窗口显示功能
+      // TODO: 瀹炵幇绐楀彛鏄剧ず鍔熻兘
     });
     toolbarRight.appendChild(expandBtn);
     
     const deleteBtn = document.createElement('span');
     deleteBtn.className = 'cm-table-toolbar-btn cm-table-toolbar-btn-danger';
-    deleteBtn.title = '删除表格';
-    deleteBtn.textContent = '删除';
+    deleteBtn.title = '鍒犻櫎琛ㄦ牸';
+    deleteBtn.textContent = '鍒犻櫎';
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // 删除表格（包括前后可能的空行）
+      // 鍒犻櫎琛ㄦ牸锛堝寘鎷墠鍚庡彲鑳界殑绌鸿锛?
       let deleteFrom = this.tableData.from;
       let deleteTo = this.tableData.to;
       
-      // 检查表格后是否有换行符，一并删除
+      // 妫€鏌ヨ〃鏍煎悗鏄惁鏈夋崲琛岀锛屼竴骞跺垹闄?
       const docLength = view.state.doc.length;
       if (deleteTo < docLength) {
         const afterChar = view.state.doc.sliceString(deleteTo, deleteTo + 1);
@@ -5288,14 +5310,14 @@ class TableWidget extends WidgetType {
     toolbar.appendChild(toolbarRight);
     wrapper.appendChild(toolbar);
     
-    // 创建滚动容器
+    // 鍒涘缓婊氬姩瀹瑰櫒
     const scrollContainer = document.createElement('div');
     scrollContainer.className = 'cm-table-scroll-container';
     
     const table = document.createElement('table');
     table.className = 'cm-markdown-table';
     
-    // 创建表头
+    // 鍒涘缓琛ㄥご
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     
@@ -5309,10 +5331,10 @@ class TableWidget extends WidgetType {
     thead.appendChild(headerRow);
     table.appendChild(thead);
     
-    // 创建表体
+    // 鍒涘缓琛ㄤ綋
     const tbody = document.createElement('tbody');
     
-    console.log('[TableWidget] 渲染数据行:', this.tableData.rows);
+    console.log('[TableWidget] 娓叉煋鏁版嵁琛?', this.tableData.rows);
     
     this.tableData.rows.forEach((row) => {
       const tr = document.createElement('tr');
@@ -5331,7 +5353,7 @@ class TableWidget extends WidgetType {
     scrollContainer.appendChild(table);
     wrapper.appendChild(scrollContainer);
     
-    // 点击表格时跳转到源码位置
+    // 鐐瑰嚮琛ㄦ牸鏃惰烦杞埌婧愮爜浣嶇疆
     wrapper.addEventListener('click', () => {
       view.dispatch({
         selection: { anchor: this.tableData.from },
@@ -5357,13 +5379,13 @@ class TableWidget extends WidgetType {
 }
 
 /**
- * 解析文档中的表格并创建装饰器
+ * 瑙ｆ瀽鏂囨。涓殑琛ㄦ牸骞跺垱寤鸿楗板櫒
  */
 function parseTableDecorations(doc: string): DecorationSet {
   const tables = parseMarkdownTable(doc);
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
 
-  console.log('[parseTableDecorations] 解析到的表格:', tables.map(t => ({
+  console.log('[parseTableDecorations] 瑙ｆ瀽鍒扮殑琛ㄦ牸:', tables.map(t => ({
     headers: t.headers,
     rows: t.rows,
     from: t.from,
@@ -5381,14 +5403,14 @@ function parseTableDecorations(doc: string): DecorationSet {
     });
   }
 
-  // 按位置排序
+  // 鎸変綅缃帓搴?
   decorations.sort((a, b) => a.from - b.from);
 
   return RangeSet.of(decorations.map(d => d.decoration.range(d.from, d.to)));
 }
 
 /**
- * 表格装饰器 StateField
+ * 琛ㄦ牸瑁呴グ鍣?StateField
  */
 const tableDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -5404,7 +5426,7 @@ const tableDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 解析文档中的标题并创建行装饰器
+ * 瑙ｆ瀽鏂囨。涓殑鏍囬骞跺垱寤鸿瑁呴グ鍣?
  */
 function parseHeadings(state: EditorState): DecorationSet {
   const decorations: { from: number; decoration: Decoration }[] = [];
@@ -5431,7 +5453,7 @@ function parseHeadings(state: EditorState): DecorationSet {
 }
 
 /**
- * 标题装饰器 StateField - 为标题行添加不同的字体大小
+ * 鏍囬瑁呴グ鍣?StateField - 涓烘爣棰樿娣诲姞涓嶅悓鐨勫瓧浣撳ぇ灏?
  */
 const headingDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -5447,7 +5469,7 @@ const headingDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 无序列表圆点 Widget - 将 - * + 替换为圆点图标
+ * 鏃犲簭鍒楄〃鍦嗙偣 Widget - 灏?- * + 鏇挎崲涓哄渾鐐瑰浘鏍?
  */
 class BulletWidget extends WidgetType {
   constructor(readonly indent: number) {
@@ -5471,39 +5493,39 @@ class BulletWidget extends WidgetType {
 }
 
 /**
- * 解析无序列表并创建装饰器
- * 将 - * + 替换为圆点图标
+ * 瑙ｆ瀽鏃犲簭鍒楄〃骞跺垱寤鸿楗板櫒
+ * 灏?- * + 鏇挎崲涓哄渾鐐瑰浘鏍?
  */
 function parseUnorderedList(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
   const doc = state.doc;
   
-  // 获取当前光标所在行
+  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
   const cursorLine = state.selection.main.head;
   const currentLineNumber = doc.lineAt(cursorLine).number;
   
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
-    // 匹配无序列表标记：- * + （前面可以有缩进空格）
+    // 鍖归厤鏃犲簭鍒楄〃鏍囪锛? * + 锛堝墠闈㈠彲浠ユ湁缂╄繘绌烘牸锛?
     const match = line.text.match(/^(\s*)([-*+])\s/);
     if (match) {
-      // 跳过待办清单（- [ ] 或 - [x]）- 在检查光标位置之前先检查
-      // 匹配格式：可选缩进 + 列表标记 + 空格 + [ ] 或 [x]（后面可以有空格或到行尾）
+      // 璺宠繃寰呭姙娓呭崟锛? [ ] 鎴?- [x]锛? 鍦ㄦ鏌ュ厜鏍囦綅缃箣鍓嶅厛妫€鏌?
+      // 鍖归厤鏍煎紡锛氬彲閫夌缉杩?+ 鍒楄〃鏍囪 + 绌烘牸 + [ ] 鎴?[x]锛堝悗闈㈠彲浠ユ湁绌烘牸鎴栧埌琛屽熬锛?
       const isTodo = /^[\t ]*[-*+]\s\[[ xX]\](\s|$)/.test(line.text);
       if (isTodo) {
         continue;
       }
       
-      // 如果光标在当前行，不替换标记
+      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屼笉鏇挎崲鏍囪
       if (i === currentLineNumber) {
         continue;
       }
       
       const indent = match[1].length;
       const markerStart = line.from + indent;
-      const markerEnd = markerStart + 1; // 只替换 - * + 符号
+      const markerEnd = markerStart + 1; // 鍙浛鎹?- * + 绗﹀彿
       
-      // 隐藏原始标记
+      // 闅愯棌鍘熷鏍囪
       decorations.push({
         from: markerStart,
         to: markerEnd,
@@ -5521,39 +5543,39 @@ function parseUnorderedList(state: EditorState): DecorationSet {
 }
 
 /**
- * 解析粗体文本并创建装饰器
- * 匹配 **text** 或 __text__ 格式
+ * 瑙ｆ瀽绮椾綋鏂囨湰骞跺垱寤鸿楗板櫒
+ * 鍖归厤 **text** 鎴?__text__ 鏍煎紡
  */
 function parseBoldText(state: EditorState): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
 
-  // 获取当前光标所在行
+  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
   const cursorLine = doc.lineAt(state.selection.main.head).number;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text;
 
-    // 匹配 **text** 或 __text__
+    // 鍖归厤 **text** 鎴?__text__
     const boldRegex = /(\*\*|__)([^*_]+)\1/g;
     let match;
 
     while ((match = boldRegex.exec(text)) !== null) {
       const from = line.from + match.index;
       const to = from + match[0].length;
-      const markerLength = match[1].length; // ** 或 __
+      const markerLength = match[1].length; // ** 鎴?__
       const contentFrom = from + markerLength;
       const contentTo = to - markerLength;
 
-      // 如果光标在当前行，显示原始语法
+      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屾樉绀哄師濮嬭娉?
       if (i === cursorLine) {
-        // 只为内容添加粗体样式，不隐藏标记
+        // 鍙负鍐呭娣诲姞绮椾綋鏍峰紡锛屼笉闅愯棌鏍囪
         decorations.push(
           Decoration.mark({ class: 'cm-strong' }).range(contentFrom, contentTo)
         );
       } else {
-        // 隐藏前后的 ** 或 __
+        // 闅愯棌鍓嶅悗鐨?** 鎴?__
         decorations.push(
           Decoration.mark({ class: 'cm-hidden-syntax' }).range(from, contentFrom)
         );
@@ -5571,7 +5593,7 @@ function parseBoldText(state: EditorState): DecorationSet {
 }
 
 /**
- * 粗体装饰器 StateField
+ * 绮椾綋瑁呴グ鍣?StateField
  */
 const boldDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -5587,22 +5609,22 @@ const boldDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 解析斜体文本并创建装饰器
- * 匹配 *text* 或 _text_ 格式（但不匹配 ** 或 __）
+ * 瑙ｆ瀽鏂滀綋鏂囨湰骞跺垱寤鸿楗板櫒
+ * 鍖归厤 *text* 鎴?_text_ 鏍煎紡锛堜絾涓嶅尮閰?** 鎴?__锛?
  */
 function parseItalicText(state: EditorState): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
 
-  // 获取当前光标所在行
+  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
   const cursorLine = doc.lineAt(state.selection.main.head).number;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text;
 
-    // 匹配 *text* 或 _text_（但不匹配 ** 或 __）
-    // 使用负向前瞻和负向后瞻确保不匹配粗体
+    // 鍖归厤 *text* 鎴?_text_锛堜絾涓嶅尮閰?** 鎴?__锛?
+    // 浣跨敤璐熷悜鍓嶇灮鍜岃礋鍚戝悗鐬荤‘淇濅笉鍖归厤绮椾綋
     const italicRegex = /(?<!\*)\*(?!\*)([^*]+)\*(?!\*)|(?<!_)_(?!_)([^_]+)_(?!_)/g;
     let match;
 
@@ -5613,13 +5635,13 @@ function parseItalicText(state: EditorState): DecorationSet {
       const contentFrom = from + 1;
       const contentTo = to - 1;
 
-      // 如果光标在当前行，显示原始语法
+      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屾樉绀哄師濮嬭娉?
       if (i === cursorLine) {
         decorations.push(
           Decoration.mark({ class: 'cm-em' }).range(contentFrom, contentTo)
         );
       } else {
-        // 隐藏前后的 * 或 _
+        // 闅愯棌鍓嶅悗鐨?* 鎴?_
         decorations.push(
           Decoration.mark({ class: 'cm-hidden-syntax' }).range(from, contentFrom)
         );
@@ -5637,7 +5659,7 @@ function parseItalicText(state: EditorState): DecorationSet {
 }
 
 /**
- * 斜体装饰器 StateField
+ * 鏂滀綋瑁呴グ鍣?StateField
  */
 const italicDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -5653,14 +5675,14 @@ const italicDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 无序列表装饰器 StateField - 将 - * + 替换为圆点
+ * 鏃犲簭鍒楄〃瑁呴グ鍣?StateField - 灏?- * + 鏇挎崲涓哄渾鐐?
  */
 const unorderedListDecorations = StateField.define<DecorationSet>({
   create(state) {
     return parseUnorderedList(state);
   },
   update(decorations, tr) {
-    // 文档变化或光标位置变化时都需要更新
+    // 鏂囨。鍙樺寲鎴栧厜鏍囦綅缃彉鍖栨椂閮介渶瑕佹洿鏂?
     if (tr.docChanged || tr.selection) {
       return parseUnorderedList(tr.state);
     }
@@ -5670,7 +5692,7 @@ const unorderedListDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 待办清单复选框 Widget - 将 [ ] 或 [x] 替换为可点击的复选框
+ * 寰呭姙娓呭崟澶嶉€夋 Widget - 灏?[ ] 鎴?[x] 鏇挎崲涓哄彲鐐瑰嚮鐨勫閫夋
  */
 class CheckboxWidget extends WidgetType {
   constructor(
@@ -5688,17 +5710,17 @@ class CheckboxWidget extends WidgetType {
     checkbox.setAttribute('role', 'checkbox');
     checkbox.setAttribute('aria-checked', this.checked ? 'true' : 'false');
     
-    // 点击切换状态
+    // 鐐瑰嚮鍒囨崲鐘舵€?
     checkbox.addEventListener('mousedown', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 替换时保留后面的空格
+      // 鏇挎崲鏃朵繚鐣欏悗闈㈢殑绌烘牸
       const newText = this.checked ? '[ ] ' : '[x] ';
-      // 保存当前选择位置
+      // 淇濆瓨褰撳墠閫夋嫨浣嶇疆
       const currentSelection = this.view.state.selection;
       this.view.dispatch({
         changes: { from: this.pos, to: this.pos + this.length, insert: newText },
-        // 恢复原来的选择位置
+        // 鎭㈠鍘熸潵鐨勯€夋嫨浣嶇疆
         selection: currentSelection
       });
     });
@@ -5711,33 +5733,33 @@ class CheckboxWidget extends WidgetType {
   }
 
   ignoreEvent(event: Event): boolean {
-    // 只处理 mousedown 事件，忽略其他事件
+    // 鍙鐞?mousedown 浜嬩欢锛屽拷鐣ュ叾浠栦簨浠?
     return event.type !== 'mousedown';
   }
 }
 
 /**
- * 解析待办清单并创建复选框装饰器
- * 匹配格式：- [ ] 或 - [x] 或 • [ ] 或 • [x] 或 1. [ ] 或 1. [x]（后面可以有空格或到行尾）
+ * 瑙ｆ瀽寰呭姙娓呭崟骞跺垱寤哄閫夋瑁呴グ鍣?
+ * 鍖归厤鏍煎紡锛? [ ] 鎴?- [x] 鎴?鈥?[ ] 鎴?鈥?[x] 鎴?1. [ ] 鎴?1. [x]锛堝悗闈㈠彲浠ユ湁绌烘牸鎴栧埌琛屽熬锛?
  */
 function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
   
-  // 获取当前光标位置
+  // 鑾峰彇褰撳墠鍏夋爣浣嶇疆
   const cursorPos = state.selection.main.head;
   const cursorLine = doc.lineAt(cursorPos);
   const cursorLineNumber = cursorLine.number;
-  const cursorOffset = cursorPos - cursorLine.from; // 光标在行内的偏移
+  const cursorOffset = cursorPos - cursorLine.from; // 鍏夋爣鍦ㄨ鍐呯殑鍋忕Щ
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text;
     
-    // 匹配待办清单：
-    // 1. 无序列表格式：- [ ] 或 - [x] 或 • [ ] 或 • [x]
-    // 2. 有序列表格式：1. [ ] 或 1. [x]
-    const unorderedMatch = text.match(/^([\t ]*)([-*+•])\s\[([ xX])\](\s|$)/);
+    // 鍖归厤寰呭姙娓呭崟锛?
+    // 1. 鏃犲簭鍒楄〃鏍煎紡锛? [ ] 鎴?- [x] 鎴?鈥?[ ] 鎴?鈥?[x]
+    // 2. 鏈夊簭鍒楄〃鏍煎紡锛?. [ ] 鎴?1. [x]
+    const unorderedMatch = text.match(/^([\t ]*)([-*+鈥)\s\[([ xX])\](\s|$)/);
     const orderedMatch = text.match(/^([\t ]*)(\d+\.)\s\[([ xX])\](\s|$)/);
     
     const todoMatch = unorderedMatch || orderedMatch;
@@ -5748,16 +5770,16 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
     const marker = todoMatch[2];
     const isChecked = todoMatch[3].toLowerCase() === 'x';
     
-    // 找到 [ 的位置
+    // 鎵惧埌 [ 鐨勪綅缃?
     const bracketIndex = text.indexOf('[');
     if (bracketIndex === -1) continue;
     
-    // 计算 ] 后面空格的位置（在行内的偏移）
-    const checkboxEndOffset = bracketIndex + 4; // [ ] 加空格共4个字符
+    // 璁＄畻 ] 鍚庨潰绌烘牸鐨勪綅缃紙鍦ㄨ鍐呯殑鍋忕Щ锛?
+    const checkboxEndOffset = bracketIndex + 4; // [ ] 鍔犵┖鏍煎叡4涓瓧绗?
     
-    // 如果光标在当前行，且光标位置在复选框区域内或紧邻复选框后面，不显示复选框
+    // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屼笖鍏夋爣浣嶇疆鍦ㄥ閫夋鍖哄煙鍐呮垨绱ч偦澶嶉€夋鍚庨潰锛屼笉鏄剧ず澶嶉€夋
     if (i === cursorLineNumber && cursorOffset <= checkboxEndOffset) {
-      // 如果是无序列表且标记是 •，替换为 - 显示
+      // 濡傛灉鏄棤搴忓垪琛ㄤ笖鏍囪鏄?鈥紝鏇挎崲涓?- 鏄剧ず
       if (!isOrderedList && marker === '•') {
         const markerStart = line.from + indent;
         const markerEnd = markerStart + 1;
@@ -5774,9 +5796,9 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
         );
       }
       
-      // 如果已完成，仍然添加删除线样式
+      // 濡傛灉宸插畬鎴愶紝浠嶇劧娣诲姞鍒犻櫎绾挎牱寮?
       if (isChecked) {
-        const contentStart = line.from + bracketIndex + 4; // [ ] 后面的内容开始位置
+        const contentStart = line.from + bracketIndex + 4; // [ ] 鍚庨潰鐨勫唴瀹瑰紑濮嬩綅缃?
         if (contentStart < line.to) {
           decorations.push(
             Decoration.mark({ class: 'cm-todo-completed' }).range(contentStart, line.to)
@@ -5787,10 +5809,10 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
     }
     
     const checkboxStart = line.from + bracketIndex;
-    // 替换 [ ] 或 [x] 以及后面的空格（共4个字符）
+    // 鏇挎崲 [ ] 鎴?[x] 浠ュ強鍚庨潰鐨勭┖鏍硷紙鍏?涓瓧绗︼級
     const checkboxEnd = checkboxStart + 4;
     
-    // 如果是无序列表，替换列表标记为圆点
+    // 濡傛灉鏄棤搴忓垪琛紝鏇挎崲鍒楄〃鏍囪涓哄渾鐐?
     if (!isOrderedList) {
       const markerStart = line.from + indent;
       const markerEnd = markerStart + 1;
@@ -5801,14 +5823,14 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
       );
     }
     
-    // 替换 [ ] 或 [x] 及后面的空格为复选框
+    // 鏇挎崲 [ ] 鎴?[x] 鍙婂悗闈㈢殑绌烘牸涓哄閫夋
     decorations.push(
       Decoration.replace({
         widget: new CheckboxWidget(isChecked, checkboxStart, 4, view),
       }).range(checkboxStart, checkboxEnd)
     );
     
-    // 如果已完成，为内容添加删除线样式
+    // 濡傛灉宸插畬鎴愶紝涓哄唴瀹规坊鍔犲垹闄ょ嚎鏍峰紡
     if (isChecked) {
       const contentStart = checkboxEnd;
       if (contentStart < line.to) {
@@ -5819,13 +5841,13 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
     }
   }
 
-  // 按位置排序装饰器
+  // 鎸変綅缃帓搴忚楗板櫒
   decorations.sort((a, b) => a.from - b.from);
   return Decoration.set(decorations, true);
 }
 
 /**
- * 待办清单装饰器 ViewPlugin
+ * 寰呭姙娓呭崟瑁呴グ鍣?ViewPlugin
  */
 const todoListPlugin = ViewPlugin.fromClass(
   class {
@@ -5847,7 +5869,7 @@ const todoListPlugin = ViewPlugin.fromClass(
 );
 
 /**
- * 引用块竖线 Widget - 在行首显示竖线
+ * 寮曠敤鍧楃珫绾?Widget - 鍦ㄨ棣栨樉绀虹珫绾?
  */
 class BlockquoteBarWidget extends WidgetType {
   constructor(readonly level: number) {
@@ -5857,7 +5879,7 @@ class BlockquoteBarWidget extends WidgetType {
   toDOM(): HTMLElement {
     const span = document.createElement('span');
     span.className = 'cm-blockquote-bar-container';
-    // 根据引用层级显示多条竖线
+    // 鏍规嵁寮曠敤灞傜骇鏄剧ず澶氭潯绔栫嚎
     for (let i = 0; i < this.level; i++) {
       const bar = document.createElement('span');
       bar.className = 'cm-blockquote-bar';
@@ -5876,7 +5898,7 @@ class BlockquoteBarWidget extends WidgetType {
 }
 
 /**
- * 引用块 > 符号 Widget - 根据选中状态显示/隐藏
+ * 寮曠敤鍧?> 绗﹀彿 Widget - 鏍规嵁閫変腑鐘舵€佹樉绀?闅愯棌
  */
 class BlockquoteMarkerWidget extends WidgetType {
   constructor(
@@ -5889,7 +5911,7 @@ class BlockquoteMarkerWidget extends WidgetType {
   toDOM(): HTMLElement {
     const span = document.createElement('span');
     span.className = 'cm-blockquote-marker-widget';
-    // 始终显示 > 符号加一个空格，确保对齐
+    // 濮嬬粓鏄剧ず > 绗﹀彿鍔犱竴涓┖鏍硷紝纭繚瀵归綈
     span.textContent = this.markers + ' ';
     if (!this.visible) {
       span.style.color = 'transparent';
@@ -5907,33 +5929,33 @@ class BlockquoteMarkerWidget extends WidgetType {
 }
 
 /**
- * 解析引用块并创建装饰器
- * 在行首添加竖线，根据光标位置显示/隐藏 > 符号
- * 添加行级装饰器确保引用块内容始终显示斜体
+ * 瑙ｆ瀽寮曠敤鍧楀苟鍒涘缓瑁呴グ鍣?
+ * 鍦ㄨ棣栨坊鍔犵珫绾匡紝鏍规嵁鍏夋爣浣嶇疆鏄剧ず/闅愯棌 > 绗﹀彿
+ * 娣诲姞琛岀骇瑁呴グ鍣ㄧ‘淇濆紩鐢ㄥ潡鍐呭濮嬬粓鏄剧ず鏂滀綋
  */
 function parseBlockquote(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
   const doc = state.doc;
   
-  // 获取选区范围
+  // 鑾峰彇閫夊尯鑼冨洿
   const selection = state.selection.main;
   const selectionStartLine = doc.lineAt(selection.from).number;
   const selectionEndLine = doc.lineAt(selection.to).number;
   
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
-    // 匹配引用块标记：支持行首有空格的情况（TAB 缩进），包括 > 后面的空格
+    // 鍖归厤寮曠敤鍧楁爣璁帮細鏀寔琛岄鏈夌┖鏍肩殑鎯呭喌锛圱AB 缂╄繘锛夛紝鍖呮嫭 > 鍚庨潰鐨勭┖鏍?
     const match = line.text.match(/^(\s*)(>+)(\s?)/);
     if (match) {
-      const indent = match[1].length; // 缩进空格数
-      const level = match[2].length; // 引用层级
-      const markers = match[2]; // > 或 >> 等
-      const space = match[3] || ''; // > 后面的空格（可能没有）
+      const indent = match[1].length; // 缂╄繘绌烘牸鏁?
+      const level = match[2].length; // 寮曠敤灞傜骇
+      const markers = match[2]; // > 鎴?>> 绛?
+      const space = match[3] || ''; // > 鍚庨潰鐨勭┖鏍硷紙鍙兘娌℃湁锛?
       
-      // 判断是否显示 > 符号：光标在当前行或选区包含当前行
+      // 鍒ゆ柇鏄惁鏄剧ず > 绗﹀彿锛氬厜鏍囧湪褰撳墠琛屾垨閫夊尯鍖呭惈褰撳墠琛?
       const isInSelection = i >= selectionStartLine && i <= selectionEndLine;
       
-      // 添加行级装饰器，确保引用块行始终显示斜体
+      // 娣诲姞琛岀骇瑁呴グ鍣紝纭繚寮曠敤鍧楄濮嬬粓鏄剧ず鏂滀綋
       decorations.push({
         from: line.from,
         to: line.from,
@@ -5942,18 +5964,18 @@ function parseBlockquote(state: EditorState): DecorationSet {
         }),
       });
       
-      // 在 > 符号位置添加竖线 Widget（考虑缩进）
+      // 鍦?> 绗﹀彿浣嶇疆娣诲姞绔栫嚎 Widget锛堣€冭檻缂╄繘锛?
       decorations.push({
         from: line.from + indent,
         to: line.from + indent,
         decoration: Decoration.widget({
           widget: new BlockquoteBarWidget(level),
-          side: -1, // 在位置左侧显示
+          side: -1, // 鍦ㄤ綅缃乏渚ф樉绀?
         }),
       });
       
-      // 使用 replace 装饰器替换 > 符号和空格为 Widget
-      // Widget 始终显示 "> "（带空格），确保对齐
+      // 浣跨敤 replace 瑁呴グ鍣ㄦ浛鎹?> 绗﹀彿鍜岀┖鏍间负 Widget
+      // Widget 濮嬬粓鏄剧ず "> "锛堝甫绌烘牸锛夛紝纭繚瀵归綈
       decorations.push({
         from: line.from + indent,
         to: line.from + indent + markers.length + space.length,
@@ -5971,14 +5993,14 @@ function parseBlockquote(state: EditorState): DecorationSet {
 }
 
 /**
- * 引用块装饰器 StateField - 将 > 替换为竖线
+ * 寮曠敤鍧楄楗板櫒 StateField - 灏?> 鏇挎崲涓虹珫绾?
  */
 const blockquoteDecorations = StateField.define<DecorationSet>({
   create(state) {
     return parseBlockquote(state);
   },
   update(decorations, tr) {
-    // 文档变化或光标位置变化时都需要更新
+    // 鏂囨。鍙樺寲鎴栧厜鏍囦綅缃彉鍖栨椂閮介渶瑕佹洿鏂?
     if (tr.docChanged || tr.selection) {
       return parseBlockquote(tr.state);
     }
@@ -5988,7 +6010,7 @@ const blockquoteDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 支持的编程语言列表
+ * 鏀寔鐨勭紪绋嬭瑷€鍒楄〃
  */
 const SUPPORTED_LANGUAGES = [
   'javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'csharp', 'go', 'rust',
@@ -5998,7 +6020,7 @@ const SUPPORTED_LANGUAGES = [
 ];
 
 /**
- * 代码行高亮 Widget - 使用 highlight.js 渲染单行代码
+ * 浠ｇ爜琛岄珮浜?Widget - 浣跨敤 highlight.js 娓叉煋鍗曡浠ｇ爜
  */
 class CodeLineWidget extends WidgetType {
   constructor(
@@ -6027,13 +6049,13 @@ class CodeLineWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
-    // 忽略事件，防止点击代码内容时进入原始文本状态
+    // 蹇界暐浜嬩欢锛岄槻姝㈢偣鍑讳唬鐮佸唴瀹规椂杩涘叆鍘熷鏂囨湰鐘舵€?
     return true;
   }
 }
 
 /**
- * 行内代码高亮 Widget - 使用 highlight.js 自动检测语言并高亮
+ * 琛屽唴浠ｇ爜楂樹寒 Widget - 浣跨敤 highlight.js 鑷姩妫€娴嬭瑷€骞堕珮浜?
  */
 class InlineCodeWidget extends WidgetType {
   constructor(readonly code: string) {
@@ -6044,7 +6066,7 @@ class InlineCodeWidget extends WidgetType {
     const span = document.createElement('span');
     span.className = 'cm-code-highlighted cm-inline-code';
     
-    // 使用 highlight.js 自动检测语言
+    // 浣跨敤 highlight.js 鑷姩妫€娴嬭瑷€
     const result = hljs.highlightAuto(this.code);
     span.innerHTML = result.value;
     
@@ -6061,7 +6083,7 @@ class InlineCodeWidget extends WidgetType {
 }
 
 /**
- * 代码块信息接口
+ * 浠ｇ爜鍧椾俊鎭帴鍙?
  */
 interface CodeBlockInfo {
   startLine: number;
@@ -6074,7 +6096,7 @@ interface CodeBlockInfo {
 }
 
 /**
- * 解析文档中的代码块
+ * 瑙ｆ瀽鏂囨。涓殑浠ｇ爜鍧?
  */
 function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
   const blocks: CodeBlockInfo[] = [];
@@ -6090,13 +6112,13 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
     const line = doc.line(i);
     const text = line.text;
 
-    // 匹配 ```language // name 格式（开始标记）
+    // 鍖归厤 ```language // name 鏍煎紡锛堝紑濮嬫爣璁帮級
     const startMatch = text.match(/^```(\w*)(\s*\/\/\s*(.*))?$/);
-    // 匹配结束标记 ```（可能有空格）
+    // 鍖归厤缁撴潫鏍囪 ```锛堝彲鑳芥湁绌烘牸锛?
     const isEndMark = /^```\s*$/.test(text);
 
     if (!inCodeBlock && startMatch) {
-      // 代码块开始
+      // 浠ｇ爜鍧楀紑濮?
       inCodeBlock = true;
       startLine = i;
       language = startMatch[1] || '';
@@ -6104,7 +6126,7 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
       codeLines = [];
       blockFrom = line.from;
     } else if (inCodeBlock && isEndMark) {
-      // 代码块结束
+      // 浠ｇ爜鍧楃粨鏉?
       blocks.push({
         startLine,
         endLine: i,
@@ -6116,7 +6138,7 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
       });
       inCodeBlock = false;
     } else if (inCodeBlock) {
-      // 代码块内容
+      // 浠ｇ爜鍧楀唴瀹?
       codeLines.push(text);
     }
   }
@@ -6124,7 +6146,7 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
   return blocks;
 }
 
-/** 代码块输出状态存储（按代码块位置索引） */
+/** 浠ｇ爜鍧楄緭鍑虹姸鎬佸瓨鍌紙鎸変唬鐮佸潡浣嶇疆绱㈠紩锛?*/
 interface CodeBlockOutputState {
   content: string;
   isError: boolean;
@@ -6133,7 +6155,7 @@ interface CodeBlockOutputState {
 const codeBlockOutputStates = new Map<number, CodeBlockOutputState>();
 
 /**
- * 完整代码块 Widget - 将整个代码块渲染为一个卡片组件
+ * 瀹屾暣浠ｇ爜鍧?Widget - 灏嗘暣涓唬鐮佸潡娓叉煋涓轰竴涓崱鐗囩粍浠?
  */
 class CodeBlockWidget extends WidgetType {
   private monacoContainer: HTMLElement | null = null;
@@ -6153,7 +6175,7 @@ class CodeBlockWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     this.viewRef = view;
     
-    // 从 Store 恢复状态
+    // 浠?Store 鎭㈠鐘舵€?
     const savedState = useCodeBlockStore.getState().getBlockState(this.block.language, this.block.code);
     this.isCollapsed = savedState.isCollapsed;
     
@@ -6161,24 +6183,24 @@ class CodeBlockWidget extends WidgetType {
     container.className = 'cm-code-block-widget';
     this.containerElement = container;
 
-    // 代码区域（带行号）- 先创建以获取 monacoContainer 引用
+    // 浠ｇ爜鍖哄煙锛堝甫琛屽彿锛? 鍏堝垱寤轰互鑾峰彇 monacoContainer 寮曠敤
     const codeArea = this.createCodeArea(view);
     this.codeAreaElement = codeArea;
 
-    // 头部 - 后创建以便访问 monacoContainer
+    // 澶撮儴 - 鍚庡垱寤轰互渚胯闂?monacoContainer
     const header = this.createHeader(view);
     this.headerElement = header;
     container.appendChild(header);
 
-    // 代码区域（带行号）
+    // 浠ｇ爜鍖哄煙锛堝甫琛屽彿锛?
     container.appendChild(codeArea);
     
-    // 恢复折叠状态
+    // 鎭㈠鎶樺彔鐘舵€?
     if (this.isCollapsed) {
       container.classList.add('collapsed');
       if (this.collapseBtnElement) {
         this.collapseBtnElement.style.transform = 'rotate(0deg)';
-        this.collapseBtnElement.title = '展开';
+        this.collapseBtnElement.title = '灞曞紑';
       }
       if (this.codeAreaElement) {
         this.codeAreaElement.style.display = 'none';
@@ -6192,31 +6214,31 @@ class CodeBlockWidget extends WidgetType {
     const header = document.createElement('div');
     header.className = 'cm-code-block-header';
 
-    // 左侧区域：折叠箭头 + 名称输入框
+    // 宸︿晶鍖哄煙锛氭姌鍙犵澶?+ 鍚嶇О杈撳叆妗?
     const leftSection = document.createElement('div');
     leftSection.className = 'cm-code-block-header-left';
 
-    // 折叠箭头
+    // 鎶樺彔绠ご
     const collapseBtn = document.createElement('span');
     collapseBtn.className = 'cm-code-block-collapse-btn';
     collapseBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4V4z"/></svg>';
     collapseBtn.style.transform = 'rotate(90deg)';
-    collapseBtn.title = '折叠';
+    collapseBtn.title = '鎶樺彔';
     this.collapseBtnElement = collapseBtn;
 
-    // 折叠点击事件
+    // 鎶樺彔鐐瑰嚮浜嬩欢
     collapseBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.toggleCollapse();
     });
 
-    // 名称输入框
+    // 鍚嶇О杈撳叆妗?
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.className = 'cm-code-block-name-input';
-    nameInput.placeholder = '请输入代码块名称';
+    nameInput.placeholder = '璇疯緭鍏ヤ唬鐮佸潡鍚嶇О';
     
-    // 从 Store 恢复名称，如果没有则使用文档中的名称
+    // 浠?Store 鎭㈠鍚嶇О锛屽鏋滄病鏈夊垯浣跨敤鏂囨。涓殑鍚嶇О
     const savedState = useCodeBlockStore.getState().getBlockState(this.block.language, this.block.code);
     const displayName = savedState.name || this.block.customName;
     nameInput.value = displayName;
@@ -6226,12 +6248,12 @@ class CodeBlockWidget extends WidgetType {
     nameInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
       
-      // 处理被 Electron 菜单拦截的快捷键
+      // 澶勭悊琚?Electron 鑿滃崟鎷︽埅鐨勫揩鎹烽敭
       const isCtrlOrMeta = e.ctrlKey || e.metaKey;
       if (isCtrlOrMeta) {
         const key = e.key.toLowerCase();
         if (key === 'x' || key === 'c' || key === 'v' || key === 'a' || key === 'z') {
-          // 阻止事件冒泡和默认行为
+          // 闃绘浜嬩欢鍐掓场鍜岄粯璁よ涓?
           e.stopImmediatePropagation();
           e.preventDefault();
           
@@ -6241,26 +6263,26 @@ class CodeBlockWidget extends WidgetType {
           const selectedText = input.value.substring(start, end);
           
           if (key === 'x' && selectedText) {
-            // 剪切：复制选中文本到剪贴板，然后删除
+            // 鍓垏锛氬鍒堕€変腑鏂囨湰鍒板壀璐存澘锛岀劧鍚庡垹闄?
             navigator.clipboard.writeText(selectedText).then(() => {
               input.value = input.value.substring(0, start) + input.value.substring(end);
               input.setSelectionRange(start, start);
             });
           } else if (key === 'c' && selectedText) {
-            // 复制：复制选中文本到剪贴板
+            // 澶嶅埗锛氬鍒堕€変腑鏂囨湰鍒板壀璐存澘
             navigator.clipboard.writeText(selectedText);
           } else if (key === 'v') {
-            // 粘贴：从剪贴板读取并插入
+            // 绮樿创锛氫粠鍓创鏉胯鍙栧苟鎻掑叆
             navigator.clipboard.readText().then((text) => {
               input.value = input.value.substring(0, start) + text + input.value.substring(end);
               const newPos = start + text.length;
               input.setSelectionRange(newPos, newPos);
             });
           } else if (key === 'a') {
-            // 全选
+            // 鍏ㄩ€?
             input.select();
           } else if (key === 'z') {
-            // 撤销 - 使用 execCommand 因为没有其他方式
+            // 鎾ら攢 - 浣跨敤 execCommand 鍥犱负娌℃湁鍏朵粬鏂瑰紡
             document.execCommand('undo');
           }
           return;
@@ -6272,9 +6294,9 @@ class CodeBlockWidget extends WidgetType {
       }
     }, true);
     nameInput.addEventListener('blur', () => {
-      // 只有当名称真正改变时才保存到 Store
-      // 不触发文档更新，避免 CodeMirror 内部错误
-      // 名称会在文档保存时同步到文件内容
+      // 鍙湁褰撳悕绉扮湡姝ｆ敼鍙樻椂鎵嶄繚瀛樺埌 Store
+      // 涓嶈Е鍙戞枃妗ｆ洿鏂帮紝閬垮厤 CodeMirror 鍐呴儴閿欒
+      // 鍚嶇О浼氬湪鏂囨。淇濆瓨鏃跺悓姝ュ埌鏂囦欢鍐呭
       const newName = nameInput.value;
       if (newName !== originalName) {
         useCodeBlockStore.getState().setBlockName(this.block.language, this.block.code, this.block.from, newName);
@@ -6284,22 +6306,22 @@ class CodeBlockWidget extends WidgetType {
     leftSection.appendChild(collapseBtn);
     leftSection.appendChild(nameInput);
 
-    // 右侧区域
+    // 鍙充晶鍖哄煙
     const rightSection = document.createElement('div');
     rightSection.className = 'cm-code-block-header-right';
 
-    // 从 Store 恢复语言（如果有保存的话）
+    // 浠?Store 鎭㈠璇█锛堝鏋滄湁淇濆瓨鐨勮瘽锛?
     const savedLangState = useCodeBlockStore.getState().getBlockState(this.block.language, this.block.code);
     const displayLanguage = savedLangState.language !== 'plaintext' ? savedLangState.language : (this.block.language || 'plaintext');
 
-    // 语言选择
-    const langDropdown = this.createDropdown(view, displayLanguage, SUPPORTED_LANGUAGES, (lang) => this.updateLanguage(view, lang), '搜索语言...');
+    // 璇█閫夋嫨
+    const langDropdown = this.createDropdown(view, displayLanguage, SUPPORTED_LANGUAGES, (lang) => this.updateLanguage(view, lang), '鎼滅储璇█...');
 
-    // 分隔符
+    // 鍒嗛殧绗?
     const divider1 = document.createElement('span');
     divider1.className = 'cm-code-block-divider';
 
-    // 主题选择 - 只更新当前代码块主题
+    // 涓婚閫夋嫨 - 鍙洿鏂板綋鍓嶄唬鐮佸潡涓婚
     const { themeList, currentTheme } = useThemeStore.getState();
     const themeNames = themeList.map((t) => t.name || t.id);
     const currentThemeName = currentTheme?.name || currentTheme?.id || 'vs-dark';
@@ -6310,17 +6332,17 @@ class CodeBlockWidget extends WidgetType {
       async (themeName) => {
         const theme = themeList.find((t) => t.name === themeName || t.id === themeName);
         if (theme && this.monacoContainer) {
-          // 更新 Monaco 编辑器主题
+          // 鏇存柊 Monaco 缂栬緫鍣ㄤ富棰?
           updateMonacoTheme(this.monacoContainer, theme.id);
 
-          // 获取主题颜色并更新样式
+          // 鑾峰彇涓婚棰滆壊骞舵洿鏂版牱寮?
           const themeData = await themeService.getTheme(theme.id);
           if (themeData) {
             const bgColor = themeData.colors['editor.background'] || themeData.colors['editorWidget.background'];
             const borderColor = themeData.colors['panel.border'] || themeData.colors['editorWidget.border'];
             const fgColor = themeData.colors['editor.foreground'] || themeData.colors['foreground'];
 
-            // 更新头部样式
+            // 鏇存柊澶撮儴鏍峰紡
             if (this.headerElement) {
               if (bgColor) {
                 this.headerElement.style.backgroundColor = bgColor;
@@ -6332,7 +6354,7 @@ class CodeBlockWidget extends WidgetType {
                 this.headerElement.style.color = fgColor;
               }
 
-              // 更新头部内所有下拉框触发器的样式
+              // 鏇存柊澶撮儴鍐呮墍鏈変笅鎷夋瑙﹀彂鍣ㄧ殑鏍峰紡
               const dropdownTriggers = this.headerElement.querySelectorAll('.cm-code-block-dropdown-trigger');
               dropdownTriggers.forEach((trigger) => {
                 if (bgColor) {
@@ -6346,7 +6368,7 @@ class CodeBlockWidget extends WidgetType {
                 }
               });
 
-              // 更新头部内所有按钮的样式
+              // 鏇存柊澶撮儴鍐呮墍鏈夋寜閽殑鏍峰紡
               const actionBtns = this.headerElement.querySelectorAll('.cm-code-block-action-btn');
               actionBtns.forEach((btn) => {
                 if (fgColor) {
@@ -6354,7 +6376,7 @@ class CodeBlockWidget extends WidgetType {
                 }
               });
 
-              // 更新分隔符样式
+              // 鏇存柊鍒嗛殧绗︽牱寮?
               const dividers = this.headerElement.querySelectorAll('.cm-code-block-divider');
               dividers.forEach((divider) => {
                 if (borderColor) {
@@ -6363,12 +6385,12 @@ class CodeBlockWidget extends WidgetType {
               });
             }
 
-            // 更新整个容器的边框
+            // 鏇存柊鏁翠釜瀹瑰櫒鐨勮竟妗?
             if (this.containerElement && borderColor) {
               this.containerElement.style.borderColor = borderColor;
             }
 
-            // 更新输出面板样式
+            // 鏇存柊杈撳嚭闈㈡澘鏍峰紡
             if (this.outputPanelElement) {
               if (bgColor) {
                 this.outputPanelElement.style.backgroundColor = bgColor;
@@ -6396,41 +6418,41 @@ class CodeBlockWidget extends WidgetType {
             }
           }
           
-          // 保存主题到 Store
+          // 淇濆瓨涓婚鍒?Store
           useCodeBlockStore.getState().setBlockTheme(this.block.language, this.block.code, theme.id);
         }
       },
-      '搜索主题...'
+      '鎼滅储涓婚...'
     );
 
-    // 分隔符
+    // 鍒嗛殧绗?
     const divider2 = document.createElement('span');
     divider2.className = 'cm-code-block-divider';
 
-    // 复制按钮
+    // 澶嶅埗鎸夐挳
     const copyBtn = document.createElement('span');
     copyBtn.className = 'cm-code-block-action-btn';
-    copyBtn.title = '复制代码';
+    copyBtn.title = '澶嶅埗浠ｇ爜';
     copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z"/><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1"/></svg>';
     copyBtn.addEventListener('click', () => navigator.clipboard.writeText(this.block.code));
 
-    // 运行按钮
+    // 杩愯鎸夐挳
     const runBtn = document.createElement('span');
     runBtn.className = 'cm-code-block-action-btn';
-    runBtn.title = '运行代码';
+    runBtn.title = '杩愯浠ｇ爜';
     runBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"/><circle cx="12" cy="12" r="10"/></svg>';
     runBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.runCode();
     });
 
-    // 更多菜单
+    // 鏇村鑿滃崟
     const moreBtn = document.createElement('span');
     moreBtn.className = 'cm-code-block-action-btn';
-    moreBtn.title = '更多操作';
+    moreBtn.title = '鏇村鎿嶄綔';
     moreBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>';
 
-    // 删除按钮
+    // 鍒犻櫎鎸夐挳
     const deleteBtn = document.createElement('span');
     deleteBtn.className = 'cm-code-block-action-btn cm-code-block-delete-btn';
     deleteBtn.title = '删除代码块';
@@ -6458,13 +6480,13 @@ class CodeBlockWidget extends WidgetType {
     const codeArea = document.createElement('div');
     codeArea.className = 'cm-code-block-content';
 
-    // 禁用代码块区域的右键菜单
+    // 绂佺敤浠ｇ爜鍧楀尯鍩熺殑鍙抽敭鑿滃崟
     codeArea.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
     });
 
-    // 阻止键盘事件冒泡到 CodeMirror
+    // 闃绘閿洏浜嬩欢鍐掓场鍒?CodeMirror
     codeArea.addEventListener('keydown', (e) => {
       e.stopPropagation();
     }, false);
@@ -6473,18 +6495,18 @@ class CodeBlockWidget extends WidgetType {
     const lang = this.block.language || 'plaintext';
     const initialCode = this.block.code || '';
 
-    // Monaco Editor 容器
+    // Monaco Editor 瀹瑰櫒
     const monacoContainer = document.createElement('div');
     monacoContainer.className = 'cm-code-block-monaco-container';
     this.monacoContainer = monacoContainer;
 
-    // 更新源码标记
+    // 鏇存柊婧愮爜鏍囪
     let isUpdating = false;
 
     const updateSource = (newCode: string) => {
       if (isUpdating) return;
 
-      // 验证编辑器是否仍然有效
+      // 楠岃瘉缂栬緫鍣ㄦ槸鍚︿粛鐒舵湁鏁?
       if (!view.dom || !view.dom.isConnected) {
         return;
       }
@@ -6494,7 +6516,7 @@ class CodeBlockWidget extends WidgetType {
       try {
         const docLength = view.state.doc.length;
 
-        // 验证起始位置是否有效
+        // 楠岃瘉璧峰浣嶇疆鏄惁鏈夋晥
         if (blockInfo.from >= docLength) {
           isUpdating = false;
           return;
@@ -6502,13 +6524,13 @@ class CodeBlockWidget extends WidgetType {
 
         const startLine = view.state.doc.lineAt(blockInfo.from);
 
-        // 验证起始行是否仍然是代码块开始标记
+        // 楠岃瘉璧峰琛屾槸鍚︿粛鐒舵槸浠ｇ爜鍧楀紑濮嬫爣璁?
         if (!startLine.text.startsWith('```')) {
           isUpdating = false;
           return;
         }
 
-        // 从起始行开始，查找代码块的实际结束位置
+        // 浠庤捣濮嬭寮€濮嬶紝鏌ユ壘浠ｇ爜鍧楃殑瀹為檯缁撴潫浣嶇疆
         let endLineNum = startLine.number + 1;
         let endPos = startLine.to;
         const totalLines = view.state.doc.lines;
@@ -6522,7 +6544,7 @@ class CodeBlockWidget extends WidgetType {
           endLineNum++;
         }
 
-        // 构建新的代码块文本
+        // 鏋勫缓鏂扮殑浠ｇ爜鍧楁枃鏈?
         const langLine = startLine.text;
         const newCodeBlock = langLine + '\n' + newCode + '\n```';
 
@@ -6532,12 +6554,12 @@ class CodeBlockWidget extends WidgetType {
 
         isUpdating = false;
       } catch (e) {
-        console.error('更新代码块失败:', e);
+        console.error('鏇存柊浠ｇ爜鍧楀け璐?', e);
         isUpdating = false;
       }
     };
 
-    // 延迟渲染 Monaco，避免阻塞
+    // 寤惰繜娓叉煋 Monaco锛岄伩鍏嶉樆濉?
     let pendingCode: string | null = null;
     const blockLanguage = this.block.language;
     const blockCode = this.block.code;
@@ -6545,33 +6567,33 @@ class CodeBlockWidget extends WidgetType {
     requestAnimationFrame(() => {
       if (!monacoContainer.isConnected) return;
 
-      // 从 Store 获取保存的状态（包括滚动位置）
+      // 浠?Store 鑾峰彇淇濆瓨鐨勭姸鎬侊紙鍖呮嫭婊氬姩浣嶇疆锛?
       const savedState = useCodeBlockStore.getState().getBlockState(blockLanguage, blockCode);
-      console.log('[CodeMirrorEditor] 从 Store 获取滚动位置:', savedState.scrollTop);
+      console.log('[CodeMirrorEditor] 浠?Store 鑾峰彇婊氬姩浣嶇疆:', savedState.scrollTop);
 
       renderMonacoToElement(monacoContainer, {
         code: initialCode,
         language: lang,
         onChange: (value: string) => {
-          // 只记录最新的代码，不立即更新源码
+          // 鍙褰曟渶鏂扮殑浠ｇ爜锛屼笉绔嬪嵆鏇存柊婧愮爜
           pendingCode = value;
         },
         onFocus: () => {
-          // 阻止 CodeMirror 获取焦点
+          // 闃绘 CodeMirror 鑾峰彇鐒︾偣
         },
         onBlur: () => {
-          // 失去焦点时才更新源码
+          // 澶卞幓鐒︾偣鏃舵墠鏇存柊婧愮爜
           if (pendingCode !== null && pendingCode !== initialCode) {
             const codeToUpdate = pendingCode;
             pendingCode = null;
-            // 使用 setTimeout 确保在 CodeMirror 完成当前更新后再执行
+            // 浣跨敤 setTimeout 纭繚鍦?CodeMirror 瀹屾垚褰撳墠鏇存柊鍚庡啀鎵ц
             setTimeout(() => {
-              // 再次验证编辑器是否有效
+              // 鍐嶆楠岃瘉缂栬緫鍣ㄦ槸鍚︽湁鏁?
               if (view.dom && view.dom.isConnected) {
                 try {
                   updateSource(codeToUpdate);
                 } catch (e) {
-                  console.warn('更新代码块失败，可能是编辑器状态已改变:', e);
+                  console.warn('鏇存柊浠ｇ爜鍧楀け璐ワ紝鍙兘鏄紪杈戝櫒鐘舵€佸凡鏀瑰彉:', e);
                 }
               }
             }, 50);
@@ -6580,7 +6602,7 @@ class CodeBlockWidget extends WidgetType {
           }
         },
         onEditorMount: (editorInstance) => {
-          // 监听滚动事件，实时保存滚动位置到 Store
+          // 鐩戝惉婊氬姩浜嬩欢锛屽疄鏃朵繚瀛樻粴鍔ㄤ綅缃埌 Store
           editorInstance.onDidScrollChange(() => {
             const scrollTop = editorInstance.getScrollTop();
             useCodeBlockStore.getState().setBlockScrollPosition(blockLanguage, blockCode, scrollTop, null);
@@ -6591,10 +6613,10 @@ class CodeBlockWidget extends WidgetType {
         initialScrollTop: savedState.scrollTop
       });
       
-      // 从 Store 恢复主题
+      // 浠?Store 鎭㈠涓婚
       if (savedState.themeId && monacoContainer) {
         updateMonacoTheme(monacoContainer, savedState.themeId);
-        // 同时更新头部样式
+        // 鍚屾椂鏇存柊澶撮儴鏍峰紡
         this.applyThemeToHeader(savedState.themeId);
       }
     });
@@ -6608,7 +6630,7 @@ class CodeBlockWidget extends WidgetType {
     const container = document.createElement('div');
     container.className = 'cm-code-block-dropdown';
 
-    // 跟踪当前选中的值
+    // 璺熻釜褰撳墠閫変腑鐨勫€?
     let selectedValue = currentValue;
 
     const trigger = document.createElement('div');
@@ -6625,7 +6647,7 @@ class CodeBlockWidget extends WidgetType {
     trigger.appendChild(text);
     trigger.appendChild(arrow);
 
-    // 将菜单渲染到 body 层级，避免被父元素裁剪
+    // 灏嗚彍鍗曟覆鏌撳埌 body 灞傜骇锛岄伩鍏嶈鐖跺厓绱犺鍓?
     const menu = document.createElement('div');
     menu.className = 'cm-code-block-dropdown-menu cm-code-block-dropdown-portal';
     menu.style.display = 'none';
@@ -6667,14 +6689,14 @@ class CodeBlockWidget extends WidgetType {
     menu.appendChild(list);
     searchInput.addEventListener('input', () => renderList(searchInput.value));
 
-    // 更新菜单位置
+    // 鏇存柊鑿滃崟浣嶇疆
     const updateMenuPosition = () => {
       const rect = trigger.getBoundingClientRect();
       menu.style.top = `${rect.bottom + 4}px`;
       menu.style.left = `${rect.right - menu.offsetWidth}px`;
     };
 
-    // 隐藏菜单
+    // 闅愯棌鑿滃崟
     const hideMenu = () => {
       menu.style.display = 'none';
       container.classList.remove('open');
@@ -6683,7 +6705,7 @@ class CodeBlockWidget extends WidgetType {
       }
     };
 
-    // 显示菜单
+    // 鏄剧ず鑿滃崟
     const showMenu = () => {
       document.body.appendChild(menu);
       menu.style.display = 'block';
@@ -6713,24 +6735,24 @@ class CodeBlockWidget extends WidgetType {
 
     document.addEventListener('mousedown', handleClickOutside);
 
-    // 滚动时更新菜单位置或关闭
+    // 婊氬姩鏃舵洿鏂拌彍鍗曚綅缃垨鍏抽棴
     const handleScroll = (e: Event) => {
       if (menu.style.display !== 'none') {
-        // 检查触发器是否仍在视口内
+        // 妫€鏌ヨЕ鍙戝櫒鏄惁浠嶅湪瑙嗗彛鍐?
         const rect = trigger.getBoundingClientRect();
         const isInViewport = rect.top >= 0 && rect.bottom <= window.innerHeight;
 
         if (isInViewport) {
-          // 更新菜单位置
+          // 鏇存柊鑿滃崟浣嶇疆
           updateMenuPosition();
         } else {
-          // 触发器不在视口内，关闭菜单
+          // 瑙﹀彂鍣ㄤ笉鍦ㄨ鍙ｅ唴锛屽叧闂彍鍗?
           hideMenu();
         }
       }
     };
 
-    // 监听所有滚动事件（包括编辑器内部滚动）
+    // 鐩戝惉鎵€鏈夋粴鍔ㄤ簨浠讹紙鍖呮嫭缂栬緫鍣ㄥ唴閮ㄦ粴鍔級
     document.addEventListener('scroll', handleScroll, true);
     window.addEventListener('resize', handleScroll);
 
@@ -6739,20 +6761,20 @@ class CodeBlockWidget extends WidgetType {
   }
 
   updateLanguage(_view: EditorView, newLang: string): void {
-    // 更新 Store 中的语言状态
+    // 鏇存柊 Store 涓殑璇█鐘舵€?
     useCodeBlockStore.getState().setBlockLanguage(this.block.language, this.block.code, newLang);
     
-    // 更新 Monaco 编辑器的语言显示
+    // 鏇存柊 Monaco 缂栬緫鍣ㄧ殑璇█鏄剧ず
     if (this.monacoContainer) {
       updateMonacoLanguage(this.monacoContainer, newLang);
     }
   }
 
-  // 切换折叠状态
+  // 鍒囨崲鎶樺彔鐘舵€?
   toggleCollapse(): void {
     this.isCollapsed = !this.isCollapsed;
     
-    // 保存折叠状态到 Store
+    // 淇濆瓨鎶樺彔鐘舵€佸埌 Store
     useCodeBlockStore.getState().setBlockCollapsed(this.block.language, this.block.code, this.isCollapsed);
     
     const blockKey = this.block.from;
@@ -6760,28 +6782,28 @@ class CodeBlockWidget extends WidgetType {
 
     if (this.codeAreaElement && this.collapseBtnElement) {
       if (this.isCollapsed) {
-        // 折叠：隐藏代码区域和输出面板
+        // 鎶樺彔锛氶殣钘忎唬鐮佸尯鍩熷拰杈撳嚭闈㈡澘
         this.codeAreaElement.style.display = 'none';
         if (this.outputPanelElement) {
           this.outputPanelElement.style.display = 'none';
         }
         this.collapseBtnElement.style.transform = 'rotate(0deg)';
-        this.collapseBtnElement.title = '展开';
+        this.collapseBtnElement.title = '灞曞紑';
         this.containerElement?.classList.add('collapsed');
       } else {
-        // 展开：显示代码区域，如果有输出且未被关闭则显示输出面板
+        // 灞曞紑锛氭樉绀轰唬鐮佸尯鍩燂紝濡傛灉鏈夎緭鍑轰笖鏈鍏抽棴鍒欐樉绀鸿緭鍑洪潰鏉?
         this.codeAreaElement.style.display = 'block';
         if (this.outputPanelElement && savedState && !savedState.isClosed) {
           this.outputPanelElement.style.display = 'block';
         }
         this.collapseBtnElement.style.transform = 'rotate(90deg)';
-        this.collapseBtnElement.title = '折叠';
+        this.collapseBtnElement.title = '鎶樺彔';
         this.containerElement?.classList.remove('collapsed');
       }
     }
   }
 
-  // 应用主题到头部样式
+  // 搴旂敤涓婚鍒板ご閮ㄦ牱寮?
   async applyThemeToHeader(themeId: string): Promise<void> {
     const themeData = await themeService.getTheme(themeId);
     if (!themeData) return;
@@ -6790,7 +6812,7 @@ class CodeBlockWidget extends WidgetType {
     const borderColor = themeData.colors['panel.border'] || themeData.colors['editorWidget.border'];
     const fgColor = themeData.colors['editor.foreground'] || themeData.colors['foreground'];
 
-    // 更新头部样式
+    // 鏇存柊澶撮儴鏍峰紡
     if (this.headerElement) {
       if (bgColor) {
         this.headerElement.style.backgroundColor = bgColor;
@@ -6802,7 +6824,7 @@ class CodeBlockWidget extends WidgetType {
         this.headerElement.style.color = fgColor;
       }
 
-      // 更新头部内所有下拉框触发器的样式
+      // 鏇存柊澶撮儴鍐呮墍鏈変笅鎷夋瑙﹀彂鍣ㄧ殑鏍峰紡
       const dropdownTriggers = this.headerElement.querySelectorAll('.cm-code-block-dropdown-trigger');
       dropdownTriggers.forEach((trigger) => {
         if (bgColor) {
@@ -6816,7 +6838,7 @@ class CodeBlockWidget extends WidgetType {
         }
       });
 
-      // 更新头部内所有按钮的样式
+      // 鏇存柊澶撮儴鍐呮墍鏈夋寜閽殑鏍峰紡
       const actionBtns = this.headerElement.querySelectorAll('.cm-code-block-action-btn');
       actionBtns.forEach((btn) => {
         if (fgColor) {
@@ -6824,7 +6846,7 @@ class CodeBlockWidget extends WidgetType {
         }
       });
 
-      // 更新分隔符样式
+      // 鏇存柊鍒嗛殧绗︽牱寮?
       const dividers = this.headerElement.querySelectorAll('.cm-code-block-divider');
       dividers.forEach((divider) => {
         if (borderColor) {
@@ -6833,12 +6855,12 @@ class CodeBlockWidget extends WidgetType {
       });
     }
 
-    // 更新整个容器的边框
+    // 鏇存柊鏁翠釜瀹瑰櫒鐨勮竟妗?
     if (this.containerElement && borderColor) {
       this.containerElement.style.borderColor = borderColor;
     }
 
-    // 更新输出面板样式
+    // 鏇存柊杈撳嚭闈㈡澘鏍峰紡
     if (this.outputPanelElement) {
       if (bgColor) {
         this.outputPanelElement.style.backgroundColor = bgColor;
@@ -6866,40 +6888,40 @@ class CodeBlockWidget extends WidgetType {
     }
   }
 
-  // 删除代码块
+  // 鍒犻櫎浠ｇ爜鍧?
   deleteCodeBlock(view: EditorView): void {
     try {
       if (!view.dom || !view.dom.isConnected) return;
       if (this.block.from > view.state.doc.length) return;
 
-      // 删除整个代码块（从开始标记到结束标记）
+      // 鍒犻櫎鏁翠釜浠ｇ爜鍧楋紙浠庡紑濮嬫爣璁板埌缁撴潫鏍囪锛?
       view.dispatch({
         changes: { from: this.block.from, to: this.block.to }
       });
     } catch (e) {
-      console.error('删除代码块失败:', e);
+      console.error('鍒犻櫎浠ｇ爜鍧楀け璐?', e);
     }
   }
 
-  // 运行代码
+  // 杩愯浠ｇ爜
   async runCode(): Promise<void> {
     const language = this.block.language || 'plaintext';
     
-    // 检查语言是否支持运行
+    // 妫€鏌ヨ瑷€鏄惁鏀寔杩愯
     if (!codeRunnerService.isSupportedLanguage(language)) {
-      this.showOutput(`不支持运行 ${language} 代码`, true);
+      this.showOutput(`涓嶆敮鎸佽繍琛?${language} 浠ｇ爜`, true);
       return;
     }
 
-    // 获取当前代码
+    // 鑾峰彇褰撳墠浠ｇ爜
     const code = this.block.code;
     if (!code.trim()) {
-      this.showOutput('代码为空', true);
+      this.showOutput('浠ｇ爜涓虹┖', true);
       return;
     }
 
-    // 显示运行中状态
-    this.showOutput('运行中...', false, true);
+    // 鏄剧ず杩愯涓姸鎬?
+    this.showOutput('杩愯涓?..', false, true);
 
     try {
       const result = await codeRunnerService.runCode({
@@ -6909,10 +6931,10 @@ class CodeBlockWidget extends WidgetType {
       });
 
       if (result.success) {
-        const output = result.stdout || '(无输出)';
+        const output = result.stdout || '(鏃犺緭鍑?';
         this.showOutput(output, false);
       } else {
-        const errorMsg = result.error || result.stderr || '执行失败';
+        const errorMsg = result.error || result.stderr || '鎵ц澶辫触';
         this.showOutput(errorMsg, true);
       }
     } catch (error) {
@@ -6921,17 +6943,17 @@ class CodeBlockWidget extends WidgetType {
     }
   }
 
-  // 显示输出面板
+  // 鏄剧ず杈撳嚭闈㈡澘
   private showOutput(content: string, isError: boolean, isLoading = false): void {
     if (!this.containerElement) return;
 
     const blockKey = this.block.from;
     const savedState = codeBlockOutputStates.get(blockKey);
 
-    // 如果用户已关闭输出面板且不是新的运行请求（loading），则不显示
+    // 濡傛灉鐢ㄦ埛宸插叧闂緭鍑洪潰鏉夸笖涓嶆槸鏂扮殑杩愯璇锋眰锛坙oading锛夛紝鍒欎笉鏄剧ず
     if (savedState?.isClosed && !isLoading) return;
 
-    // 新的运行请求时重置关闭状态
+    // 鏂扮殑杩愯璇锋眰鏃堕噸缃叧闂姸鎬?
     if (isLoading) {
       codeBlockOutputStates.set(blockKey, {
         content: '',
@@ -6940,7 +6962,7 @@ class CodeBlockWidget extends WidgetType {
       });
     }
 
-    // 保存输出内容（非 loading 状态时）
+    // 淇濆瓨杈撳嚭鍐呭锛堥潪 loading 鐘舵€佹椂锛?
     if (!isLoading) {
       codeBlockOutputStates.set(blockKey, {
         content,
@@ -6949,7 +6971,7 @@ class CodeBlockWidget extends WidgetType {
       });
     }
 
-    // 查找或创建输出面板
+    // 鏌ユ壘鎴栧垱寤鸿緭鍑洪潰鏉?
     let outputPanel = this.containerElement.querySelector('.cm-code-block-output') as HTMLElement;
     
     if (!outputPanel) {
@@ -6959,10 +6981,10 @@ class CodeBlockWidget extends WidgetType {
     }
     this.outputPanelElement = outputPanel;
 
-    // 清空并设置内容
+    // 娓呯┖骞惰缃唴瀹?
     outputPanel.innerHTML = '';
     
-    // 输出头部
+    // 杈撳嚭澶撮儴
     const header = document.createElement('div');
     header.className = 'cm-code-block-output-header';
     
@@ -6986,7 +7008,7 @@ class CodeBlockWidget extends WidgetType {
     header.appendChild(closeBtn);
     outputPanel.appendChild(header);
     
-    // 输出内容
+    // 杈撳嚭鍐呭
     const contentEl = document.createElement('pre');
     contentEl.className = 'cm-code-block-output-content';
     if (isError) {
@@ -6999,9 +7021,9 @@ class CodeBlockWidget extends WidgetType {
     outputPanel.appendChild(contentEl);
   }
 
-  // Widget 销毁时保存滚动位置
+  // Widget 閿€姣佹椂淇濆瓨婊氬姩浣嶇疆
   destroy(): void {
-    // 保存 Monaco 编辑器的滚动位置到 Store
+    // 淇濆瓨 Monaco 缂栬緫鍣ㄧ殑婊氬姩浣嶇疆鍒?Store
     if (this.monacoContainer) {
       const scrollPosition = getMonacoScrollPosition(this.monacoContainer);
       if (scrollPosition) {
@@ -7012,14 +7034,14 @@ class CodeBlockWidget extends WidgetType {
           null
         );
       }
-      // 卸载 Monaco 编辑器
+      // 鍗歌浇 Monaco 缂栬緫鍣?
       unmountMonacoFromElement(this.monacoContainer);
     }
   }
 
   eq(other: CodeBlockWidget): boolean {
-    // 不比较 from 位置，因为在代码块上方插入内容时位置会变化
-    // 只比较语言和代码内容，这样可以避免位置变化导致的 Widget 重建
+    // 涓嶆瘮杈?from 浣嶇疆锛屽洜涓哄湪浠ｇ爜鍧椾笂鏂规彃鍏ュ唴瀹规椂浣嶇疆浼氬彉鍖?
+    // 鍙瘮杈冭瑷€鍜屼唬鐮佸唴瀹癸紝杩欐牱鍙互閬垮厤浣嶇疆鍙樺寲瀵艰嚧鐨?Widget 閲嶅缓
     return (
       this.block.language === other.block.language &&
       this.block.code === other.block.code
@@ -7032,7 +7054,7 @@ class CodeBlockWidget extends WidgetType {
 }
 
 /**
- * 解析代码块并创建装饰器
+ * 瑙ｆ瀽浠ｇ爜鍧楀苟鍒涘缓瑁呴グ鍣?
  */
 function parseCodeBlockDecorations(state: EditorState): DecorationSet {
   const blocks = parseCodeBlocks(state);
@@ -7054,7 +7076,7 @@ function parseCodeBlockDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 代码块装饰器 StateField
+ * 浠ｇ爜鍧楄楗板櫒 StateField
  */
 const codeBlockDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -7070,7 +7092,7 @@ const codeBlockDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 分割线 Widget - 将 --- 或 *** 或 ___ 渲染为水平分割线
+ * 鍒嗗壊绾?Widget - 灏?--- 鎴?*** 鎴?___ 娓叉煋涓烘按骞冲垎鍓茬嚎
  */
 class HorizontalRuleWidget extends WidgetType {
   toDOM(): HTMLElement {
@@ -7091,28 +7113,28 @@ class HorizontalRuleWidget extends WidgetType {
 }
 
 /**
- * 解析分割线并创建装饰器
- * 匹配独立行的 ---、***、___ （至少3个字符）
+ * 瑙ｆ瀽鍒嗗壊绾垮苟鍒涘缓瑁呴グ鍣?
+ * 鍖归厤鐙珛琛岀殑 ---銆?**銆乢__ 锛堣嚦灏?涓瓧绗︼級
  */
 function parseHorizontalRules(state: EditorState): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
 
-  // 获取当前光标所在行
+  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
   const cursorLine = doc.lineAt(state.selection.main.head).number;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text.trim();
 
-    // 匹配 ---、***、___ （至少3个相同字符，可以有空格）
+    // 鍖归厤 ---銆?**銆乢__ 锛堣嚦灏?涓浉鍚屽瓧绗︼紝鍙互鏈夌┖鏍硷級
     if (/^[-]{3,}$|^[*]{3,}$|^[_]{3,}$/.test(text)) {
-      // 如果光标在当前行，显示原始文本
+      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屾樉绀哄師濮嬫枃鏈?
       if (i === cursorLine) {
         continue;
       }
 
-      // 用 Widget 替换整行内容
+      // 鐢?Widget 鏇挎崲鏁磋鍐呭
       decorations.push(
         Decoration.replace({
           widget: new HorizontalRuleWidget(),
@@ -7125,7 +7147,7 @@ function parseHorizontalRules(state: EditorState): DecorationSet {
 }
 
 /**
- * 分割线装饰器 StateField
+ * 鍒嗗壊绾胯楗板櫒 StateField
  */
 const horizontalRuleDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -7141,15 +7163,15 @@ const horizontalRuleDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 解析标题语法并创建隐藏装饰器（源码模式下的所见即所得）
- * 当光标不在标题行时，隐藏 # 符号
- * 如果标题行没有内容（只有 # 符号），不隐藏
+ * 瑙ｆ瀽鏍囬璇硶骞跺垱寤洪殣钘忚楗板櫒锛堟簮鐮佹ā寮忎笅鐨勬墍瑙佸嵆鎵€寰楋級
+ * 褰撳厜鏍囦笉鍦ㄦ爣棰樿鏃讹紝闅愯棌 # 绗﹀彿
+ * 濡傛灉鏍囬琛屾病鏈夊唴瀹癸紙鍙湁 # 绗﹀彿锛夛紝涓嶉殣钘?
  */
 function parseHeadingSyntaxHide(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
   const doc = state.doc;
   
-  // 获取当前光标所在行
+  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
   const cursorLine = state.selection.main.head;
   const currentLineNumber = doc.lineAt(cursorLine).number;
   
@@ -7157,20 +7179,20 @@ function parseHeadingSyntaxHide(state: EditorState): DecorationSet {
     const line = doc.line(i);
     const match = line.text.match(/^(#{1,6})\s/);
     if (match) {
-      // 如果光标在当前标题行，不隐藏 # 符号
+      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶆爣棰樿锛屼笉闅愯棌 # 绗﹀彿
       if (i === currentLineNumber) {
         continue;
       }
       
-      // 如果标题行没有内容（只有 # 符号和空格），不隐藏
+      // 濡傛灉鏍囬琛屾病鏈夊唴瀹癸紙鍙湁 # 绗﹀彿鍜岀┖鏍硷級锛屼笉闅愯棌
       const content = line.text.slice(match[0].length);
       if (content.trim().length === 0) {
         continue;
       }
       
-      // 隐藏 # 符号和后面的空格
+      // 闅愯棌 # 绗﹀彿鍜屽悗闈㈢殑绌烘牸
       const from = line.from;
-      const to = from + match[1].length + 1; // 包括空格
+      const to = from + match[1].length + 1; // 鍖呮嫭绌烘牸
       decorations.push({
         from,
         to,
@@ -7186,14 +7208,14 @@ function parseHeadingSyntaxHide(state: EditorState): DecorationSet {
 }
 
 /**
- * 标题语法隐藏装饰器 StateField（源码模式下的所见即所得）
+ * 鏍囬璇硶闅愯棌瑁呴グ鍣?StateField锛堟簮鐮佹ā寮忎笅鐨勬墍瑙佸嵆鎵€寰楋級
  */
 const headingSyntaxHideDecorations = StateField.define<DecorationSet>({
   create(state) {
     return parseHeadingSyntaxHide(state);
   },
   update(decorations, tr) {
-    // 文档变化或光标位置变化时都需要更新
+    // 鏂囨。鍙樺寲鎴栧厜鏍囦綅缃彉鍖栨椂閮介渶瑕佹洿鏂?
     if (tr.docChanged || tr.selection) {
       return parseHeadingSyntaxHide(tr.state);
     }
@@ -7203,7 +7225,7 @@ const headingSyntaxHideDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 解析行内代码并创建高亮装饰器（源码模式）
+ * 瑙ｆ瀽琛屽唴浠ｇ爜骞跺垱寤洪珮浜楗板櫒锛堟簮鐮佹ā寮忥級
  */
 function parseInlineCodeHighlight(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
@@ -7211,7 +7233,7 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
   const docLength = doc.length;
   const cursorPos = state.selection.main.head;
   
-  // 匹配行内代码 `code`
+  // 鍖归厤琛屽唴浠ｇ爜 `code`
   const codeRegex = /`([^`\n]+)`/g;
   let match;
   
@@ -7219,10 +7241,10 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
     const startFrom = match.index;
     const endTo = startFrom + match[0].length;
     
-    // 边界检查
+    // 杈圭晫妫€鏌?
     if (endTo > docLength) continue;
     
-    // 跳过代码块的 ``` 标记
+    // 璺宠繃浠ｇ爜鍧楃殑 ``` 鏍囪
     if (startFrom > 0 && doc[startFrom - 1] === '`') continue;
     if (endTo < docLength && doc[endTo] === '`') continue;
     
@@ -7232,21 +7254,21 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
     const endFrom = contentTo;
     const codeContent = match[1];
     
-    // 如果光标在这个行内代码范围内，显示原始语法
+    // 濡傛灉鍏夋爣鍦ㄨ繖涓鍐呬唬鐮佽寖鍥村唴锛屾樉绀哄師濮嬭娉?
     if (cursorPos >= startFrom && cursorPos <= endTo) {
       continue;
     }
     
-    // 确保范围有效
+    // 纭繚鑼冨洿鏈夋晥
     if (contentFrom >= contentTo) continue;
     
-    // 隐藏前面的 `
+    // 闅愯棌鍓嶉潰鐨?`
     decorations.push({
       from: startFrom,
       to: startTo,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
-    // 用 Widget 替换代码内容以实现语法高亮
+    // 鐢?Widget 鏇挎崲浠ｇ爜鍐呭浠ュ疄鐜拌娉曢珮浜?
     decorations.push({
       from: contentFrom,
       to: contentTo,
@@ -7254,7 +7276,7 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
         widget: new InlineCodeWidget(codeContent)
       }),
     });
-    // 隐藏后面的 `
+    // 闅愯棌鍚庨潰鐨?`
     decorations.push({
       from: endFrom,
       to: endTo,
@@ -7262,7 +7284,7 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
     });
   }
   
-  // 按位置排序
+  // 鎸変綅缃帓搴?
   decorations.sort((a, b) => a.from - b.from);
   
   return RangeSet.of(
@@ -7272,7 +7294,7 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
 }
 
 /**
- * 行内代码高亮装饰器 StateField（源码模式）
+ * 琛屽唴浠ｇ爜楂樹寒瑁呴グ鍣?StateField锛堟簮鐮佹ā寮忥級
  */
 const inlineCodeHighlightDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -7288,18 +7310,18 @@ const inlineCodeHighlightDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 解析 Markdown 语法并创建隐藏装饰器（预览模式）
+ * 瑙ｆ瀽 Markdown 璇硶骞跺垱寤洪殣钘忚楗板櫒锛堥瑙堟ā寮忥級
  */
 function parseMarkdownSyntax(doc: string): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
   
-  // 隐藏标题的 # 符号
+  // 闅愯棌鏍囬鐨?# 绗﹀彿
   const headingRegex = /^(#{1,6})\s/gm;
   let match;
   
   while ((match = headingRegex.exec(doc)) !== null) {
     const from = match.index;
-    const to = from + match[1].length + 1; // 包括空格
+    const to = from + match[1].length + 1; // 鍖呮嫭绌烘牸
     decorations.push({
       from,
       to,
@@ -7307,7 +7329,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 隐藏粗体的 ** 或 __
+  // 闅愯棌绮椾綋鐨?** 鎴?__
   const boldRegex = /(\*\*|__)([^*_]+)(\*\*|__)/g;
   while ((match = boldRegex.exec(doc)) !== null) {
     const startFrom = match.index;
@@ -7327,7 +7349,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 隐藏斜体的 * 或 _（单个）
+  // 闅愯棌鏂滀綋鐨?* 鎴?_锛堝崟涓級
   const italicRegex = /(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)|(?<!_)_(?!_)([^_]+)(?<!_)_(?!_)/g;
   while ((match = italicRegex.exec(doc)) !== null) {
     const startFrom = match.index;
@@ -7347,7 +7369,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 隐藏删除线的 ~~ 并添加删除线样式
+  // 闅愯棌鍒犻櫎绾跨殑 ~~ 骞舵坊鍔犲垹闄ょ嚎鏍峰紡
   const strikeRegex = /~~([^~]+)~~/g;
   while ((match = strikeRegex.exec(doc)) !== null) {
     const startFrom = match.index;
@@ -7357,19 +7379,19 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     const endFrom = contentTo;
     const endTo = startFrom + match[0].length;
     
-    // 隐藏前面的 ~~
+    // 闅愯棌鍓嶉潰鐨?~~
     decorations.push({
       from: startFrom,
       to: startTo,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
-    // 给中间内容添加删除线样式
+    // 缁欎腑闂村唴瀹规坊鍔犲垹闄ょ嚎鏍峰紡
     decorations.push({
       from: contentFrom,
       to: contentTo,
       decoration: Decoration.mark({ class: 'cm-strikethrough' }),
     });
-    // 隐藏后面的 ~~
+    // 闅愯棌鍚庨潰鐨?~~
     decorations.push({
       from: endFrom,
       to: endTo,
@@ -7377,7 +7399,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 隐藏行内代码的 ` 并添加语法高亮
+  // 闅愯棌琛屽唴浠ｇ爜鐨?` 骞舵坊鍔犺娉曢珮浜?
   const codeRegex = /`([^`]+)`/g;
   while ((match = codeRegex.exec(doc)) !== null) {
     const startFrom = match.index;
@@ -7388,13 +7410,13 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     const endTo = startFrom + match[0].length;
     const codeContent = match[1];
     
-    // 隐藏前面的 `
+    // 闅愯棌鍓嶉潰鐨?`
     decorations.push({
       from: startFrom,
       to: startTo,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
-    // 用 Widget 替换代码内容以实现语法高亮
+    // 鐢?Widget 鏇挎崲浠ｇ爜鍐呭浠ュ疄鐜拌娉曢珮浜?
     decorations.push({
       from: contentFrom,
       to: contentTo,
@@ -7402,7 +7424,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
         widget: new InlineCodeWidget(codeContent)
       }),
     });
-    // 隐藏后面的 `
+    // 闅愯棌鍚庨潰鐨?`
     decorations.push({
       from: endFrom,
       to: endTo,
@@ -7410,7 +7432,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 隐藏链接语法 [text](url) 中的 []() 部分，只显示文本
+  // 闅愯棌閾炬帴璇硶 [text](url) 涓殑 []() 閮ㄥ垎锛屽彧鏄剧ず鏂囨湰
   const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
   while ((match = linkRegex.exec(doc)) !== null) {
     const fullMatch = match[0];
@@ -7420,13 +7442,13 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     const startParen = startBracket + 1 + text.length;
     const endParen = startBracket + fullMatch.length;
     
-    // 隐藏 [
+    // 闅愯棌 [
     decorations.push({
       from: startBracket,
       to: endBracket,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
-    // 隐藏 ](url)
+    // 闅愯棌 ](url)
     decorations.push({
       from: startParen,
       to: endParen,
@@ -7434,7 +7456,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 按位置排序并去重
+  // 鎸変綅缃帓搴忓苟鍘婚噸
   decorations.sort((a, b) => a.from - b.from);
   
   return RangeSet.of(
@@ -7444,7 +7466,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
 }
 
 /**
- * Markdown 语法隐藏装饰器 StateField（预览模式）
+ * Markdown 璇硶闅愯棌瑁呴グ鍣?StateField锛堥瑙堟ā寮忥級
  */
 const markdownHideDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -7479,29 +7501,29 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
   const [isOutlineCollapsed, setIsOutlineCollapsed] = useState(false);
   const isResizingOutline = useRef(false);
 
-  // 上下文菜单状态
+  // 涓婁笅鏂囪彍鍗曠姸鎬?
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
     y: number;
   }>({ visible: false, x: 0, y: 0 });
 
-  // 视频链接输入状态
+  // 瑙嗛閾炬帴杈撳叆鐘舵€?
   const [videoLinkInput, setVideoLinkInput] = useState<{
     visible: boolean;
     x: number;
     y: number;
   }>({ visible: false, x: 0, y: 0 });
 
-  // @ 引用菜单状态
+  // @ 寮曠敤鑿滃崟鐘舵€?
   const [atReferenceMenu, setAtReferenceMenu] = useState<{
     visible: boolean;
     position: { top: number; left: number };
     searchQuery: string;
-    triggerPos: number; // @ 符号在文档中的位置
+    triggerPos: number; // @ 绗﹀彿鍦ㄦ枃妗ｄ腑鐨勪綅缃?
   }>({ visible: false, position: { top: 0, left: 0 }, searchQuery: '', triggerPos: 0 });
 
-  // 颜色预览状态
+  // 棰滆壊棰勮鐘舵€?
   const [colorPreview, setColorPreview] = useState<{
     type: 'color' | 'background-color' | null;
     color: string;
@@ -7509,53 +7531,110 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     to: number;
   } | null>(null);
 
-  // 保存打开颜色选择器时的选区范围
+  // 淇濆瓨鎵撳紑棰滆壊閫夋嫨鍣ㄦ椂鐨勯€夊尯鑼冨洿
   const colorPickerSelectionRef = useRef<{ from: number; to: number } | null>(null);
 
-  // 关闭上下文菜单
+  // 鍏抽棴涓婁笅鏂囪彍鍗?
   const closeContextMenu = useCallback(() => {
     setContextMenu({ visible: false, x: 0, y: 0 });
-    setColorPreview(null); // 关闭菜单时清除预览
-    colorPickerSelectionRef.current = null; // 清除保存的选区
+    setColorPreview(null); // 鍏抽棴鑿滃崟鏃舵竻闄ら瑙?
+    colorPickerSelectionRef.current = null; // 娓呴櫎淇濆瓨鐨勯€夊尯
   }, []);
 
-  // 关闭 @ 引用菜单
+  // 鍏抽棴 @ 寮曠敤鑿滃崟
   const closeAtReferenceMenu = useCallback(() => {
     setAtReferenceMenu(prev => ({ ...prev, visible: false }));
   }, []);
 
-  // 处理表单选择
+  // Wikilink 鑷姩琛ュ叏
+  const wikilinkCompletionSource = useCallback(async (context: CompletionContext) => {
+    const textBeforeCursor = context.state.doc.sliceString(Math.max(0, context.pos - 200), context.pos);
+
+    const anchorMatch = textBeforeCursor.match(/\[\[([^\]|#\]]+)#([^\]|]*)$/);
+    if (anchorMatch) {
+      const targetReference = anchorMatch[1].trim();
+      const anchorQuery = anchorMatch[2].trim();
+      const anchors = await window.electron?.ipcRenderer.invoke(
+        'link:getAnchors',
+        targetReference,
+        anchorQuery
+      ) as LinkAnchorSuggestionItem[] | undefined;
+
+      return {
+        from: context.pos - anchorMatch[2].length,
+        options: (anchors || []).map((anchor): Completion => ({
+          label: anchor.reference,
+          detail: `${anchor.kind === 'heading' ? '标题' : '块'} · 第${anchor.line} 行`,
+          type: anchor.kind === 'heading' ? 'property' : 'keyword',
+          info: anchor.preview,
+          apply: (view, completion, from, to) => {
+            applyWikilinkCompletionText(view, from, to, completion.label);
+          }
+        }))
+      };
+    }
+
+    const linkMatch = textBeforeCursor.match(/\[\[([^\]|#\]]*)$/);
+    if (!linkMatch) {
+      return null;
+    }
+
+    const query = linkMatch[1].trim();
+    const targets = await window.electron?.ipcRenderer.invoke(
+      'link:searchTargets',
+      query
+    ) as LinkTargetSuggestionItem[] | undefined;
+
+    return {
+      from: context.pos - linkMatch[1].length,
+      options: (targets || []).map((target): Completion => ({
+        label: target.title,
+        detail: target.path || '绗旇',
+        type: 'file',
+        info: target.aliases.length > 0 ? `鍒悕锛?{target.aliases.join('銆?)}` : undefined,
+        apply: (view, completion, from, to) => {
+          const preferredReference = query.includes('/') || query.includes('\\')
+            ? (target.path || target.title)
+            : target.title;
+
+          applyWikilinkCompletionText(view, from, to, preferredReference);
+        }
+      }))
+    };
+  }, []);
+
+  // 澶勭悊琛ㄥ崟閫夋嫨
   const handleFormSelect = useCallback((form: FormInfo) => {
     const view = viewRef.current;
     if (!view) return;
 
-    // 生成引用文本
+    // 鐢熸垚寮曠敤鏂囨湰
     const referenceText = tableReferenceService.formatReference('form', form.id, form.name);
     
-    // 替换 @ 及其后面的搜索文本
+    // 鏇挎崲 @ 鍙婂叾鍚庨潰鐨勬悳绱㈡枃鏈?
     const { triggerPos, searchQuery } = atReferenceMenu;
     const replaceFrom = triggerPos;
-    const replaceTo = triggerPos + 1 + searchQuery.length; // @ + 搜索文本
+    const replaceTo = triggerPos + 1 + searchQuery.length; // @ + 鎼滅储鏂囨湰
 
     view.dispatch({
       changes: { from: replaceFrom, to: replaceTo, insert: referenceText },
       selection: { anchor: replaceFrom + referenceText.length },
     });
 
-    // 关闭菜单
+    // 鍏抽棴鑿滃崟
     closeAtReferenceMenu();
     
-    // 聚焦编辑器
+    // 鑱氱劍缂栬緫鍣?
     view.focus();
   }, [atReferenceMenu, closeAtReferenceMenu]);
 
-  // 颜色预览效果
+  // 棰滆壊棰勮鏁堟灉
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
 
     if (colorPreview && colorPreview.type) {
-      // 同时设置预览装饰器和预览范围（用于隐藏已有颜色）
+      // 鍚屾椂璁剧疆棰勮瑁呴グ鍣ㄥ拰棰勮鑼冨洿锛堢敤浜庨殣钘忓凡鏈夐鑹诧級
       view.dispatch({
         effects: [
           setColorPreviewEffect.of({
@@ -7572,7 +7651,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
         ],
       });
     } else {
-      // 清除预览和预览范围
+      // 娓呴櫎棰勮鍜岄瑙堣寖鍥?
       view.dispatch({
         effects: [
           setColorPreviewEffect.of(null),
@@ -7582,33 +7661,43 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     }
   }, [colorPreview]);
 
-  // 上下文菜单项
+  // 涓婁笅鏂囪彍鍗曢」
   const getContextMenuItems = useCallback((): ContextMenuItem[] => {
     const view = viewRef.current;
+    const selection = view?.state.selection.main;
+    const selectedText = selection ? view.state.sliceDoc(selection.from, selection.to) : '';
+    const bidirectionalLinkText = buildBidirectionalLinkText(selectedText);
 
     return [
       {
-        id: 'new-link',
-        label: '新建链接',
+        id: 'open-bidirectional-links',
+        label: '打开双向链接',
         action: () => {
-          if (view) {
-            const { from, to } = view.state.selection.main;
-            const selectedText = view.state.sliceDoc(from, to);
-            const linkText = selectedText || '链接文本';
+          openBidirectionalLinksPanel();
+        },
+      },
+      { id: 'open-bidirectional-links-sep', label: '', separator: true },
+      {
+        id: 'set-bidirectional-link',
+        label: '设置双链',
+        disabled: !bidirectionalLinkText,
+        action: () => {
+          if (view && selection && bidirectionalLinkText) {
+            const { from, to } = selection;
             view.dispatch({
-              changes: { from, to, insert: `[[${linkText}]]` },
+              changes: { from, to, insert: bidirectionalLinkText },
             });
           }
         },
       },
       {
         id: 'external-link',
-        label: '新增外部链接',
+        label: '鏂板澶栭儴閾炬帴',
         action: () => {
           if (view) {
             const { from, to } = view.state.selection.main;
             const selectedText = view.state.sliceDoc(from, to);
-            const linkText = selectedText || '链接文本';
+            const linkText = selectedText || '閾炬帴鏂囨湰';
             view.dispatch({
               changes: { from, to, insert: `[${linkText}](url)` },
             });
@@ -7618,32 +7707,32 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       { id: 'sep1', label: '', separator: true },
       {
         id: 'text-format',
-        label: '文本格式',
+        label: '鏂囨湰鏍煎紡',
         submenu: [
           {
             id: 'bold',
-            label: '加粗',
+            label: '鍔犵矖',
             shortcut: 'Ctrl+B',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `**${selectedText || '粗体文本'}**` },
+                  changes: { from, to, insert: `**${selectedText || '绮椾綋鏂囨湰'}**` },
                 });
               }
             },
           },
           {
             id: 'italic',
-            label: '斜体',
+            label: '鏂滀綋',
             shortcut: 'Ctrl+I',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `*${selectedText || '斜体文本'}*` },
+                  changes: { from, to, insert: `*${selectedText || '鏂滀綋鏂囨湰'}*` },
                 });
               }
             },
@@ -7663,39 +7752,39 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'inline-code',
-            label: '行内代码',
+            label: '琛屽唴浠ｇ爜',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `\`${selectedText || '代码'}\`` },
+                  changes: { from, to, insert: `\`${selectedText || '浠ｇ爜'}\`` },
                 });
               }
             },
           },
           {
             id: 'comment',
-            label: '注释',
+            label: '娉ㄩ噴',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `<!-- ${selectedText || '注释'} -->` },
+                  changes: { from, to, insert: `<!-- ${selectedText || '娉ㄩ噴'} -->` },
                 });
               }
             },
           },
           {
             id: 'clear-format',
-            label: '清除格式',
+            label: '娓呴櫎鏍煎紡',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
                 if (from === to) return;
                 const selectedText = view.state.sliceDoc(from, to);
-                // 清除常见格式标记：**粗体**、*斜体*、~~删除线~~、==高亮==、`代码`、$公式$
+                // 娓呴櫎甯歌鏍煎紡鏍囪锛?*绮椾綋**銆?鏂滀綋*銆亊~鍒犻櫎绾縹~銆?=楂樹寒==銆乣浠ｇ爜`銆?鍏紡$
                 const cleanText = selectedText
                   .replace(/\*\*(.+?)\*\*/g, '$1')
                   .replace(/\*(.+?)\*/g, '$1')
@@ -7714,11 +7803,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'color',
-        label: '颜色',
+        label: '棰滆壊',
         submenu: [
           {
             id: 'bg-slate',
-            label: '石板蓝',
+            label: '石板灰',
             color: 'rgba(100, 116, 139, 0.3)',
             action: () => {
               if (view) {
@@ -7728,7 +7817,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-sky',
-            label: '天空蓝',
+            label: '天蓝',
             color: 'rgba(56, 189, 248, 0.25)',
             action: () => {
               if (view) {
@@ -7748,7 +7837,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-teal',
-            label: '蓝绿色',
+            label: '蓝绿',
             color: 'rgba(45, 212, 191, 0.25)',
             action: () => {
               if (view) {
@@ -7758,7 +7847,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-indigo',
-            label: '靛蓝色',
+            label: '靛蓝',
             color: 'rgba(129, 140, 248, 0.3)',
             action: () => {
               if (view) {
@@ -7782,7 +7871,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             isCustomColor: true,
             onCustomColorPreview: (color: string) => {
               if (view) {
-                // 第一次调用时保存选区
+                // 绗竴娆¤皟鐢ㄦ椂淇濆瓨閫夊尯
                 if (!colorPickerSelectionRef.current) {
                   const { from, to } = view.state.selection.main;
                   if (from === to) {
@@ -7792,7 +7881,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                     colorPickerSelectionRef.current = { from, to };
                   }
                 }
-                // 使用保存的选区
+                // 浣跨敤淇濆瓨鐨勯€夊尯
                 const { from, to } = colorPickerSelectionRef.current;
                 setColorPreview({
                   type: 'background-color',
@@ -7806,7 +7895,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               setColorPreview(null);
               if (view && colorPickerSelectionRef.current) {
                 const { from, to } = colorPickerSelectionRef.current;
-                // 恢复选区
+                // 鎭㈠閫夊尯
                 view.dispatch({
                   selection: { anchor: from, head: to },
                 });
@@ -7815,7 +7904,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               colorPickerSelectionRef.current = null;
             },
             onCustomColorCancel: () => {
-              // 取消时清除预览
+              // 鍙栨秷鏃舵竻闄ら瑙?
               setColorPreview(null);
               colorPickerSelectionRef.current = null;
             },
@@ -7823,7 +7912,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'color-sep', label: '', separator: true },
           {
             id: 'text-red',
-            label: '红色文字',
+            label: '绾㈣壊鏂囧瓧',
             color: '#ff0000',
             action: () => {
               if (view) {
@@ -7833,7 +7922,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-orange',
-            label: '橙色文字',
+            label: '姗欒壊鏂囧瓧',
             color: '#ff8000',
             action: () => {
               if (view) {
@@ -7843,7 +7932,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-green',
-            label: '绿色文字',
+            label: '缁胯壊鏂囧瓧',
             color: '#00cc00',
             action: () => {
               if (view) {
@@ -7853,7 +7942,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-blue',
-            label: '蓝色文字',
+            label: '钃濊壊鏂囧瓧',
             color: '#0066ff',
             action: () => {
               if (view) {
@@ -7863,7 +7952,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-purple',
-            label: '紫色文字',
+            label: '绱壊鏂囧瓧',
             color: '#9900ff',
             action: () => {
               if (view) {
@@ -7873,11 +7962,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-custom',
-            label: '自定义文字',
+            label: '自定义文本颜色',
             isCustomColor: true,
             onCustomColorPreview: (color: string) => {
               if (view) {
-                // 第一次调用时保存选区
+                // 绗竴娆¤皟鐢ㄦ椂淇濆瓨閫夊尯
                 if (!colorPickerSelectionRef.current) {
                   const { from, to } = view.state.selection.main;
                   if (from === to) {
@@ -7887,7 +7976,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                     colorPickerSelectionRef.current = { from, to };
                   }
                 }
-                // 使用保存的选区
+                // 浣跨敤淇濆瓨鐨勯€夊尯
                 const { from, to } = colorPickerSelectionRef.current;
                 setColorPreview({
                   type: 'color',
@@ -7901,7 +7990,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               setColorPreview(null);
               if (view && colorPickerSelectionRef.current) {
                 const { from, to } = colorPickerSelectionRef.current;
-                // 恢复选区
+                // 鎭㈠閫夊尯
                 view.dispatch({
                   selection: { anchor: from, head: to },
                 });
@@ -7910,7 +7999,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               colorPickerSelectionRef.current = null;
             },
             onCustomColorCancel: () => {
-              // 取消时清除预览
+              // 鍙栨秷鏃舵竻闄ら瑙?
               setColorPreview(null);
               colorPickerSelectionRef.current = null;
             },
@@ -7919,11 +8008,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'paragraph',
-        label: '段落设置',
+        label: '娈佃惤璁剧疆',
         submenu: [
           {
             id: 'h1',
-            label: '标题 1',
+            label: '鏍囬 1',
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -7937,7 +8026,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'h2',
-            label: '标题 2',
+            label: '鏍囬 2',
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -7951,7 +8040,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'h3',
-            label: '标题 3',
+            label: '鏍囬 3',
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -7965,7 +8054,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'quote',
-            label: '引用',
+            label: '寮曠敤',
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -7981,11 +8070,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'insert',
-        label: '插入',
+        label: '鎻掑叆',
         submenu: [
           {
             id: 'heading1',
-            label: '标题1',
+            label: '鏍囬1',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8000,7 +8089,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'heading2',
-            label: '标题2',
+            label: '鏍囬2',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8015,7 +8104,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'heading3',
-            label: '标题3',
+            label: '鏍囬3',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8031,7 +8120,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep1', label: '', separator: true },
           {
             id: 'ordered-list',
-            label: '有序列表',
+            label: '鏈夊簭鍒楄〃',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8046,7 +8135,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'unordered-list',
-            label: '无序列表',
+            label: '鏃犲簭鍒楄〃',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8061,25 +8150,25 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'todo-list',
-            label: '待办清单',
+            label: '寰呭姙娓呭崟',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
                 const line = view.state.doc.lineAt(from);
                 const text = line.text;
                 
-                // 检查是否是有序列表行（如 1. 2. 等）
+                // 妫€鏌ユ槸鍚︽槸鏈夊簭鍒楄〃琛岋紙濡?1. 2. 绛夛級
                 const orderedMatch = text.match(/^(\s*)(\d+\.)\s*/);
                 if (orderedMatch) {
-                  // 在有序列表后面添加待办清单格式
-                  const prefix = orderedMatch[0]; // 包括缩进、数字和点后的空格
+                  // 鍦ㄦ湁搴忓垪琛ㄥ悗闈㈡坊鍔犲緟鍔炴竻鍗曟牸寮?
+                  const prefix = orderedMatch[0]; // 鍖呮嫭缂╄繘銆佹暟瀛楀拰鐐瑰悗鐨勭┖鏍?
                   const insertPos = line.from + prefix.length;
                   view.dispatch({
                     changes: { from: insertPos, insert: '[ ] ' },
                     selection: { anchor: insertPos + 4 },
                   });
                 } else {
-                  // 普通行，在行首插入待办清单
+                  // 鏅€氳锛屽湪琛岄鎻掑叆寰呭姙娓呭崟
                   view.dispatch({
                     changes: { from: line.from, insert: '- [ ] ' },
                     selection: { anchor: line.from + 6 },
@@ -8092,7 +8181,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep2', label: '', separator: true },
           {
             id: 'blockquote',
-            label: '引用',
+            label: '寮曠敤',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8107,12 +8196,12 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'callout',
-            label: '标注',
+            label: '鏍囨敞',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
                 view.dispatch({
-                  changes: { from, insert: '> [!NOTE]\n> 标注内容' },
+                  changes: { from, insert: '> [!NOTE]\n> 鏍囨敞鍐呭' },
                 });
                 view.focus();
               }
@@ -8138,7 +8227,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
-                const table = '| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |';
+                const table = '| 鍒? | 鍒? | 鍒? |\n| --- | --- | --- |\n| 鍐呭 | 鍐呭 | 鍐呭 |';
                 view.dispatch({
                   changes: { from, insert: table },
                 });
@@ -8148,9 +8237,9 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep4', label: '', separator: true },
           {
             id: 'video-link',
-            label: '视频链接',
+            label: '瑙嗛閾炬帴',
             action: () => {
-              // 获取光标位置的屏幕坐标
+              // 鑾峰彇鍏夋爣浣嶇疆鐨勫睆骞曞潗鏍?
               if (view) {
                 const { from } = view.state.selection.main;
                 const coords = view.coordsAtPos(from);
@@ -8166,9 +8255,9 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'database',
-            label: '数据库',
+            label: '数据库视图',
             action: () => {
-              // 打开数据库设计器标签页
+              // 鎵撳紑鏁版嵁搴撹璁″櫒鏍囩椤?
               window.dispatchEvent(new CustomEvent('open-database-view'));
             },
           },
@@ -8176,11 +8265,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'local-embed',
-        label: '本地嵌入',
+        label: '鏈湴宓屽叆',
         submenu: [
           {
             id: 'local-video',
-            label: '本地视频',
+            label: '鏈湴瑙嗛',
             action: async () => {
               if (view) {
                 const result = await window.electron?.video?.open();
@@ -8188,7 +8277,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                   const { from } = view.state.selection.main;
                   const filePath = result.data.path;
                   view.dispatch({
-                    changes: { from, insert: `![视频](${filePath})` },
+                    changes: { from, insert: `![瑙嗛](${filePath})` },
                   });
                   view.focus();
                 }
@@ -8197,17 +8286,17 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'local-audio',
-            label: '本地音频',
+            label: '鏈湴闊抽',
             action: () => {
-              // TODO: 实现本地音频插入
+              // TODO: 瀹炵幇鏈湴闊抽鎻掑叆
               console.log('本地音频功能待实现');
             },
           },
           {
             id: 'local-file',
-            label: '本地文件',
+            label: '鏈湴鏂囦欢',
             action: () => {
-              // TODO: 实现本地文件插入
+              // TODO: 瀹炵幇鏈湴鏂囦欢鎻掑叆
               console.log('本地文件功能待实现');
             },
           },
@@ -8219,17 +8308,17 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
         submenu: [
           {
             id: 'canvas',
-            label: '画板',
+            label: '画布',
             action: () => {
-              // TODO: 实现画板功能
-              console.log('画板功能待实现');
+              // TODO: 瀹炵幇鐢绘澘鍔熻兘
+              console.log('画布功能待实现');
             },
           },
           {
             id: 'mindmap',
             label: '思维导图',
             action: () => {
-              // TODO: 实现思维导图功能
+              // TODO: 瀹炵幇鎬濈淮瀵煎浘鍔熻兘
               console.log('思维导图功能待实现');
             },
           },
@@ -8242,10 +8331,10 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const { from } = view.state.selection.main;
                 const flowchartTemplate = `\`\`\`mermaid
 flowchart TD
-    A[开始] --> B{判断}
-    B -->|是| C[处理1]
-    B -->|否| D[处理2]
-    C --> E[结束]
+    A[寮€濮媇 --> B{鍒ゆ柇}
+    B -->|鏄瘄 C[澶勭悊1]
+    B -->|鍚 D[澶勭悊2]
+    C --> E[缁撴潫]
     D --> E
 \`\`\``;
                 view.dispatch({
@@ -8263,10 +8352,10 @@ flowchart TD
                 const { from } = view.state.selection.main;
                 const sequenceTemplate = `\`\`\`mermaid
 sequenceDiagram
-    participant A as 用户
-    participant B as 系统
-    A->>B: 请求
-    B-->>A: 响应
+    participant A as 鐢ㄦ埛
+    participant B as 绯荤粺
+    A->>B: 璇锋眰
+    B-->>A: 鍝嶅簲
 \`\`\``;
                 view.dispatch({
                   changes: { from, insert: sequenceTemplate },
@@ -8280,7 +8369,7 @@ sequenceDiagram
       { id: 'sep2', label: '', separator: true },
       {
         id: 'ai-inline-chat',
-        label: 'AI 助手',
+        label: 'AI 行内对话',
         shortcut: 'Ctrl+I',
         action: () => {
           if (view) {
@@ -8328,7 +8417,7 @@ sequenceDiagram
     ];
   }, []);
 
-  // 更新大纲
+  // 鏇存柊澶х翰
   const updateOutline = useCallback(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -8336,11 +8425,11 @@ sequenceDiagram
     const doc = view.state.doc.toString();
     setOutline(parseOutline(doc));
 
-    // 色块信息已移至上下文菜单
+    // 鑹插潡淇℃伅宸茬Щ鑷充笂涓嬫枃鑿滃崟
     setColorBlocks([]);
   }, []);
 
-  // 跳转到指定位置
+  // 璺宠浆鍒版寚瀹氫綅缃?
   const scrollToPosition = useCallback((position: number) => {
     const view = viewRef.current;
     if (!view) return;
@@ -8352,7 +8441,31 @@ sequenceDiagram
     view.focus();
   }, []);
 
-  // 大纲面板拖动调整宽度
+  useEffect(() => {
+    const handleRevealLine = (event: Event) => {
+      if (!isActive || !viewRef.current) {
+        return;
+      }
+
+      const customEvent = event as CustomEvent<{ lineNumber: number }>;
+      const lineNumber = customEvent.detail?.lineNumber;
+      if (!lineNumber) {
+        return;
+      }
+
+      const view = viewRef.current;
+      const safeLineNumber = Math.max(1, Math.min(lineNumber, view.state.doc.lines));
+      const targetPosition = view.state.doc.line(safeLineNumber).from;
+      scrollToPosition(targetPosition);
+    };
+
+    window.addEventListener('note:reveal-line', handleRevealLine as EventListener);
+    return () => {
+      window.removeEventListener('note:reveal-line', handleRevealLine as EventListener);
+    };
+  }, [isActive, scrollToPosition]);
+
+  // 澶х翰闈㈡澘鎷栧姩璋冩暣瀹藉害
   const handleOutlineResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isResizingOutline.current = true;
@@ -8376,7 +8489,7 @@ sequenceDiagram
     document.addEventListener('mouseup', handleMouseUp);
   }, [outlineWidth]);
 
-  // 处理拖拽事件
+  // 澶勭悊鎷栨嫿浜嬩欢
   const handleDrop = useCallback((event: DragEvent) => {
     const view = viewRef.current;
     if (!view || !editable) return;
@@ -8384,7 +8497,7 @@ sequenceDiagram
     const dataTransfer = event.dataTransfer;
     if (!dataTransfer) return;
 
-    // 处理拖放的文件
+    // 澶勭悊鎷栨斁鐨勬枃浠?
     if (dataTransfer.files?.length) {
       const files = Array.from(dataTransfer.files);
       const imageFiles = files.filter(file => file.type.startsWith('image/'));
@@ -8393,7 +8506,7 @@ sequenceDiagram
         event.preventDefault();
         event.stopPropagation();
 
-        // 获取拖放位置
+        // 鑾峰彇鎷栨斁浣嶇疆
         const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
         const insertPos = pos ?? view.state.selection.main.head;
 
@@ -8404,7 +8517,7 @@ sequenceDiagram
       }
     }
 
-    // 处理拖放的图片 URL
+    // 澶勭悊鎷栨斁鐨勫浘鐗?URL
     const url = dataTransfer.getData('text/uri-list') || dataTransfer.getData('text/plain') || '';
 
     if (url && isImageUrl(url)) {
@@ -8418,7 +8531,7 @@ sequenceDiagram
     }
   }, [editable]);
 
-  // 处理粘贴事件
+  // 澶勭悊绮樿创浜嬩欢
   const handlePaste = useCallback((event: ClipboardEvent) => {
     const view = viewRef.current;
     if (!view || !editable) return;
@@ -8442,33 +8555,33 @@ sequenceDiagram
     }
   }, [editable]);
 
-  // 创建编辑器
+  // 鍒涘缓缂栬緫鍣?
   useEffect(() => {
     if (!containerRef.current) return;
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged && onChange && !isInternalChange.current) {
-        // 获取文档内容并应用待同步的代码块名称更新
+        // 鑾峰彇鏂囨。鍐呭骞跺簲鐢ㄥ緟鍚屾鐨勪唬鐮佸潡鍚嶇О鏇存柊
         let newContent = update.state.doc.toString();
         newContent = applyPendingUpdatesToContent(newContent);
         onChange(newContent);
       }
 
-      // 检测 @ 引用输入
+      // 妫€娴?@ 寮曠敤杈撳叆
       if (update.docChanged) {
         const { state } = update;
         const pos = state.selection.main.head;
         const line = state.doc.lineAt(pos);
         const textBefore = line.text.slice(0, pos - line.from);
         
-        // 检查是否输入了 @ 或者正在输入 @ 后的内容
+        // 妫€鏌ユ槸鍚﹁緭鍏ヤ簡 @ 鎴栬€呮鍦ㄨ緭鍏?@ 鍚庣殑鍐呭
         const atMatch = textBefore.match(/@([^\s@]*)$/);
         
         if (atMatch) {
-          // 获取光标位置的屏幕坐标
+          // 鑾峰彇鍏夋爣浣嶇疆鐨勫睆骞曞潗鏍?
           const coords = update.view.coordsAtPos(pos);
           if (coords) {
-            const triggerPos = pos - atMatch[1].length - 1; // @ 符号的位置
+            const triggerPos = pos - atMatch[1].length - 1; // @ 绗﹀彿鐨勪綅缃?
             setAtReferenceMenu({
               visible: true,
               position: {
@@ -8480,24 +8593,32 @@ sequenceDiagram
             });
           }
         } else if (atReferenceMenu.visible) {
-          // 如果没有匹配到 @ 模式，关闭菜单
-          setAtReferenceMenu(prev => ({ ...prev, visible: false }));
+          // 濡傛灉娌℃湁鍖归厤鍒?@ 妯″紡锛屽叧闂彍鍗?          setAtReferenceMenu(prev => ({ ...prev, visible: false }));
+        }
+
+        if (/\[\[[^\]|]*$/.test(textBefore) || /\[\[[^\]|#]+\#[^\]|]*$/.test(textBefore)) {
+          startCompletion(update.view);
         }
       }
     });
 
-    // 根据模式决定是否使用预览装饰器
+    // 鏍规嵁妯″紡鍐冲畾鏄惁浣跨敤棰勮瑁呴グ鍣?
     const extensions = [
       highlightActiveLine(),
       history(),
       markdown(),
+      autocompletion({
+        activateOnTyping: true,
+        closeOnBlur: true,
+        override: [wikilinkCompletionSource]
+      }),
       syntaxHighlighting(customHighlightStyle),
-      indentUnit.of('  '), // 2 空格缩进
-      customKeymap, // 自定义键盘映射放在默认键盘映射之前，确保优先处理
+      indentUnit.of('  '), // 2 绌烘牸缂╄繘
+      customKeymap, // 鑷畾涔夐敭鐩樻槧灏勬斁鍦ㄩ粯璁ら敭鐩樻槧灏勪箣鍓嶏紝纭繚浼樺厛澶勭悊
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       updateListener,
-      mermaidDecorations, // Mermaid 图表装饰器
-      videoDecorations, // 视频装饰器放在图片之前，优先匹配视频链接
+      mermaidDecorations, // Mermaid 鍥捐〃瑁呴グ鍣?
+      videoDecorations, // 瑙嗛瑁呴グ鍣ㄦ斁鍦ㄥ浘鐗囦箣鍓嶏紝浼樺厛鍖归厤瑙嗛閾炬帴
       imageDecorations,
       tableDecorations,
       headingDecorations,
@@ -8508,25 +8629,25 @@ sequenceDiagram
       blockquoteDecorations,
       horizontalRuleDecorations,
       codeBlockDecorations,
-      // 缩进线
+      // 缂╄繘绾?
       indentGuideDecorations,
-      // 序号高亮（如 4.2、4.2.1、4.2.1.1）
+      // 搴忓彿楂樹寒锛堝 4.2銆?.2.1銆?.2.1.1锛?
       numberingDecorations,
-      // 文本颜色系统 - 纯 StateField + Decoration 方案
+      // 鏂囨湰棰滆壊绯荤粺 - 绾?StateField + Decoration 鏂规
       colorMarksField,
       previewRangeField,
       Prec.highest(colorDecorationsField),
-      // 颜色预览装饰器
+      // 棰滆壊棰勮瑁呴グ鍣?
       colorPreviewDecorations,
-      // 折叠组高亮（光标选中时显示父级的折叠图标和子行的缩进线）
+      // 鎶樺彔缁勯珮浜紙鍏夋爣閫変腑鏃舵樉绀虹埗绾х殑鎶樺彔鍥炬爣鍜屽瓙琛岀殑缂╄繘绾匡級
       foldGroupHighlightField,
-      // 折叠功能（不使用 customFoldService，避免与 markdown 解析器冲突）
+      // 鎶樺彔鍔熻兘锛堜笉浣跨敤 customFoldService锛岄伩鍏嶄笌 markdown 瑙ｆ瀽鍣ㄥ啿绐侊級
       headingFoldMarkers,
       headingFoldGutter,
       listFoldDecorations,
-      // 内联 AI 聊天
+      // 鍐呰仈 AI 鑱婂ぉ
       inlineAIChatField,
-      // 表格引用内联预览
+      // 琛ㄦ牸寮曠敤鍐呰仈棰勮
       ...createTableReferenceExtension(),
       codeFolding({
         placeholderDOM: (_view, onclick) => {
@@ -8534,7 +8655,7 @@ sequenceDiagram
           span.className = 'cm-foldPlaceholder';
           span.textContent = '...';
 
-          span.title = '点击展开';
+          span.title = '鐐瑰嚮灞曞紑';
           span.onclick = onclick;
           return span;
         },
@@ -8560,13 +8681,13 @@ sequenceDiagram
       }),
     ];
 
-    // 预览模式添加隐藏 Markdown 语法的装饰器
+    // 棰勮妯″紡娣诲姞闅愯棌 Markdown 璇硶鐨勮楗板櫒
     if (mode === 'preview') {
       extensions.push(markdownHideDecorations);
     } else {
-      // 源码模式添加标题语法隐藏装饰器（所见即所得）
+      // 婧愮爜妯″紡娣诲姞鏍囬璇硶闅愯棌瑁呴グ鍣紙鎵€瑙佸嵆鎵€寰楋級
       extensions.push(headingSyntaxHideDecorations);
-      // 源码模式添加行内代码高亮装饰器
+      // 婧愮爜妯″紡娣诲姞琛屽唴浠ｇ爜楂樹寒瑁呴グ鍣?
       extensions.push(inlineCodeHighlightDecorations);
     }
 
@@ -8583,7 +8704,7 @@ sequenceDiagram
     viewRef.current = view;
     globalEditorView = view;
 
-    // 初始化大纲
+    // 鍒濆鍖栧ぇ绾?
     updateOutline();
 
     if (autoFocus) {
@@ -8595,17 +8716,17 @@ sequenceDiagram
       viewRef.current = null;
       globalEditorView = null;
     };
-  }, [editable, mode, updateOutline]);
+  }, [editable, mode, updateOutline, wikilinkCompletionSource]);
 
-  // 注意：代码块名称的同步已移至文档保存时处理
-  // 这样可以避免在 Widget 更新过程中触发 CodeMirror 内部错误
+  // 娉ㄦ剰锛氫唬鐮佸潡鍚嶇О鐨勫悓姝ュ凡绉昏嚦鏂囨。淇濆瓨鏃跺鐞?
+  // 杩欐牱鍙互閬垮厤鍦?Widget 鏇存柊杩囩▼涓Е鍙?CodeMirror 鍐呴儴閿欒
 
-  // 监听视频标题和显示模式变化事件
+  // 鐩戝惉瑙嗛鏍囬鍜屾樉绀烘ā寮忓彉鍖栦簨浠?
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
 
-    // 代码块名称变化处理
+    // 浠ｇ爜鍧楀悕绉板彉鍖栧鐞?
     const handleCodeBlockNameChange = (event: Event) => {
       const customEvent = event as CustomEvent<{
         language: string;
@@ -8614,18 +8735,18 @@ sequenceDiagram
       }>;
       const { language, oldName, newName } = customEvent.detail;
       
-      // 使用 setTimeout 延迟执行，确保在 CodeMirror 完成当前更新周期后再执行
+      // 浣跨敤 setTimeout 寤惰繜鎵ц锛岀‘淇濆湪 CodeMirror 瀹屾垚褰撳墠鏇存柊鍛ㄦ湡鍚庡啀鎵ц
       setTimeout(() => {
         const currentView = viewRef.current;
         if (!currentView || !currentView.dom || !currentView.dom.isConnected) return;
         
-        // 在文档中查找匹配的代码块开始行并更新
+        // 鍦ㄦ枃妗ｄ腑鏌ユ壘鍖归厤鐨勪唬鐮佸潡寮€濮嬭骞舵洿鏂?
         const doc = currentView.state.doc;
         for (let i = 1; i <= doc.lines; i++) {
           const line = doc.line(i);
           const lineText = line.text;
           
-          // 匹配 ```language // oldName 格式
+          // 鍖归厤 ```language // oldName 鏍煎紡
           const oldPattern = oldName 
             ? new RegExp(`^\`\`\`${language}\\s*\\/\\/\\s*${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
             : new RegExp(`^\`\`\`${language}$`);
@@ -8647,7 +8768,7 @@ sequenceDiagram
       }, 50);
     };
 
-    // 视频标题变化处理
+    // 瑙嗛鏍囬鍙樺寲澶勭悊
     const handleVideoTitleChange = (event: Event) => {
       const customEvent = event as CustomEvent<{
         from: number;
@@ -8664,7 +8785,7 @@ sequenceDiagram
       });
     };
 
-    // 视频显示模式变化处理
+    // 瑙嗛鏄剧ず妯″紡鍙樺寲澶勭悊
     const handleVideoModeChange = (event: Event) => {
       const customEvent = event as CustomEvent<{
         from: number;
@@ -8681,7 +8802,7 @@ sequenceDiagram
       });
     };
 
-    // 视频删除处理
+    // 瑙嗛鍒犻櫎澶勭悊
     const handleVideoDelete = (event: Event) => {
       const customEvent = event as CustomEvent<{ from: number; to: number }>;
       const { from, to } = customEvent.detail;
@@ -8690,19 +8811,19 @@ sequenceDiagram
       });
     };
 
-    // 本地视频选择处理
+    // 鏈湴瑙嗛閫夋嫨澶勭悊
     const handleVideoSelectLocal = async (event: Event) => {
       const customEvent = event as CustomEvent<{ from: number; to: number; title: string }>;
       const { from, to, title } = customEvent.detail;
       
-      // 调用 Electron 打开文件对话框
+      // 璋冪敤 Electron 鎵撳紑鏂囦欢瀵硅瘽妗?
       const result = await window.electron?.video?.open();
-      console.log('[handleVideoSelectLocal] 选择结果:', result);
+      console.log('[handleVideoSelectLocal] 閫夋嫨缁撴灉:', result);
       if (result && result.success && result.data?.path) {
         const filePath = result.data.path;
-        console.log('[handleVideoSelectLocal] 文件路径:', filePath);
+        console.log('[handleVideoSelectLocal] 鏂囦欢璺緞:', filePath);
         const newMarkdown = `![${title}](${filePath})`;
-        console.log('[handleVideoSelectLocal] 插入 markdown:', newMarkdown);
+        console.log('[handleVideoSelectLocal] 鎻掑叆 markdown:', newMarkdown);
         view.dispatch({
           changes: { from, to, insert: newMarkdown },
         });
@@ -8724,22 +8845,22 @@ sequenceDiagram
     };
   }, []);
 
-  // 内容变化时更新大纲
+  // 鍐呭鍙樺寲鏃舵洿鏂板ぇ绾?
   useEffect(() => {
     updateOutline();
   }, [content, updateOutline]);
 
-  // 绑定拖拽和粘贴事件
+  // 缁戝畾鎷栨嫿鍜岀矘璐翠簨浠?
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // 阻止默认拖拽行为
+    // 闃绘榛樿鎷栨嫿琛屼负
     const handleDragOver = (event: DragEvent) => {
       event.preventDefault();
     };
 
-    // 右键菜单处理
+    // 鍙抽敭鑿滃崟澶勭悊
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
       setContextMenu({
@@ -8762,7 +8883,7 @@ sequenceDiagram
     };
   }, [handleDrop, handlePaste]);
 
-  // 同步外部 content 变化
+  // 鍚屾澶栭儴 content 鍙樺寲
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -8781,7 +8902,7 @@ sequenceDiagram
     }
   }, [content]);
 
-  // 监听模式切换事件（来自 TabBar 更多操作菜单）
+  // 鐩戝惉妯″紡鍒囨崲浜嬩欢锛堟潵鑷?TabBar 鏇村鎿嶄綔鑿滃崟锛?
   useEffect(() => {
     const handleModeChange = (event: CustomEvent<EditorMode>) => {
       setMode(event.detail);
@@ -8793,18 +8914,18 @@ sequenceDiagram
     };
   }, []);
 
-  // 监听插入数据库表格事件
+  // 鐩戝惉鎻掑叆鏁版嵁搴撹〃鏍间簨浠?
   useEffect(() => {
     const handleInsertDatabaseTable = (event: Event) => {
       const customEvent = event as CustomEvent<{ markdown: string; focusEditor?: boolean; handled?: boolean }>;
       
-      // 如果事件已被处理，跳过
+      // 濡傛灉浜嬩欢宸茶澶勭悊锛岃烦杩?
       if (customEvent.detail?.handled) return;
       
       const { markdown } = customEvent.detail;
       
       if (viewRef.current && markdown) {
-        // 标记事件已处理，防止其他编辑器重复处理
+        // 鏍囪浜嬩欢宸插鐞嗭紝闃叉鍏朵粬缂栬緫鍣ㄩ噸澶嶅鐞?
         customEvent.detail.handled = true;
         
         const { from } = viewRef.current.state.selection.main;
@@ -8844,13 +8965,13 @@ sequenceDiagram
                     className={`cm-outline-tab ${outlineTab === 'headings' ? 'active' : ''}`}
                     onClick={() => setOutlineTab('headings')}
                   >
-                    大纲
+                    澶х翰
                   </div>
                   <div
                     className={`cm-outline-tab ${outlineTab === 'colors' ? 'active' : ''}`}
                     onClick={() => setOutlineTab('colors')}
                   >
-                    色块
+                    鑹插潡
                   </div>
                   <div className="cm-outline-tab-spacer" />
                 </>
@@ -8858,7 +8979,7 @@ sequenceDiagram
               <div
                 className="cm-outline-collapse-btn"
                 onClick={() => setIsOutlineCollapsed(!isOutlineCollapsed)}
-                title={isOutlineCollapsed ? '展开大纲' : '收起大纲'}
+                title={isOutlineCollapsed ? '展开大纲' : '折叠大纲'}
               >
                 <Icon name={isOutlineCollapsed ? 'chevron-left' : 'chevron-right'} size={14} />
               </div>
@@ -8868,7 +8989,7 @@ sequenceDiagram
                 {outlineTab === 'headings' && (
                   <div className="cm-outline-list">
                     {outline.length === 0 ? (
-                      <div className="cm-outline-empty">暂无标题</div>
+                      <div className="cm-outline-empty">鏆傛棤鏍囬</div>
                     ) : (
                       outline.map(item => (
                         <div
@@ -8886,14 +9007,14 @@ sequenceDiagram
                 {outlineTab === 'colors' && (
                   <div className="cm-outline-list">
                     {colorBlocks.length === 0 ? (
-                      <div className="cm-outline-empty">暂无色块</div>
+                      <div className="cm-outline-empty">鏆傛棤鑹插潡</div>
                     ) : (
                       colorBlocks.map(item => (
                         <div
                           key={item.id}
                           className="cm-outline-item cm-color-block-item"
                           onClick={() => scrollToPosition(item.position)}
-                          title={`第 ${item.lineNumber} 行`}
+                          title={`第${item.lineNumber} 行`}
                         >
                           <span
                             className="cm-color-indicator"
@@ -8946,3 +9067,6 @@ sequenceDiagram
 };
 
 export default CodeMirrorEditor;
+
+
+

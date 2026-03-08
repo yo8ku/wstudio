@@ -1,30 +1,21 @@
-/**
- * 搜索输入框组件
- * 功能：可复用的搜索框，支持收缩/展开状态
- * 特点：
- * - 收缩状态只显示放大镜图标
- * - 展开状态显示完整输入框
- * - 禁用拼写检查
- */
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Icon } from '../../Icons';
 import './SearchInput.scss';
 
 interface SearchInputProps {
-  /** 搜索值 */
   value: string;
-  /** 值变化回调 */
   onChange: (value: string) => void;
-  /** 占位符文本 */
   placeholder?: string;
-  /** 是否默认展开 */
   defaultExpanded?: boolean;
-  /** 是否始终展开（不可收缩） */
   alwaysExpanded?: boolean;
-  /** 自定义类名 */
   className?: string;
-  /** 展开时的宽度 */
   expandedWidth?: number | string;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+  collapseOnBlur?: 'empty' | 'always' | 'never';
+  clearOnCollapse?: boolean;
+  hideIconWhenExpanded?: boolean;
+  iconSize?: number;
 }
 
 export const SearchInput: React.FC<SearchInputProps> = ({
@@ -35,34 +26,63 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   alwaysExpanded = false,
   className = '',
   expandedWidth = 280,
+  expanded,
+  onExpandedChange,
+  collapseOnBlur = 'empty',
+  clearOnCollapse = false,
+  hideIconWhenExpanded = false,
+  iconSize = 16
 }) => {
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded || alwaysExpanded);
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded || alwaysExpanded);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isControlled = expanded !== undefined;
+  const isExpanded = alwaysExpanded ? true : (isControlled ? expanded : internalExpanded);
 
-  // 点击放大镜展开
-  const handleIconClick = () => {
-    if (!alwaysExpanded && !isExpanded) {
-      setIsExpanded(true);
+  const setExpanded = (nextExpanded: boolean) => {
+    if (alwaysExpanded) {
+      return;
     }
+
+    if (!isControlled) {
+      setInternalExpanded(nextExpanded);
+    }
+
+    onExpandedChange?.(nextExpanded);
   };
 
-  // 展开后自动聚焦
   useEffect(() => {
-    if (isExpanded && inputRef.current) {
-      inputRef.current.focus();
+    if (isExpanded) {
+      inputRef.current?.focus();
     }
   }, [isExpanded]);
 
-  // 失焦时收缩（如果没有内容）
-  const handleBlur = () => {
-    if (!alwaysExpanded && !value) {
-      setIsExpanded(false);
+  const handleIconClick = () => {
+    if (!alwaysExpanded && !isExpanded) {
+      setExpanded(true);
     }
   };
 
-  // 清空搜索
+  const handleBlur = () => {
+    if (alwaysExpanded || collapseOnBlur === 'never') {
+      return;
+    }
+
+    const shouldCollapse = collapseOnBlur === 'always' || (collapseOnBlur === 'empty' && !value);
+
+    if (!shouldCollapse) {
+      return;
+    }
+
+    if (clearOnCollapse) {
+      onChange('');
+    }
+
+    setExpanded(false);
+  };
+
   const handleClear = () => {
     onChange('');
+
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -75,19 +95,11 @@ export const SearchInput: React.FC<SearchInputProps> = ({
       className={`search-input-container ${isExpanded ? 'expanded' : 'collapsed'} ${className}`}
       style={{ width: isExpanded ? widthStyle : '32px' }}
     >
-      <div className="search-input-icon" onClick={handleIconClick}>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <path d="M21 21l-4.35-4.35" />
-        </svg>
-      </div>
+      {(!isExpanded || !hideIconWhenExpanded) && (
+        <div className="search-input-icon" onClick={handleIconClick}>
+          <Icon name="search" size={iconSize} />
+        </div>
+      )}
 
       {isExpanded && (
         <>
@@ -96,7 +108,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
             type="text"
             className="search-input-field"
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(event) => onChange(event.target.value)}
             onBlur={handleBlur}
             placeholder={placeholder}
             spellCheck={false}
@@ -105,7 +117,11 @@ export const SearchInput: React.FC<SearchInputProps> = ({
             autoCapitalize="off"
           />
           {value && (
-            <div className="search-input-clear" onClick={handleClear}>
+            <div
+              className="search-input-clear"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={handleClear}
+            >
               <svg
                 viewBox="0 0 24 24"
                 fill="none"

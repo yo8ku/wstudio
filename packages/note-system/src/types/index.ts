@@ -38,12 +38,22 @@ export interface TagItem {
 /**
  * 链接数据接口
  */
+export type LinkTargetKind = 'note' | 'heading' | 'block';
+
 export interface LinkItem {
   id: string;
   sourceId: string;
   targetId?: string;
   targetTitle: string;
   context: string;
+  displayText?: string;
+  targetKind?: LinkTargetKind;
+  targetAnchor?: string;
+  sourceStart?: number;
+  sourceEnd?: number;
+  sourceNoteTitle?: string;
+  sourceLine?: number;
+  isResolved?: boolean;
   createdAt: number;
 }
 
@@ -114,6 +124,14 @@ export interface LinkRow {
   target_id: string | null;
   target_title: string;
   context: string;
+  display_text?: string | null;
+  target_kind?: LinkTargetKind | null;
+  target_anchor?: string | null;
+  source_start?: number | null;
+  source_end?: number | null;
+  source_title?: string | null;
+  source_line?: number | null;
+  is_resolved?: number | null;
   created_at: number;
 }
 

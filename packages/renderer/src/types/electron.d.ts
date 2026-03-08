@@ -109,6 +109,14 @@ export interface ElectronAPI {
     getModels: () => Promise<string[]>;
     refreshModels: () => Promise<{ success: boolean; models?: string[]; error?: string }>;
     updateUserModels: (models: string[]) => Promise<{ success: boolean; count?: number }>;
+    updateUserModelConfigs: (configs: Array<{
+      modelId: string;
+      configName: string;
+      apiKey: string;
+      apiEndpoint: string;
+      providerId: string;
+      temperature?: number;
+    }>) => Promise<{ success: boolean; count?: number }>;
   };
   // 窗口焦点状态监听
   onWindowFocus?: (callback: (focused: boolean) => void) => void;
@@ -312,6 +320,19 @@ export interface ElectronIPC {
     on: (channel: string, callback: (event: any, ...args: any[]) => void) => () => void;
     once: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
     removeListener: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
+  };
+  builtinAI?: {
+    getModels: () => Promise<string[]>;
+    refreshModels: () => Promise<{ success: boolean; models?: string[]; error?: string }>;
+    updateUserModels: (models: string[]) => Promise<{ success: boolean; count?: number }>;
+    updateUserModelConfigs: (configs: Array<{
+      modelId: string;
+      configName: string;
+      apiKey: string;
+      apiEndpoint: string;
+      providerId: string;
+      temperature?: number;
+    }>) => Promise<{ success: boolean; count?: number }>;
   };
   fs?: {
     readFile: (filePath: string, encoding?: string) => Promise<string>;
@@ -647,13 +668,53 @@ export interface TagItem {
 /**
  * 链接数据接口
  */
+export type LinkTargetKind = 'note' | 'heading' | 'block';
+
 export interface LinkItem {
   id: string;
   sourceId: string;
   targetId?: string;
   targetTitle: string;
   context: string;
+  displayText?: string;
+  targetKind?: LinkTargetKind;
+  targetAnchor?: string;
+  sourceStart?: number;
+  sourceEnd?: number;
+  sourceNoteTitle?: string;
+  sourceLine?: number;
+  isResolved?: boolean;
   createdAt: number;
+}
+
+/**
+ * 未链接提及数据接口
+ */
+export interface UnlinkedMentionItem {
+  noteId: string;
+  noteTitle: string;
+  context: string;
+  matchedText: string;
+  position: {
+    start: number;
+    end: number;
+    line: number;
+  };
+}
+
+export interface LinkTargetSuggestionItem {
+  noteId: string;
+  title: string;
+  path: string;
+  aliases: string[];
+}
+
+export interface LinkAnchorSuggestionItem {
+  noteId: string;
+  kind: Exclude<LinkTargetKind, 'note'>;
+  reference: string;
+  preview: string;
+  line: number;
 }
 
 /**
@@ -696,6 +757,15 @@ export interface NoteSystemAPI {
     getOutlinks: (noteId: string) => Promise<LinkItem[]>;
     getBacklinks: (noteId: string) => Promise<LinkItem[]>;
     getAllLinks: () => Promise<LinkItem[]>;
+    findUnlinkedMentions: (noteId: string) => Promise<UnlinkedMentionItem[]>;
+    convertUnlinkedMention: (
+      sourceNoteId: string,
+      targetNoteId: string,
+      position: { start: number; end: number },
+      matchedText?: string
+    ) => Promise<boolean>;
+    searchTargets: (query: string) => Promise<LinkTargetSuggestionItem[]>;
+    getAnchors: (targetReference: string, query?: string) => Promise<LinkAnchorSuggestionItem[]>;
     create: (sourceId: string, targetTitle: string, context?: string) => Promise<LinkItem>;
     delete: (id: string) => Promise<boolean>;
   };

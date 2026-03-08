@@ -6,7 +6,6 @@ import { BrowserWindow } from 'electron';
 import { ExtensionManager } from './extensions/ExtensionManager';
 import { SettingsManager } from './config/SettingsManager';
 import { WorkspaceManager } from './workspace/WorkspaceManager';
-import { BuiltinAI } from './services/BuiltinAI';
 import { PluginAPIAdapter } from './extensions/PluginAPIAdapter';
 import { registerStoreHandlers } from './ipc/storeHandlers';
 import { registerSnippetHandlers } from './ipc/snippetHandlers';
@@ -31,8 +30,10 @@ import { registerAgentFileSystemHandlers } from './ipc/agentFileSystemHandlers';
 import { registerAgentRAGHandlers } from './ipc/agentRAGHandlers';
 import { registerAgentShellHandlers } from './ipc/agentShellHandlers';
 import { registerAgentNetworkHandlers } from './ipc/agentNetworkHandlers';
+import { registerAgentChatHandlers } from './ipc/agentChatHandlers';
 import { registerSkillsMarketHandlers } from './ipc/skillsMarketHandlers';
 import { registerMediaHandlers } from './ipc/mediaHandlers';
+import { builtinAI } from './services/builtinAIInstance';
 
 // 插件系统路径
 // 使用多种方式尝试找到项目根目录，确保路径正确
@@ -75,7 +76,6 @@ console.log('[Main] 内置插件目录:', builtinPluginsPath);
 const pluginManager = new ExtensionManager(builtinPluginsPath);
 const settingsManager = new SettingsManager();
 const workspaceManager = new WorkspaceManager();
-const builtinAI = new BuiltinAI();
 
 // ⭐ 共享的 PluginAPIAdapter 实例（避免重复注册 IPC handlers）
 let sharedAPIAdapter: PluginAPIAdapter | null = null;
@@ -137,6 +137,7 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
 
   // 注册 Agent 网络 IPC 处理器
   registerAgentNetworkHandlers();
+  registerAgentChatHandlers();
 
   // 注册 Skills 市场 IPC 处理器
   registerSkillsMarketHandlers();

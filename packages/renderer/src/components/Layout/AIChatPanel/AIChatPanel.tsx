@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type { AgentChatTurnFrame } from '@note-studio/shared';
 import { getCachedModels, getModelConfig, type CachedModelInfo } from '../../../services/ModelCacheService';
 import { aiService } from '../../../services/ai/AIService';
 import { isModelEnabled, loadModelEnabledStatesFromDB, type ChatMessage } from '../../../services/ai';
@@ -18,60 +19,45 @@ import { type ThinkingStep } from '../../ModeThinking';
 import { AssistantTextContextMenu, type AssistantTextContextMenuProps } from './AssistantTextContextMenu';
 import { AIResponseRenderer } from '../../AIResponseRenderer';
 import { agentService } from '../../../services/agent/AgentService';
-import { AgentState, AgentTaskType } from '../../../services/agent/types';
+import type { AgentTaskType } from '../../../services/agent/types';
 import { tableReferenceService, type FormDetail, type FormInfo } from '../../../services/tableReference';
 import { knowledgeBaseService } from '../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { type KnowledgeItem } from '../Sidebar/KnowledgeBase/types';
 import { toastService } from '../../../services/ToastService';
 import { getAIZoneSystemPromptAsync } from '../../../services/ai/SystemPrompt';
 import { TipTapInput, type TipTapInputRef } from '../EditorArea/AIZoneWidget/TipTapInput';
+import {
+  appendActLogBlock,
+  appendToolLogBlock as appendToolLogContentBlock,
+  buildAssistantRenderSections,
+  classifyMessageFlow,
+  finalizeTextBlock,
+  resolvePendingToolCalls,
+  resolvePendingToolLogBlocks,
+  type ActLog,
+  type ContentBlock,
+  type MessageFlowKind,
+  type TodoItemStatus,
+  type TodoItemView,
+  type ToolLog,
+  upsertActLogBlock,
+  upsertTextBlock,
+  upsertThinkingBlock as upsertThinkingContentBlock,
+  upsertTodoBlock as upsertTodoContentBlock,
+} from './streamProtocol';
+import {
+  AGENT_FRAME_REPLAY_SAMPLES,
+  getAgentFrameReplaySample,
+  type AgentFrameReplaySample,
+} from './agentFrameReplaySamples';
 import './AIChatPanel.scss';
-
-interface ToolLog {
-  uiId: string;
-  name: string;
-  label: string;
-  detail?: string;
-  summary?: string;
-  command?: string;
-  output?: string;
-  status: 'pending' | 'success' | 'error';
-}
-
-interface ActLog {
-  id: string;
-  ts: number;
-  key?: string;
-  kind: 'status' | 'step' | 'tool' | 'stream' | 'error';
-  title: string;
-  detail?: string;
-  status: 'info' | 'pending' | 'running' | 'success' | 'error';
-}
-
-type TodoItemStatus = 'pending' | 'in_progress' | 'completed';
-
-interface TodoItemView {
-  id: string;
-  content: string;
-  status: TodoItemStatus;
-  source: 'agent' | 'plan';
-  stepId?: string;
-}
-
-/** 消息内容块：文本或工具调用 */
-type ContentBlock =
-  | { type: 'text'; text: string; key?: string; isStreaming?: boolean }
-  | { type: 'tool'; tool: ToolLog }
-  | { type: 'act'; act: ActLog }
-  | { type: 'todo'; key: string; title: string; items: TodoItemView[]; isStreaming?: boolean }
-  | { type: 'decomposition'; title: string; content: string; key: string; isStreaming?: boolean }
-  | { type: 'thinking'; content: string; isThinking: boolean; elapsedSeconds?: number };
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;  // 保留用于兼容，最终文本
   contentBlocks?: ContentBlock[];  // 交错的内容块
+  flowKind?: MessageFlowKind;
   timestamp: Date;
   model?: string;
   thinkingSteps?: ThinkingStep[];
@@ -103,6 +89,8 @@ interface AIChatPanelProps {
 }
 
 const AI_CHAT_EDITOR_TAB_PATH = 'ai-chat:/main';
+const SHOW_AGENT_FRAME_REPLAY_DEVTOOLS = typeof window !== 'undefined'
+  && window.location.protocol !== 'file:';
 
 interface PendingToolConfirmation {
   id: string;
@@ -244,13 +232,6 @@ const stringifyActDetail = (value: unknown): string | undefined => {
   }
 };
 
-interface VerifyGateDetailView {
-  passed: boolean;
-  score: number | null;
-  threshold: number | null;
-  issues: string[];
-}
-
 const isRecordObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
@@ -259,47 +240,6 @@ const toStringList = (value: unknown): string[] => {
   return value
     .map(item => (typeof item === 'string' ? item.trim() : ''))
     .filter(Boolean);
-};
-
-const toSafeInteger = (value: unknown): number | null => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  return Math.max(0, Math.min(100, Math.floor(value)));
-};
-
-const extractVerifyGateDetail = (result: unknown): VerifyGateDetailView | null => {
-  if (!isRecordObject(result)) return null;
-  const gateRaw = result.gate;
-  if (!isRecordObject(gateRaw)) return null;
-
-  const score = toSafeInteger(gateRaw.score);
-  const threshold = toSafeInteger(gateRaw.threshold);
-  const passedRaw = gateRaw.passed;
-  const passed = typeof passedRaw === 'boolean'
-    ? passedRaw
-    : (score != null && threshold != null ? score >= threshold : score != null);
-  const issues = toStringList(gateRaw.issues);
-
-  if (score == null && threshold == null && issues.length === 0 && typeof passedRaw !== 'boolean') {
-    return null;
-  }
-
-  return {
-    passed,
-    score,
-    threshold,
-    issues,
-  };
-};
-
-const formatVerifyGateDetail = (gate: VerifyGateDetailView): string => {
-  const scorePart = gate.score != null
-    ? (gate.threshold != null ? `${gate.score}/${gate.threshold}` : `${gate.score}`)
-    : (gate.threshold != null ? `--/${gate.threshold}` : '--');
-  if (gate.passed) {
-    return `Verify gate passed. score=${scorePart}`;
-  }
-  const reason = gate.issues.slice(0, 3).join('；') || 'Score below threshold.';
-  return `Verify gate failed. score=${scorePart}. reasons: ${reason}`;
 };
 
 const BASH_TOOL_OUTPUT_MAX_CHARS = 24000;
@@ -327,73 +267,6 @@ const buildBashToolOutput = (result: { success: boolean; data?: unknown; error?:
 
   const errorText = typeof result.error === 'string' ? result.error.trim() : '';
   return errorText || '';
-};
-
-const extractReferenceArticleField = (stdout: string, marker: string): string | null => {
-  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`\\[${escaped}\\]\\s*(.+)`, 'i');
-  const match = stdout.match(pattern);
-  if (!match?.[1]) return null;
-  const value = match[1].trim();
-  return value || null;
-};
-
-const formatToolCallStepDetail = (result: unknown): string | undefined => {
-  if (!isRecordObject(result)) return stringifyActDetail(result);
-
-  const success = typeof result.success === 'boolean' ? result.success : null;
-  const error = typeof result.error === 'string' ? result.error.trim() : '';
-  const data = isRecordObject(result.data) ? result.data : null;
-  const command = data && typeof data.command === 'string' ? data.command.trim() : '';
-  const stdout = data && typeof data.stdout === 'string' ? data.stdout : '';
-  const stderr = data && typeof data.stderr === 'string' ? data.stderr.trim() : '';
-  const exitCode = data && typeof data.exitCode === 'number' && Number.isFinite(data.exitCode)
-    ? Math.floor(data.exitCode)
-    : null;
-
-  if (stdout) {
-    const refPath = extractReferenceArticleField(stdout, 'reference-article-path');
-    const refName = extractReferenceArticleField(stdout, 'reference-article-name');
-    if (refPath || refName) {
-      return refName && refPath
-        ? `Reference article selected: ${refName} (${refPath})`
-        : `Reference article selected: ${refName || refPath}`;
-    }
-  }
-
-  const lineCount = stdout
-    ? stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean).length
-    : 0;
-  const commandFailed = success === false || (exitCode != null && exitCode !== 0);
-
-  if (commandFailed) {
-    const errorText = error || stderr || 'Tool execution failed';
-    return command
-      ? `Tool failed: ${command}. ${errorText}${exitCode != null ? ` (exit=${exitCode})` : ''}`
-      : `Tool failed: ${errorText}${exitCode != null ? ` (exit=${exitCode})` : ''}`;
-  }
-
-  if (command) {
-    const summary = lineCount > 0 ? `output ${lineCount} lines` : 'no output';
-    const exitPart = exitCode != null ? `, exit=${exitCode}` : '';
-    return `Command done: ${command} (${summary}${exitPart})`;
-  }
-
-  if (lineCount > 0) {
-    return `Tool succeeded, output ${lineCount} lines`;
-  }
-
-  return success === true ? 'Tool succeeded' : stringifyActDetail(result);
-};
-
-const isToolCallExecutionFailed = (result: unknown): boolean => {
-  if (!isRecordObject(result)) return false;
-  if (typeof result.success === 'boolean' && result.success === false) return true;
-  const data = isRecordObject(result.data) ? result.data : null;
-  if (data && typeof data.exitCode === 'number' && Number.isFinite(data.exitCode)) {
-    return Math.floor(data.exitCode) !== 0;
-  }
-  return false;
 };
 
 const parseToolArgs = (argsRaw: string): Record<string, unknown> | null => {
@@ -681,6 +554,21 @@ const trimTodoContent = (value: string, maxChars = SIMPLE_TODO_CONTENT_MAX_CHARS
   return `${normalized.slice(0, maxChars)}...`;
 };
 
+interface ParsedToolFrameResultPayload {
+  success: boolean;
+  error?: string;
+  data?: Record<string, unknown>;
+  changedFiles: string[];
+  rawText: string;
+}
+
+interface ToolFrameSummary {
+  summary: string;
+  detail?: string;
+  command?: string;
+  output?: string;
+}
+
 const inferSimpleAgentStepKind = (stepType: string, description: string): SimpleAgentStepKind => {
   const normalizedDesc = description.trim();
   const normalizedType = stepType.trim();
@@ -694,35 +582,113 @@ const inferSimpleAgentStepKind = (stepType: string, description: string): Simple
   return 'other';
 };
 
-const getSimpleAgentStepLabel = (kind: SimpleAgentStepKind): string => {
-  switch (kind) {
-    case 'requirement':
-      return '需求清单';
-    case 'reference':
-      return '读取参考文章';
-    case 'decomposition':
-      return '拆解文章素材';
-    case 'outline':
-      return '输出结构与大纲';
-    case 'writing':
-      return '开始编写（流式写入）';
-    case 'tool':
-      return '工具调用';
-    case 'verify':
-      return '校验与优化';
-    default:
-      return '执行步骤';
+const isWriteToolName = (toolName: string): boolean =>
+  toolName === 'write_file'
+  || toolName === 'edit_file'
+  || toolName === 'multi_edit_file';
+
+const parseToolResultFramePayload = (
+  resultText: string,
+  fallbackSuccess: boolean,
+): ParsedToolFrameResultPayload => {
+  const rawText = resultText.trim();
+  if (!rawText) {
+    return {
+      success: fallbackSuccess,
+      changedFiles: [],
+      rawText: '',
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(rawText) as unknown;
+    if (!isRecordObject(parsed)) {
+      return {
+        success: fallbackSuccess,
+        changedFiles: [],
+        rawText,
+      };
+    }
+
+    return {
+      success: typeof parsed.success === 'boolean' ? parsed.success : fallbackSuccess,
+      error: typeof parsed.error === 'string' && parsed.error.trim()
+        ? parsed.error.trim()
+        : undefined,
+      data: isRecordObject(parsed.data) ? parsed.data : undefined,
+      changedFiles: toStringList(parsed.changedFiles),
+      rawText,
+    };
+  } catch {
+    return {
+      success: fallbackSuccess,
+      changedFiles: [],
+      rawText,
+    };
   }
 };
 
-const shouldShowSimpleStepLog = (kind: SimpleAgentStepKind, phase: 'start' | 'complete' | 'failed'): boolean => {
-  if (phase === 'failed') return true;
-  return kind === 'requirement'
-    || kind === 'reference'
-    || kind === 'decomposition'
-    || kind === 'outline'
-    || kind === 'writing'
-    || kind === 'tool';
+const buildToolFrameSummary = (
+  toolName: string,
+  result: ParsedToolFrameResultPayload,
+): ToolFrameSummary => {
+  const data = result.data ?? {};
+  const primaryPath = typeof data.path === 'string' && data.path.trim()
+    ? data.path.trim()
+    : (result.changedFiles[0] ?? '');
+  const changedFileCount = result.changedFiles.length;
+  const command = typeof data.command === 'string' && data.command.trim()
+    ? data.command.trim()
+    : undefined;
+  const bashOutput = toolName === 'bash'
+    ? buildBashToolOutput({
+        success: result.success,
+        data,
+        error: result.error,
+      })
+    : undefined;
+
+  let summary = result.success ? 'done' : 'failed';
+  if (isWriteToolName(toolName) && result.success) {
+    summary = changedFileCount > 1
+      ? `${changedFileCount} files`
+      : (primaryPath ? getPathBaseName(primaryPath) : 'file updated');
+  } else if (typeof data.content === 'string') {
+    summary = `${data.content.split('\n').length} lines`;
+  } else if (Array.isArray(data.items)) {
+    summary = `${data.items.length} items`;
+  } else if (typeof data.count === 'number' && Number.isFinite(data.count)) {
+    summary = `${Math.floor(data.count)} results`;
+  } else if (typeof data.output === 'string') {
+    const lines = data.output.split('\n').filter(Boolean).length;
+    summary = lines > 0 ? `${lines} lines` : 'done';
+  } else if (typeof data.stdout === 'string') {
+    const lines = data.stdout.split('\n').filter(Boolean).length;
+    summary = lines > 0 ? `${lines} lines` : 'done';
+  } else if (changedFileCount > 0) {
+    summary = changedFileCount > 1 ? `${changedFileCount} files` : '1 file';
+  } else if (result.rawText && !result.rawText.startsWith('{')) {
+    const lines = result.rawText.split('\n').filter(Boolean).length;
+    summary = lines > 0 ? `${lines} lines` : trimTodoContent(result.rawText, 120);
+  }
+
+  if (!result.success) {
+    summary = trimTodoContent(result.error || summary, 120);
+  }
+
+  if (toolName === 'bash' && bashOutput) {
+    const lines = bashOutput.split('\n').filter(Boolean).length;
+    summary = lines > 0 ? `${lines} lines` : summary;
+  }
+
+  return {
+    summary,
+    detail: command,
+    command,
+    output: toolName === 'bash'
+      ? (bashOutput || (result.success ? '(no output)' : (result.error || 'Tool execution failed')))
+      : undefined,
+  };
 };
 
 const simplifyPlanTodoContent = (content: string): string => {
@@ -1188,28 +1154,15 @@ const buildToolCallDetail = (toolName: string, params: Record<string, unknown>):
   return stringifyActDetail(params) || '';
 };
 
-const EDIT_TASK_HINT_REGEX = /(?:\u4fee\u6539|\u6539\u5199|\u91cd\u5199|\u6da6\u8272|\u4f18\u5316|\u4fee\u590d|\u7f16\u8f91|edit|rewrite|refactor|fix|patch)/i;
-const QUERY_TASK_HINT_REGEX = /(?:\?|\uFF1F|\u4ec0\u4e48|\u4e3a\u4ec0\u4e48|\u5982\u4f55|\u54ea\u4e9b|\u67e5\u8be2|\u68c0\u7d22|\u7edf\u8ba1|\u5bf9\u6bd4|compare|difference|explain|show|list|find|query|search|count)/i;
-const WRITE_TASK_HINT_REGEX = /(?:\u5199\u4f5c|\u64b0\u5199|\u521b\u4f5c|\u751f\u6210|\u5b9e\u73b0|\u5f00\u53d1|write|draft|compose|create|implement|build)/i;
-const NON_TASK_SMALLTALK_REGEX = /^(?:\u4f60\u597d|\u60a8\u597d|\u55e8|\u54c8\u55bd|\u563f|\u5728\u5417|\u5728\u561b|hello|hi|hey|thanks|thank you|thx|\u8c22\u8c22|\u591a\u8c22|\u597d\u7684|ok|okay|\u6536\u5230|\u660e\u767d\u4e86|\u55ef|\u54e6|\u5662)\s*[\u0021\uFF01\u003F\u002E\u3002\u007E\uFF5E]*$/i;
-const NON_TASK_META_QUERY_REGEX = /(?:\u4f60\u662f\u4ec0\u4e48\u6a21\u578b|\u4f60\u662f\u5565\u6a21\u578b|\u4f60\u7528\u7684\u4ec0\u4e48\u6a21\u578b|\u5f53\u524d\u662f\u4ec0\u4e48\u6a21\u578b|\u73b0\u5728\u662f\u4ec0\u4e48\u6a21\u578b|\u4f60\u662f\u8c01|\u4f60\u80fd\u505a\u4ec0\u4e48|\u4f60\u4f1a\u4ec0\u4e48|what\s+model\s+are\s+you|which\s+model\s+are\s+you|who\s+are\s+you|what\s+can\s+you\s+do)/i;
-const TASK_EXECUTION_HINT_REGEX = /(?:\u5199|\u6539|\u91cd\u5199|\u6da6\u8272|\u751f\u6210|\u521b\u5efa|\u65b0\u5efa|\u6574\u7406|\u603b\u7ed3|\u5f52\u7eb3|\u5206\u6790|\u63d0\u53d6|\u62c6\u89e3|\u6267\u884c|\u8fd0\u884c|\u6253\u5f00|\u8bfb\u53d6|\u7f16\u8f91|\u4fee\u6539|\u4fdd\u5b58|\u5bfc\u5165|\u6784\u5efa|\u7f16\u8bd1|\u6d4b\u8bd5|\u4fee\u590d|\u6392\u67e5|\u5b9e\u73b0|\u5f00\u53d1|\u8c03\u7528|\u67e5\u8be2|\u68c0\u7d22|\u7ffb\u8bd1|write|rewrite|generate|create|draft|compose|edit|modify|save|run|execute|build|compile|test|fix|implement|refactor|analy[sz]e|summari[sz]e|extract|search|query|translate)/i;
 const DECOMPOSITION_STEP_REGEX = /(?:\u62c6\u89e3|decompos|framework|\u5c0f\u6807\u9898|\u6bb5\u843d|\u53e5\u5f0f|\u7528\u8bcd|\u98ce\u683c|\u8fc7\u6e21|\u573a\u666f|\u6848\u4f8b)/i;
 const SHOW_DECOMPOSITION_STREAM_BLOCK = false;
-const SHOW_DECOMPOSITION_STEP_LOG = false;
-
-const isLikelyNonTaskAgentInput = (input: string): boolean => {
-  const normalized = input.trim();
-  if (!normalized) return false;
-  if (normalized.startsWith('/')) return false;
-  if (TASK_EXECUTION_HINT_REGEX.test(normalized)) return false;
-  if (NON_TASK_SMALLTALK_REGEX.test(normalized)) return true;
-  if (normalized.length <= 64 && NON_TASK_META_QUERY_REGEX.test(normalized)) return true;
-  return false;
-};
 
 const isDecompositionStep = (description: string): boolean =>
   DECOMPOSITION_STEP_REGEX.test(description.trim());
+
+const waitForReplayStep = (delayMs: number): Promise<void> => new Promise(resolve => {
+  window.setTimeout(resolve, Math.max(0, delayMs));
+});
 
 const stripDecompositionSection = (fullText: string, decompositionText: string): string => {
   const normalizedFull = fullText.trim();
@@ -1231,21 +1184,6 @@ const stripDecompositionSection = (fullText: string, decompositionText: string):
   const approxEnd = Math.min(normalizedFull.length, anchorIndex + normalizedDecomposition.length);
   const stripped = `${normalizedFull.slice(0, anchorIndex)}${normalizedFull.slice(approxEnd)}`;
   return stripped.replace(/\n{3,}/g, '\n\n').trim();
-};
-
-const inferAgentTaskType = (
-  taskDescription: string,
-  hasContextHint: boolean,
-  hasCurrentFile: boolean
-): AgentTaskType => {
-  const normalized = taskDescription.trim();
-  if (!normalized) return 'write';
-  if (EDIT_TASK_HINT_REGEX.test(normalized)) return 'edit';
-  if (WRITE_TASK_HINT_REGEX.test(normalized)) return 'write';
-  if (hasCurrentFile && !QUERY_TASK_HINT_REGEX.test(normalized)) return 'edit';
-  if (QUERY_TASK_HINT_REGEX.test(normalized)) return 'query';
-  if (hasContextHint && !WRITE_TASK_HINT_REGEX.test(normalized)) return 'query';
-  return 'write';
 };
 
 const buildCompactAgentResultText = (
@@ -2038,6 +1976,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     totalEntries: 0,
   });
   const [decompositionRules, setDecompositionRules] = useState<DecompositionRule[]>(() => cloneBuiltinDecompositionRules());
+  const [activeReplaySampleId, setActiveReplaySampleId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器 ref
   const panelRef = useRef<HTMLDivElement>(null);
@@ -2050,6 +1989,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const historyButtonRef = useRef<HTMLButtonElement>(null);
   const isInitialLoadRef = useRef(true); // 追踪是否为初始加载
   const providerCacheRef = useRef<{ modelId: string; actualModelId: string } | null>(null); // 缓存已初始化的 provider
+  const replayControllerRef = useRef<{
+    token: number;
+    assistantMessageId: string;
+    taskStatusActKey: string;
+    textBlockKey: string;
+    streamActKey: string;
+  } | null>(null);
 
   const [pendingToolConfirmation, setPendingToolConfirmation] = useState<PendingToolConfirmation | null>(null);
   const pendingToolConfirmationResolverRef = useRef<{
@@ -2336,7 +2282,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
     setMessages(prev => prev.map(msg =>
       msg.id === messageId
-        ? { ...msg, contentBlocks: [...(msg.contentBlocks ?? []), { type: 'act', act: event }] }
+        ? { ...msg, contentBlocks: appendActLogBlock(msg.contentBlocks ?? [], event) }
         : msg
     ));
   }, []);
@@ -2353,41 +2299,23 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   ) => {
     setMessages(prev => prev.map(msg => {
       if (msg.id !== messageId) return msg;
-      const blocks = [...(msg.contentBlocks ?? [])];
-      const idx = blocks.findIndex(
+      const existingAct = (msg.contentBlocks ?? []).find(
         block => block.type === 'act' && block.act.key === payload.key
       );
-      if (idx >= 0) {
-        const existing = blocks[idx];
-        if (existing.type === 'act') {
-          blocks[idx] = {
-            type: 'act',
-            act: {
-              ...existing.act,
-              ts: Date.now(),
-              kind: payload.kind,
-              title: payload.title,
-              detail: payload.detail,
-              status: payload.status ?? existing.act.status,
-            },
-          };
-        }
-      } else {
-        blocks.push({
-          type: 'act',
-          act: {
-            id: createActLogId(),
-            ts: Date.now(),
-            key: payload.key,
-            kind: payload.kind,
-            title: payload.title,
-            detail: payload.detail,
-            status: payload.status ?? 'info',
-          },
-        });
-      }
+      const nextAct: ActLog = {
+        id: existingAct?.type === 'act' ? existingAct.act.id : createActLogId(),
+        ts: Date.now(),
+        key: payload.key,
+        kind: payload.kind,
+        title: payload.title,
+        detail: payload.detail,
+        status: payload.status ?? (existingAct?.type === 'act' ? existingAct.act.status : 'info'),
+      };
 
-      return { ...msg, contentBlocks: blocks };
+      return {
+        ...msg,
+        contentBlocks: upsertActLogBlock(msg.contentBlocks ?? [], nextAct),
+      };
     }));
   }, []);
 
@@ -2402,21 +2330,45 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     const key = `${messageId}-todo`;
     setMessages(prev => prev.map(msg => {
       if (msg.id !== messageId) return msg;
-      const blocks = [...(msg.contentBlocks ?? [])];
-      const nextBlock: ContentBlock = {
-        type: 'todo',
-        key,
-        title: options?.title || 'Todo',
-        items,
-        isStreaming: options?.isStreaming ?? false,
+      return {
+        ...msg,
+        contentBlocks: upsertTodoContentBlock(
+          msg.contentBlocks ?? [],
+          key,
+          options?.title || 'Todo',
+          items,
+          options?.isStreaming ?? false,
+        ),
       };
-      const existingIndex = blocks.findIndex(block => block.type === 'todo' && block.key === key);
-      if (existingIndex >= 0) {
-        blocks[existingIndex] = nextBlock;
-      } else {
-        blocks.push(nextBlock);
+    }));
+  }, []);
+
+  const upsertThinkingBlock = useCallback((
+    messageId: string,
+    chunk: string,
+    options?: {
+      isThinking?: boolean;
+    }
+  ) => {
+    if (!chunk) {
+      return;
+    }
+
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== messageId) {
+        return msg;
       }
-      return { ...msg, contentBlocks: blocks };
+
+      return {
+        ...msg,
+        isThinking: options?.isThinking ?? true,
+        thinkingStartTime: msg.thinkingStartTime ?? Date.now(),
+        contentBlocks: upsertThinkingContentBlock(
+          msg.contentBlocks ?? [],
+          chunk,
+          options?.isThinking ?? true,
+        ),
+      };
     }));
   }, []);
 
@@ -2428,7 +2380,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       if (msg.id !== messageId) return msg;
       return {
         ...msg,
-        contentBlocks: [...(msg.contentBlocks ?? []), { type: 'tool', tool }],
+        contentBlocks: appendToolLogContentBlock(msg.contentBlocks ?? [], tool),
         toolCalls: [...(msg.toolCalls ?? []), tool],
       };
     }));
@@ -2437,6 +2389,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const resolveLatestPendingToolLog = useCallback((
     messageId: string,
     toolName: string,
+    toolCallId: string | undefined,
     status: 'success' | 'error',
     summary?: string,
     updates?: {
@@ -2447,48 +2400,70 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   ) => {
     setMessages(prev => prev.map(msg => {
       if (msg.id !== messageId) return msg;
-
-      let resolved = false;
-      const applyResolution = (tool: ToolLog): ToolLog => {
-        if (!resolved && tool.name === toolName && tool.status === 'pending') {
-          resolved = true;
-          const nextTool: ToolLog = {
-            ...tool,
-            status,
-            summary: summary ?? tool.summary,
-          };
-          if (updates) {
-            if (typeof updates.detail === 'string') {
-              nextTool.detail = updates.detail;
-            }
-            if (typeof updates.command === 'string') {
-              nextTool.command = updates.command;
-            }
-            if (typeof updates.output === 'string') {
-              nextTool.output = updates.output;
-            }
-          }
-          return nextTool;
-        }
-        return tool;
+      return {
+        ...msg,
+        contentBlocks: resolvePendingToolLogBlocks(
+          msg.contentBlocks ?? [],
+          toolName,
+          toolCallId,
+          status,
+          summary,
+          updates,
+        ),
+        toolCalls: resolvePendingToolCalls(
+          msg.toolCalls ?? [],
+          toolName,
+          toolCallId,
+          status,
+          summary,
+          updates,
+        ),
       };
+    }));
+  }, []);
 
-      const nextBlocks = (msg.contentBlocks ?? []).map(block => {
-        if (block.type !== 'tool') return block;
-        return {
-          type: 'tool' as const,
-          tool: applyResolution(block.tool),
-        };
-      });
+  const upsertMessageTextBlock = useCallback((
+    messageId: string,
+    key: string,
+    text: string,
+    options?: {
+      mode?: 'append' | 'replace';
+      isStreaming?: boolean;
+    }
+  ) => {
+    if (!text) {
+      return;
+    }
 
-      const nextToolCalls = (msg.toolCalls ?? []).map(applyResolution);
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== messageId) {
+        return msg;
+      }
+
+      const nextContent = options?.mode === 'replace'
+        ? text
+        : `${msg.content}${text}`;
 
       return {
         ...msg,
-        contentBlocks: nextBlocks,
-        toolCalls: nextToolCalls,
+        content: nextContent,
+        contentBlocks: upsertTextBlock(msg.contentBlocks ?? [], key, text, options),
       };
     }));
+  }, []);
+
+  const finalizeMessageTextBlock = useCallback((
+    messageId: string,
+    key: string,
+  ) => {
+    setMessages(prev => prev.map(msg => (
+      msg.id === messageId
+        ? {
+            ...msg,
+            contentBlocks: finalizeTextBlock(msg.contentBlocks ?? [], key),
+          }
+        : msg
+    )));
   }, []);
 
   const settlePendingToolConfirmation = useCallback((allowed: boolean) => {
@@ -2520,6 +2495,328 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       });
     });
   }, []);
+
+  const activeReplaySample = useMemo(
+    () => (activeReplaySampleId ? getAgentFrameReplaySample(activeReplaySampleId) : null),
+    [activeReplaySampleId],
+  );
+
+  const finalizeReplayAssistantMessage = useCallback((
+    assistantMessageId: string,
+    textBlockKey: string,
+    pendingToolStatus: ToolLog['status'],
+  ) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== assistantMessageId) {
+        return msg;
+      }
+
+      const elapsed = msg.thinkingStartTime
+        ? Math.max(1, Math.round((Date.now() - msg.thinkingStartTime) / 1000))
+        : (msg.elapsedSeconds ?? 1);
+      const nextBlocks = finalizeTextBlock((msg.contentBlocks ?? []).map(block => {
+        if (block.type === 'todo') {
+          return { ...block, isStreaming: false };
+        }
+        if (block.type === 'decomposition') {
+          return { ...block, isStreaming: false };
+        }
+        if (block.type === 'thinking') {
+          return { ...block, isThinking: false, elapsedSeconds: elapsed };
+        }
+        if (block.type === 'tool' && block.tool.status === 'pending') {
+          return { ...block, tool: { ...block.tool, status: pendingToolStatus } };
+        }
+        return block;
+      }), textBlockKey);
+
+      return {
+        ...msg,
+        isThinking: false,
+        isThinkingPhase: false,
+        elapsedSeconds: elapsed,
+        contentBlocks: nextBlocks,
+        toolCalls: msg.toolCalls?.map(tool =>
+          tool.status === 'pending' ? { ...tool, status: pendingToolStatus } : tool
+        ),
+      };
+    }));
+  }, []);
+
+  const stopReplaySample = useCallback((detail?: string) => {
+    const activeReplay = replayControllerRef.current;
+    if (!activeReplay) {
+      return;
+    }
+
+    replayControllerRef.current = null;
+    setActiveReplaySampleId(null);
+    upsertActLog(activeReplay.assistantMessageId, {
+      key: activeReplay.taskStatusActKey,
+      kind: 'status',
+      title: 'Replay stopped',
+      detail: detail || 'Stopped before completion',
+      status: 'error',
+    });
+    upsertActLog(activeReplay.assistantMessageId, {
+      key: activeReplay.streamActKey,
+      kind: 'stream',
+      title: 'Replay stream stopped',
+      detail: detail || 'Stopped before completion',
+      status: 'error',
+    });
+    finalizeReplayAssistantMessage(activeReplay.assistantMessageId, activeReplay.textBlockKey, 'error');
+    setIsLoading(false);
+  }, [finalizeReplayAssistantMessage, upsertActLog]);
+
+  const runAgentFrameReplay = useCallback(async (sample: AgentFrameReplaySample): Promise<void> => {
+    if (isLoading || replayControllerRef.current) {
+      return;
+    }
+
+    const baseId = Date.now().toString();
+    const userMessageId = `${baseId}-replay-user`;
+    const assistantMessageId = `${baseId}-replay-assistant`;
+    const taskStatusActKey = `${assistantMessageId}-task-status`;
+    const streamActKey = `${assistantMessageId}-stream-status`;
+    const textBlockKey = `${assistantMessageId}-text`;
+    const replayToken = Date.now();
+
+    replayControllerRef.current = {
+      token: replayToken,
+      assistantMessageId,
+      taskStatusActKey,
+      textBlockKey,
+      streamActKey,
+    };
+
+    setActiveReplaySampleId(sample.id);
+    setMessages(prev => [
+      ...prev,
+      {
+        id: userMessageId,
+        role: 'user',
+        content: sample.prompt,
+        flowKind: 'agent_task',
+        timestamp: new Date(),
+      },
+      {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        flowKind: 'agent_task',
+        timestamp: new Date(),
+        model: selectedModel || 'local-replay',
+      },
+    ]);
+    upsertActLog(assistantMessageId, {
+      key: taskStatusActKey,
+      kind: 'status',
+      title: 'Replay started',
+      detail: sample.description,
+      status: 'running',
+    });
+    tiptapRef.current?.clear();
+    setInput('');
+    setSearchQuery('');
+    setIsContextMenuOpen(false);
+    setSubMenuType('none');
+    setIsLoading(true);
+
+    let hasStreamLog = false;
+
+    for (const step of sample.steps) {
+      await waitForReplayStep(step.delayMs);
+      if (replayControllerRef.current?.token !== replayToken) {
+        return;
+      }
+
+      const frame = step.frame;
+      if (frame.kind === 'task') {
+        upsertActLog(assistantMessageId, {
+          key: taskStatusActKey,
+          kind: 'status',
+          title: 'Replay task started',
+          detail: frame.text || sample.prompt,
+          status: 'running',
+        });
+        continue;
+      }
+
+      if (frame.kind === 'progress') {
+        const iterationLabel = frame.nextIteration ?? frame.iteration;
+        upsertActLog(assistantMessageId, {
+          key: taskStatusActKey,
+          kind: 'status',
+          title: frame.resumed ? 'Replay task resumed' : 'Replay task running',
+          detail: iterationLabel != null ? `Iteration ${iterationLabel}` : sample.description,
+          status: 'running',
+        });
+        continue;
+      }
+
+      if (frame.kind === 'reasoning_delta') {
+        upsertThinkingBlock(assistantMessageId, frame.text, {
+          isThinking: true,
+        });
+        continue;
+      }
+
+      if (frame.kind === 'tool_started') {
+        const toolCallId = frame.toolCallId || frame.itemId;
+        const toolDetail = buildToolCallDetail(frame.toolName, frame.params);
+        let label = frame.toolName;
+        if (typeof frame.params.path === 'string') label = `${frame.toolName} ${frame.params.path}`;
+        else if (typeof frame.params.command === 'string') label = `${frame.toolName} ${frame.params.command}`;
+        else if (typeof frame.params.query === 'string') label = `${frame.toolName} "${frame.params.query}"`;
+        else if (typeof frame.params.pattern === 'string') label = `${frame.toolName} "${frame.params.pattern}"`;
+        appendToolLogBlock(assistantMessageId, {
+          uiId: toolCallId,
+          toolCallId,
+          name: frame.toolName,
+          label,
+          detail: toolDetail,
+          command: frame.toolName === 'bash' && typeof frame.params.command === 'string'
+            ? frame.params.command
+            : undefined,
+          output: frame.toolName === 'bash' ? 'Running...' : undefined,
+          status: 'pending',
+        });
+        upsertActLog(assistantMessageId, {
+          key: `${assistantMessageId}-tool-${toolCallId}`,
+          kind: 'tool',
+          title: `Tool call: ${frame.toolName}`,
+          detail: toolDetail,
+          status: 'pending',
+        });
+        setMessages(prev => prev.map(msg => (
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                isThinkingPhase: true,
+                thinkingStartTime: msg.thinkingStartTime ?? Date.now(),
+              }
+            : msg
+        )));
+        continue;
+      }
+
+      if (frame.kind === 'tool_finished') {
+        const toolCallId = frame.toolCallId || frame.itemId;
+        const parsedToolResult = parseToolResultFramePayload(frame.resultText, frame.success);
+        const toolSummary = buildToolFrameSummary(frame.toolName, parsedToolResult);
+        upsertActLog(assistantMessageId, {
+          key: `${assistantMessageId}-tool-${toolCallId}`,
+          kind: 'tool',
+          title: `Tool result: ${frame.toolName}`,
+          detail: toolSummary.summary,
+          status: frame.success ? 'success' : 'error',
+        });
+        resolveLatestPendingToolLog(
+          assistantMessageId,
+          frame.toolName,
+          toolCallId,
+          frame.success ? 'success' : 'error',
+          toolSummary.summary,
+          {
+            detail: toolSummary.detail,
+            command: toolSummary.command,
+            output: toolSummary.output,
+          },
+        );
+        continue;
+      }
+
+      if (frame.kind === 'error') {
+        upsertActLog(assistantMessageId, {
+          key: taskStatusActKey,
+          kind: 'error',
+          title: 'Replay task failed',
+          detail: frame.text || 'Unknown error',
+          status: 'error',
+        });
+        continue;
+      }
+
+      if (frame.kind !== 'assistant_delta' && frame.kind !== 'final_answer') {
+        continue;
+      }
+
+      if (!hasStreamLog && frame.text.trim()) {
+        hasStreamLog = true;
+        upsertActLog(assistantMessageId, {
+          key: streamActKey,
+          kind: 'stream',
+          title: 'Replay streaming response',
+          detail: sample.label,
+          status: 'running',
+        });
+      }
+
+      if (frame.kind === 'final_answer') {
+        upsertMessageTextBlock(assistantMessageId, textBlockKey, frame.text, {
+          mode: 'replace',
+          isStreaming: false,
+        });
+        continue;
+      }
+
+      upsertMessageTextBlock(assistantMessageId, textBlockKey, frame.text, {
+        mode: 'append',
+        isStreaming: true,
+      });
+    }
+
+    if (replayControllerRef.current?.token !== replayToken) {
+      return;
+    }
+
+    const replaySucceeded = sample.turnStatus === 'completed';
+    upsertActLog(assistantMessageId, {
+      key: taskStatusActKey,
+      kind: 'status',
+      title: replaySucceeded ? 'Replay completed' : 'Replay finished with errors',
+      detail: sample.description,
+      status: replaySucceeded ? 'success' : 'error',
+    });
+    if (hasStreamLog) {
+      upsertActLog(assistantMessageId, {
+        key: streamActKey,
+        kind: 'stream',
+        title: replaySucceeded ? 'Replay stream completed' : 'Replay stream finished with errors',
+        detail: sample.label,
+        status: replaySucceeded ? 'success' : 'error',
+      });
+    }
+    finalizeReplayAssistantMessage(
+      assistantMessageId,
+      textBlockKey,
+      replaySucceeded ? 'success' : 'error',
+    );
+    replayControllerRef.current = null;
+    setActiveReplaySampleId(null);
+    setIsLoading(false);
+  }, [
+    appendToolLogBlock,
+    buildToolFrameSummary,
+    finalizeReplayAssistantMessage,
+    isLoading,
+    parseToolResultFramePayload,
+    resolveLatestPendingToolLog,
+    selectedModel,
+    upsertActLog,
+    upsertMessageTextBlock,
+    upsertThinkingBlock,
+  ]);
+
+  const handleStopGeneration = useCallback(() => {
+    if (replayControllerRef.current) {
+      stopReplaySample();
+      return;
+    }
+
+    setIsLoading(false);
+  }, [stopReplaySample]);
 
   const handleToolConfirmActionKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>, allowed: boolean) => {
@@ -3492,13 +3789,37 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     if (!input.trim() || isLoading) return;
     const trimmedInput = input.trim();
 
+    if (SHOW_AGENT_FRAME_REPLAY_DEVTOOLS) {
+      const replayMatch = trimmedInput.match(/^\/replay(?:\s+([a-z0-9-_]+))?\s*$/i);
+      if (replayMatch) {
+        const requestedSampleId = replayMatch[1]?.trim() || AGENT_FRAME_REPLAY_SAMPLES[0]?.id || '';
+        const replaySample = requestedSampleId ? getAgentFrameReplaySample(requestedSampleId) : null;
+        if (!replaySample) {
+          toastService.warning(`未找到回放样本: ${requestedSampleId}`);
+          return;
+        }
+        await runAgentFrameReplay(replaySample);
+        return;
+      }
+    }
+
     // Ensure a model is selected before sending.
     if (!selectedModel) {
       console.error('[AIChatPanel] 未选择模型');
       return;
     }
 
-    const useChatFlowForNonTaskInAgent = isLikelyNonTaskAgentInput(trimmedInput);
+    const liveCurrentTabPath = typeof (window as any).__currentTabPath === 'string'
+      ? (window as any).__currentTabPath.trim()
+      : '';
+    const flowDecision = classifyMessageFlow(trimmedInput, {
+      hasCurrentFile: isLikelyFileSystemPath(currentFilePath.trim() || liveCurrentTabPath),
+      hasSelectedFiles: selectedFiles.length > 0,
+      hasSelectedKnowledgeBases: selectedKbs.length > 0,
+      hasSelectedForms: selectedForms.length > 0,
+      hasSelectedSkills: selectedSkills.length > 0,
+    });
+    const useChatFlowForNonTaskInAgent = flowDecision.kind === 'conversation';
 
     const consumeAgentContextDesc = (): string => {
       let contextDesc = '';
@@ -3577,6 +3898,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           '- `/compact` 压缩历史上下文，保留最近会话',
           '- `/clear` 清空当前对话',
           '- `/help` 查看命令说明',
+          ...(SHOW_AGENT_FRAME_REPLAY_DEVTOOLS
+            ? [`- \`/replay <sampleId>\` 回放本地 Agent 流式样本，可用样本: ${AGENT_FRAME_REPLAY_SAMPLES.map(sample => sample.id).join(', ')}`]
+            : []),
         ].join('\n'),
         timestamp: new Date(),
         model: selectedModel,
@@ -3644,6 +3968,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         id: Date.now().toString(),
         role: 'user',
         content: taskDesc,
+        flowKind: 'conversation',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, userMessage]);
@@ -3656,6 +3981,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         id: assistantMessageId,
         role: 'assistant',
         content: '',
+        flowKind: 'conversation',
         timestamp: new Date(),
         model: selectedModel
       }]);
@@ -3690,15 +4016,66 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         const allowedFormIdsForTool = new Set<string>();
         const allowedFormNamesForTool = new Map<string, string>();
         const taskSearchTerms = buildSearchTerms(taskDesc);
+        const normalizeFormLookupKey = (value: string): string =>
+          value.replace(/\s+/g, ' ').trim().toLowerCase();
+        const shouldEnableGlobalFormLookup = pendingForms.length === 0
+          && /(?:表单|表格|form)/i.test(taskDesc);
+        const discoverableFormsForTool = shouldEnableGlobalFormLookup
+          ? await tableReferenceService.getAllForms()
+          : [];
+        const discoverableFormExactMap = new Map<string, FormInfo>();
+        for (const form of discoverableFormsForTool) {
+          const key = normalizeFormLookupKey(form.name);
+          if (key && !discoverableFormExactMap.has(key)) {
+            discoverableFormExactMap.set(key, form);
+          }
+        }
+        const resolveDiscoverableFormByName = (value: string): FormInfo | null => {
+          const normalized = normalizeFormLookupKey(value);
+          if (!normalized) {
+            return null;
+          }
+
+          const exactMatch = discoverableFormExactMap.get(normalized);
+          if (exactMatch) {
+            return exactMatch;
+          }
+
+          const lookupTerms = buildSearchTerms(value);
+          const fuzzyMatches = discoverableFormsForTool
+            .map(form => ({
+              form,
+              score: scoreTextByTerms(form.name, lookupTerms),
+            }))
+            .filter(entry => entry.score > 0)
+            .sort((left, right) => right.score - left.score);
+
+          return fuzzyMatches[0]?.form ?? null;
+        };
         if (pendingForms.length > 0) {
           for (const form of pendingForms) {
             allowedFormIdsForTool.add(form.id);
             if (form.name?.trim()) {
-              allowedFormNamesForTool.set(form.name.trim().toLowerCase(), form.id);
+              allowedFormNamesForTool.set(normalizeFormLookupKey(form.name), form.id);
             }
             contextText += `\n\n[Referenced form] ${form.name} (id: ${form.id})\n- Use query_form with formId to fetch rows as needed.`;
           }
           setSelectedForms([]);
+        } else if (discoverableFormsForTool.length > 0) {
+          const matchedForms = discoverableFormsForTool
+            .map(form => ({
+              form,
+              score: scoreTextByTerms(form.name, taskSearchTerms),
+            }))
+            .filter(entry => entry.score > 0)
+            .sort((left, right) => right.score - left.score)
+            .slice(0, 8)
+            .map(entry => entry.form);
+          if (matchedForms.length > 0) {
+            contextText += `\n\n[Candidate forms matching the request]\n${matchedForms.map(form => `- ${form.name} (id: ${form.id})`).join('\n')}\n- Use query_form with formId when one candidate is clearly correct. If needed, you may also call query_form with formName.`;
+          } else {
+            contextText += '\n\n[Form lookup]\n- When the user names a form but the exact formId is unknown, call query_form with formName first. The tool can resolve the best matching form.';
+          }
         }
         if (pendingKbs.length > 0) {
           const kbActKey = 'chat-kb-retrieval';
@@ -3989,12 +4366,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             parameters: Record<string, unknown>;
           };
         }> = [];
-        if (allowedFormIdsForTool.size > 0) {
+        if (allowedFormIdsForTool.size > 0 || discoverableFormsForTool.length > 0) {
           toolDefs.push({
             type: 'function',
             function: {
               name: 'query_form',
-              description: 'Query rows from referenced forms by formId, with optional query/columns/limit/offset.',
+              description: 'Query rows from referenced or discovered forms by formId or formName, with optional query/columns/limit/offset.',
               parameters: {
                 type: 'object',
                 properties: {
@@ -4047,7 +4424,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                     description: 'Structured filter, supports object/array/json-string. op supports =, !=, >, >=, <, <= and aliases',
                   },
                 },
-                required: ['formId']
+                required: []
               }
             }
           });
@@ -4157,32 +4534,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           const textBlockKey = `chat-text-round-${roundIndex}`;
 
           const appendContentChunk = (chunk: string): void => {
-            setMessages(prev => prev.map(msg => {
-              if (msg.id !== assistantMessageId) return msg;
-              const blocks = msg.contentBlocks ?? [];
-              const textIdx = blocks.findIndex(
-                block => block.type === 'text' && block.key === textBlockKey
-              );
-              if (textIdx >= 0) {
-                const existing = blocks[textIdx];
-                if (existing.type === 'text') {
-                  const updatedBlock: ContentBlock = {
-                    type: 'text',
-                    key: textBlockKey,
-                    text: existing.text + chunk,
-                    isStreaming: true,
-                  };
-                  const updated = [...blocks];
-                  updated[textIdx] = updatedBlock;
-                  return { ...msg, content: msg.content + chunk, contentBlocks: updated };
-                }
-              }
-              return {
-                ...msg,
-                content: msg.content + chunk,
-                contentBlocks: [...blocks, { type: 'text', key: textBlockKey, text: chunk, isStreaming: true }],
-              };
-            }));
+            upsertMessageTextBlock(assistantMessageId, textBlockKey, chunk, {
+              mode: 'append',
+              isStreaming: true,
+            });
           };
 
           const flushRenderQueue = (): void => {
@@ -4218,8 +4573,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 currentContent += chunk;
                 enqueueRenderChunk(chunk);
               },
-              onReasoning: () => {
-                // Keep reasoning hidden for a cleaner Claude-like timeline.
+              onReasoning: (chunk) => {
+                upsertThinkingBlock(assistantMessageId, chunk, {
+                  isThinking: true,
+                });
               },
               onToolCall: (toolCall) => {
                 const idx = (toolCall as any).index ?? 0;
@@ -4235,25 +4592,24 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               onComplete: async () => {
                 try {
                   await waitForRenderQueueDrain();
-                // Thinking round completed: mark block completed and record elapsed time.
-                setMessages(prev => prev.map(msg => {
-                  if (msg.id !== assistantMessageId) return msg;
-                  const elapsed = msg.thinkingStartTime ? Math.max(1, Math.round((Date.now() - msg.thinkingStartTime) / 1000)) : 1;
-                  // Update thinking/text block state when a round completes.
-                  const updatedBlocks = msg.contentBlocks?.map(b =>
-                    b.type === 'thinking'
-                      ? { ...b, isThinking: false, elapsedSeconds: elapsed }
-                      : (b.type === 'text' && b.key === textBlockKey)
-                        ? { ...b, isStreaming: false }
-                        : b
-                  );
-                  return {
-                    ...msg,
-                    isThinking: false,
-                    elapsedSeconds: elapsed,
-                    contentBlocks: updatedBlocks,
-                  };
-                }));
+                  // Thinking round completed: mark block completed and record elapsed time.
+                  setMessages(prev => prev.map(msg => {
+                    if (msg.id !== assistantMessageId) return msg;
+                    const elapsed = msg.thinkingStartTime ? Math.max(1, Math.round((Date.now() - msg.thinkingStartTime) / 1000)) : 1;
+                    return {
+                      ...msg,
+                      isThinking: false,
+                      elapsedSeconds: elapsed,
+                      contentBlocks: finalizeTextBlock(
+                        (msg.contentBlocks ?? []).map(b =>
+                          b.type === 'thinking'
+                            ? { ...b, isThinking: false, elapsedSeconds: elapsed }
+                            : b
+                        ),
+                        textBlockKey,
+                      ),
+                    };
+                  }));
 
                 const allowedToolNames = new Set(
                   (activeChatTools ?? []).map(tool => tool.function?.name).filter(Boolean) as string[]
@@ -4275,20 +4631,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 );
                 if (validToolCalls.length === 0) {
                   const optimizedFinalText = optimizeAssistantOutput(currentContent);
-                  if (optimizedFinalText !== currentContent) {
-                    setMessages(prev => prev.map(msg =>
-                      msg.id === assistantMessageId
-                        ? {
-                            ...msg,
-                            content: optimizedFinalText,
-                            contentBlocks: (msg.contentBlocks ?? []).map(block => (
-                              block.type === 'text'
-                                ? { ...block, text: optimizeAssistantOutput(block.text), isStreaming: false }
-                                : block
-                            )),
-                          }
-                        : msg
-                    ));
+                  if (optimizedFinalText) {
+                    upsertMessageTextBlock(assistantMessageId, textBlockKey, optimizedFinalText, {
+                      mode: 'replace',
+                      isStreaming: false,
+                    });
+                  } else {
+                    finalizeMessageTextBlock(assistantMessageId, textBlockKey);
                   }
                   if (useGlobalReadFileBatchLog) {
                     const hasIncompleteReads = listedFileCountHint > 0 && readFileDoneTotal < listedFileCountHint;
@@ -4500,20 +4849,39 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       const limit = Math.max(1, Math.min(80, limitArg));
                       const offset = Math.max(0, offsetArg);
 
-                      let resolvedFormId = formIdArg;
-                      if (resolvedFormId) {
-                        const normalizedFromFormId = resolvedFormId.toLowerCase();
+                      const resolveFormIdFromLookup = (value: string): string => {
+                        const normalized = normalizeFormLookupKey(value);
+                        if (!normalized) {
+                          return '';
+                        }
+
+                        const mappedFromAllowed = allowedFormNamesForTool.get(normalized);
+                        if (mappedFromAllowed) {
+                          return mappedFromAllowed;
+                        }
+
+                        const discoverableForm = resolveDiscoverableFormByName(value);
+                        return discoverableForm?.id ?? '';
+                      };
+
+                      let resolvedFormId = '';
+                      if (formIdArg) {
+                        const normalizedFromFormId = normalizeFormLookupKey(formIdArg);
                         const mappedFromName = allowedFormNamesForTool.get(normalizedFromFormId);
+                        const discoverableById = discoverableFormsForTool.find(form => form.id === formIdArg);
                         if (mappedFromName) {
                           resolvedFormId = mappedFromName;
+                        } else if (discoverableById) {
+                          resolvedFormId = discoverableById.id;
+                        } else {
+                          resolvedFormId = resolveFormIdFromLookup(formIdArg) || formIdArg;
                         }
                       }
                       if (!resolvedFormId && formNameArg) {
-                        const normalizedName = formNameArg.toLowerCase();
-                        resolvedFormId = allowedFormNamesForTool.get(normalizedName) ?? '';
+                        resolvedFormId = resolveFormIdFromLookup(formNameArg);
                       }
                       if (!resolvedFormId) {
-                        throw new Error('Missing formId');
+                        throw new Error('Missing formId or unresolved formName');
                       }
                       if (allowedFormIdsForTool.size > 0 && !allowedFormIdsForTool.has(resolvedFormId)) {
                         throw new Error(`Form is not referenced in context: ${resolvedFormId}`);
@@ -4536,7 +4904,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       const data = queryRowsResult.data;
                       toolAct = { ...toolAct, title: `Query form "${data.formName}"` };
                       allowedFormIdsForTool.add(data.formId);
-                      allowedFormNamesForTool.set(data.formName.trim().toLowerCase(), data.formId);
+                      allowedFormNamesForTool.set(normalizeFormLookupKey(data.formName), data.formId);
 
                       const rowLines = data.rows.map((row, idx) => {
                         const cellPairs = data.selectedColumns.map(column => {
@@ -4914,7 +5282,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 });
                 setMessages(prev => prev.map(msg =>
                   msg.id === assistantMessageId
-                    ? { ...msg, content: msg.content + `\n\nRequest failed: ${error.message}` }
+                    ? {
+                        ...msg,
+                        isThinking: false,
+                        content: msg.content + `\n\nRequest failed: ${error.message}`,
+                        contentBlocks: msg.contentBlocks?.map(block => (
+                          block.type === 'thinking'
+                            ? { ...block, isThinking: false }
+                            : (block.type === 'text' ? { ...block, isStreaming: false } : block)
+                        )),
+                      }
                     : msg
                 ));
                 setIsLoading(false);
@@ -4948,6 +5325,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         id: Date.now().toString(),
         role: 'user',
         content: taskDesc,
+        flowKind: 'agent_task',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, userMessage]);
@@ -4960,11 +5338,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         id: assistantMessageId,
         role: 'assistant',
         content: '',
+        flowKind: 'agent_task',
         timestamp: new Date(),
         model: selectedModel
       };
       setMessages(prev => [...prev, assistantMessage]);
-      appendActLog(assistantMessageId, {
+      const taskStatusActKey = `${assistantMessageId}-task-status`;
+      upsertActLog(assistantMessageId, {
+        key: taskStatusActKey,
         kind: 'status',
         title: 'Agent task started',
         detail: taskDesc,
@@ -4976,6 +5357,22 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         if (!todoEventListener) return;
         window.removeEventListener('agent:todo-changed', todoEventListener);
         todoEventListener = null;
+      };
+      const agentTextBlockKey = `${assistantMessageId}-agent-output`;
+      let answerBuffer = '';
+      let answerTimer: ReturnType<typeof setTimeout> | null = null;
+      const flushAnswerBuffer = (): void => {
+        const flushed = answerBuffer;
+        answerBuffer = '';
+        if (answerTimer) {
+          clearTimeout(answerTimer);
+          answerTimer = null;
+        }
+        if (!flushed) return;
+        upsertMessageTextBlock(assistantMessageId, agentTextBlockKey, flushed, {
+          mode: 'append',
+          isStreaming: true,
+        });
       };
 
       try {
@@ -4995,7 +5392,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         });
 
         await agentService.initialize({
-          execution: { modelId: actualModelId, temperature: 0.7, maxTokens: 4000, streaming: true }
+          execution: { modelId: selectedModel, temperature: 0.7, maxTokens: 4000, streaming: true }
         });
 
         // 每次对话前重置记忆，避免上次工具结果污染本次
@@ -5010,9 +5407,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         const selectedFormsSnapshot = selectedForms.map(form => ({ ...form }));
         const selectedKbsSnapshot = selectedKbs.map(kb => ({ ...kb }));
         const selectedFilesSnapshot = selectedFiles.map(file => ({ ...file }));
-        const hasContextHint = selectedFormsSnapshot.length > 0
-          || selectedKbsSnapshot.length > 0
-          || selectedFilesSnapshot.length > 0;
         const contextDesc = consumeAgentContextDesc();
         const liveCurrentTabPath = typeof (window as any).__currentTabPath === 'string'
           ? (window as any).__currentTabPath.trim()
@@ -5028,7 +5422,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           || liveCurrentTabTitle
           || (normalizedCurrentFilePath ? getPathBaseName(normalizedCurrentFilePath) : '');
         const hasWritableCurrentFile = isLikelyFileSystemPath(normalizedCurrentFilePath);
-        const taskType = inferAgentTaskType(taskDesc, hasContextHint, hasWritableCurrentFile);
+        const taskType = flowDecision.taskType;
         const compactAgentOutput = taskType === 'write' || taskType === 'edit';
         const currentFileForTask = !compactAgentOutput && hasWritableCurrentFile
           ? normalizedCurrentFilePath
@@ -5155,6 +5549,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           {
             workspacePath,
             currentFile: currentFileForTask || undefined,
+            externalSessionId: currentSessionId || undefined,
             additionalContext: Object.keys(additionalContext).length > 0 ? additionalContext : undefined,
           },
           constraints
@@ -5168,7 +5563,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         const needsConfirm = true;
         let hasLoggedStreamStart = false;
         const decompositionBlockKey = `${assistantMessageId}-decomposition`;
-        let activeStepId = '';
         let activeStepType = '';
         let activeStepIsDecomposition = false;
         let decompositionStreamText = '';
@@ -5331,155 +5725,53 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           }));
         };
 
-        await agentService.executeTaskStream(task, {
-          onStepStart: (step) => {
-            activeStepId = typeof step.id === 'string' ? step.id : '';
-            activeStepType = typeof step.type === 'string' ? step.type : '';
-            activeStepIsDecomposition = isDecompositionStep(String(step.description ?? ''));
-            const stepDescription = String(step.description ?? '');
-            const simpleStepKind = inferSimpleAgentStepKind(activeStepType, stepDescription);
-            if (activeStepType === 'write') {
-              stopWriteRenderPump();
-              streamingWriteDraft = '';
-              streamingWriteBuffer = '';
-              streamingWriteRaw = '';
-              writeStepPendingFinalize = false;
-            }
-            const shouldShowStartLog = compactAgentOutput
-              ? shouldShowSimpleStepLog(simpleStepKind, 'start')
-              : !(activeStepIsDecomposition && !SHOW_DECOMPOSITION_STEP_LOG);
-            if (shouldShowStartLog) {
-              appendActLog(assistantMessageId, {
-                kind: 'step',
-                title: compactAgentOutput
-                  ? `开始：${getSimpleAgentStepLabel(simpleStepKind)}`
-                  : (activeStepIsDecomposition
-                    ? `Step started (decomposition): ${step.description}`
-                    : `Step started: ${step.description}`),
-                status: 'running',
-              });
-            }
-          },
-          onStepComplete: (step, result) => {
-            const completedIsDecomposition = isDecompositionStep(String(step.description ?? ''));
-            const completedStepType = typeof step.type === 'string' ? step.type : '';
-            const completedDescription = String(step.description ?? '');
-            const simpleStepKind = inferSimpleAgentStepKind(completedStepType, completedDescription);
-            const verifyGateDetail = step.type === 'verify'
-              ? extractVerifyGateDetail(result)
-              : null;
-            const toolCallFailed = step.type === 'tool_call'
-              ? isToolCallExecutionFailed(result)
-              : false;
-            const verifyFailed = !!(verifyGateDetail && !verifyGateDetail.passed);
-            const stepFailed = verifyFailed || toolCallFailed;
-            const stepTitlePrefix = verifyFailed
-              ? 'Step failed (verify gate)'
-              : (toolCallFailed ? 'Step failed (tool call)' : 'Step completed');
-            const stepDetail = verifyGateDetail
-              ? formatVerifyGateDetail(verifyGateDetail)
-              : (step.type === 'tool_call'
-                ? formatToolCallStepDetail(result)
-                : (result ? stringifyActDetail(result) : undefined));
-            const shouldShowCompleteLog = compactAgentOutput
-              ? shouldShowSimpleStepLog(simpleStepKind, stepFailed ? 'failed' : 'complete')
-              : !(completedIsDecomposition && !SHOW_DECOMPOSITION_STEP_LOG);
-            const compactStepDetailRaw = stepFailed
-              ? (verifyGateDetail
-                ? formatVerifyGateDetail(verifyGateDetail)
-                : (step.type === 'tool_call' ? formatToolCallStepDetail(result) : undefined))
-              : undefined;
-            const compactStepDetail = compactStepDetailRaw
-              ? trimTodoContent(compactStepDetailRaw, 120)
-              : undefined;
-            if (shouldShowCompleteLog) {
-              appendActLog(assistantMessageId, {
-                kind: 'step',
-                title: compactAgentOutput
-                  ? `${stepFailed ? '失败' : '完成'}：${getSimpleAgentStepLabel(simpleStepKind)}`
-                  : (completedIsDecomposition
-                    ? `${stepTitlePrefix} (decomposition): ${step.description}`
-                    : `${stepTitlePrefix}: ${step.description}`),
-                detail: compactAgentOutput ? compactStepDetail : stepDetail,
-                status: stepFailed ? 'error' : 'success',
-              });
-            }
-            if (completedIsDecomposition) {
-              finalizeDecompositionBlock();
-            }
-            if (step.type === 'write') {
-              writeStepPendingFinalize = true;
-              if (!streamingWriteBuffer && !writeRenderTimer) {
-                writeStepPendingFinalize = false;
-                activeStepType = '';
-                drainWriteRenderBuffer(false, true);
-              } else {
-                ensureWriteRenderPump();
-              }
-            }
-            if (activeStepId && step.id === activeStepId) {
-              activeStepIsDecomposition = false;
-              if (step.type !== 'write') {
-                activeStepType = '';
-              }
-            }
-          },
-          onContent: (() => {
-            let answerBuffer = '';
-            let answerTimer: ReturnType<typeof setTimeout> | null = null;
-            const flushAnswerBuffer = () => {
-              const flushed = answerBuffer;
-              answerBuffer = '';
-              answerTimer = null;
-              if (!flushed) return;
-              setMessages(prev => prev.map(msg =>
-                msg.id === assistantMessageId
-                  ? { ...msg, content: msg.content + flushed }
-                  : msg
-              ));
-            };
-            return (content: string) => {
-              if (!compactAgentOutput && !hasLoggedStreamStart && content.trim()) {
-                hasLoggedStreamStart = true;
-                appendActLog(assistantMessageId, {
-                  kind: 'stream',
-                  title: 'Agent streaming response',
-                  status: 'running',
-                });
-              }
-              if (activeStepIsDecomposition) {
-                appendDecompositionChunk(content);
-                return;
-              }
-              if (compactAgentOutput && activeStepType === 'write') {
-                streamingWriteBuffer += content;
-                ensureWriteRenderPump();
-                return;
-              }
-              // Compact write/edit mode keeps only concise timeline and write-stream-to-tab behavior.
-              if (compactAgentOutput) {
-                return;
-              }
-              answerBuffer += content;
-              if (!answerTimer) {
-                answerTimer = setTimeout(flushAnswerBuffer, 90);
-              }
-            };
-          })(),
-          onToolCall: (toolName, params) => {
-            const uiId = `tc-agent-${Date.now()}-${toolName}`;
-            const p = params as Record<string, unknown>;
+        const handleAgentTurnFrame = (frame: AgentChatTurnFrame): void => {
+          if (frame.kind === 'task') {
+            upsertActLog(assistantMessageId, {
+              key: taskStatusActKey,
+              kind: 'status',
+              title: 'Agent task started',
+              detail: taskDesc,
+              status: 'running',
+            });
+            return;
+          }
+
+          if (frame.kind === 'progress') {
+            const nextIteration = frame.nextIteration ?? frame.iteration;
+            upsertActLog(assistantMessageId, {
+              key: taskStatusActKey,
+              kind: 'status',
+              title: frame.resumed ? 'Agent task resumed' : 'Agent task running',
+              detail: nextIteration != null ? `Iteration ${nextIteration}` : taskDesc,
+              status: 'running',
+            });
+            return;
+          }
+
+          if (frame.kind === 'reasoning_delta') {
+            upsertThinkingBlock(assistantMessageId, frame.text, {
+              isThinking: true,
+            });
+            return;
+          }
+
+          if (frame.kind === 'tool_started') {
+            const toolName = frame.toolName;
+            const params = frame.params;
+            const toolCallId = frame.toolCallId || frame.itemId;
             let label = toolName;
-            if (typeof p.path === 'string') label = `${toolName} ${p.path}`;
-            else if (typeof p.query === 'string') label = `${toolName} "${p.query}"`;
-            else if (typeof p.pattern === 'string') label = `${toolName} "${p.pattern}"`;
-            else if (typeof p.command === 'string') label = `${toolName} ${p.command}`;
-            const toolDetail = buildToolCallDetail(toolName, p);
-            const bashCommand = toolName === 'bash' && typeof p.command === 'string'
-              ? p.command
+            if (typeof params.path === 'string') label = `${toolName} ${params.path}`;
+            else if (typeof params.query === 'string') label = `${toolName} "${params.query}"`;
+            else if (typeof params.pattern === 'string') label = `${toolName} "${params.pattern}"`;
+            else if (typeof params.command === 'string') label = `${toolName} ${params.command}`;
+            const toolDetail = buildToolCallDetail(toolName, params);
+            const bashCommand = toolName === 'bash' && typeof params.command === 'string'
+              ? params.command
               : undefined;
             const pendingToolLog: ToolLog = {
-              uiId,
+              uiId: toolCallId || `tc-agent-${Date.now()}-${toolName}`,
+              toolCallId,
               name: toolName,
               label,
               detail: toolDetail,
@@ -5487,7 +5779,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               output: toolName === 'bash' ? 'Running...' : undefined,
               status: 'pending',
             };
-            appendActLog(assistantMessageId, {
+            upsertActLog(assistantMessageId, {
+              key: `${assistantMessageId}-tool-${toolCallId || frame.itemId}`,
               kind: 'tool',
               title: `Tool call: ${toolName}`,
               detail: toolDetail,
@@ -5503,61 +5796,94 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                   }
                 : msg
             ));
-          },
-          onToolResult: (toolName, result) => {
-            // 从真实结果中提取摘要
-            let summary = result.success ? 'done' : 'failed';
-            const resultData = (result.data ?? {}) as Record<string, unknown>;
-            const bashOutput = toolName === 'bash'
-              ? buildBashToolOutput(result as { success: boolean; data?: unknown; error?: string })
-              : undefined;
-            if (result.success && result.data) {
-              const d = resultData;
-              if (typeof d.content === 'string') {
-                const lines = d.content.split('\n').length;
-                summary = `${lines} lines`;
-              } else if (Array.isArray(d.items)) {
-                summary = `${d.items.length} items`;
-              } else if (typeof d.count === 'number') {
-                summary = `${d.count} results`;
-              } else if (typeof d.output === 'string') {
-                const lines = d.output.split('\n').filter(Boolean).length;
-                summary = lines > 0 ? `${lines} lines` : 'done';
-              } else if (typeof d.stdout === 'string') {
-                const lines = d.stdout.split('\n').filter(Boolean).length;
-                summary = lines > 0 ? `${lines} lines` : 'done';
-              }
-            }
-            if (toolName === 'bash' && bashOutput) {
-              const lines = bashOutput.split('\n').filter(Boolean).length;
-              summary = lines > 0 ? `${lines} lines` : summary;
-            }
-            appendActLog(assistantMessageId, {
+            return;
+          }
+
+          if (frame.kind === 'tool_finished') {
+            const toolName = frame.toolName;
+            const toolCallId = frame.toolCallId || frame.itemId;
+            const parsedToolResult = parseToolResultFramePayload(frame.resultText, frame.success);
+            const toolSummary = buildToolFrameSummary(toolName, parsedToolResult);
+            upsertActLog(assistantMessageId, {
+              key: `${assistantMessageId}-tool-${toolCallId}`,
               kind: 'tool',
               title: `Tool result: ${toolName}`,
-              detail: summary,
-              status: result.success ? 'success' : 'error',
+              detail: toolSummary.summary,
+              status: frame.success ? 'success' : 'error',
             });
             resolveLatestPendingToolLog(
               assistantMessageId,
               toolName,
-              result.success ? 'success' : 'error',
-              summary,
+              toolCallId,
+              frame.success ? 'success' : 'error',
+              toolSummary.summary,
               {
-                detail: toolName === 'bash' && typeof resultData.command === 'string'
-                  ? resultData.command
-                  : undefined,
-                command: toolName === 'bash' && typeof resultData.command === 'string'
-                  ? resultData.command
-                  : undefined,
-                output: toolName === 'bash'
-                  ? (bashOutput || (result.success ? '(no output)' : (result.error || 'Tool execution failed')))
-                  : undefined,
+                detail: toolSummary.detail,
+                command: toolSummary.command,
+                output: toolSummary.output,
               }
             );
+            return;
+          }
 
-            const isWriteTool = toolName === 'write_file' || toolName === 'edit_file' || toolName === 'multi_edit_file';
-            if (isWriteTool && result.success) {
+          if (frame.kind === 'error') {
+            upsertActLog(assistantMessageId, {
+              key: taskStatusActKey,
+              kind: 'error',
+              title: 'Agent task failed',
+              detail: frame.text || 'Unknown error',
+              status: 'error',
+            });
+            return;
+          }
+
+          if (frame.kind !== 'assistant_delta' && frame.kind !== 'final_answer') {
+            return;
+          }
+
+          const content = frame.text;
+          if (!content) {
+            return;
+          }
+
+          if (!compactAgentOutput && !hasLoggedStreamStart && content.trim()) {
+            hasLoggedStreamStart = true;
+            appendActLog(assistantMessageId, {
+              kind: 'stream',
+              title: 'Agent streaming response',
+              status: 'running',
+            });
+          }
+          if (activeStepIsDecomposition) {
+            appendDecompositionChunk(content);
+            return;
+          }
+          if (compactAgentOutput && activeStepType === 'write') {
+            streamingWriteBuffer += content;
+            ensureWriteRenderPump();
+            return;
+          }
+          if (compactAgentOutput) {
+            return;
+          }
+          if (frame.kind === 'final_answer') {
+            flushAnswerBuffer();
+            upsertMessageTextBlock(assistantMessageId, agentTextBlockKey, content, {
+              mode: 'replace',
+              isStreaming: false,
+            });
+            return;
+          }
+          answerBuffer += content;
+          if (!answerTimer) {
+            answerTimer = setTimeout(flushAnswerBuffer, 90);
+          }
+        };
+
+        await agentService.executeTaskStream(task, {
+          onTurnFrame: handleAgentTurnFrame,
+          onToolResult: (toolName, result, toolCallId) => {
+            if (isWriteToolName(toolName) && result.success) {
               const data = (result.data ?? {}) as Record<string, unknown>;
               const changeWithContent = (result.changes ?? []).find((change: { newContent?: string }) =>
                 typeof change.newContent === 'string'
@@ -5588,6 +5914,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             if (pendingToolConfirmationResolverRef.current) {
               settlePendingToolConfirmation(false);
             }
+            flushAnswerBuffer();
             if (writeStepPendingFinalize && !writeRenderTimer) {
               writeStepPendingFinalize = false;
               drainWriteRenderBuffer(false, true);
@@ -5648,7 +5975,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 ? `已完成，输出 ${outputLength} 字符`
                 : '已完成';
             })();
-            appendActLog(assistantMessageId, {
+            upsertActLog(assistantMessageId, {
+              key: taskStatusActKey,
               kind: 'status',
               title: result.success ? 'Agent task completed' : 'Agent task failed',
               detail: completionDetail,
@@ -5657,25 +5985,36 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             setMessages(prev => prev.map(msg => {
               if (msg.id !== assistantMessageId) return msg;
               const elapsed = msg.thinkingStartTime ? Math.max(1, Math.round((Date.now() - msg.thinkingStartTime) / 1000)) : 1;
-              const finalizedBlocks = (msg.contentBlocks ?? []).map(block => {
+              const nextContent = result.success
+                ? (finalContent.trim() || msg.content.trim())
+                : finalContent.trim();
+              let finalizedBlocks: ContentBlock[] = (msg.contentBlocks ?? []).map(block => {
                 if (block.type === 'decomposition' && block.key === decompositionBlockKey) {
                   return { ...block, isStreaming: false };
                 }
                 if (block.type === 'todo') {
                   return { ...block, isStreaming: false };
                 }
+                if (block.type === 'thinking') {
+                  return { ...block, isThinking: false, elapsedSeconds: elapsed };
+                }
                 if (block.type === 'tool' && block.tool.status === 'pending') {
                   return { ...block, tool: { ...block.tool, status: 'success' as const } };
                 }
                 return block;
               });
+              finalizedBlocks = nextContent
+                ? upsertTextBlock(finalizedBlocks, agentTextBlockKey, nextContent, {
+                    mode: 'replace',
+                    isStreaming: false,
+                  })
+                : finalizeTextBlock(finalizedBlocks, agentTextBlockKey);
               return {
                 ...msg,
+                isThinking: false,
                 isThinkingPhase: false,
                 elapsedSeconds: elapsed,
-                content: result.success
-                  ? (finalContent.trim() || msg.content.trim())
-                  : finalContent.trim(),
+                content: nextContent,
                 contentBlocks: finalizedBlocks,
                 toolCalls: msg.toolCalls?.map(tc =>
                   tc.status === 'pending' ? { ...tc, status: 'success' as const } : tc
@@ -5689,26 +6028,35 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             if (pendingToolConfirmationResolverRef.current) {
               settlePendingToolConfirmation(false);
             }
+            flushAnswerBuffer();
             stopWriteRenderPump();
             writeStepPendingFinalize = false;
             drainWriteRenderBuffer(false, true);
             finalizeDecompositionBlock();
-            appendActLog(assistantMessageId, {
+            upsertActLog(assistantMessageId, {
+              key: taskStatusActKey,
               kind: 'error',
-              title: 'Agent stream error',
+              title: 'Agent task failed',
               detail: err.message,
               status: 'error',
             });
             setMessages(prev => prev.map(msg => {
               if (msg.id !== assistantMessageId) return msg;
-              const nextBlocks = (msg.contentBlocks ?? []).map(block =>
+              const errorText = `\n\n**Error**: ${err.message}`;
+              const nextBlocks = upsertTextBlock((msg.contentBlocks ?? []).map(block =>
                 block.type === 'todo'
                   ? { ...block, isStreaming: false }
-                  : block
-              );
+                  : (block.type === 'thinking'
+                    ? { ...block, isThinking: false, elapsedSeconds: msg.elapsedSeconds }
+                    : block)
+              ), agentTextBlockKey, errorText, {
+                mode: 'append',
+                isStreaming: false,
+              });
               return {
                 ...msg,
-                content: msg.content + `\n\n**Error**: ${err.message}`,
+                isThinking: false,
+                content: msg.content + errorText,
                 contentBlocks: nextBlocks,
               };
             }));
@@ -5721,8 +6069,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         if (pendingToolConfirmationResolverRef.current) {
           settlePendingToolConfirmation(false);
         }
+        flushAnswerBuffer();
         finalizeDecompositionBlock();
-        appendActLog(assistantMessageId, {
+        upsertActLog(assistantMessageId, {
+          key: taskStatusActKey,
           kind: 'error',
           title: 'Agent task exception',
           detail: err instanceof Error ? err.message : String(err),
@@ -5730,14 +6080,21 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         });
         setMessages(prev => prev.map(msg => {
           if (msg.id !== assistantMessageId) return msg;
-          const nextBlocks = (msg.contentBlocks ?? []).map(block =>
+          const errorText = `\n\n**Execution failed**: ${err instanceof Error ? err.message : String(err)}`;
+          const nextBlocks = upsertTextBlock((msg.contentBlocks ?? []).map(block =>
             block.type === 'todo'
               ? { ...block, isStreaming: false }
-              : block
-          );
+              : (block.type === 'thinking'
+                ? { ...block, isThinking: false, elapsedSeconds: msg.elapsedSeconds }
+                : block)
+          ), agentTextBlockKey, errorText, {
+            mode: 'append',
+            isStreaming: false,
+          });
           return {
             ...msg,
-            content: msg.content + `\n\n**Execution failed**: ${err instanceof Error ? err.message : String(err)}`,
+            isThinking: false,
+            content: msg.content + errorText,
             contentBlocks: nextBlocks,
           };
         }));
@@ -6058,25 +6415,21 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 // Whether current assistant message has thinking steps.
                 const hasThinkingSteps = message.role === 'assistant' && message.thinkingSteps && message.thinkingSteps.length > 0;
                 const isLatestAssistantMessage = message.role === 'assistant' && index === messages.length - 1;
-                const contentBlocks = message.contentBlocks ?? [];
-                const dedupedContentBlocks = contentBlocks.reduce<ContentBlock[]>((acc, block) => {
-                  if (block.type !== 'text') {
-                    acc.push(block);
-                    return acc;
-                  }
-                  const normalizedCurrent = normalizeTimelineText(block.text);
-                  const lastTextBlock = [...acc].reverse().find(item => item.type === 'text');
-                  if (lastTextBlock && lastTextBlock.type === 'text') {
-                    const normalizedLast = normalizeTimelineText(lastTextBlock.text);
-                    if (normalizedCurrent && normalizedCurrent === normalizedLast) {
-                      return acc;
-                    }
-                  }
-                  acc.push(block);
-                  return acc;
-                }, []);
-                const hasTextBlock = message.role === 'assistant' && dedupedContentBlocks.some(block => block.type === 'text');
-                const showThinkingIndicator = isLatestAssistantMessage && isLoading;
+                const assistantSections = message.role === 'assistant'
+                  ? buildAssistantRenderSections(message.contentBlocks ?? [])
+                  : null;
+                const hasStructuredBlocks = message.role === 'assistant' && !!assistantSections && (
+                  assistantSections.todoBlocks.length > 0
+                  || assistantSections.decompositionBlocks.length > 0
+                  || assistantSections.progressTextBlocks.length > 0
+                  || assistantSections.timelineBlocks.length > 0
+                  || assistantSections.thinkingBlock !== null
+                  || assistantSections.hasTextContent
+                );
+                const hasTextBlock = assistantSections?.hasTextContent ?? false;
+                const showThinkingIndicator = isLatestAssistantMessage
+                  && isLoading
+                  && !(assistantSections?.thinkingBlock?.isThinking ?? false);
                 
                 return (
                   <React.Fragment key={message.id}>
@@ -6106,124 +6459,120 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         )}
                         
                         {/* Interleaved blocks: text, tool calls, deep thinking. */}
-                        {message.role === 'assistant' && dedupedContentBlocks.length > 0 ? (
+                        {message.role === 'assistant' && hasStructuredBlocks && assistantSections ? (
                           <div className="message-content-blocks">
-                            {dedupedContentBlocks.map((block, blockIdx) => {
-                              if (block.type === 'thinking') {
-                                return (
-                                  <ThinkingBlock
-                                    key={`thinking-${blockIdx}`}
-                                    thinkingContent={block.content}
-                                    isDeepThinking={true}
-                                    isThinkingPhase={block.isThinking}
-                                    elapsedSeconds={block.elapsedSeconds}
-                                    isExpanded={toolThinkingExpanded.get(message.id + '-dt') ?? block.isThinking}
-                                    onToggle={() => setToolThinkingExpanded(prev => {
-                                      const next = new Map(prev);
-                                      const key = message.id + '-dt';
-                                      next.set(key, !prev.get(key));
-                                      return next;
-                                    })}
-                                  />
-                                );
-                              }
-                              if (block.type === 'tool') {
-                                return renderToolLogEntry(block.tool, block.tool.uiId);
-                              }
-                              if (block.type === 'act') {
-                                return (
-                                  <div key={block.act.id} className={`act-log__item act-log__item--${block.act.status}`}>
-                                    <span className="act-log__dot" />
-                                    <span className="act-log__title">{block.act.title}</span>
-                                    {block.act.detail && <span className="act-log__detail">{block.act.detail}</span>}
-                                  </div>
-                                );
-                              }
-                              if (block.type === 'todo') {
-                                const completedCount = block.items.filter(item => item.status === 'completed').length;
-                                const totalCount = block.items.length;
-                                const requirementItems = block.items.filter(item => item.source === 'agent');
-                                const requirementCompleted = requirementItems.filter(item => item.status === 'completed').length;
-                                const planItems = block.items.filter(item => item.source === 'plan');
-                                const planCompleted = planItems.filter(item => item.status === 'completed').length;
-                                return (
-                                  <div key={block.key} className="todo-card">
-                                    <div className="todo-card__header">
-                                      <span className="todo-card__title">{block.title}</span>
-                                      {totalCount > 0 && (
-                                        <span className="todo-card__meta">{completedCount}/{totalCount}</span>
-                                      )}
-                                    </div>
-                                    {totalCount > 0 ? (
-                                      <div className="todo-card__sections">
-                                        {requirementItems.length > 0 && (
-                                          <div className="todo-card__section">
-                                            <div className="todo-card__section-header">
-                                              <span className="todo-card__section-title">需求拆解</span>
-                                              <span className="todo-card__section-meta">{requirementCompleted}/{requirementItems.length}</span>
-                                            </div>
-                                            <ul className="todo-card__list">
-                                              {requirementItems.map(item => (
-                                                <li key={item.id} className={`todo-card__item todo-card__item--${item.status}`}>
-                                                  <span className="todo-card__dot" />
-                                                  <span className="todo-card__text">{item.content}</span>
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        )}
-                                        {planItems.length > 0 && (
-                                          <div className="todo-card__section">
-                                            <div className="todo-card__section-header">
-                                              <span className="todo-card__section-title">执行计划</span>
-                                              <span className="todo-card__section-meta">{planCompleted}/{planItems.length}</span>
-                                            </div>
-                                            <ul className="todo-card__list">
-                                              {planItems.map(item => (
-                                                <li key={item.id} className={`todo-card__item todo-card__item--${item.status}`}>
-                                                  <span className="todo-card__dot" />
-                                                  <span className="todo-card__text">{item.content}</span>
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <div className="todo-card__empty">
-                                        {block.isStreaming ? '正在拆解需求...' : '暂无任务'}
-                                      </div>
+                            {assistantSections.todoBlocks.map(block => {
+                              const completedCount = block.items.filter(item => item.status === 'completed').length;
+                              const totalCount = block.items.length;
+                              const requirementItems = block.items.filter(item => item.source === 'agent');
+                              const requirementCompleted = requirementItems.filter(item => item.status === 'completed').length;
+                              const planItems = block.items.filter(item => item.source === 'plan');
+                              const planCompleted = planItems.filter(item => item.status === 'completed').length;
+                              return (
+                                <div key={block.key} className="todo-card">
+                                  <div className="todo-card__header">
+                                    <span className="todo-card__title">{block.title}</span>
+                                    {totalCount > 0 && (
+                                      <span className="todo-card__meta">{completedCount}/{totalCount}</span>
                                     )}
                                   </div>
-                                );
+                                  {totalCount > 0 ? (
+                                    <div className="todo-card__sections">
+                                      {requirementItems.length > 0 && (
+                                        <div className="todo-card__section">
+                                          <div className="todo-card__section-header">
+                                            <span className="todo-card__section-title">需求拆解</span>
+                                            <span className="todo-card__section-meta">{requirementCompleted}/{requirementItems.length}</span>
+                                          </div>
+                                          <ul className="todo-card__list">
+                                            {requirementItems.map(item => (
+                                              <li key={item.id} className={`todo-card__item todo-card__item--${item.status}`}>
+                                                <span className="todo-card__dot" />
+                                                <span className="todo-card__text">{item.content}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {planItems.length > 0 && (
+                                        <div className="todo-card__section">
+                                          <div className="todo-card__section-header">
+                                            <span className="todo-card__section-title">执行计划</span>
+                                            <span className="todo-card__section-meta">{planCompleted}/{planItems.length}</span>
+                                          </div>
+                                          <ul className="todo-card__list">
+                                            {planItems.map(item => (
+                                              <li key={item.id} className={`todo-card__item todo-card__item--${item.status}`}>
+                                                <span className="todo-card__dot" />
+                                                <span className="todo-card__text">{item.content}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="todo-card__empty">
+                                      {block.isStreaming ? '正在拆解需求...' : '暂无任务'}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {assistantSections.decompositionBlocks.map(block => {
+                              const key = `${message.id}-decomposition-expanded`;
+                              const isExpanded = toolThinkingExpanded.get(key) ?? true;
+                              return (
+                                <DecompositionBlock
+                                  key={block.key}
+                                  title={block.title}
+                                  content={block.content}
+                                  isStreaming={block.isStreaming}
+                                  isExpanded={isExpanded}
+                                  onToggle={() => setToolThinkingExpanded(prev => {
+                                    const next = new Map(prev);
+                                    next.set(key, !isExpanded);
+                                    return next;
+                                  })}
+                                />
+                              );
+                            })}
+                            {assistantSections.thinkingBlock && (
+                              <ThinkingBlock
+                                key={`thinking-${message.id}`}
+                                thinkingContent={assistantSections.thinkingBlock.content}
+                                isDeepThinking={true}
+                                isThinkingPhase={assistantSections.thinkingBlock.isThinking}
+                                elapsedSeconds={assistantSections.thinkingBlock.elapsedSeconds}
+                                isExpanded={toolThinkingExpanded.get(message.id + '-dt') ?? assistantSections.thinkingBlock.isThinking}
+                                onToggle={() => setToolThinkingExpanded(prev => {
+                                  const next = new Map(prev);
+                                  const key = message.id + '-dt';
+                                  next.set(key, !prev.get(key));
+                                  return next;
+                                })}
+                              />
+                            )}
+                            {assistantSections.progressTextBlocks.map((block, blockIdx) => (
+                              <div
+                                key={block.key ?? `progress-${message.id}-${blockIdx}`}
+                                className={`act-log__item act-log__item--${block.isStreaming ? 'running' : 'info'}`}
+                              >
+                                <span className="act-log__dot" />
+                                <span className="act-log__title">{block.text}</span>
+                              </div>
+                            ))}
+                            {assistantSections.timelineBlocks.map((block, blockIdx) => {
+                              if (block.type === 'tool') {
+                                return renderToolLogEntry(block.tool, block.tool.uiId ?? `${message.id}-${blockIdx}`);
                               }
-                              if (block.type === 'decomposition') {
-                                const key = `${message.id}-decomposition-expanded`;
-                                const isExpanded = toolThinkingExpanded.get(key) ?? true;
-                                return (
-                                  <DecompositionBlock
-                                    key={block.key}
-                                    title={block.title}
-                                    content={block.content}
-                                    isStreaming={block.isStreaming}
-                                    isExpanded={isExpanded}
-                                    onToggle={() => setToolThinkingExpanded(prev => {
-                                      const next = new Map(prev);
-                                      next.set(key, !isExpanded);
-                                      return next;
-                                    })}
-                                  />
-                                );
-                              }
-                              if (block.type === 'text') {
-                                const isStreamingThis = block.isStreaming ?? showThinkingIndicator;
-                                return (
-                                  <div key={block.key ?? `text-${blockIdx}`} className="message-content message-content--timeline" onContextMenu={handleAssistantTextSelection}>
-                                    <AIResponseRenderer content={block.text} isStreaming={isStreamingThis} />
-                                  </div>
-                                );
-                              }
-                              return null;
+                              return (
+                                <div key={block.act.id} className={`act-log__item act-log__item--${block.act.status}`}>
+                                  <span className="act-log__dot" />
+                                  <span className="act-log__title">{block.act.title}</span>
+                                  {block.act.detail && <span className="act-log__detail">{block.act.detail}</span>}
+                                </div>
+                              );
                             })}
                             {!hasTextBlock && message.content && (
                               <div className="message-content message-content--timeline" onContextMenu={handleAssistantTextSelection}>
@@ -6233,7 +6582,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                 />
                               </div>
                             )}
-                            {showThinkingIndicator && (
+                            {assistantSections.hasTextContent && (
+                              <div className="message-content message-content--timeline" onContextMenu={handleAssistantTextSelection}>
+                                <AIResponseRenderer
+                                  content={assistantSections.finalText}
+                                  isStreaming={assistantSections.isTextStreaming}
+                                />
+                              </div>
+                            )}
+                            {showThinkingIndicator && !assistantSections.hasTextContent && (
                               <div className="act-log__item act-log__item--running act-log__item--thinking">
                                 <span className="act-log__dot" />
                                 <span className="act-log__title">Thinking</span>
@@ -7065,13 +7422,33 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
           {/* Bottom toolbar */}
           <div className="input-toolbar">
-            <div className="toolbar-left" />
+            <div className="toolbar-left">
+              {SHOW_AGENT_FRAME_REPLAY_DEVTOOLS && (
+                <div className="replay-toolbar">
+                  <span className="replay-toolbar__label">消息回放</span>
+                  {AGENT_FRAME_REPLAY_SAMPLES.map(sample => (
+                    <button
+                      key={sample.id}
+                      className={`replay-toolbar__button ${activeReplaySampleId === sample.id ? 'active' : ''}`}
+                      onClick={() => { void runAgentFrameReplay(sample); }}
+                      disabled={isLoading}
+                      title={sample.description}
+                    >
+                      {sample.label}
+                    </button>
+                  ))}
+                  <span className="replay-toolbar__status">
+                    {activeReplaySample ? `运行中: ${activeReplaySample.label}` : '开发态'}
+                  </span>
+                </div>
+              )}
+            </div>
             
             <div className="input-actions">
               {isLoading && (
                 <button
                   className="icon-button stop-button"
-                  onClick={() => setIsLoading(false)}
+                  onClick={handleStopGeneration}
                   title="停止生成"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">

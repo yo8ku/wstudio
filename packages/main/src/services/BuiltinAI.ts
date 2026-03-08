@@ -1,80 +1,128 @@
-/**
- * 文件功能: 内置AI服务
- * 描述: 提供独立的AI模型服务，使用开发者提供的固定API Key，与用户AI配置完全分离
+﻿/**
+ * 鏂囦欢鍔熻兘: 鍐呯疆AI鏈嶅姟
+ * 鎻忚堪: 鎻愪緵鐙珛鐨凙I妯″瀷鏈嶅姟锛屼娇鐢ㄥ紑鍙戣€呮彁渚涚殑鍥哄畾API Key锛屼笌鐢ㄦ埛AI閰嶇疆瀹屽叏鍒嗙
  */
 
 import { ipcMain } from 'electron';
 
 /**
- * AI提供商配置接口
+ * AI鎻愪緵鍟嗛厤缃帴鍙?
  */
 interface AIProviderConfig {
-  name: string;           // 提供商名称（如: OpenAI, Anthropic）
-  apiKey: string;         // API密钥
-  baseURL: string;        // API基础地址
-  modelsEndpoint: string; // 获取模型列表的端点
+  name: string;           // 鎻愪緵鍟嗗悕绉帮紙濡? OpenAI, Anthropic锛?
+  apiKey: string;         // API瀵嗛挜
+  baseURL: string;        // API鍩虹鍦板潃
+  modelsEndpoint: string; // 鑾峰彇妯″瀷鍒楄〃鐨勭鐐?
 }
 
 /**
- * 内置AI服务类
- * - 使用开发者提供的固定API Key（代码内置或环境变量）
- * - 在启动时自动从真实API获取模型列表
- * - 与用户AI配置（settings.json）完全独立
+ * 鍐呯疆AI鏈嶅姟绫?
+ * - 浣跨敤寮€鍙戣€呮彁渚涚殑鍥哄畾API Key锛堜唬鐮佸唴缃垨鐜鍙橀噺锛?
+ * - 鍦ㄥ惎鍔ㄦ椂鑷姩浠庣湡瀹濧PI鑾峰彇妯″瀷鍒楄〃
+ * - 涓庣敤鎴稟I閰嶇疆锛坰ettings.json锛夊畬鍏ㄧ嫭绔?
  * 
- * 配置方式（二选一）：
+ * 閰嶇疆鏂瑰紡锛堜簩閫変竴锛夛細
  * 
- * 方式1：代码内置（推荐给开发者分发应用）
- *   - 在 constructor() 中的 BUILTIN_CONFIG 对象填入 API Key
- *   - 优点：用户无需配置，开箱即用
+ * 鏂瑰紡1锛氫唬鐮佸唴缃紙鎺ㄨ崘缁欏紑鍙戣€呭垎鍙戝簲鐢級
+ *   - 鍦?constructor() 涓殑 BUILTIN_CONFIG 瀵硅薄濉叆 API Key
+ *   - 浼樼偣锛氱敤鎴锋棤闇€閰嶇疆锛屽紑绠卞嵆鐢?
  * 
- * 方式2：环境变量（推荐给开发调试）
- *   - 创建 .env 文件
- *   - 添加：BUILTIN_AI_API_KEY=your-api-key-here
- *   - 添加：BUILTIN_AI_BASE_URL=https://your-api-url.com/v1 (可选)
- *   - 优点：不暴露密钥到代码中
+ * 鏂瑰紡2锛氱幆澧冨彉閲忥紙鎺ㄨ崘缁欏紑鍙戣皟璇曪級
+ *   - 鍒涘缓 .env 鏂囦欢
+ *   - 娣诲姞锛欱UILTIN_AI_API_KEY=your-api-key-here
+ *   - 娣诲姞锛欱UILTIN_AI_BASE_URL=https://your-api-url.com/v1 (鍙€?
+ *   - 浼樼偣锛氫笉鏆撮湶瀵嗛挜鍒颁唬鐮佷腑
  */
-// 用户模型配置信息
+// 鐢ㄦ埛妯″瀷閰嶇疆淇℃伅
 interface UserModelInfo {
-  modelId: string;           // 格式：提供商:模型名
-  configName: string;        // 配置名称
-  apiKey: string;            // API密钥
-  apiEndpoint: string;       // API端点
-  providerId: string;        // 提供商ID
-  temperature?: number;      // 温度参数
+  modelId: string;           // 鏍煎紡锛氭彁渚涘晢:妯″瀷鍚?
+  configName: string;        // 閰嶇疆鍚嶇О
+  apiKey: string;            // API瀵嗛挜
+  apiEndpoint: string;       // API绔偣
+  providerId: string;        // 鎻愪緵鍟咺D
+  temperature?: number;      // 娓╁害鍙傛暟
+}
+
+function normalizeApiEndpoint(endpoint: string): string {
+  const trimmed = endpoint.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed.replace(/\/+$/, '');
+  }
+
+  if (trimmed.includes('localhost') || trimmed.startsWith('127.0.0.1')) {
+    return `http://${trimmed}`.replace(/\/+$/, '');
+  }
+
+  return `https://${trimmed}`.replace(/\/+$/, '');
+}
+
+function resolveChatEndpoint(apiEndpoint: string, providerId?: string): string {
+  const endpoint = normalizeApiEndpoint(apiEndpoint);
+  if (!endpoint) {
+    return '';
+  }
+
+  if (
+    endpoint.includes('/chat/completions')
+    || endpoint.includes('/messages')
+    || endpoint.endsWith('/responses')
+  ) {
+    return endpoint;
+  }
+
+  const normalizedProviderId = providerId?.trim().toLowerCase() ?? '';
+  if (normalizedProviderId === 'anthropic' || endpoint.includes('anthropic.com')) {
+    return `${endpoint}/messages`;
+  }
+
+  try {
+    const url = new URL(endpoint);
+    if (url.pathname === '/' || url.pathname === '') {
+      return `${endpoint}/v1/chat/completions`;
+    }
+  } catch {
+    // Fall through to the generic suffix handling below.
+  }
+
+  return `${endpoint}/chat/completions`;
 }
 
 export class BuiltinAI {
-  // 可用的模型列表（格式：配置名:模型名）
+  // 鍙敤鐨勬ā鍨嬪垪琛紙鏍煎紡锛氶厤缃悕:妯″瀷鍚嶏級
   private availableModels: string[] = [];
   
-  // 用户配置的模型列表（从渲染进程同步过来）
+  // 鐢ㄦ埛閰嶇疆鐨勬ā鍨嬪垪琛紙浠庢覆鏌撹繘绋嬪悓姝ヨ繃鏉ワ級
   private userConfiguredModels: string[] = [];
   
-  // 用户配置的模型详细信息（用于实际调用API）
+  // 鐢ㄦ埛閰嶇疆鐨勬ā鍨嬭缁嗕俊鎭紙鐢ㄤ簬瀹為檯璋冪敤API锛?
   private userModelConfigs: Map<string, UserModelInfo> = new Map();
   
-  // 从环境变量读取配置
+  // 浠庣幆澧冨彉閲忚鍙栭厤缃?
   private readonly builtinApiKey: string;
   private readonly builtinBaseUrl: string;
   
-  // 内置服务商配置（统一API地址）
+  // 鍐呯疆鏈嶅姟鍟嗛厤缃紙缁熶竴API鍦板潃锛?
   private readonly builtinProviders: AIProviderConfig[];
 
   constructor() {
-    // ==================== 内置模型配置 ====================
-    // 开发者提供的固定API Key和Base URL（独立于用户配置）
-    // 用户无需配置，直接可用
+    // ==================== 鍐呯疆妯″瀷閰嶇疆 ====================
+    // 寮€鍙戣€呮彁渚涚殑鍥哄畾API Key鍜孊ase URL锛堢嫭绔嬩簬鐢ㄦ埛閰嶇疆锛?
+    // 鐢ㄦ埛鏃犻渶閰嶇疆锛岀洿鎺ュ彲鐢?
     const BUILTIN_CONFIG = {
-      apiKey: 'sk-your-builtin-api-key-here',  // 在这里填入你的API密钥
-      baseUrl: 'https://api.openai.com/v1',     // 在这里填入你的API地址
+      apiKey: 'sk-your-builtin-api-key-here',  // 鍦ㄨ繖閲屽～鍏ヤ綘鐨凙PI瀵嗛挜
+      baseUrl: 'https://api.openai.com/v1',     // 鍦ㄨ繖閲屽～鍏ヤ綘鐨凙PI鍦板潃
     };
     // ====================================================
     
-    // 从环境变量读取API配置（如果设置了环境变量则优先使用）
+    // 浠庣幆澧冨彉閲忚鍙朅PI閰嶇疆锛堝鏋滆缃簡鐜鍙橀噺鍒欎紭鍏堜娇鐢級
     this.builtinApiKey = process.env.BUILTIN_AI_API_KEY || BUILTIN_CONFIG.apiKey;
     this.builtinBaseUrl = process.env.BUILTIN_AI_BASE_URL || BUILTIN_CONFIG.baseUrl;
     
-    // 初始化提供商配置
+    // 鍒濆鍖栨彁渚涘晢閰嶇疆
     this.builtinProviders = [
       {
         name: 'OpenAI',
@@ -102,64 +150,64 @@ export class BuiltinAI {
       }
     ];
     
-    // 检查API key是否已配置
+    // 妫€鏌PI key鏄惁宸查厤缃?
     if (!this.builtinApiKey || this.builtinApiKey === 'sk-your-builtin-api-key-here') {
-      console.warn('[BuiltinAI]  未配置内置AI的API密钥');
-      console.warn('[BuiltinAI] 请在代码中设置 BUILTIN_CONFIG.apiKey');
-      console.warn('[BuiltinAI] 或在 .env 文件中设置 BUILTIN_AI_API_KEY');
-      console.warn('[BuiltinAI] 内置AI功能将不可用，但不影响应用正常运行');
+      console.warn('[BuiltinAI]  鏈厤缃唴缃瓵I鐨凙PI瀵嗛挜');
+      console.warn('[BuiltinAI] 璇峰湪浠ｇ爜涓缃?BUILTIN_CONFIG.apiKey');
+      console.warn('[BuiltinAI] 鎴栧湪 .env 鏂囦欢涓缃?BUILTIN_AI_API_KEY');
+      console.warn('[BuiltinAI] Builtin AI is unavailable, but the app can still run.');
     } else {
-      console.log('[BuiltinAI]  已加载内置AI配置');
+      console.log('[BuiltinAI]  宸插姞杞藉唴缃瓵I閰嶇疆');
       console.log('[BuiltinAI] Base URL:', this.builtinBaseUrl);
-      console.log('[BuiltinAI] 配置来源:', process.env.BUILTIN_AI_API_KEY ? '环境变量' : '代码内置');
+      console.log('[BuiltinAI] 閰嶇疆鏉ユ簮:', process.env.BUILTIN_AI_API_KEY ? '鐜鍙橀噺' : '浠ｇ爜鍐呯疆');
     }
   }
 
   /**
-   * 初始化内置AI服务
-   * - 注册 IPC 处理器
-   * - 从 API 获取真实的模型列表（如果配置了API key）
+   * 鍒濆鍖栧唴缃瓵I鏈嶅姟
+   * - 娉ㄥ唽 IPC 澶勭悊鍣?
+   * - 浠?API 鑾峰彇鐪熷疄鐨勬ā鍨嬪垪琛紙濡傛灉閰嶇疆浜咥PI key锛?
    */
   async initialize(): Promise<void> {
-    console.log('[BuiltinAI]  初始化内置AI服务...');
+    console.log('[BuiltinAI]  鍒濆鍖栧唴缃瓵I鏈嶅姟...');
     
-    // 首先注册 IPC 处理器（必须在 app.whenReady() 之后）
+    // 棣栧厛娉ㄥ唽 IPC 澶勭悊鍣紙蹇呴』鍦?app.whenReady() 涔嬪悗锛?
     this.setupIPC();
     
-    // 检查是否配置了API key
+    // 妫€鏌ユ槸鍚﹂厤缃簡API key
     if (!this.builtinApiKey || this.builtinApiKey === 'sk-your-builtin-api-key-here') {
-      console.log('[BuiltinAI]  未配置API密钥，跳过模型列表获取');
-      console.log('[BuiltinAI] 内置AI服务初始化完成（但功能不可用）');
-      console.log('[BuiltinAI] 提示：用户可以在设置中配置自己的AI模型');
+      console.log('[BuiltinAI] API key is not configured, skipping builtin model fetch.');
+      console.log('[BuiltinAI] Builtin AI initialized without available builtin features.');
+      console.log('[BuiltinAI] 鎻愮ず锛氱敤鎴峰彲浠ュ湪璁剧疆涓厤缃嚜宸辩殑AI妯″瀷');
       return;
     }
     
     try {
       await this.fetchModelsFromProviders();
-      console.log(`[BuiltinAI]  初始化完成，共加载 ${this.availableModels.length} 个模型`);
+      console.log(`[BuiltinAI] Initialization completed, loaded ${this.availableModels.length} models.`);
     } catch (error) {
-      console.error('[BuiltinAI]  初始化失败:', error);
-      console.error('[BuiltinAI] 请检查：');
-      console.error('[BuiltinAI] 1. API密钥是否正确');
-      console.error('[BuiltinAI] 2. 网络连接是否正常');
-      console.error('[BuiltinAI] 3. API地址是否可访问');
-      // 即使失败也不阻止应用启动
+      console.error('[BuiltinAI]  鍒濆鍖栧け璐?', error);
+      console.error('[BuiltinAI] 璇锋鏌ワ細');
+      console.error('[BuiltinAI] 1. API瀵嗛挜鏄惁姝ｇ‘');
+      console.error('[BuiltinAI] 2. 缃戠粶杩炴帴鏄惁姝ｅ父');
+      console.error('[BuiltinAI] 3. Check whether the API endpoint is reachable.');
+      // 鍗充娇澶辫触涔熶笉闃绘搴旂敤鍚姩
     }
   }
 
   /**
-   * 从所有服务商 API 获取真实的模型列表
-   * 注意：所有提供商使用同一个API，所以只需要请求一次
+   * 浠庢墍鏈夋湇鍔″晢 API 鑾峰彇鐪熷疄鐨勬ā鍨嬪垪琛?
+   * 娉ㄦ剰锛氭墍鏈夋彁渚涘晢浣跨敤鍚屼竴涓狝PI锛屾墍浠ュ彧闇€瑕佽姹備竴娆?
    */
   private async fetchModelsFromProviders(): Promise<void> {
-    console.log(`[BuiltinAI] 开始从 API 获取真实模型列表...`);
+    console.log(`[BuiltinAI] 寮€濮嬩粠 API 鑾峰彇鐪熷疄妯″瀷鍒楄〃...`);
     
     try {
-      // 使用第一个提供商的配置请求API（因为所有提供商都用同一个API）
+      // 浣跨敤绗竴涓彁渚涘晢鐨勯厤缃姹侫PI锛堝洜涓烘墍鏈夋彁渚涘晢閮界敤鍚屼竴涓狝PI锛?
       const provider = this.builtinProviders[0];
       const url = `${provider.baseURL}${provider.modelsEndpoint}`;
       
-      console.log(`[BuiltinAI] 请求模型列表: ${url}`);
+      console.log(`[BuiltinAI] 璇锋眰妯″瀷鍒楄〃: ${url}`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -175,50 +223,50 @@ export class BuiltinAI {
 
       const data = await response.json();
       
-      // 解析OpenAI格式的响应
+      // 瑙ｆ瀽OpenAI鏍煎紡鐨勫搷搴?
       if (!data.data || !Array.isArray(data.data)) {
-        throw new Error('API响应格式错误');
+        throw new Error('API鍝嶅簲鏍煎紡閿欒');
       }
       
       const allRawModels = data.data.map((model: any) => model.id || '').filter(Boolean);
-      console.log(`[BuiltinAI] 原始模型总数: ${allRawModels.length}`);
+      console.log(`[BuiltinAI] 鍘熷妯″瀷鎬绘暟: ${allRawModels.length}`);
       
       const allModels: string[] = [];
       
-      // 为每个提供商过滤并添加前缀
+      // 涓烘瘡涓彁渚涘晢杩囨护骞舵坊鍔犲墠缂€
       for (const providerConfig of this.builtinProviders) {
         const filteredModels = this.filterModelsByProvider(allRawModels, providerConfig.name);
-        console.log(`[BuiltinAI]  ${providerConfig.name}: ${filteredModels.length} 个模型`);
+        console.log(`[BuiltinAI] ${providerConfig.name}: ${filteredModels.length} models`);
         
-        // 添加服务商前缀
+        // 娣诲姞鏈嶅姟鍟嗗墠缂€
         for (const model of filteredModels) {
           allModels.push(`${providerConfig.name}:${model}`);
         }
       }
       
-      // 对模型列表进行排序（最新的在前）
+      // 瀵规ā鍨嬪垪琛ㄨ繘琛屾帓搴忥紙鏈€鏂扮殑鍦ㄥ墠锛?
       const sortedModels = this.sortModelsByDate(allModels);
       this.availableModels = sortedModels;
       
-      console.log(`[BuiltinAI]  成功加载 ${sortedModels.length} 个真实模型`);
-      console.log('[BuiltinAI] 模型列表:', sortedModels);
+      console.log(`[BuiltinAI] Successfully loaded ${sortedModels.length} models.`);
+      console.log('[BuiltinAI] 妯″瀷鍒楄〃:', sortedModels);
       
     } catch (error) {
-      console.error('[BuiltinAI]  获取模型列表失败:', error);
+      console.error('[BuiltinAI]  鑾峰彇妯″瀷鍒楄〃澶辫触:', error);
       throw error;
     }
   }
 
 
   /**
-   * 根据服务商名称过滤模型列表
-   * 只返回属于该服务商的模型
+   * 鏍规嵁鏈嶅姟鍟嗗悕绉拌繃婊ゆā鍨嬪垪琛?
+   * 鍙繑鍥炲睘浜庤鏈嶅姟鍟嗙殑妯″瀷
    */
   private filterModelsByProvider(models: string[], providerName: string): string[] {
     const filtered = models.filter((modelId: string) => {
       const lowerModelId = modelId.toLowerCase();
       
-      // 首先过滤掉非聊天模型
+      // 棣栧厛杩囨护鎺夐潪鑱婂ぉ妯″瀷
       if (
         lowerModelId.includes('embedding') ||
         lowerModelId.includes('whisper') ||
@@ -235,12 +283,12 @@ export class BuiltinAI {
         return false;
       }
       
-      // 过滤掉包含 latest 的模型
+      // 杩囨护鎺夊寘鍚?latest 鐨勬ā鍨?
       if (lowerModelId.includes('latest')) {
         return false;
       }
       
-      // 根据服务商名称匹配模型
+      // 鏍规嵁鏈嶅姟鍟嗗悕绉板尮閰嶆ā鍨?
       switch (providerName.toLowerCase()) {
         case 'openai':
           return lowerModelId.startsWith('gpt-') || 
@@ -258,20 +306,20 @@ export class BuiltinAI {
           return lowerModelId.includes('deepseek');
           
         default:
-          return true; // 未知服务商，返回所有模型
+          return true; // 鏈煡鏈嶅姟鍟嗭紝杩斿洖鎵€鏈夋ā鍨?
       }
     });
     
-    // 过滤预览版本：只保留最新的预览版本
+    // 杩囨护棰勮鐗堟湰锛氬彧淇濈暀鏈€鏂扮殑棰勮鐗堟湰
     return this.filterPreviewModels(filtered);
   }
   
   /**
-   * 过滤预览版本模型，只保留最新的预览版本
-   * 对于每个模型系列（如 gpt-4o, claude-3-opus 等），只保留一个最新的预览版本
+   * 杩囨护棰勮鐗堟湰妯″瀷锛屽彧淇濈暀鏈€鏂扮殑棰勮鐗堟湰
+   * 瀵逛簬姣忎釜妯″瀷绯诲垪锛堝 gpt-4o, claude-3-opus 绛夛級锛屽彧淇濈暀涓€涓渶鏂扮殑棰勮鐗堟湰
    */
   private filterPreviewModels(models: string[]): string[] {
-    // 将模型分为预览版本和非预览版本
+    // 灏嗘ā鍨嬪垎涓洪瑙堢増鏈拰闈為瑙堢増鏈?
     const previewModels: string[] = [];
     const nonPreviewModels: string[] = [];
     
@@ -284,16 +332,16 @@ export class BuiltinAI {
       }
     });
     
-    // 如果没有预览版本，直接返回
+    // 濡傛灉娌℃湁棰勮鐗堟湰锛岀洿鎺ヨ繑鍥?
     if (previewModels.length === 0) {
       return nonPreviewModels;
     }
     
-    // 按模型系列分组预览版本
+    // 鎸夋ā鍨嬬郴鍒楀垎缁勯瑙堢増鏈?
     const previewGroups = new Map<string, string[]>();
     
     previewModels.forEach(modelId => {
-      // 提取模型基础名称（去掉日期、预览标记等后缀）
+      // 鎻愬彇妯″瀷鍩虹鍚嶇О锛堝幓鎺夋棩鏈熴€侀瑙堟爣璁扮瓑鍚庣紑锛?
       const baseName = this.extractModelBaseName(modelId);
       
       if (!previewGroups.has(baseName)) {
@@ -302,48 +350,48 @@ export class BuiltinAI {
       previewGroups.get(baseName)!.push(modelId);
     });
     
-    // 对每个组，只保留最新的一个预览版本
+    // 瀵规瘡涓粍锛屽彧淇濈暀鏈€鏂扮殑涓€涓瑙堢増鏈?
     const latestPreviews: string[] = [];
     previewGroups.forEach((group, baseName) => {
-      // 按日期排序，取最新的
+      // 鎸夋棩鏈熸帓搴忥紝鍙栨渶鏂扮殑
       const sorted = group.sort((a, b) => {
         const dateA = this.extractModelDate(a);
         const dateB = this.extractModelDate(b);
-        return dateB - dateA; // 降序，最新的在前
+        return dateB - dateA; // 闄嶅簭锛屾渶鏂扮殑鍦ㄥ墠
       });
       
       latestPreviews.push(sorted[0]);
     });
     
-    // 返回非预览版本 + 最新的预览版本
+    // 杩斿洖闈為瑙堢増鏈?+ 鏈€鏂扮殑棰勮鐗堟湰
     return [...nonPreviewModels, ...latestPreviews];
   }
   
   /**
-   * 提取模型基础名称（用于分组）
-   * 例如：gpt-4o-2024-08-06-preview -> gpt-4o-preview
+   * 鎻愬彇妯″瀷鍩虹鍚嶇О锛堢敤浜庡垎缁勶級
+   * 渚嬪锛歡pt-4o-2024-08-06-preview -> gpt-4o-preview
    *      claude-3-opus-20240229-preview -> claude-3-opus-preview
    */
   private extractModelBaseName(modelId: string): string {
     const lower = modelId.toLowerCase();
     
-    // 移除日期部分
+    // 绉婚櫎鏃ユ湡閮ㄥ垎
     let baseName = lower.replace(/\d{4}-?\d{2}-?\d{2}/g, '');
     
-    // 移除多余的连字符
+    // 绉婚櫎澶氫綑鐨勮繛瀛楃
     baseName = baseName.replace(/-+/g, '-').replace(/^-|-$/g, '');
     
     return baseName;
   }
 
   /**
-   * 从模型名称中提取日期信息
-   * 返回日期时间戳（越大越新）或优先级数字
+   * 浠庢ā鍨嬪悕绉颁腑鎻愬彇鏃ユ湡淇℃伅
+   * 杩斿洖鏃ユ湡鏃堕棿鎴筹紙瓒婂ぇ瓒婃柊锛夋垨浼樺厛绾ф暟瀛?
    */
   private extractModelDate(modelId: string): number {
     const lower = modelId.toLowerCase();
     
-    // 匹配日期格式 YYYYMMDD 或 YYYY-MM-DD
+    // 鍖归厤鏃ユ湡鏍煎紡 YYYYMMDD 鎴?YYYY-MM-DD
     const dateMatch = lower.match(/(\d{4})-?(\d{2})-?(\d{2})/);
     if (dateMatch) {
       const year = parseInt(dateMatch[1]);
@@ -352,17 +400,17 @@ export class BuiltinAI {
       return new Date(year, month - 1, day).getTime();
     }
     
-    // 特殊版本号优先级（最新的模型）
-    if (lower.includes('gpt-5')) return 9000000000000; // GPT-5 系列最新
-    if (lower.includes('gpt-4.1')) return 8900000000000; // GPT-4.1 系列
-    if (lower.includes('o3')) return 8800000000000; // O3 系列
-    if (lower.includes('o1')) return 8700000000000; // O1 系列
-    if (lower.includes('gpt-4o')) return 8600000000000; // GPT-4o 系列
+    // 鐗规畩鐗堟湰鍙蜂紭鍏堢骇锛堟渶鏂扮殑妯″瀷锛?
+    if (lower.includes('gpt-5')) return 9000000000000; // GPT-5 绯诲垪鏈€鏂?
+    if (lower.includes('gpt-4.1')) return 8900000000000; // GPT-4.1 绯诲垪
+    if (lower.includes('o3')) return 8800000000000; // O3 绯诲垪
+    if (lower.includes('o1')) return 8700000000000; // O1 绯诲垪
+    if (lower.includes('gpt-4o')) return 8600000000000; // GPT-4o 绯诲垪
     if (lower.includes('gpt-4-turbo')) return 8500000000000; // GPT-4 Turbo
-    if (lower.includes('gpt-4')) return 8400000000000; // GPT-4 系列
-    if (lower.includes('gpt-3.5')) return 8300000000000; // GPT-3.5 系列
+    if (lower.includes('gpt-4')) return 8400000000000; // GPT-4 绯诲垪
+    if (lower.includes('gpt-3.5')) return 8300000000000; // GPT-3.5 绯诲垪
     
-    if (lower.includes('claude-sonnet-4-5')) return 9100000000000; // Claude Sonnet 4.5 最新
+    if (lower.includes('claude-sonnet-4-5')) return 9100000000000; // Claude Sonnet 4.5 鏈€鏂?
     if (lower.includes('claude-opus-4-1')) return 9050000000000; // Claude Opus 4.1
     if (lower.includes('claude-opus-4')) return 9000000000000; // Claude Opus 4
     if (lower.includes('claude-sonnet-4')) return 8900000000000; // Claude Sonnet 4
@@ -374,7 +422,7 @@ export class BuiltinAI {
     
     if (lower.includes('gemini-2.5-pro')) return 9000000000000; // Gemini 2.5 Pro
     if (lower.includes('gemini-2.5-flash')) return 8900000000000; // Gemini 2.5 Flash
-    if (lower.includes('gemini-2.5')) return 8800000000000; // Gemini 2.5 其他
+    if (lower.includes('gemini-2.5')) return 8800000000000; // Gemini 2.5 鍏朵粬
     if (lower.includes('gemini-2.0')) return 8700000000000; // Gemini 2.0
     if (lower.includes('gemini-1.5')) return 8600000000000; // Gemini 1.5
     if (lower.includes('gemini-1.0')) return 8500000000000; // Gemini 1.0
@@ -383,20 +431,20 @@ export class BuiltinAI {
     if (lower.includes('deepseek-v3')) return 8900000000000; // DeepSeek V3
     if (lower.includes('deepseek-v2')) return 8800000000000; // DeepSeek V2
     
-    // 默认返回很久以前的时间戳
+    // 榛樿杩斿洖寰堜箙浠ュ墠鐨勬椂闂存埑
     return 0;
   }
 
   /**
-   * 对模型列表进行排序，最新的模型排在前面
+   * 瀵规ā鍨嬪垪琛ㄨ繘琛屾帓搴忥紝鏈€鏂扮殑妯″瀷鎺掑湪鍓嶉潰
    */
   private sortModelsByDate(models: string[]): string[] {
     return models.sort((a, b) => {
-      // 提取提供商名称和模型ID
+      // 鎻愬彇鎻愪緵鍟嗗悕绉板拰妯″瀷ID
       const [providerA, modelA] = a.split(':');
       const [providerB, modelB] = b.split(':');
       
-      // 先按提供商分组（保持原有的提供商顺序）
+      // 鍏堟寜鎻愪緵鍟嗗垎缁勶紙淇濇寔鍘熸湁鐨勬彁渚涘晢椤哄簭锛?
       if (providerA !== providerB) {
         const providerOrder = ['OpenAI', 'Claude', 'Gemini', 'DeepSeek'];
         const indexA = providerOrder.indexOf(providerA);
@@ -404,26 +452,26 @@ export class BuiltinAI {
         return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
       }
       
-      // 同一提供商内，按日期降序排序（最新的在前）
+      // 鍚屼竴鎻愪緵鍟嗗唴锛屾寜鏃ユ湡闄嶅簭鎺掑簭锛堟渶鏂扮殑鍦ㄥ墠锛?
       const dateA = this.extractModelDate(modelA);
       const dateB = this.extractModelDate(modelB);
       
       if (dateA !== dateB) {
-        return dateB - dateA; // 降序：新的在前
+        return dateB - dateA; // 闄嶅簭锛氭柊鐨勫湪鍓?
       }
       
-      // 日期相同，按字母顺序
+      // 鏃ユ湡鐩稿悓锛屾寜瀛楁瘝椤哄簭
       return modelA.localeCompare(modelB);
     });
   }
 
   /**
-   * 调用AI聊天API（流式响应）
-   * @param modelId 完整的模型ID（格式：提供商:模型名，如 "OpenAI:gpt-4o"）
-   * @param messages 聊天消息列表
-   * @param onChunk 接收到流式数据块的回调
-   * @param onComplete 完成时的回调
-   * @param onError 错误时的回调
+   * 璋冪敤AI鑱婂ぉAPI锛堟祦寮忓搷搴旓級
+   * @param modelId 瀹屾暣鐨勬ā鍨婭D锛堟牸寮忥細鎻愪緵鍟?妯″瀷鍚嶏紝濡?"OpenAI:gpt-4o"锛?
+   * @param messages 鑱婂ぉ娑堟伅鍒楄〃
+   * @param onChunk 鎺ユ敹鍒版祦寮忔暟鎹潡鐨勫洖璋?
+   * @param onComplete 瀹屾垚鏃剁殑鍥炶皟
+   * @param onError 閿欒鏃剁殑鍥炶皟
    */
   async streamChat(
     modelId: string,
@@ -433,46 +481,46 @@ export class BuiltinAI {
     onError: (error: Error) => void
   ): Promise<void> {
     try {
-      // 解析模型ID
+      // 瑙ｆ瀽妯″瀷ID
       const [providerName, actualModelId] = modelId.split(':');
-      console.log('[BuiltinAI]  解析模型ID:', { 原始: modelId, 提供商: providerName, 实际模型: actualModelId });
+      console.log('[BuiltinAI] Parsed modelId:', { rawModelId: modelId, providerName, actualModelId });
       
       if (!providerName || !actualModelId) {
-        throw new Error(`无效的模型ID格式: ${modelId}`);
+        throw new Error(`鏃犳晥鐨勬ā鍨婭D鏍煎紡: ${modelId}`);
       }
 
-      console.log(`[BuiltinAI] 开始流式聊天: ${modelId}`);
+      console.log(`[BuiltinAI] 寮€濮嬫祦寮忚亰澶? ${modelId}`);
 
-      // 首先检查是否为用户配置的模型
+      // 棣栧厛妫€鏌ユ槸鍚︿负鐢ㄦ埛閰嶇疆鐨勬ā鍨?
       const userConfig = this.userModelConfigs.get(modelId);
       
       let apiKey: string;
-      let baseURL: string;
+      let requestUrl: string;
       let temperature: number | undefined;
 
       if (userConfig) {
-        // 使用用户配置
-        console.log(`[BuiltinAI] 使用用户配置: ${userConfig.configName}`);
-        console.log(`[BuiltinAI] 原始 API 端点: ${userConfig.apiEndpoint}`);
+        // 浣跨敤鐢ㄦ埛閰嶇疆
+        console.log(`[BuiltinAI] 浣跨敤鐢ㄦ埛閰嶇疆: ${userConfig.configName}`);
+        console.log(`[BuiltinAI] 鍘熷 API 绔偣: ${userConfig.apiEndpoint}`);
         apiKey = userConfig.apiKey;
-        baseURL = userConfig.apiEndpoint.replace(/\/chat\/completions$/, ''); // 移除端点后缀
-        console.log(`[BuiltinAI] 处理后的 baseURL: ${baseURL}`);
+        requestUrl = resolveChatEndpoint(userConfig.apiEndpoint, userConfig.providerId);
+        console.log(`[BuiltinAI] Resolved requestUrl: ${requestUrl}`);
         temperature = userConfig.temperature;
       } else {
-        // 使用内置配置
+        // 浣跨敤鍐呯疆閰嶇疆
         const provider = this.builtinProviders.find(p => p.name === providerName);
         if (!provider) {
-          throw new Error(`未找到提供商: ${providerName}`);
+          throw new Error(`鏈壘鍒版彁渚涘晢: ${providerName}`);
         }
-        console.log(`[BuiltinAI] 使用内置配置: ${providerName}`);
+        console.log(`[BuiltinAI] 浣跨敤鍐呯疆閰嶇疆: ${providerName}`);
         apiKey = provider.apiKey;
-        baseURL = provider.baseURL;
+        requestUrl = resolveChatEndpoint(provider.baseURL);
       }
 
-      const url = `${baseURL}/chat/completions`;
-      console.log('[BuiltinAI] 最终请求 URL:', url);
-      console.log('[BuiltinAI] 请求模型:', actualModelId);
-      console.log('[BuiltinAI]  消息数量:', messages.length);
+      const url = requestUrl;
+      console.log('[BuiltinAI] 鏈€缁堣姹?URL:', url);
+      console.log('[BuiltinAI] 璇锋眰妯″瀷:', actualModelId);
+      console.log('[BuiltinAI]  娑堟伅鏁伴噺:', messages.length);
       
       const requestBody: any = {
         model: actualModelId,
@@ -480,12 +528,12 @@ export class BuiltinAI {
         stream: true,
       };
 
-      // 如果有温度参数，添加它
+      // 濡傛灉鏈夋俯搴﹀弬鏁帮紝娣诲姞瀹?
       if (temperature !== undefined) {
         requestBody.temperature = temperature;
       }
       
-      console.log('[BuiltinAI] 请求体:', JSON.stringify(requestBody, null, 2));
+      console.log('[BuiltinAI] 璇锋眰浣?', JSON.stringify(requestBody, null, 2));
       
       const response = await fetch(url, {
         method: 'POST',
@@ -497,34 +545,34 @@ export class BuiltinAI {
       });
 
       if (!response.ok) {
-        // 尝试读取错误响应的详细信息
+        // 灏濊瘯璇诲彇閿欒鍝嶅簲鐨勮缁嗕俊鎭?
         let errorDetails = response.statusText;
         try {
           const errorBody = await response.text();
-          console.error('[BuiltinAI]  错误响应体 (原始):', errorBody);
+          console.error('[BuiltinAI]  閿欒鍝嶅簲浣?(鍘熷):', errorBody);
           if (errorBody) {
             errorDetails = errorBody;
-            // 尝试解析为JSON以获取更详细的错误信息
+            // 灏濊瘯瑙ｆ瀽涓篔SON浠ヨ幏鍙栨洿璇︾粏鐨勯敊璇俊鎭?
             try {
               const errorJson = JSON.parse(errorBody);
-              console.error('[BuiltinAI]  错误详情 (JSON):', JSON.stringify(errorJson, null, 2));
+              console.error('[BuiltinAI]  閿欒璇︽儏 (JSON):', JSON.stringify(errorJson, null, 2));
             } catch (e) {
-              // 不是JSON，使用原始文本
-              console.error('[BuiltinAI]  错误响应不是JSON格式');
+              // 涓嶆槸JSON锛屼娇鐢ㄥ師濮嬫枃鏈?
+              console.error('[BuiltinAI]  閿欒鍝嶅簲涓嶆槸JSON鏍煎紡');
             }
           }
         } catch (e) {
-          console.error('[BuiltinAI]  无法读取错误响应:', e);
+          console.error('[BuiltinAI]  鏃犳硶璇诲彇閿欒鍝嶅簲:', e);
         }
-        console.error(`[BuiltinAI]  API 错误 (${response.status}):`, errorDetails);
+        console.error(`[BuiltinAI]  API 閿欒 (${response.status}):`, errorDetails);
         throw new Error(`HTTP ${response.status}: ${errorDetails}`);
       }
 
       if (!response.body) {
-        throw new Error('响应体为空');
+        throw new Error('Response body is empty');
       }
 
-      // 读取流式响应
+      // 璇诲彇娴佸紡鍝嶅簲
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -533,29 +581,29 @@ export class BuiltinAI {
         const { done, value } = await reader.read();
         
         if (done) {
-          console.log('[BuiltinAI]  流式响应完成');
+          console.log('[BuiltinAI]  娴佸紡鍝嶅簲瀹屾垚');
           onComplete();
           break;
         }
 
-        // 解码数据块
+        // 瑙ｇ爜鏁版嵁鍧?
         buffer += decoder.decode(value, { stream: true });
         
-        // 处理 SSE 格式的数据
+        // 澶勭悊 SSE 鏍煎紡鐨勬暟鎹?
         const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // 保留最后一个可能不完整的行
+        buffer = lines.pop() || ''; // 淇濈暀鏈€鍚庝竴涓彲鑳戒笉瀹屾暣鐨勮
 
         for (const line of lines) {
           const trimmed = line.trim();
           
-          // 跳过空行和注释
+          // 璺宠繃绌鸿鍜屾敞閲?
           if (!trimmed || trimmed.startsWith(':')) continue;
           
-          // 解析 SSE 数据
+          // 瑙ｆ瀽 SSE 鏁版嵁
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             
-            // 检查是否结束
+            // 妫€鏌ユ槸鍚︾粨鏉?
             if (data === '[DONE]') {
               continue;
             }
@@ -568,65 +616,65 @@ export class BuiltinAI {
                 onChunk(content);
               }
             } catch (e) {
-              console.warn('[BuiltinAI]  解析数据块失败:', e);
+              console.warn('[BuiltinAI]  瑙ｆ瀽鏁版嵁鍧楀け璐?', e);
             }
           }
         }
       }
     } catch (error) {
-      console.error('[BuiltinAI]  流式聊天失败:', error);
+      console.error('[BuiltinAI]  娴佸紡鑱婂ぉ澶辫触:', error);
       onError(error as Error);
     }
   }
 
   /**
-   * 调用AI聊天API（非流式响应）
-   * @param modelId 完整的模型ID（格式：提供商:模型名）
-   * @param messages 聊天消息列表
-   * @returns AI响应内容
+   * 璋冪敤AI鑱婂ぉAPI锛堥潪娴佸紡鍝嶅簲锛?
+   * @param modelId 瀹屾暣鐨勬ā鍨婭D锛堟牸寮忥細鎻愪緵鍟?妯″瀷鍚嶏級
+   * @param messages 鑱婂ぉ娑堟伅鍒楄〃
+   * @returns AI鍝嶅簲鍐呭
    */
   async chat(
     modelId: string,
     messages: Array<{ role: string; content: string }>
   ): Promise<string> {
     try {
-      // 解析模型ID
+      // 瑙ｆ瀽妯″瀷ID
       const [providerName, actualModelId] = modelId.split(':');
       if (!providerName || !actualModelId) {
-        throw new Error(`无效的模型ID格式: ${modelId}`);
+        throw new Error(`鏃犳晥鐨勬ā鍨婭D鏍煎紡: ${modelId}`);
       }
 
-      console.log(`[BuiltinAI] 开始聊天: ${modelId}`);
+      console.log(`[BuiltinAI] 寮€濮嬭亰澶? ${modelId}`);
 
-      // 首先检查是否为用户配置的模型
+      // 棣栧厛妫€鏌ユ槸鍚︿负鐢ㄦ埛閰嶇疆鐨勬ā鍨?
       const userConfig = this.userModelConfigs.get(modelId);
       
       let apiKey: string;
-      let baseURL: string;
+      let requestUrl: string;
       let temperature: number | undefined;
 
       if (userConfig) {
-        // 使用用户配置
-        console.log(`[BuiltinAI] 使用用户配置: ${userConfig.configName}`);
-        console.log(`[BuiltinAI] 原始 API 端点: ${userConfig.apiEndpoint}`);
+        // 浣跨敤鐢ㄦ埛閰嶇疆
+        console.log(`[BuiltinAI] 浣跨敤鐢ㄦ埛閰嶇疆: ${userConfig.configName}`);
+        console.log(`[BuiltinAI] 鍘熷 API 绔偣: ${userConfig.apiEndpoint}`);
         apiKey = userConfig.apiKey;
-        baseURL = userConfig.apiEndpoint.replace(/\/chat\/completions$/, ''); // 移除端点后缀
-        console.log(`[BuiltinAI] 处理后的 baseURL: ${baseURL}`);
+        requestUrl = resolveChatEndpoint(userConfig.apiEndpoint, userConfig.providerId);
+        console.log(`[BuiltinAI] Resolved requestUrl: ${requestUrl}`);
         temperature = userConfig.temperature;
       } else {
-        // 使用内置配置
+        // 浣跨敤鍐呯疆閰嶇疆
         const provider = this.builtinProviders.find(p => p.name === providerName);
         if (!provider) {
-          throw new Error(`未找到提供商: ${providerName}`);
+          throw new Error(`鏈壘鍒版彁渚涘晢: ${providerName}`);
         }
-        console.log(`[BuiltinAI] 使用内置配置: ${providerName}`);
+        console.log(`[BuiltinAI] 浣跨敤鍐呯疆閰嶇疆: ${providerName}`);
         apiKey = provider.apiKey;
-        baseURL = provider.baseURL;
+        requestUrl = resolveChatEndpoint(provider.baseURL);
       }
 
-      const url = `${baseURL}/chat/completions`;
-      console.log(`[BuiltinAI] 最终请求 URL: ${url}`);
-      console.log(`[BuiltinAI] 请求模型: ${actualModelId}`);
+      const url = requestUrl;
+      console.log(`[BuiltinAI] 鏈€缁堣姹?URL: ${url}`);
+      console.log(`[BuiltinAI] 璇锋眰妯″瀷: ${actualModelId}`);
       
       const requestBody: any = {
         model: actualModelId,
@@ -634,7 +682,7 @@ export class BuiltinAI {
         stream: false,
       };
 
-      // 如果有温度参数，添加它
+      // 濡傛灉鏈夋俯搴﹀弬鏁帮紝娣诲姞瀹?
       if (temperature !== undefined) {
         requestBody.temperature = temperature;
       }
@@ -649,7 +697,7 @@ export class BuiltinAI {
       });
 
       if (!response.ok) {
-        // 尝试读取错误响应的详细信息
+        // 灏濊瘯璇诲彇閿欒鍝嶅簲鐨勮缁嗕俊鎭?
         let errorDetails = response.statusText;
         try {
           const errorBody = await response.text();
@@ -657,28 +705,28 @@ export class BuiltinAI {
             errorDetails = errorBody;
           }
         } catch (e) {
-          // 忽略解析错误
+          // 蹇界暐瑙ｆ瀽閿欒
         }
-        console.error(`[BuiltinAI]  API 错误 (${response.status}):`, errorDetails);
+        console.error(`[BuiltinAI]  API 閿欒 (${response.status}):`, errorDetails);
         throw new Error(`HTTP ${response.status}: ${errorDetails}`);
       }
 
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content || '';
 
-      console.log('[BuiltinAI]  聊天完成');
+      console.log('[BuiltinAI]  鑱婂ぉ瀹屾垚');
       return content;
     } catch (error) {
-      console.error('[BuiltinAI]  聊天失败:', error);
+      console.error('[BuiltinAI]  鑱婂ぉ澶辫触:', error);
       throw error;
     }
   }
 
   /**
-   * 设置IPC通信
+   * 璁剧疆IPC閫氫俊
    */
   private setupIPC(): void {
-    // 移除已存在的处理器（避免重复注册）
+    // 绉婚櫎宸插瓨鍦ㄧ殑澶勭悊鍣紙閬垮厤閲嶅娉ㄥ唽锛?
     try {
       ipcMain.removeHandler('builtin-ai:get-models');
       ipcMain.removeHandler('builtin-ai:update-user-models');
@@ -688,22 +736,22 @@ export class BuiltinAI {
       ipcMain.removeHandler('builtin-ai:stream-chat');
     } catch (error) {}
     
-    // 获取可用模型列表（合并内置模型和用户配置的模型）
+    // 鑾峰彇鍙敤妯″瀷鍒楄〃锛堝悎骞跺唴缃ā鍨嬪拰鐢ㄦ埛閰嶇疆鐨勬ā鍨嬶級
     ipcMain.handle('builtin-ai:get-models', () => {
       const allModels = [...this.availableModels, ...this.userConfiguredModels];
-      console.log('[BuiltinAI] 返回模型列表，数量:', allModels.length);
-      console.log('[BuiltinAI]   - 内置模型:', this.availableModels.length);
-      console.log('[BuiltinAI]   - 用户配置模型:', this.userConfiguredModels.length);
+      console.log('[BuiltinAI] 杩斿洖妯″瀷鍒楄〃锛屾暟閲?', allModels.length);
+      console.log('[BuiltinAI]   - 鍐呯疆妯″瀷:', this.availableModels.length);
+      console.log('[BuiltinAI]   - 鐢ㄦ埛閰嶇疆妯″瀷:', this.userConfiguredModels.length);
       return allModels;
     });
 
-    // 更新用户配置的模型列表（从渲染进程同步）
+    // 鏇存柊鐢ㄦ埛閰嶇疆鐨勬ā鍨嬪垪琛紙浠庢覆鏌撹繘绋嬪悓姝ワ級
     ipcMain.handle('builtin-ai:update-user-models', async (_event, models: string[]) => {
       this.userConfiguredModels = models;
       return { success: true, count: models.length };
     });
 
-    // 更新用户配置的模型详细信息（从渲染进程同步）
+    // 鏇存柊鐢ㄦ埛閰嶇疆鐨勬ā鍨嬭缁嗕俊鎭紙浠庢覆鏌撹繘绋嬪悓姝ワ級
     ipcMain.handle('builtin-ai:update-user-model-configs', async (_event, configs: UserModelInfo[]) => {
       this.userModelConfigs.clear();
       configs.forEach(config => {
@@ -712,46 +760,46 @@ export class BuiltinAI {
       return { success: true, count: configs.length };
     });
 
-    // 刷新模型列表（重新从API获取）
+    // 鍒锋柊妯″瀷鍒楄〃锛堥噸鏂颁粠API鑾峰彇锛?
     ipcMain.handle('builtin-ai:refresh-models', async () => {
       try {
         await this.fetchModelsFromProviders();
         const allModels = [...this.availableModels, ...this.userConfiguredModels];
         return { success: true, models: allModels };
       } catch (error) {
-        console.error('[BuiltinAI]  刷新失败:', error);
+        console.error('[BuiltinAI]  鍒锋柊澶辫触:', error);
         return { success: false, error: String(error) };
       }
     });
 
-    // 聊天接口（非流式）
+    // 鑱婂ぉ鎺ュ彛锛堥潪娴佸紡锛?
     ipcMain.handle('builtin-ai:chat', async (_event, modelId: string, messages: Array<{ role: string; content: string }>) => {
       try {
         const response = await this.chat(modelId, messages);
         return { success: true, content: response };
       } catch (error) {
-        console.error('[BuiltinAI]  聊天失败:', error);
+        console.error('[BuiltinAI]  鑱婂ぉ澶辫触:', error);
         return { success: false, error: String(error) };
       }
     });
 
-    // 流式聊天接口
+    // 娴佸紡鑱婂ぉ鎺ュ彛
     ipcMain.handle('builtin-ai:stream-chat', async (event, modelId: string, messages: Array<{ role: string; content: string }>) => {
       return new Promise((resolve) => {
         this.streamChat(
           modelId,
           messages,
           (chunk) => {
-            // 发送数据块到渲染进程
+            // 鍙戦€佹暟鎹潡鍒版覆鏌撹繘绋?
             event.sender.send('builtin-ai:stream-chunk', chunk);
           },
           () => {
-            // 完成
+            // 瀹屾垚
             event.sender.send('builtin-ai:stream-complete');
             resolve({ success: true });
           },
           (error) => {
-            // 错误
+            // 閿欒
             event.sender.send('builtin-ai:stream-error', error.message);
             resolve({ success: false, error: error.message });
           }
@@ -762,10 +810,11 @@ export class BuiltinAI {
   }
 
   /**
-   * 获取当前可用的模型列表
+   * 鑾峰彇褰撳墠鍙敤鐨勬ā鍨嬪垪琛?
    */
   getAvailableModels(): string[] {
     return [...this.availableModels];
   }
 }
+
 

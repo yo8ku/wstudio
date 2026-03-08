@@ -5,13 +5,7 @@
  */
 
 import { create } from 'zustand';
-import { LinkItem } from '../types/electron';
-
-interface UnlinkedMention {
-  noteId: string;
-  noteTitle: string;
-  context: string;
-}
+import { LinkItem, UnlinkedMentionItem } from '../types/electron';
 
 interface LinkState {
   /** 当前笔记的出链 */
@@ -19,7 +13,7 @@ interface LinkState {
   /** 当前笔记的反向链接 */
   backlinks: LinkItem[];
   /** 未链接提及 */
-  unlinkedMentions: UnlinkedMention[];
+  unlinkedMentions: UnlinkedMentionItem[];
   /** 所有链接 */
   allLinks: LinkItem[];
   /** 当前笔记 ID */
@@ -35,7 +29,7 @@ interface LinkState {
   /** 设置反向链接 */
   setBacklinks: (links: LinkItem[]) => void;
   /** 设置未链接提及 */
-  setUnlinkedMentions: (mentions: UnlinkedMention[]) => void;
+  setUnlinkedMentions: (mentions: UnlinkedMentionItem[]) => void;
   /** 设置所有链接 */
   setAllLinks: (links: LinkItem[]) => void;
   /** 设置当前笔记 ID */
@@ -55,7 +49,14 @@ interface LinkState {
   /** 删除链接 */
   deleteLink: (id: string) => Promise<boolean>;
   /** 查找未链接提及 */
-  findUnlinkedMentions: (noteTitle: string) => Promise<void>;
+  findUnlinkedMentions: (noteId: string) => Promise<void>;
+  /** 将未链接提及转换为链接 */
+  convertUnlinkedMention: (
+    sourceNoteId: string,
+    targetNoteId: string,
+    position: { start: number; end: number },
+    matchedText?: string
+  ) => Promise<boolean>;
   /** 加载所有链接 */
   loadAllLinks: () => Promise<void>;
 }
@@ -149,46 +150,43 @@ export const useLinkStore = create<LinkState>((set, get) => ({
     }
   },
 
-  findUnlinkedMentions: async (noteTitle) => {
+  findUnlinkedMentions: async (noteId) => {
     try {
-      // 获取所有笔记
-      const notes = await window.electron?.ipcRenderer.invoke('note:getAll');
-      if (!notes) {
-        set({ unlinkedMentions: [] });
-        return;
-      }
-
-      // 在前端查找未链接提及
-      const mentions: UnlinkedMention[] = [];
-      const titleLower = noteTitle.toLowerCase();
-
-      for (const note of notes) {
-        if (note.title === noteTitle) continue;
-
-        const contentLower = note.content.toLowerCase();
-        if (contentLower.includes(titleLower)) {
-          // 检查是否已经是链接
-          const linkPattern = new RegExp(`\\[\\[${noteTitle}\\]\\]`, 'i');
-          if (!linkPattern.test(note.content)) {
-            // 获取上下文
-            const index = contentLower.indexOf(titleLower);
-            const start = Math.max(0, index - 50);
-            const end = Math.min(note.content.length, index + noteTitle.length + 50);
-            const context = note.content.slice(start, end);
-
-            mentions.push({
-              noteId: note.id,
-              noteTitle: note.title,
-              context: start > 0 ? '...' + context : context
-            });
-          }
-        }
-      }
-
-      set({ unlinkedMentions: mentions });
+      const mentions = await window.electron?.ipcRenderer.invoke(
+        'link:findUnlinkedMentions',
+        noteId
+      );
+      set({ unlinkedMentions: mentions || [] });
     } catch (error) {
       console.error('[linkStore] 查找未链接提及失败:', error);
       set({ unlinkedMentions: [] });
+    }
+  },
+
+  convertUnlinkedMention: async (sourceNoteId, targetNoteId, position, matchedText) => {
+    try {
+      const success = await window.electron?.ipcRenderer.invoke(
+        'link:convertUnlinkedMention',
+        sourceNoteId,
+        targetNoteId,
+        position,
+        matchedText
+      );
+
+      if (success) {
+        const { currentNoteId, loadLinks, findUnlinkedMentions } = get();
+        if (currentNoteId) {
+          await Promise.all([
+            loadLinks(currentNoteId),
+            findUnlinkedMentions(currentNoteId)
+          ]);
+        }
+      }
+
+      return success || false;
+    } catch (error) {
+      console.error('[linkStore] 转换未链接提及失败:', error);
+      return false;
     }
   },
 
