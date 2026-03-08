@@ -671,7 +671,6 @@ export const LinkCollection: React.FC<LinkCollectionProps> = ({
                         />
                         <div className="link-collection-group-title">{item.title}</div>
                         {renderBadges(item.badges, 'link-collection-group-badges')}
-                        <span className="link-collection-group-count">{item.children.length}</span>
                       </div>
 
                       {shouldShowNestedBody && (
