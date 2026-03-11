@@ -4,15 +4,15 @@
  */
 
 ::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
+  background: var(--scrollbar-track, transparent);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background: var(--scrollbar-thumb, var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.45)));
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+  background: var(--scrollbar-thumb-hover, var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.65)));
 }
 
 

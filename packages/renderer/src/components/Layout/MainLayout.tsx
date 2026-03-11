@@ -34,6 +34,155 @@ interface MainLayoutProps {
   className?: string;
 }
 
+const WINDOW_BACKGROUND_FALLBACK = '#1e1e1e';
+
+type RGBAColor = {
+  red: number;
+  green: number;
+  blue: number;
+  alpha: number;
+};
+
+const clampColorChannel = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(255, Math.round(value)));
+};
+
+const parseHexColor = (hexColor: string): RGBAColor | null => {
+  const hex = hexColor.replace('#', '').trim();
+
+  if (hex.length !== 3 && hex.length !== 4 && hex.length !== 6 && hex.length !== 8) {
+    return null;
+  }
+
+  const normalizedHex = hex.length <= 4
+    ? hex.split('').map((char) => `${char}${char}`).join('')
+    : hex;
+
+  const hasAlpha = normalizedHex.length === 8;
+  const red = Number.parseInt(normalizedHex.slice(0, 2), 16);
+  const green = Number.parseInt(normalizedHex.slice(2, 4), 16);
+  const blue = Number.parseInt(normalizedHex.slice(4, 6), 16);
+  const alpha = hasAlpha ? Number.parseInt(normalizedHex.slice(6, 8), 16) / 255 : 1;
+
+  if ([red, green, blue].some((value) => Number.isNaN(value))) {
+    return null;
+  }
+
+  return {
+    red,
+    green,
+    blue,
+    alpha: Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1
+  };
+};
+
+const parseRgbColor = (rgbColor: string): RGBAColor | null => {
+  const match = rgbColor.match(
+    /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([0-9.]+))?\s*\)$/i
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const alphaValue = match[4] === undefined ? 1 : Number.parseFloat(match[4]);
+
+  return {
+    red: clampColorChannel(Number.parseFloat(match[1])),
+    green: clampColorChannel(Number.parseFloat(match[2])),
+    blue: clampColorChannel(Number.parseFloat(match[3])),
+    alpha: Number.isFinite(alphaValue) ? Math.max(0, Math.min(1, alphaValue)) : 1
+  };
+};
+
+const parseCssColor = (rawColor: string): RGBAColor | null => {
+  const color = rawColor.trim().toLowerCase();
+
+  if (!color || color === 'transparent') {
+    return {
+      red: 0,
+      green: 0,
+      blue: 0,
+      alpha: 0
+    };
+  }
+
+  if (color.startsWith('#')) {
+    return parseHexColor(color);
+  }
+
+  if (color.startsWith('rgb')) {
+    return parseRgbColor(color);
+  }
+
+  return null;
+};
+
+const toHexChannel = (value: number): string => clampColorChannel(value).toString(16).padStart(2, '0');
+
+const toOpaqueColor = (color: RGBAColor, fallback: RGBAColor): RGBAColor => {
+  const alpha = Math.max(0, Math.min(1, color.alpha));
+
+  return {
+    red: clampColorChannel(color.red * alpha + fallback.red * (1 - alpha)),
+    green: clampColorChannel(color.green * alpha + fallback.green * (1 - alpha)),
+    blue: clampColorChannel(color.blue * alpha + fallback.blue * (1 - alpha)),
+    alpha: 1
+  };
+};
+
+const getDefaultWindowBackgroundColor = (): string => (
+  document.documentElement.getAttribute('data-theme-mode') === 'light'
+    ? '#ffffff'
+    : WINDOW_BACKGROUND_FALLBACK
+);
+
+const normalizeWindowBackgroundColor = (
+  rawColor: string,
+  fallbackColor = getDefaultWindowBackgroundColor()
+): string => {
+  const defaultFallback = parseCssColor(getDefaultWindowBackgroundColor()) ?? {
+    red: 30,
+    green: 30,
+    blue: 30,
+    alpha: 1
+  };
+  const parsedFallback = parseCssColor(fallbackColor);
+  const opaqueFallback = parsedFallback
+    ? toOpaqueColor(parsedFallback, defaultFallback)
+    : defaultFallback;
+  const parsedColor = parseCssColor(rawColor);
+  const opaqueColor = parsedColor
+    ? toOpaqueColor(parsedColor, opaqueFallback)
+    : opaqueFallback;
+
+  return `#${toHexChannel(opaqueColor.red)}${toHexChannel(opaqueColor.green)}${toHexChannel(opaqueColor.blue)}`;
+};
+
+const resolveWindowBackgroundColor = (): string => {
+  const styles = getComputedStyle(document.documentElement);
+  const defaultColor = getDefaultWindowBackgroundColor();
+  const fallbackColor = styles.getPropertyValue('--app-bg').trim() || defaultColor;
+  const candidates = [
+    styles.getPropertyValue('--app-bg'),
+    styles.getPropertyValue('--editor-bg'),
+    styles.getPropertyValue('--ws-editor-background'),
+    styles.getPropertyValue('--vscode-editor-background')
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate.trim()) {
+      return normalizeWindowBackgroundColor(candidate, fallbackColor);
+    }
+  }
+
+  return normalizeWindowBackgroundColor(defaultColor, WINDOW_BACKGROUND_FALLBACK);
+};
+
 export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const [activeActivity, setActiveActivity] = useState<ActivityBarItem>('explorer');
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
@@ -147,6 +296,82 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       console.log(`[MainLayout] 根元素主题标识已设置: data-theme-mode="${themeMode}"`);
     }
   }, [currentTheme]);
+
+  useEffect(() => {
+    const ipcRenderer = window.electron?.ipcRenderer;
+    if (!ipcRenderer) {
+      return;
+    }
+
+    let frameId = 0;
+    const syncWindowBackgroundColor = () => {
+      frameId = window.requestAnimationFrame(() => {
+        const backgroundColor = resolveWindowBackgroundColor();
+
+        void ipcRenderer.invoke('window:set-background-color', backgroundColor).catch((error) => {
+          console.error('[MainLayout] 同步窗口背景色失败:', error);
+        });
+      });
+    };
+
+    syncWindowBackgroundColor();
+
+    return () => {
+      if (frameId !== 0) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [currentTheme, backgroundEnabled]);
+
+  useEffect(() => {
+    let resizeTimeoutId: number | null = null;
+    const ipcRenderer = window.electron?.ipcRenderer;
+
+    const setResizingState = (isResizing: boolean) => {
+      document.body.classList.toggle('window-resizing', isResizing);
+    };
+
+    const scheduleClearResizingState = () => {
+      if (resizeTimeoutId !== null) {
+        window.clearTimeout(resizeTimeoutId);
+      }
+
+      resizeTimeoutId = window.setTimeout(() => {
+        setResizingState(false);
+        resizeTimeoutId = null;
+      }, 180);
+    };
+
+    const handleResizeActivity = () => {
+      setResizingState(true);
+      scheduleClearResizingState();
+    };
+
+    const removeResizeStateListener = ipcRenderer?.on?.('window:resize-state-changed', (_event, isResizing) => {
+      if (isResizing) {
+        handleResizeActivity();
+        return;
+      }
+
+      if (resizeTimeoutId !== null) {
+        window.clearTimeout(resizeTimeoutId);
+        resizeTimeoutId = null;
+      }
+
+      setResizingState(false);
+    });
+
+    window.addEventListener('resize', handleResizeActivity);
+
+    return () => {
+      window.removeEventListener('resize', handleResizeActivity);
+      removeResizeStateListener?.();
+      if (resizeTimeoutId !== null) {
+        window.clearTimeout(resizeTimeoutId);
+      }
+      setResizingState(false);
+    };
+  }, []);
 
   // 初始化片段数据库和迁移
   useEffect(() => {

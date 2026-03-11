@@ -91,3 +91,23 @@
     }
   }
 }
+
+body.background-image-enabled {
+  .monaco-editor-wrapper,
+  .monaco-editor-wrapper > div {
+    background-color: transparent !important;
+  }
+
+  .monaco-editor-wrapper {
+    :global {
+      .monaco-editor,
+      .monaco-editor .overflow-guard,
+      .monaco-editor .monaco-scrollable-element,
+      .monaco-editor .monaco-editor-background,
+      .monaco-editor .margin,
+      .monaco-editor .margin-view-overlays {
+        background-color: transparent !important;
+      }
+    }
+  }
+}

@@ -381,3 +381,34 @@
     }
   }
 }
+
+body.background-image-enabled {
+  .media-panel {
+    background-color: rgba(17, 24, 39, 0.78);
+    background-color: color-mix(in srgb, var(--ws-editor-background, var(--ws-sideBar-background)) 92%, transparent) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    opacity: 1 !important;
+  }
+
+  .media-panel-toolbar {
+    background-color: rgba(17, 24, 39, 0.84);
+    background-color: color-mix(in srgb, var(--ws-editorGroupHeader-tabsBackground, var(--ws-editor-background)) 94%, transparent);
+  }
+
+  .media-panel-content {
+    background-color: rgba(17, 24, 39, 0.72);
+    background-color: color-mix(in srgb, var(--ws-editor-background, var(--ws-sideBar-background)) 88%, transparent);
+  }
+
+  .media-panel-grid-item,
+  .media-panel-list-item {
+    background-color: rgba(17, 24, 39, 0.22);
+    background-color: color-mix(in srgb, var(--ws-editor-background, var(--ws-sideBar-background)) 72%, transparent);
+  }
+
+  .media-panel-grid-item-name {
+    background-color: rgba(17, 24, 39, 0.64);
+    background-color: color-mix(in srgb, var(--ws-editor-background, var(--ws-sideBar-background)) 90%, transparent);
+  }
+}

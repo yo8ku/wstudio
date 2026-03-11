@@ -8,10 +8,109 @@ import { ThemeService } from '../services/ThemeService';
 import {
   THEME_CHANNELS,
   type SetThemeParams,
+  type ThemeData,
 } from '@note-studio/shared';
 
 // 防止重复注册的标志
 let isRegistered = false;
+
+const DEFAULT_DARK_BACKGROUND = '#1e1e1e';
+const DEFAULT_LIGHT_BACKGROUND = '#ffffff';
+
+function clampColorChannel(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function parseHexColor(color: string): { red: number; green: number; blue: number; alpha: number } | null {
+  const hex = color.replace('#', '').trim();
+  if (![3, 4, 6, 8].includes(hex.length)) {
+    return null;
+  }
+
+  const normalizedHex = hex.length <= 4
+    ? hex.split('').map((char) => `${char}${char}`).join('')
+    : hex;
+  const hasAlpha = normalizedHex.length === 8;
+  const red = Number.parseInt(normalizedHex.slice(0, 2), 16);
+  const green = Number.parseInt(normalizedHex.slice(2, 4), 16);
+  const blue = Number.parseInt(normalizedHex.slice(4, 6), 16);
+  const alpha = hasAlpha ? Number.parseInt(normalizedHex.slice(6, 8), 16) / 255 : 1;
+
+  if ([red, green, blue].some((value) => Number.isNaN(value))) {
+    return null;
+  }
+
+  return {
+    red,
+    green,
+    blue,
+    alpha: Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1
+  };
+}
+
+function parseRgbColor(color: string): { red: number; green: number; blue: number; alpha: number } | null {
+  const match = color.match(
+    /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([0-9.]+))?\s*\)$/i
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const alpha = match[4] === undefined ? 1 : Number.parseFloat(match[4]);
+  return {
+    red: clampColorChannel(Number.parseFloat(match[1])),
+    green: clampColorChannel(Number.parseFloat(match[2])),
+    blue: clampColorChannel(Number.parseFloat(match[3])),
+    alpha: Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1
+  };
+}
+
+function toOpaqueHex(color: string, fallbackColor: string): string {
+  const fallback = parseHexColor(fallbackColor) || {
+    red: 30,
+    green: 30,
+    blue: 30,
+    alpha: 1
+  };
+  const normalizedColor = color.trim().toLowerCase();
+  const parsedColor = normalizedColor.startsWith('#')
+    ? parseHexColor(normalizedColor)
+    : normalizedColor.startsWith('rgb')
+      ? parseRgbColor(normalizedColor)
+      : null;
+  const source = parsedColor || fallback;
+  const alpha = Math.max(0, Math.min(1, source.alpha ?? 1));
+  const red = clampColorChannel(source.red * alpha + fallback.red * (1 - alpha));
+  const green = clampColorChannel(source.green * alpha + fallback.green * (1 - alpha));
+  const blue = clampColorChannel(source.blue * alpha + fallback.blue * (1 - alpha));
+
+  return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue.toString(16).padStart(2, '0')}`;
+}
+
+function resolveWindowBackgroundColor(theme: ThemeData | null): string {
+  const isLightTheme = theme?.type === 'light' || theme?.type === 'hcLight';
+  const fallbackColor = isLightTheme ? DEFAULT_LIGHT_BACKGROUND : DEFAULT_DARK_BACKGROUND;
+  const themeColor = theme?.colors?.['editor.background']
+    || theme?.colors?.['sideBar.background']
+    || fallbackColor;
+
+  return toOpaqueHex(themeColor, fallbackColor);
+}
+
+function syncWindowBackgroundColor(theme: ThemeData | null): void {
+  const backgroundColor = resolveWindowBackgroundColor(theme);
+
+  BrowserWindow.getAllWindows().forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.setBackgroundColor(backgroundColor);
+    }
+  });
+}
 
 /**
  * 注册主题相关的 IPC 处理器
@@ -139,6 +238,7 @@ export function registerThemeHandlers(): void {
       if (success) {
         // 通知所有窗口主题已更改
         const theme = await themeService.getCurrentTheme();
+        syncWindowBackgroundColor(theme);
         BrowserWindow.getAllWindows().forEach((window) => {
           window.webContents.send(THEME_CHANNELS.THEME_CHANGED, theme);
         });
@@ -164,6 +264,7 @@ export function registerThemeHandlers(): void {
         if (success) {
           // 通知所有窗口主题已更改
           const theme = await themeService.getCurrentTheme();
+          syncWindowBackgroundColor(theme);
           BrowserWindow.getAllWindows().forEach((window) => {
             window.webContents.send(THEME_CHANNELS.THEME_CHANGED, theme);
           });
@@ -199,6 +300,7 @@ export function registerThemeHandlers(): void {
           // 如果设置为活动主题，通知主题已更改
           if (options?.setAsActive) {
             const currentTheme = await themeService.getCurrentTheme();
+            syncWindowBackgroundColor(currentTheme);
             BrowserWindow.getAllWindows().forEach((window) => {
               window.webContents.send(THEME_CHANNELS.THEME_CHANGED, currentTheme);
             });
@@ -255,6 +357,7 @@ export function registerThemeHandlers(): void {
           // 通知所有窗口主题已更新（因为颜色被覆盖）
           const theme = themeService.getTheme(data.baseThemeId);
           if (theme) {
+            syncWindowBackgroundColor(theme);
             BrowserWindow.getAllWindows().forEach((window) => {
               window.webContents.send(THEME_CHANNELS.THEME_CHANGED, theme);
             });
@@ -301,6 +404,7 @@ export function registerThemeHandlers(): void {
         // 通知所有窗口主题已更新（因为覆盖被移除）
         const theme = themeService.getTheme(baseThemeId);
         if (theme) {
+          syncWindowBackgroundColor(theme);
           BrowserWindow.getAllWindows().forEach((window) => {
             window.webContents.send(THEME_CHANNELS.THEME_CHANGED, theme);
           });

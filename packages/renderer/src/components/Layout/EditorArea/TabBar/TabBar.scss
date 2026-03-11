@@ -197,3 +197,29 @@
     background-color: var(--ws-toolbar-active-background, var(--toolbar-active-bg, #094771));
   }
 }
+
+body.background-image-enabled {
+  .tab-bar {
+    opacity: 1 !important;
+    background-color: rgba(17, 24, 39, 0.82) !important;
+    background-color: color-mix(in srgb, var(--ws-editorGroupHeader-tabsBackground, var(--ws-editor-background)) 86%, transparent) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .tab-item {
+    background-color: rgba(255, 255, 255, 0.04);
+    background-color: color-mix(in srgb, var(--ws-tab-inactiveBackground) 78%, transparent);
+
+    &.active {
+      background-color: rgba(17, 24, 39, 0.9);
+      background-color: color-mix(in srgb, var(--ws-tab-activeBackground) 90%, transparent);
+    }
+
+    &.hovered:not(.active) {
+      background-color: rgba(255, 255, 255, 0.08);
+      background-color: color-mix(in srgb, var(--ws-tab-hoverBackground) 80%, transparent);
+    }
+  }
+}

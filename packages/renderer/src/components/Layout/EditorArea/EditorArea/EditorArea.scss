@@ -198,3 +198,14 @@
   min-height: 35px;
   flex-shrink: 0;
 }
+
+body.background-image-enabled {
+  .editor-area,
+  .editor-area-groups,
+  .editor-area-group,
+  .editor-area-subgroup,
+  .editor-area-content,
+  .editor-group {
+    background-color: transparent !important;
+  }
+}

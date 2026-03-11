@@ -32,6 +32,7 @@ Module._resolveFilename = function(request, parent, isMain) {
 };
 
 const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
+const { ThemeService } = require('./packages/main/dist/main/src/services/ThemeService.js');
 // 导入终端服务相关模块
 const { TerminalService } = require('./packages/main/dist/main/src/services/terminal/index.js');
 const { setTerminalService } = require('./packages/main/dist/main/src/ipc/terminalHandlers.js');
@@ -46,9 +47,14 @@ if (!fs.existsSync(logIconPath)) {
   console.warn('[Electron] 应用图标未找到，预计路径:', logIconPath);
 }
 
-// 禁用硬件加速以避免 GPU 进程崩溃
-app.disableHardwareAcceleration();
-console.log('[Electron] 硬件加速已禁用（避免 GPU 进程崩溃）');
+// 默认启用硬件加速，避免 Windows frameless 窗口在 resize 时出现黑底补帧。
+// 如需排查 GPU 兼容问题，可通过环境变量强制关闭。
+if (process.env.NOTE_STUDIO_DISABLE_HARDWARE_ACCELERATION === 'true') {
+  app.disableHardwareAcceleration();
+  console.log('[Electron] 已按环境变量禁用硬件加速');
+} else {
+  console.log('[Electron] 硬件加速保持启用');
+}
 
 // 注册自定义协议为特权协议（必须在 app.whenReady 之前调用）
 // 这样 local-file:// 协议才能在 <video>、<audio>、<img> 等标签中正常使用
@@ -78,6 +84,104 @@ console.log('[Electron] 自定义协议已注册为特权协议');
 
 let mainWindow;
 
+function clampColorChannel(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function parseHexColor(color) {
+  const hex = color.replace('#', '').trim();
+  if (![3, 4, 6, 8].includes(hex.length)) {
+    return null;
+  }
+
+  const normalizedHex = hex.length <= 4
+    ? hex.split('').map((char) => `${char}${char}`).join('')
+    : hex;
+  const hasAlpha = normalizedHex.length === 8;
+  const red = Number.parseInt(normalizedHex.slice(0, 2), 16);
+  const green = Number.parseInt(normalizedHex.slice(2, 4), 16);
+  const blue = Number.parseInt(normalizedHex.slice(4, 6), 16);
+  const alpha = hasAlpha ? Number.parseInt(normalizedHex.slice(6, 8), 16) / 255 : 1;
+
+  if ([red, green, blue].some((value) => Number.isNaN(value))) {
+    return null;
+  }
+
+  return { red, green, blue, alpha: Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1 };
+}
+
+function parseRgbColor(color) {
+  const match = color.match(
+    /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([0-9.]+))?\s*\)$/i
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const alpha = match[4] === undefined ? 1 : Number.parseFloat(match[4]);
+  return {
+    red: clampColorChannel(Number.parseFloat(match[1])),
+    green: clampColorChannel(Number.parseFloat(match[2])),
+    blue: clampColorChannel(Number.parseFloat(match[3])),
+    alpha: Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1
+  };
+}
+
+function parseColor(color) {
+  const normalizedColor = typeof color === 'string' ? color.trim().toLowerCase() : '';
+  if (!normalizedColor || normalizedColor === 'transparent') {
+    return null;
+  }
+
+  if (normalizedColor.startsWith('#')) {
+    return parseHexColor(normalizedColor);
+  }
+
+  if (normalizedColor.startsWith('rgb')) {
+    return parseRgbColor(normalizedColor);
+  }
+
+  return null;
+}
+
+function toOpaqueHex(color, fallbackColor = '#1e1e1e') {
+  const fallback = parseColor(fallbackColor) || { red: 30, green: 30, blue: 30, alpha: 1 };
+  const parsed = parseColor(color);
+  const source = parsed || fallback;
+  const alpha = Math.max(0, Math.min(1, source.alpha ?? 1));
+  const red = clampColorChannel(source.red * alpha + fallback.red * (1 - alpha));
+  const green = clampColorChannel(source.green * alpha + fallback.green * (1 - alpha));
+  const blue = clampColorChannel(source.blue * alpha + fallback.blue * (1 - alpha));
+
+  return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue.toString(16).padStart(2, '0')}`;
+}
+
+function getThemeBackgroundColor(theme) {
+  const isLightTheme = theme?.type === 'light' || theme?.type === 'hcLight';
+  const fallbackColor = isLightTheme ? '#ffffff' : '#1e1e1e';
+  const backgroundColor = theme?.colors?.['editor.background']
+    || theme?.colors?.['sideBar.background']
+    || fallbackColor;
+
+  return toOpaqueHex(backgroundColor, fallbackColor);
+}
+
+async function resolveInitialWindowBackgroundColor() {
+  try {
+    const themeService = ThemeService.getInstance();
+    const currentTheme = await themeService.getCurrentTheme();
+    return getThemeBackgroundColor(currentTheme);
+  } catch (error) {
+    console.warn('[Electron] Failed to resolve initial theme background color:', error);
+    return '#1e1e1e';
+  }
+}
+
 /**
  * 创建主窗口
  * @param {string} backgroundColor - 窗口背景色（来自当前主题）
@@ -86,10 +190,12 @@ function createWindow(backgroundColor = '#1e1e1e') {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
+    show: false,
+    minWidth: 300,
     minHeight: 600,
     frame: false, // 无边框窗口
     titleBarStyle: 'hidden',
+    frame: true,
     backgroundColor: backgroundColor, // 使用主题背景色，避免白色闪烁
     icon: logIconPath,
     webPreferences: {
@@ -103,7 +209,48 @@ function createWindow(backgroundColor = '#1e1e1e') {
     }
   });
 
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
+  });
+
   // 开发模式：加载 Vite 开发服务器
+  let resizeStateResetTimer = null;
+  const emitResizeState = (isResizing) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+
+    const { webContents } = mainWindow;
+    if (!webContents || webContents.isDestroyed()) {
+      return;
+    }
+
+    webContents.send('window:resize-state-changed', isResizing);
+  };
+
+  const scheduleResizeStateReset = () => {
+    if (resizeStateResetTimer) {
+      clearTimeout(resizeStateResetTimer);
+    }
+
+    resizeStateResetTimer = setTimeout(() => {
+      resizeStateResetTimer = null;
+      emitResizeState(false);
+    }, 180);
+  };
+
+  mainWindow.on('will-resize', () => {
+    emitResizeState(true);
+    scheduleResizeStateReset();
+  });
+
+  mainWindow.on('resize', () => {
+    emitResizeState(true);
+    scheduleResizeStateReset();
+  });
+
   if (process.env.NODE_ENV === 'development') {
     console.log('[Electron] 开发模式：加载 Vite 开发服务器 http://localhost:5173');
     mainWindow.loadURL('http://localhost:5173');
@@ -115,6 +262,11 @@ function createWindow(backgroundColor = '#1e1e1e') {
   }
 
   mainWindow.on('closed', () => {
+    if (resizeStateResetTimer) {
+      clearTimeout(resizeStateResetTimer);
+      resizeStateResetTimer = null;
+    }
+
     mainWindow = null;
     // 清除向量索引服务的窗口引用
     workspaceVectorIndexService.setMainWindow(null);
@@ -417,7 +569,7 @@ app.whenReady().then(async () => {
     await initializeExtensions(null); // 暂时不传递窗口，先注册 IPC 处理器
     
     // 使用默认背景色（主题由渲染进程管理）
-    let backgroundColor = '#1e1e1e';
+    const backgroundColor = await resolveInitialWindowBackgroundColor();
     
     // 创建窗口
     createWindow(backgroundColor);
@@ -454,13 +606,13 @@ app.whenReady().then(async () => {
     console.error('[Electron]  扩展系统初始化失败:', error);
     // 即使失败也创建窗口（避免应用卡住），但避免重复创建
     if (!mainWindow) {
-      createWindow('#1e1e1e');
+      createWindow(await resolveInitialWindowBackgroundColor());
     }
   }
 
-  app.on('activate', () => {
+  app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      createWindow(await resolveInitialWindowBackgroundColor());
     }
   });
 });
@@ -1366,6 +1518,19 @@ ipcMain.on('maximize-window', () => {
 ipcMain.on('close-window', () => {
   const win = BrowserWindow.getFocusedWindow();
   if (win) win.close();
+});
+
+ipcMain.handle('window:set-background-color', async (_event, color) => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { success: false, error: 'Main window is not available' };
+  }
+
+  if (typeof color !== 'string' || color.trim().length === 0) {
+    return { success: false, error: 'Invalid background color' };
+  }
+
+  mainWindow.setBackgroundColor(color.trim());
+  return { success: true };
 });
 
 /**

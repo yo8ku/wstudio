@@ -452,9 +452,15 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
       toolbarActiveBackground: getColor('toolbar.activeBackground', 'list.activeSelectionBackground'),
       
       // 滚动条
-      scrollbarTrack: getColor('scrollbarSlider.background'),
-      scrollbarThumb: getColor('scrollbarSlider.activeBackground', 'scrollbarSlider.hoverBackground'),
-      scrollbarThumbHover: getColor('scrollbarSlider.hoverBackground', 'scrollbarSlider.activeBackground'),
+      scrollbarTrack: 'transparent',
+      scrollbarThumb:
+        tc['scrollbarSlider.background']
+        || (themeData.type === 'light' ? '#8a8a8a66' : defaultColors.scrollbarThumb),
+      scrollbarThumbHover:
+        tc['scrollbarSlider.hoverBackground']
+        || tc['scrollbarSlider.activeBackground']
+        || tc['scrollbarSlider.background']
+        || (themeData.type === 'light' ? '#6f6f6fb3' : defaultColors.scrollbarThumbHover),
       
       // 菜单
       menuBackground: getColor('menu.background', 'dropdown.background', 'editorWidget.background'),
@@ -553,6 +559,11 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     
     // ⭐ 应用新主题的 VSCode 变量格式 (用于命令面板等组件)
     const currentTheme = themeData || theme;
+    const scrollbarActiveColor =
+      currentTheme?.colors?.['scrollbarSlider.activeBackground']
+      || currentTheme?.colors?.['scrollbarSlider.hoverBackground']
+      || currentTheme?.colors?.['scrollbarSlider.background']
+      || themeColors.scrollbarThumbHover;
     if (currentTheme?.colors) {
       console.log('[ThemeContext] 应用 vscode-* 变量，共', Object.keys(currentTheme.colors).length, '个');
       
@@ -652,6 +663,13 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     root.style.setProperty('--scrollbar-track', themeColors.scrollbarTrack);
     root.style.setProperty('--scrollbar-thumb', themeColors.scrollbarThumb);
     root.style.setProperty('--scrollbar-thumb-hover', themeColors.scrollbarThumbHover);
+    root.style.setProperty('--ws-scrollbarSlider-background', themeColors.scrollbarThumb);
+    root.style.setProperty('--ws-scrollbarSlider-hoverBackground', themeColors.scrollbarThumbHover);
+    root.style.setProperty('--ws-scrollbarSlider-activeBackground', scrollbarActiveColor);
+    root.style.setProperty('--ws-scrollbar-slider-track-background', themeColors.scrollbarTrack);
+    root.style.setProperty('--ws-scrollbar-slider-background', themeColors.scrollbarThumb);
+    root.style.setProperty('--ws-scrollbar-slider-hover-background', themeColors.scrollbarThumbHover);
+    root.style.setProperty('--ws-scrollbar-slider-active-background', scrollbarActiveColor);
     
     // 菜单
     root.style.setProperty('--menu-bg', themeColors.menuBackground);
@@ -728,7 +746,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     root.style.setProperty('--vscode-list-focusForeground', themeColors.listFocusForeground);
     root.style.setProperty('--vscode-scrollbarSlider-background', themeColors.scrollbarThumb);
     root.style.setProperty('--vscode-scrollbarSlider-hoverBackground', themeColors.scrollbarThumbHover);
-    root.style.setProperty('--vscode-scrollbarSlider-activeBackground', themeColors.scrollbarThumbHover);
+    root.style.setProperty('--vscode-scrollbarSlider-activeBackground', scrollbarActiveColor);
     root.style.setProperty('--vscode-icon-foreground', themeColors.foreground);
     root.style.setProperty('--vscode-foreground', themeColors.foreground);
     root.style.setProperty('--vscode-input-background', themeColors.inputBackground);

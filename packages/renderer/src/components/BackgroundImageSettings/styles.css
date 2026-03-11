@@ -15,8 +15,29 @@
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   padding: 20px;
   z-index: 10000;
+}
+
+.background-image-panel::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.background-image-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.background-image-panel::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+
+.background-image-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* 标题�?*/

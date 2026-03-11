@@ -502,10 +502,10 @@ const BackgroundImage: React.FC = () => {
   
   const backgroundStyle: React.CSSProperties = useMemo(() => ({
     position: 'fixed',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
     zIndex: 99, // 背景在最底层，不遮挡UI元素
     pointerEvents: 'none',
     backgroundImage: (imageUrl && !imageLoadError) ? `url("${imageUrl}")` : 'none', // 确保使用 local-file:// 协议
@@ -514,6 +514,9 @@ const BackgroundImage: React.FC = () => {
     backgroundRepeat: 'no-repeat',
     opacity: config.opacity,
     filter: config.blur > 0 ? `blur(${config.blur}px)` : 'none',
+    transform: 'translateZ(0)',
+    willChange: 'transform, opacity',
+    backfaceVisibility: 'hidden',
   }), [imageUrl, imageLoadError, config.fit, config.opacity, config.blur]);
   
   // 如果背景未启用或没有图片路径，不渲染背景层（但组件本身仍然挂载以监听事件）

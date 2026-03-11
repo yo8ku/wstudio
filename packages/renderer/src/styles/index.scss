@@ -31,12 +31,40 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  background-color: var(--ws-editor-background, #1e1e1e);
 }
 
 body {
   color: var(--ws-editor-foreground);
+  background-color: var(--ws-editor-background, #1e1e1e);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+body.window-resizing,
+body.window-resizing #root,
+body.window-resizing .main-layout {
+  background-color: var(--ws-editor-background, #1e1e1e) !important;
+}
+
+body.window-resizing #background-image-layer {
+  filter: none !important;
+  transform: translateZ(0) scale(1.02) !important;
+}
+
+body.window-resizing .titleBar,
+body.window-resizing .status-bar,
+body.window-resizing .tab-bar,
+body.window-resizing .breadcrumb,
+body.window-resizing .sidebar,
+body.window-resizing .activity-bar,
+body.window-resizing .ai-chat-panel-right-border,
+body.window-resizing .background-image-panel,
+body.window-resizing .titlebar-dropdown,
+body.window-resizing .dropdown-menu,
+body.window-resizing .monaco-context-menu {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 
@@ -115,7 +143,18 @@ body.background-image-enabled .StatusBar {
   background-color: transparent !important;
 }
 
-body.background-image-enabled .status-bar {
+body.background-image-enabled .activity-bar{
+  border-right: 1px solid #8b8b8b52;
+}
+
+
+body.background-image-enabled .titleBar{
+  border-bottom: 1px solid #8b8b8b52;
+}
+
+
+body.background-image-enabled .status-bar
+{
   border-top: 1px solid #8b8b8b52;
 }
 
@@ -345,6 +384,7 @@ body.background-image-enabled [data-theme-mode='dark'] .sidebar-header>* {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  background-color: var(--ws-editor-background, #1e1e1e);
 }
 
 /* ==================== 滚动条样�?==================== */
@@ -355,26 +395,26 @@ body.background-image-enabled [data-theme-mode='dark'] .sidebar-header>* {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
+  background: var(--scrollbar-track, transparent);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background: var(--scrollbar-thumb, var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.45)));
   border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+  background: var(--scrollbar-thumb-hover, var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.65)));
 }
 
 ::-webkit-scrollbar-corner {
-  background: var(--scrollbar-track);
+  background: var(--scrollbar-track, transparent);
 }
 
 /* Firefox 滚动�?*/
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-color: var(--scrollbar-thumb, var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.45))) var(--scrollbar-track, transparent);
 }
 
 /* ==================== 侧边栏滚动条：默认隐藏，悬停显示 ==================== */
