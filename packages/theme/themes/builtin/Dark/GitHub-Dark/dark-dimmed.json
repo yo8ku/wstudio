@@ -7,6 +7,7 @@
   "version": "1.0.0",
   "colors": {
     "focusBorder": "#316dca",
+    "border.background":"#2d333b",
     "foreground": "#adbac7",
     "descriptionForeground": "#768390",
     "errorForeground": "#e5534b",

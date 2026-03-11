@@ -9,7 +9,24 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { TextDecoder } from 'util';
 import { parse as parseJsonc } from 'jsonc-parser';
+import {
+  assessCommandSecurity,
+  buildForcedFinalAnswerMessages,
+  createAgentLoopInitialMessages,
+  createBuiltinWorkspaceToolExecutor,
+  createWorkspaceCustomToolRegistry,
+  formatAgentToolDefinitionsForPrompt,
+  runAgenticLoop,
+  runMultiAgentWorkflow,
+  type AgentLoopMessage,
+  type AgentExecutableToolDefinition,
+  type AgentToolDefinition,
+  type AgentToolExecutionResult,
+  type AgentToolInputSchema,
+  type AgentToolSchema,
+} from '@note-studio/agent';
 import type {
+  AgentChatApprovalResponse,
   AgentChatApprovalRequestType,
   AgentChatAppendTurnItemsInput,
   AgentChatRunTurnInput,
@@ -20,15 +37,19 @@ import type {
   AgentChatTurnItemInput,
   AgentChatTurnSummary,
 } from '@note-studio/shared';
+import {
+  applyApprovalDecisionsToToolParams,
+  buildApprovalChangeSet,
+  buildExecutionChangeSet,
+  collectWriteBeforeContents,
+} from './AgentChangeSetService';
+import { agentExecutionJournalService } from './AgentExecutionJournalService';
 import { agentChatRuntime } from './AgentChatRuntime';
 import { builtinAI } from '../builtinAIInstance';
 import { getFormDatabase, type FormData, type FormQueryWhere } from '../FormDatabase';
 import { resolveProjectPath } from '../../utils/projectRoot';
 
-type RuntimeMessage = {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-};
+type RuntimeMessage = AgentLoopMessage;
 
 type AgentDecisionAction = 'tool_call' | 'final';
 
@@ -40,26 +61,11 @@ interface AgentDecision {
   finalAnswer?: string;
 }
 
-interface JsonSchemaProperty {
-  type?: string;
-  description: string;
-  items?: {
-    type: string;
-  };
-}
+type JsonSchemaProperty = AgentToolSchema;
 
-interface JsonSchemaDefinition {
-  type: 'object';
-  properties: Record<string, JsonSchemaProperty>;
-  required?: string[];
-}
+type JsonSchemaDefinition = AgentToolInputSchema;
 
-interface MainAgentToolResult {
-  success: boolean;
-  data?: unknown;
-  error?: string;
-  changedFiles?: string[];
-}
+type MainAgentToolResult = AgentToolExecutionResult;
 
 interface MainAgentToolDefinition {
   name: string;
@@ -78,6 +84,7 @@ interface MainAgentActiveRun {
 interface MainAgentTurnCheckpoint {
   messages: RuntimeMessage[];
   nextIteration: number;
+  modelCallsUsed: number;
 }
 
 interface MainAgentTurnExecutionState {
@@ -86,9 +93,22 @@ interface MainAgentTurnExecutionState {
   checkpoint: MainAgentTurnCheckpoint | null;
 }
 
+const adaptAgentToolDefinition = (
+  tool: AgentExecutableToolDefinition,
+): MainAgentToolDefinition => ({
+  name: tool.name,
+  description: tool.description,
+  parameters: tool.input_schema,
+  requiresConfirmation: tool.requiresConfirmation === true,
+  requestType: tool.requestType as AgentChatApprovalRequestType | undefined,
+  execute: tool.execute,
+});
+
 const DEFAULT_MAX_ITERATIONS = 8;
+const MAX_MODEL_CALLS_LIMIT = 16;
 const MAX_TOOL_RESULT_CHARS = 12000;
 const MAX_FINAL_MESSAGE_CHARS = 24000;
+const MAX_CONSOLE_LOG_CHARS = 4000;
 const MAX_LIST_ENTRIES = 200;
 const MAX_LIST_DEPTH = 4;
 const MAX_FILE_CHARS = 24000;
@@ -177,6 +197,40 @@ const safeJsonStringify = (value: unknown): string => {
     return String(value);
   }
 };
+
+const truncateConsoleText = (value: string, maxLength: number = MAX_CONSOLE_LOG_CHARS): string => {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}\n...[truncated ${value.length - maxLength} chars]`;
+};
+
+const formatConsolePayload = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    return truncateConsoleText(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => formatConsolePayload(item));
+  }
+
+  if (isRecord(value)) {
+    const formatted: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      formatted[key] = formatConsolePayload(item);
+    }
+    return formatted;
+  }
+
+  return value;
+};
+
+const formatMessagesForConsole = (messages: RuntimeMessage[]): Array<Record<string, unknown>> => messages.map((message, index) => ({
+  index: index + 1,
+  role: message.role,
+  content: truncateConsoleText(message.content),
+}));
 
 const normalizeDecisionJsonCandidate = (value: string): string => {
   const quoteChars = new Set(['"', '\'', '“', '”', '‘', '’']);
@@ -409,7 +463,9 @@ const decodeShellOutput = (value: string | Buffer | undefined, preferUtf8: boole
 };
 
 const isPathInsideBase = (targetPath: string, basePath: string): boolean => {
-  const relativePath = path.relative(basePath, targetPath);
+  const normalizedBasePath = path.resolve(basePath);
+  const normalizedTargetPath = path.resolve(targetPath);
+  const relativePath = path.relative(normalizedBasePath, normalizedTargetPath);
   return relativePath === ''
     || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
 };
@@ -426,15 +482,16 @@ const resolveDisplayPath = (workspacePath: string, filePath: string): string => 
 
 function resolveToolPath(workspacePath: string, rawPath: string): string {
   const normalizedInput = normalizeText(rawPath);
+  const normalizedWorkspacePath = path.resolve(workspacePath);
   if (!normalizedInput) {
     throw new Error('path is required');
   }
 
   const candidatePath = path.isAbsolute(normalizedInput)
     ? path.normalize(normalizedInput)
-    : path.resolve(workspacePath, normalizedInput);
+    : path.resolve(normalizedWorkspacePath, normalizedInput);
 
-  if (!isPathInsideBase(candidatePath, workspacePath)) {
+  if (!isPathInsideBase(candidatePath, normalizedWorkspacePath)) {
     throw new Error('path escapes workspace');
   }
   if (containsForbiddenPath(candidatePath)) {
@@ -557,8 +614,10 @@ export class MainAgentRuntime {
   private readonly activeRuns = new Map<string, MainAgentActiveRun>();
   private readonly executionStates = new Map<string, MainAgentTurnExecutionState>();
   private systemPromptCache: string | null = null;
+  private readonly workspaceCustomToolRegistry = createWorkspaceCustomToolRegistry();
 
   private readonly toolDefinitions: MainAgentToolDefinition[] = [
+    ...createBuiltinWorkspaceToolExecutor().listTools().map(adaptAgentToolDefinition),
     {
       name: 'list_files',
       description: '列出工作区中的目录内容，可选递归列出。',
@@ -914,6 +973,39 @@ export class MainAgentRuntime {
       },
     },
     {
+      name: 'multi_agent_run',
+      description: '将一个复杂任务拆分给多个只读子 Agent 并行执行，再把结果汇总返回。适合大型分析、跨目录排查、方案对比等任务。',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '本次多智能体计划的标题。' },
+          subtasks: {
+            type: 'array',
+            description: '子任务列表。每个子任务至少提供 title 和 task，可选 role 与 maxIterations。',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: '子任务标识，可选。' },
+                title: { type: 'string', description: '子任务标题。' },
+                task: { type: 'string', description: '要交给子 Agent 的具体任务。' },
+                role: { type: 'string', description: '子 Agent 角色，例如“前端审查”“后端排障”。' },
+                maxIterations: { type: 'number', description: '该子 Agent 的最大循环次数，可选。' },
+              },
+              required: ['title', 'task'],
+            },
+          },
+          maxConcurrency: { type: 'number', description: '最大并发子 Agent 数，默认 3，最大 4。' },
+        },
+        required: ['subtasks'],
+      },
+      requiresConfirmation: true,
+      requestType: 'custom',
+      execute: async () => ({
+        success: false,
+        error: 'multi_agent_run must be executed by MainAgentRuntime',
+      }),
+    },
+    {
       name: 'bash',
       description: '在工作区中执行受限 shell 命令。',
       parameters: {
@@ -921,6 +1013,7 @@ export class MainAgentRuntime {
         properties: {
           command: { type: 'string', description: '要执行的 shell 命令。' },
           timeoutMs: { type: 'number', description: '超时时间，毫秒，最大 120000。' },
+          rollbackCommand: { type: 'string', description: '可选。如果该命令有可安全撤销的反向操作，在这里提供回滚命令。' },
         },
         required: ['command'],
       },
@@ -1012,10 +1105,12 @@ export class MainAgentRuntime {
   private createCheckpoint(
     messages: RuntimeMessage[],
     nextIteration: number,
+    modelCallsUsed: number = 0,
   ): MainAgentTurnCheckpoint {
     return {
       messages: cloneRuntimeMessages(messages),
       nextIteration,
+      modelCallsUsed,
     };
   }
 
@@ -1023,13 +1118,14 @@ export class MainAgentRuntime {
     runKey: string,
     messages: RuntimeMessage[],
     nextIteration: number,
+    modelCallsUsed: number = 0,
   ): void {
     const executionState = this.executionStates.get(runKey);
     if (!executionState) {
       return;
     }
 
-    executionState.checkpoint = this.createCheckpoint(messages, nextIteration);
+    executionState.checkpoint = this.createCheckpoint(messages, nextIteration, modelCallsUsed);
   }
 
   private isExecutionCurrent(runKey: string, executionId: string): boolean {
@@ -1081,6 +1177,30 @@ export class MainAgentRuntime {
     });
   }
 
+  private logTurnEvent(
+    threadId: string,
+    turnId: string,
+    stage: string,
+    payload?: unknown,
+  ): void {
+    const prefix = `[AgentRuntime][${threadId}/${turnId}] ${stage}`;
+    if (payload === undefined) {
+      console.log(prefix);
+      return;
+    }
+
+    console.log(prefix, formatConsolePayload(payload));
+  }
+
+  private logModelMessages(
+    threadId: string,
+    turnId: string,
+    stage: string,
+    messages: RuntimeMessage[],
+  ): void {
+    this.logTurnEvent(threadId, turnId, stage, formatMessagesForConsole(messages));
+  }
+
   async runTurn(input: AgentChatRunTurnInput): Promise<AgentChatRunTurnResult> {
     const normalizedInput = this.normalizeRunInput(input);
     const threadId = normalizedInput.threadId;
@@ -1099,7 +1219,16 @@ export class MainAgentRuntime {
       executionId,
       checkpoint: null,
     });
-    this.startExecution(runKey, executionId, () => this.runExecutionLoop(runKey));
+    this.logTurnEvent(threadId, turnId, 'run accepted', {
+      workspacePath: normalizedInput.workspacePath,
+      modelId: normalizedInput.modelId,
+      currentFile: normalizedInput.currentFile ?? null,
+      selectedText: normalizedInput.selectedText ?? null,
+      maxIterations: normalizedInput.maxIterations ?? null,
+      maxModelCalls: normalizedInput.maxModelCalls ?? null,
+      instruction: normalizedInput.instruction,
+    });
+    this.startExecution(runKey, executionId, () => this.runAgenticExecutionLoop(runKey));
 
     return {
       threadId,
@@ -1139,7 +1268,7 @@ export class MainAgentRuntime {
 
     const executionId = randomUUID();
     executionState.executionId = executionId;
-    this.startExecution(runKey, executionId, () => this.runExecutionLoop(runKey, true));
+    this.startExecution(runKey, executionId, () => this.runAgenticExecutionLoop(runKey, true));
 
     return resumedTurn;
   }
@@ -1154,10 +1283,53 @@ export class MainAgentRuntime {
     return this.systemPromptCache;
   }
 
-  private buildToolsDescription(): string {
-    const lines: string[] = [];
+  private async getWorkspaceToolDefinitions(workspacePath: string): Promise<MainAgentToolDefinition[]> {
+    const customTools = (await this.workspaceCustomToolRegistry.list(workspacePath)).map(adaptAgentToolDefinition);
+    const merged = [...this.toolDefinitions, ...customTools];
+    const seenToolNames = new Set<string>();
 
-    for (const tool of this.toolDefinitions) {
+    return merged.filter(tool => {
+      if (seenToolNames.has(tool.name)) {
+        return false;
+      }
+
+      seenToolNames.add(tool.name);
+      return true;
+    });
+  }
+
+  private async buildPromptToolDefinitions(workspacePath: string): Promise<AgentToolDefinition[]> {
+    const tools = await this.getWorkspaceToolDefinitions(workspacePath);
+    const promptTools = tools.map<AgentToolDefinition>(tool => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.parameters,
+      requiresConfirmation: tool.requiresConfirmation,
+      requestType: tool.requestType as AgentToolDefinition['requestType'],
+    }));
+
+    promptTools.push({
+      name: 'ask_user',
+      description: '向用户请求补充信息。仅在缺少继续执行所必需的信息时使用。',
+      input_schema: {
+        type: 'object',
+        properties: {
+          question: {
+            type: 'string',
+            description: '需要用户回答的问题。',
+          },
+        },
+        required: ['question'],
+      },
+    });
+
+    return promptTools;
+  }
+
+  private async buildToolsDescription(workspacePath: string): Promise<string> {
+    const tools = await this.getWorkspaceToolDefinitions(workspacePath);
+    const lines: string[] = [];
+    for (const tool of tools) {
       lines.push(`### ${tool.name}`);
       lines.push(tool.description);
 
@@ -1366,8 +1538,238 @@ export class MainAgentRuntime {
     return truncateText(safeJsonStringify(payload), MAX_TOOL_RESULT_CHARS);
   }
 
-  private getToolDefinition(toolName: string): MainAgentToolDefinition | null {
-    return this.toolDefinitions.find(tool => tool.name === toolName) ?? null;
+  private isReadOnlySubAgentTool(tool: MainAgentToolDefinition): boolean {
+    if (tool.name === 'ask_user' || tool.name === 'multi_agent_run' || tool.name === 'bash') {
+      return false;
+    }
+
+    if (tool.requiresConfirmation) {
+      return false;
+    }
+
+    return tool.requestType !== 'file_write'
+      && tool.requestType !== 'diff_apply'
+      && tool.requestType !== 'command_execute'
+      && tool.requestType !== 'custom';
+  }
+
+  private async getReadOnlySubAgentTools(workspacePath: string): Promise<MainAgentToolDefinition[]> {
+    const tools = await this.getWorkspaceToolDefinitions(workspacePath);
+    return tools.filter(tool => this.isReadOnlySubAgentTool(tool));
+  }
+
+  private buildSubAgentTaskMessage(
+    parentInstruction: string,
+    subtask: {
+      title: string;
+      task: string;
+      role?: string;
+    },
+  ): string {
+    const sections = [
+      '你是一个被主 Agent 委派出来的子 Agent。',
+      parentInstruction ? `主任务背景:\n${parentInstruction}` : '',
+      subtask.role ? `子 Agent 角色:\n${subtask.role}` : '',
+      `子任务标题:\n${subtask.title}`,
+      `子任务要求:\n${subtask.task}`,
+      '限制:\n- 只允许使用只读工具\n- 不允许写文件\n- 不允许执行 shell 命令\n- 不允许请求用户审批\n- 完成后直接给出可供主 Agent 汇总的结论',
+    ].filter(Boolean);
+
+    return sections.join('\n\n');
+  }
+
+  private async runMultiAgentTool(
+    params: Record<string, unknown>,
+    context: {
+      threadId: string;
+      turnId: string;
+      instruction: string;
+      workspacePath: string;
+      modelId: string;
+    },
+  ): Promise<MainAgentToolResult> {
+    const subtaskValues = Array.isArray(params.subtasks) ? params.subtasks : [];
+    const subtasks = subtaskValues.reduce<Array<{
+      id: string;
+      title: string;
+      task: string;
+      role?: string;
+      maxIterations?: number;
+      metadata?: Record<string, unknown>;
+    }>>((acc, value, index) => {
+      if (!isRecord(value)) {
+        return acc;
+      }
+
+      const title = normalizeText(value.title);
+      const task = normalizeText(value.task);
+      if (!title || !task) {
+        return acc;
+      }
+
+      const role = normalizeText(value.role) || undefined;
+      const id = normalizeText(value.id) || `subagent-${index + 1}`;
+      const maxIterations = typeof value.maxIterations === 'number' && Number.isFinite(value.maxIterations)
+        ? Math.max(1, Math.min(6, Math.floor(value.maxIterations)))
+        : undefined;
+
+      acc.push({
+        id,
+        title,
+        task,
+        role,
+        maxIterations,
+        metadata: isRecord(value.metadata) ? { ...value.metadata } : undefined,
+      });
+      return acc;
+    }, []);
+
+    if (subtasks.length === 0) {
+      return {
+        success: false,
+        error: 'subtasks must contain at least one valid item with title and task',
+      };
+    }
+
+    const readOnlyTools = await this.getReadOnlySubAgentTools(context.workspacePath);
+    if (readOnlyTools.length === 0) {
+      return {
+        success: false,
+        error: 'no read-only tools are available for multi-agent execution',
+      };
+    }
+
+    const promptToolDefinitions = readOnlyTools.map<AgentToolDefinition>(tool => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.parameters,
+      requiresConfirmation: false,
+      requestType: tool.requestType as AgentToolDefinition['requestType'],
+    }));
+
+    const planId = randomUUID();
+    const planTitle = normalizeText(params.title) || 'Parallel multi-agent workflow';
+    const maxConcurrency = Math.min(4, Math.max(1, toPositiveInteger(params.maxConcurrency, Math.min(3, subtasks.length))));
+    const systemPrompt = await this.loadSystemPrompt();
+
+    const workflow = await runMultiAgentWorkflow({
+      plan: {
+        id: planId,
+        title: planTitle,
+        subtasks,
+      },
+      maxConcurrency,
+      callbacks: {
+        onSubtaskStart: async (subtask) => {
+          this.ensureTurnRunnable(context.threadId, context.turnId);
+          await this.appendTurnItem(context.threadId, context.turnId, {
+            kind: 'step',
+            title: `子 Agent 开始: ${subtask.title}`,
+            text: subtask.role ? `${subtask.role}\n${subtask.task}` : subtask.task,
+            status: 'running',
+            metadata: this.buildTurnMetadata({
+              streamKind: 'progress',
+              streamId: `multi-agent-${planId}-${subtask.id}-start`,
+            }),
+          });
+        },
+        onSubtaskFinish: async (result) => {
+          this.ensureTurnRunnable(context.threadId, context.turnId);
+          await this.appendTurnItem(context.threadId, context.turnId, {
+            kind: 'thinking',
+            title: `子 Agent 结果: ${result.title}`,
+            text: truncateText(
+              result.success
+                ? result.output
+                : `FAILED: ${result.error || 'unknown error'}`,
+              4000,
+            ),
+            status: result.success ? 'info' : 'failed',
+            metadata: this.buildTurnMetadata({
+              streamKind: 'reasoning',
+              streamId: `multi-agent-${planId}-${result.id}-result`,
+            }),
+          });
+        },
+      },
+      runSubtask: async (subtask) => {
+        const subtaskMaxIterations = Math.max(1, Math.min(6, toPositiveInteger(subtask.maxIterations, 4)));
+        const initialMessages = createAgentLoopInitialMessages({
+          systemPrompt,
+          taskMessage: this.buildSubAgentTaskMessage(context.instruction, subtask),
+          toolDefinitions: promptToolDefinitions,
+        });
+
+        const subtaskResult = await runAgenticLoop({
+          initialMessages,
+          maxIterations: subtaskMaxIterations,
+          maxModelCalls: Math.min(MAX_MODEL_CALLS_LIMIT, subtaskMaxIterations + 1),
+          maxFinalAnswerChars: 8000,
+          historyCompression: {
+            maxMessageCount: 24,
+            maxContextChars: 24000,
+            preserveLastRounds: 10,
+            maxSummaryChars: 2500,
+          },
+          callModel: async (loopMessages) => {
+            this.ensureTurnRunnable(context.threadId, context.turnId);
+            return builtinAI.chat(context.modelId, loopMessages);
+          },
+          executeTool: async (toolName, toolParams) => {
+            this.ensureTurnRunnable(context.threadId, context.turnId);
+            const tool = readOnlyTools.find(candidate => candidate.name === toolName) ?? null;
+            if (!tool) {
+              return {
+                success: false,
+                error: `unknown sub-agent tool: ${toolName}`,
+              };
+            }
+
+            return tool.execute(toolParams, { workspacePath: context.workspacePath });
+          },
+          formatToolResult: (toolName, result) => this.buildToolResultForModel(toolName, result),
+          generateFinalAnswer: async (loopMessages) => builtinAI.chat(
+            context.modelId,
+            buildForcedFinalAnswerMessages(loopMessages),
+          ),
+          callbacks: {
+            assertCanContinue: () => {
+              this.ensureTurnRunnable(context.threadId, context.turnId);
+            },
+          },
+        });
+
+        return {
+          id: subtask.id,
+          success: true,
+          output: subtaskResult.finalOutput,
+          metadata: {
+            role: subtask.role ?? null,
+            iterationsCompleted: subtaskResult.iterationsCompleted,
+            terminationReason: subtaskResult.terminationReason,
+          },
+        };
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        plan: workflow.plan,
+        maxConcurrency,
+        mergedOutput: workflow.mergedOutput,
+        results: workflow.results,
+        toolNames: readOnlyTools.map(tool => tool.name),
+      },
+    };
+  }
+
+  private async getToolDefinition(
+    toolName: string,
+    workspacePath: string,
+  ): Promise<MainAgentToolDefinition | null> {
+    const tools = await this.getWorkspaceToolDefinitions(workspacePath);
+    return tools.find(tool => tool.name === toolName) ?? null;
   }
 
   private async waitForResolvedRequest(threadId: string, requestId: string): Promise<AgentChatServerRequest> {
@@ -1404,11 +1806,23 @@ export class MainAgentRuntime {
     tool: MainAgentToolDefinition,
     params: Record<string, unknown>,
     workspacePath: string,
-  ): Promise<boolean> {
+  ): Promise<AgentChatApprovalResponse | null> {
     const targetPath = typeof params.path === 'string'
       ? resolveDisplayPath(workspacePath, resolveToolPath(workspacePath, params.path))
       : null;
-    const command = typeof params.command === 'string' ? params.command : null;
+    const changeSet = await buildApprovalChangeSet(tool.name, params, workspacePath).catch(() => null);
+    const rawCommand = typeof params.command === 'string' ? params.command : null;
+    const commandSecurity = rawCommand ? assessCommandSecurity(rawCommand) : null;
+    const commandRiskDescription = commandSecurity && commandSecurity.level !== 'safe'
+      ? `\n\n风险等级: ${commandSecurity.level === 'blocked' ? '已阻止' : '高'}\n${commandSecurity.reasons.join('\n')}`
+      : '';
+    const command = rawCommand ? `${rawCommand}${commandRiskDescription}` : null;
+    this.logTurnEvent(threadId, turnId, `approval requested: ${tool.name}`, {
+      toolName: tool.name,
+      params,
+      command: rawCommand,
+      targetPath,
+    });
     const request = agentChatRuntime.createApprovalRequest({
       threadId,
       turnId,
@@ -1419,14 +1833,21 @@ export class MainAgentRuntime {
         : (targetPath ? `是否允许修改文件？\n\n${targetPath}` : `是否允许执行工具 ${tool.name}？`),
       toolName: tool.name,
       params,
-      command,
-      changedFiles: targetPath ? [targetPath] : undefined,
+      command: rawCommand,
+      changedFiles: changeSet?.files.map(file => file.path) ?? (targetPath ? [targetPath] : undefined),
+      changeSet,
     });
 
     const resolved = await this.waitForResolvedRequest(threadId, request.id);
     this.ensureTurnRunnable(threadId, turnId);
+    this.logTurnEvent(threadId, turnId, `approval resolved: ${tool.name}`, {
+      approved: resolved.kind === 'approval' ? resolved.response?.approved ?? false : false,
+      response: resolved.kind === 'approval' ? resolved.response ?? null : null,
+    });
 
-    return resolved.kind === 'approval' && resolved.response?.approved === true;
+    return resolved.kind === 'approval'
+      ? (resolved.response ?? null)
+      : null;
   }
 
   private async requestUserInput(
@@ -1434,6 +1855,7 @@ export class MainAgentRuntime {
     turnId: string,
     question: string,
   ): Promise<string | null> {
+    this.logTurnEvent(threadId, turnId, 'user input requested', { question });
     const request = agentChatRuntime.createUserInputRequest({
       threadId,
       turnId,
@@ -1454,6 +1876,10 @@ export class MainAgentRuntime {
     }
 
     const answer = resolved.response?.answers?.answer;
+    this.logTurnEvent(threadId, turnId, 'user input resolved', {
+      question,
+      answer: typeof answer === 'string' ? answer.trim() : null,
+    });
     return typeof answer === 'string' && answer.trim()
       ? answer.trim()
       : null;
@@ -1467,6 +1893,7 @@ export class MainAgentRuntime {
       turnId: string;
       instruction: string;
       workspacePath: string;
+      modelId: string;
     },
   ): Promise<MainAgentToolResult> {
     if (toolName === 'ask_user') {
@@ -1493,7 +1920,7 @@ export class MainAgentRuntime {
           };
     }
 
-    const tool = this.getToolDefinition(toolName);
+    const tool = await this.getToolDefinition(toolName, context.workspacePath);
     if (!tool) {
       return {
         success: false,
@@ -1504,42 +1931,126 @@ export class MainAgentRuntime {
     if (toolName === 'bash') {
       const instruction = normalizeText(context.instruction);
       const command = normalizeText(params.command);
+      const commandSecurity = assessCommandSecurity(command);
+      if (commandSecurity.level === 'blocked') {
+        return {
+          success: false,
+          error: commandSecurity.reasons[0] || 'command blocked by security policy',
+          data: {
+            blockedCommand: command,
+            security: commandSecurity,
+          },
+        };
+      }
+
       if (FORM_LOOKUP_HINT_REGEX.test(instruction) && FORM_FILE_SEARCH_COMMAND_REGEX.test(command)) {
         return {
           success: false,
           error: 'This task appears to target form data. Use list_forms/query_form instead of shell file search.',
           data: {
             blockedCommand: command,
+            security: commandSecurity,
             recommendedTools: ['list_forms', 'query_form'],
           },
         };
       }
     }
 
+    let effectiveParams = { ...params };
+    let approvedChangeSet = null;
     if (tool.requiresConfirmation) {
-      const allowed = await this.requestApproval(
+      const approval = await this.requestApproval(
         context.threadId,
         context.turnId,
         tool,
         params,
         context.workspacePath,
       );
-      if (!allowed) {
+      if (!approval?.approved) {
         return {
           success: false,
           error: `user rejected tool execution: ${toolName}`,
         };
       }
+
+      const approvalDecision = applyApprovalDecisionsToToolParams(
+        toolName,
+        params,
+        await buildApprovalChangeSet(toolName, params, context.workspacePath).catch(() => null),
+        approval.fileDecisions,
+      );
+
+      if (!approvalDecision.approved) {
+        return {
+          success: false,
+          error: `all requested file changes were rejected for tool: ${toolName}`,
+        };
+      }
+
+      effectiveParams = approvalDecision.effectiveParams;
+      approvedChangeSet = approvalDecision.approvedChangeSet;
     }
 
-    return tool.execute(params, { workspacePath: context.workspacePath });
+    this.logTurnEvent(context.threadId, context.turnId, `tool request: ${toolName}`, {
+      toolName,
+      params: effectiveParams,
+    });
+    const startedAt = Date.now();
+    const beforeContents = await collectWriteBeforeContents(
+      toolName,
+      effectiveParams,
+      context.workspacePath,
+    ).catch(() => ({}));
+    const result = toolName === 'multi_agent_run'
+      ? await this.runMultiAgentTool(effectiveParams, context)
+      : await tool.execute(effectiveParams, { workspacePath: context.workspacePath });
+    const completedAt = Date.now();
+    const resultText = this.buildToolResultForModel(toolName, result);
+    const executionChangeSet = result.success
+      ? await buildExecutionChangeSet(
+          toolName,
+          effectiveParams,
+          context.workspacePath,
+          beforeContents,
+        ).catch(() => approvedChangeSet)
+      : approvedChangeSet;
+
+    agentExecutionJournalService.recordExecution({
+      threadId: context.threadId,
+      turnId: context.turnId,
+      workspacePath: context.workspacePath,
+      toolName,
+      params: effectiveParams,
+      success: result.success,
+      resultText,
+      changedFiles: executionChangeSet?.files.map(file => file.path) ?? (result.changedFiles ?? []),
+      changeSet: executionChangeSet,
+      rollbackCommand: typeof effectiveParams.rollbackCommand === 'string'
+        ? effectiveParams.rollbackCommand
+        : null,
+      startedAt,
+      completedAt,
+    });
+    this.logTurnEvent(context.threadId, context.turnId, `tool response: ${toolName}`, {
+      success: result.success,
+      changedFiles: executionChangeSet?.files.map(file => file.path) ?? (result.changedFiles ?? []),
+      result: resultText,
+    });
+
+    return result;
   }
 
   private async createInitialMessages(input: AgentChatRunTurnInput): Promise<RuntimeMessage[]> {
     const systemPrompt = await this.loadSystemPrompt();
-    const toolsDescription = this.buildToolsDescription();
+    const toolsDescription = await this.buildToolsDescription(normalizeText(input.workspacePath));
     const workspaceSummary = await this.scanWorkspaceSummary(normalizeText(input.workspacePath));
     const formContextHint = await this.buildFormContextHint(normalizeText(input.instruction));
+
+    return createAgentLoopInitialMessages({
+      systemPrompt,
+      taskMessage: this.buildTaskMessage(input, workspaceSummary, formContextHint),
+      toolDefinitions: await this.buildPromptToolDefinitions(normalizeText(input.workspacePath)),
+    });
 
     return [
       {
@@ -1599,6 +2110,13 @@ export class MainAgentRuntime {
     modelId: string,
     messages: RuntimeMessage[],
   ): Promise<string> {
+    return this.streamFinalAnswer(
+      threadId,
+      turnId,
+      modelId,
+      buildForcedFinalAnswerMessages(messages),
+    );
+
     const finalMessages: RuntimeMessage[] = [
       ...messages,
       {
@@ -1622,6 +2140,64 @@ export class MainAgentRuntime {
       status,
       lastError,
     });
+  }
+
+  private async streamLoopDecisionResponse(
+    runKey: string,
+    executionId: string,
+    threadId: string,
+    turnId: string,
+    modelId: string,
+    messages: RuntimeMessage[],
+    iteration: number,
+  ): Promise<string> {
+    const responseKey = `decision-${iteration}-${randomUUID()}`;
+    let output = '';
+    this.logModelMessages(threadId, turnId, `model request: iteration ${iteration}`, messages);
+
+    await new Promise<void>((resolve, reject) => {
+      void builtinAI.streamChat(
+        modelId,
+        messages,
+        (chunk) => {
+          const turn = this.getTurnSummary(threadId, turnId);
+          if (
+            !this.isExecutionCurrent(runKey, executionId)
+            || !turn
+            || turn.status === 'interrupted'
+            || turn.status === 'completed'
+            || turn.status === 'error'
+          ) {
+            return;
+          }
+
+          output += chunk;
+          void this.appendTurnItem(threadId, turnId, {
+            kind: 'content',
+            title: `迭代 ${iteration} 输出`,
+            text: chunk,
+            status: 'running',
+            metadata: this.buildTurnMetadata({
+              streamKind: 'reasoning',
+              streamId: responseKey,
+              responseKey,
+              streamKey: responseKey,
+              iteration,
+            }),
+          });
+        },
+        () => {
+          resolve();
+        },
+        (error) => {
+          reject(error);
+        },
+      );
+    });
+
+    this.ensureExecutionActive(runKey, executionId, threadId, turnId);
+    this.logTurnEvent(threadId, turnId, `model response: iteration ${iteration}`, output.trim());
+    return output.trim();
   }
 
   private async executeTurn(input: AgentChatRunTurnInput): Promise<void> {
@@ -1664,6 +2240,124 @@ export class MainAgentRuntime {
 
       const messages = await this.createInitialMessages(input);
 
+      /*
+      const loopResult = await runAgenticLoop<AgentChatTurnItemMetadata>({
+        initialMessages: messages,
+        checkpoint: executionState.checkpoint
+          ? {
+              messages: cloneRuntimeMessages(executionState.checkpoint.messages),
+              nextIteration,
+            }
+          : null,
+        maxIterations,
+        maxFinalAnswerChars: MAX_FINAL_MESSAGE_CHARS,
+        callModel: async (loopMessages) => {
+          this.ensureExecutionActive(runKey, executionId, threadId, turnId);
+          return builtinAI.chat(modelId, loopMessages);
+        },
+        executeTool: async (toolName, params) => this.executeTool(toolName, params, {
+          threadId,
+          turnId,
+          instruction,
+          workspacePath,
+          modelId,
+        }),
+        formatToolResult: (toolName, result) => this.buildToolResultForModel(toolName, result),
+        generateFinalAnswer: async (loopMessages) => this.generateRecoveredFinalAnswer(
+          runKey,
+          executionId,
+          threadId,
+          turnId,
+          modelId,
+          loopMessages,
+          randomUUID(),
+        ),
+        callbacks: {
+          assertCanContinue: () => {
+            this.ensureExecutionActive(runKey, executionId, threadId, turnId);
+          },
+          onCheckpoint: (checkpoint) => {
+            this.setCheckpoint(runKey, checkpoint.messages, checkpoint.nextIteration);
+          },
+          onIterationStart: async (iteration) => {
+            await this.appendTurnItem(threadId, turnId, {
+              kind: 'step',
+              title: `杩唬 ${iteration}`,
+              status: 'running',
+              metadata: this.buildTurnMetadata({
+                streamKind: 'progress',
+                streamId: `progress-${iteration}`,
+                iteration,
+              }),
+            });
+          },
+          onThinking: async (decision, iteration) => {
+            await this.appendTurnItem(threadId, turnId, {
+              kind: 'thinking',
+              title: `杩唬 ${iteration} 鎬濊矾`,
+              text: decision.thinking,
+              status: 'info',
+              metadata: this.buildTurnMetadata({
+                streamKind: 'reasoning',
+                streamId: `reasoning-${iteration}`,
+                iteration,
+              }),
+            });
+          },
+          onToolCall: async (toolCall) => {
+            const toolCallMetadata = this.createToolCallMetadata(toolCall.toolName, toolCall.iteration);
+            await this.appendTurnItem(threadId, turnId, {
+              kind: 'tool_call',
+              title: toolCall.toolName,
+              text: safeJsonStringify(toolCall.parameters),
+              status: 'running',
+              metadata: toolCallMetadata,
+            });
+            return toolCallMetadata;
+          },
+          onToolResult: async ({ toolCall, result, formattedResult, toolCallContext }) => {
+            const toolCallMetadata = toolCallContext ?? this.createToolCallMetadata(
+              toolCall.toolName,
+              toolCall.iteration,
+            );
+
+            await this.appendTurnItem(threadId, turnId, {
+              kind: result.success ? 'tool_result' : 'error',
+              title: toolCall.toolName,
+              text: formattedResult,
+              status: result.success ? 'completed' : 'failed',
+              metadata: this.buildTurnMetadata({
+                streamKind: result.success ? 'tool_result' : 'error',
+                streamId: toolCallMetadata.streamId,
+                toolCallId: toolCallMetadata.toolCallId,
+                toolName: toolCall.toolName,
+                iteration: toolCall.iteration,
+                success: result.success,
+              }),
+            });
+          },
+          onFinalAnswer: async ({ text }) => {
+            await this.appendRecoveredFinalContent(
+              runKey,
+              executionId,
+              threadId,
+              turnId,
+              text,
+              randomUUID(),
+            );
+          },
+        },
+      });
+
+      if (!loopResult.finalOutput) {
+        throw new Error('agent did not produce a final answer');
+      }
+
+      await this.completeTurn(threadId, turnId, 'completed', null);
+      this.executionStates.delete(runKey);
+      return;
+
+      */
       let finalOutput = '';
 
       for (let index = 0; index < maxIterations; index += 1) {
@@ -1749,6 +2443,7 @@ export class MainAgentRuntime {
           turnId,
           instruction,
           workspacePath,
+          modelId,
         });
         this.ensureTurnRunnable(threadId, turnId);
 
@@ -1841,6 +2536,7 @@ export class MainAgentRuntime {
     responseKey: string,
   ): Promise<string> {
     let output = '';
+    this.logModelMessages(threadId, turnId, 'model request: final answer', messages);
 
     await new Promise<void>((resolve, reject) => {
       void builtinAI.streamChat(
@@ -1882,6 +2578,7 @@ export class MainAgentRuntime {
     });
 
     this.ensureExecutionActive(runKey, executionId, threadId, turnId);
+    this.logTurnEvent(threadId, turnId, 'model response: final answer', output.trim());
     return truncateText(output.trim(), MAX_FINAL_MESSAGE_CHARS);
   }
 
@@ -1894,6 +2591,16 @@ export class MainAgentRuntime {
     messages: RuntimeMessage[],
     responseKey: string,
   ): Promise<string> {
+    return this.streamRecoveredFinalAnswer(
+      runKey,
+      executionId,
+      threadId,
+      turnId,
+      modelId,
+      buildForcedFinalAnswerMessages(messages),
+      responseKey,
+    );
+
     const finalMessages: RuntimeMessage[] = [
       ...messages,
       {
@@ -1911,6 +2618,276 @@ export class MainAgentRuntime {
       finalMessages,
       responseKey,
     );
+  }
+
+  private async runAgenticExecutionLoop(runKey: string, isResumed = false): Promise<void> {
+    const executionState = this.executionStates.get(runKey);
+    if (!executionState) {
+      throw new TurnInterruptedError();
+    }
+
+    const { input } = executionState;
+    const executionId = executionState.executionId;
+    const threadId = normalizeText(input.threadId);
+    const turnId = normalizeText(input.turnId);
+    const instruction = normalizeText(input.instruction);
+    const workspacePath = normalizeText(input.workspacePath);
+    const modelId = normalizeText(input.modelId);
+    const maxIterations = Math.max(1, Math.min(12, toPositiveInteger(input.maxIterations, DEFAULT_MAX_ITERATIONS)));
+    const maxModelCalls = Math.max(
+      1,
+      Math.min(MAX_MODEL_CALLS_LIMIT, toPositiveInteger(input.maxModelCalls, maxIterations + 1)),
+    );
+
+    try {
+      if (!threadId || !turnId || !instruction || !workspacePath || !modelId) {
+        throw new Error('threadId, turnId, instruction, workspacePath, modelId are required');
+      }
+      if (!fs.existsSync(workspacePath)) {
+        throw new Error('workspace path does not exist');
+      }
+
+      agentChatRuntime.updateTurn({
+        threadId,
+        turnId,
+        status: 'running',
+        modelId,
+        lastError: null,
+      });
+      this.ensureExecutionActive(runKey, executionId, threadId, turnId);
+
+      if (!this.hasTurnItem(threadId, turnId, 'task')) {
+        await this.appendTurnItems(threadId, turnId, [
+          {
+            kind: 'task',
+            title: 'Agent 任务',
+            text: instruction,
+            status: 'running',
+            metadata: this.buildTurnMetadata({
+              streamKind: 'task',
+              runtime: 'main',
+              maxIterations,
+              maxModelCalls,
+            }),
+          },
+        ]);
+      }
+
+      const initialMessages = executionState.checkpoint
+        ? cloneRuntimeMessages(executionState.checkpoint.messages)
+        : await this.createInitialMessages(input);
+      this.ensureExecutionActive(runKey, executionId, threadId, turnId);
+      this.logTurnEvent(threadId, turnId, isResumed ? 'run resumed' : 'run started', {
+        workspacePath,
+        modelId,
+        maxIterations,
+        maxModelCalls,
+      });
+      this.logModelMessages(threadId, turnId, 'initial messages', initialMessages);
+
+      const nextIteration = executionState.checkpoint?.nextIteration ?? 1;
+      if (isResumed) {
+        const resumeText = nextIteration > maxIterations
+          ? '继续生成最终答复。'
+          : `从迭代 ${nextIteration} 继续执行。`;
+        this.ensureExecutionActive(runKey, executionId, threadId, turnId);
+        await this.appendTurnItem(threadId, turnId, {
+          kind: 'step',
+          title: '恢复执行',
+          text: resumeText,
+          status: 'info',
+          metadata: this.buildTurnMetadata({
+            streamKind: 'progress',
+            streamId: `progress-resume-${nextIteration}`,
+            resumed: true,
+            nextIteration,
+          }),
+        });
+      }
+
+      const loopResult = await runAgenticLoop<AgentChatTurnItemMetadata>({
+        initialMessages,
+        checkpoint: executionState.checkpoint
+          ? {
+              messages: cloneRuntimeMessages(executionState.checkpoint.messages),
+              nextIteration,
+              modelCallsUsed: executionState.checkpoint.modelCallsUsed,
+            }
+          : null,
+        maxIterations,
+        maxModelCalls,
+        maxFinalAnswerChars: MAX_FINAL_MESSAGE_CHARS,
+        historyCompression: {
+          maxMessageCount: 24,
+          maxContextChars: 32000,
+          preserveLastRounds: 10,
+          maxSummaryChars: 4000,
+        },
+        callModel: async (loopMessages, iteration) => {
+          this.ensureExecutionActive(runKey, executionId, threadId, turnId);
+          return this.streamLoopDecisionResponse(
+            runKey,
+            executionId,
+            threadId,
+            turnId,
+            modelId,
+            loopMessages,
+            iteration,
+          );
+        },
+        executeTool: async (toolName, params) => this.executeTool(toolName, params, {
+          threadId,
+          turnId,
+          instruction,
+          workspacePath,
+          modelId,
+        }),
+        formatToolResult: (toolName, result) => this.buildToolResultForModel(toolName, result),
+        generateFinalAnswer: async (loopMessages) => this.generateRecoveredFinalAnswer(
+          runKey,
+          executionId,
+          threadId,
+          turnId,
+          modelId,
+          loopMessages,
+          randomUUID(),
+        ),
+        callbacks: {
+          assertCanContinue: () => {
+            this.ensureExecutionActive(runKey, executionId, threadId, turnId);
+          },
+          onCheckpoint: (checkpoint) => {
+            this.setCheckpoint(
+              runKey,
+              checkpoint.messages,
+              checkpoint.nextIteration,
+              checkpoint.modelCallsUsed ?? 0,
+            );
+          },
+          onHistoryCompacted: async (event) => {
+            this.logTurnEvent(threadId, turnId, 'history compacted', event);
+            await this.appendTurnItem(threadId, turnId, {
+              kind: 'step',
+              title: '历史压缩',
+              text: `已摘要更早历史，保留最近 10 轮。消息 ${event.originalMessageCount} -> ${event.compactedMessageCount}`,
+              status: 'info',
+              metadata: this.buildTurnMetadata({
+                streamKind: 'progress',
+                streamId: `history-compacted-${event.iteration ?? 'final'}-${Date.now()}`,
+                iteration: event.iteration ?? undefined,
+              }),
+            });
+          },
+          onIterationStart: async (iteration) => {
+            this.logTurnEvent(threadId, turnId, `iteration start: ${iteration}`);
+            await this.appendTurnItem(threadId, turnId, {
+              kind: 'step',
+              title: `迭代 ${iteration}`,
+              status: 'running',
+              metadata: this.buildTurnMetadata({
+                streamKind: 'progress',
+                streamId: `progress-${iteration}`,
+                iteration,
+              }),
+            });
+          },
+          onThinking: async (decision, iteration) => {
+            this.logTurnEvent(threadId, turnId, `thinking: iteration ${iteration}`, decision.thinking);
+            await this.appendTurnItem(threadId, turnId, {
+              kind: 'thinking',
+              title: `迭代 ${iteration} 思路`,
+              text: decision.thinking,
+              status: 'info',
+              metadata: this.buildTurnMetadata({
+                streamKind: 'reasoning',
+                streamId: `reasoning-${iteration}`,
+                iteration,
+              }),
+            });
+          },
+          onToolCall: async (toolCall) => {
+            this.logTurnEvent(threadId, turnId, `tool planned: ${toolCall.toolName}`, {
+              iteration: toolCall.iteration,
+              params: toolCall.parameters,
+            });
+            const toolCallMetadata = this.createToolCallMetadata(toolCall.toolName, toolCall.iteration);
+            await this.appendTurnItem(threadId, turnId, {
+              kind: 'tool_call',
+              title: toolCall.toolName,
+              text: safeJsonStringify(toolCall.parameters),
+              status: 'running',
+              metadata: toolCallMetadata,
+            });
+            return toolCallMetadata;
+          },
+          onToolResult: async ({ toolCall, result, formattedResult, toolCallContext }) => {
+            this.logTurnEvent(threadId, turnId, `tool completed: ${toolCall.toolName}`, {
+              iteration: toolCall.iteration,
+              success: result.success,
+              formattedResult,
+            });
+            const toolCallMetadata = toolCallContext ?? this.createToolCallMetadata(
+              toolCall.toolName,
+              toolCall.iteration,
+            );
+            await this.appendTurnItem(threadId, turnId, {
+              kind: result.success ? 'tool_result' : 'error',
+              title: toolCall.toolName,
+              text: formattedResult,
+              status: result.success ? 'completed' : 'failed',
+              metadata: this.buildTurnMetadata({
+                streamKind: result.success ? 'tool_result' : 'error',
+                streamId: toolCallMetadata.streamId,
+                toolCallId: toolCallMetadata.toolCallId,
+                toolName: toolCall.toolName,
+                iteration: toolCall.iteration,
+                success: result.success,
+              }),
+            });
+          },
+          onFinalAnswer: async ({ text }) => {
+            this.logTurnEvent(threadId, turnId, 'final answer emitted', text);
+            await this.appendRecoveredFinalContent(
+              runKey,
+              executionId,
+              threadId,
+              turnId,
+              text,
+              randomUUID(),
+            );
+          },
+        },
+      });
+
+      if (!loopResult.finalOutput) {
+        throw new Error('agent did not produce a final answer');
+      }
+
+      this.logTurnEvent(threadId, turnId, 'run completed', {
+        terminationReason: loopResult.terminationReason,
+        iterationsCompleted: loopResult.iterationsCompleted,
+        finalOutput: loopResult.finalOutput,
+      });
+      await this.completeTurn(threadId, turnId, 'completed', null);
+      this.executionStates.delete(runKey);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!(error instanceof TurnInterruptedError)) {
+        this.logTurnEvent(threadId, turnId, 'run failed', { error: message });
+        await this.appendTurnItem(threadId, turnId, {
+          kind: 'error',
+          title: 'Agent 运行错误',
+          text: message,
+          status: 'failed',
+          metadata: this.buildTurnMetadata({
+            streamKind: 'error',
+            streamId: randomUUID(),
+          }),
+        });
+        await this.completeTurn(threadId, turnId, 'error', message);
+        this.executionStates.delete(runKey);
+      }
+    }
   }
 
   private async runExecutionLoop(runKey: string, isResumed = false): Promise<void> {
@@ -2074,6 +3051,7 @@ export class MainAgentRuntime {
           turnId,
           instruction,
           workspacePath,
+          modelId,
         });
         this.ensureExecutionActive(runKey, executionId, threadId, turnId);
 

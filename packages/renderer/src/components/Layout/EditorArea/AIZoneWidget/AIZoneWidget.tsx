@@ -2101,6 +2101,7 @@ export class AIZoneWidget {
    * 显示 Zone Widget
    */
   public show(lineNumber?: number, selectedText?: string): void {
+    this.setAiZoneEditorClass(true);
     console.log('[AIZoneWidget] ========== show 方法被调用 ==========');
     console.log('[AIZoneWidget] lineNumber:', lineNumber, 'selectedText:', selectedText);
     
@@ -2512,6 +2513,7 @@ export class AIZoneWidget {
    * 隐藏 Zone Widget
    */
   hide(): void {
+    this.setAiZoneEditorClass(false);
     // 清理 MutationObserver（如果存在）
     if (this.domNode && (this.domNode as any).__topObserver) {
       const observer = (this.domNode as any).__topObserver as MutationObserver;
@@ -2925,9 +2927,9 @@ export class AIZoneWidget {
       }
     }, 100);
 
+    // 设置生成状态
     const preserveResultToolbar = options?.preserveResultToolbar === true;
 
-    // 设置生成状态
     this.isGenerating = true;
     this.isCancelled = false; // 重置取消标志
 
@@ -3391,6 +3393,15 @@ export class AIZoneWidget {
     
     // 返回编辑器根节点（.monaco-editor）
     return editorDomNode;
+  }
+
+  private setAiZoneEditorClass(isActive: boolean): void {
+    const editorElement = this.getMonacoEditorElement();
+    if (!editorElement) {
+      return;
+    }
+
+    editorElement.classList.toggle('ai-zone-active', isActive);
   }
 
   /**
@@ -6472,7 +6483,6 @@ export class AIZoneWidget {
         return action;
       };
 
-      // 图标操作项
       const createIconAction = (iconName: string, title: string, onClick: () => void): HTMLElement => {
         const action = document.createElement('div');
         action.className = 'ai-zone-result-action';
@@ -6482,7 +6492,6 @@ export class AIZoneWidget {
           e.stopPropagation();
           onClick();
         });
-
         const iconContainer = document.createElement('span');
         const iconRoot = createRoot(iconContainer);
         iconRoot.render(
@@ -6493,10 +6502,10 @@ export class AIZoneWidget {
           })
         );
         action.appendChild(iconContainer);
-
         return action;
       };
 
+      // 图标操作项
       // 左侧：关闭 / 接收 / 重新生成
       leftActions.appendChild(createTextAction('关闭', '关闭当前对话', () => {
         this.closeCurrentConversation();
@@ -7212,6 +7221,7 @@ export class AIZoneWidget {
 
     // 先设置 isDisposed 标志，防止 clearAllHighlights 的异步回调重新设置全局监听器
     this.isDisposed = true;
+    this.setAiZoneEditorClass(false);
 
     // 清理全局选择监听器
     const editorId = this.editor.getId().toString();

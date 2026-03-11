@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SnippetsPanel } from './SnippetsPanel';
 import { TimelinePanel } from './TimelinePanel';
-import { TerminalPanel, type TerminalPanelRef, type ShellType } from './TerminalPanel';
+import { TerminalPanel, type TerminalPanelRef } from './TerminalPanel';
 import { ResizeHandle } from '../ResizeHandle';
-import { DropdownMenu } from '../../common/DropdownMenu';
 import './Panel.scss';
 
 import type { LinkCollectionSort } from '../../Links';
@@ -27,7 +26,6 @@ export const Panel: React.FC<PanelProps> = ({
 }) => {
   const [activeView, setActiveView] = useState<PanelView>(initialActiveView);
   const [height, setHeight] = useState(initialHeight);
-  const [shell, setShell] = useState<ShellType>('powershell');
   const [linkQuery, setLinkQuery] = useState('');
   const [linkSortBy, setLinkSortBy] = useState<LinkCollectionSort>('default');
   const [isLinkSearchVisible, setIsLinkSearchVisible] = useState(false);
@@ -50,13 +48,6 @@ export const Panel: React.FC<PanelProps> = ({
   const handleClearTerminal = () => {
     terminalRef.current?.clearTerminal();
   };
-
-  const shellOptions = [
-    { value: 'powershell', label: 'PowerShell' },
-    { value: 'cmd', label: 'CMD' },
-    { value: 'bash', label: 'Bash' },
-    { value: 'git-bash', label: 'Git Bash' }
-  ];
 
   return (
     <div
@@ -97,12 +88,6 @@ export const Panel: React.FC<PanelProps> = ({
         <div className="panel-container-actions">
           {activeView === 'terminal' && (
             <>
-              <DropdownMenu
-                value={shell}
-                onChange={(value) => setShell(value as ShellType)}
-                items={shellOptions}
-                className="panel-shell-selector"
-              />
               <button
                 className="panel-container-action-btn"
                 onClick={handleNewTerminal}
@@ -156,8 +141,6 @@ export const Panel: React.FC<PanelProps> = ({
             onRefChange={(ref) => {
               terminalRef.current = ref;
             }}
-            shell={shell}
-            onShellChange={setShell}
           />
         </div>
       </div>

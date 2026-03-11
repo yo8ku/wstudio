@@ -658,7 +658,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
               position: 'relative',
               display: 'flex',
               flexDirection: 'column',
-              borderRight: '1px solid var(--ws-panel-border)',
+              borderRight: '1px solid var(--ws-border-background)',
               order: (() => {
                 // AI Chat 在左侧时，编辑器在右边
                 if (aiChatPanelPosition === 'left') return 2;

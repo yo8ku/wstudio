@@ -70,6 +70,11 @@ export interface EditorTab {
       enabled: boolean;
     }>;
   };
+  agentDiffPreview?: {
+    beforeContent: string;
+    afterContent: string;
+    updatedAt: number;
+  };
 }
 
 interface EditorAreaProps {
@@ -103,6 +108,7 @@ interface ReplaceActiveTabContentDetail {
   path?: string;
   name?: string;
   markDirty?: boolean;
+  agentDiffPreview?: EditorTab['agentDiffPreview'];
 }
 
 interface UpdateActiveTabTitleDetail {
@@ -227,6 +233,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const rightTabsRef = useRef<EditorTab[]>([]);
   const leftBottomTabsRef = useRef<EditorTab[]>([]);
   const rightBottomTabsRef = useRef<EditorTab[]>([]);
+  const composingTabIdsRef = useRef<Set<string>>(new Set());
   const tabActivationHistoryRef = useRef<string[]>([]);
   const rightTabActivationHistoryRef = useRef<string[]>([]);
   const leftBottomTabActivationHistoryRef = useRef<string[]>([]);
@@ -526,6 +533,80 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
     setRightBottomTabs(updater);
   }, []);
+
+  const getAllPaneTabsSnapshot = useCallback((): EditorTab[] => {
+    return [
+      ...tabsRef.current,
+      ...leftBottomTabsRef.current,
+      ...rightTabsRef.current,
+      ...rightBottomTabsRef.current,
+    ];
+  }, []);
+
+  const findTabInAllPaneRefs = useCallback((tabId: string): EditorTab | null => {
+    return getAllPaneTabsSnapshot().find(tab => tab.id === tabId) || null;
+  }, [getAllPaneTabsSnapshot]);
+
+  const updateFileTabContent = useCallback((
+    tabId: string,
+    content: string,
+    options?: { clearAgentDiffPreview?: boolean }
+  ) => {
+    const sourceTab = findTabInAllPaneRefs(tabId);
+    if (!sourceTab || sourceTab.type !== 'file') {
+      return;
+    }
+
+    const shouldSyncLinkedTabs = !composingTabIdsRef.current.has(tabId);
+    const syncPath = sourceTab.path;
+
+    const shouldUpdate = (tab: EditorTab): boolean => {
+      if (tab.id === tabId) {
+        return true;
+      }
+      return shouldSyncLinkedTabs && tab.type === 'file' && tab.path === syncPath;
+    };
+
+    const buildNextTab = (tab: EditorTab): EditorTab => {
+      const nextTab: EditorTab = {
+        ...tab,
+        content,
+        isDirty: true,
+        isPreview: false,
+      };
+
+      if (options?.clearAgentDiffPreview) {
+        nextTab.agentDiffPreview = undefined;
+      }
+
+      return nextTab;
+    };
+
+    setTabs(prev => prev.map(tab => shouldUpdate(tab) ? buildNextTab(tab) : tab));
+    setLeftBottomTabs(prev => prev.map(tab => shouldUpdate(tab) ? buildNextTab(tab) : tab));
+    setRightTabs(prev => prev.map(tab => shouldUpdate(tab) ? buildNextTab(tab) : tab));
+    setRightBottomTabs(prev => prev.map(tab => shouldUpdate(tab) ? buildNextTab(tab) : tab));
+  }, [findTabInAllPaneRefs]);
+
+  const handleFileTabCompositionStateChange = useCallback((
+    tabId: string,
+    isComposing: boolean,
+    content: string | undefined,
+    options?: { clearAgentDiffPreview?: boolean }
+  ) => {
+    if (isComposing) {
+      composingTabIdsRef.current.add(tabId);
+      return;
+    }
+
+    composingTabIdsRef.current.delete(tabId);
+
+    if (typeof content !== 'string') {
+      return;
+    }
+
+    updateFileTabContent(tabId, content, options);
+  }, [updateFileTabContent]);
 
   const getPaneHistoryRef = useCallback((paneId: EditorPaneId) => {
     if (paneId === 'left-top') {
@@ -1151,6 +1232,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             path: tab.path || targetPath || tab.path,
             content: detail.content,
             isDirty: markDirty,
+            agentDiffPreview: detail.agentDiffPreview,
           };
         });
 
@@ -1208,6 +1290,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           content: detail.content,
           type: 'file',
           isPreview: false,
+          agentDiffPreview: detail.agentDiffPreview,
         };
         setTabs(prev => [...prev, createdTab]);
         setTimeout(() => setActiveTabId(createdTab.id), 0);
@@ -3599,6 +3682,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             <TabBar
               tabs={tabs}
               activeTabId={activeTabId}
+              editorType={editorType}
               onTabClick={handleTabClick}
               onTabClose={handleTabClose}
               dragGroupId="left-top"
@@ -3739,12 +3823,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       file={tab}
                       onContentChange={(content) => {
                         console.log('[EditorArea] Monaco content change, hasNewlines:', content.includes('\n'));
-                        updateTabInAllPanes(tab.id, current => ({
-                          ...current,
-                          content,
-                          isDirty: true,
-                          isPreview: false
-                        }));
+                        updateFileTabContent(tab.id, content);
 
                         // 濡傛灉鏄綋鍓嶆椿鍔ㄦ爣绛鹃〉锛岃Е鍙戝ぇ绾叉洿鏂颁簨浠?
                         if (tab.id === activeTabId) {
@@ -3756,6 +3835,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                             }
                           }));
                         }
+                      }}
+                      onCompositionStateChange={(isComposing, content) => {
+                        handleFileTabCompositionStateChange(tab.id, isComposing, content);
                       }}
                     />
                   )}
@@ -3816,6 +3898,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   <TabBar
                     tabs={leftBottomTabs}
                     activeTabId={leftBottomActiveTabId}
+                    editorType={editorType}
                     onTabClick={handleLeftBottomTabClick}
                     onTabClose={handleLeftBottomTabClose}
                     dragGroupId="left-bottom"
@@ -3861,12 +3944,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                           <EditorGroup
                             file={tab}
                             onContentChange={(content) => {
-                              updateTabInAllPanes(tab.id, current => ({
-                                ...current,
-                                content,
-                                isDirty: true,
-                                isPreview: false
-                              }));
+                              updateFileTabContent(tab.id, content);
+                            }}
+                            onCompositionStateChange={(isComposing, content) => {
+                              handleFileTabCompositionStateChange(tab.id, isComposing, content);
                             }}
                           />
                         )}
@@ -3944,6 +4025,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   <TabBar
                     tabs={[extraTab]}
                     activeTabId={extraTab.id}
+                    editorType={editorType}
                     onTabClick={() => handleExtraRightPaneTabClick(sourceLocated.paneId, sourceTab.id)}
                     onTabClose={() => closeExtraRightSplitPane(pane.id)}
                     onSplitToDirection={(_, direction) => handleExtraRightPaneSplitToDirection(sourceTab.id, direction)}
@@ -3962,12 +4044,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       <EditorGroup
                         file={extraTab}
                         onContentChange={(content) => {
-                          updateTabInAllPanes(sourceTab.id, current => ({
-                            ...current,
-                            content,
-                            isDirty: true,
-                            isPreview: false
-                          }));
+                          updateFileTabContent(sourceTab.id, content, { clearAgentDiffPreview: true });
+                        }}
+                        onCompositionStateChange={(isComposing, content) => {
+                          handleFileTabCompositionStateChange(sourceTab.id, isComposing, content, { clearAgentDiffPreview: true });
                         }}
                       />
                     ) : (
@@ -4023,6 +4103,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               <TabBar
                 tabs={rightTabs}
                 activeTabId={rightActiveTabId}
+                editorType={editorType}
                 onTabClick={handleRightTabClick}
                 onTabClose={handleRightTabClose}
                 dragGroupId="right-top"
@@ -4141,12 +4222,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       <EditorGroup
                         file={tab}
                         onContentChange={(content) => {
-                          updateTabInAllPanes(tab.id, current => ({
-                            ...current,
-                            content,
-                            isDirty: true,
-                            isPreview: false
-                          }));
+                          updateFileTabContent(tab.id, content, { clearAgentDiffPreview: true });
+                        }}
+                        onCompositionStateChange={(isComposing, content) => {
+                          handleFileTabCompositionStateChange(tab.id, isComposing, content, { clearAgentDiffPreview: true });
                         }}
                       />
                     )}
@@ -4175,6 +4254,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     <TabBar
                       tabs={rightBottomTabs}
                       activeTabId={rightBottomActiveTabId}
+                      editorType={editorType}
                       onTabClick={handleRightBottomTabClick}
                       onTabClose={handleRightBottomTabClose}
                       dragGroupId="right-bottom"
@@ -4220,12 +4300,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                             <EditorGroup
                               file={tab}
                               onContentChange={(content) => {
-                                updateTabInAllPanes(tab.id, current => ({
-                                  ...current,
-                                  content,
-                                  isDirty: true,
-                                  isPreview: false
-                                }));
+                                updateFileTabContent(tab.id, content, { clearAgentDiffPreview: true });
+                              }}
+                              onCompositionStateChange={(isComposing, content) => {
+                                handleFileTabCompositionStateChange(tab.id, isComposing, content, { clearAgentDiffPreview: true });
                               }}
                             />
                           )}
@@ -4242,7 +4320,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                                   ...current,
                                   content: markdownContent,
                                   isDirty: true,
-                                  isPreview: false
+                                  isPreview: false,
+                                  agentDiffPreview: undefined,
                                 }));
                               }}
                               editable={true}

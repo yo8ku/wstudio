@@ -42,7 +42,7 @@ export class TerminalSession {
       cursorStyle: 'block',
       fontSize: 14,
       theme: {
-        background: '#1e1e1e',
+        background: '#00000000',
         foreground: '#cccccc',
         cursor: '#ffffff',
         black: '#000000',
@@ -68,7 +68,7 @@ export class TerminalSession {
       // 启用右键粘贴
       rightClickSelectsWord: false,
       // 允许写入剪贴板
-      allowTransparency: false,
+      allowTransparency: true,
     });
 
     // 加载插件

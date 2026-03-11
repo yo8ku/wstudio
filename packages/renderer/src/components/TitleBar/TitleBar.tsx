@@ -298,6 +298,14 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     <div className={`titlebar${!isWindowActive ? ' inactive' : ''}`}>
       <div className="titlebar-drag-region">
         <div className="titlebar-icon">
+          <div
+            className="titlebar-sidebar-toggle"
+            onClick={onToggleSidebar}
+            title="Toggle sidebar"
+            aria-label="Toggle sidebar"
+          >
+            <Icon iconSet="ui" name="panel-left" size={18} />
+          </div>
             {/* 隐藏侧边活动栏图标*/}
         </div>
         

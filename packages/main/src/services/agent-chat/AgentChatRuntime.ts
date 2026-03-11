@@ -10,6 +10,7 @@ import type {
   AgentChatConversationItem,
   AgentChatConversationItemInput,
   AgentChatCreateApprovalRequestInput,
+  AgentChatChangeSet,
   AgentChatCreateUserInputRequestInput,
   AgentChatEvent,
   AgentChatGetThreadInput,
@@ -20,7 +21,6 @@ import type {
   AgentChatServerRequest,
   AgentChatStartThreadInput,
   AgentChatStartTurnInput,
-  AgentChatSyncLegacySessionInput,
   AgentChatThreadSnapshot,
   AgentChatThreadSource,
   AgentChatThreadSummary,
@@ -82,6 +82,55 @@ function cloneStringRecord(record: Record<string, string> | null | undefined): R
   }
 
   return Object.keys(cloned).length > 0 ? cloned : undefined;
+}
+
+function cloneDecisionRecord(
+  record: Record<string, 'approved' | 'rejected'> | null | undefined,
+): Record<string, 'approved' | 'rejected'> | undefined {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return undefined;
+  }
+
+  const cloned: Record<string, 'approved' | 'rejected'> = {};
+  for (const [key, value] of Object.entries(record)) {
+    const normalizedKey = sanitizeText(key);
+    if (!normalizedKey || (value !== 'approved' && value !== 'rejected')) {
+      continue;
+    }
+    cloned[normalizedKey] = value;
+  }
+
+  return Object.keys(cloned).length > 0 ? cloned : undefined;
+}
+
+function sanitizeBooleanRecord(
+  record: Record<string, boolean> | null | undefined,
+): Record<string, 'approved' | 'rejected'> | undefined {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return undefined;
+  }
+
+  const cloned: Record<string, 'approved' | 'rejected'> = {};
+  for (const [key, value] of Object.entries(record)) {
+    const normalizedKey = sanitizeText(key);
+    if (!normalizedKey || typeof value !== 'boolean') {
+      continue;
+    }
+    cloned[normalizedKey] = value ? 'approved' : 'rejected';
+  }
+
+  return Object.keys(cloned).length > 0 ? cloned : undefined;
+}
+
+function cloneChangeSet(changeSet: AgentChatChangeSet | null | undefined): AgentChatChangeSet | null | undefined {
+  if (!changeSet) {
+    return changeSet;
+  }
+
+  return {
+    ...changeSet,
+    files: changeSet.files.map(file => ({ ...file })),
+  };
 }
 
 function normalizeTurnStatus(value: AgentChatTurnStatus | null | undefined): AgentChatTurnStatus {
@@ -164,7 +213,13 @@ function cloneServerRequest(request: AgentChatServerRequest): AgentChatServerReq
       ...request,
       params: request.params ? { ...request.params } : undefined,
       changedFiles: request.changedFiles ? [...request.changedFiles] : undefined,
-      response: request.response ? { ...request.response } : undefined,
+      changeSet: cloneChangeSet(request.changeSet) ?? null,
+      response: request.response
+        ? {
+            ...request.response,
+            fileDecisions: cloneDecisionRecord(request.response.fileDecisions),
+          }
+        : undefined,
     };
   }
 
@@ -272,7 +327,7 @@ export class AgentChatRuntime {
     const threadId = randomUUID();
     const now = Date.now();
     const externalSessionId = sanitizeText(input?.externalSessionId ?? undefined) || null;
-    const source: AgentChatThreadSource = input?.source === 'legacy' ? 'legacy' : 'native';
+    const source: AgentChatThreadSource = 'native';
 
     const summary: AgentChatThreadSummary = {
       id: threadId,
@@ -317,63 +372,6 @@ export class AgentChatRuntime {
     return createEmptyThreadSnapshot(summary);
   }
 
-  syncLegacySession(input: AgentChatSyncLegacySessionInput): AgentChatThreadSnapshot {
-    const externalSessionId = sanitizeText(input.externalSessionId);
-    if (!externalSessionId) {
-      throw new Error('externalSessionId is required');
-    }
-
-    const requestedThreadId = sanitizeText(input.threadId);
-    let record = requestedThreadId
-      ? this.threads.get(requestedThreadId) ?? null
-      : null;
-
-    if (!record) {
-      const mappedThreadId = this.threadIdsByExternalSessionId.get(externalSessionId);
-      if (mappedThreadId) {
-        record = this.threads.get(mappedThreadId) ?? null;
-      }
-    }
-
-    if (!record) {
-      return this.createLegacyThreadFromSyncInput(input);
-    }
-
-    const hasMetadataChanged = this.updateRecordSummaryFromSyncInput(record, input);
-    const hasItemsChanged = Array.isArray(input.items);
-
-    if (hasItemsChanged) {
-      record.items = this.normalizeInputItems(record.summary.id, input.items || []);
-      record.summary.itemCount = record.items.length;
-      record.summary.previewText = createPreviewText(record.items);
-    }
-
-    record.summary.updatedAt = Date.now();
-    this.threadIdsByExternalSessionId.set(externalSessionId, record.summary.id);
-
-    if (hasMetadataChanged || hasItemsChanged) {
-      this.emit({
-        method: 'thread/updated',
-        params: {
-          summary: cloneSummary(record.summary),
-        },
-      });
-    }
-
-    if (hasItemsChanged) {
-      this.emit({
-        method: 'thread/items/replaced',
-        params: {
-          threadId: record.summary.id,
-          itemCount: record.summary.itemCount,
-          previewText: record.summary.previewText,
-        },
-      });
-    }
-
-    return this.createSnapshotFromRecord(record);
-  }
-
   startTurn(input: AgentChatStartTurnInput): AgentChatTurnSummary {
     const threadId = sanitizeText(input.threadId);
     if (!threadId) {
@@ -397,9 +395,7 @@ export class AgentChatRuntime {
       const nextStatus = typeof input.status === 'string'
         ? normalizeTurnStatus(input.status)
         : existingTurn.status;
-      const nextSource = input.source === 'native' || input.source === 'legacy'
-        ? input.source
-        : existingTurn.source;
+      const nextSource: AgentChatThreadSource = 'native';
 
       existingTurn.title = nextTitle;
       existingTurn.externalTaskId = sanitizeText(input.externalTaskId ?? undefined) || existingTurn.externalTaskId;
@@ -435,9 +431,7 @@ export class AgentChatRuntime {
 
     const turnId = requestedTurnId || randomUUID();
     const status = normalizeTurnStatus(input.status);
-    const source = input.source === 'native' || input.source === 'legacy'
-      ? input.source
-      : record.summary.status.source;
+    const source: AgentChatThreadSource = 'native';
     const modelId = sanitizeText(input.modelId ?? undefined) || record.summary.modelId || null;
 
     const turn: AgentChatTurnSummary = {
@@ -604,6 +598,7 @@ export class AgentChatRuntime {
       params: input.params ? { ...input.params } : undefined,
       command: sanitizeText(input.command ?? undefined) || null,
       changedFiles: sanitizeStringList(input.changedFiles),
+      changeSet: cloneChangeSet(input.changeSet) ?? null,
       createdAt: Date.now(),
       resolvedAt: null,
       status: 'pending',
@@ -721,6 +716,7 @@ export class AgentChatRuntime {
       request.response = {
         approved: input.approved === true,
         feedback,
+        fileDecisions: sanitizeBooleanRecord(input.fileDecisions),
       };
     } else {
       const answers = cloneStringRecord(input.answers) ?? {};
@@ -892,71 +888,6 @@ export class AgentChatRuntime {
     });
 
     return cloneTurnSummary(turn);
-  }
-
-  private createLegacyThreadFromSyncInput(input: AgentChatSyncLegacySessionInput): AgentChatThreadSnapshot {
-    const snapshot = this.startThread({
-      title: input.title,
-      workspacePath: input.workspacePath,
-      externalSessionId: input.externalSessionId,
-      modelId: input.modelId,
-      source: 'legacy',
-    });
-
-    if (!Array.isArray(input.items) || input.items.length === 0) {
-      return snapshot;
-    }
-
-    const record = this.threads.get(snapshot.summary.id);
-    if (!record) {
-      return snapshot;
-    }
-
-    record.items = this.normalizeInputItems(record.summary.id, input.items);
-    record.summary.itemCount = record.items.length;
-    record.summary.previewText = createPreviewText(record.items);
-    record.summary.updatedAt = Date.now();
-
-    this.emit({
-      method: 'thread/updated',
-      params: {
-        summary: cloneSummary(record.summary),
-      },
-    });
-    this.emit({
-      method: 'thread/items/replaced',
-      params: {
-        threadId: record.summary.id,
-        itemCount: record.summary.itemCount,
-        previewText: record.summary.previewText,
-      },
-    });
-
-    return this.createSnapshotFromRecord(record);
-  }
-
-  private updateRecordSummaryFromSyncInput(
-    record: AgentChatThreadRecord,
-    input: AgentChatSyncLegacySessionInput
-  ): boolean {
-    const nextTitle = sanitizeText(input.title) || record.summary.title || DEFAULT_THREAD_TITLE;
-    const nextWorkspacePath = sanitizeText(input.workspacePath) || record.summary.workspacePath;
-    const nextModelId = sanitizeText(input.modelId ?? undefined) || record.summary.modelId || null;
-    const nextExternalSessionId = sanitizeText(input.externalSessionId) || record.summary.externalSessionId;
-
-    const hasChanged = nextTitle !== record.summary.title
-      || nextWorkspacePath !== record.summary.workspacePath
-      || nextModelId !== record.summary.modelId
-      || nextExternalSessionId !== record.summary.externalSessionId
-      || record.summary.status.source !== 'legacy';
-
-    record.summary.title = nextTitle;
-    record.summary.workspacePath = nextWorkspacePath;
-    record.summary.modelId = nextModelId;
-    record.summary.externalSessionId = nextExternalSessionId;
-    record.summary.status.source = 'legacy';
-
-    return hasChanged;
   }
 
   private normalizeInputItems(

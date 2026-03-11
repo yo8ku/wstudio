@@ -1,0 +1,27 @@
+{
+  "name": "@note-studio/agent",
+  "version": "1.0.0",
+  "description": "Agent tool definitions and workspace tool execution",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/esm/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "npx tsc -p tsconfig.esm.json && npx tsc -p tsconfig.cjs.json",
+    "build:esm": "npx tsc -p tsconfig.esm.json",
+    "build:cjs": "npx tsc -p tsconfig.cjs.json",
+    "dev": "npx tsc -p tsconfig.esm.json --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

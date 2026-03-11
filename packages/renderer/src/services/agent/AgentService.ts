@@ -1,19 +1,19 @@
-/**
- * Legacy-compatible renderer agent service that preserves the old AI panel API
- * while delegating actual execution to the main-process agent chat runtime.
+﻿/**
+ * Renderer agent service that preserves the existing AI panel callback API
+ * while delegating execution to the high-level agent runtime module.
  */
 
 import type {
   AgentChatApprovalRequest,
   AgentChatEvent,
-  AgentChatTurnFrame,
   AgentChatThreadSnapshot,
+  AgentChatTurnFrame,
   AgentChatTurnItem,
   AgentChatTurnSummary,
 } from '@note-studio/shared';
 import { buildAgentChatTurnFrames } from '@note-studio/shared';
 import { getCachedModels } from '../ModelCacheService';
-import { agentChatService } from '../agentChat';
+import { agentRuntimeService } from '../agentRuntime';
 import type {
   AgentExecutionCallbacks,
   AgentExecutionResult,
@@ -30,6 +30,7 @@ interface PendingToolCall {
   toolCallId: string;
   toolName: string;
   params: Record<string, unknown>;
+  originalContent?: string;
 }
 
 interface MemoryEntry {
@@ -62,6 +63,44 @@ const buildThreadTitle = (value: string): string => {
   }
 
   return normalized.length > 48 ? `${normalized.slice(0, 48)}...` : normalized;
+};
+
+const AGENT_CONSOLE_LOG_MAX_CHARS = 2000;
+
+const truncateConsoleText = (value: string, maxLength = AGENT_CONSOLE_LOG_MAX_CHARS): string => {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}\n...[truncated ${value.length - maxLength} chars]`;
+};
+
+const formatConsolePayload = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    return truncateConsoleText(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => formatConsolePayload(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(record).map(([key, item]) => [key, formatConsolePayload(item)])
+    );
+  }
+
+  return value;
+};
+
+const logAgentConsole = (stage: string, payload?: unknown): void => {
+  if (payload === undefined) {
+    console.log(`[AgentService] ${stage}`);
+    return;
+  }
+
+  console.log(`[AgentService] ${stage}`, formatConsolePayload(payload));
 };
 
 const getTurnContentResponseKey = (item: AgentChatTurnItem): string | null => {
@@ -127,11 +166,17 @@ const getMaxIterations = (constraints?: AgentTaskConstraints): number => {
 const isWriteTool = (toolName: string): boolean =>
   toolName === 'write_file'
   || toolName === 'edit_file'
-  || toolName === 'multi_edit_file';
+  || toolName === 'multi_edit_file'
+  || toolName === 'apply_diff'
+  || toolName === 'apply_diff_bundle';
 
 const readFileContent = async (filePath: string): Promise<string> => {
-  const result = await window.electron?.ipcRenderer.invoke('read-file', filePath);
-  return typeof result === 'string' ? result : '';
+  try {
+    const result = await window.electron?.ipcRenderer.invoke('read-file', filePath);
+    return typeof result === 'string' ? result : '';
+  } catch {
+    return '';
+  }
 };
 
 class AgentService {
@@ -206,31 +251,16 @@ class AgentService {
   }
 
   private async resolveThread(task: AgentTask, workspacePath: string): Promise<AgentChatThreadSnapshot> {
-    const externalSessionId = task.context.externalSessionId?.trim() ?? '';
-    if (externalSessionId) {
-      const threads = await agentChatService.listThreads({
-        externalSessionId,
-        limit: 10,
-      });
-      const existing = [...threads].sort((left, right) => right.updatedAt - left.updatedAt)[0];
-      if (existing) {
-        const snapshot = await agentChatService.getThread({ threadId: existing.id });
-        if (snapshot) {
-          return snapshot;
-        }
-      }
-    }
-
-    const snapshot = await agentChatService.startThread({
+    const result = await agentRuntimeService.initialize({
       title: buildThreadTitle(task.description),
       workspacePath,
-      externalSessionId: externalSessionId || null,
+      externalSessionId: task.context.externalSessionId?.trim() || null,
       modelId: this.executionModelId || null,
-      source: 'legacy',
+      source: 'native',
     });
-
+    const snapshot = result?.thread ?? null;
     if (!snapshot) {
-      throw new Error('无法创建 Agent 线程。');
+      throw new Error('failed to initialize agent thread');
     }
 
     return snapshot;
@@ -240,6 +270,7 @@ class AgentService {
     toolName: string,
     params: Record<string, unknown>,
     toolCallId: string,
+    originalContent: string | undefined,
     payload: {
       success: boolean;
       text: string | null;
@@ -262,14 +293,15 @@ class AgentService {
       if (filePath) {
         const newContent = await readFileContent(filePath);
         const changes: AgentFileChange[] = newContent
-          ? [{ filePath, newContent }]
-          : [{ filePath }];
+          ? [{ filePath, oldContent: originalContent, newContent }]
+          : [{ filePath, oldContent: originalContent }];
         return {
           success: true,
           toolCallId,
           data: {
             ...data,
             path: filePath,
+            oldContent: originalContent,
             newContent: newContent || undefined,
           },
           changes,
@@ -308,27 +340,17 @@ class AgentService {
 
     const threadSnapshot = await this.resolveThread(task, workspacePath);
     const threadId = threadSnapshot.summary.id;
-    const turn = await agentChatService.startTurn({
+    let turnId = '';
+    const bufferedEvents: AgentChatEvent[] = [];
+    const taskInstruction = buildInstructionFromTask(task);
+
+    logAgentConsole('thread initialized', {
       threadId,
-      title: buildThreadTitle(task.description),
+      workspacePath,
       modelId: this.executionModelId,
-      source: 'legacy',
+      task: task.description,
+      instruction: taskInstruction,
     });
-
-    if (!turn) {
-      throw new Error('无法创建 Agent 回合。');
-    }
-
-    const turnId = turn.id;
-    this.memoryEntries = [
-      ...this.memoryEntries.slice(-(LEGACY_MEMORY_LIMIT - 1)),
-      {
-        taskId: task.id,
-        threadId,
-        turnId,
-        createdAt: Date.now(),
-      },
-    ];
 
     const pendingToolCalls: PendingToolCall[] = [];
     const fileChanges: AgentFileChange[] = [];
@@ -344,6 +366,11 @@ class AgentService {
       }
 
       settled = true;
+      logAgentConsole('turn failed', {
+        threadId,
+        turnId,
+        error: message,
+      });
       const error = new Error(message);
       callbacks.onError?.(error);
       resolveExecution?.();
@@ -354,7 +381,7 @@ class AgentService {
         return;
       }
 
-      const snapshot = await agentChatService.getThread({ threadId });
+      const snapshot = await agentRuntimeService.getThread({ threadId });
       const finalOutput = snapshot?.turnItems
         ? buildLatestTurnContent(snapshot.turnItems, turnId)
         : streamedOutput.trim();
@@ -365,6 +392,12 @@ class AgentService {
         changes: fileChanges,
         finalWriteContent: finalWriteContent || undefined,
       };
+      logAgentConsole('turn settled', {
+        threadId,
+        turnId,
+        status: summary.status,
+        result: executionResult,
+      });
 
       settled = true;
       if (executionResult.success) {
@@ -381,21 +414,39 @@ class AgentService {
     const handleApprovalRequest = async (request: AgentChatApprovalRequest): Promise<void> => {
       const toolName = request.toolName?.trim() || 'tool';
       const params = request.params ?? {};
+      logAgentConsole('approval requested', {
+        threadId,
+        turnId,
+        toolName,
+        params,
+        description: request.description,
+      });
       const approved = callbacks.onConfirmRequired
         ? await Promise.resolve(callbacks.onConfirmRequired(toolName, params))
         : true;
+      logAgentConsole('approval resolved', {
+        threadId,
+        turnId,
+        toolName,
+        approved,
+      });
 
-      await agentChatService.respondToRequest({
+      await agentRuntimeService.respondToRequest({
         threadId,
         requestId: request.id,
         approved,
-        feedback: approved ? 'legacy-ui-approved' : 'legacy-ui-rejected',
+        feedback: approved ? 'runtime-ui-approved' : 'runtime-ui-rejected',
         nextTurnStatus: approved ? 'running' : 'error',
       });
     };
 
     const handleTurnFrame = async (frame: AgentChatTurnFrame): Promise<void> => {
       callbacks.onTurnFrame?.(frame);
+      logAgentConsole(`turn frame: ${frame.kind}`, {
+        threadId,
+        turnId,
+        frame,
+      });
 
       if (frame.kind === 'reasoning_delta' && frame.text) {
         callbacks.onReasoning?.(frame.text);
@@ -407,11 +458,16 @@ class AgentService {
         const toolName = frame.toolName.trim() || 'tool';
         const toolCallId = frame.toolCallId?.trim() || frame.itemId;
         const params = frame.params;
+        const filePath = typeof params.path === 'string' ? params.path.trim() : '';
+        const originalContent = isWriteTool(toolName) && filePath
+          ? await readFileContent(filePath)
+          : undefined;
 
         pendingToolCalls.push({
           toolCallId,
           toolName,
           params,
+          originalContent,
         });
         callbacks.onToolCall?.(toolName, params, toolCallId);
         return;
@@ -435,6 +491,7 @@ class AgentService {
           toolName,
           pendingToolCall.params,
           pendingToolCall.toolCallId,
+          pendingToolCall.originalContent,
           {
             success: frame.success,
             text: frame.resultText,
@@ -458,10 +515,12 @@ class AgentService {
       }
     };
 
-    const unsubscribe = agentChatService.onEvent((event: AgentChatEvent) => {
+    const processRuntimeEvent = (event: AgentChatEvent): void => {
       if (settled) {
         return;
       }
+
+      logAgentConsole(`runtime event: ${event.method}`, event);
 
       if (event.method === 'turn/items/appended') {
         if (event.params.threadId !== threadId || event.params.turnId !== turnId) {
@@ -505,15 +564,42 @@ class AgentService {
           });
         }
       }
+    };
+
+    const unsubscribe = agentRuntimeService.onEvent((event: AgentChatEvent) => {
+      if (!turnId) {
+        if (event.method === 'turn/items/appended' && event.params.threadId === threadId) {
+          bufferedEvents.push(event);
+          return;
+        }
+        if (event.method === 'request/queued' && event.params.request.threadId === threadId) {
+          bufferedEvents.push(event);
+          return;
+        }
+        if (event.method === 'turn/updated' && event.params.summary.threadId === threadId) {
+          bufferedEvents.push(event);
+        }
+        return;
+      }
+
+      processRuntimeEvent(event);
     });
 
     try {
-      const result = await agentChatService.runTurn({
+      logAgentConsole('sendMessage dispatched', {
         threadId,
-        turnId,
-        instruction: buildInstructionFromTask(task),
         workspacePath,
         modelId: this.executionModelId,
+        message: taskInstruction,
+      });
+      const result = await agentRuntimeService.sendMessage({
+        threadId,
+        workspacePath,
+        message: taskInstruction,
+        modelId: this.executionModelId,
+        title: buildThreadTitle(task.description),
+        externalSessionId: task.context.externalSessionId?.trim() || null,
+        source: 'native',
         currentFile: task.context.currentFile,
         selectedText: task.context.selectedText,
         maxIterations: getMaxIterations(task.constraints),
@@ -521,6 +607,25 @@ class AgentService {
 
       if (!result?.accepted) {
         throw new Error('Agent 任务未被接受。');
+      }
+
+      turnId = result.turnId;
+      logAgentConsole('sendMessage accepted', {
+        threadId,
+        turnId,
+      });
+      this.memoryEntries = [
+        ...this.memoryEntries.slice(-(LEGACY_MEMORY_LIMIT - 1)),
+        {
+          taskId: task.id,
+          threadId,
+          turnId,
+          createdAt: Date.now(),
+        },
+      ];
+
+      for (const bufferedEvent of bufferedEvents.splice(0, bufferedEvents.length)) {
+        processRuntimeEvent(bufferedEvent);
       }
 
       await new Promise<void>((resolve) => {

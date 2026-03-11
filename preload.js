@@ -74,24 +74,19 @@ contextBridge.exposeInMainWorld('electron', {
     clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files')
   },
 
-  agentChat: {
-    startThread: (input) => ipcRenderer.invoke('agent-chat:thread:start', input),
-    listThreads: (input) => ipcRenderer.invoke('agent-chat:thread:list', input),
-    getThread: (input) => ipcRenderer.invoke('agent-chat:thread:get', input),
-    syncLegacySession: (input) => ipcRenderer.invoke('agent-chat:thread:sync-legacy-session', input),
-    startTurn: (input) => ipcRenderer.invoke('agent-chat:turn:start', input),
-    updateTurn: (input) => ipcRenderer.invoke('agent-chat:turn:update', input),
-    appendTurnItems: (input) => ipcRenderer.invoke('agent-chat:turn:append-items', input),
-    runTurn: (input) => ipcRenderer.invoke('agent-chat:turn:run', input),
-    interruptTurn: (input) => ipcRenderer.invoke('agent-chat:turn:interrupt', input),
-    resumeTurn: (input) => ipcRenderer.invoke('agent-chat:turn:resume', input),
-    createApprovalRequest: (input) => ipcRenderer.invoke('agent-chat:request:create-approval', input),
-    createUserInputRequest: (input) => ipcRenderer.invoke('agent-chat:request:create-user-input', input),
-    respondToRequest: (input) => ipcRenderer.invoke('agent-chat:request:respond', input),
+  agentRuntime: {
+    initialize: (input) => ipcRenderer.invoke('agent-runtime:initialize', input),
+    getThread: (input) => ipcRenderer.invoke('agent-runtime:thread:get', input),
+    sendMessage: (input) => ipcRenderer.invoke('agent-runtime:send-message', input),
+    resetConversation: (input) => ipcRenderer.invoke('agent-runtime:reset-conversation', input),
+    respondToRequest: (input) => ipcRenderer.invoke('agent-runtime:request:respond', input),
+    interruptTurn: (input) => ipcRenderer.invoke('agent-runtime:turn:interrupt', input),
+    listToolExecutions: (input) => ipcRenderer.invoke('agent-runtime:tool-execution:list', input),
+    rollbackToolExecution: (input) => ipcRenderer.invoke('agent-runtime:tool-execution:rollback', input),
     onEvent: (callback) => {
       const subscription = (event, payload) => callback(payload);
-      ipcRenderer.on('agent-chat:event', subscription);
-      return () => ipcRenderer.removeListener('agent-chat:event', subscription);
+      ipcRenderer.on('agent-runtime:event', subscription);
+      return () => ipcRenderer.removeListener('agent-runtime:event', subscription);
     }
   },
   
@@ -343,24 +338,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearAll: () => ipcRenderer.invoke('chat-history:clear-all')
   },
 
-  agentChat: {
-    startThread: (input) => ipcRenderer.invoke('agent-chat:thread:start', input),
-    listThreads: (input) => ipcRenderer.invoke('agent-chat:thread:list', input),
-    getThread: (input) => ipcRenderer.invoke('agent-chat:thread:get', input),
-    syncLegacySession: (input) => ipcRenderer.invoke('agent-chat:thread:sync-legacy-session', input),
-    startTurn: (input) => ipcRenderer.invoke('agent-chat:turn:start', input),
-    updateTurn: (input) => ipcRenderer.invoke('agent-chat:turn:update', input),
-    appendTurnItems: (input) => ipcRenderer.invoke('agent-chat:turn:append-items', input),
-    runTurn: (input) => ipcRenderer.invoke('agent-chat:turn:run', input),
-    interruptTurn: (input) => ipcRenderer.invoke('agent-chat:turn:interrupt', input),
-    resumeTurn: (input) => ipcRenderer.invoke('agent-chat:turn:resume', input),
-    createApprovalRequest: (input) => ipcRenderer.invoke('agent-chat:request:create-approval', input),
-    createUserInputRequest: (input) => ipcRenderer.invoke('agent-chat:request:create-user-input', input),
-    respondToRequest: (input) => ipcRenderer.invoke('agent-chat:request:respond', input),
+  agentRuntime: {
+    initialize: (input) => ipcRenderer.invoke('agent-runtime:initialize', input),
+    getThread: (input) => ipcRenderer.invoke('agent-runtime:thread:get', input),
+    sendMessage: (input) => ipcRenderer.invoke('agent-runtime:send-message', input),
+    resetConversation: (input) => ipcRenderer.invoke('agent-runtime:reset-conversation', input),
+    respondToRequest: (input) => ipcRenderer.invoke('agent-runtime:request:respond', input),
+    interruptTurn: (input) => ipcRenderer.invoke('agent-runtime:turn:interrupt', input),
+    listToolExecutions: (input) => ipcRenderer.invoke('agent-runtime:tool-execution:list', input),
+    rollbackToolExecution: (input) => ipcRenderer.invoke('agent-runtime:tool-execution:rollback', input),
     onEvent: (callback) => {
       const subscription = (event, payload) => callback(payload);
-      ipcRenderer.on('agent-chat:event', subscription);
-      return () => ipcRenderer.removeListener('agent-chat:event', subscription);
+      ipcRenderer.on('agent-runtime:event', subscription);
+      return () => ipcRenderer.removeListener('agent-runtime:event', subscription);
     }
   },
   

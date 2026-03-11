@@ -4,6 +4,8 @@
     "outDir": "./dist",
     "lib": ["ES2020", "DOM"],
     "paths": {
+      "@note-studio/agent": ["../agent/src/index.ts"],
+      "@note-studio/agent/*": ["../agent/src/*"],
       "@note-studio/global-rag": ["../global-rag/src/index.ts"],
       "@note-studio/global-rag/*": ["../global-rag/src/*"],
       "@note-studio/shared": ["../shared/src/index.ts"],

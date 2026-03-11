@@ -2,7 +2,7 @@
  * Shared contracts for the agent chat runtime, IPC bridge, and renderer state.
  */
 
-export type AgentChatThreadSource = 'native' | 'legacy';
+export type AgentChatThreadSource = 'native';
 
 export type AgentChatItemKind =
   | 'message'
@@ -97,7 +97,7 @@ export interface AgentChatTurnItemMetadata extends Record<string, unknown> {
   toolCallId?: string;
   iteration?: number;
   success?: boolean;
-  source?: 'main_runtime' | 'legacy_renderer' | 'unknown';
+  source?: 'main_runtime' | 'unknown';
   resumed?: boolean;
   nextIteration?: number;
 }
@@ -225,15 +225,6 @@ export interface AgentChatGetThreadInput {
   threadId: string;
 }
 
-export interface AgentChatSyncLegacySessionInput {
-  threadId?: string;
-  externalSessionId: string;
-  title?: string;
-  workspacePath?: string;
-  modelId?: string | null;
-  items?: AgentChatConversationItemInput[];
-}
-
 export type AgentChatTurnStatus =
   | 'running'
   | 'waiting_approval'
@@ -282,6 +273,31 @@ export type AgentChatApprovalRequestType =
   | 'diff_apply'
   | 'custom';
 
+export type AgentChatChangeType = 'create' | 'update' | 'delete';
+
+export interface AgentChatChangeSetFile {
+  path: string;
+  changeType: AgentChatChangeType;
+  beforeText: string | null;
+  afterText: string | null;
+  additions: number;
+  deletions: number;
+}
+
+export interface AgentChatChangeSet {
+  id: string;
+  title: string | null;
+  summary: string | null;
+  createdAt: number;
+  files: AgentChatChangeSetFile[];
+}
+
+export interface AgentChatApprovalResponse {
+  approved: boolean;
+  feedback?: string | null;
+  fileDecisions?: Record<string, 'approved' | 'rejected'>;
+}
+
 export interface AgentChatApprovalRequest {
   id: string;
   kind: 'approval';
@@ -294,13 +310,11 @@ export interface AgentChatApprovalRequest {
   params?: Record<string, unknown>;
   command?: string | null;
   changedFiles?: string[];
+  changeSet?: AgentChatChangeSet | null;
   createdAt: number;
   resolvedAt: number | null;
   status: 'pending' | 'approved' | 'rejected';
-  response?: {
-    approved: boolean;
-    feedback?: string | null;
-  } | null;
+  response?: AgentChatApprovalResponse | null;
 }
 
 export interface AgentChatUserInputQuestion {
@@ -343,6 +357,7 @@ export interface AgentChatCreateApprovalRequestInput {
   params?: Record<string, unknown>;
   command?: string | null;
   changedFiles?: string[];
+  changeSet?: AgentChatChangeSet | null;
 }
 
 export interface AgentChatCreateUserInputRequestInput {
@@ -359,8 +374,49 @@ export interface AgentChatRespondToRequestInput {
   requestId: string;
   approved?: boolean;
   answers?: Record<string, string>;
+  fileDecisions?: Record<string, boolean>;
   feedback?: string | null;
   nextTurnStatus?: AgentChatTurnStatus;
+}
+
+export type AgentChatToolExecutionRollbackStatus =
+  | 'available'
+  | 'unavailable'
+  | 'rolled_back'
+  | 'rollback_failed';
+
+export interface AgentChatToolExecutionRecord {
+  id: string;
+  threadId: string;
+  turnId: string;
+  toolName: string;
+  params: Record<string, unknown>;
+  success: boolean;
+  resultText: string | null;
+  changedFiles: string[];
+  changeSet: AgentChatChangeSet | null;
+  rollbackCommand: string | null;
+  rollbackStatus: AgentChatToolExecutionRollbackStatus;
+  rollbackError: string | null;
+  createdAt: number;
+  completedAt: number;
+  durationMs: number;
+}
+
+export interface AgentChatListToolExecutionsInput {
+  threadId: string;
+  turnId?: string;
+  limit?: number;
+}
+
+export interface AgentChatRollbackToolExecutionInput {
+  threadId: string;
+  executionId: string;
+}
+
+export interface AgentChatRollbackToolExecutionResult {
+  record: AgentChatToolExecutionRecord | null;
+  changedFiles: string[];
 }
 
 export interface AgentChatInterruptTurnInput {
@@ -389,6 +445,7 @@ export interface AgentChatRunTurnInput {
   currentFile?: string;
   selectedText?: string;
   maxIterations?: number;
+  maxModelCalls?: number;
 }
 
 export interface AgentChatRunTurnResult {

@@ -45,11 +45,12 @@ import {
   upsertThinkingBlock as upsertThinkingContentBlock,
   upsertTodoBlock as upsertTodoContentBlock,
 } from './streamProtocol';
+import { PressableControl } from './PressableControl';
 import {
-  AGENT_FRAME_REPLAY_SAMPLES,
-  getAgentFrameReplaySample,
-  type AgentFrameReplaySample,
-} from './agentFrameReplaySamples';
+  DEFAULT_CHAT_SESSION_TITLE,
+  getChatSessionTitleFromMessages,
+  truncateChatSessionTitle,
+} from './chatSessionTitle';
 import './AIChatPanel.scss';
 
 interface Message {
@@ -89,8 +90,6 @@ interface AIChatPanelProps {
 }
 
 const AI_CHAT_EDITOR_TAB_PATH = 'ai-chat:/main';
-const SHOW_AGENT_FRAME_REPLAY_DEVTOOLS = typeof window !== 'undefined'
-  && window.location.protocol !== 'file:';
 
 interface PendingToolConfirmation {
   id: string;
@@ -120,6 +119,18 @@ interface WritingRuleDocument {
   enabled: boolean;
 }
 
+interface AIChatPanelRuntimeState {
+  messages: Message[];
+  input: string;
+  currentSessionId: string;
+  selectedModel: string;
+  isDeepThinkingEnabled: boolean;
+  isWebSearchEnabled: boolean;
+  knownSessionIds: Set<string>;
+  persistedSessionTitles: Map<string, string>;
+  persistedMessageIdsBySession: Map<string, Set<string>>;
+}
+
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 400;
@@ -135,6 +146,70 @@ const WRITING_RULE_STORE_KEY = 'ai-chat-writing-rule-documents';
 const WRITING_RULE_UPDATED_EVENT = 'writing-rules-updated';
 const WRITING_RULE_UPDATED_SOURCE = 'ai-chat-panel';
 const RULE_DOCUMENT_EXTENSIONS = new Set(['md', 'txt']);
+const aiChatPanelRuntimeState: AIChatPanelRuntimeState = {
+  messages: [],
+  input: '',
+  currentSessionId: '',
+  selectedModel: '',
+  isDeepThinkingEnabled: true,
+  isWebSearchEnabled: false,
+  knownSessionIds: new Set<string>(),
+  persistedSessionTitles: new Map<string, string>(),
+  persistedMessageIdsBySession: new Map<string, Set<string>>(),
+};
+
+const getPersistedMessageIdsForSession = (sessionId: string): Set<string> => {
+  const normalizedSessionId = sessionId.trim();
+  let ids = aiChatPanelRuntimeState.persistedMessageIdsBySession.get(normalizedSessionId);
+  if (!ids) {
+    ids = new Set<string>();
+    aiChatPanelRuntimeState.persistedMessageIdsBySession.set(normalizedSessionId, ids);
+  }
+  return ids;
+};
+
+const getMessageTimestamp = (message: Message): number => {
+  const timestamp = message.timestamp instanceof Date
+    ? message.timestamp.getTime()
+    : new Date(message.timestamp).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Date.now();
+};
+
+const getPersistedReasoning = (message: Message): string | undefined => {
+  if (typeof message.reasoning === 'string' && message.reasoning.trim().length > 0) {
+    return message.reasoning.trim();
+  }
+
+  const thinkingBlock = message.contentBlocks?.find(
+    (block): block is Extract<ContentBlock, { type: 'thinking' }> =>
+      block.type === 'thinking' && typeof block.content === 'string' && block.content.trim().length > 0
+  );
+  if (thinkingBlock) {
+    return thinkingBlock.content.trim();
+  }
+
+  const thinkingStep = message.thinkingSteps?.find(
+    step => typeof step.content === 'string' && step.content.trim().length > 0
+  );
+  return thinkingStep?.content.trim() || undefined;
+};
+
+const shouldPersistMessage = (
+  message: Message,
+  isLoading: boolean,
+  latestAssistantMessageId: string | null,
+): boolean => {
+  if (message.role === 'user') {
+    return message.content.trim().length > 0;
+  }
+
+  if (message.id === latestAssistantMessageId && isLoading) {
+    return false;
+  }
+
+  return message.content.trim().length > 0 || Boolean(getPersistedReasoning(message));
+};
+
 const BUILTIN_DECOMPOSITION_RULES: DecompositionRule[] = [
   {
     id: 'overall-structure',
@@ -562,11 +637,20 @@ interface ParsedToolFrameResultPayload {
   rawText: string;
 }
 
+interface AgentDiffPreviewPayload {
+  beforeContent: string;
+  afterContent: string;
+  updatedAt: number;
+}
+
 interface ToolFrameSummary {
   summary: string;
   detail?: string;
   command?: string;
   output?: string;
+  resultText?: string;
+  primaryPath?: string;
+  changedFiles: string[];
 }
 
 const inferSimpleAgentStepKind = (stepType: string, description: string): SimpleAgentStepKind => {
@@ -585,7 +669,87 @@ const inferSimpleAgentStepKind = (stepType: string, description: string): Simple
 const isWriteToolName = (toolName: string): boolean =>
   toolName === 'write_file'
   || toolName === 'edit_file'
-  || toolName === 'multi_edit_file';
+  || toolName === 'multi_edit_file'
+  || toolName === 'apply_diff';
+
+const TOOL_CARD_RESULT_MAX_CHARS = 4000;
+
+const clampToolPreviewText = (value: string, maxChars = TOOL_CARD_RESULT_MAX_CHARS): string => {
+  const normalized = value.replace(/\r\n/g, '\n').trim();
+  if (!normalized) return '';
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars)}\n...[truncated ${normalized.length - maxChars} chars]`;
+};
+
+const stringifyToolPreviewValue = (value: unknown): string | undefined => {
+  if (value == null) return undefined;
+  if (typeof value === 'string') return value.trim() || undefined;
+  try {
+    const compact = JSON.stringify(value, null, 2);
+    return compact.trim() || undefined;
+  } catch {
+    return String(value);
+  }
+};
+
+const buildToolResultText = (
+  toolName: string,
+  result: ParsedToolFrameResultPayload,
+): string | undefined => {
+  const data = result.data ?? {};
+  const bashOutput = toolName === 'bash'
+    ? buildBashToolOutput({
+        success: result.success,
+        data,
+        error: result.error,
+      })
+    : '';
+
+  if (toolName === 'bash') {
+    return clampToolPreviewText(bashOutput || (result.success ? '(no output)' : (result.error || 'Tool execution failed')));
+  }
+
+  if (!result.success) {
+    return clampToolPreviewText(result.error || result.rawText || 'Tool execution failed');
+  }
+
+  const candidateValues: unknown[] = [
+    data.newContent,
+    data.content,
+    data.output,
+    data.stdout,
+    data.stderr,
+  ];
+
+  for (const candidate of candidateValues) {
+    const preview = stringifyToolPreviewValue(candidate);
+    if (preview) {
+      return clampToolPreviewText(preview);
+    }
+  }
+
+  if (Array.isArray(data.items) && data.items.length > 0) {
+    const itemsPreview = data.items
+      .slice(0, 8)
+      .map(item => stringifyToolPreviewValue(item) || '')
+      .filter(Boolean)
+      .join('\n');
+    if (itemsPreview) {
+      return clampToolPreviewText(itemsPreview);
+    }
+  }
+
+  if (result.changedFiles.length > 0) {
+    return clampToolPreviewText(result.changedFiles.join('\n'));
+  }
+
+  if (result.rawText && !result.rawText.startsWith('{')) {
+    return clampToolPreviewText(result.rawText);
+  }
+
+  const dataPreview = stringifyToolPreviewValue(data);
+  return dataPreview ? clampToolPreviewText(dataPreview) : undefined;
+};
 
 const parseToolResultFramePayload = (
   resultText: string,
@@ -647,6 +811,7 @@ const buildToolFrameSummary = (
         error: result.error,
       })
     : undefined;
+  const resultText = buildToolResultText(toolName, result);
 
   let summary = result.success ? 'done' : 'failed';
   if (isWriteToolName(toolName) && result.success) {
@@ -683,11 +848,16 @@ const buildToolFrameSummary = (
 
   return {
     summary,
-    detail: command,
+    detail: resultText,
     command,
     output: toolName === 'bash'
       ? (bashOutput || (result.success ? '(no output)' : (result.error || 'Tool execution failed')))
       : undefined,
+    resultText,
+    primaryPath,
+    changedFiles: result.changedFiles.length > 0
+      ? result.changedFiles
+      : (primaryPath ? [primaryPath] : []),
   };
 };
 
@@ -790,7 +960,7 @@ const WRITE_STREAM_RENDER_CHUNK_SIZE = 12;
 const WRITE_STREAM_MIN_VISIBLE_CHARS = 20;
 const WRITE_CONTENT_MARKER_REGEX = /(?:^|\n)\s*(?:[#>*-]+\s*)?(?:\*\*)?(?:生成内容如下|最终内容|正文如下|输出如下)(?:\*\*)?\s*(?:[：:]|\n)\s*/i;
 const WRITE_PROCEDURE_LINE_REGEX = /^\s*(?:[-*]\s*)?(?:工具|参数|tool|params?)\s*[：:]/i;
-const WRITE_PROCEDURE_TOKEN_REGEX = /\b(?:read_file|write_file|edit_file|multi_edit_file|list_files|search_files|run_shell|bash)\b/i;
+const WRITE_PROCEDURE_TOKEN_REGEX = /\b(?:read_file|write_file|edit_file|multi_edit_file|apply_diff|list_files|search_files|run_shell|bash)\b/i;
 const WRITE_PROCEDURE_HINT_REGEX = /(我需要先读取|我将先读取|先读取当前文件|先查询工作区|为了.*上下文.*先读取)/i;
 
 const isProcedureLikeWriteOutput = (value: string): boolean => {
@@ -1101,9 +1271,12 @@ const buildToolActTitle = (toolName: string, argsRaw: string): { title: string; 
     case 'read_file_chunk':
       return { title: path ? `Read chunk "${path}"` : 'Read file chunk' };
     case 'list_directory':
+    case 'list_files':
       return { title: path ? `List "${path}"` : 'List directory' };
     case 'edit_file':
       return { title: path ? `Edit "${path}"` : 'Edit file' };
+    case 'apply_diff':
+      return { title: path ? `Apply diff "${path}"` : 'Apply diff' };
     case 'write_file':
       return { title: path ? `Write "${path}"` : 'Write file' };
     case 'search_files':
@@ -1142,8 +1315,12 @@ const buildToolCallDetail = (toolName: string, params: Record<string, unknown>):
   }
   if (toolName === 'edit_file') {
     const path = typeof params.path === 'string' ? params.path : '(unknown path)';
-    const oldString = typeof params.old_string === 'string' ? params.old_string : '';
-    const newString = typeof params.new_string === 'string' ? params.new_string : '';
+    const oldString = typeof params.old_string === 'string'
+      ? params.old_string
+      : (typeof params.oldText === 'string' ? params.oldText : '');
+    const newString = typeof params.new_string === 'string'
+      ? params.new_string
+      : (typeof params.newText === 'string' ? params.newText : '');
     return `path: ${path}\nold_length: ${oldString.length}\nnew_length: ${newString.length}`;
   }
   if (toolName === 'multi_edit_file') {
@@ -1151,7 +1328,80 @@ const buildToolCallDetail = (toolName: string, params: Record<string, unknown>):
     const edits = Array.isArray(params.edits) ? params.edits.length : 0;
     return `path: ${path}\nedits: ${edits}`;
   }
+  if (toolName === 'apply_diff') {
+    const path = typeof params.path === 'string' ? params.path : '(unknown path)';
+    const changes = Array.isArray(params.changes) ? params.changes.length : 0;
+    return `path: ${path}\nchanges: ${changes}`;
+  }
   return stringifyActDetail(params) || '';
+};
+
+const getToolPrimaryPathFromParams = (params: Record<string, unknown>): string | undefined => {
+  const path = typeof params.path === 'string' ? params.path.trim() : '';
+  return path || undefined;
+};
+
+const buildToolLogLabel = (toolName: string, params: Record<string, unknown>): string => {
+  const path = getToolPrimaryPathFromParams(params);
+  if (path) {
+    return `${toolName} ${path}`;
+  }
+  if (typeof params.query === 'string' && params.query.trim()) {
+    return `${toolName} "${params.query.trim()}"`;
+  }
+  if (typeof params.pattern === 'string' && params.pattern.trim()) {
+    return `${toolName} "${params.pattern.trim()}"`;
+  }
+  if (typeof params.command === 'string' && params.command.trim()) {
+    return `${toolName} ${params.command.trim()}`;
+  }
+  return toolName;
+};
+
+const getToolIconName = (toolName: string): string => {
+  switch (toolName) {
+    case 'read_file':
+    case 'read_file_chunk':
+      return 'file-document';
+    case 'write_file':
+      return 'new-file';
+    case 'edit_file':
+    case 'multi_edit_file':
+    case 'apply_diff':
+      return 'edit';
+    case 'list_files':
+    case 'list_directory':
+      return 'files-folder';
+    case 'search_files':
+      return 'search';
+    case 'bash':
+      return 'terminal';
+    default:
+      return 'wrench';
+  }
+};
+
+const getToolStatusText = (status: ToolLog['status']): string => {
+  switch (status) {
+    case 'pending':
+      return '执行中';
+    case 'success':
+      return '成功';
+    case 'error':
+      return '失败';
+    default:
+      return '';
+  }
+};
+
+const formatToolDuration = (durationMs?: number): string | undefined => {
+  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs < 0) {
+    return undefined;
+  }
+  if (durationMs < 1000) {
+    return `${Math.max(1, Math.round(durationMs))} ms`;
+  }
+  return `${(durationMs / 1000).toFixed(durationMs >= 10_000 ? 0 : 1)} s`;
 };
 
 const DECOMPOSITION_STEP_REGEX = /(?:\u62c6\u89e3|decompos|framework|\u5c0f\u6807\u9898|\u6bb5\u843d|\u53e5\u5f0f|\u7528\u8bcd|\u98ce\u683c|\u8fc7\u6e21|\u573a\u666f|\u6848\u4f8b)/i;
@@ -1159,10 +1409,6 @@ const SHOW_DECOMPOSITION_STREAM_BLOCK = false;
 
 const isDecompositionStep = (description: string): boolean =>
   DECOMPOSITION_STEP_REGEX.test(description.trim());
-
-const waitForReplayStep = (delayMs: number): Promise<void> => new Promise(resolve => {
-  window.setTimeout(resolve, Math.max(0, delayMs));
-});
 
 const stripDecompositionSection = (fullText: string, decompositionText: string): string => {
   const normalizedFull = fullText.trim();
@@ -1184,43 +1430,6 @@ const stripDecompositionSection = (fullText: string, decompositionText: string):
   const approxEnd = Math.min(normalizedFull.length, anchorIndex + normalizedDecomposition.length);
   const stripped = `${normalizedFull.slice(0, anchorIndex)}${normalizedFull.slice(approxEnd)}`;
   return stripped.replace(/\n{3,}/g, '\n\n').trim();
-};
-
-const buildCompactAgentResultText = (
-  taskType: AgentTaskType,
-  currentFilePath: string,
-  changedFiles: string[],
-  targetPath?: string
-): string => {
-  const resolvedTargetPath = (targetPath || currentFilePath).trim();
-  const lines: string[] = ['已完成 Agent 执行。'];
-
-  if (taskType === 'write' || taskType === 'edit') {
-    if (resolvedTargetPath) {
-      lines.push(`目标文件: ${resolvedTargetPath}`);
-      if (resolvedTargetPath.toLowerCase().startsWith(AGENT_DRAFT_PATH_PREFIX)) {
-        lines.push('Saved to temporary draft tab.');
-      }
-    }
-
-    if (changedFiles.length > 0) {
-      lines.push(`文件改动: ${changedFiles.length} 个`);
-      for (const filePath of changedFiles.slice(0, 5)) {
-        lines.push(`- ${filePath}`);
-      }
-      if (changedFiles.length > 5) {
-        lines.push(`- ... 另有 ${changedFiles.length - 5} 个文件`);
-      }
-    } else {
-      lines.push('未检测到文件改动。');
-    }
-  }
-
-  if (taskType === 'query' && changedFiles.length === 0) {
-    lines.push('此任务为查询模式，未执行文件写入。');
-  }
-
-  return lines.join('\n');
 };
 
 interface KnowledgeFileCandidate {
@@ -1811,10 +2020,25 @@ interface ThinkingBlockProps {
   onToggle: () => void;
 }
 
+const DisclosureChevron: React.FC<{ expanded: boolean; className: string }> = ({ expanded, className }) => (
+  <svg
+    className={`${className}${expanded ? ' expanded' : ''}`}
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+
 const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ toolCalls, thinkingContent, isDeepThinking, isThinkingPhase, isExpanded, onToggle }) => {
-  const headerText = isDeepThinking
-    ? (isThinkingPhase ? '思考中...' : '思考')
-    : (isThinkingPhase ? '思考中...' : '思考');
+  const headerText = 'Thinking';
 
   // 进行中时默认展开
   const effectiveExpanded = isThinkingPhase ? true : isExpanded;
@@ -1822,9 +2046,11 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ toolCalls, thinkingConten
   return (
     <div className={`thinking-block${isThinkingPhase ? ' thinking-block--active' : ' thinking-block--done'}`}>
       <div className="thinking-block__header" onClick={onToggle}>
-        {isThinkingPhase && <span className="thinking-block__spinner" />}
-        <span className="thinking-block__title">{headerText}</span>
-        <span className={`thinking-block__chevron${effectiveExpanded ? ' expanded' : ''}`} />
+        <div className="thinking-block__summary">
+          {isThinkingPhase && <span className="thinking-block__spinner" />}
+          <span className="thinking-block__title">{headerText}</span>
+          <DisclosureChevron expanded={effectiveExpanded} className="thinking-block__chevron" />
+        </div>
       </div>
       {effectiveExpanded && (
         <div className="thinking-block__body">
@@ -1867,9 +2093,11 @@ const DecompositionBlock: React.FC<DecompositionBlockProps> = ({
   return (
     <div className={`decomposition-block${isStreaming ? ' decomposition-block--active' : ''}`}>
       <div className="decomposition-block__header" onClick={onToggle}>
-        {isStreaming && <span className="decomposition-block__spinner" />}
-        <span className="decomposition-block__title">{title}</span>
-        <span className={`decomposition-block__chevron${isExpanded ? ' expanded' : ''}`} />
+        <div className="decomposition-block__summary">
+          {isStreaming && <span className="decomposition-block__spinner" />}
+          <span className="decomposition-block__title">{title}</span>
+          <DisclosureChevron expanded={isExpanded} className="decomposition-block__chevron" />
+        </div>
       </div>
       {isExpanded && (
         <div className="decomposition-block__body">
@@ -1931,8 +2159,8 @@ function renderMessageBlocks(
 
 export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, onMoveRight, position = 'right', mode = 'sidebar' }) => {
   const isEditorTabMode = mode === 'editor-tab';
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<Message[]>(() => aiChatPanelRuntimeState.messages);
+  const [input, setInput] = useState(() => aiChatPanelRuntimeState.input);
   const [isLoading, setIsLoading] = useState(false);
   const isMaximized = false;
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
@@ -1941,12 +2169,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [isHoveringHandle, setIsHoveringHandle] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>(() => aiChatPanelRuntimeState.selectedModel);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [isDeepThinkingEnabled, setIsDeepThinkingEnabled] = useState(true);
-  const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
+  const [isDeepThinkingEnabled, setIsDeepThinkingEnabled] = useState(() => aiChatPanelRuntimeState.isDeepThinkingEnabled);
+  const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(() => aiChatPanelRuntimeState.isWebSearchEnabled);
   const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [currentSessionId, setCurrentSessionId] = useState<string>('');
+  const [currentSessionId, setCurrentSessionId] = useState<string>(() => aiChatPanelRuntimeState.currentSessionId);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(() => {
     return Boolean((window as any).__aiChatHistoryOpen);
   });
@@ -1976,35 +2204,141 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     totalEntries: 0,
   });
   const [decompositionRules, setDecompositionRules] = useState<DecompositionRule[]>(() => cloneBuiltinDecompositionRules());
-  const [activeReplaySampleId, setActiveReplaySampleId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器 ref
   const panelRef = useRef<HTMLDivElement>(null);
   const tiptapRef = useRef<TipTapInputRef>(null);
-  const contextButtonRef = useRef<HTMLButtonElement>(null);
+  const contextButtonRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const headerContextMenuRef = useRef<HTMLDivElement>(null);
-  const historyButtonRef = useRef<HTMLButtonElement>(null);
+  const historyButtonRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true); // 追踪是否为初始加载
   const providerCacheRef = useRef<{ modelId: string; actualModelId: string } | null>(null); // 缓存已初始化的 provider
-  const replayControllerRef = useRef<{
-    token: number;
-    assistantMessageId: string;
-    taskStatusActKey: string;
-    textBlockKey: string;
-    streamActKey: string;
-  } | null>(null);
 
   const [pendingToolConfirmation, setPendingToolConfirmation] = useState<PendingToolConfirmation | null>(null);
   const pendingToolConfirmationResolverRef = useRef<{
     id: string;
     resolve: (allowed: boolean) => void;
   } | null>(null);
+  const currentSessionTitle = useMemo(
+    () => getChatSessionTitleFromMessages(messages),
+    [messages]
+  );
+  const currentSessionTitleLabel = useMemo(
+    () => truncateChatSessionTitle(currentSessionTitle, 32),
+    [currentSessionTitle]
+  );
+  const hasRuntimeDraft = useMemo(
+    () =>
+      aiChatPanelRuntimeState.currentSessionId.trim().length > 0
+      || aiChatPanelRuntimeState.messages.length > 0
+      || aiChatPanelRuntimeState.input.trim().length > 0,
+    []
+  );
 
   const decompositionRulesLoadedRef = useRef(false);
   const writingRulesLoadedRef = useRef(false);
+
+  useEffect(() => {
+    aiChatPanelRuntimeState.messages = messages;
+    aiChatPanelRuntimeState.input = input;
+    aiChatPanelRuntimeState.currentSessionId = currentSessionId;
+    aiChatPanelRuntimeState.selectedModel = selectedModel;
+    aiChatPanelRuntimeState.isDeepThinkingEnabled = isDeepThinkingEnabled;
+    aiChatPanelRuntimeState.isWebSearchEnabled = isWebSearchEnabled;
+  }, [
+    currentSessionId,
+    input,
+    isDeepThinkingEnabled,
+    isWebSearchEnabled,
+    messages,
+    selectedModel,
+  ]);
+
+  useEffect(() => {
+    if (!currentSessionId || messages.length === 0) {
+      return;
+    }
+
+    const chatHistory = window.electronAPI?.chatHistory;
+    if (!chatHistory) {
+      return;
+    }
+
+    let disposed = false;
+    const latestAssistantMessageId = [...messages]
+      .reverse()
+      .find(message => message.role === 'assistant')?.id ?? null;
+
+    const persistConversation = async () => {
+      const sessionTitle = currentSessionTitle || DEFAULT_CHAT_SESSION_TITLE;
+      const knownSessionIds = aiChatPanelRuntimeState.knownSessionIds;
+      const persistedSessionTitles = aiChatPanelRuntimeState.persistedSessionTitles;
+
+      if (!knownSessionIds.has(currentSessionId)) {
+        const sessionCreatedAt = getMessageTimestamp(messages[0]);
+        const createResult = await chatHistory.createSession({
+          id: currentSessionId,
+          title: sessionTitle,
+          createdAt: sessionCreatedAt,
+          updatedAt: sessionCreatedAt,
+        });
+        if (!createResult?.success) {
+          console.warn('[AIChatPanel] 创建聊天会话失败:', currentSessionId);
+          return;
+        }
+        if (disposed) {
+          return;
+        }
+        knownSessionIds.add(currentSessionId);
+        persistedSessionTitles.set(currentSessionId, sessionTitle);
+      } else if (persistedSessionTitles.get(currentSessionId) !== sessionTitle) {
+        const updateResult = await chatHistory.updateSession(currentSessionId, sessionTitle);
+        if (updateResult?.success) {
+          persistedSessionTitles.set(currentSessionId, sessionTitle);
+        }
+      }
+
+      const persistedMessageIds = getPersistedMessageIdsForSession(currentSessionId);
+      const pendingMessages = messages.filter(message =>
+        !persistedMessageIds.has(message.id)
+        && shouldPersistMessage(message, isLoading, latestAssistantMessageId)
+      );
+
+      for (const message of pendingMessages) {
+        const addMessageResult = await chatHistory.addMessage({
+          id: message.id,
+          sessionId: currentSessionId,
+          role: message.role,
+          content: message.content,
+          model: message.model,
+          timestamp: getMessageTimestamp(message),
+          reasoning: getPersistedReasoning(message),
+        });
+
+        if (!addMessageResult?.success) {
+          console.warn('[AIChatPanel] 保存聊天消息失败:', message.id);
+          continue;
+        }
+
+        if (disposed) {
+          return;
+        }
+
+        persistedMessageIds.add(message.id);
+      }
+    };
+
+    persistConversation().catch(error => {
+      console.error('[AIChatPanel] 持久化聊天记录失败:', error);
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [currentSessionId, currentSessionTitle, isLoading, messages]);
 
   const handleInsertSlashCommand = useCallback((insertText: string) => {
     tiptapRef.current?.setText(insertText);
@@ -2396,6 +2730,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       detail?: string;
       command?: string;
       output?: string;
+      paramsText?: string;
+      resultText?: string;
+      finishedAt?: number;
+      durationMs?: number;
+      primaryPath?: string;
+      changedFiles?: string[];
     }
   ) => {
     setMessages(prev => prev.map(msg => {
@@ -2496,327 +2836,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     });
   }, []);
 
-  const activeReplaySample = useMemo(
-    () => (activeReplaySampleId ? getAgentFrameReplaySample(activeReplaySampleId) : null),
-    [activeReplaySampleId],
-  );
-
-  const finalizeReplayAssistantMessage = useCallback((
-    assistantMessageId: string,
-    textBlockKey: string,
-    pendingToolStatus: ToolLog['status'],
-  ) => {
-    setMessages(prev => prev.map(msg => {
-      if (msg.id !== assistantMessageId) {
-        return msg;
-      }
-
-      const elapsed = msg.thinkingStartTime
-        ? Math.max(1, Math.round((Date.now() - msg.thinkingStartTime) / 1000))
-        : (msg.elapsedSeconds ?? 1);
-      const nextBlocks = finalizeTextBlock((msg.contentBlocks ?? []).map(block => {
-        if (block.type === 'todo') {
-          return { ...block, isStreaming: false };
-        }
-        if (block.type === 'decomposition') {
-          return { ...block, isStreaming: false };
-        }
-        if (block.type === 'thinking') {
-          return { ...block, isThinking: false, elapsedSeconds: elapsed };
-        }
-        if (block.type === 'tool' && block.tool.status === 'pending') {
-          return { ...block, tool: { ...block.tool, status: pendingToolStatus } };
-        }
-        return block;
-      }), textBlockKey);
-
-      return {
-        ...msg,
-        isThinking: false,
-        isThinkingPhase: false,
-        elapsedSeconds: elapsed,
-        contentBlocks: nextBlocks,
-        toolCalls: msg.toolCalls?.map(tool =>
-          tool.status === 'pending' ? { ...tool, status: pendingToolStatus } : tool
-        ),
-      };
-    }));
-  }, []);
-
-  const stopReplaySample = useCallback((detail?: string) => {
-    const activeReplay = replayControllerRef.current;
-    if (!activeReplay) {
-      return;
-    }
-
-    replayControllerRef.current = null;
-    setActiveReplaySampleId(null);
-    upsertActLog(activeReplay.assistantMessageId, {
-      key: activeReplay.taskStatusActKey,
-      kind: 'status',
-      title: 'Replay stopped',
-      detail: detail || 'Stopped before completion',
-      status: 'error',
-    });
-    upsertActLog(activeReplay.assistantMessageId, {
-      key: activeReplay.streamActKey,
-      kind: 'stream',
-      title: 'Replay stream stopped',
-      detail: detail || 'Stopped before completion',
-      status: 'error',
-    });
-    finalizeReplayAssistantMessage(activeReplay.assistantMessageId, activeReplay.textBlockKey, 'error');
-    setIsLoading(false);
-  }, [finalizeReplayAssistantMessage, upsertActLog]);
-
-  const runAgentFrameReplay = useCallback(async (sample: AgentFrameReplaySample): Promise<void> => {
-    if (isLoading || replayControllerRef.current) {
-      return;
-    }
-
-    const baseId = Date.now().toString();
-    const userMessageId = `${baseId}-replay-user`;
-    const assistantMessageId = `${baseId}-replay-assistant`;
-    const taskStatusActKey = `${assistantMessageId}-task-status`;
-    const streamActKey = `${assistantMessageId}-stream-status`;
-    const textBlockKey = `${assistantMessageId}-text`;
-    const replayToken = Date.now();
-
-    replayControllerRef.current = {
-      token: replayToken,
-      assistantMessageId,
-      taskStatusActKey,
-      textBlockKey,
-      streamActKey,
-    };
-
-    setActiveReplaySampleId(sample.id);
-    setMessages(prev => [
-      ...prev,
-      {
-        id: userMessageId,
-        role: 'user',
-        content: sample.prompt,
-        flowKind: 'agent_task',
-        timestamp: new Date(),
-      },
-      {
-        id: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        flowKind: 'agent_task',
-        timestamp: new Date(),
-        model: selectedModel || 'local-replay',
-      },
-    ]);
-    upsertActLog(assistantMessageId, {
-      key: taskStatusActKey,
-      kind: 'status',
-      title: 'Replay started',
-      detail: sample.description,
-      status: 'running',
-    });
-    tiptapRef.current?.clear();
-    setInput('');
-    setSearchQuery('');
-    setIsContextMenuOpen(false);
-    setSubMenuType('none');
-    setIsLoading(true);
-
-    let hasStreamLog = false;
-
-    for (const step of sample.steps) {
-      await waitForReplayStep(step.delayMs);
-      if (replayControllerRef.current?.token !== replayToken) {
-        return;
-      }
-
-      const frame = step.frame;
-      if (frame.kind === 'task') {
-        upsertActLog(assistantMessageId, {
-          key: taskStatusActKey,
-          kind: 'status',
-          title: 'Replay task started',
-          detail: frame.text || sample.prompt,
-          status: 'running',
-        });
-        continue;
-      }
-
-      if (frame.kind === 'progress') {
-        const iterationLabel = frame.nextIteration ?? frame.iteration;
-        upsertActLog(assistantMessageId, {
-          key: taskStatusActKey,
-          kind: 'status',
-          title: frame.resumed ? 'Replay task resumed' : 'Replay task running',
-          detail: iterationLabel != null ? `Iteration ${iterationLabel}` : sample.description,
-          status: 'running',
-        });
-        continue;
-      }
-
-      if (frame.kind === 'reasoning_delta') {
-        upsertThinkingBlock(assistantMessageId, frame.text, {
-          isThinking: true,
-        });
-        continue;
-      }
-
-      if (frame.kind === 'tool_started') {
-        const toolCallId = frame.toolCallId || frame.itemId;
-        const toolDetail = buildToolCallDetail(frame.toolName, frame.params);
-        let label = frame.toolName;
-        if (typeof frame.params.path === 'string') label = `${frame.toolName} ${frame.params.path}`;
-        else if (typeof frame.params.command === 'string') label = `${frame.toolName} ${frame.params.command}`;
-        else if (typeof frame.params.query === 'string') label = `${frame.toolName} "${frame.params.query}"`;
-        else if (typeof frame.params.pattern === 'string') label = `${frame.toolName} "${frame.params.pattern}"`;
-        appendToolLogBlock(assistantMessageId, {
-          uiId: toolCallId,
-          toolCallId,
-          name: frame.toolName,
-          label,
-          detail: toolDetail,
-          command: frame.toolName === 'bash' && typeof frame.params.command === 'string'
-            ? frame.params.command
-            : undefined,
-          output: frame.toolName === 'bash' ? 'Running...' : undefined,
-          status: 'pending',
-        });
-        upsertActLog(assistantMessageId, {
-          key: `${assistantMessageId}-tool-${toolCallId}`,
-          kind: 'tool',
-          title: `Tool call: ${frame.toolName}`,
-          detail: toolDetail,
-          status: 'pending',
-        });
-        setMessages(prev => prev.map(msg => (
-          msg.id === assistantMessageId
-            ? {
-                ...msg,
-                isThinkingPhase: true,
-                thinkingStartTime: msg.thinkingStartTime ?? Date.now(),
-              }
-            : msg
-        )));
-        continue;
-      }
-
-      if (frame.kind === 'tool_finished') {
-        const toolCallId = frame.toolCallId || frame.itemId;
-        const parsedToolResult = parseToolResultFramePayload(frame.resultText, frame.success);
-        const toolSummary = buildToolFrameSummary(frame.toolName, parsedToolResult);
-        upsertActLog(assistantMessageId, {
-          key: `${assistantMessageId}-tool-${toolCallId}`,
-          kind: 'tool',
-          title: `Tool result: ${frame.toolName}`,
-          detail: toolSummary.summary,
-          status: frame.success ? 'success' : 'error',
-        });
-        resolveLatestPendingToolLog(
-          assistantMessageId,
-          frame.toolName,
-          toolCallId,
-          frame.success ? 'success' : 'error',
-          toolSummary.summary,
-          {
-            detail: toolSummary.detail,
-            command: toolSummary.command,
-            output: toolSummary.output,
-          },
-        );
-        continue;
-      }
-
-      if (frame.kind === 'error') {
-        upsertActLog(assistantMessageId, {
-          key: taskStatusActKey,
-          kind: 'error',
-          title: 'Replay task failed',
-          detail: frame.text || 'Unknown error',
-          status: 'error',
-        });
-        continue;
-      }
-
-      if (frame.kind !== 'assistant_delta' && frame.kind !== 'final_answer') {
-        continue;
-      }
-
-      if (!hasStreamLog && frame.text.trim()) {
-        hasStreamLog = true;
-        upsertActLog(assistantMessageId, {
-          key: streamActKey,
-          kind: 'stream',
-          title: 'Replay streaming response',
-          detail: sample.label,
-          status: 'running',
-        });
-      }
-
-      if (frame.kind === 'final_answer') {
-        upsertMessageTextBlock(assistantMessageId, textBlockKey, frame.text, {
-          mode: 'replace',
-          isStreaming: false,
-        });
-        continue;
-      }
-
-      upsertMessageTextBlock(assistantMessageId, textBlockKey, frame.text, {
-        mode: 'append',
-        isStreaming: true,
-      });
-    }
-
-    if (replayControllerRef.current?.token !== replayToken) {
-      return;
-    }
-
-    const replaySucceeded = sample.turnStatus === 'completed';
-    upsertActLog(assistantMessageId, {
-      key: taskStatusActKey,
-      kind: 'status',
-      title: replaySucceeded ? 'Replay completed' : 'Replay finished with errors',
-      detail: sample.description,
-      status: replaySucceeded ? 'success' : 'error',
-    });
-    if (hasStreamLog) {
-      upsertActLog(assistantMessageId, {
-        key: streamActKey,
-        kind: 'stream',
-        title: replaySucceeded ? 'Replay stream completed' : 'Replay stream finished with errors',
-        detail: sample.label,
-        status: replaySucceeded ? 'success' : 'error',
-      });
-    }
-    finalizeReplayAssistantMessage(
-      assistantMessageId,
-      textBlockKey,
-      replaySucceeded ? 'success' : 'error',
-    );
-    replayControllerRef.current = null;
-    setActiveReplaySampleId(null);
-    setIsLoading(false);
-  }, [
-    appendToolLogBlock,
-    buildToolFrameSummary,
-    finalizeReplayAssistantMessage,
-    isLoading,
-    parseToolResultFramePayload,
-    resolveLatestPendingToolLog,
-    selectedModel,
-    upsertActLog,
-    upsertMessageTextBlock,
-    upsertThinkingBlock,
-  ]);
-
   const handleStopGeneration = useCallback(() => {
-    if (replayControllerRef.current) {
-      stopReplaySample();
-      return;
-    }
-
     setIsLoading(false);
-  }, [stopReplaySample]);
+  }, []);
 
   const handleToolConfirmActionKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>, allowed: boolean) => {
@@ -2840,7 +2862,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     content: string,
     path?: string,
     name?: string,
-    markDirty: boolean = false
+    markDirty: boolean = false,
+    agentDiffPreview?: AgentDiffPreviewPayload,
   ) => {
     if (typeof content !== 'string') return;
     window.dispatchEvent(new CustomEvent('editor:replace-active-tab-content', {
@@ -2849,6 +2872,21 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         path,
         name,
         markDirty,
+        agentDiffPreview,
+      },
+    }));
+  }, []);
+
+  const notifyAgentFileChanged = useCallback((filePath: string) => {
+    const normalizedPath = filePath.trim();
+    if (!normalizedPath) {
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent('agent:file-changed', {
+      detail: {
+        path: normalizedPath,
+        updatedAt: Date.now(),
       },
     }));
   }, []);
@@ -3277,6 +3315,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         isInitialLoadRef.current = true;
         
         // 更新消息列表和当前会话ID
+        aiChatPanelRuntimeState.knownSessionIds.add(sessionId);
+        aiChatPanelRuntimeState.persistedSessionTitles.set(
+          sessionId,
+          getChatSessionTitleFromMessages(historyMessages),
+        );
+        aiChatPanelRuntimeState.persistedMessageIdsBySession.set(
+          sessionId,
+          new Set(historyMessages.map(message => message.id)),
+        );
         setMessages(historyMessages);
         setCurrentSessionId(sessionId);
         console.log('[AIChatPanel] History session loaded:', sessionId, 'message count:', historyMessages.length);
@@ -3295,6 +3342,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
   // 初始化聊天会话并恢复当前会话 ID
   useEffect(() => {
+    if (hasRuntimeDraft) {
+      return;
+    }
+
     const initializeChat = async () => {
       try {
         // Try reading existing sessions first.
@@ -3323,7 +3374,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     };
 
     initializeChat();
-  }, []); // Run once on mount.
+  }, [hasRuntimeDraft]); // Run once on mount unless a shared draft already exists.
 
   useEffect(() => {
     // First load: restore model-enabled state, then load models.
@@ -3818,20 +3869,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     if (!input.trim() || isLoading) return;
     const trimmedInput = input.trim();
 
-    if (SHOW_AGENT_FRAME_REPLAY_DEVTOOLS) {
-      const replayMatch = trimmedInput.match(/^\/replay(?:\s+([a-z0-9-_]+))?\s*$/i);
-      if (replayMatch) {
-        const requestedSampleId = replayMatch[1]?.trim() || AGENT_FRAME_REPLAY_SAMPLES[0]?.id || '';
-        const replaySample = requestedSampleId ? getAgentFrameReplaySample(requestedSampleId) : null;
-        if (!replaySample) {
-          toastService.warning(`未找到回放样本: ${requestedSampleId}`);
-          return;
-        }
-        await runAgentFrameReplay(replaySample);
-        return;
-      }
-    }
-
     // Ensure a model is selected before sending.
     if (!selectedModel) {
       console.error('[AIChatPanel] 未选择模型');
@@ -3850,65 +3887,19 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     });
     const useChatFlowForNonTaskInAgent = flowDecision.kind === 'conversation';
 
-    const consumeAgentContextDesc = (): string => {
-      let contextDesc = '';
-
+    const clearConsumedAgentSelections = (): void => {
       if (selectedForms.length > 0) {
-        for (const form of selectedForms) {
-          contextDesc += `\n\n[Referenced form] ${form.name} (id: ${form.id})\n- If specific data is needed, call query_form with formId="${form.id}"`;
-        }
         setSelectedForms([]);
       }
-
-      const activeTabTitle = currentFileName.trim();
-      const activeTabPath = currentFilePath.trim();
-      if (activeTabTitle || activeTabPath) {
-        contextDesc += '\n\n[Current active tab]';
-        if (activeTabTitle) {
-          contextDesc += `\n- title: ${activeTabTitle}`;
-        }
-        if (activeTabPath) {
-          contextDesc += `\n- path: ${activeTabPath}`;
-        }
-        contextDesc += '\n- instruction: If editing is required, prioritize this file unless the user explicitly asks to edit another file.';
-      }
-
       if (selectedKbs.length > 0) {
-        contextDesc += `\n\n[Referenced knowledge bases]\n${selectedKbs.map(k => `- ${k.title} (id: ${k.id})`).join('\n')}`;
         setSelectedKbs([]);
       }
-
       if (selectedFiles.length > 0) {
-        const referencedFileItems = selectedFiles.filter(item => item.type === 'file');
-        const referencedDirectoryItems = selectedFiles.filter(item => item.type === 'directory');
-        if (referencedFileItems.length > 0) {
-          contextDesc += `\n\n[Referenced files]\n${referencedFileItems.map(f => `- ${f.name} (${f.path})`).join('\n')}`;
-        }
-        if (referencedDirectoryItems.length > 0) {
-          contextDesc += `\n\n[Referenced directories]\n${referencedDirectoryItems.map(f => `- ${f.name} (${f.path})`).join('\n')}`;
-          contextDesc += '\n- instruction: Use list_files on directories first. Do not call read_file directly on a directory path.';
-        }
         setSelectedFiles([]);
       }
-
       if (selectedSkills.length > 0) {
-        contextDesc += `\n\n[Skill constraints]\nOnly execute using the following skill packs:\n${selectedSkills.map(s => `- ${s.name} (${s.path})`).join('\n')}`;
         setSelectedSkills([]);
       }
-
-      if (enabledDecompositionRules.length > 0) {
-        contextDesc += '\n\n[Auto decomposition rules]\n'
-          + 'Before writing or editing, first decompose the reference materials and the current draft according to the enabled rules. '
-          + `Then continue with the final write/edit output.\nEnabled rules:\n${enabledDecompositionRules.map(rule => `- ${rule.name}: ${rule.instruction}`).join('\n')}`;
-      }
-
-      if (enabledWritingRuleDocuments.length > 0) {
-        contextDesc += '\n\n[Writing rule documents]\n'
-          + 'Before final writing/editing output, read these rule documents and apply their style and constraints.\n'
-          + `${enabledWritingRuleDocuments.map(document => `- ${document.name} (${document.path})`).join('\n')}`;
-      }
-
-      return contextDesc;
     };
 
     // /help: show built-in command help
@@ -3927,9 +3918,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           '- `/compact` 压缩历史上下文，保留最近会话',
           '- `/clear` 清空当前对话',
           '- `/help` 查看命令说明',
-          ...(SHOW_AGENT_FRAME_REPLAY_DEVTOOLS
-            ? [`- \`/replay <sampleId>\` 回放本地 Agent 流式样本，可用样本: ${AGENT_FRAME_REPLAY_SAMPLES.map(sample => sample.id).join(', ')}`]
-            : []),
         ].join('\n'),
         timestamp: new Date(),
         model: selectedModel,
@@ -4383,8 +4371,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           }
         }
 
-        // 当前用户消息（含上下文）
-        chatMessages.push({ role: 'user', content: taskDesc + contextText });
+        if (contextText.trim()) {
+          chatMessages.push({
+            role: 'system',
+            content: `[Referenced workspace context]\n${contextText.trim()}`,
+          });
+        }
+
+        chatMessages.push({ role: 'user', content: taskDesc });
 
         // Chat tool definitions: file queries + knowledge retrieval.
         const toolDefs: Array<{
@@ -5372,21 +5366,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         model: selectedModel
       };
       setMessages(prev => [...prev, assistantMessage]);
-      const taskStatusActKey = `${assistantMessageId}-task-status`;
-      upsertActLog(assistantMessageId, {
-        key: taskStatusActKey,
-        kind: 'status',
-        title: 'Agent task started',
-        detail: taskDesc,
-        status: 'running',
-      });
       let finalizeDecompositionBlock: () => void = () => {};
-      let todoEventListener: EventListener | null = null;
-      const detachTodoListener = (): void => {
-        if (!todoEventListener) return;
-        window.removeEventListener('agent:todo-changed', todoEventListener);
-        todoEventListener = null;
-      };
+      const detachTodoListener = (): void => {};
       const agentTextBlockKey = `${assistantMessageId}-agent-output`;
       let answerBuffer = '';
       let answerTimer: ReturnType<typeof setTimeout> | null = null;
@@ -5436,14 +5417,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         const selectedFormsSnapshot = selectedForms.map(form => ({ ...form }));
         const selectedKbsSnapshot = selectedKbs.map(kb => ({ ...kb }));
         const selectedFilesSnapshot = selectedFiles.map(file => ({ ...file }));
-        const contextDesc = consumeAgentContextDesc();
+        const selectedSkillsSnapshot = selectedSkills.map(skill => ({ ...skill }));
+        clearConsumedAgentSelections();
         const liveCurrentTabPath = typeof (window as any).__currentTabPath === 'string'
           ? (window as any).__currentTabPath.trim()
           : '';
         const liveCurrentTabTitle = typeof (window as any).__currentTabTitle === 'string'
           ? (window as any).__currentTabTitle.trim()
           : '';
-        const selectedFileFallback = selectedFiles.find(item =>
+        const selectedFileFallback = selectedFilesSnapshot.find(item =>
           item.type === 'file' && typeof item.path === 'string' && item.path.trim().length > 0
         )?.path?.trim() ?? '';
         const normalizedCurrentFilePath = currentFilePath.trim() || liveCurrentTabPath || selectedFileFallback;
@@ -5485,6 +5467,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         if (!compactAgentOutput && normalizedCurrentFilePath) {
           additionalContext.currentTabPath = normalizedCurrentFilePath;
           additionalContext.currentTabEditPriority = 'prefer_current_tab_file';
+        }
+        if (normalizedCurrentFileName || normalizedCurrentFilePath) {
+          additionalContext.activeTabReference = {
+            title: normalizedCurrentFileName || undefined,
+            path: normalizedCurrentFilePath || undefined,
+            editPolicy: compactAgentOutput
+              ? 'reference_only_unless_user_explicitly_requests_edit'
+              : 'prefer_current_tab_file_when_editing',
+          };
         }
         if (compactAgentOutput) {
           additionalContext.referenceSource = 'random_workspace_article_by_command';
@@ -5552,7 +5543,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             .map(item => ({ name: item.name, path: item.path, type: 'directory' })),
           knowledgeBases: selectedKbsSnapshot.map(item => ({ id: item.id, title: item.title })),
           forms: selectedFormsSnapshot.map(item => ({ id: item.id, name: item.name })),
+          skills: selectedSkillsSnapshot.map(item => ({ name: item.name, path: item.path })),
         };
+        if (selectedSkillsSnapshot.length > 0) {
+          additionalContext.allowedSkills = selectedSkillsSnapshot.map(item => ({
+            name: item.name,
+            path: item.path,
+          }));
+        }
         if (enabledDecompositionRules.length > 0) {
           additionalContext.decompositionRules = enabledDecompositionRules.map(rule => ({
             id: rule.id,
@@ -5568,13 +5566,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             enabled: document.enabled,
           }));
         }
-        const currentTabTargetContext = !compactAgentOutput && normalizedCurrentFilePath
-          ? `\n\n[Current tab reference]\n- title: ${normalizedCurrentFileName || getPathBaseName(normalizedCurrentFilePath)}\n- path: ${normalizedCurrentFilePath}\n- instruction: use as reference only. do not overwrite this file unless the user explicitly requests writing to this path.`
-          : '';
-
         const task = agentService.createTask(
           taskType,
-          taskDesc + contextDesc + currentTabTargetContext,
+          taskDesc,
           {
             workspacePath,
             currentFile: currentFileForTask || undefined,
@@ -5590,7 +5584,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
         // Agent mode always requires confirmation.
         const needsConfirm = true;
-        let hasLoggedStreamStart = false;
         const decompositionBlockKey = `${assistantMessageId}-decomposition`;
         let activeStepType = '';
         let activeStepIsDecomposition = false;
@@ -5600,20 +5593,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         let streamingWriteRaw = '';
         let writeStepPendingFinalize = false;
         let writeRenderTimer: ReturnType<typeof setInterval> | null = null;
-
-        upsertTodoBlock(assistantMessageId, [], {
-          title: '执行清单',
-          isStreaming: true,
-        });
-        todoEventListener = (event: Event) => {
-          const detail = (event as CustomEvent<{ todos?: unknown }>).detail;
-          const items = normalizeTodoItems(detail?.todos);
-          upsertTodoBlock(assistantMessageId, items, {
-            title: '执行清单',
-            isStreaming: true,
-          });
-        };
-        window.addEventListener('agent:todo-changed', todoEventListener);
 
         const resolveStreamingTargetPath = (): string => {
           if (streamingDraftTarget?.path) {
@@ -5756,25 +5735,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
         const handleAgentTurnFrame = (frame: AgentChatTurnFrame): void => {
           if (frame.kind === 'task') {
-            upsertActLog(assistantMessageId, {
-              key: taskStatusActKey,
-              kind: 'status',
-              title: 'Agent task started',
-              detail: taskDesc,
-              status: 'running',
-            });
             return;
           }
 
           if (frame.kind === 'progress') {
-            const nextIteration = frame.nextIteration ?? frame.iteration;
-            upsertActLog(assistantMessageId, {
-              key: taskStatusActKey,
-              kind: 'status',
-              title: frame.resumed ? 'Agent task resumed' : 'Agent task running',
-              detail: nextIteration != null ? `Iteration ${nextIteration}` : taskDesc,
-              status: 'running',
-            });
             return;
           }
 
@@ -5786,36 +5750,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           }
 
           if (frame.kind === 'tool_started') {
-            const toolName = frame.toolName;
-            const params = frame.params;
-            const toolCallId = frame.toolCallId || frame.itemId;
-            let label = toolName;
-            if (typeof params.path === 'string') label = `${toolName} ${params.path}`;
-            else if (typeof params.query === 'string') label = `${toolName} "${params.query}"`;
-            else if (typeof params.pattern === 'string') label = `${toolName} "${params.pattern}"`;
-            else if (typeof params.command === 'string') label = `${toolName} ${params.command}`;
-            const toolDetail = buildToolCallDetail(toolName, params);
-            const bashCommand = toolName === 'bash' && typeof params.command === 'string'
-              ? params.command
-              : undefined;
-            const pendingToolLog: ToolLog = {
-              uiId: toolCallId || `tc-agent-${Date.now()}-${toolName}`,
-              toolCallId,
-              name: toolName,
-              label,
-              detail: toolDetail,
-              command: bashCommand,
-              output: toolName === 'bash' ? 'Running...' : undefined,
-              status: 'pending',
-            };
-            upsertActLog(assistantMessageId, {
-              key: `${assistantMessageId}-tool-${toolCallId || frame.itemId}`,
-              kind: 'tool',
-              title: `Tool call: ${toolName}`,
-              detail: toolDetail,
-              status: 'pending',
-            });
-            appendToolLogBlock(assistantMessageId, pendingToolLog);
             setMessages(prev => prev.map(msg =>
               msg.id === assistantMessageId
                 ? {
@@ -5829,40 +5763,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           }
 
           if (frame.kind === 'tool_finished') {
-            const toolName = frame.toolName;
-            const toolCallId = frame.toolCallId || frame.itemId;
-            const parsedToolResult = parseToolResultFramePayload(frame.resultText, frame.success);
-            const toolSummary = buildToolFrameSummary(toolName, parsedToolResult);
-            upsertActLog(assistantMessageId, {
-              key: `${assistantMessageId}-tool-${toolCallId}`,
-              kind: 'tool',
-              title: `Tool result: ${toolName}`,
-              detail: toolSummary.summary,
-              status: frame.success ? 'success' : 'error',
-            });
-            resolveLatestPendingToolLog(
-              assistantMessageId,
-              toolName,
-              toolCallId,
-              frame.success ? 'success' : 'error',
-              toolSummary.summary,
-              {
-                detail: toolSummary.detail,
-                command: toolSummary.command,
-                output: toolSummary.output,
-              }
-            );
             return;
           }
 
           if (frame.kind === 'error') {
-            upsertActLog(assistantMessageId, {
-              key: taskStatusActKey,
-              kind: 'error',
-              title: 'Agent task failed',
-              detail: frame.text || 'Unknown error',
-              status: 'error',
-            });
             return;
           }
 
@@ -5875,14 +5779,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             return;
           }
 
-          if (!compactAgentOutput && !hasLoggedStreamStart && content.trim()) {
-            hasLoggedStreamStart = true;
-            appendActLog(assistantMessageId, {
-              kind: 'stream',
-              title: 'Agent streaming response',
-              status: 'running',
-            });
-          }
           if (activeStepIsDecomposition) {
             appendDecompositionChunk(content);
             return;
@@ -5914,9 +5810,18 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           onToolResult: (toolName, result, toolCallId) => {
             if (isWriteToolName(toolName) && result.success) {
               const data = (result.data ?? {}) as Record<string, unknown>;
+              const changedFiles = (result.changes ?? [])
+                .map((change: { filePath?: string }) => change.filePath)
+                .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+              changedFiles.forEach(filePath => {
+                notifyAgentFileChanged(filePath);
+              });
               const changeWithContent = (result.changes ?? []).find((change: { newContent?: string }) =>
                 typeof change.newContent === 'string'
               );
+              const previousContent = typeof changeWithContent?.oldContent === 'string'
+                ? changeWithContent.oldContent
+                : (typeof data.oldContent === 'string' ? data.oldContent : '');
               const writtenContent = typeof changeWithContent?.newContent === 'string'
                 ? changeWithContent.newContent
                 : (typeof data.newContent === 'string' ? data.newContent : '');
@@ -5931,7 +5836,19 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               const normalizedWrittenContent = normalizeWriteOutputForEditor(writtenContent, true);
 
               if (normalizedWrittenContent) {
-                syncEditorTabContent(normalizedWrittenContent, writtenPath || undefined, writtenName, false);
+                syncEditorTabContent(
+                  normalizedWrittenContent,
+                  writtenPath || undefined,
+                  writtenName,
+                  false,
+                  writtenPath && previousContent !== normalizedWrittenContent
+                    ? {
+                        beforeContent: previousContent,
+                        afterContent: normalizedWrittenContent,
+                        updatedAt: Date.now(),
+                      }
+                    : undefined,
+                );
               }
             }
           },
@@ -5974,43 +5891,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 }
               }
             }
-            const finalSuccessContent = compactAgentOutput
-              ? buildCompactAgentResultText(
-                taskType,
-                normalizedCurrentFilePath,
-                changedFiles,
-                resolveStreamingTargetPath()
-              )
-              : finalSuccessOutput;
+            const finalSuccessContent = finalSuccessOutput.trim() || '已完成。';
             const finalContent = result.success
               ? finalSuccessContent
               : `**Execution failed**: ${result.error || 'Unknown error'}`;
-            const completionDetail = (() => {
-              if (!result.success) {
-                return result.error || 'unknown error';
-              }
-              if (compactAgentOutput) {
-                const targetPath = resolveStreamingTargetPath() || normalizedCurrentFilePath;
-                if (changedFiles.length > 0) {
-                  return `已完成，文件改动 ${changedFiles.length} 个`;
-                }
-                if (targetPath) {
-                  return `已完成，输出目标 ${targetPath}`;
-                }
-                return '已完成';
-              }
-              const outputLength = finalSuccessOutput.trim().length;
-              return outputLength > 0
-                ? `已完成，输出 ${outputLength} 字符`
-                : '已完成';
-            })();
-            upsertActLog(assistantMessageId, {
-              key: taskStatusActKey,
-              kind: 'status',
-              title: result.success ? 'Agent task completed' : 'Agent task failed',
-              detail: completionDetail,
-              status: result.success ? 'success' : 'error',
-            });
             setMessages(prev => prev.map(msg => {
               if (msg.id !== assistantMessageId) return msg;
               const elapsed = msg.thinkingStartTime ? Math.max(1, Math.round((Date.now() - msg.thinkingStartTime) / 1000)) : 1;
@@ -6062,13 +5946,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             writeStepPendingFinalize = false;
             drainWriteRenderBuffer(false, true);
             finalizeDecompositionBlock();
-            upsertActLog(assistantMessageId, {
-              key: taskStatusActKey,
-              kind: 'error',
-              title: 'Agent task failed',
-              detail: err.message,
-              status: 'error',
-            });
             setMessages(prev => prev.map(msg => {
               if (msg.id !== assistantMessageId) return msg;
               const errorText = `\n\n**Error**: ${err.message}`;
@@ -6100,13 +5977,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         }
         flushAnswerBuffer();
         finalizeDecompositionBlock();
-        upsertActLog(assistantMessageId, {
-          key: taskStatusActKey,
-          kind: 'error',
-          title: 'Agent task exception',
-          detail: err instanceof Error ? err.message : String(err),
-          status: 'error',
-        });
         setMessages(prev => prev.map(msg => {
           if (msg.id !== assistantMessageId) return msg;
           const errorText = `\n\n**Execution failed**: ${err instanceof Error ? err.message : String(err)}`;
@@ -6178,32 +6048,74 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   };
 
   const renderToolLogEntry = (tool: ToolLog, key: React.Key): React.ReactNode => {
-    if (tool.name === 'bash') {
-      const commandText = (tool.command || tool.detail || tool.label || 'bash').trim();
-      const outputText = (tool.output || '').trim();
-      const bodyText = outputText || (tool.status === 'pending' ? 'Running...' : '(no output)');
-
-      return (
-        <div key={key} className={`tool-bash-card tool-bash-card--${tool.status}`}>
-          <div className="tool-bash-card__header">
-            <span className="tool-bash-card__tag">Bash</span>
-            <code className="tool-bash-card__command">{commandText}</code>
-          </div>
-          <pre className="tool-bash-card__body">{bodyText}</pre>
-        </div>
-      );
-    }
+    const paramsText = (tool.paramsText || tool.command || '').trim();
+    const resultText = (
+      tool.name === 'bash'
+        ? (tool.output || tool.resultText || tool.summary || '')
+        : (tool.resultText || tool.output || tool.summary || '')
+    ).trim();
+    const primaryPath = (tool.primaryPath || '').trim();
+    const durationText = formatToolDuration(tool.durationMs);
+    const changedFiles = tool.changedFiles ?? [];
 
     return (
-      <div key={key} className={`tool-call-log__item tool-call-log__item--${tool.status}`}>
-        <span className="tool-call-log__dot" />
-        <span className="tool-call-log__label">{tool.label}</span>
-        {tool.summary && <span className="tool-call-log__summary">{tool.summary}</span>}
-        {tool.detail && (
-          <details className="tool-call-log__details">
-            <summary>查看参数/命令</summary>
-            <pre>{tool.detail}</pre>
-          </details>
+      <div key={key} className={`tool-event-card tool-event-card--${tool.status}`}>
+        <div className="tool-event-card__header">
+          <div className="tool-event-card__identity">
+            <span className="tool-event-card__icon">
+              <Icon name={getToolIconName(tool.name)} size={14} />
+            </span>
+            <div className="tool-event-card__titles">
+              <span className="tool-event-card__name">{tool.name}</span>
+              <span className="tool-event-card__label">{tool.label}</span>
+            </div>
+          </div>
+          <div className="tool-event-card__meta">
+            <span className={`tool-event-card__status tool-event-card__status--${tool.status}`}>
+              {getToolStatusText(tool.status)}
+            </span>
+            {durationText && (
+              <span className="tool-event-card__duration">{durationText}</span>
+            )}
+          </div>
+        </div>
+
+        {tool.summary && (
+          <div className="tool-event-card__summary">{tool.summary}</div>
+        )}
+
+        {(primaryPath || changedFiles.length > 0) && (
+          <div className="tool-event-card__chips">
+            {primaryPath && (
+              <span className="tool-event-card__chip tool-event-card__chip--path">{primaryPath}</span>
+            )}
+            {changedFiles.length > 0 && (
+              <span className="tool-event-card__chip">
+                {changedFiles.length === 1 ? '1 个文件变更' : `${changedFiles.length} 个文件变更`}
+              </span>
+            )}
+          </div>
+        )}
+
+        {paramsText && (
+          <div className="tool-event-card__section">
+            <div className="tool-event-card__section-title">参数</div>
+            <pre className="tool-event-card__code">{paramsText}</pre>
+          </div>
+        )}
+
+        <div className="tool-event-card__section">
+          <div className="tool-event-card__section-title">结果</div>
+          <pre className={`tool-event-card__code ${tool.name === 'bash' ? 'tool-event-card__code--terminal' : ''}`}>
+            {resultText || (tool.status === 'pending' ? '等待工具返回...' : '无返回内容')}
+          </pre>
+        </div>
+
+        {changedFiles.length > 1 && (
+          <div className="tool-event-card__section">
+            <div className="tool-event-card__section-title">变更文件</div>
+            <pre className="tool-event-card__code">{changedFiles.join('\n')}</pre>
+          </div>
         )}
       </div>
     );
@@ -6309,14 +6221,17 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       >
         <div className="ai-chat-panel-header-left">
           {currentView === 'chat' && (
-            <button
+            <PressableControl
               ref={historyButtonRef}
               className={`history-dropdown-trigger ${isHistoryOpen ? 'active' : ''}`}
-              onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-              title="历史记录"
+              onPress={() => setIsHistoryOpen(!isHistoryOpen)}
+              title={currentSessionTitle}
+              aria-haspopup="menu"
+              aria-expanded={isHistoryOpen}
+              aria-label={`历史记录：${currentSessionTitle}`}
             >
               <Icon name="history" size={14} />
-              <span>历史记录</span>
+              <span className="history-dropdown-label">{currentSessionTitleLabel}</span>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                 <path
                   d={isHistoryOpen ? 'M3 7L6 4L9 7' : 'M3 5L6 8L9 5'}
@@ -6326,27 +6241,30 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                   strokeLinejoin="round"
                 />
               </svg>
-            </button>
+            </PressableControl>
           )}
         </div>
         <div className="ai-chat-panel-header-right">
           {currentView === 'chat' ? (
             <>
-              <button
-                onClick={createNewChat}
+              <PressableControl
+                className="ai-chat-panel-header-action"
+                onPress={createNewChat}
                 title="新建聊天"
               >
                 <Icon name="plus" size={16} />
-              </button>
-              <button
-                onClick={() => setCurrentView('settings')}
+              </PressableControl>
+              <PressableControl
+                className="ai-chat-panel-header-action"
+                onPress={() => setCurrentView('settings')}
                 title="聊天设置"
               >
                 <Icon name="gear" size={16} />
-              </button>
+              </PressableControl>
               <div className="ai-chat-panel-header-divider"></div>
-              <button
-                onClick={toggleMaximize}
+              <PressableControl
+                className="ai-chat-panel-header-action"
+                onPress={toggleMaximize}
                 title={isEditorTabMode ? '还原到侧边栏' : '在标签页打开'}
               >
                 {isEditorTabMode ? (
@@ -6358,25 +6276,27 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                     <path d="M3.75 3a.75.75 0 0 0-.75.75V5.5a.5.5 0 0 1-1 0V3.75C2 2.784 2.784 2 3.75 2H5.5a.5.5 0 0 1 0 1H3.75zM10 2.5a.5.5 0 0 1 .5-.5h1.75c.966 0 1.75.784 1.75 1.75V5.5a.5.5 0 0 1-1 0V3.75a.75.75 0 0 0-.75-.75H10.5a.5.5 0 0 1-.5-.5zM2.5 10a.5.5 0 0 1 .5.5v1.75c0 .414.336.75.75.75H5.5a.5.5 0 0 1 0 1H3.75A1.75 1.75 0 0 1 2 12.25V10.5a.5.5 0 0 1 .5-.5zm11 0a.5.5 0 0 1 .5.5v1.75A1.75 1.75 0 0 1 12.25 14H10.5a.5.5 0 0 1 0-1h1.75a.75.75 0 0 0 .75-.75V10.5a.5.5 0 0 1 .5-.5z" fill="currentColor" />
                   </svg>
                 )}
-              </button>
-              <button
-                onClick={handleClosePanel}
+              </PressableControl>
+              <PressableControl
+                className="ai-chat-panel-header-action"
+                onPress={handleClosePanel}
                 title="关闭"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
                   <path d="M1 1l10 10M11 1L1 11" strokeWidth="1"/>
                 </svg>
-              </button>
+              </PressableControl>
             </>
           ) : (
-            <button
-              onClick={() => setCurrentView('chat')}
+            <PressableControl
+              className="ai-chat-panel-header-action"
+              onPress={() => setCurrentView('chat')}
               title="关闭"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
                 <path d="M1 1l10 10M11 1L1 11" strokeWidth="1"/>
               </svg>
-            </button>
+            </PressableControl>
           )}
         </div>
       </div>
@@ -6442,12 +6362,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 // }
                 
                 // Whether current assistant message has thinking steps.
-                const hasThinkingSteps = message.role === 'assistant' && message.thinkingSteps && message.thinkingSteps.length > 0;
+                const showLegacyAgentMessageUi = message.role === 'assistant' && message.flowKind !== 'agent_task';
+                const hasThinkingSteps = showLegacyAgentMessageUi && !!message.thinkingSteps && message.thinkingSteps.length > 0;
                 const isLatestAssistantMessage = message.role === 'assistant' && index === messages.length - 1;
                 const assistantSections = message.role === 'assistant'
                   ? buildAssistantRenderSections(message.contentBlocks ?? [])
                   : null;
-                const hasStructuredBlocks = message.role === 'assistant' && !!assistantSections && (
+                const hasStructuredBlocks = showLegacyAgentMessageUi && !!assistantSections && (
                   assistantSections.todoBlocks.length > 0
                   || assistantSections.decompositionBlocks.length > 0
                   || assistantSections.progressTextBlocks.length > 0
@@ -6456,6 +6377,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                   || assistantSections.hasTextContent
                 );
                 const hasTextBlock = assistantSections?.hasTextContent ?? false;
+                const assistantRenderContent = assistantSections?.hasTextContent
+                  ? assistantSections.finalText
+                  : message.content;
                 const showThinkingIndicator = isLatestAssistantMessage
                   && isLoading
                   && !(assistantSections?.thinkingBlock?.isThinking ?? false);
@@ -6567,20 +6491,23 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                               );
                             })}
                             {assistantSections.thinkingBlock && (
-                              <ThinkingBlock
-                                key={`thinking-${message.id}`}
-                                thinkingContent={assistantSections.thinkingBlock.content}
-                                isDeepThinking={true}
-                                isThinkingPhase={assistantSections.thinkingBlock.isThinking}
-                                elapsedSeconds={assistantSections.thinkingBlock.elapsedSeconds}
-                                isExpanded={toolThinkingExpanded.get(message.id + '-dt') ?? assistantSections.thinkingBlock.isThinking}
-                                onToggle={() => setToolThinkingExpanded(prev => {
-                                  const next = new Map(prev);
-                                  const key = message.id + '-dt';
-                                  next.set(key, !prev.get(key));
-                                  return next;
-                                })}
-                              />
+                              <div className={`assistant-message-node assistant-message-node--thinking${assistantSections.thinkingBlock.isThinking ? ' assistant-message-node--thinking-active' : ''}`}>
+                                <span className="assistant-message-node__dot" />
+                                <ThinkingBlock
+                                  key={`thinking-${message.id}`}
+                                  thinkingContent={assistantSections.thinkingBlock.content}
+                                  isDeepThinking={true}
+                                  isThinkingPhase={assistantSections.thinkingBlock.isThinking}
+                                  elapsedSeconds={assistantSections.thinkingBlock.elapsedSeconds}
+                                  isExpanded={toolThinkingExpanded.get(message.id + '-dt') ?? assistantSections.thinkingBlock.isThinking}
+                                  onToggle={() => setToolThinkingExpanded(prev => {
+                                    const next = new Map(prev);
+                                    const key = message.id + '-dt';
+                                    next.set(key, !prev.get(key));
+                                    return next;
+                                  })}
+                                />
+                              </div>
                             )}
                             {assistantSections.progressTextBlocks.map((block, blockIdx) => (
                               <div
@@ -6604,19 +6531,25 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                               );
                             })}
                             {!hasTextBlock && message.content && (
-                              <div className="message-content message-content--timeline" onContextMenu={handleAssistantTextSelection}>
-                                <AIResponseRenderer
-                                  content={message.content}
-                                  isStreaming={showThinkingIndicator}
-                                />
+                              <div className="assistant-message-node assistant-message-node--answer">
+                                <span className="assistant-message-node__dot" />
+                                <div className="message-content message-content--timeline" onContextMenu={handleAssistantTextSelection}>
+                                  <AIResponseRenderer
+                                    content={message.content}
+                                    isStreaming={showThinkingIndicator}
+                                  />
+                                </div>
                               </div>
                             )}
                             {assistantSections.hasTextContent && (
-                              <div className="message-content message-content--timeline" onContextMenu={handleAssistantTextSelection}>
-                                <AIResponseRenderer
-                                  content={assistantSections.finalText}
-                                  isStreaming={assistantSections.isTextStreaming}
-                                />
+                              <div className="assistant-message-node assistant-message-node--answer">
+                                <span className="assistant-message-node__dot" />
+                                <div className="message-content message-content--timeline" onContextMenu={handleAssistantTextSelection}>
+                                  <AIResponseRenderer
+                                    content={assistantSections.finalText}
+                                    isStreaming={assistantSections.isTextStreaming}
+                                  />
+                                </div>
                               </div>
                             )}
                             {showThinkingIndicator && !assistantSections.hasTextContent && (
@@ -6628,26 +6561,29 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             )}
                           </div>
                         ) : (
-                          <>
-                            {/* Deep thinking block (legacy-compatible). */}
+                          <div className="message-content-blocks">
+                            {/* Deep thinking block for historical message compatibility. */}
                             {hasThinkingSteps && (
-                              <ThinkingBlock
-                                thinkingContent={message.thinkingSteps![0].content}
-                                isDeepThinking={true}
-                                isThinkingPhase={message.isThinking ?? false}
-                                elapsedSeconds={message.elapsedSeconds}
-                                isExpanded={toolThinkingExpanded.get(message.id + '-dt') ?? false}
-                                onToggle={() => setToolThinkingExpanded(prev => {
-                                  const next = new Map(prev);
-                                  const key = message.id + '-dt';
-                                  next.set(key, !prev.get(key));
-                                  return next;
-                                })}
-                              />
+                              <div className={`assistant-message-node assistant-message-node--thinking${message.isThinking ? ' assistant-message-node--thinking-active' : ''}`}>
+                                <span className="assistant-message-node__dot" />
+                                <ThinkingBlock
+                                  thinkingContent={message.thinkingSteps![0].content}
+                                  isDeepThinking={true}
+                                  isThinkingPhase={message.isThinking ?? false}
+                                  elapsedSeconds={message.elapsedSeconds}
+                                  isExpanded={toolThinkingExpanded.get(message.id + '-dt') ?? false}
+                                  onToggle={() => setToolThinkingExpanded(prev => {
+                                    const next = new Map(prev);
+                                    const key = message.id + '-dt';
+                                    next.set(key, !prev.get(key));
+                                    return next;
+                                  })}
+                                />
+                              </div>
                             )}
 
-                            {/* Tool call log (legacy-compatible). */}
-                            {message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0 && (
+                            {/* Tool call log for historical message compatibility. */}
+                            {showLegacyAgentMessageUi && message.toolCalls && message.toolCalls.length > 0 && (
                               <div className="tool-call-log">
                                 {message.toolCalls.map((tc, i) => (
                                   renderToolLogEntry(tc, tc.uiId ?? i)
@@ -6656,65 +6592,33 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             )}
 
                             {/* Final answer */}
-                            <div
-                              className="message-content"
-                              onContextMenu={message.role === 'assistant' ? handleAssistantTextSelection : undefined}
-                            >
-                              {message.role === 'assistant' ? (
-                                <AIResponseRenderer
-                                  content={message.content}
-                                  isStreaming={isLoading && index === messages.length - 1}
-                                />
-                              ) : (
-                                message.content
-                              )}
-                            </div>
-                            {showThinkingIndicator && message.role === 'assistant' && !message.content && !hasThinkingSteps && (
+                            {message.role === 'assistant' ? (
+                              <div className="assistant-message-node assistant-message-node--answer">
+                                <span className="assistant-message-node__dot" />
+                                <div
+                                  className="message-content"
+                                  onContextMenu={handleAssistantTextSelection}
+                                >
+                                  <AIResponseRenderer
+                                    content={assistantRenderContent}
+                                    isStreaming={assistantSections?.isTextStreaming ?? (isLoading && index === messages.length - 1)}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="message-content">
+                                {message.content}
+                              </div>
+                            )}
+                            {showThinkingIndicator && message.role === 'assistant' && !assistantRenderContent && !hasThinkingSteps && (
                               <div className="act-log__item act-log__item--running act-log__item--thinking">
                                 <span className="act-log__dot" />
                                 <span className="act-log__title">Thinking</span>
                                 <span className="act-log__detail">In progress...</span>
                               </div>
                             )}
-                          </>
+                          </div>
                         )}
-                        <div className="message-footer">
-                          {/* Assistant message toolbar */}
-                          {message.role === 'assistant' && (
-                            <div className="message-toolbar">
-                              <button 
-                                className="toolbar-button"
-                                title="重新生成"
-                                onClick={() => {
-                                  console.log('[AIChatPanel] 重新生成回答');
-                                  // TODO: 实现重新生成功能
-                                }}
-                              >
-                                <Icon name="regenerate" size={14} iconSet="ui" />
-                              </button>
-                              <button 
-                                className="toolbar-button"
-                                title="点赞"
-                                onClick={() => {
-                                  console.log('[AIChatPanel] 点赞');
-                                  // TODO: 实现点赞功能
-                                }}
-                              >
-                                <Icon name="thumb-up" size={14} iconSet="ui" />
-                              </button>
-                              <button 
-                                className="toolbar-button"
-                                title="点踩"
-                                onClick={() => {
-                                  console.log('[AIChatPanel] 点踩');
-                                  // TODO: 实现点踩功能
-                                }}
-                              >
-                                <Icon name="thumb-down" size={14} iconSet="ui" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
                       </div>
                     </div>
                   </React.Fragment>
@@ -6745,14 +6649,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         <div className={`ai-chat-panel-input-container-inner ${isMaximized ? 'max-width' : ''}`}>
           {/* Top toolbar */}
           <div className="input-top-toolbar">
-            <button
+            <PressableControl
               ref={contextButtonRef}
               className={`context-button ${isContextMenuOpen ? 'active' : ''}`}
-              onClick={toggleContextMenu}
+              onPress={toggleContextMenu}
               title="命令菜单"
+              aria-haspopup="menu"
+              aria-expanded={isContextMenuOpen}
             >
               <span className="slash-icon">/</span>
-            </button>
+            </PressableControl>
 
             {/* Context menu */}
             {isContextMenuOpen && (
@@ -7451,50 +7357,28 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
           {/* Bottom toolbar */}
           <div className="input-toolbar">
-            <div className="toolbar-left">
-              {SHOW_AGENT_FRAME_REPLAY_DEVTOOLS && (
-                <div className="replay-toolbar">
-                  <span className="replay-toolbar__label">消息回放</span>
-                  {AGENT_FRAME_REPLAY_SAMPLES.map(sample => (
-                    <button
-                      key={sample.id}
-                      className={`replay-toolbar__button ${activeReplaySampleId === sample.id ? 'active' : ''}`}
-                      onClick={() => { void runAgentFrameReplay(sample); }}
-                      disabled={isLoading}
-                      title={sample.description}
-                    >
-                      {sample.label}
-                    </button>
-                  ))}
-                  <span className="replay-toolbar__status">
-                    {activeReplaySample ? `运行中: ${activeReplaySample.label}` : '开发态'}
-                  </span>
-                </div>
-              )}
-            </div>
-            
             <div className="input-actions">
               {isLoading && (
-                <button
+                <PressableControl
                   className="icon-button stop-button"
-                  onClick={handleStopGeneration}
+                  onPress={handleStopGeneration}
                   title="停止生成"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                     <rect x="4" y="4" width="8" height="8" />
                   </svg>
-                </button>
+                </PressableControl>
               )}
-              <button
+              <PressableControl
                 className="icon-button send-button"
-                onClick={handleSend}
+                onPress={handleSend}
                 disabled={!input.trim() || isLoading}
                 title="发送"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M1 2.5l14 5.5-14 5.5V9l10-1.5L1 6V2.5z"/>
                 </svg>
-              </button>
+              </PressableControl>
             </div>
           </div>
         </div>

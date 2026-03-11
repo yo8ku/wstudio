@@ -5,23 +5,23 @@
 
 /* 确保所有 Monaco Editor 容器允许溢出，使边框可以延伸到行号区域 */
 /* monaco-editor 是边框的容器（最外层），必须允许溢出并设置相对定位 */
-.monaco-editor {
+.monaco-editor.ai-zone-active {
   position: relative !important; /* 确保边框可以绝对定位 */
 }
 
 /* overflow-guard 也需要允许溢出（作为备用容器） */
-.monaco-editor .overflow-guard {
+.monaco-editor.ai-zone-active .overflow-guard {
   overflow: visible !important;
   position: relative !important; /* 确保边框可以绝对定位 */
 }
 
 /* monaco-scrollable-element 也需要允许溢出（作为备用容器） */
-.monaco-editor .monaco-scrollable-element {
+.monaco-editor.ai-zone-active .monaco-scrollable-element {
   overflow: visible !important;
   position: relative !important; /* 确保边框可以绝对定位 */
 }
 
-.monaco-editor .view-zone {
+.monaco-editor.ai-zone-active .view-zone {
   overflow: visible !important;
   overflow-x: visible !important;
   overflow-y: visible !important;
@@ -29,7 +29,7 @@
   pointer-events: auto !important;
 }
 
-.monaco-editor .view-zones {
+.monaco-editor.ai-zone-active .view-zones {
   overflow: visible !important;
   overflow-x: visible !important;
   overflow-y: visible !important;
@@ -38,11 +38,11 @@
 }
 
 /* 确保 Monaco Editor 的内容区域也允许溢出 */
-.monaco-editor .monaco-editor-background {
+.monaco-editor.ai-zone-active .monaco-editor-background {
   overflow: visible !important;
 }
 
-.monaco-editor .lines-content {
+.monaco-editor.ai-zone-active .lines-content {
   overflow: visible !important;
 }
 

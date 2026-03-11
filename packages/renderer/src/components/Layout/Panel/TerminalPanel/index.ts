@@ -3,6 +3,5 @@
  */
 
 export { TerminalPanel, type TerminalPanelRef, type ShellType } from './TerminalPanel';
-export { TerminalHistory } from './TerminalHistory';
 
 

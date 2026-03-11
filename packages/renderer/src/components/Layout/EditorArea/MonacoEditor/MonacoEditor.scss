@@ -37,8 +37,16 @@
     .monaco-editor .monaco-scrollable-element {
       width: 100% !important;
       height: 100% !important;
-      position: relative !important;
       background-color: var(--ws-editor-background) !important;
+    }
+
+    .monaco-editor .inputarea {
+      background-color: transparent !important;
+      color: transparent !important;
+    }
+
+    .monaco-editor .inputarea.ime-input {
+      color: var(--ws-editor-foreground) !important;
     }
 
     .monaco-editor .monaco-editor-background,

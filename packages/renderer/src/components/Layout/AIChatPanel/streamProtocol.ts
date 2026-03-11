@@ -13,7 +13,26 @@ export interface ToolLog {
   summary?: string;
   command?: string;
   output?: string;
+  paramsText?: string;
+  resultText?: string;
+  startedAt?: number;
+  finishedAt?: number;
+  durationMs?: number;
+  primaryPath?: string;
+  changedFiles?: string[];
   status: 'pending' | 'success' | 'error';
+}
+
+interface ToolLogUpdates {
+  detail?: string;
+  command?: string;
+  output?: string;
+  paramsText?: string;
+  resultText?: string;
+  finishedAt?: number;
+  durationMs?: number;
+  primaryPath?: string;
+  changedFiles?: string[];
 }
 
 export interface ActLog {
@@ -326,11 +345,7 @@ const resolvePendingTool = (
   toolCallId: string | undefined,
   status: ToolLog['status'],
   summary?: string,
-  updates?: {
-    detail?: string;
-    command?: string;
-    output?: string;
-  }
+  updates?: ToolLogUpdates,
 ): ToolLog => {
   const nextTool: ToolLog = {
     ...tool,
@@ -347,6 +362,31 @@ const resolvePendingTool = (
     if (typeof updates.output === 'string') {
       nextTool.output = updates.output;
     }
+    if (typeof updates.paramsText === 'string') {
+      nextTool.paramsText = updates.paramsText;
+    }
+    if (typeof updates.resultText === 'string') {
+      nextTool.resultText = updates.resultText;
+    }
+    if (typeof updates.finishedAt === 'number' && Number.isFinite(updates.finishedAt)) {
+      nextTool.finishedAt = updates.finishedAt;
+    }
+    if (typeof updates.durationMs === 'number' && Number.isFinite(updates.durationMs)) {
+      nextTool.durationMs = updates.durationMs;
+    } else if (
+      typeof nextTool.startedAt === 'number'
+      && typeof updates.finishedAt === 'number'
+      && Number.isFinite(nextTool.startedAt)
+      && Number.isFinite(updates.finishedAt)
+    ) {
+      nextTool.durationMs = Math.max(0, updates.finishedAt - nextTool.startedAt);
+    }
+    if (typeof updates.primaryPath === 'string') {
+      nextTool.primaryPath = updates.primaryPath;
+    }
+    if (Array.isArray(updates.changedFiles)) {
+      nextTool.changedFiles = updates.changedFiles;
+    }
   }
   return nextTool;
 };
@@ -357,11 +397,7 @@ export const resolvePendingToolLogBlocks = (
   toolCallId: string | undefined,
   status: ToolLog['status'],
   summary?: string,
-  updates?: {
-    detail?: string;
-    command?: string;
-    output?: string;
-  }
+  updates?: ToolLogUpdates,
 ): ContentBlock[] => {
   let resolved = false;
   return blocks.map(block => {
@@ -389,11 +425,7 @@ export const resolvePendingToolCalls = (
   toolCallId: string | undefined,
   status: ToolLog['status'],
   summary?: string,
-  updates?: {
-    detail?: string;
-    command?: string;
-    output?: string;
-  }
+  updates?: ToolLogUpdates,
 ): ToolLog[] => {
   let resolved = false;
   return tools.map(tool => {

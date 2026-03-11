@@ -38,6 +38,14 @@ import { getAIZoneSystemPromptAsync } from '../../../../services/ai/SystemPrompt
 import type { LinkAnchorSuggestionItem, LinkTargetSuggestionItem } from '../../../../types/electron';
 
 const MAX_INLINE_CHAT_HISTORY_MESSAGES = 12;
+const MONACO_EDITOR_DEBUG_LOGS = false;
+
+const monacoDebugLog = (...args: unknown[]): void => {
+  if (!MONACO_EDITOR_DEBUG_LOGS) {
+    return;
+  }
+  globalThis.console.log(...args);
+};
 
 const formatModelDisplayName = (modelId?: string): string => {
   if (!modelId) {
@@ -88,6 +96,7 @@ interface MonacoEditorProps {
   value: string;
   language?: string;
   onChange?: (value: string) => void;
+  onCompositionStateChange?: (isComposing: boolean, value?: string) => void;
   tabId?: string;  // 褰撳墠鏍囩椤礗D
   tabTitle?: string;  // 褰撳墠鏍囩椤垫爣锟?
   filePath?: string;  // 褰撳墠鏂囦欢璺緞
@@ -144,6 +153,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   value,
   language = 'markdown',
   onChange,
+  onCompositionStateChange,
   tabId,
   tabTitle,
   filePath
@@ -153,9 +163,12 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const [pendingTheme, setPendingTheme] = useState<any>(null);
   const [isEditorReady, setIsEditorReady] = useState<boolean>(false);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const onCompositionStateChangeRef = useRef(onCompositionStateChange);
   const commandCenterRef = useRef<VSCodeCommandCenter | null>(null);
   const isSyncingScrollRef = useRef<boolean>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isImeComposingRef = useRef(false);
+  const compositionCleanupRef = useRef<(() => void) | null>(null);
 
   // AI 鍔熻兘鐩稿叧
   const aiZoneWidgetRef = useRef<AIZoneWidget | null>(null);
@@ -174,13 +187,17 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const colorPickerObserverCleanupRef = useRef<(() => void) | null>(null);
 
   // 璋冭瘯锛氭墦鍗扮粍浠舵覆鏌撲俊锟?
-  console.log('[MonacoEditor] Rendering with:', {
+  monacoDebugLog('[MonacoEditor] Rendering with:', {
     tabId,
     tabTitle,
     language,
     contentLength: value?.length || 0,
     contentPreview: value?.substring(0, 50)
   });
+
+  useEffect(() => {
+    onCompositionStateChangeRef.current = onCompositionStateChange;
+  }, [onCompositionStateChange]);
 
 
   useEffect(() => {
@@ -203,10 +220,10 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             .map(model => model.modelId);
           setAvailableModels(modelIds);
           availableModelsRef.current = modelIds; // 鍚屾鏇存柊 ref
-          console.log('[MonacoEditor] 浠庢暟鎹簱鍔犺浇宸插惎鐢ㄧ殑妯″瀷锛屾暟锟?', modelIds.length);
+          monacoDebugLog('[MonacoEditor] 浠庢暟鎹簱鍔犺浇宸插惎鐢ㄧ殑妯″瀷锛屾暟锟?', modelIds.length);
         } else {
           // 濡傛灉鏁版嵁搴撲腑娌℃湁妯″瀷閰嶇疆锛屽洖閫€鍒板唴缃瓵I鏈嶅姟
-          console.log('[MonacoEditor] 鏁版嵁搴撲腑娌℃湁妯″瀷閰嶇疆锛屼娇鐢ㄥ唴缃瓵I鏈嶅姟');
+          monacoDebugLog('[MonacoEditor] 鏁版嵁搴撲腑娌℃湁妯″瀷閰嶇疆锛屼娇鐢ㄥ唴缃瓵I鏈嶅姟');
           const models = await builtinAI.getModels();
           if (models.length > 0) {
             setAvailableModels(models);
@@ -236,19 +253,19 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     
     // 鐩戝惉妯″瀷閰嶇疆鏇存柊浜嬩欢
     const handleModelConfigUpdate = async () => {
-      console.log('[MonacoEditor] AI閰嶇疆宸叉洿鏂帮紝閲嶆柊鍔犺浇妯″瀷鍒楄〃...');
+      monacoDebugLog('[MonacoEditor] AI閰嶇疆宸叉洿鏂帮紝閲嶆柊鍔犺浇妯″瀷鍒楄〃...');
       await loadAvailableModels();
     };
     
     // 鐩戝惉妯″瀷鍚敤鐘舵€佸彉鍖栦簨锟?
     const handleModelEnabledChanged = async () => {
-      console.log('[MonacoEditor] 妯″瀷鍚敤鐘舵€佸凡鍙樺寲锛岄噸鏂板姞杞芥ā鍨嬪垪锟?..');
+      monacoDebugLog('[MonacoEditor] 妯″瀷鍚敤鐘舵€佸凡鍙樺寲锛岄噸鏂板姞杞芥ā鍨嬪垪锟?..');
       await loadAvailableModels();
     };
     
     // 鐩戝惉妯″瀷缂撳瓨鏇存柊浜嬩欢
     const handleModelsCacheUpdated = async () => {
-      console.log('[MonacoEditor] 妯″瀷缂撳瓨宸叉洿鏂帮紝閲嶆柊鍔犺浇妯″瀷鍒楄〃...');
+      monacoDebugLog('[MonacoEditor] 妯″瀷缂撳瓨宸叉洿鏂帮紝閲嶆柊鍔犺浇妯″瀷鍒楄〃...');
       await loadAvailableModels();
     };
     
@@ -269,7 +286,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   // 锟?availableModels 鍙樺寲鏃讹紝鏇存柊宸插瓨鍦ㄧ殑 AIZoneWidget
   useEffect(() => {
     if (aiZoneWidgetRef.current && availableModels.length > 0) {
-      console.log('[MonacoEditor] availableModels updated, syncing AIZoneWidget');
+      monacoDebugLog('[MonacoEditor] availableModels updated, syncing AIZoneWidget');
       // 鏇存柊 AIZoneWidget 锟?options
       aiZoneWidgetRef.current.updateAvailableModels(availableModels);
     }
@@ -292,7 +309,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const cleanupPreviousDiff = useCallback(() => {
     // 绔嬪嵆娓呴櫎涔嬪墠锟?Ghost Text Widget锛堝鏋滃瓨鍦級
     if (currentGhostWidgetRef.current) {
-      console.log('[MonacoEditor] 娓呴櫎涓婁竴娆＄殑 diff 棰勮锛堥噸鏂扮敓鎴愭垨鏂拌姹傦級');
+      monacoDebugLog('[MonacoEditor] 娓呴櫎涓婁竴娆＄殑 diff 棰勮锛堥噸鏂扮敓鎴愭垨鏂拌姹傦級');
       currentGhostWidgetRef.current.dispose();
       currentGhostWidgetRef.current = null;
     }
@@ -331,7 +348,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             const startLine = lastNonEmptyLine + 1;
             const endLine = currentLineCount;
             
-            console.log('[MonacoEditor] remove trailing blank lines:', linesToRemove, startLine, endLine);
+            monacoDebugLog('[MonacoEditor] remove trailing blank lines:', linesToRemove, startLine, endLine);
             
             // 鍒犻櫎锟?startLine 锟?endLine 鐨勬墍鏈夎
             if (startLine === previousOriginalLineCount + 1) {
@@ -383,7 +400,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             const endLine = firstNonEmptyLineAfterZone - 1;
             const linesToRemove = endLine - startLine + 1;
             
-            console.log('[MonacoEditor] remove blank lines inserted after GhostTextWidget:', linesToRemove, startLine, endLine);
+            monacoDebugLog('[MonacoEditor] remove blank lines inserted after GhostTextWidget:', linesToRemove, startLine, endLine);
             
             // 鍒犻櫎锟?startLine 锟?endLine 鐨勬墍鏈夎
             const startColumn = 1;
@@ -402,7 +419,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             if (startLine <= endLine) {
               const linesToRemove = endLine - startLine + 1;
               
-              console.log('[MonacoEditor] remove trailing blank lines inserted after GhostTextWidget:', linesToRemove, startLine, endLine);
+              monacoDebugLog('[MonacoEditor] remove trailing blank lines inserted after GhostTextWidget:', linesToRemove, startLine, endLine);
               
               // 鍒犻櫎锟?startLine 锟?endLine 鐨勬墍鏈夎
               const startColumn = 1;
@@ -441,7 +458,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             
             // 纭繚琛屽彿鏈夋晥
             if (startLine >= 1 && endLine >= startLine && endLine <= model.getLineCount()) {
-              console.log('[MonacoEditor] remove blank lines at document end:', linesToRemove, startLine, endLine);
+              monacoDebugLog('[MonacoEditor] remove blank lines at document end:', linesToRemove, startLine, endLine);
               
               // 鍒犻櫎锟?startLine 锟?endLine 鐨勬墍鏈夎
               const startColumn = 1;
@@ -512,7 +529,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       zoneBottomLine = Math.max(1, position.lineNumber);
     }
     
-    console.log('[InlineChat] Zone 搴曢儴琛屽彿:', zoneBottomLine, '鍘熷鍏夋爣琛屽彿:', position.lineNumber);
+    monacoDebugLog('[InlineChat] Zone 搴曢儴琛屽彿:', zoneBottomLine, '鍘熷鍏夋爣琛屽彿:', position.lineNumber);
     
     // 纭繚鐩爣琛屽瓨鍦紝濡傛灉涓嶅瓨鍦ㄥ垯鍏堟彃鍏ョ┖锟?
     const model = editor.getModel();
@@ -520,7 +537,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       const totalLines = model.getLineCount();
       // 璁板綍鎻掑叆绌鸿鍓嶇殑鍘熷琛屾暟
       originalLineCountRef.current = totalLines;
-      console.log('[InlineChat] 鏂囨。鎬昏锟?', totalLines, '鐩爣琛屽彿:', zoneBottomLine);
+      monacoDebugLog('[InlineChat] 鏂囨。鎬昏锟?', totalLines, '鐩爣琛屽彿:', zoneBottomLine);
       
       if (zoneBottomLine > totalLines) {
         // 鍦ㄦ枃妗ｆ湯灏炬彃鍏ョ┖琛岋紝浣跨洰鏍囪鍙锋湁锟?
@@ -530,13 +547,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           text: '\n'.repeat(zoneBottomLine - totalLines),
           forceMoveMarkers: true
         }]);
-        console.log('[InlineChat] inserted blank lines:', zoneBottomLine - totalLines);
+        monacoDebugLog('[InlineChat] inserted blank lines:', zoneBottomLine - totalLines);
       }
     }
     
     // 鍐嶆纭繚娓呴櫎涔嬪墠锟?Ghost Text Widget锛堝鏋滃瓨鍦紝鍙岄噸淇濋櫓锟?
     if (currentGhostWidgetRef.current) {
-      console.log('[InlineChat] 鍐嶆娓呴櫎涓婁竴娆＄殑 diff 棰勮锛堝弻閲嶄繚闄╋級');
+      monacoDebugLog('[InlineChat] 鍐嶆娓呴櫎涓婁竴娆＄殑 diff 棰勮锛堝弻閲嶄繚闄╋級');
       currentGhostWidgetRef.current.dispose();
       currentGhostWidgetRef.current = null;
     }
@@ -544,7 +561,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     // 鍒涘缓鏂扮殑 Ghost Text Widget 鐢ㄤ簬鏄剧ず diff 鏁堟灉锛堜粠搴曢儴杈规涓嬩竴琛屽紑濮嬶級
     const ghostWidget = new GhostTextWidget(editor, {
       onAccept: (text: string) => {
-        console.log('[InlineChat] 鐢ㄦ埛鎺ュ彈浜嗕唬锟?', text.substring(0, 50));
+        monacoDebugLog('[InlineChat] 鐢ㄦ埛鎺ュ彈浜嗕唬锟?', text.substring(0, 50));
         // 浠ｇ爜宸茬粡琚彃鍏ワ紝娓呯悊 widget
         ghostWidget.dispose();
         currentGhostWidgetRef.current = null;
@@ -552,7 +569,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         originalLineCountRef.current = null;
       },
       onReject: () => {
-        console.log('[InlineChat] user rejected generated code');
+        monacoDebugLog('[InlineChat] user rejected generated code');
         ghostWidget.dispose();
         currentGhostWidgetRef.current = null;
         // 鐢ㄦ埛鎷掔粷浜嗕唬鐮侊紝淇濇寔鍘熷琛屾暟璁板綍锛屼互渚垮湪鍏抽棴鏃舵竻闄ょ┖锟?
@@ -577,7 +594,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     // 娓呴櫎涔嬪墠锟?diff 鍐呭鍜岀┖锟?
     cleanupPreviousDiff();
     
-    console.log('[MonacoEditor] handleSendInlineChatMessage 琚皟锟? message:', message, 'selectedModel:', selectedModel);
+    monacoDebugLog('[MonacoEditor] handleSendInlineChatMessage 琚皟锟? message:', message, 'selectedModel:', selectedModel);
     if (!editorRef.current) {
       console.error('[MonacoEditor] editorRef.current is null, cannot send message');
       return;
@@ -585,7 +602,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
     // 濡傛灉宸叉湁姝ｅ湪杩涜鐨勮姹傦紝鍏堝彇娑堝畠
     if (abortControllerRef.current) {
-      console.log('[MonacoEditor] abort previous request');
+      monacoDebugLog('[MonacoEditor] abort previous request');
       abortControllerRef.current.abort();
     }
 
@@ -621,7 +638,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                   name: kb.title,
                   mention: `@${kb.title}`
                 });
-                console.log(`[InlineChat] 浠庡伐鍏锋爮妫€娴嬪埌鐭ヨ瘑锟? ${kb.title} (${kb.id})`);
+                monacoDebugLog(`[InlineChat] 浠庡伐鍏锋爮妫€娴嬪埌鐭ヨ瘑锟? ${kb.title} (${kb.id})`);
               }
             }
           } catch (error) {
@@ -673,7 +690,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
               name: foundKnowledgeBase.name,
               mention: `@${mention}`
             });
-            console.log(`[InlineChat] 浠庤緭鍏ユ鏂囨湰妫€娴嬪埌鐭ヨ瘑锟? ${foundKnowledgeBase.name} (${foundKnowledgeBase.id})`);
+            monacoDebugLog(`[InlineChat] 浠庤緭鍏ユ鏂囨湰妫€娴嬪埌鐭ヨ瘑锟? ${foundKnowledgeBase.name} (${foundKnowledgeBase.id})`);
           }
         }
       } catch (error) {
@@ -696,7 +713,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         const widgetSelectedText = (aiZoneWidgetRef.current as any).selectedText;
         if (widgetSelectedText) {
           selectedText = widgetSelectedText;
-          console.log('[MonacoEditor] 锟?AIZoneWidget 鑾峰彇閫変腑鏂囨湰:', selectedText);
+          monacoDebugLog('[MonacoEditor] 锟?AIZoneWidget 鑾峰彇閫変腑鏂囨湰:', selectedText);
         }
       }
       
@@ -705,7 +722,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         const selection = editor.getSelection();
         if (selection && !selection.isEmpty()) {
           selectedText = editor.getModel()?.getValueInRange(selection) || '';
-          console.log('[MonacoEditor] 浠庣紪杈戝櫒鑾峰彇閫変腑鏂囨湰:', selectedText);
+          monacoDebugLog('[MonacoEditor] 浠庣紪杈戝櫒鑾峰彇閫変腑鏂囨湰:', selectedText);
         }
       }
     }
@@ -714,7 +731,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       // 浣跨敤閫変腑鐨勬ā鍨嬫垨榛樿妯″瀷
       const modelToUse = selectedModel || availableModels[0] || 'OpenAI:gpt-4o';
       
-      console.log('[InlineChat] 鍙戦€佹秷鎭埌妯″瀷:', modelToUse);
+      monacoDebugLog('[InlineChat] 鍙戦€佹秷鎭埌妯″瀷:', modelToUse);
 
       // 鑾峰彇妯″瀷閰嶇疆
       const modelConfig = await getModelConfig(modelToUse);
@@ -722,16 +739,16 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         throw new Error(`鏈壘鍒版ā鍨嬮厤缃細${modelToUse}`);
       }
 
-      console.log('[InlineChat] 浣跨敤閰嶇疆:', modelConfig.configName);
+      monacoDebugLog('[InlineChat] 浣跨敤閰嶇疆:', modelConfig.configName);
 
       // 鎻愬彇瀹為檯鐨勬ā鍨婭D锛堝幓鎺夋彁渚涘晢鍓嶇紑锟?
       const [providerId, actualModelId] = modelToUse.split(':');
       
-      console.log('[InlineChat] 鎻愪緵锟?', providerId, '妯″瀷:', actualModelId);
+      monacoDebugLog('[InlineChat] 鎻愪緵锟?', providerId, '妯″瀷:', actualModelId);
 
       // 鑾峰彇妯″瀷鐨勮緭鍏oken闄愬埗
       const modelInputTokenLimit = getModelInputTokenLimit(providerId, actualModelId);
-      console.log('[InlineChat] 妯″瀷杈撳叆token闄愬埗:', modelInputTokenLimit);
+      monacoDebugLog('[InlineChat] 妯″瀷杈撳叆token闄愬埗:', modelInputTokenLimit);
 
       // 1. 鏂囦欢鍚戦噺妫€绱細鑾峰彇鏂囦欢宸ュ叿鏍忕殑鎵€鏈夋枃浠讹紝杩涜鍚戦噺鎼滅储
       let ragChunks: Array<{ text: string; embedding: number[]; metadata: { filePath: string; fileName: string; chunkIndex: number; totalChunks: number } }> = [];
@@ -753,11 +770,11 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       
       if (aiZoneWidgetRef.current) {
         const selectedFiles = aiZoneWidgetRef.current.getSelectedFiles();
-        console.log('[InlineChat] getSelectedFiles() 杩斿洖:', selectedFiles);
+        monacoDebugLog('[InlineChat] getSelectedFiles() 杩斿洖:', selectedFiles);
         
         // 杩囨护鍑烘枃浠剁被鍨嬬殑椤癸紙鎺掗櫎鐭ヨ瘑搴擄級
         const fileItems = selectedFiles.filter(file => !file.type || file.type === 'file');
-        console.log('[InlineChat] 杩囨护鍚庣殑鏂囦欢锟?', fileItems);
+        monacoDebugLog('[InlineChat] 杩囨护鍚庣殑鏂囦欢锟?', fileItems);
         
         if (fileItems.length > 0) {
           // 鍒嗙澶ф枃浠讹紙甯︾紦瀛樺唴瀹癸級
@@ -773,7 +790,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
               }
               
               const fileSize = new Blob([content]).size;
-              console.log(`[InlineChat] 鏂囦欢 "${file.name}" 澶у皬: ${fileSize} bytes`);
+              monacoDebugLog(`[InlineChat] 鏂囦欢 "${file.name}" 澶у皬: ${fileSize} bytes`);
               
               if (fileSize >= MIN_FILE_SIZE_FOR_VECTOR) {
                 largeFiles.push({ ...file, content }); // 淇濆瓨鍐呭锛岄伩鍏嶉噸澶嶈锟?
@@ -784,14 +801,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                   name: file.name,
                   content: content
                 });
-                console.log(`[InlineChat] small file "${file.name}" uses full content directly, length: ${content.length}`);
+                monacoDebugLog(`[InlineChat] small file "${file.name}" uses full content directly, length: ${content.length}`);
               }
             } catch (readError) {
               console.warn(`[InlineChat] 璇诲彇鏂囦欢澶辫触: ${file.path}`, readError);
             }
           }
           
-          console.log(`[InlineChat] large files (>= 2KB): ${largeFiles.length}, small files added directly: ${fileContents.length}`);
+          monacoDebugLog(`[InlineChat] large files (>= 2KB): ${largeFiles.length}, small files added directly: ${fileContents.length}`);
           
           // 澶勭悊澶ф枃浠讹細杩涜鍚戦噺鎼滅储
           if (largeFiles.length > 0) {
@@ -819,12 +836,12 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                 }
               } else {
                 const queryEmbedding = queryResult.data.vectors[0];
-                console.log('[InlineChat] 鏌ヨ鍚戦噺鐢熸垚瀹屾垚锛岀淮锟?', queryEmbedding.length);
+                monacoDebugLog('[InlineChat] 鏌ヨ鍚戦噺鐢熸垚瀹屾垚锛岀淮锟?', queryEmbedding.length);
               
                 // 瀵规瘡涓ぇ鏂囦欢杩涜鍚戦噺鎼滅储
                 for (const file of largeFiles) {
                   try {
-                    console.log(`[InlineChat] 鍚戦噺鎼滅储鏂囦欢: ${file.name}`);
+                    monacoDebugLog(`[InlineChat] 鍚戦噺鎼滅储鏂囦欢: ${file.name}`);
                     
                     // 妫€鏌ユ枃浠舵槸鍚﹀凡绱㈠紩
                     const isIndexedResponse = await window.electron?.ipcRenderer.invoke(
@@ -835,7 +852,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                     
                     // 濡傛灉鏂囦欢鏈储寮曪紝瑙﹀彂浼樺厛绱㈠紩
                     if (!isIndexed) {
-                      console.log(`[InlineChat] 鏂囦欢 "${file.name}" 鏈储寮曪紝瑙﹀彂浼樺厛绱㈠紩...`);
+                      monacoDebugLog(`[InlineChat] 鏂囦欢 "${file.name}" 鏈储寮曪紝瑙﹀彂浼樺厛绱㈠紩...`);
                       
                       // 鏄剧ず浼樺厛绱㈠紩鐘讹拷?
                       aiZoneWidgetRef.current?.updateThinkingText('姝ｅ湪浼樺厛瑙ｆ瀽鏂囨。缁撴瀯');
@@ -859,7 +876,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                         continue;
                       }
                       
-                      console.log(`[InlineChat] 鏂囦欢 "${file.name}" 浼樺厛绱㈠紩瀹屾垚`);
+                      monacoDebugLog(`[InlineChat] 鏂囦欢 "${file.name}" 浼樺厛绱㈠紩瀹屾垚`);
                       // 鎭㈠鎬濊€冪姸锟?
                       aiZoneWidgetRef.current?.updateThinkingText('锟斤拷锟剿硷拷锟斤拷锟?..');
                     }
@@ -878,7 +895,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                     
                     const searchResults = searchResponse?.success ? searchResponse.data : null;
                     
-                    console.log(`[InlineChat] 鍚戦噺鎼滅储缁撴灉:`, {
+                    monacoDebugLog(`[InlineChat] 鍚戦噺鎼滅储缁撴灉:`, {
                       success: searchResponse?.success,
                       resultsCount: searchResults?.length || 0
                     });
@@ -897,21 +914,21 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                         fileName: file.name,
                         results: transformedResults
                       });
-                      console.log(`[InlineChat] 文件 "${file.name}" 搜索到 ${searchResults.length} 个相关父块`);
+                      monacoDebugLog(`[InlineChat] 文件 "${file.name}" 搜索到 ${searchResults.length} 个相关父块`);
                     } else {
                       // 鍚戦噺鎼滅储鏃犵粨鏋滐紝灏濊瘯鑾峰彇鐖跺潡鍐呭锛堝凡鍒囧垎浣嗘湭鍚戦噺鍖栫殑鎯呭喌锟?
-                      console.log(`[InlineChat] file "${file.name}" has no vector search result, fallback to parent blocks: ${file.path}`);
+                      monacoDebugLog(`[InlineChat] file "${file.name}" has no vector search result, fallback to parent blocks: ${file.path}`);
                       
                       const parentsResponse = await window.electron?.ipcRenderer.invoke(
                         'workspace-index-db:get-parents-by-file',
                         file.path
                       );
-                      console.log('[InlineChat] parent block query result:', parentsResponse);
+                      monacoDebugLog('[InlineChat] parent block query result:', parentsResponse);
                       
                       if (parentsResponse?.success && parentsResponse.data?.length > 0) {
                         // 鏈夌埗鍧楁暟鎹紝浣跨敤鐖跺潡鍐呭锛堝凡鍒囧垎浣嗘湭鍚戦噺鍖栵級
                         const parents = parentsResponse.data as Array<{ parentId: string; content: string; chunkIndex: number }>;
-                        console.log(`[InlineChat] file "${file.name}" found ${parents.length} parent blocks, using parent block content`);
+                        monacoDebugLog(`[InlineChat] file "${file.name}" found ${parents.length} parent blocks, using parent block content`);
                         
                         // 灏嗙埗鍧楀唴瀹逛綔涓烘悳绱㈢粨鏋滐紙锟?chunkIndex 鎺掑簭锛屽彇锟?涓級
                         const sortedParents = parents.sort((a, b) => a.chunkIndex - b.chunkIndex).slice(0, 3);
@@ -929,7 +946,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                         });
                       } else {
                         // 娌℃湁鐖跺潡鏁版嵁锛屽洖閫€鍒拌鍙栧叏锟?
-                        console.log(`[InlineChat] file "${file.name}" has no parent block data, fallback to full text`);
+                        monacoDebugLog(`[InlineChat] file "${file.name}" has no parent block data, fallback to full text`);
                         const content = await window.electronAPI?.fs?.readFile?.(file.path, 'utf-8');
                         if (content) {
                           fileContents.push({
@@ -958,7 +975,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                   }
                 }
                 
-                console.log(`[InlineChat] 文件向量搜索完成: ${fileVectorSearchResults.length} 个文件有结果, ${fileContents.length} 个文件使用全文`);
+                monacoDebugLog(`[InlineChat] 文件向量搜索完成: ${fileVectorSearchResults.length} 个文件有结果, ${fileContents.length} 个文件使用全文`);
               }
             } catch (error) {
               console.error('[InlineChat] 鏂囦欢鍚戦噺鎼滅储澶辫触锛屽洖閫€鍒拌鍙栧叏锟?', error);
@@ -1006,8 +1023,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       }> = [];
 
       if (knowledgeBaseMentions.length > 0) {
-        console.log(`[InlineChat] 妫€娴嬪埌鐭ヨ瘑搴撳紩锟? ${knowledgeBaseMentions.map(kb => kb.name).join(', ')}`);
-        console.log(`[InlineChat] 寮€濮嬪悜閲忔锟?..`);
+        monacoDebugLog(`[InlineChat] 妫€娴嬪埌鐭ヨ瘑搴撳紩锟? ${knowledgeBaseMentions.map(kb => kb.name).join(', ')}`);
+        monacoDebugLog(`[InlineChat] 寮€濮嬪悜閲忔锟?..`);
 
         try {
           // 鍒濆锟?VectorStore
@@ -1024,7 +1041,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                 return null;
               }
 
-              console.log(`[InlineChat] 浣跨敤浜戠 Embedding API (鐭ヨ瘑锟? ${kb.name})`);
+              monacoDebugLog(`[InlineChat] 浣跨敤浜戠 Embedding API (鐭ヨ瘑锟? ${kb.name})`);
 
               // 鎵ц鍚戦噺妫€锟?
               // 浣跨敤 sanitizedMessage 浣滀负鏌ヨ锛堝凡绉婚櫎鐭ヨ瘑搴撳紩鐢級
@@ -1043,7 +1060,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
               }
               
               const queryEmbedding = queryResult.data.vectors[0];
-              console.log(`[InlineChat] 鐭ヨ瘑锟?"${kb.name}" 鏌ヨ鍚戦噺鐢熸垚瀹屾垚锛岀淮锟? ${queryEmbedding.length}`);
+              monacoDebugLog(`[InlineChat] 鐭ヨ瘑锟?"${kb.name}" 鏌ヨ鍚戦噺鐢熸垚瀹屾垚锛岀淮锟? ${queryEmbedding.length}`);
               
               // 鎼滅储鍚戦噺瀛樺偍
               const results = await vectorStore.search(query, queryEmbedding, {
@@ -1053,7 +1070,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                 },
               });
 
-              console.log(`[InlineChat] 知识库 "${kb.name}" 检索到 ${results.length} 个结果`);
+              monacoDebugLog(`[InlineChat] 知识库 "${kb.name}" 检索到 ${results.length} 个结果`);
 
               return {
                 knowledgeBaseId: kb.id,
@@ -1075,7 +1092,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           const searchResults = await Promise.all(searchPromises);
           vectorSearchResults = searchResults.filter((result): result is NonNullable<typeof result> => result !== null);
 
-          console.log(`[InlineChat] 鍚戦噺妫€绱㈠畬鎴愶紝鍏辨锟?${vectorSearchResults.length} 涓煡璇嗗簱`);
+          monacoDebugLog(`[InlineChat] 鍚戦噺妫€绱㈠畬鎴愶紝鍏辨锟?${vectorSearchResults.length} 涓煡璇嗗簱`);
 
           // 鍏抽棴 VectorStore
           await vectorStore.close();
@@ -1150,7 +1167,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             }
           }
 
-          console.log(`[InlineChat] search result tokens: ${currentSearchResultTokens}/${maxSearchResultTokens}`);
+          monacoDebugLog(`[InlineChat] search result tokens: ${currentSearchResultTokens}/${maxSearchResultTokens}`);
         } else {
           console.warn('[InlineChat] all knowledge base search results are empty');
         }
@@ -1158,7 +1175,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
       // 姝ラ4锛氭坊鍔犳枃浠跺悜閲忔悳绱㈢粨鏋滃埌鍙傝€冩枃锟?
       if (fileVectorSearchResults.length > 0) {
-        console.log(`[InlineChat] append ${fileVectorSearchResults.length} file vector search results`);
+        monacoDebugLog(`[InlineChat] append ${fileVectorSearchResults.length} file vector search results`);
         
         // 璁＄畻鏂囦欢鎼滅储缁撴灉鐨勬渶锟?token 锟?
         const reservedTokens = 4000;
@@ -1187,7 +1204,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           }
         }
         
-        console.log(`[InlineChat] 鏂囦欢鎼滅储缁撴灉 token 锟? ${currentFileSearchTokens}/${maxFileSearchTokens}`);
+        monacoDebugLog(`[InlineChat] 鏂囦欢鎼滅储缁撴灉 token 锟? ${currentFileSearchTokens}/${maxFileSearchTokens}`);
       }
 
       // 娣诲姞鏂囦欢鍐呭鍒板弬鑰冩枃妗ｏ紙鍥為€€鏂规锛氭湭琚储寮曠殑鏂囦欢锟?
@@ -1215,7 +1232,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         });
       } else if (fileContents.length > 0) {
         // 鐩存帴浣跨敤鏂囦欢鍐呭锛堝洖閫€鏂规锛氬悜閲忔悳绱㈠け璐ユ垨鏂囦欢鏈绱㈠紩锟?
-        console.log(`[InlineChat] using full content of ${fileContents.length} files as fallback`);
+        monacoDebugLog(`[InlineChat] using full content of ${fileContents.length} files as fallback`);
         fileContents.forEach((file) => {
           referenceDocuments += `[${file.name}]\n${file.content}\n\n`;
           documentIndex++;
@@ -1277,7 +1294,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                             knowledgeBaseMentions.length > 0 ||
                             referenceDocuments.trim().length > 0;
       
-      console.log('[InlineChat] RAG 涓婁笅鏂囨锟?', {
+      monacoDebugLog('[InlineChat] RAG 涓婁笅鏂囨锟?', {
         vectorSearchResults: vectorSearchResults.length,
         fileVectorSearchResults: fileVectorSearchResults.length,
         fileContents: fileContents.length,
@@ -1302,17 +1319,17 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       // 输出最终请求消息和 token 估算，便于排查上下文拼装问题。
       try {
         const messagesTokenSum = requestMessages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
-        console.log('[InlineChat] ========= final request messages =========');
-        console.log('[InlineChat] message count:', requestMessages.length);
+        monacoDebugLog('[InlineChat] ========= final request messages =========');
+        monacoDebugLog('[InlineChat] message count:', requestMessages.length);
         requestMessages.forEach((msg, index) => {
-          console.log(`[InlineChat] message ${index + 1} (${msg.role}):`);
-          console.log(`[InlineChat] ${msg.content}`);
-          console.log(`[InlineChat] estimated tokens: ${estimateTokens(msg.content)}`);
-          console.log('[InlineChat] ---');
+          monacoDebugLog(`[InlineChat] message ${index + 1} (${msg.role}):`);
+          monacoDebugLog(`[InlineChat] ${msg.content}`);
+          monacoDebugLog(`[InlineChat] estimated tokens: ${estimateTokens(msg.content)}`);
+          monacoDebugLog('[InlineChat] ---');
         });
-        console.log(`[InlineChat] total estimated tokens: ${messagesTokenSum}`);
-        console.log('[InlineChat] =======================================');
-        console.log('[InlineChat] requestMessages JSON:', JSON.stringify(requestMessages, null, 2));
+        monacoDebugLog(`[InlineChat] total estimated tokens: ${messagesTokenSum}`);
+        monacoDebugLog('[InlineChat] =======================================');
+        monacoDebugLog('[InlineChat] requestMessages JSON:', JSON.stringify(requestMessages, null, 2));
       } catch (e) {
         console.warn('[InlineChat] failed to log request messages:', e);
       }
@@ -1351,7 +1368,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         // 鏇存柊鏄惁闇€瑕佹樉绀烘繁搴︽€濊€冭繃绋嬶紙鏍规嵁瀹為檯妫€娴嬬粨鏋滐級
         shouldShowThinking = isDeepThinkingEnabled && supportsReasoning;
         
-        console.log('[InlineChat] 娣卞害鎬濊€冪姸锟?', {
+        monacoDebugLog('[InlineChat] 娣卞害鎬濊€冪姸锟?', {
           enabled: isDeepThinkingEnabled,
           supportsReasoning,
           shouldShowThinking
@@ -1359,7 +1376,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         
         // 濡傛灉妫€娴嬪埌妯″瀷涓嶆敮鎸佹帹鐞嗭紝璁板綍璀﹀憡
         if (isDeepThinkingEnabled && !supportsReasoning) {
-          console.log('[InlineChat] reasoning unsupported by model, fallback to normal mode');
+          monacoDebugLog('[InlineChat] reasoning unsupported by model, fallback to normal mode');
         }
       }
       
@@ -1399,17 +1416,17 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             return;
           }
           // 鍐呰仈鑱婂ぉ涓嶆樉绀烘帹鐞嗚繃绋嬶紝鍙褰曟棩锟?
-          console.log('[InlineChat] 鎺ㄧ悊鐗囨:', reasoning.substring(0, 100));
+          monacoDebugLog('[InlineChat] 鎺ㄧ悊鐗囨:', reasoning.substring(0, 100));
         }
       });
 
       // 妫€鏌ユ槸鍚﹀凡琚彇娑堬紝濡傛灉宸插彇娑堝垯涓嶆墽琛屽畬鎴愬锟?
       if (abortController.signal.aborted) {
-        console.log('[InlineChat] request aborted, skip completion handling');
+        monacoDebugLog('[InlineChat] request aborted, skip completion handling');
         return;
       }
 
-      console.log('[InlineChat] AI 鍝嶅簲瀹屾垚');
+      monacoDebugLog('[InlineChat] AI 鍝嶅簲瀹屾垚');
 
       // 灏嗗姪鎵嬪洖澶嶅啓鍏ュ巻鍙诧紝渚夸簬鍚庣画澶氳疆瀵硅瘽寮曠敤
       if (aiZoneWidgetRef.current) {
@@ -1427,7 +1444,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       
       // 鍐嶆妫€鏌ユ槸鍚﹀凡琚彇娑堬紙鍙兘锟?appendMessage 杩囩▼涓鍙栨秷锟?
       if (abortController.signal.aborted) {
-        console.log('[InlineChat] request aborted, skip completion handling');
+        monacoDebugLog('[InlineChat] request aborted, skip completion handling');
         return;
       }
       
@@ -1436,7 +1453,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     } catch (error) {
       // 濡傛灉鏄彇娑堟搷浣滐紝涓嶆樉绀洪敊璇俊锟?
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log('[InlineChat] 璇锋眰宸茶鐢ㄦ埛鍙栨秷');
+        monacoDebugLog('[InlineChat] 璇锋眰宸茶鐢ㄦ埛鍙栨秷');
         // 娓呯悊 AbortController
         if (abortControllerRef.current === abortController) {
           abortControllerRef.current = null;
@@ -1537,9 +1554,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
   // 鎵撳紑鍐呰仈鑱婂ぉ
   const handleOpenInlineChat = useCallback((skipRecreate: boolean = false) => {
-    console.log('[MonacoEditor] ========== handleOpenInlineChat 琚皟锟?==========');
-    console.log('[MonacoEditor] skipRecreate:', skipRecreate);
-    console.log('[MonacoEditor] editorRef.current:', editorRef.current);
+    monacoDebugLog('[MonacoEditor] ========== handleOpenInlineChat 琚皟锟?==========');
+    monacoDebugLog('[MonacoEditor] skipRecreate:', skipRecreate);
+    monacoDebugLog('[MonacoEditor] editorRef.current:', editorRef.current);
     
     if (!editorRef.current) {
       console.warn('[MonacoEditor] editorRef.current 涓嶅瓨鍦紝杩斿洖');
@@ -1549,7 +1566,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     const editor = editorRef.current;
     const selection = editor.getSelection();
     const position = editor.getPosition();
-    console.log('[MonacoEditor] selection:', selection, 'position:', position);
+    monacoDebugLog('[MonacoEditor] selection:', selection, 'position:', position);
 
     if (!position) {
       console.warn('[MonacoEditor] position 涓嶅瓨鍦紝杩斿洖');
@@ -1569,7 +1586,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       const totalLines = model ? model.getLineCount() : 1;
       // 鏄剧ず鍦ㄩ€変腑鍐呭鐨勪笅涓€琛岋紝鑰屼笉鏄€変腑鍐呭鐨勬渶鍚庝竴锟?
       targetLineNumber = Math.min(totalLines, selection.endLineNumber + 1);
-      console.log('[MonacoEditor] 鏈夐€変腑鍐呭锛屽唴鑱旇亰澶╂樉绀哄湪閫変腑鍐呭涓嬫柟:', {
+      monacoDebugLog('[MonacoEditor] 鏈夐€変腑鍐呭锛屽唴鑱旇亰澶╂樉绀哄湪閫変腑鍐呭涓嬫柟:', {
         selectionStartLine: selection.startLineNumber,
         selectionEndLine: selection.endLineNumber,
         targetLineNumber,
@@ -1578,7 +1595,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     } else {
       // 娌℃湁閫変腑鍐呭锛屾樉绀哄湪褰撳墠鍏夋爣浣嶇疆
       targetLineNumber = position.lineNumber;
-      console.log('[MonacoEditor] 娌℃湁閫変腑鍐呭锛屽唴鑱旇亰澶╂樉绀哄湪褰撳墠鍏夋爣浣嶇疆:', targetLineNumber);
+      monacoDebugLog('[MonacoEditor] 娌℃湁閫変腑鍐呭锛屽唴鑱旇亰澶╂樉绀哄湪褰撳墠鍏夋爣浣嶇疆:', targetLineNumber);
     }
 
     // 濡傛灉宸插瓨锟?Zone Widget 涓斾笉闇€瑕侀噸鏂板垱寤猴紝鐩存帴杩斿洖
@@ -1630,7 +1647,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     // 鍒涘缓鏂扮殑 Zone Widget锛屼紶锟?tabId
     // 浼樺厛浣跨敤 availableModelsRef.current锛岀‘淇濅娇鐢ㄦ渶鏂扮殑锟?
     const modelsToUse = availableModelsRef.current.length > 0 ? availableModelsRef.current : availableModels;
-    console.log('[MonacoEditor] 鍒涘缓 AIZoneWidget', {
+    monacoDebugLog('[MonacoEditor] 鍒涘缓 AIZoneWidget', {
       availableModelsCount: availableModels?.length || 0,
       availableModelsRefCount: availableModelsRef.current?.length || 0,
       modelsToUseCount: modelsToUse?.length || 0,
@@ -1646,14 +1663,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       onStop: () => {
         // 鍙栨秷褰撳墠锟?AI 璇锋眰
         if (abortControllerRef.current) {
-          console.log('[MonacoEditor] 鐢ㄦ埛鐐瑰嚮鍙栨秷锛屾鍦ㄥ彇娑堣锟?..');
+          monacoDebugLog('[MonacoEditor] 鐢ㄦ埛鐐瑰嚮鍙栨秷锛屾鍦ㄥ彇娑堣锟?..');
           abortControllerRef.current.abort();
           abortControllerRef.current = null;
         }
       },
       onAccept: () => {
         // 鎺ュ彈 AI 鐢熸垚锟?diff 鍐呭
-        console.log('[MonacoEditor] 鐢ㄦ埛鐐瑰嚮鎺ュ彈锛屽紑濮嬪簲锟?diff 鍐呭');
+        monacoDebugLog('[MonacoEditor] 鐢ㄦ埛鐐瑰嚮鎺ュ彈锛屽紑濮嬪簲锟?diff 鍐呭');
         
         if (currentGhostWidgetRef.current) {
           // 璋冪敤 GhostTextWidget 鐨勫叕鍏辨柟娉曟潵鎺ュ彈鍐呭
@@ -1663,14 +1680,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           // 閲嶇疆鍘熷琛屾暟璁板綍锛堝洜涓哄唴瀹瑰凡琚帴鍙楋紝涓嶉渶瑕佹竻闄ょ┖琛岋級
           originalLineCountRef.current = null;
           
-          console.log('[MonacoEditor] diff content applied');
+          monacoDebugLog('[MonacoEditor] diff content applied');
         } else {
           console.warn('[MonacoEditor] 娌℃湁鍙帴鍙楃殑 diff 鍐呭');
         }
       },
       onClearDiff: () => {
         // 娓呴櫎 diff 鍐呭锛堜笉鍏抽棴鍐呰仈鑱婂ぉ锟?
-        console.log('[MonacoEditor] 娓呴櫎褰撳墠瀵硅瘽锟?diff 鍐呭');
+        monacoDebugLog('[MonacoEditor] 娓呴櫎褰撳墠瀵硅瘽锟?diff 鍐呭');
         
         // 鍙栨秷姝ｅ湪杩涜鐨勮锟?
         if (abortControllerRef.current) {
@@ -1687,7 +1704,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         cleanupPreviousDiff();
       },
       onClose: () => {
-        console.log('[MonacoEditor] inline chat closed, cleanup diff and blank lines');
+        monacoDebugLog('[MonacoEditor] inline chat closed, cleanup diff and blank lines');
         
         // 鍏抽棴鏃朵篃鍙栨秷姝ｅ湪杩涜鐨勮锟?
         if (abortControllerRef.current) {
@@ -1947,7 +1964,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
   // Monaco 缂栬緫鍣ㄦ寕杞藉墠 - 閰嶇疆璇█鏀寔
   const handleEditorWillMount = (monaco: Monaco) => {
-    console.log('[MonacoEditor] 缂栬緫鍣ㄦ寕杞藉墠閰嶇疆');
+    monacoDebugLog('[MonacoEditor] 缂栬緫鍣ㄦ寕杞藉墠閰嶇疆');
     applyBootstrapMonacoTheme(monaco);
     
     // 閰嶇疆 JSON/JSONC 璇█鐨勮瘖鏂€夐」锛堝惎鐢ㄥ疄鏃惰娉曢敊璇彁绀猴級
@@ -2005,8 +2022,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       comments: 'ignore'  // 蹇界暐娉ㄩ噴閿欒
     });
     
-    console.log('[MonacoEditor] JSON diagnostics configured');
-    console.log('[MonacoEditor] Schema 閰嶇疆璇︽儏:', {
+    monacoDebugLog('[MonacoEditor] JSON diagnostics configured');
+    monacoDebugLog('[MonacoEditor] Schema 閰嶇疆璇︽儏:', {
       validate: true,
       fileMatch: ['snippet:///*'],
       schemaUri: 'http://internal/snippet-schema.json',
@@ -2015,20 +2032,20 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     
     // 鍙湪绗竴娆℃椂娉ㄥ唽 jsonc 璇█
     if (!jsoncLanguageRegistered) {
-      console.log('[MonacoEditor] 棣栨娉ㄥ唽 jsonc 璇█');
+      monacoDebugLog('[MonacoEditor] 棣栨娉ㄥ唽 jsonc 璇█');
       
       // 妫€鏌ユ槸鍚﹀凡娉ㄥ唽 jsonc 璇█
       const languages = monaco.languages.getLanguages();
       const hasJsonc = languages.some(lang => lang.id === 'jsonc');
       
-      console.log('[MonacoEditor] Monaco 鏀寔鐨勮瑷€:', languages.map(l => l.id));
-      console.log('[MonacoEditor] 鏄惁宸叉敮锟?jsonc:', hasJsonc);
+      monacoDebugLog('[MonacoEditor] Monaco 鏀寔鐨勮瑷€:', languages.map(l => l.id));
+      monacoDebugLog('[MonacoEditor] 鏄惁宸叉敮锟?jsonc:', hasJsonc);
       
       // 鍙湪鏈敞鍐屾椂娉ㄥ唽
       if (!hasJsonc) {
         // 娉ㄥ唽 jsonc 璇█
         monaco.languages.register({ id: 'jsonc' });
-        console.log('[MonacoEditor] jsonc language registered');
+        monacoDebugLog('[MonacoEditor] jsonc language registered');
       }
       
       // 鈿狅笍鈿狅笍鈿狅笍 鍏抽敭鍙戠幇锛氫笉瑕佷负 jsonc 璁剧疆鑷畾锟?tokenizer锟?
@@ -2041,7 +2058,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       // 1. 鍙敞锟?jsonc 璇█锛堣 Monaco 鐭ラ亾瀹冨瓨鍦級
       // 2. 鍙缃瑷€閰嶇疆锛堟嫭鍙峰尮閰嶃€佹敞閲婄瓑锟?
       // 3. 涓嶈锟?tokenizer - 锟?jsonc 鑷姩缁ф壙 json 锟?tokenizer
-      console.log('[MonacoEditor] 鈿狅笍 璺宠繃璁剧疆 jsonc tokenizer锛岃鍏剁户锟?json 锟?tokenizer');
+      monacoDebugLog('[MonacoEditor] 鈿狅笍 璺宠繃璁剧疆 jsonc tokenizer锛岃鍏剁户锟?json 锟?tokenizer');
       
       // 璁剧疆璇█閰嶇疆锛堟嫭鍙峰尮閰嶃€佽嚜鍔ㄧ缉杩涚瓑锟?
       monaco.languages.setLanguageConfiguration('jsonc', {
@@ -2065,16 +2082,16 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         ],
       });
       
-      console.log('[MonacoEditor] jsonc language configuration completed');
+      monacoDebugLog('[MonacoEditor] jsonc language configuration completed');
       
       // 鏍囪宸叉敞锟?
       jsoncLanguageRegistered = true;
     } else {
-      console.log('[MonacoEditor] jsonc 璇█宸叉敞鍐岋紝璺宠繃閲嶅娉ㄥ唽');
+      monacoDebugLog('[MonacoEditor] jsonc 璇█宸叉敞鍐岋紝璺宠繃閲嶅娉ㄥ唽');
     }
     
     // 娉ㄥ唽鐗囨鑷姩琛ュ叏鎻愪緵锟?
-    console.log('[MonacoEditor] snippet completion provider registered');
+    monacoDebugLog('[MonacoEditor] snippet completion provider registered');
     if (!wikilinkCompletionRegistered) {
       const wikilinkLanguageIds = ['markdown', 'plaintext'];
       const buildLinkRange = (position: MonacoPosition, queryText: string) => ({
@@ -2219,13 +2236,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       }
     });
     
-    console.log('[MonacoEditor] snippet completion provider registration completed');
+    monacoDebugLog('[MonacoEditor] snippet completion provider registration completed');
   };
 
   // Monaco 缂栬緫鍣ㄦ寕杞芥椂
   const handleEditorDidMount = async (editor: monaco.editor.IStandaloneCodeEditor, monaco: Monaco) => {
-    console.log('[MonacoEditor] Editor mounted for tab:', tabId, 'Content length:', value?.length || 0);
-    console.log('[MonacoEditor] Content preview:', value?.substring(0, 100));
+    monacoDebugLog('[MonacoEditor] Editor mounted for tab:', tabId, 'Content length:', value?.length || 0);
+    monacoDebugLog('[MonacoEditor] Content preview:', value?.substring(0, 100));
     
     // 鍏ㄥ眬鍒濆锟?Monaco锛堝彧鍦ㄧ涓€娆¤皟鐢ㄦ椂鎵ц锟?
     await initializeMonaco(monaco);
@@ -2234,34 +2251,69 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     setMonacoInstance(monaco);
     setIsEditorReady(true);
 
-    console.log('[MonacoEditor] color decorators:', editor.getOption(monaco.editor.EditorOption.colorDecorators));
+    compositionCleanupRef.current?.();
+    const compositionStartDisposable = editor.onDidCompositionStart(() => {
+      isImeComposingRef.current = true;
+      onCompositionStateChangeRef.current?.(true);
+    });
+    const compositionEndDisposable = editor.onDidCompositionEnd(() => {
+      if (!isImeComposingRef.current) {
+        return;
+      }
+      isImeComposingRef.current = false;
+      window.requestAnimationFrame(() => {
+        if (editorRef.current !== editor) {
+          return;
+        }
+        onCompositionStateChangeRef.current?.(false, editor.getValue());
+      });
+    });
+    const blurDisposable = editor.onDidBlurEditorText(() => {
+      if (!isImeComposingRef.current) {
+        return;
+      }
+      isImeComposingRef.current = false;
+      window.requestAnimationFrame(() => {
+        if (editorRef.current !== editor) {
+          return;
+        }
+        onCompositionStateChangeRef.current?.(false, editor.getValue());
+      });
+    });
+    compositionCleanupRef.current = () => {
+      compositionStartDisposable.dispose();
+      compositionEndDisposable.dispose();
+      blurDisposable.dispose();
+    };
+
+    monacoDebugLog('[MonacoEditor] color decorators:', editor.getOption(monaco.editor.EditorOption.colorDecorators));
 
     // 纭繚璇█妯″紡姝ｇ‘璁剧疆
     const model = editor.getModel();
     if (model) {
       const currentLanguageId = model.getLanguageId();
-      console.log('[MonacoEditor] ========== language check ==========');
-      console.log(`[MonacoEditor] tab id: ${tabId}`);
-      console.log(`[MonacoEditor] tab title: ${tabTitle || '(unknown)'}`);
-      console.log(`[MonacoEditor] current language: ${currentLanguageId}`);
-      console.log(`[MonacoEditor] expected language: ${language}`);
-      console.log(`[MonacoEditor] colorDecorators: ${editor.getOption(monaco.editor.EditorOption.colorDecorators)}`);
+      monacoDebugLog('[MonacoEditor] ========== language check ==========');
+      monacoDebugLog(`[MonacoEditor] tab id: ${tabId}`);
+      monacoDebugLog(`[MonacoEditor] tab title: ${tabTitle || '(unknown)'}`);
+      monacoDebugLog(`[MonacoEditor] current language: ${currentLanguageId}`);
+      monacoDebugLog(`[MonacoEditor] expected language: ${language}`);
+      monacoDebugLog(`[MonacoEditor] colorDecorators: ${editor.getOption(monaco.editor.EditorOption.colorDecorators)}`);
       
       // 鍒楀嚭鎵€鏈夋敮鎸佺殑璇█
       const supportedLanguages = monaco.languages.getLanguages();
-      console.log('[MonacoEditor] supported languages:', supportedLanguages.map(l => l.id));
+      monacoDebugLog('[MonacoEditor] supported languages:', supportedLanguages.map(l => l.id));
       
       // 妫€鏌ユ槸鍚︽敮鎸佺洰鏍囪瑷€
       const isLanguageSupported = supportedLanguages.some(l => l.id === language);
-      console.log(`[MonacoEditor] supports ${language}:`, isLanguageSupported);
+      monacoDebugLog(`[MonacoEditor] supports ${language}:`, isLanguageSupported);
       
       if (currentLanguageId !== language) {
-        console.log(`[MonacoEditor] language mismatch, set to ${language} (current: ${currentLanguageId})`);
+        monacoDebugLog(`[MonacoEditor] language mismatch, set to ${language} (current: ${currentLanguageId})`);
         monaco.editor.setModelLanguage(model, language);
         
         // 楠岃瘉璁剧疆鍚庣殑璇█
         const newLanguageId = model.getLanguageId();
-        console.log(`[MonacoEditor] language after set: ${newLanguageId}`);
+        monacoDebugLog(`[MonacoEditor] language after set: ${newLanguageId}`);
       }
       
       // 濡傛灉鏄墖娈垫枃浠讹紝涓烘ā鍨嬭缃嚜瀹氫箟 URI 浠ュ惎锟?Schema 楠岃瘉
@@ -2269,7 +2321,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         const uri = monaco.Uri.parse(`snippet:///${tabId}.json`);
         const content = model.getValue();
         
-        console.log('[MonacoEditor] snippet file check:', {
+        monacoDebugLog('[MonacoEditor] snippet file check:', {
           tabId,
           uri: uri.toString(),
           scheme: uri.scheme,
@@ -2286,21 +2338,21 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         // 閿€姣佹棫妯″瀷
         model.dispose();
         
-        console.log('[MonacoEditor] snippet model created');
-        console.log('[MonacoEditor]   - URI:', uri.toString());
-        console.log('[MonacoEditor]   - Language:', newModel.getLanguageId());
-        console.log('[MonacoEditor]   - 妯″瀷璇█搴斾负: jsonc');
+        monacoDebugLog('[MonacoEditor] snippet model created');
+        monacoDebugLog('[MonacoEditor]   - URI:', uri.toString());
+        monacoDebugLog('[MonacoEditor]   - Language:', newModel.getLanguageId());
+        monacoDebugLog('[MonacoEditor]   - 妯″瀷璇█搴斾负: jsonc');
         
         // 楠岃瘉 Schema 鏄惁搴旂敤锛堝欢杩熸鏌ワ紝绛夊緟 Monaco 鍐呴儴楠岃瘉锟?
         setTimeout(() => {
           const markers = monaco.editor.getModelMarkers({ resource: uri });
-          console.log('[MonacoEditor] 褰撳墠缂栬緫鍣ㄩ敊璇爣锟?', markers);
+          monacoDebugLog('[MonacoEditor] 褰撳墠缂栬緫鍣ㄩ敊璇爣锟?', markers);
           
           // 鍐嶆纭璇█璁剧疆
           const currentModel = editor.getModel();
           if (currentModel) {
             const currentLang = currentModel.getLanguageId();
-            console.log('[MonacoEditor] 楠岃瘉鍚庣殑璇█ID:', currentLang);
+            monacoDebugLog('[MonacoEditor] 楠岃瘉鍚庣殑璇█ID:', currentLang);
             if (currentLang !== 'jsonc') {
               console.warn('[MonacoEditor] 璇█琚噸缃负:', currentLang, '锛屽己鍒惰缃洖 jsonc');
               monaco.editor.setModelLanguage(currentModel, 'jsonc');
@@ -2315,7 +2367,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       const model = editor.getModel();
       if (!model) return;
       
-      console.log('[MonacoEditor] 馃攧 寮€濮嬪己鍒跺埛鏂伴鑹茶楗板櫒...');
+      monacoDebugLog('[MonacoEditor] 馃攧 寮€濮嬪己鍒跺埛鏂伴鑹茶楗板櫒...');
       
       // 馃幆 鏂规硶1锛氳Е鍙戝彲瑙佽寖鍥村彉鍖栦簨浠讹紝寮哄埗 Monaco 閲嶆柊璇勪及瑁呴グ锟?
       // 閫氳繃婊氬姩鍒板綋鍓嶄綅缃潵瑙﹀彂
@@ -2344,7 +2396,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         void domNode.offsetHeight;
       }
       
-      console.log('[MonacoEditor] force-refreshed color decorators immediately');
+      monacoDebugLog('[MonacoEditor] force-refreshed color decorators immediately');
     };
 
     // 鐩戝惉缂栬緫鍣ㄥ唴瀹瑰彉鍖栵紝閲嶆柊搴旂敤棰滆壊
@@ -2404,7 +2456,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       if (isClosingColorPicker) return;
       
       isClosingColorPicker = true;
-      console.log(`[MonacoEditor] ${reason}, simulate Escape to close color picker immediately`);
+      monacoDebugLog(`[MonacoEditor] ${reason}, simulate Escape to close color picker immediately`);
       
       // 馃幆 鏍稿績锛氭ā鎷熸寜锟?ESC 閿紝锟?Monaco 浣跨敤鍘熺敓鐨勫叧闂€昏緫
       // 杩欐槸鏈€鍙潬鐨勬柟娉曪紝鍥犱负 Monaco 宸茬粡瀹炵幇锟?ESC 閿殑绔嬪嵆鍏抽棴閫昏緫
@@ -2422,7 +2474,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       const editorDomNode = editor.getDomNode();
       if (editorDomNode) {
         editorDomNode.dispatchEvent(escapeKeyEvent);
-        console.log('[MonacoEditor] 锟?宸茶Е锟?ESC 閿簨浠讹紝棰滆壊閫夋嫨鍣ㄥ簲绔嬪嵆鍏抽棴');
+        monacoDebugLog('[MonacoEditor] 锟?宸茶Е锟?ESC 閿簨浠讹紝棰滆壊閫夋嫨鍣ㄥ簲绔嬪嵆鍏抽棴');
       }
       
       // 馃幆 绔嬪嵆鍒锋柊棰滆壊瑁呴グ锟?
@@ -2432,25 +2484,25 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       if (globalMouseDownHandler) {
         document.removeEventListener('mousedown', globalMouseDownHandler, true);
         globalMouseDownHandler = null;
-        console.log('[MonacoEditor] removed global mousedown listener');
+        monacoDebugLog('[MonacoEditor] removed global mousedown listener');
       }
       
       if (globalMouseMoveHandler) {
         document.removeEventListener('mousemove', globalMouseMoveHandler, true);
         globalMouseMoveHandler = null;
-        console.log('[MonacoEditor] removed global mousemove listener');
+        monacoDebugLog('[MonacoEditor] removed global mousemove listener');
       }
       
       if (globalMouseUpHandler) {
         document.removeEventListener('mouseup', globalMouseUpHandler, true);
         globalMouseUpHandler = null;
-        console.log('[MonacoEditor] removed global mouseup listener');
+        monacoDebugLog('[MonacoEditor] removed global mouseup listener');
       }
       
       if (globalKeyDownHandler) {
         document.removeEventListener('keydown', globalKeyDownHandler, true);
         globalKeyDownHandler = null;
-        console.log('[MonacoEditor] removed global keydown listener');
+        monacoDebugLog('[MonacoEditor] removed global keydown listener');
       }
       
       // 閲嶇疆鎷栧姩鏍囧織
@@ -2489,7 +2541,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
               clickTarget.closest('.colorpicker-color-decoration') !== null;
             
             // 馃幆 璋冭瘯鏃ュ織
-            console.log('[MonacoEditor] 鍏ㄥ眬鐐瑰嚮妫€锟?', {
+            monacoDebugLog('[MonacoEditor] 鍏ㄥ眬鐐瑰嚮妫€锟?', {
               isClickInsideColorPicker,
               isClickOnColorDecorator,
               clickTargetClass: clickTarget.className,
@@ -2498,7 +2550,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             
             // 馃幆 濡傛灉鐐瑰嚮鍦ㄩ鑹查€夋嫨鍣ㄥ唴閮紝闃绘浜嬩欢浼犳挱鍒扮紪杈戝櫒
             if (isClickInsideColorPicker) {
-              console.log('[MonacoEditor] 馃幆 鐐瑰嚮鍦ㄩ鑹查€夋嫨鍣ㄥ唴閮紝闃绘浜嬩欢浼犳挱');
+              monacoDebugLog('[MonacoEditor] 馃幆 鐐瑰嚮鍦ㄩ鑹查€夋嫨鍣ㄥ唴閮紝闃绘浜嬩欢浼犳挱');
               isDraggingInsideColorPicker = true; // 鏍囪寮€濮嬫嫋锟?
               event.stopPropagation(); // 闃绘浜嬩欢鍐掓场
               event.stopImmediatePropagation(); // 闃绘鍚岀骇鐩戝惉锟?
@@ -2508,7 +2560,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             
             // 馃幆 鍙湁褰撶偣鍑诲湪棰滆壊閫夋嫨鍣ㄥ閮紝骞朵笖涓嶆槸棰滆壊瑁呴グ鍣ㄦ椂锛屾墠妯℃嫙 ESC 閿叧锟?
             if (!isClickOnColorDecorator) {
-              console.log('[MonacoEditor] click outside color picker, simulate Escape');
+              monacoDebugLog('[MonacoEditor] click outside color picker, simulate Escape');
               
               // 鍒涘缓涓€锟?ESC 閿簨浠讹紝娲惧彂鍒伴鑹查€夋嫨鍣ㄥ厓绱犱笂
               const escapeEvent = new KeyboardEvent('keydown', {
@@ -2550,7 +2602,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                                        moveTarget.closest('.color-picker-widget') !== null;
           
           if (isInsideColorPicker) {
-            console.log('[MonacoEditor] 馃幆 榧犳爣鍦ㄩ鑹查€夋嫨鍣ㄥ唴閮ㄧЩ鍔紝瀹屽叏闃绘浜嬩欢');
+            monacoDebugLog('[MonacoEditor] 馃幆 榧犳爣鍦ㄩ鑹查€夋嫨鍣ㄥ唴閮ㄧЩ鍔紝瀹屽叏闃绘浜嬩欢');
             event.stopPropagation(); // 闃绘浜嬩欢鍐掓场
             event.stopImmediatePropagation(); // 闃绘鍚岀骇鐩戝惉锟?
             event.preventDefault(); // 闃绘榛樿琛屼负锛堥槻姝㈣Е鍙戠紪杈戝櫒婊氬姩锟?
@@ -2561,7 +2613,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       
       // 馃幆 棰濆妫€鏌ワ細濡傛灉姝ｅ湪鎷栧姩锛屼篃闃绘鎵€锟?mousemove 浜嬩欢
       if (isDraggingInsideColorPicker) {
-        console.log('[MonacoEditor] 馃幆 姝ｅ湪鎷栧姩涓紝闃绘 mousemove 浜嬩欢');
+        monacoDebugLog('[MonacoEditor] 馃幆 姝ｅ湪鎷栧姩涓紝闃绘 mousemove 浜嬩欢');
         event.stopPropagation();
         event.stopImmediatePropagation();
         event.preventDefault();
@@ -2571,7 +2623,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     // 馃幆 鍏ㄥ眬 mouseup 浜嬩欢鐩戝惉鍣紙缁撴潫鎷栧姩锟?
     const handleGlobalMouseUp = (event: MouseEvent) => {
       if (isDraggingInsideColorPicker) {
-        console.log('[MonacoEditor] drag inside color picker ended, reset state');
+        monacoDebugLog('[MonacoEditor] drag inside color picker ended, reset state');
         isDraggingInsideColorPicker = false;
         event.stopPropagation(); // 闃绘浜嬩欢鍐掓场
         event.stopImmediatePropagation(); // 闃绘鍚岀骇鐩戝惉锟?
@@ -2596,7 +2648,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                                        wheelTarget.closest('.color-picker-widget') !== null;
           
           if (isInsideColorPicker) {
-            console.log('[MonacoEditor] scrolling inside color picker, block editor scroll');
+            monacoDebugLog('[MonacoEditor] scrolling inside color picker, block editor scroll');
             event.stopPropagation();
             event.stopImmediatePropagation();
             event.preventDefault();
@@ -2634,7 +2686,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           // Monaco 鍘熺敓鍙兘娌℃湁 Enter 閿‘璁ゅ姛鑳斤紝鎵€浠ユ垜浠墜鍔ㄦ坊锟?
           if (event.key === 'Enter' || event.keyCode === 13) {
             if (isKeyInsideColorPicker) {
-              console.log('[MonacoEditor] 馃幆 鍦ㄩ鑹查€夋嫨鍣ㄥ唴閮ㄦ寜锟?Enter锛岀‘璁ゅ苟鍏抽棴');
+              monacoDebugLog('[MonacoEditor] 馃幆 鍦ㄩ鑹查€夋嫨鍣ㄥ唴閮ㄦ寜锟?Enter锛岀‘璁ゅ苟鍏抽棴');
               closeColorPickerImmediately('press Enter inside color picker');
               event.stopPropagation(); // 闃绘浜嬩欢浼犳挱
               event.preventDefault(); // 闃绘榛樿琛屼负
@@ -2717,31 +2769,31 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             if (!globalMouseDownHandler) {
               globalMouseDownHandler = handleGlobalMouseDown;
               document.addEventListener('mousedown', globalMouseDownHandler, true);
-              console.log('[MonacoEditor] added global mousedown listener');
+              monacoDebugLog('[MonacoEditor] added global mousedown listener');
             }
             
             if (!globalMouseMoveHandler) {
               globalMouseMoveHandler = handleGlobalMouseMove;
               document.addEventListener('mousemove', globalMouseMoveHandler, true);
-              console.log('[MonacoEditor] added global mousemove listener');
+              monacoDebugLog('[MonacoEditor] added global mousemove listener');
             }
             
             if (!globalMouseUpHandler) {
               globalMouseUpHandler = handleGlobalMouseUp;
               document.addEventListener('mouseup', globalMouseUpHandler, true);
-              console.log('[MonacoEditor] added global mouseup listener');
+              monacoDebugLog('[MonacoEditor] added global mouseup listener');
             }
             
             if (!globalWheelHandler) {
               globalWheelHandler = handleGlobalWheel;
               document.addEventListener('wheel', globalWheelHandler, { passive: false, capture: true });
-              console.log('[MonacoEditor] added global wheel listener');
+              monacoDebugLog('[MonacoEditor] added global wheel listener');
             }
             
             if (!globalKeyDownHandler) {
               globalKeyDownHandler = handleGlobalKeyDown;
               document.addEventListener('keydown', globalKeyDownHandler, true);
-              console.log('[MonacoEditor] added global keydown listener');
+              monacoDebugLog('[MonacoEditor] added global keydown listener');
             }
             break;
           }
@@ -2754,31 +2806,31 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         if (globalMouseDownHandler) {
           document.removeEventListener('mousedown', globalMouseDownHandler, true);
           globalMouseDownHandler = null;
-          console.log('[MonacoEditor] cleanup: removed global mousedown listener');
+          monacoDebugLog('[MonacoEditor] cleanup: removed global mousedown listener');
         }
         
         if (globalMouseMoveHandler) {
           document.removeEventListener('mousemove', globalMouseMoveHandler, true);
           globalMouseMoveHandler = null;
-          console.log('[MonacoEditor] cleanup: removed global mousemove listener');
+          monacoDebugLog('[MonacoEditor] cleanup: removed global mousemove listener');
         }
         
         if (globalMouseUpHandler) {
           document.removeEventListener('mouseup', globalMouseUpHandler, true);
           globalMouseUpHandler = null;
-          console.log('[MonacoEditor] cleanup: removed global mouseup listener');
+          monacoDebugLog('[MonacoEditor] cleanup: removed global mouseup listener');
         }
         
         if (globalWheelHandler) {
           document.removeEventListener('wheel', globalWheelHandler, true);
           globalWheelHandler = null;
-          console.log('[MonacoEditor] cleanup: removed global wheel listener');
+          monacoDebugLog('[MonacoEditor] cleanup: removed global wheel listener');
         }
         
         if (globalKeyDownHandler) {
           document.removeEventListener('keydown', globalKeyDownHandler, true);
           globalKeyDownHandler = null;
-          console.log('[MonacoEditor] cleanup: removed global keydown listener');
+          monacoDebugLog('[MonacoEditor] cleanup: removed global keydown listener');
         }
         
         // 閲嶇疆鎷栧姩鏍囧織
@@ -2911,7 +2963,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         }
       });
       
-      console.log('[MonacoEditor] markdown auto list enabled');
+      monacoDebugLog('[MonacoEditor] markdown auto list enabled');
     }
 
     // 灏嗙紪杈戝櫒瀹炰緥鏆撮湶鍒板叏灞€锛屼緵 MarkdownCommandProvider 绛変娇锟?
@@ -2942,7 +2994,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       // 鍐嶇瓑寰呬竴涓覆鏌撳懆鏈燂紝纭繚 availableModels state 涔熷凡缁忔洿锟?
       await new Promise(resolve => setTimeout(resolve, 50));
       
-      console.log('[MonacoEditor] __openInlineChat 鍑嗗鍒涘缓 widget', {
+      monacoDebugLog('[MonacoEditor] __openInlineChat 鍑嗗鍒涘缓 widget', {
         availableModelsCount: availableModelsRef.current?.length || 0,
         availableModelsStateCount: availableModels?.length || 0,
         waited: waitCount * 100 + 50
@@ -2979,13 +3031,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     if (!aiRewriteWidgetRef.current) {
       aiRewriteWidgetRef.current = new AIRewriteWidget(editor, {
         onRewrite: (originalText: string, rewrittenText: string) => {
-          console.log('[MonacoEditor] AI 鏀瑰啓瀹屾垚:', { originalText, rewrittenText });
+          monacoDebugLog('[MonacoEditor] AI 鏀瑰啓瀹屾垚:', { originalText, rewrittenText });
         },
         onContinue: (originalText: string, continuedText: string) => {
-          console.log('[MonacoEditor] AI 缁啓瀹屾垚:', { originalText, continuedText });
+          monacoDebugLog('[MonacoEditor] AI 缁啓瀹屾垚:', { originalText, continuedText });
         },
         onDiff: (originalText: string, rewrittenText: string) => {
-          console.log('[MonacoEditor] AI 宸紓瀵规瘮瀹屾垚:', { originalText, rewrittenText });
+          monacoDebugLog('[MonacoEditor] AI 宸紓瀵规瘮瀹屾垚:', { originalText, rewrittenText });
         }
       });
     }
@@ -3012,15 +3064,15 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     );
 
     // 娉ㄥ唽 Ctrl+I 鎵撳紑鍐呰仈鑱婂ぉ蹇嵎锟?
-    console.log('[MonacoEditor] 娉ㄥ唽 Ctrl+I 蹇嵎锟?..');
+    monacoDebugLog('[MonacoEditor] 娉ㄥ唽 Ctrl+I 蹇嵎锟?..');
     editor.addCommand(
       monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI,
       () => {
-        console.log('[MonacoEditor] ========== Ctrl+I 蹇嵎閿瑙﹀彂 ==========');
+        monacoDebugLog('[MonacoEditor] ========== Ctrl+I 蹇嵎閿瑙﹀彂 ==========');
         handleOpenInlineChat();
       }
     );
-    console.log('[MonacoEditor] Ctrl+I 蹇嵎閿凡娉ㄥ唽');
+    monacoDebugLog('[MonacoEditor] Ctrl+I 蹇嵎閿凡娉ㄥ唽');
 
     // 娉ㄥ唽缂栬緫鍣ㄥ唴 Ctrl+K Ctrl+T 蹇嵎锟?- 涓婚閫夋嫨
     // 锛團1 宸插湪 MainLayout 鍏ㄥ眬娉ㄥ唽锛屼笉闇€瑕佸湪缂栬緫鍣ㄥ唴閲嶅娉ㄥ唽锟?
@@ -3071,7 +3123,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   // 搴旂敤涓婚锟?Monaco 缂栬緫鍣ㄧ殑鏍稿績鍑芥暟
   const applyThemeToMonaco = (themeData: any, monaco: Monaco) => {
     try {
-        console.log('[MonacoEditor] applyThemeToMonaco 寮€濮嬶紝涓婚鏁版嵁:', {
+        monacoDebugLog('[MonacoEditor] applyThemeToMonaco 寮€濮嬶紝涓婚鏁版嵁:', {
           id: themeData.id,
           name: themeData.name,
           type: themeData.type,
@@ -3155,12 +3207,12 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             }
           });
 
-          console.log('[MonacoEditor] 锟?宸蹭粠 semanticTokenColors 鐢熸垚', 
+          monacoDebugLog('[MonacoEditor] 锟?宸蹭粠 semanticTokenColors 鐢熸垚', 
             Object.keys(themeData.semanticTokenColors).length, 
             '涓锟?Token 瑙勫垯锛屾€昏鍒欐暟:', rules.length);
           
           // 馃攳 璋冭瘯锛氭墦鍗扮敓鎴愮殑璇箟 Token 瑙勫垯
-          console.log('[MonacoEditor] 馃搵 璇箟 Token 瑙勫垯璇︽儏:', 
+          monacoDebugLog('[MonacoEditor] 馃搵 璇箟 Token 瑙勫垯璇︽儏:', 
             rules.slice(-15).map((r: any) => ({ token: r.token, foreground: r.foreground })));
           
           // 馃攳 璋冭瘯锛氭坊锟?JSON 涓撶敤锟?Token 瑙勫垯
@@ -3173,7 +3225,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             rules.push({ token: 'keyword.json', foreground: propColor }); // 鏈夋椂 Monaco 浼氱敤杩欎釜
             // 锟?Markdown 浠ｇ爜鍧椾腑锟?JSON 灞炴€ч敭
             rules.push({ token: 'key.json', foreground: propColor, fontStyle: 'bold' });
-            console.log('[MonacoEditor] 馃敡 娣诲姞 JSON 灞炴€ц锟?', propColor);
+            monacoDebugLog('[MonacoEditor] 馃敡 娣诲姞 JSON 灞炴€ц锟?', propColor);
           }
           
           if (themeData.semanticTokenColors.string) {
@@ -3181,7 +3233,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             // JSON 瀛楃涓诧拷?
             rules.push({ token: 'string.value.json', foreground: strColor });
             rules.push({ token: 'string.json', foreground: strColor }); // 閫氱敤瀛楃锟?Markdown 涓娇锟?
-            console.log('[MonacoEditor] 馃敡 娣诲姞 JSON 瀛楃涓插€艰锟?', strColor);
+            monacoDebugLog('[MonacoEditor] 馃敡 娣诲姞 JSON 瀛楃涓插€艰锟?', strColor);
           }
           
           if (themeData.semanticTokenColors.number) {
@@ -3189,19 +3241,19 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             // JSON 鏁板瓧
             rules.push({ token: 'number.json', foreground: numColor });
             rules.push({ token: 'constant.numeric.json', foreground: numColor });
-            console.log('[MonacoEditor] 馃敡 娣诲姞 JSON 鏁板瓧瑙勫垯:', numColor);
+            monacoDebugLog('[MonacoEditor] 馃敡 娣诲姞 JSON 鏁板瓧瑙勫垯:', numColor);
           }
           
           if (themeData.semanticTokenColors.keyword) {
             const keywordColor = normalizeColorWithHash(themeData.semanticTokenColors.keyword).replace(/^#/, '');
             // JSON 鍏抽敭锟?(true, false, null)
             rules.push({ token: 'keyword.json', foreground: keywordColor });
-            console.log('[MonacoEditor] 馃敡 娣诲姞 JSON 鍏抽敭瀛楄锟?', keywordColor);
+            monacoDebugLog('[MonacoEditor] 馃敡 娣诲姞 JSON 鍏抽敭瀛楄锟?', keywordColor);
           }
           
           // 馃幆 鍏抽敭淇锛歁onaco JSON 榛樿 token 閫氬父娌℃湁 .json 鍚庣紑
           // 璁╂垜浠坊鍔犳棤鍚庣紑鐨勭増锟?
-          console.log('[MonacoEditor] 馃幆 娣诲姞閫氱敤 Monaco token 瑙勫垯...');
+          monacoDebugLog('[MonacoEditor] 馃幆 娣诲姞閫氱敤 Monaco token 瑙勫垯...');
           if (themeData.semanticTokenColors.property) {
             const propColor = normalizeColorWithHash(themeData.semanticTokenColors.property).replace(/^#/, '');
             rules.push({ token: 'string.key', foreground: propColor });
@@ -3248,7 +3300,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           rules.push({ token: 'meta.embedded.block.json delimiter.comma', foreground: delimColor });
           rules.push({ token: 'meta.embedded.block.json punctuation', foreground: delimColor });
           
-          console.log('[MonacoEditor] 馃敡 娣诲姞鍒嗛殧绗﹁鍒欙紙锟?Markdown 宓屽叆寮忥級:', delimColor);
+          monacoDebugLog('[MonacoEditor] 馃敡 娣诲姞鍒嗛殧绗﹁鍒欙紙锟?Markdown 宓屽叆寮忥級:', delimColor);
         }
 
         // 杈呭姪鍑芥暟锛氫粠涓婚鏁版嵁涓幏鍙栭鑹诧紝鏀寔 --ws- 鍓嶇紑鍜屾爣鍑嗛敭
@@ -3258,7 +3310,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           
           // 璋冭瘯鏃ュ織锛氭樉绀洪鑹茶幏鍙栬繃锟?
           if (key === 'editor.background' || key === 'editor.foreground') {
-            console.log(`[MonacoEditor] 鑾峰彇棰滆壊 ${key}:`, {
+            monacoDebugLog(`[MonacoEditor] 鑾峰彇棰滆壊 ${key}:`, {
               standardKey: key,
               wsKey,
               colorFromStandardKey: themeData.colors?.[key],
@@ -3285,9 +3337,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           });
         }
 
-        console.log('[MonacoEditor] 鎻愬彇鐨勯鑹叉暟锟?', Object.keys(colors).length);
-        console.log('[MonacoEditor] 缂栬緫鍣ㄨ儗鏅壊:', colors['editor.background']);
-        console.log('[MonacoEditor] 缂栬緫鍣ㄥ墠鏅壊:', colors['editor.foreground']);
+        monacoDebugLog('[MonacoEditor] 鎻愬彇鐨勯鑹叉暟锟?', Object.keys(colors).length);
+        monacoDebugLog('[MonacoEditor] 缂栬緫鍣ㄨ儗鏅壊:', colors['editor.background']);
+        monacoDebugLog('[MonacoEditor] 缂栬緫鍣ㄥ墠鏅壊:', colors['editor.foreground']);
 
         // 鎻愬彇璇箟 Token 棰滆壊
         const semanticTokenColors: Record<string, string> = {};
@@ -3297,7 +3349,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
               semanticTokenColors[key] = normalizeColorWithHash(value);
             }
           });
-          console.log('[MonacoEditor] 鎻愬彇鐨勮锟?Token 棰滆壊:', semanticTokenColors);
+          monacoDebugLog('[MonacoEditor] 鎻愬彇鐨勮锟?Token 棰滆壊:', semanticTokenColors);
         }
 
         // 鍒涘缓瀹屽叏鑷畾涔夌殑涓婚
@@ -3326,7 +3378,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           // property锛圝SON 灞炴€у悕锟?
           if (themeData.semanticTokenColors.property) {
             semanticHighlightingRules['property'] = normalizeColorWithHash(themeData.semanticTokenColors.property);
-            console.log('[MonacoEditor] loaded property color from theme:', themeData.semanticTokenColors.property, '->', semanticHighlightingRules['property']);
+            monacoDebugLog('[MonacoEditor] loaded property color from theme:', themeData.semanticTokenColors.property, '->', semanticHighlightingRules['property']);
           }
           
           // string锛堝瓧绗︿覆锟?
@@ -3344,7 +3396,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             semanticHighlightingRules['keyword'] = normalizeColorWithHash(themeData.semanticTokenColors.keyword);
           }
           
-          console.log('[MonacoEditor] 馃帹 璇箟楂樹寒瑙勫垯:', semanticHighlightingRules);
+          monacoDebugLog('[MonacoEditor] 馃帹 璇箟楂樹寒瑙勫垯:', semanticHighlightingRules);
         }
 
         // 濡傛灉鏈夎锟?Token 棰滆壊锛屾坊鍔犲埌涓婚涓紙浣跨敤绫诲瀷鏂█缁曡繃 TypeScript 闄愬埗锟?
@@ -3358,7 +3410,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           (monacoTheme as monaco.editor.IStandaloneThemeData & { semanticTokenColors?: Record<string, string> }).semanticTokenColors = semanticHighlightingRules;
         }
 
-        console.log('[MonacoEditor] 鍑嗗娉ㄥ唽涓婚:', {
+        monacoDebugLog('[MonacoEditor] 鍑嗗娉ㄥ唽涓婚:', {
           themeId,
           base: monacoTheme.base,
           inherit: monacoTheme.inherit,
@@ -3376,14 +3428,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         //   r.token.includes('number') ||
         //   r.token.includes('key')
         // );
-        // console.log('[MonacoEditor] 馃幆 JSON 鐩稿叧锟?Token 瑙勫垯 (' + jsonRules.length + ' 锟?:', 
+        // monacoDebugLog('[MonacoEditor] 馃幆 JSON 鐩稿叧锟?Token 瑙勫垯 (' + jsonRules.length + ' 锟?:', 
         //   JSON.stringify(jsonRules, null, 2));
 
         monaco.editor.defineTheme(themeId, monacoTheme);
-        console.log('[MonacoEditor] 涓婚宸插畾锟?', themeId);
+        monacoDebugLog('[MonacoEditor] 涓婚宸插畾锟?', themeId);
         
         monaco.editor.setTheme(themeId);
-        console.log('[MonacoEditor] 涓婚宸茶锟?', themeId);
+        monacoDebugLog('[MonacoEditor] 涓婚宸茶锟?', themeId);
         
         setCurrentTheme(themeId);
         
@@ -3397,7 +3449,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
             const model = editorRef.current.getModel();
             if (model) {
               const languageId = model.getLanguageId();
-              console.log('[MonacoEditor] 馃攧 涓婚搴旂敤鍚庨噸锟?tokenize锛岃瑷€:', languageId);
+              monacoDebugLog('[MonacoEditor] 馃攧 涓婚搴旂敤鍚庨噸锟?tokenize锛岃瑷€:', languageId);
               
               // 寮哄埗閲嶆柊璁剧疆璇█锛堣Е锟?tokenization锟?
               monaco.editor.setModelLanguage(model, languageId);
@@ -3405,14 +3457,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
               // 濡傛灉锟?Markdown锛岄澶栧埛鏂颁竴娆″竷灞€
               if (languageId === 'markdown') {
                 editorRef.current.layout();
-                console.log('[MonacoEditor] 锟?Markdown 缂栬緫鍣ㄥ凡閲嶆柊甯冨眬');
+                monacoDebugLog('[MonacoEditor] 锟?Markdown 缂栬緫鍣ㄥ凡閲嶆柊甯冨眬');
               }
             }
           }
           
           // 娓呯悊 VSCode CSS 鍙橀噺
           cleanupVSCodeVariables();
-          console.log('[MonacoEditor] CSS 鍙橀噺娓呯悊瀹屾垚');
+          monacoDebugLog('[MonacoEditor] CSS 鍙橀噺娓呯悊瀹屾垚');
         }, 150); // 澧炲姞寤惰繜锛岀‘淇濅富棰樺畬鍏ㄥ簲锟?
       } catch (error) {
         console.error('[MonacoEditor] 涓婚搴旂敤澶辫触:', error);
@@ -3421,9 +3473,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   
   // 閫氳繃娉ㄥ叆 CSS 寮哄埗瑕嗙洊 JSON token 棰滆壊
   const injectJSONTokenColors = (themeId: string, semanticTokenColors: Record<string, string>) => {
-    console.log('[MonacoEditor] injectJSONTokenColors called');
-    console.log('[MonacoEditor] themeId:', themeId);
-    console.log('[MonacoEditor] semanticTokenColors:', semanticTokenColors);
+    monacoDebugLog('[MonacoEditor] injectJSONTokenColors called');
+    monacoDebugLog('[MonacoEditor] themeId:', themeId);
+    monacoDebugLog('[MonacoEditor] semanticTokenColors:', semanticTokenColors);
     
     const styleId = 'monaco-json-token-colors';
     let styleEl = document.getElementById(styleId) as HTMLStyleElement;
@@ -3432,9 +3484,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       styleEl = document.createElement('style');
       styleEl.id = styleId;
       document.head.appendChild(styleEl);
-      console.log('[MonacoEditor] 锟?鍒涘缓浜嗘柊锟?<style> 鍏冪礌');
+      monacoDebugLog('[MonacoEditor] 锟?鍒涘缓浜嗘柊锟?<style> 鍏冪礌');
     } else {
-      console.log('[MonacoEditor] 鈾伙笍 澶嶇敤鐜版湁锟?<style> 鍏冪礌');
+      monacoDebugLog('[MonacoEditor] 鈾伙笍 澶嶇敤鐜版湁锟?<style> 鍏冪礌');
     }
     
     // 鏋勫缓 CSS 瑙勫垯
@@ -3499,10 +3551,10 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                            semanticTokenColors.operator || 
                            '#839496';
     
-    console.log('[MonacoEditor] 馃攳 鍒嗛殧绗﹂鑹茶皟璇曚俊锟?');
-    console.log('  - semanticTokenColors.delimiter:', semanticTokenColors.delimiter);
-    console.log('  - semanticTokenColors.operator:', semanticTokenColors.operator);
-    console.log('  - 鏈€缁堜娇鐢ㄧ殑棰滆壊:', delimiterColor);
+    monacoDebugLog('[MonacoEditor] 馃攳 鍒嗛殧绗﹂鑹茶皟璇曚俊锟?');
+    monacoDebugLog('  - semanticTokenColors.delimiter:', semanticTokenColors.delimiter);
+    monacoDebugLog('  - semanticTokenColors.operator:', semanticTokenColors.operator);
+    monacoDebugLog('  - 鏈€缁堜娇鐢ㄧ殑棰滆壊:', delimiterColor);
     
     cssRules.push(`
       /* 璇箟 token - delimiter (tokenType 10 锟?mtk11) */
@@ -3530,14 +3582,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         color: ${delimiterColor} !important;
       }
     `);
-    console.log('[MonacoEditor] 馃拤 娣诲姞鍒嗛殧锟?CSS 瑙勫垯锛坱okenType 10 锟?mtk11锛夛紝棰滆壊:', delimiterColor);
+    monacoDebugLog('[MonacoEditor] 馃拤 娣诲姞鍒嗛殧锟?CSS 瑙勫垯锛坱okenType 10 锟?mtk11锛夛紝棰滆壊:', delimiterColor);
     
     styleEl.textContent = cssRules.join('\n');
-    console.log('[MonacoEditor] injected JSON token CSS rules:', cssRules.length);
+    monacoDebugLog('[MonacoEditor] injected JSON token CSS rules:', cssRules.length);
     
     // 锟?JSON tokenizer 宸插湪 handleEditorWillMount 涓纭厤锟?
     // 涓嶉渶瑕佸湪杩欓噷閲嶅璁剧疆锛岄伩鍏嶈鐩栦箣鍓嶇殑閰嶇疆
-    console.log('[MonacoEditor] JSON delimiter colors controlled by theme rules');
+    monacoDebugLog('[MonacoEditor] JSON delimiter colors controlled by theme rules');
   };
   
   // 娓呴櫎 VSCode 鍓嶇紑锟?CSS 鍙橀噺
@@ -3647,7 +3699,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       const targetLanguage = isSnippetFile ? 'jsonc' : language;
       
       if (currentLanguageId !== targetLanguage) {
-        console.log(`[MonacoEditor] update language mode: ${currentLanguageId} -> ${targetLanguage}`, {
+        monacoDebugLog(`[MonacoEditor] update language mode: ${currentLanguageId} -> ${targetLanguage}`, {
           tabId,
           isSnippetFile,
           languageProp: language,
@@ -3751,6 +3803,10 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   // 缁勪欢鍗歌浇鏃舵竻锟?
   useEffect(() => {
     return () => {
+      compositionCleanupRef.current?.();
+      compositionCleanupRef.current = null;
+      isImeComposingRef.current = false;
+
       // 娓呯悊鍛戒护涓績
       if (commandCenterRef.current) {
         commandCenterRef.current.dispose();
@@ -3792,7 +3848,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   // 鐩戝惉浼樺厛绱㈠紩杩涘害浜嬩欢
   useEffect(() => {
     const handlePriorityIndexProgress = (_event: unknown, data: { filePath: string; stage: string }) => {
-      console.log(`[MonacoEditor] priority index progress: ${data.stage} - ${data.filePath}`);
+      monacoDebugLog(`[MonacoEditor] priority index progress: ${data.stage} - ${data.filePath}`);
       // 鏇存柊 AIZoneWidget 鐨勬€濊€冪姸锟?
       if (aiZoneWidgetRef.current) {
         aiZoneWidgetRef.current.updateThinkingText(data.stage);
@@ -3846,13 +3902,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       return;
     }
 
-    console.log('[MonacoEditor] 鑾峰彇鍒扮紪杈戝櫒瀹瑰櫒鍏冪礌:', container);
+    monacoDebugLog('[MonacoEditor] 鑾峰彇鍒扮紪杈戝櫒瀹瑰櫒鍏冪礌:', container);
     
     // 鐩存帴锟?DOM 鍏冪礌涓婄洃锟?contextmenu 浜嬩欢
     const handleContextMenu = (e: MouseEvent) => {
-      console.log('[MonacoEditor] ========== DOM contextmenu 浜嬩欢瑙﹀彂 ==========');
-      console.log('[MonacoEditor] 浜嬩欢瀵硅薄:', e);
-      console.log('[MonacoEditor] 榧犳爣浣嶇疆:', e.clientX, e.clientY);
+      monacoDebugLog('[MonacoEditor] ========== DOM contextmenu 浜嬩欢瑙﹀彂 ==========');
+      monacoDebugLog('[MonacoEditor] 浜嬩欢瀵硅薄:', e);
+      monacoDebugLog('[MonacoEditor] 榧犳爣浣嶇疆:', e.clientX, e.clientY);
       
       // 闃绘榛樿鐨勫彸閿彍锟?
       e.preventDefault();
@@ -3862,16 +3918,16 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       const x = e.clientX;
       const y = e.clientY;
       
-      console.log('[MonacoEditor] Showing menu at:', x, y);
+      monacoDebugLog('[MonacoEditor] Showing menu at:', x, y);
       contextMenu.showMenu(x, y);
     };
 
     container.addEventListener('contextmenu', handleContextMenu);
-    console.log('[MonacoEditor] Monaco context menu listener attached to DOM');
+    monacoDebugLog('[MonacoEditor] Monaco context menu listener attached to DOM');
 
     return () => {
       container.removeEventListener('contextmenu', handleContextMenu);
-      console.log('[MonacoEditor] Monaco context menu listener disposed');
+      monacoDebugLog('[MonacoEditor] Monaco context menu listener disposed');
     };
   }, [contextMenu, isEditorReady]);
 
@@ -3899,7 +3955,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         theme={currentTheme}
         options={{
           fontSize: 14,
-          fontLigatures: true,
+          fontLigatures: false,
+          lineHeight: 21,
+          letterSpacing: 0,
           lineNumbers: 'on',
           glyphMargin: true, // 鍚敤 glyph margin锛屼緵 AIRewriteWidget 浣跨敤
           renderWhitespace: 'selection',
@@ -3969,3 +4027,4 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     </div>
   );
 };
+

@@ -20,6 +20,7 @@ type SplitMoveDirection = 'left' | 'right' | 'up' | 'down';
 export interface TabBarProps {
   tabs: EditorTab[];
   activeTabId: string | null;
+  editorType?: 'monaco' | 'codemirror';
   onTabClick: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
   onCloseMultipleTabs?: (tabIds: string[]) => void;
@@ -89,6 +90,7 @@ const toBreadcrumbPathText = (fullPath: string, workspacePath: string): string =
 export const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTabId,
+  editorType = 'monaco',
   onTabClick,
   onTabClose,
   onCloseMultipleTabs,
@@ -116,6 +118,10 @@ export const TabBar: React.FC<TabBarProps> = ({
   const workspacePath = useExplorerStore((state) => state.workspacePath);
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
+  const nextEditorType = editorType === 'monaco' ? 'codemirror' : 'monaco';
+  const editorSwitchTitle = editorType === 'monaco'
+    ? '切换到 CodeMirror 编辑器'
+    : '切换到 Monaco 编辑器';
   const isEditableDocumentTab = (() => {
     if (!activeTab || activeTab.type !== 'file') return false;
     const title = activeTab.title?.trim() || '';
@@ -854,9 +860,9 @@ export const TabBar: React.FC<TabBarProps> = ({
             
             <button 
               className="tab-bar-action-btn"
-              title="CodeMirror 编辑器"
+              title={editorSwitchTitle}
               onClick={() => {
-                window.dispatchEvent(new CustomEvent('set-editor-type', { detail: 'codemirror' }));
+                window.dispatchEvent(new CustomEvent('set-editor-type', { detail: nextEditorType }));
               }}
             >
               <Icon name="editor-switch" size={16} />

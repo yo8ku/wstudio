@@ -171,6 +171,26 @@ const AIAssistant: IconComponent = () => (
   </svg>
 );
 
+// 标题栏“文件”左侧的侧边栏入口图标。
+const PanelLeft: IconComponent = ({ style, className }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={style}
+    className={className}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M9 3v18" />
+  </svg>
+);
+
 // 窗口控制图标 - 最小化
 const Minimize: IconComponent = () => (
   <svg width="10" height="10" viewBox="0 0 10 10">
@@ -1422,6 +1442,7 @@ export const uiIconSet: IconSet = {
     // 标题栏图标
     'menu': Menu,
     'ai-assistant': AIAssistant,
+    'panel-left': PanelLeft,
     'terminal': Terminal,
     'minimize': Minimize,
     'maximize': Maximize,

@@ -97,6 +97,16 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
     setContextMenu(null);
   };
 
+  const handleActivityKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+    item: ActivityBarItem
+  ) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onActivityClick(item);
+    }
+  };
+
   // 过滤出可见的活动项
   const visibleTopActivities = topActivities.filter(
     (activity) => !activity.visibilityKey || visibility[activity.visibilityKey]
@@ -107,21 +117,26 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       {/* 上部活动项 */}
       <div className="activity-bar-top">
         {visibleTopActivities.map((activity) => (
-          <button
+          <div
             key={activity.id}
             onClick={() => onActivityClick(activity.id)}
             className={`activity-bar-item ${
               activeItem === activity.id ? "active" : ""
             }`}
+            role="button"
+            tabIndex={0}
+            aria-label={activity.title}
+            aria-pressed={activeItem === activity.id}
             title={activity.title}
+            onKeyDown={(event) => handleActivityKeyDown(event, activity.id)}
           >
             {activeItem === activity.id && (
               <div className="activity-bar-indicator" />
             )}
             <span className="activity-bar-icon">
-              <Icon name={activity.iconName} size={21} />
+              <Icon name={activity.iconName} size={18} />
             </span>
-          </button>
+          </div>
         ))}
       </div>
 
@@ -131,13 +146,18 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       {/* 底部活动项 */}
       <div className="activity-bar-bottom">
         {bottomActivities.map((activity) => (
-          <button
+          <div
             key={activity.id}
             onClick={() => onActivityClick(activity.id)}
             className={`activity-bar-item ${
               activeItem === activity.id ? "active" : ""
             }`}
+            role="button"
+            tabIndex={0}
+            aria-label={activity.title}
+            aria-pressed={activeItem === activity.id}
             title={activity.title}
+            onKeyDown={(event) => handleActivityKeyDown(event, activity.id)}
           >
             {activeItem === activity.id && (
               <div className="activity-bar-indicator" />
@@ -145,7 +165,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
             <span className="activity-bar-icon">
               <Icon name={activity.iconName} size={24} />
             </span>
-          </button>
+          </div>
         ))}
       </div>
 

@@ -40,36 +40,6 @@
   }
 
 
-  //颜色-AI聊天最大化头部颜色
-  &-header {
-    background-color: var(--ws-editor-background);
-
-    //颜色-聊天下划线颜色
-    &-left {
-      border-bottom: 1px solid #ffffff54;
-    }
-  }
-}
-
-.message {
-
-  //颜色-用户消息
-  &.user {
-    border: 1px solid var(--ws-aiUserBorder-background);
-
-    &:hover {
-      border-color: var(--ws-aiUserBorder-hoverBackground)
-    }
-  }
-}
-
-
-//颜色-AI模型（Gemini）结果颜色配置
-.message.assistant {
-
-  &:hover {
-    border-color: var(--ws-aiUserBorder-hoverBackground);
-  }
 }
 
 

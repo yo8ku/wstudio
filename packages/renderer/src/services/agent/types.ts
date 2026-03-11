@@ -59,6 +59,7 @@ export interface ConfirmationRequest {
 
 export interface AgentFileChange {
   filePath: string;
+  oldContent?: string;
   newContent?: string;
 }
 

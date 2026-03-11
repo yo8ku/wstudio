@@ -6,7 +6,7 @@
 .status-bar {
     // background-color: var(--ws-statusBar-background);
     color: var(--ws-statusBar-foreground);
-    border-color: var(--ws-panel-border);;
+    border-top: 1px solid var(--ws-border-background);
 }
 
 .status-bar button {
