@@ -26,6 +26,7 @@ export const Panel: React.FC<PanelProps> = ({
 }) => {
   const [activeView, setActiveView] = useState<PanelView>(initialActiveView);
   const [height, setHeight] = useState(initialHeight);
+  const [isPanelResizing, setIsPanelResizing] = useState(false);
   const [linkQuery, setLinkQuery] = useState('');
   const [linkSortBy, setLinkSortBy] = useState<LinkCollectionSort>('default');
   const [isLinkSearchVisible, setIsLinkSearchVisible] = useState(false);
@@ -61,6 +62,14 @@ export const Panel: React.FC<PanelProps> = ({
         minSize={minHeight}
         maxSize={maxHeight}
         onResize={setHeight}
+        onResizeStart={() => {
+          if (activeView === 'terminal') {
+            setIsPanelResizing(true);
+          }
+        }}
+        onResizeEnd={() => {
+          setIsPanelResizing(false);
+        }}
       />
 
       <div className="panel-container-header">
@@ -141,6 +150,8 @@ export const Panel: React.FC<PanelProps> = ({
             onRefChange={(ref) => {
               terminalRef.current = ref;
             }}
+            isVisible={activeView === 'terminal'}
+            isLiveResizing={activeView === 'terminal' && isPanelResizing}
           />
         </div>
       </div>

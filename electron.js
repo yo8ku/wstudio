@@ -33,6 +33,7 @@ Module._resolveFilename = function(request, parent, isMain) {
 
 const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
 const { ThemeService } = require('./packages/main/dist/main/src/services/ThemeService.js');
+const { registerSettingsHandlers } = require('./packages/main/dist/main/src/ipc/settingsHandlers.js');
 // 导入终端服务相关模块
 const { TerminalService } = require('./packages/main/dist/main/src/services/terminal/index.js');
 const { setTerminalService } = require('./packages/main/dist/main/src/ipc/terminalHandlers.js');
@@ -43,6 +44,9 @@ const { getAllEmbeddingProviders, getEnabledEmbeddingModels } = require('./packa
 const { workspaceVectorIndexService } = require('./packages/main/dist/main/src/services/WorkspaceVectorIndexService.js');
 
 const logIconPath = path.join(__dirname, 'log', 'log.png');
+const DEV_SERVER_URL = 'http://127.0.0.1:5173';
+const DEV_SERVER_MAX_RETRIES = 8;
+const DEV_SERVER_RETRY_DELAY_MS = 750;
 if (!fs.existsSync(logIconPath)) {
   console.warn('[Electron] 应用图标未找到，预计路径:', logIconPath);
 }
@@ -83,6 +87,28 @@ protocol.registerSchemesAsPrivileged([
 console.log('[Electron] 自定义协议已注册为特权协议');
 
 let mainWindow;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function loadDevServerWithRetry(targetWindow, attempt = 1) {
+  try {
+    await targetWindow.loadURL(DEV_SERVER_URL);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isRetriable = /ERR_EMPTY_RESPONSE|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_ABORTED/i.test(errorMessage);
+
+    if (!isRetriable || attempt >= DEV_SERVER_MAX_RETRIES || !targetWindow || targetWindow.isDestroyed()) {
+      console.error('[Electron] 开发服务器加载失败:', errorMessage);
+      throw error;
+    }
+
+    console.warn(`[Electron] 开发服务器暂不可用，第 ${attempt} 次重试: ${errorMessage}`);
+    await sleep(DEV_SERVER_RETRY_DELAY_MS);
+    await loadDevServerWithRetry(targetWindow, attempt + 1);
+  }
+}
 
 function clampColorChannel(value) {
   if (!Number.isFinite(value)) {
@@ -252,8 +278,8 @@ function createWindow(backgroundColor = '#1e1e1e') {
   });
 
   if (process.env.NODE_ENV === 'development') {
-    console.log('[Electron] 开发模式：加载 Vite 开发服务器 http://localhost:5173');
-    mainWindow.loadURL('http://localhost:5173');
+    console.log(`[Electron] 开发模式：加载 Vite 开发服务器 ${DEV_SERVER_URL}`);
+    void loadDevServerWithRetry(mainWindow);
     mainWindow.webContents.openDevTools();
   } else {
     // 生产模式：加载构建后的文件
@@ -585,8 +611,10 @@ app.whenReady().then(async () => {
       }
     }
 
-    // 再次初始化扩展系统，这次传入主窗口以创建 PluginAPIAdapter 和终端服务
-    await initializeExtensions(mainWindow);
+    // 首次初始化已经完成 IPC 注册和扩展加载，这里只补充窗口引用。
+    // 二次执行 initializeExtensions 会重复注册部分 ipcMain.handle，导致开发启动卡死。
+    registerSettingsHandlers(settingsManager, workspaceManager, mainWindow);
+    registerSettingsHandlers(settingsManager, workspaceManager, mainWindow);
     console.log('[Electron] 扩展系统初始化完成');
     
     // 🎉 所有初始化完成，等待页面加载后通知渲染进程

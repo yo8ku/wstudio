@@ -1,9 +1,16 @@
+/**
+ * TerminalPanel 终端面板组件。
+ * 负责终端实例挂载、可见性切换以及首屏尺寸稳定化。
+ */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { TerminalSession } from './TerminalSession';
 import 'xterm/css/xterm.css';
 import './TerminalPanel.scss';
 
 export type ShellType = 'powershell' | 'cmd' | 'bash' | 'git-bash';
+
+const POWERSHELL_TERMINAL_COMMAND =
+  'powershell.exe -NoLogo -NoExit';
 
 export interface TerminalPanelRef {
   createNewTerminal: () => void;
@@ -13,43 +20,90 @@ export interface TerminalPanelRef {
 interface TerminalPanelProps {
   onRefChange?: (ref: TerminalPanelRef) => void;
   shell?: ShellType;
+  isVisible?: boolean;
+  isLiveResizing?: boolean;
 }
 
-export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onRefChange, shell: externalShell }) => {
+export const TerminalPanel: React.FC<TerminalPanelProps> = ({
+  onRefChange,
+  shell: externalShell,
+  isVisible = true,
+  isLiveResizing = false,
+}) => {
   const [shell, setShell] = useState<ShellType>(externalShell || 'powershell');
   const [session, setSession] = useState<TerminalSession | null>(null);
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<TerminalSession | null>(null);
   const pendingCommandRef = useRef<string | null>(null);
+  const isWindowResizingRef = useRef(false);
+  const windowResizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
 
   useEffect(() => {
+    if (!session || !isVisible) {
+      isWindowResizingRef.current = false;
+      if (windowResizeTimerRef.current) {
+        clearTimeout(windowResizeTimerRef.current);
+        windowResizeTimerRef.current = null;
+      }
+      return;
+    }
+
+    const handleWindowResize = () => {
+      isWindowResizingRef.current = true;
+
+      if (windowResizeTimerRef.current) {
+        clearTimeout(windowResizeTimerRef.current);
+      }
+
+      windowResizeTimerRef.current = setTimeout(() => {
+        isWindowResizingRef.current = false;
+        session.resize();
+        windowResizeTimerRef.current = null;
+      }, 120);
+    };
+
+    window.addEventListener('resize', handleWindowResize);
+
+    return () => {
+      window.removeEventListener('resize', handleWindowResize);
+      if (windowResizeTimerRef.current) {
+        clearTimeout(windowResizeTimerRef.current);
+        windowResizeTimerRef.current = null;
+      }
+      isWindowResizingRef.current = false;
+    };
+  }, [isVisible, session]);
+
+  useEffect(() => {
     if (!session) {
       return;
     }
 
-    const checkPendingCommand = setInterval(() => {
-      if (session.id && pendingCommandRef.current) {
-        const terminalAPI = window.electron?.terminal;
-        if (terminalAPI) {
-          terminalAPI.write(session.id, pendingCommandRef.current + '\r');
-          console.log('[TerminalPanel] 执行待处理命令:', pendingCommandRef.current);
-          pendingCommandRef.current = null;
-        }
-        clearInterval(checkPendingCommand);
+    const pendingCommandTimer = setInterval(() => {
+      if (!session.id || !pendingCommandRef.current) {
+        return;
       }
+
+      const terminalAPI = window.electron?.terminal;
+      if (terminalAPI) {
+        terminalAPI.write(session.id, pendingCommandRef.current + '\r');
+        pendingCommandRef.current = null;
+      }
+
+      clearInterval(pendingCommandTimer);
     }, 200);
 
-    return () => clearInterval(checkPendingCommand);
+    return () => clearInterval(pendingCommandTimer);
   }, [session]);
 
   const getShellCommand = useCallback((shellType: ShellType): string => {
     switch (shellType) {
       case 'powershell':
-        return 'powershell.exe';
+        return POWERSHELL_TERMINAL_COMMAND;
       case 'cmd':
         return 'cmd.exe';
       case 'bash':
@@ -57,18 +111,18 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onRefChange, shell
       case 'git-bash':
         return 'C:\\Program Files\\Git\\bin\\bash.exe';
       default:
-        return 'powershell.exe';
+        return POWERSHELL_TERMINAL_COMMAND;
     }
   }, []);
 
   const createTerminal = useCallback((shellType?: ShellType) => {
     const targetShell = shellType || shell;
-    const newSession = new TerminalSession({
+    const nextSession = new TerminalSession({
       shell: getShellCommand(targetShell),
     });
 
-    setSession(newSession);
-    return newSession;
+    setSession(nextSession);
+    return nextSession;
   }, [getShellCommand, shell]);
 
   useEffect(() => {
@@ -87,89 +141,121 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onRefChange, shell
   useEffect(() => {
     let mounted = true;
 
-    const tryCreateTerminal = () => {
-      if (!mounted) {
-        return;
+    const terminalAPI = window.electron?.terminal;
+    if (!terminalAPI) {
+      console.error('[TerminalPanel] terminalAPI unavailable');
+      return;
+    }
+
+    const frameId = requestAnimationFrame(() => {
+      if (mounted) {
+        createTerminal();
       }
-
-      const terminalAPI = window.electron?.terminal;
-      if (!terminalAPI) {
-        console.error('[TerminalPanel] terminalAPI 未定义');
-        return;
-      }
-
-      createTerminal();
-    };
-
-    setTimeout(tryCreateTerminal, 100);
+    });
 
     return () => {
       mounted = false;
+      cancelAnimationFrame(frameId);
       sessionRef.current?.dispose();
     };
-  }, []);
+  }, [createTerminal]);
 
   useEffect(() => {
     if (!session || !terminalContainerRef.current) {
       return;
     }
+
+    let primaryFrameId = 0;
+    let secondaryFrameId = 0;
+    let settleTimerId: ReturnType<typeof setTimeout> | null = null;
 
     terminalContainerRef.current.innerHTML = '';
     session.attachTo(terminalContainerRef.current);
 
-    const handleWindowResize = () => {
-      session.resize();
-    };
-
-    window.addEventListener('resize', handleWindowResize);
-    setTimeout(() => handleWindowResize(), 100);
+    primaryFrameId = requestAnimationFrame(() => {
+      session.resize(true);
+      secondaryFrameId = requestAnimationFrame(() => {
+        session.resize(true);
+      });
+    });
+    settleTimerId = setTimeout(() => {
+      session.resize(true);
+    }, 120);
 
     return () => {
-      window.removeEventListener('resize', handleWindowResize);
+      cancelAnimationFrame(primaryFrameId);
+      cancelAnimationFrame(secondaryFrameId);
+      if (settleTimerId) {
+        clearTimeout(settleTimerId);
+      }
     };
   }, [session]);
 
   useEffect(() => {
-    if (!session || !terminalContainerRef.current) {
+    if (!session || !terminalContainerRef.current || !isVisible) {
       return;
     }
 
-    let resizeTimeout: NodeJS.Timeout | null = null;
+    let frameId: number | null = null;
 
     const resizeObserver = new ResizeObserver(() => {
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout);
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
       }
 
-      resizeTimeout = setTimeout(() => {
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+
+        if (isLiveResizing) {
+          session.fit();
+          return;
+        }
+
+        if (isWindowResizingRef.current) {
+          session.resize();
+          return;
+        }
+
         session.resize();
-      }, 300);
+      });
     });
 
     resizeObserver.observe(terminalContainerRef.current);
 
     return () => {
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout);
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
       }
       resizeObserver.disconnect();
     };
-  }, [session]);
+  }, [isLiveResizing, isVisible, session]);
+
+  useEffect(() => {
+    if (!session || !isVisible || isLiveResizing) {
+      return;
+    }
+
+    const frameId = requestAnimationFrame(() => {
+      session.resize(true);
+    });
+
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [isLiveResizing, isVisible, session]);
 
   useEffect(() => {
     const handleExecuteCommand = (event: CustomEvent<{ command: string }>) => {
       const currentSession = sessionRef.current;
-      if (currentSession && currentSession.id) {
+      if (currentSession?.id) {
         const terminalAPI = window.electron?.terminal;
         if (terminalAPI) {
           terminalAPI.write(currentSession.id, event.detail.command + '\r');
-          console.log('[TerminalPanel] 执行命令:', event.detail.command);
         }
         return;
       }
 
       pendingCommandRef.current = event.detail.command;
-      console.log('[TerminalPanel] 终端未就绪，命令已保存待执行:', event.detail.command);
     };
 
     window.addEventListener('terminal:execute-command', handleExecuteCommand as EventListener);

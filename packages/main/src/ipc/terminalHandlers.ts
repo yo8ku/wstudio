@@ -10,6 +10,14 @@ import type { TerminalOptions } from '../services/terminal';
 let terminalService: TerminalService | null = null;
 let handlersRegistered = false;
 
+function ensureTerminalService(): TerminalService {
+  if (!terminalService) {
+    throw new Error('TerminalService 未初始化');
+  }
+
+  return terminalService;
+}
+
 /**
  * 设置终端服务实例
  */
@@ -37,10 +45,8 @@ export function registerTerminalHandlers(service?: TerminalService): void {
   // 创建终端
   ipcMain.handle('terminal:create', async (event: IpcMainInvokeEvent, options: TerminalOptions) => {
     try {
-      if (!terminalService) {
-        throw new Error('TerminalService 未初始化，请稍后重试');
-      }
-      const terminalId = terminalService.createTerminal(options);
+      const service = ensureTerminalService();
+      const terminalId = service.createTerminal(options);
       console.log(`[Terminal IPC] 创建终端: ${terminalId}`);
       return { success: true, terminalId };
     } catch (error) {
@@ -50,12 +56,19 @@ export function registerTerminalHandlers(service?: TerminalService): void {
   });
 
   // 写入数据
+  ipcMain.on('terminal:write', (_event, terminalId: string, data: string) => {
+    try {
+      const service = ensureTerminalService();
+      service.writeToTerminal(terminalId, data);
+    } catch (error) {
+      console.error('[Terminal IPC] 写入数据失败:', error);
+    }
+  });
+
   ipcMain.handle('terminal:write', async (event: IpcMainInvokeEvent, terminalId: string, data: string) => {
     try {
-      if (!terminalService) {
-        throw new Error('TerminalService 未初始化');
-      }
-      terminalService.writeToTerminal(terminalId, data);
+      const service = ensureTerminalService();
+      service.writeToTerminal(terminalId, data);
       return { success: true };
     } catch (error) {
       console.error('[Terminal IPC] 写入数据失败:', error);
@@ -66,10 +79,8 @@ export function registerTerminalHandlers(service?: TerminalService): void {
   // 调整大小
   ipcMain.handle('terminal:resize', async (event: IpcMainInvokeEvent, terminalId: string, cols: number, rows: number) => {
     try {
-      if (!terminalService) {
-        throw new Error('TerminalService 未初始化');
-      }
-      terminalService.resizeTerminal(terminalId, cols, rows);
+      const service = ensureTerminalService();
+      service.resizeTerminal(terminalId, cols, rows);
       return { success: true };
     } catch (error) {
       console.error('[Terminal IPC] 调整大小失败:', error);
@@ -80,10 +91,8 @@ export function registerTerminalHandlers(service?: TerminalService): void {
   // 销毁终端
   ipcMain.handle('terminal:destroy', async (event: IpcMainInvokeEvent, terminalId: string) => {
     try {
-      if (!terminalService) {
-        throw new Error('TerminalService 未初始化');
-      }
-      terminalService.destroyTerminal(terminalId);
+      const service = ensureTerminalService();
+      service.destroyTerminal(terminalId);
       return { success: true };
     } catch (error) {
       console.error('[Terminal IPC] 销毁终端失败:', error);
@@ -94,10 +103,8 @@ export function registerTerminalHandlers(service?: TerminalService): void {
   // 获取所有终端 ID
   ipcMain.handle('terminal:list', async (event: IpcMainInvokeEvent) => {
     try {
-      if (!terminalService) {
-        throw new Error('TerminalService 未初始化');
-      }
-      const ids = terminalService.getAllTerminalIds();
+      const service = ensureTerminalService();
+      const ids = service.getAllTerminalIds();
       return { success: true, terminalIds: ids };
     } catch (error) {
       console.error('[Terminal IPC] 获取终端列表失败:', error);

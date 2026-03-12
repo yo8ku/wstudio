@@ -136,8 +136,8 @@ contextBridge.exposeInMainWorld('electron', {
   
   // 终端 API
   terminal: {
-    create: (cols, rows, cwd) => ipcRenderer.invoke('terminal:create', { cols, rows, cwd }),
-    write: (id, data) => ipcRenderer.invoke('terminal:write', id, data),
+    create: (cols, rows, cwd, shell) => ipcRenderer.invoke('terminal:create', { cols, rows, cwd, shell }),
+    write: (id, data) => ipcRenderer.send('terminal:write', id, data),
     resize: (id, cols, rows) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
     destroy: (id) => ipcRenderer.invoke('terminal:destroy', id),
     onData: (callback) => {

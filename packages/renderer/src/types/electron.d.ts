@@ -144,7 +144,6 @@ export interface ElectronAPI {
   };
   on?: (channel: string, callback: (event: any, ...args: any[]) => void) => () => void;
   off?: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
-  platform: string;
   version: string;
   minimizeWindow: () => void;
   maximizeWindow: () => void;
@@ -418,8 +417,8 @@ export interface ElectronIPC {
     clearAll: () => Promise<APIResponse>;
   };
   terminal: {
-    create: (cols: number, rows: number, cwd?: string) => Promise<{ success: boolean; terminalId?: string; error?: string }>;
-    write: (id: string, data: string) => Promise<void>;
+    create: (cols: number, rows: number, cwd?: string, shell?: string) => Promise<{ success: boolean; terminalId?: string; error?: string }>;
+    write: (id: string, data: string) => void;
     resize: (id: string, cols: number, rows: number) => Promise<void>;
     destroy: (id: string) => Promise<void>;
     onData: (callback: (terminalId: string, data: string) => void) => () => void;

@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "concurrently \"pnpm dev:renderer\" \"pnpm dev:electron\"",
     "dev:renderer": "vite --config packages/renderer/vite.config.ts",
-    "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
+    "dev:electron": "wait-on http-get://127.0.0.1:5173/@vite/client && cross-env NODE_ENV=development electron .",
     "prebuild": "echo 'Prebuild step completed'",
     "build": "turbo run build",
     "build:electron": "pnpm run build && electron-builder --win --x64 --config.npmRebuild=false",
