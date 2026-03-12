@@ -10,7 +10,7 @@ import './TerminalPanel.scss';
 export type ShellType = 'powershell' | 'cmd' | 'bash' | 'git-bash';
 
 const POWERSHELL_TERMINAL_COMMAND =
-  'powershell.exe -NoLogo -NoExit';
+  'powershell.exe -NoLogo -NoExit -NoProfile';
 
 export interface TerminalPanelRef {
   createNewTerminal: () => void;

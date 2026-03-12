@@ -8,7 +8,6 @@ import { WebLinksAddon } from 'xterm-addon-web-links';
 
 const getTerminalAPI = () => window.electron?.terminal;
 const TERMINAL_FONT_FAMILY = 'Consolas, "Courier New", monospace';
-const REPEATED_CONTROL_INPUT_INTERVAL_MS = 25;
 
 export interface TerminalSessionOptions {
   shell?: string;
@@ -26,9 +25,6 @@ export class TerminalSession {
   private contextMenuHandler: ((event: MouseEvent) => void) | null = null;
   private disposeTerminalDataListener: (() => void) | null = null;
   private disposeTerminalExitListener: (() => void) | null = null;
-  private activeRepeatedControlKey: string | null = null;
-  private activeRepeatedControlPayload = '';
-  private repeatedControlInputTimer: ReturnType<typeof setTimeout> | null = null;
   private isDisposed = false;
   private pendingPtySync = false;
   private pendingInputBuffer = '';
@@ -133,14 +129,15 @@ export class TerminalSession {
       this.handleTerminalInput(data);
     });
 
-    this.terminal.textarea?.addEventListener('blur', () => {
-      this.stopRepeatedControlInput();
-    });
-
     this.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-      const repeatedControlPayload = this.getRepeatedControlInputPayload(event);
-      if (repeatedControlPayload) {
-        return this.handleRepeatedControlInput(event, repeatedControlPayload);
+      if (event.type === 'keydown') {
+        const mappedControlPayload = this.getMappedControlInputPayload(event);
+        if (mappedControlPayload) {
+          this.flushPendingInput();
+          this.sendTerminalInputNow(mappedControlPayload);
+          event.preventDefault();
+          return false;
+        }
       }
 
       if (this.shouldHandleLineStartShortcut(event)) {
@@ -192,8 +189,8 @@ export class TerminalSession {
     return /(?:^|\\)(?:powershell|pwsh)(?:\.exe)?(?:\s|$)/i.test(this.shell);
   }
 
-  private getRepeatedControlInputPayload(event: KeyboardEvent): string | null {
-    if (event.ctrlKey || event.altKey || event.metaKey) {
+  private getMappedControlInputPayload(event: KeyboardEvent): string | null {
+    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
       return null;
     }
 
@@ -217,70 +214,6 @@ export class TerminalSession {
       default:
         return null;
     }
-  }
-
-  private handleRepeatedControlInput(event: KeyboardEvent, payload: string): boolean {
-    if (event.type === 'keyup') {
-      if (this.activeRepeatedControlKey === event.code) {
-        this.stopRepeatedControlInput();
-        event.preventDefault();
-        return false;
-      }
-
-      return true;
-    }
-
-    if (event.type !== 'keydown') {
-      return true;
-    }
-
-    if (!event.repeat) {
-      if (this.activeRepeatedControlKey && this.activeRepeatedControlKey !== event.code) {
-        this.stopRepeatedControlInput();
-      }
-
-      return true;
-    }
-
-    event.preventDefault();
-
-    if (this.activeRepeatedControlKey !== event.code) {
-      this.stopRepeatedControlInput();
-      this.flushPendingInput();
-      this.activeRepeatedControlKey = event.code;
-      this.activeRepeatedControlPayload = payload;
-      this.sendTerminalInputNow(payload);
-      this.scheduleRepeatedControlInput();
-    }
-
-    return false;
-  }
-
-  private scheduleRepeatedControlInput(): void {
-    if (!this.activeRepeatedControlPayload || this.repeatedControlInputTimer !== null) {
-      return;
-    }
-
-    this.repeatedControlInputTimer = setTimeout(() => {
-      this.repeatedControlInputTimer = null;
-
-      if (this.isDisposed || !this.activeRepeatedControlPayload) {
-        return;
-      }
-
-      this.sendTerminalInputNow(this.activeRepeatedControlPayload);
-      this.scheduleRepeatedControlInput();
-    }, REPEATED_CONTROL_INPUT_INTERVAL_MS);
-  }
-
-  private stopRepeatedControlInput(): void {
-    if (this.repeatedControlInputTimer !== null) {
-      clearTimeout(this.repeatedControlInputTimer);
-      this.repeatedControlInputTimer = null;
-    }
-
-    this.activeRepeatedControlKey = null;
-    this.activeRepeatedControlPayload = '';
   }
 
   private enqueueTerminalOutput(data: string): void {
@@ -523,7 +456,6 @@ export class TerminalSession {
     }
 
     this.disposeRendererListeners();
-    this.stopRepeatedControlInput();
     this.flushPendingInput();
     const terminalAPI = getTerminalAPI();
     if (this.id && terminalAPI) {
