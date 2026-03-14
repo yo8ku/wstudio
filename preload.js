@@ -139,6 +139,7 @@ contextBridge.exposeInMainWorld('electron', {
     create: (cols, rows, cwd, shell) => ipcRenderer.invoke('terminal:create', { cols, rows, cwd, shell }),
     write: (id, data) => ipcRenderer.send('terminal:write', id, data),
     resize: (id, cols, rows) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
+    clear: (id) => ipcRenderer.invoke('terminal:clear', id),
     destroy: (id) => ipcRenderer.invoke('terminal:destroy', id),
     onData: (callback) => {
       const subscription = (event, ...args) => callback(...args);
@@ -243,7 +244,9 @@ contextBridge.exposeInMainWorld('electron', {
     getColumns: (id, tableName) => ipcRenderer.invoke('db-connector:get-columns', id, tableName),
     query: (id, sql, params) => ipcRenderer.invoke('db-connector:query', id, sql, params),
     execute: (id, sql, params) => ipcRenderer.invoke('db-connector:execute', id, sql, params)
-  }
+  },
+
+  createNewWindow: () => ipcRenderer.invoke('window:create-new-instance'),
 });
 
 // 保持向后兼容

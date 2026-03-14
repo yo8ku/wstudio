@@ -1,9 +1,9 @@
 /**
- * Electron API 类型定义
+ * Electron API 绫诲瀷瀹氫箟
  */
 
 /**
- * 主题接口
+ * 涓婚鎺ュ彛
  */
 export interface ITheme {
   id: string;
@@ -14,7 +14,7 @@ export interface ITheme {
 }
 
 /**
- * 扩展信息接口
+ * 鎵╁睍淇℃伅鎺ュ彛
  */
 export interface IExtensionInfo {
   extensionId: string;
@@ -46,7 +46,7 @@ export interface IExtensionVersion {
 }
 
 /**
- * 安装结果接口
+ * 瀹夎缁撴灉鎺ュ彛
  */
 export interface InstallResult {
   success: boolean;
@@ -56,12 +56,27 @@ export interface InstallResult {
 }
 
 /**
- * API 响应接口
+ * API 鍝嶅簲鎺ュ彛
  */
 export interface APIResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+export interface TerminalPtyInfo {
+  backend: 'conpty' | 'winpty';
+  buildNumber?: number;
+}
+
+export interface TerminalOperationResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface TerminalCreateResult extends TerminalOperationResult {
+  terminalId?: string;
+  ptyInfo?: TerminalPtyInfo;
 }
 
 export interface ElectronAPI {
@@ -118,11 +133,11 @@ export interface ElectronAPI {
       temperature?: number;
     }>) => Promise<{ success: boolean; count?: number }>;
   };
-  // 窗口焦点状态监听
+  // 绐楀彛鐒︾偣鐘舵€佺洃鍚?
   onWindowFocus?: (callback: (focused: boolean) => void) => void;
   onWindowBlur?: (callback: (focused: boolean) => void) => void;
   
-  // 打开视频文件对话框
+  // 鎵撳紑瑙嗛鏂囦欢瀵硅瘽妗?
   openVideoFile?: () => Promise<{ canceled: boolean; filePath?: string }>;
   
   chatHistory?: {
@@ -165,7 +180,7 @@ export interface FileResult {
 }
 
 /**
- * 聊天模型接口
+ * 鑱婂ぉ妯″瀷鎺ュ彛
  */
 export interface ChatModel {
   id: string;
@@ -179,7 +194,7 @@ export interface ChatModel {
 }
 
 /**
- * AI 模型配置接口
+ * AI 妯″瀷閰嶇疆鎺ュ彛
  */
 export interface AIModelConfig {
   id: string;
@@ -189,38 +204,38 @@ export interface AIModelConfig {
   baseUrl?: string;
   model?: string;
   enabled: boolean;
-  chatModels?: ChatModel[];  // 可选的聊天模型列表
+  chatModels?: ChatModel[];  // 鍙€夌殑鑱婂ぉ妯″瀷鍒楄〃
   
-  // 🧠 模型参数（核心）
+  // 馃 妯″瀷鍙傛暟锛堟牳蹇冿級
   parameters?: {
-    temperature?: number;        // 0-2，创造性，0=确定，2=随机
-    maxTokens?: number;          // 1-128000，最大输出长度
-    topP?: number;               // 0-1，核采样，控制词汇多样性
-    frequencyPenalty?: number;   // -2 到 2，频率惩罚，减少重复内容
-    presencePenalty?: number;    // -2 到 2，鼓励新话题
+    temperature?: number;        // 0-2锛屽垱閫犳€э紝0=纭畾锛?=闅忔満
+    maxTokens?: number;          // 1-128000锛屾渶澶ц緭鍑洪暱搴?
+    topP?: number;               // 0-1锛屾牳閲囨牱锛屾帶鍒惰瘝姹囧鏍锋€?
+    frequencyPenalty?: number;   // -2 鍒?2锛岄鐜囨儵缃氾紝鍑忓皯閲嶅鍐呭
+    presencePenalty?: number;    // -2 鍒?2锛岄紦鍔辨柊璇濋
   };
   
-  // ⚙️ 高级配置（可选）
+  // 鈿欙笍 楂樼骇閰嶇疆锛堝彲閫夛級
   advanced?: {
-    timeout?: number;            // 请求超时（毫秒）
-    maxRetries?: number;         // 重试次数
-    stream?: boolean;            // 流式传输
-    proxy?: string;              // 代理设置
+    timeout?: number;            // 璇锋眰瓒呮椂锛堟绉掞級
+    maxRetries?: number;         // 閲嶈瘯娆℃暟
+    stream?: boolean;            // 娴佸紡浼犺緭
+    proxy?: string;              // 浠ｇ悊璁剧疆
     costControl?: {
-      maxCostPerRequest?: number;  // 单次请求最大成本（美元）
-      dailyLimit?: number;         // 每日成本限制（美元）
+      maxCostPerRequest?: number;  // 鍗曟璇锋眰鏈€澶ф垚鏈紙缇庡厓锛?
+      dailyLimit?: number;         // 姣忔棩鎴愭湰闄愬埗锛堢編鍏冿級
     };
   };
 }
 
 /**
- * 片段接口
- * 注意：从 shared 包导入以确保类型一致性
+ * 鐗囨鎺ュ彛
+ * 娉ㄦ剰锛氫粠 shared 鍖呭鍏ヤ互纭繚绫诲瀷涓€鑷存€?
  */
 export interface Snippet {
   id?: number;
-  name: string;          // 片段名称，用于显示和区分片段
-  prefix: string;        // 触发前缀（必填），用于自动补全
+  name: string;          // 鐗囨鍚嶇О锛岀敤浜庢樉绀哄拰鍖哄垎鐗囨
+  prefix: string;        // 瑙﹀彂鍓嶇紑锛堝繀濉級锛岀敤浜庤嚜鍔ㄨˉ鍏?
   body: string;
   description?: string;
   language?: string;
@@ -235,7 +250,7 @@ export interface SnippetQuery {
 }
 
 /**
- * 表单分组数据接口
+ * 琛ㄥ崟鍒嗙粍鏁版嵁鎺ュ彛
  */
 export interface FormGroupData {
   id: string;
@@ -246,13 +261,13 @@ export interface FormGroupData {
 }
 
 /**
- * 表单数据接口
+ * 琛ㄥ崟鏁版嵁鎺ュ彛
  */
 export interface FormTableData {
   id: string;
   name: string;
   groupId: string | null;
-  data: string; // JSON 字符串，包含 columns 和 rows
+  data: string; // JSON 瀛楃涓诧紝鍖呭惈 columns 鍜?rows
   sortOrder: number;
   createdAt: number;
   updatedAt: number;
@@ -390,13 +405,13 @@ export interface ElectronIPC {
   };
   form?: {
     initialize: () => Promise<APIResponse>;
-    // 分组操作
+    // 鍒嗙粍鎿嶄綔
     createGroup: (name: string, parentId: string | null) => Promise<APIResponse<FormGroupData>>;
     getAllGroups: () => Promise<APIResponse<FormGroupData[]>>;
     getGroupsByParent: (parentId: string | null) => Promise<APIResponse<FormGroupData[]>>;
     updateGroup: (id: string, updates: Partial<FormGroupData>) => Promise<APIResponse>;
     deleteGroup: (id: string) => Promise<APIResponse>;
-    // 表单操作
+    // 琛ㄥ崟鎿嶄綔
     createForm: (name: string, groupId: string | null, data?: string) => Promise<APIResponse<FormTableData>>;
     getAllForms: () => Promise<APIResponse<FormTableData[]>>;
     getFormsByGroup: (groupId: string | null) => Promise<APIResponse<FormTableData[]>>;
@@ -417,13 +432,15 @@ export interface ElectronIPC {
     clearAll: () => Promise<APIResponse>;
   };
   terminal: {
-    create: (cols: number, rows: number, cwd?: string, shell?: string) => Promise<{ success: boolean; terminalId?: string; error?: string }>;
+    create: (cols: number, rows: number, cwd?: string, shell?: string) => Promise<TerminalCreateResult>;
     write: (id: string, data: string) => void;
-    resize: (id: string, cols: number, rows: number) => Promise<void>;
-    destroy: (id: string) => Promise<void>;
+    resize: (id: string, cols: number, rows: number) => Promise<TerminalOperationResult>;
+    clear: (id: string) => Promise<TerminalOperationResult>;
+    destroy: (id: string) => Promise<TerminalOperationResult>;
     onData: (callback: (terminalId: string, data: string) => void) => () => void;
     onExit: (callback: (terminalId: string, exitCode: number) => void) => () => void;
   };
+  createNewWindow: () => Promise<{ success: boolean; windowId?: number; error?: string }>;
   fileReference?: {
     add: (filePath: string, content: string, options?: {
       modelName?: string;
@@ -525,7 +542,7 @@ export interface ElectronIPC {
 }
 
 /**
- * 聊天消息数据接口
+ * 鑱婂ぉ娑堟伅鏁版嵁鎺ュ彛
  */
 export interface ChatMessageData {
   id: string;
@@ -534,11 +551,11 @@ export interface ChatMessageData {
   content: string;
   model?: string;
   timestamp: number;
-  reasoning?: string; // 深度推理内容（仅 assistant 角色）
+  reasoning?: string; // 娣卞害鎺ㄧ悊鍐呭锛堜粎 assistant 瑙掕壊锛?
 }
 
 /**
- * 聊天会话数据接口
+ * 鑱婂ぉ浼氳瘽鏁版嵁鎺ュ彛
  */
 export interface ChatSessionData {
   id: string;
@@ -549,7 +566,7 @@ export interface ChatSessionData {
 }
 
 /**
- * Embedding 模型配置接口
+ * Embedding 妯″瀷閰嶇疆鎺ュ彛
  */
 export interface EmbeddingModelConfig {
   id: string;
@@ -568,7 +585,7 @@ export interface EmbeddingModelConfig {
 }
 
 /**
- * Embedding 服务商配置接口
+ * Embedding 鏈嶅姟鍟嗛厤缃帴鍙?
  */
 export interface EmbeddingProviderConfig {
   id: string;
@@ -580,7 +597,7 @@ export interface EmbeddingProviderConfig {
 }
 
 /**
- * Embedding 结果接口
+ * Embedding 缁撴灉鎺ュ彛
  */
 export interface EmbeddingResult {
   success: boolean;
@@ -590,8 +607,9 @@ export interface EmbeddingResult {
   model?: string;
 }
 
+
 /**
- * 自定义 Embedding 模型配置接口
+ * 鑷畾涔?Embedding 妯″瀷閰嶇疆鎺ュ彛
  */
 export interface CustomEmbeddingConfig {
   apiEndpoint: string;
@@ -601,7 +619,7 @@ export interface CustomEmbeddingConfig {
 }
 
 /**
- * NoteStudio API 接口（通过 preload 暴露）
+ * NoteStudio API 鎺ュ彛锛堥€氳繃 preload 鏆撮湶锛?
  */
 export interface NoteStudioAPI {
   embedding: {
@@ -630,15 +648,15 @@ declare global {
   }
 }
 
-// ==================== 笔记系统类型定义 ====================
+// ==================== 绗旇绯荤粺绫诲瀷瀹氫箟 ====================
 
 /**
- * 笔记类型
+ * 绗旇绫诲瀷
  */
 export type NoteType = 'daily' | 'quick' | 'normal';
 
 /**
- * 笔记数据接口
+ * 绗旇鏁版嵁鎺ュ彛
  */
 export interface NoteItem {
   id: string;
@@ -654,7 +672,7 @@ export interface NoteItem {
 }
 
 /**
- * 标签数据接口
+ * 鏍囩鏁版嵁鎺ュ彛
  */
 export interface TagItem {
   id: string;
@@ -665,7 +683,7 @@ export interface TagItem {
 }
 
 /**
- * 链接数据接口
+ * 閾炬帴鏁版嵁鎺ュ彛
  */
 export type LinkTargetKind = 'note' | 'heading' | 'block';
 
@@ -687,7 +705,7 @@ export interface LinkItem {
 }
 
 /**
- * 未链接提及数据接口
+ * 鏈摼鎺ユ彁鍙婃暟鎹帴鍙?
  */
 export interface UnlinkedMentionItem {
   noteId: string;
@@ -717,7 +735,7 @@ export interface LinkAnchorSuggestionItem {
 }
 
 /**
- * 模板数据接口
+ * 妯℃澘鏁版嵁鎺ュ彛
  */
 export interface TemplateItem {
   id: string;
@@ -729,7 +747,7 @@ export interface TemplateItem {
 }
 
 /**
- * 笔记系统 IPC API 接口
+ * 绗旇绯荤粺 IPC API 鎺ュ彛
  */
 export interface NoteSystemAPI {
   note: {
@@ -776,6 +794,5 @@ export interface NoteSystemAPI {
     get: (id: string) => Promise<TemplateItem | null>;
   };
 }
-
 
 

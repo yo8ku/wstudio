@@ -31,7 +31,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
 
   // 鏂板锛氱洃鍚綋鍓嶆爣绛鹃〉绫诲瀷锛堢敤浜庡喅瀹氱姸鎬佹爮鏄剧ず鍐呭锛?
   const [currentTabType, setCurrentTabType] = useState<
-    "file" | "settings" | "ai-config" | "markdown-preview" | "knowledge" | null
+    "file" | "settings" | "ai-config" | "markdown-preview" | "knowledge" | "terminal" | null
   >("file");
 
   // 宸ヤ綔鍖哄悜閲忕储寮曡繘搴︾姸鎬?
@@ -228,6 +228,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
           | "ai-config"
           | "markdown-preview"
           | "knowledge"
+          | "terminal"
           | null;
         isSettingsTab: boolean;
         isFileTab: boolean;

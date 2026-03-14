@@ -1,13 +1,26 @@
 /**
  * Terminal session wrapper.
- * Manages the xterm instance, PTY communication, and terminal sizing.
+ * Keeps the xterm frontend close to the PTY bridge and avoids custom terminal protocol handling.
  */
+
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
 
 const getTerminalAPI = () => window.electron?.terminal;
 const TERMINAL_FONT_FAMILY = 'Consolas, "Courier New", monospace';
+const TERMINAL_MIN_COLS = 2;
+const TERMINAL_MIN_ROWS = 1;
+
+interface TerminalCreateResult {
+  success: boolean;
+  terminalId?: string;
+  ptyInfo?: {
+    backend: 'conpty' | 'winpty';
+    buildNumber?: number;
+  };
+  error?: string;
+}
 
 export interface TerminalSessionOptions {
   shell?: string;
@@ -17,6 +30,12 @@ export interface TerminalSessionOptions {
   rows?: number;
 }
 
+const normalizeTerminalDimension = (value: number | undefined, minValue: number): number | null => (
+  Number.isFinite(value)
+    ? Math.max(minValue, Math.trunc(value as number))
+    : null
+);
+
 export class TerminalSession {
   private terminal: Terminal;
   private fitAddon: FitAddon;
@@ -25,22 +44,25 @@ export class TerminalSession {
   private contextMenuHandler: ((event: MouseEvent) => void) | null = null;
   private disposeTerminalDataListener: (() => void) | null = null;
   private disposeTerminalExitListener: (() => void) | null = null;
-  private isDisposed = false;
-  private pendingPtySync = false;
   private pendingInputBuffer = '';
-  private inputFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingPtySync = false;
+  private lastSyncedPtySize: { cols: number; rows: number } | null = null;
+  private isDisposed = false;
 
   public id = '';
   public shell: string;
 
   constructor(options: TerminalSessionOptions = {}) {
     this.shell = options.shell || 'powershell';
+    const initialCols = normalizeTerminalDimension(options.cols, TERMINAL_MIN_COLS) ?? 80;
+    const initialRows = normalizeTerminalDimension(options.rows, TERMINAL_MIN_ROWS) ?? 24;
 
     this.terminal = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
       fontFamily: TERMINAL_FONT_FAMILY,
       fontSize: 14,
+      lineHeight: 1.15,
       theme: {
         background: '#1e1e1e',
         foreground: '#cccccc',
@@ -62,19 +84,41 @@ export class TerminalSession {
         brightCyan: '#29b8db',
         brightWhite: '#ffffff',
       },
-      cols: options.cols || 80,
-      rows: options.rows || 24,
+      cols: initialCols,
+      rows: initialRows,
       scrollback: 5000,
-      rightClickSelectsWord: false,
       allowTransparency: false,
+      overviewRulerWidth: 0,
     });
 
     this.fitAddon = new FitAddon();
     this.terminal.loadAddon(this.fitAddon);
     this.terminal.loadAddon(new WebLinksAddon());
 
-    void this.createPtyProcess(options);
     this.bindEvents();
+
+    void this.createPtyProcess(options);
+  }
+
+  private bindEvents(): void {
+    this.terminal.onData((data: string) => {
+      this.sendTerminalInput(data);
+    });
+
+    this.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (
+        event.type === 'keydown'
+        && (event.ctrlKey || event.metaKey)
+        && !event.altKey
+        && event.key.toLowerCase() === 'v'
+      ) {
+        event.preventDefault();
+        void this.handlePaste();
+        return false;
+      }
+
+      return true;
+    });
   }
 
   private async createPtyProcess(options: TerminalSessionOptions): Promise<void> {
@@ -91,7 +135,7 @@ export class TerminalSession {
         options.rows || 24,
         options.cwd,
         options.shell
-      );
+      ) as TerminalCreateResult;
 
       if (!result.success) {
         console.error('[TerminalSession] failed to create terminal:', result.error);
@@ -99,178 +143,67 @@ export class TerminalSession {
         return;
       }
 
+      if (this.isDisposed) {
+        if (result.terminalId) {
+          void terminalAPI.destroy(result.terminalId);
+        }
+        return;
+      }
+
       this.id = result.terminalId || '';
+      if (result.ptyInfo) {
+        this.terminal.options.windowsPty = result.ptyInfo;
+      }
+
+      this.attachRendererListeners();
       this.flushPendingInput();
       this.syncPtySize();
       console.log(`[TerminalSession] terminal created: ${this.id}`);
-
-      this.disposeRendererListeners();
-
-      this.disposeTerminalDataListener = terminalAPI.onData((terminalId: string, data: string) => {
-        if (terminalId === this.id) {
-          this.enqueueTerminalOutput(data);
-        }
-      });
-
-      this.disposeTerminalExitListener = terminalAPI.onExit((terminalId: string, exitCode: number) => {
-        if (terminalId === this.id) {
-          console.log(`[TerminalSession] terminal exited: code=${exitCode}`);
-          this.enqueueTerminalOutput('\r\n\r\n[Process exited]\r\n');
-        }
-      });
     } catch (error) {
       console.error('[TerminalSession] failed to create terminal:', error);
       this.terminal.write(`\r\nFailed to create terminal: ${error}\r\n`);
     }
   }
 
-  private bindEvents(): void {
-    this.terminal.onData((data: string) => {
-      this.handleTerminalInput(data);
+  private attachRendererListeners(): void {
+    const terminalAPI = getTerminalAPI();
+    if (!terminalAPI || !this.id) {
+      return;
+    }
+
+    this.disposeRendererListeners();
+
+    this.disposeTerminalDataListener = terminalAPI.onData((terminalId: string, data: string) => {
+      if (terminalId === this.id && data) {
+        this.terminal.write(data);
+      }
     });
 
-    this.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-      if (event.type === 'keydown') {
-        const mappedControlPayload = this.getMappedControlInputPayload(event);
-        if (mappedControlPayload) {
-          this.flushPendingInput();
-          this.sendTerminalInputNow(mappedControlPayload);
-          event.preventDefault();
-          return false;
-        }
+    this.disposeTerminalExitListener = terminalAPI.onExit((terminalId: string, exitCode: number) => {
+      if (terminalId !== this.id) {
+        return;
       }
 
-      if (this.shouldHandleLineStartShortcut(event)) {
-        this.flushPendingInput();
-        this.sendTerminalInputNow('\u0001');
-        event.preventDefault();
-        return false;
-      }
-
-      if (this.shouldHandleSoftLineBreak(event)) {
-        this.enqueueTerminalInput('\n');
-        event.preventDefault();
-        return false;
-      }
-
-      if ((event.ctrlKey || event.metaKey) && event.key === 'v' && event.type === 'keydown') {
-        event.preventDefault();
-        void this.handlePaste();
-        return false;
-      }
-
-      return true;
+      console.log(`[TerminalSession] terminal exited: code=${exitCode}`);
+      this.terminal.write('\r\n\r\n[Process exited]\r\n');
     });
   }
 
-  private shouldHandleLineStartShortcut(event: KeyboardEvent): boolean {
-    return (
-      event.type === 'keydown' &&
-      event.key.toLowerCase() === 'a' &&
-      !event.shiftKey &&
-      !event.altKey &&
-      event.ctrlKey
-    );
-  }
-
-  private shouldHandleSoftLineBreak(event: KeyboardEvent): boolean {
-    return (
-      event.type === 'keydown' &&
-      event.key === 'Enter' &&
-      event.shiftKey &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      this.isPowerShellShell()
-    );
-  }
-
-  private isPowerShellShell(): boolean {
-    return /(?:^|\\)(?:powershell|pwsh)(?:\.exe)?(?:\s|$)/i.test(this.shell);
-  }
-
-  private getMappedControlInputPayload(event: KeyboardEvent): string | null {
-    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
-      return null;
-    }
-
-    switch (event.key) {
-      case 'Backspace':
-        return '\u007f';
-      case 'ArrowLeft':
-        return '\u001b[D';
-      case 'ArrowRight':
-        return '\u001b[C';
-      case 'ArrowUp':
-        return '\u001b[A';
-      case 'ArrowDown':
-        return '\u001b[B';
-      case 'Delete':
-        return '\u001b[3~';
-      case 'Home':
-        return '\u001b[H';
-      case 'End':
-        return '\u001b[F';
-      default:
-        return null;
-    }
-  }
-
-  private enqueueTerminalOutput(data: string): void {
+  private sendTerminalInput(data: string): void {
     if (!data) {
       return;
     }
 
-    this.terminal.write(data);
-  }
-
-  public write(data: string): void {
-    this.terminal.write(data);
-  }
-
-  private handleTerminalInput(data: string): void {
-    if (!data) {
+    const terminalAPI = getTerminalAPI();
+    if (!this.id || !terminalAPI) {
+      this.pendingInputBuffer += data;
       return;
     }
 
-    if (this.shouldSendImmediately(data)) {
-      this.flushPendingInput();
-      this.sendTerminalInputNow(data);
-      return;
-    }
-
-    this.enqueueTerminalInput(data);
-  }
-
-  private shouldSendImmediately(data: string): boolean {
-    return /[\u0000-\u001f\u007f]/.test(data);
-  }
-
-  private enqueueTerminalInput(data: string): void {
-    if (!data) {
-      return;
-    }
-
-    this.pendingInputBuffer += data;
-    this.schedulePendingInputFlush();
-  }
-
-  private schedulePendingInputFlush(): void {
-    if (this.inputFlushTimer !== null) {
-      return;
-    }
-
-    this.inputFlushTimer = setTimeout(() => {
-      this.flushPendingInput();
-    }, 8);
+    terminalAPI.write(this.id, data);
   }
 
   private flushPendingInput(): void {
-    if (this.inputFlushTimer !== null) {
-      clearTimeout(this.inputFlushTimer);
-      this.inputFlushTimer = null;
-    }
-
     if (!this.pendingInputBuffer) {
       return;
     }
@@ -285,32 +218,27 @@ export class TerminalSession {
     terminalAPI.write(this.id, payload);
   }
 
-  private sendTerminalInputNow(data: string): void {
-    if (!data) {
-      return;
-    }
-
-    const terminalAPI = getTerminalAPI();
-    if (!this.id || !terminalAPI) {
-      this.pendingInputBuffer += data;
-      return;
-    }
-
-    terminalAPI.write(this.id, data);
-  }
-
   public attachTo(container: HTMLElement): void {
+    if (this.container && this.container !== container) {
+      this.detach(this.container);
+    }
+
     this.container = container;
     this.syncThemeBackground();
-    this.terminal.open(container);
-    this.resize(true);
+
+    if (this.terminal.element) {
+      container.appendChild(this.terminal.element);
+    } else {
+      this.terminal.open(container);
+    }
+
+    this.fit();
     this.setupContextMenu();
 
     this.clickFocusHandler = () => {
       this.terminal.focus();
     };
     container.addEventListener('click', this.clickFocusHandler);
-
     this.terminal.focus();
   }
 
@@ -334,6 +262,29 @@ export class TerminalSession {
     this.container.addEventListener('contextmenu', this.contextMenuHandler);
   }
 
+  public detach(expectedContainer?: HTMLElement): void {
+    if (expectedContainer && this.container !== expectedContainer) {
+      return;
+    }
+
+    if (this.container && this.clickFocusHandler) {
+      this.container.removeEventListener('click', this.clickFocusHandler);
+      this.clickFocusHandler = null;
+    }
+
+    if (this.container && this.contextMenuHandler) {
+      this.container.removeEventListener('contextmenu', this.contextMenuHandler);
+      this.contextMenuHandler = null;
+    }
+
+    const terminalElement = this.terminal.element;
+    if (this.container && terminalElement?.parentElement === this.container) {
+      this.container.removeChild(terminalElement);
+    }
+
+    this.container = null;
+  }
+
   private async handlePaste(): Promise<void> {
     try {
       const text = await navigator.clipboard.readText();
@@ -341,10 +292,7 @@ export class TerminalSession {
         return;
       }
 
-      const terminalAPI = getTerminalAPI();
-      if (this.id && terminalAPI) {
-        this.enqueueTerminalInput(text);
-      }
+      this.sendTerminalInput(text);
     } catch (error) {
       console.error('[TerminalSession] paste failed:', error);
     }
@@ -370,13 +318,14 @@ export class TerminalSession {
       return false;
     }
 
+    this.syncThemeBackground();
     const dimensions = this.fitAddon.proposeDimensions();
     if (!dimensions) {
       return false;
     }
 
-    const nextCols = Math.max(2, dimensions.cols);
-    const nextRows = Math.max(1, dimensions.rows);
+    const nextCols = Math.max(TERMINAL_MIN_COLS, dimensions.cols);
+    const nextRows = Math.max(TERMINAL_MIN_ROWS, dimensions.rows);
 
     if (nextCols === this.terminal.cols && nextRows === this.terminal.rows) {
       return false;
@@ -387,6 +336,18 @@ export class TerminalSession {
   }
 
   public syncPtySize(): void {
+    const cols = this.terminal.cols;
+    const rows = this.terminal.rows;
+
+    if (
+      this.lastSyncedPtySize
+      && this.lastSyncedPtySize.cols === cols
+      && this.lastSyncedPtySize.rows === rows
+      && !this.pendingPtySync
+    ) {
+      return;
+    }
+
     const terminalAPI = getTerminalAPI();
     if (!this.id || !terminalAPI) {
       this.pendingPtySync = true;
@@ -394,7 +355,14 @@ export class TerminalSession {
     }
 
     this.pendingPtySync = false;
-    terminalAPI.resize(this.id, this.terminal.cols, this.terminal.rows);
+    this.lastSyncedPtySize = { cols, rows };
+    void terminalAPI.resize(this.id, cols, rows).then((result) => {
+      if (!result?.success) {
+        this.pendingPtySync = true;
+      }
+    }).catch(() => {
+      this.pendingPtySync = true;
+    });
   }
 
   private syncThemeBackground(): void {
@@ -424,6 +392,11 @@ export class TerminalSession {
 
   public clear(): void {
     this.terminal.clear();
+
+    const terminalAPI = getTerminalAPI();
+    if (this.id && terminalAPI?.clear) {
+      void terminalAPI.clear(this.id);
+    }
   }
 
   public focus(): void {
@@ -442,27 +415,21 @@ export class TerminalSession {
     }
   }
 
-  public dispose(): void {
+  public dispose(options: { destroyTerminal?: boolean } = {}): void {
     this.isDisposed = true;
-
-    if (this.container && this.clickFocusHandler) {
-      this.container.removeEventListener('click', this.clickFocusHandler);
-      this.clickFocusHandler = null;
-    }
-
-    if (this.container && this.contextMenuHandler) {
-      this.container.removeEventListener('contextmenu', this.contextMenuHandler);
-      this.contextMenuHandler = null;
-    }
+    this.detach(this.container ?? undefined);
 
     this.disposeRendererListeners();
-    this.flushPendingInput();
+
     const terminalAPI = getTerminalAPI();
-    if (this.id && terminalAPI) {
-      terminalAPI.destroy(this.id);
+    const shouldDestroyTerminal = options.destroyTerminal ?? true;
+    if (shouldDestroyTerminal && this.id && terminalAPI) {
+      void terminalAPI.destroy(this.id);
     }
 
+    this.pendingInputBuffer = '';
     this.pendingPtySync = false;
+    this.lastSyncedPtySize = null;
     this.terminal.dispose();
     this.container = null;
   }

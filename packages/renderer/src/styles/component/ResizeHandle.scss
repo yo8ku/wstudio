@@ -21,7 +21,7 @@
   top: 0;
   bottom: 0;
   width: 4px;
-  cursor: ew-resize;
+  cursor: e-resize;
 }
 
 // 垂直方向拖动手柄（上下拖动，调整高度）
@@ -30,7 +30,7 @@
   left: 0;
   right: 0;
   height: 4px;
-  cursor: ns-resize;
+  cursor: e-resize;
 }
 
 // 通用 ResizeHandle 组件
@@ -41,14 +41,14 @@
     left: 0;
     right: 0;
     height: 4px;
-    cursor: ns-resize;
+    cursor: e-resize;
   }
 
   &--horizontal {
     top: 0;
     bottom: 0;
     width: 4px;
-    cursor: ew-resize;
+    cursor: e-resize;
   }
 }
 

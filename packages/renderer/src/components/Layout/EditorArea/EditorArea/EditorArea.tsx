@@ -29,6 +29,8 @@ import { DecompositionRulesView } from '../DecompositionRulesView';
 import { PromptManagementView } from '../PromptManagementView';
 import { AIChatPanel } from '../../AIChatPanel/AIChatPanel';
 import { MediaPanel } from '../../Sidebar/MediaPanel';
+import { TerminalSessionView } from '../../Panel/TerminalPanel/TerminalPanel';
+import type { TerminalSession } from '../../Panel/TerminalPanel/TerminalSession';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { saveAndRemoveTableDataService } from '../../../../services/tableData';
@@ -46,7 +48,7 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat';
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat' | 'terminal';
   isPreview?: boolean;  // 鏂板锛氭槸鍚︿负棰勮妯″紡锛堝崟鍑绘墦寮€锛?
   sourceTabId?: string;  // 鏂板锛氶瑙堟爣绛鹃〉鍏宠仈鐨勬簮鏂囦欢鏍囩椤礗D
   splitSourceTabId?: string;  // 分屏标签关联的源文件标签页 ID
@@ -74,6 +76,10 @@ export interface EditorTab {
     beforeContent: string;
     afterContent: string;
     updatedAt: number;
+  };
+  terminalData?: {
+    session: TerminalSession;
+    accentColor?: string | null;
   };
 }
 
@@ -113,6 +119,14 @@ interface ReplaceActiveTabContentDetail {
 
 interface UpdateActiveTabTitleDetail {
   title?: string;
+}
+
+interface OpenTerminalTabDetail {
+  id?: string;
+  title?: string;
+  path?: string;
+  terminalSession: TerminalSession;
+  accentColor?: string | null;
 }
 
 const normalizeComparableFilePath = (value: string): string =>
@@ -680,6 +694,16 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return null;
   }, [tabs, leftBottomTabs, rightTabs, rightBottomTabs]);
 
+  const disposeTabResources = useCallback((tab: EditorTab | null | undefined) => {
+    if (!tab) {
+      return;
+    }
+
+    if (tab.type === 'terminal') {
+      tab.terminalData?.session.dispose({ destroyTerminal: true });
+    }
+  }, []);
+
   const removeTabFromPane = useCallback((paneId: EditorPaneId, tabId: string) => {
     setPaneTabs(paneId, prev => prev.filter(tab => tab.id !== tabId));
 
@@ -891,18 +915,71 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     setFocusedPaneId('left-top');
   }, [findPaneByPath, setPaneTabs, setPaneActiveTabId]);
 
+  const handleOpenTerminalTab = useCallback((event: Event) => {
+    const customEvent = event as CustomEvent<OpenTerminalTabDetail>;
+    const { id, path, title, terminalSession, accentColor } = customEvent.detail || {};
+    if (!terminalSession) {
+      return;
+    }
+
+    const resolvedPath = path || `terminal:/${id || Date.now()}`;
+    const existingTabResult = findPaneByPath(resolvedPath, 'terminal');
+    if (existingTabResult) {
+      const { paneId, tab } = existingTabResult;
+      setPaneTabs(paneId, prev => prev.map(item => (
+        item.id === tab.id
+          ? {
+            ...item,
+            title: title || item.title,
+            terminalData: {
+              session: terminalSession,
+              accentColor: accentColor ?? item.terminalData?.accentColor ?? null,
+            },
+          }
+          : item
+      )));
+      setPaneActiveTabId(paneId, tab.id);
+      setFocusedPaneId(paneId);
+      return;
+    }
+
+    const newTab: EditorTab = {
+      id: id || `terminal-tab-${Date.now()}`,
+      title: title || '终端',
+      path: resolvedPath,
+      isDirty: false,
+      type: 'terminal',
+      terminalData: {
+        session: terminalSession,
+        accentColor: accentColor ?? null,
+      },
+    };
+
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+    setFocusedPaneId('left-top');
+  }, [findPaneByPath, setPaneTabs, setPaneActiveTabId]);
+
   // 娉ㄥ唽鐗囨浜嬩欢鐩戝惉鍣紙鐙珛鐨?useEffect锛?
   useEffect(() => {
     window.addEventListener('create-snippet', handleCreateSnippet);
     window.addEventListener('insert-snippet', handleInsertSnippet);
     window.addEventListener('open-editor-tab', handleOpenEditorTab);
+    window.addEventListener('open-terminal-tab', handleOpenTerminalTab as EventListener);
     
     return () => {
       window.removeEventListener('create-snippet', handleCreateSnippet);
       window.removeEventListener('insert-snippet', handleInsertSnippet);
       window.removeEventListener('open-editor-tab', handleOpenEditorTab);
+      window.removeEventListener('open-terminal-tab', handleOpenTerminalTab as EventListener);
     };
-  }, [handleCreateSnippet, handleInsertSnippet, handleOpenEditorTab]);
+  }, [handleCreateSnippet, handleInsertSnippet, handleOpenEditorTab, handleOpenTerminalTab]);
+
+  useEffect(() => () => {
+    getAllPaneTabsSnapshot().forEach((tab) => {
+      disposeTabResources(tab);
+    });
+  }, [disposeTabResources, getAllPaneTabsSnapshot]);
 
   // 鐩戝惉鎻掑叆鏁版嵁搴撹〃鏍间簨浠讹紝璺宠浆鍒版枃浠剁紪杈戝櫒鏍囩椤?
   useEffect(() => {
@@ -2398,6 +2475,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const handleTabClose = (tabId: string) => {
     tabChangeReasonOverrideRef.current = 'close';
     const closingTab = tabs.find(tab => tab.id === tabId);
+    disposeTabResources(closingTab);
     
     // 濡傛灉鏄?AI 閰嶇疆鏍囩椤碉紝妫€鏌ユ槸鍚︽湁鏈繚瀛樼殑鏇存敼
     if (closingTab?.type === 'ai-config' && closingTab.configId) {
@@ -2505,6 +2583,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   };
 
   const handleRightTabClose = (tabId: string) => {
+    disposeTabResources(rightTabs.find(tab => tab.id === tabId));
     const newRightTabs = rightTabs.filter(tab => tab.id !== tabId);
     const nextRightHistory = removeTabIdFromHistory(rightTabActivationHistoryRef.current, tabId);
     rightTabActivationHistoryRef.current = nextRightHistory;
@@ -2524,6 +2603,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   };
 
   const handleLeftBottomTabClose = (tabId: string) => {
+    disposeTabResources(leftBottomTabs.find(tab => tab.id === tabId));
     const newTabs = leftBottomTabs.filter(tab => tab.id !== tabId);
     const nextHistory = removeTabIdFromHistory(leftBottomTabActivationHistoryRef.current, tabId);
     leftBottomTabActivationHistoryRef.current = nextHistory;
@@ -2542,6 +2622,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   };
 
   const handleRightBottomTabClose = (tabId: string) => {
+    disposeTabResources(rightBottomTabs.find(tab => tab.id === tabId));
     const newTabs = rightBottomTabs.filter(tab => tab.id !== tabId);
     const nextHistory = removeTabIdFromHistory(rightBottomTabActivationHistoryRef.current, tabId);
     rightBottomTabActivationHistoryRef.current = nextHistory;
@@ -2616,6 +2697,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
 
     for (const tab of closingTabs) {
+      disposeTabResources(tab);
       removeTabFromPane(paneId, tab.id);
 
       if (tab.type === 'file' && tab.path) {
@@ -2643,6 +2725,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       setPaneActiveTabId(paneId, nextActiveTabId);
     }
   }, [
+    disposeTabResources,
     getPaneTabs,
     removeTabFromPane,
     getPaneActiveTabId,
@@ -3703,7 +3786,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           )}
 
           {/* 宸︿晶闈㈠寘灞?*/}
-          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && activeTab.type !== 'prompt-management' && activeTab.type !== 'ai-chat' && (
+          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && activeTab.type !== 'prompt-management' && activeTab.type !== 'ai-chat' && activeTab.type !== 'terminal' && (
             <Breadcrumb path={activeTab.path} />
           )}
 
@@ -3766,6 +3849,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       mode="editor-tab"
                       onClose={() => handleTabClose(tab.id)}
                       position="right"
+                    />
+                  )}
+
+                  {tab.type === 'terminal' && tab.terminalData && (
+                    <TerminalSessionView
+                      session={tab.terminalData.session}
+                      isActive={isActive}
+                      isVisible={isActive}
+                      isLiveResizing={false}
                     />
                   )}
 
@@ -3940,6 +4032,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                         className="editor-tab-content"
                         style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}
                       >
+                        {tab.type === 'terminal' && tab.terminalData && (
+                          <TerminalSessionView
+                            session={tab.terminalData.session}
+                            isActive={isActive}
+                            isVisible={isActive}
+                            isLiveResizing={false}
+                          />
+                        )}
+
                         {tab.type === 'file' && editorType === 'monaco' && (
                           <EditorGroup
                             file={tab}
@@ -4122,7 +4223,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             )}
 
             {/* 鍙充晶闈㈠寘灞?*/}
-            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && rightActiveTab.type !== 'decomposition-rules' && rightActiveTab.type !== 'prompt-management' && rightActiveTab.type !== 'ai-chat' && (
+            {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && rightActiveTab.type !== 'decomposition-rules' && rightActiveTab.type !== 'prompt-management' && rightActiveTab.type !== 'ai-chat' && rightActiveTab.type !== 'terminal' && (
               <Breadcrumb path={rightActiveTab.path} />
             )}
 
@@ -4170,6 +4271,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                         mode="editor-tab"
                         onClose={() => handleRightTabClose(tab.id)}
                         position="right"
+                      />
+                    )}
+
+                    {tab.type === 'terminal' && tab.terminalData && (
+                      <TerminalSessionView
+                        session={tab.terminalData.session}
+                        isActive={isActive}
+                        isVisible={isActive}
+                        isLiveResizing={false}
                       />
                     )}
 
@@ -4296,6 +4406,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                           className="editor-tab-content"
                           style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}
                         >
+                          {tab.type === 'terminal' && tab.terminalData && (
+                            <TerminalSessionView
+                              session={tab.terminalData.session}
+                              isActive={isActive}
+                              isVisible={isActive}
+                              isLiveResizing={false}
+                            />
+                          )}
+
                           {tab.type === 'file' && editorType === 'monaco' && (
                             <EditorGroup
                               file={tab}

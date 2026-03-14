@@ -1,8 +1,8 @@
-/**
- * 主布局容器
+﻿/**
+ * 涓诲竷灞€瀹瑰櫒
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { TitleBar } from '../TitleBar/TitleBar';
 import { ActivityBar } from './ActivityBar';
 import type { ActivityBarItem } from './ActivityBar/ActivityBar';
@@ -10,7 +10,7 @@ import { Sidebar } from './Sidebar/Sidebar';
 import { EditorArea } from './EditorArea/EditorArea/EditorArea';
 import { StatusBar } from './StatusBar/StatusBar';
 import { AIChatPanel } from './AIChatPanel/AIChatPanel';
-import { Panel } from './Panel';
+import { Panel, type PanelPlacement } from './Panel';
 import { VSCodeCommandCenter } from '../../command-center/VSCodeCommandCenter';
 import { IconThemeCommandProvider } from '../../command-center/IconThemeCommandProvider';
 import { ThemeCommandProvider } from '../../command-center/ThemeCommandProvider';
@@ -184,22 +184,42 @@ const resolveWindowBackgroundColor = (): string => {
 };
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
+  const searchParams = new URLSearchParams(window.location.search);
+  const startupPanel = searchParams.get('openPanel');
+  const shouldOpenPanelOnStartup = startupPanel === 'terminal' || startupPanel === 'timeline' || startupPanel === 'snippets' || startupPanel === 'links';
+  const initialPanelView: 'snippets' | 'timeline' | 'terminal' =
+    startupPanel === 'timeline'
+      ? 'timeline'
+      : startupPanel === 'snippets' || startupPanel === 'links'
+        ? 'snippets'
+        : 'terminal';
   const [activeActivity, setActiveActivity] = useState<ActivityBarItem>('explorer');
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isAIChatVisible, setIsAIChatVisible] = useState(false);
-  const [isPanelVisible, setIsPanelVisible] = useState(false); // 默认隐藏底部面板
-  const [panelActiveView, setPanelActiveView] = useState<'snippets' | 'timeline' | 'terminal'>('terminal');
-  const [aiChatPanelPosition, setAIChatPanelPosition] = useState<'right' | 'left'>('right'); // AI Chat Panel 位置
+  const [isPanelVisible, setIsPanelVisible] = useState(shouldOpenPanelOnStartup);
+  const [panelActiveView, setPanelActiveView] = useState<'snippets' | 'timeline' | 'terminal'>(initialPanelView);
+  const [panelPosition, setPanelPosition] = useState<PanelPlacement>('bottom');
+  const [aiChatPanelPosition, setAIChatPanelPosition] = useState<'right' | 'left'>('right'); // AI Chat Panel 浣嶇疆
 
-  // 获取背景图片配置（订阅状态以触发重新渲染）
+  const handleToggleTerminalPanel = () => {
+    if (panelActiveView === 'terminal') {
+      setIsPanelVisible((previous) => !previous);
+      return;
+    }
+
+    setPanelActiveView('terminal');
+    setIsPanelVisible(true);
+  };
+
+  // 鑾峰彇鑳屾櫙鍥剧墖閰嶇疆锛堣闃呯姸鎬佷互瑙﹀彂閲嶆柊娓叉煋锛?
   const { config } = useBackgroundStore();
   const backgroundEnabled = config.enabled && !!config.imagePath;
   
-  // 获取右侧活动栏的显示状态
-  // 获取主侧栏位置
+  // 鑾峰彇鍙充晶娲诲姩鏍忕殑鏄剧ず鐘舵€?
+  // 鑾峰彇涓讳晶鏍忎綅缃?
   const { sidebarPosition, setSidebarPosition } = useActivityBarStore();
   
-  // 全局命令中心
+  // 鍏ㄥ眬鍛戒护涓績
   const commandCenterRef = useRef<VSCodeCommandCenter | null>(null);
   const iconThemeProviderRef = useRef<IconThemeCommandProvider | null>(null);
   const themeProviderRef = useRef<ThemeCommandProvider | null>(null);
@@ -210,23 +230,23 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
   const handleActivityClick = (activity: ActivityBarItem) => {
     if (activity === 'settings') {
-      // 点击设置时，隐藏侧边栏并触发打开设置事件（由 EditorArea 处理）
+      // 鐐瑰嚮璁剧疆鏃讹紝闅愯棌渚ц竟鏍忓苟瑙﹀彂鎵撳紑璁剧疆浜嬩欢锛堢敱 EditorArea 澶勭悊锛?
       setIsSidebarVisible(false);
       window.dispatchEvent(new Event('open-settings'));
       return;
     }
 
     if (activity === 'media') {
-      // 点击素材管理时，打开标签页而不是侧边栏
+      // 鐐瑰嚮绱犳潗绠＄悊鏃讹紝鎵撳紑鏍囩椤佃€屼笉鏄晶杈规爮
       window.dispatchEvent(new Event('open-media-panel'));
       return;
     }
 
     if (activeActivity === activity) {
-      // 如果点击当前活动的项，切换侧边栏可见性
+      // 濡傛灉鐐瑰嚮褰撳墠娲诲姩鐨勯」锛屽垏鎹晶杈规爮鍙鎬?
       setIsSidebarVisible(!isSidebarVisible);
     } else {
-      // 切换到新的活动项并显示侧边栏
+      // 鍒囨崲鍒版柊鐨勬椿鍔ㄩ」骞舵樉绀轰晶杈规爮
       setActiveActivity(activity);
       setIsSidebarVisible(true);
     }
@@ -242,19 +262,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     setSidebarPosition('left');
   };
 
-  // 主侧栏位置变化时，AI panel 自动移到相反侧
+  // 涓讳晶鏍忎綅缃彉鍖栨椂锛孉I panel 鑷姩绉诲埌鐩稿弽渚?
   useEffect(() => {
     setAIChatPanelPosition(sidebarPosition === 'left' ? 'right' : 'left');
   }, [sidebarPosition]);
 
-  // 监听打开底部面板事件
+  // 鐩戝惉鎵撳紑搴曢儴闈㈡澘浜嬩欢
   useEffect(() => {
     const handleOpenPanel = (event: Event) => {
       const customEvent = event as CustomEvent<{ view?: 'snippets' | 'links' | 'timeline' | 'terminal' }>;
       const requestedView = customEvent.detail?.view || 'terminal';
       const view = requestedView === 'links' ? 'snippets' : requestedView;
       
-      console.log('[MainLayout] 打开底部面板:', view);
+      console.log('[MainLayout] 鎵撳紑搴曢儴闈㈡澘:', view);
       setPanelActiveView(view);
       setIsPanelVisible(true);
     };
@@ -265,7 +285,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 监听从标签页还原 AI 面板到侧边栏
+  // 鐩戝惉浠庢爣绛鹃〉杩樺師 AI 闈㈡澘鍒颁晶杈规爮
   useEffect(() => {
     const handleRestoreAIChatPanel = () => {
       setIsAIChatVisible(true);
@@ -277,23 +297,23 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 初始化主题系统
+  // 鍒濆鍖栦富棰樼郴缁?
   const initializeTheme = useThemeStore((state) => state.initialize);
   const currentTheme = useThemeStore((state) => state.currentTheme);
   
   useEffect(() => {
-    console.log('[MainLayout] 初始化主题系统...');
+    console.log('[MainLayout] 鍒濆鍖栦富棰樼郴缁?..');
     initializeTheme().catch((error) => {
-      console.error('[MainLayout] 主题系统初始化失败:', error);
+      console.error('[MainLayout] 涓婚绯荤粺鍒濆鍖栧け璐?', error);
     });
   }, [initializeTheme]);
 
-  // 在根元素添加主题标识（light 或 dark）
+  // 鍦ㄦ牴鍏冪礌娣诲姞涓婚鏍囪瘑锛坙ight 鎴?dark锛?
   useEffect(() => {
     if (currentTheme) {
-      const themeMode = currentTheme.type; // 'light' 或 'dark'
+      const themeMode = currentTheme.type; // 'light' 鎴?'dark'
       document.documentElement.setAttribute('data-theme-mode', themeMode);
-      console.log(`[MainLayout] 根元素主题标识已设置: data-theme-mode="${themeMode}"`);
+      console.log(`[MainLayout] 鏍瑰厓绱犱富棰樻爣璇嗗凡璁剧疆: data-theme-mode="${themeMode}"`);
     }
   }, [currentTheme]);
 
@@ -309,7 +329,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         const backgroundColor = resolveWindowBackgroundColor();
 
         void ipcRenderer.invoke('window:set-background-color', backgroundColor).catch((error) => {
-          console.error('[MainLayout] 同步窗口背景色失败:', error);
+          console.error('[MainLayout] 鍚屾绐楀彛鑳屾櫙鑹插け璐?', error);
         });
       });
     };
@@ -373,51 +393,51 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 初始化片段数据库和迁移
+  // 鍒濆鍖栫墖娈垫暟鎹簱鍜岃縼绉?
   useEffect(() => {
     const initSnippetDatabase = async () => {
-      console.log('[MainLayout] 初始化片段数据库...');
+      console.log('[MainLayout] 鍒濆鍖栫墖娈垫暟鎹簱...');
       
       try {
-        // 初始化数据库
+        // 鍒濆鍖栨暟鎹簱
         await snippetService.initialize();
-        console.log('[MainLayout] 片段数据库初始化成功');
+        console.log('[MainLayout] 鐗囨鏁版嵁搴撳垵濮嬪寲鎴愬姛');
         
-        // 检查是否需要迁移
+        // 妫€鏌ユ槸鍚﹂渶瑕佽縼绉?
         const needMigrate = await shouldMigrateSnippets();
         if (needMigrate) {
-          console.log('[MainLayout] 检测到需要迁移片段数据...');
+          console.log('[MainLayout] 妫€娴嬪埌闇€瑕佽縼绉荤墖娈垫暟鎹?..');
           const result = await migrateSnippetsFromJSON();
           
           if (result.success) {
-            console.log(`[MainLayout] 成功迁移 ${result.count} 个片段到数据库`);
+            console.log('[MainLayout] 成功迁移 ' + result.count + ' 个片段到数据库');
           } else {
-            console.error('[MainLayout] 片段迁移失败:', result.error);
+            console.error('[MainLayout] 鐗囨杩佺Щ澶辫触:', result.error);
           }
         } else {
-          console.log('[MainLayout] 无需迁移片段数据');
+          console.log('[MainLayout] 鏃犻渶杩佺Щ鐗囨鏁版嵁');
         }
       } catch (error) {
-        console.error('[MainLayout] 片段数据库初始化失败:', error);
+        console.error('[MainLayout] 鐗囨鏁版嵁搴撳垵濮嬪寲澶辫触:', error);
       }
     };
     
     initSnippetDatabase();
   }, []);
 
-  // 初始化工作区后台索引服务（使用双 Worker Thread，不阻塞 UI）
+  // 鍒濆鍖栧伐浣滃尯鍚庡彴绱㈠紩鏈嶅姟锛堜娇鐢ㄥ弻 Worker Thread锛屼笉闃诲 UI锛?
   useEffect(() => {
     const initWorkspaceIndexing = async () => {
       try {
-        console.log('[MainLayout] 初始化工作区后台索引服务...');
+        console.log('[MainLayout] 鍒濆鍖栧伐浣滃尯鍚庡彴绱㈠紩鏈嶅姟...');
 
         const ipcRenderer = window.electron?.ipcRenderer;
         if (!ipcRenderer) {
-          console.warn('[MainLayout] IPC 不可用，跳过索引');
+          console.warn('[MainLayout] IPC 涓嶅彲鐢紝璺宠繃绱㈠紩');
           return;
         }
 
-        // 等待主进程就绪
+        // 绛夊緟涓昏繘绋嬪氨缁?
         await new Promise<void>((resolve) => {
           let resolved = false;
           const doResolve = () => {
@@ -440,36 +460,36 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
           setTimeout(doResolve, 10000);
         });
 
-        console.log('[MainLayout] 主进程已就绪');
+        console.log('[MainLayout] 涓昏繘绋嬪凡灏辩华');
 
-        // 始终监听进度更新（无论是自动索引还是手动索引）
-        // 使用 preload 暴露的专用 API，回调只接收 progress 参数
-        let lastErrorMessage = ''; // 防止重复显示相同错误
+        // 濮嬬粓鐩戝惉杩涘害鏇存柊锛堟棤璁烘槸鑷姩绱㈠紩杩樻槸鎵嬪姩绱㈠紩锛?
+        // 浣跨敤 preload 鏆撮湶鐨勪笓鐢?API锛屽洖璋冨彧鎺ユ敹 progress 鍙傛暟
+        let lastErrorMessage = ''; // 闃叉閲嶅鏄剧ず鐩稿悓閿欒
         const unsubscribe = window.electron?.workspaceVectorIndex?.onProgress((progress: { status: string; processedFiles?: number; totalFiles?: number; errorMessage?: string }) => {
           if (progress.status === 'scanning') {
-            console.log('[WorkspaceIndexing] 正在扫描文件...');
+            console.log('[WorkspaceIndexing] 姝ｅ湪鎵弿鏂囦欢...');
           } else if (progress.status === 'indexing') {
-            console.log(`[WorkspaceIndexing] 进度: ${progress.processedFiles}/${progress.totalFiles}`);
+            console.log('[WorkspaceIndexing] 进度: ' + progress.processedFiles + '/' + progress.totalFiles);
           } else if (progress.status === 'completed') {
-            console.log('[WorkspaceIndexing] 索引完成');
-            lastErrorMessage = ''; // 重置错误状态
-            // 成功通知由 StatusBar 组件处理，避免重复
+            console.log('[WorkspaceIndexing] 绱㈠紩瀹屾垚');
+            lastErrorMessage = ''; // 閲嶇疆閿欒鐘舵€?
+            // 鎴愬姛閫氱煡鐢?StatusBar 缁勪欢澶勭悊锛岄伩鍏嶉噸澶?
           } else if (progress.status === 'error') {
-            const errorMsg = progress.errorMessage || '未知错误';
-            // 防止重复显示相同错误
+            const errorMsg = progress.errorMessage || '鏈煡閿欒';
+            // 闃叉閲嶅鏄剧ず鐩稿悓閿欒
             if (errorMsg !== lastErrorMessage) {
               lastErrorMessage = errorMsg;
-              console.error('[WorkspaceIndexing] 索引错误:', errorMsg);
-              // 显示错误通知
+              console.error('[WorkspaceIndexing] 绱㈠紩閿欒:', errorMsg);
+              // 鏄剧ず閿欒閫氱煡
               notification.error(errorMsg);
             }
           }
         });
 
-        // 获取工作区路径
+        // 鑾峰彇宸ヤ綔鍖鸿矾寰?
         const workspaceResult = await window.electron?.workspace?.getDir();
         if (!workspaceResult?.success || !workspaceResult.data) {
-          console.warn('[MainLayout] 无法获取工作区路径，跳过索引');
+          console.warn('[MainLayout] 鏃犳硶鑾峰彇宸ヤ綔鍖鸿矾寰勶紝璺宠繃绱㈠紩');
           return () => {
             if (unsubscribe) unsubscribe();
           };
@@ -477,19 +497,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
         const workspacePath = workspaceResult.data;
 
-        console.log(`[MainLayout] 检查自动索引配置: ${workspacePath}`);
+        console.log('[MainLayout] 检查自动索引配置: ' + workspacePath);
 
-        // 使用自动索引检查（会检查：自索引开关、服务商、模型、API Key）
+        // 浣跨敤鑷姩绱㈠紩妫€鏌ワ紙浼氭鏌ワ細鑷储寮曞紑鍏炽€佹湇鍔″晢銆佹ā鍨嬨€丄PI Key锛?
         const result = await window.electron?.workspaceVectorIndex?.checkAutoIndex(workspacePath);
         if (!result?.success) {
-          console.log('[MainLayout] 自动索引检查:', result?.data?.message || result?.error);
+          console.log('[MainLayout] 鑷姩绱㈠紩妫€鏌?', result?.data?.message || result?.error);
         }
 
         return () => {
           if (unsubscribe) unsubscribe();
         };
       } catch (error) {
-        console.error('[MainLayout] 工作区索引服务初始化失败:', error);
+        console.error('[MainLayout] 宸ヤ綔鍖虹储寮曟湇鍔″垵濮嬪寲澶辫触:', error);
       }
     };
 
@@ -500,13 +520,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 初始化全局命令中心
+  // 鍒濆鍖栧叏灞€鍛戒护涓績
   useEffect(() => {
-    console.log('[MainLayout] 初始化全局命令中心...');
-    // 如果全局已有实例，复用；否则创建新实例
+    console.log('[MainLayout] 鍒濆鍖栧叏灞€鍛戒护涓績...');
+    // 濡傛灉鍏ㄥ眬宸叉湁瀹炰緥锛屽鐢紱鍚﹀垯鍒涘缓鏂板疄渚?
     const commandCenter = (window as any).__commandCenter || new VSCodeCommandCenter();
     commandCenterRef.current = commandCenter;
-    // 保存到全局，供其他组件使用
+    // 淇濆瓨鍒板叏灞€锛屼緵鍏朵粬缁勪欢浣跨敤
     (window as any).__commandCenter = commandCenter;
     iconThemeProviderRef.current = new IconThemeCommandProvider(commandCenter);
     themeProviderRef.current = new ThemeCommandProvider(commandCenter);
@@ -515,16 +535,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     aiConfigProviderRef.current = new AIConfigCommandProvider(commandCenter);
     snippetsProviderRef.current = new SnippetsCommandProvider(commandCenter);
     
-    // 等待命令提供者初始化完成
+    // 绛夊緟鍛戒护鎻愪緵鑰呭垵濮嬪寲瀹屾垚
     Promise.all([
       iconThemeProviderRef.current.ensureInitialized()
     ]).then(() => {
-      console.log('[MainLayout] 全局命令中心初始化完成（包括图标主题数据）');
+      console.log('[MainLayout] 全局命令中心初始化完成');
     }).catch(error => {
-      console.error('[MainLayout] 命令提供者初始化失败:', error);
+      console.error('[MainLayout] 鍛戒护鎻愪緵鑰呭垵濮嬪寲澶辫触:', error);
     });
 
-    // 将命令中心实例暴露给全局，以便 MonacoEditor 可以访问
+    // 灏嗗懡浠や腑蹇冨疄渚嬫毚闇茬粰鍏ㄥ眬锛屼互渚?MonacoEditor 鍙互璁块棶
     (window as any).__commandCenter = commandCenterRef.current;
 
     return () => {
@@ -537,74 +557,76 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 监听快捷键
+  // 鐩戝惉蹇嵎閿?
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // F1 - 打开命令面板
+      // F1 - 鎵撳紑鍛戒护闈㈡澘
       if (e.key === 'F1') {
         e.preventDefault();
-        console.log('[MainLayout] F1 键按下，打开命令面板');
+        console.log('[MainLayout] F1 閿寜涓嬶紝鎵撳紑鍛戒护闈㈡澘');
         commandCenterRef.current?.show('>');
         return;
       }
 
-      // Ctrl+Shift+P - 打开命令面板（备用快捷键）
+      // Ctrl+Shift+P - 鎵撳紑鍛戒护闈㈡澘锛堝鐢ㄥ揩鎹烽敭锛?
       if (e.ctrlKey && e.shiftKey && e.key === 'P') {
         e.preventDefault();
-        console.log('[MainLayout] Ctrl+Shift+P 按下，打开命令面板');
+        console.log('[MainLayout] Ctrl+Shift+P 鎸変笅锛屾墦寮€鍛戒护闈㈡澘');
         commandCenterRef.current?.show('>');
         return;
       }
 
-      // Ctrl+, 打开设置
+      // Ctrl+, 鎵撳紑璁剧疆
       if (e.ctrlKey && e.key === ',') {
         e.preventDefault();
         setIsSidebarVisible(false);
         window.dispatchEvent(new Event('open-settings'));
       }
 
-      // Ctrl+` 切换面板显示/隐藏
+      // Ctrl+Backquote 切换面板显示/隐藏
       if (e.ctrlKey && e.key === '`') {
         e.preventDefault();
-        setIsPanelVisible(!isPanelVisible);
+        handleToggleTerminalPanel();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPanelVisible]);
+  }, [handleToggleTerminalPanel, isPanelVisible]);
 
-  // 使用 useMemo 优化样式对象，避免每次渲染都创建新对象
+  // 浣跨敤 useMemo 浼樺寲鏍峰紡瀵硅薄锛岄伩鍏嶆瘡娆℃覆鏌撻兘鍒涘缓鏂板璞?
   const mainLayoutStyle = useMemo(() => ({
     width: '100%',
     height: '100%',
     display: 'flex',
     flexDirection: 'column' as const,
-    // 当背景图片启用时，使用透明背景；否则使用主题背景色
+    // 褰撹儗鏅浘鐗囧惎鐢ㄦ椂锛屼娇鐢ㄩ€忔槑鑳屾櫙锛涘惁鍒欎娇鐢ㄤ富棰樿儗鏅壊
     backgroundColor: backgroundEnabled ? 'transparent' : 'var(--ws-editor-background)',
     overflow: 'hidden' as const,
     position: 'relative' as const
   }), [backgroundEnabled]);
 
+  const isPanelHorizontal = panelPosition === 'top' || panelPosition === 'bottom';
+
   return (
     <IconThemeProvider>
-      {/* 背景图片 */}
+      {/* 鑳屾櫙鍥剧墖 */}
       <BackgroundImage />
       
       <div 
         className={`main-layout ${className}`} 
         style={mainLayoutStyle}
       >
-        {/* 标题栏（包含菜单栏） */}
+        {/* 鏍囬鏍忥紙鍖呭惈鑿滃崟鏍忥級 */}
         <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative'}}>
           <TitleBar 
             onToggleSidebar={() => setIsSidebarVisible(!isSidebarVisible)}
             onToggleAIPanel={() => setIsAIChatVisible(!isAIChatVisible)}
-            onTogglePanel={() => setIsPanelVisible(!isPanelVisible)}
+            onTogglePanel={handleToggleTerminalPanel}
           />
         </div>
         
-        {/* 主内容区 */}
+        {/* 涓诲唴瀹瑰尯 */}
         <div 
           className="main-content" 
           style={{ 
@@ -616,7 +638,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
             minHeight: 0
           }}
         >
-          {/* 左侧主侧栏（ActivityBar + Sidebar）- 当 sidebarPosition === 'left' 时显示 */}
+          {/* 宸︿晶涓讳晶鏍忥紙ActivityBar + Sidebar锛? 褰?sidebarPosition === 'left' 鏃舵樉绀?*/}
             <div className='left-ActivityBar' 
               style={{ 
               display: sidebarPosition === 'left' ? 'flex' : 'none', 
@@ -625,7 +647,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 flexShrink: 0
               }}
             >
-              {/* 活动栏 */}
+              {/* 娲诲姩鏍?*/}
               <div className='activity-bar' style={{ flexShrink: 0, width: '48px', height: '100%', position: 'relative' }}>
                 <ActivityBar 
                   activeItem={activeActivity}
@@ -633,7 +655,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 />
               </div>
               
-              {/* 侧边栏 */}
+              {/* 渚ц竟鏍?*/}
               {isSidebarVisible && (
                 <Sidebar 
                   activeView={activeActivity}
@@ -646,51 +668,63 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
               </div>
             </div>
 
-            {/*END 左侧主侧栏（ActivityBar + Sidebar）- 当 sidebarPosition === 'left' 时显示 */}
+            {/*END 宸︿晶涓讳晶鏍忥紙ActivityBar + Sidebar锛? 褰?sidebarPosition === 'left' 鏃舵樉绀?*/}
           
-          {/* 编辑器区域和底部面板容器 */}
+          {/* 缂栬緫鍣ㄥ尯鍩熷拰搴曢儴闈㈡澘瀹瑰櫒 */}
           <div 
             style={{ 
               flex: 1, 
               height: '100%', 
               overflow: 'hidden', 
               minWidth: 0, 
+              minHeight: 0,
               position: 'relative',
               display: 'flex',
-              flexDirection: 'column',
+              flexDirection: isPanelHorizontal ? 'column' : 'row',
               borderRight: '1px solid var(--ws-border-background)',
               order: (() => {
-                // AI Chat 在左侧时，编辑器在右边
+                // AI Chat 鍦ㄥ乏渚ф椂锛岀紪杈戝櫒鍦ㄥ彸杈?
                 if (aiChatPanelPosition === 'left') return 2;
-                // AI Chat 在右侧时，编辑器在左边
+                // AI Chat 鍦ㄥ彸渚ф椂锛岀紪杈戝櫒鍦ㄥ乏杈?
                 return 1;
               })()
             }}
           >
-            {/* 编辑器区域 */}
-            <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+            {/* 缂栬緫鍣ㄥ尯鍩?*/}
+            {isPanelVisible && (panelPosition === 'top' || panelPosition === 'left') && (
+              <Panel
+                activeView={panelActiveView}
+                placement={panelPosition}
+                onPlacementChange={setPanelPosition}
+                onClose={() => setIsPanelVisible(false)}
+              />
+            )}
+
+            <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, minWidth: 0 }}>
               <EditorArea />
             </div>
 
-            {/* 底部面板 */}
-            {isPanelVisible && (
-              <Panel 
+            {/* 搴曢儴闈㈡澘 */}
+            {isPanelVisible && (panelPosition === 'bottom' || panelPosition === 'right') && (
+              <Panel
                 activeView={panelActiveView}
-                onClose={() => setIsPanelVisible(false)} 
+                placement={panelPosition}
+                onPlacementChange={setPanelPosition}
+                onClose={() => setIsPanelVisible(false)}
               />
             )}
           </div>
 
-          {/* AI 对话面板 */}
+          {/* AI 瀵硅瘽闈㈡澘 */}
           {isAIChatVisible && (
             <div
               className='ai-chat-panel-right-border'
               style={{
                 order: (() => {
-                  // 如果主侧栏和 AI Chat 在同一侧，AI Chat 在主侧栏内侧
+                  // 濡傛灉涓讳晶鏍忓拰 AI Chat 鍦ㄥ悓涓€渚э紝AI Chat 鍦ㄤ富渚ф爮鍐呬晶
                   if (sidebarPosition === 'left' && aiChatPanelPosition === 'left') return 1;
                   if (sidebarPosition === 'right' && aiChatPanelPosition === 'right') return 2;
-                  // 如果在不同侧
+                  // 濡傛灉鍦ㄤ笉鍚屼晶
                   if (aiChatPanelPosition === 'left') return 1;
                   return 3;
                 })(),
@@ -710,14 +744,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
             </div>
           )}
 
-          {/* 右侧主侧栏（Sidebar + ActivityBar）- 当 sidebarPosition === 'right' 时显示 */}
+          {/* 鍙充晶涓讳晶鏍忥紙Sidebar + ActivityBar锛? 褰?sidebarPosition === 'right' 鏃舵樉绀?*/}
             <div className='right-ActivityBar' style={{ 
             display: sidebarPosition === 'right' ? 'flex' : 'none', 
               order: 3,
               height: '100%',
               flexShrink: 0
             }}>
-              {/* 侧边栏 */}
+              {/* 渚ц竟鏍?*/}
               {isSidebarVisible && (
                 <Sidebar 
                   activeView={activeActivity}
@@ -725,7 +759,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 />
               )}
               
-              {/* 活动栏 */}
+              {/* 娲诲姩鏍?*/}
               <div style={{ flexShrink: 0, width: '48px', height: '100%', position: 'relative' }}>
                 <ActivityBar 
                   activeItem={activeActivity}
@@ -734,11 +768,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
               </div>
             </div>
 
-          {/* 右侧边栏 */}
-          {/* 右侧活动栏 - 根据状态显示隐藏 */}
+          {/* 鍙充晶杈规爮 */}
+          {/* 鍙充晶娲诲姩鏍?- 鏍规嵁鐘舵€佹樉绀洪殣钘?*/}
         </div>
         
-        {/* 状态栏 */}
+        {/* 鐘舵€佹爮 */}
         <div className='StatusBar' style={{ 
           backgroundColor:'var(--ws-editor-background)',
           flexShrink: 0, 
@@ -753,8 +787,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         </div>
       </div>
 
-      {/* 全局模态窗口 */}
+      {/* 鍏ㄥ眬妯℃€佺獥鍙?*/}
       <GlobalModal />
     </IconThemeProvider>
   );
 };
+

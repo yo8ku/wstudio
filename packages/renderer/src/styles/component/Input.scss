@@ -39,22 +39,29 @@ textarea::selection {
   color: var(--ws-input-placeholder-foreground, #666);
 }
 
+.bg-slider {
+  --ws-range-track-background: var(--ws-input-border, var(--ws-panel-border, #5e5e5e66));
+  --ws-range-thumb-background: var(--ws-range-track-background);
+  --ws-range-thumb-hover-background: var(--ws-range-track-background);
+  background: var(--ws-range-track-background);
+}
+
 ::-webkit-slider-thumb {
-  background: var(--ws-button-background, #0e639c);
+  background: var(--ws-range-thumb-background, var(--ws-button-background, #0e639c));
 }
 
 
 .bg-slider::-webkit-slider-thumb:hover {
-  background: var(--ws-button-hover-background, #1177bb);
+  background: var(--ws-range-thumb-hover-background, var(--ws-button-hover-background, #1177bb));
 }
 
 .bg-slider::-moz-range-thumb {
-  background: var(--ws-button-background, #0e639c);
+  background: var(--ws-range-thumb-background, var(--ws-button-background, #0e639c));
 
 }
 
 .bg-slider::-moz-range-thumb:hover {
-  background: var(--ws-button-hover-background, #1177bb);
+  background: var(--ws-range-thumb-hover-background, var(--ws-button-hover-background, #1177bb));
 }
 
 

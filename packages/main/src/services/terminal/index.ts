@@ -8,6 +8,7 @@ export { ShellDetector, getShellDetector } from './ShellDetector';
 export type {
   TerminalOptions,
   TerminalInstance,
+  TerminalPtyInfo,
   TerminalExitEvent,
   ShellType,
   ShellConfig,

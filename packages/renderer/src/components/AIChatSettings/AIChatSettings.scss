@@ -74,6 +74,9 @@
       }
 
       .setting-slider {
+        --ws-range-track-background: var(--ws-input-border, var(--ws-panel-border, var(--ws-input-background)));
+        --ws-range-thumb-background: var(--ws-range-track-background);
+        --ws-range-thumb-hover-background: var(--ws-range-track-background);
         width: 100%;
         height: 4px;
         border-radius: 2px;
@@ -89,17 +92,17 @@
           width: 14px;
           height: 14px;
           border-radius: 50%;
-          background: var(--ws-button-background, #0e639c);
+          background: var(--ws-range-thumb-background, var(--ws-button-background, #0e639c));
           cursor: pointer;
           transition: all 0.15s ease;
 
           &:hover {
-            background: var(--ws-button-hover-background, #1177bb);
+            background: var(--ws-range-thumb-hover-background, var(--ws-button-hover-background, #1177bb));
             transform: scale(1.1);
           }
 
           &:active {
-            background: var(--ws-button-hover-background, #1177bb);
+            background: var(--ws-range-thumb-hover-background, var(--ws-button-hover-background, #1177bb));
             transform: scale(1.15);
           }
         }
@@ -108,7 +111,7 @@
           width: 100%;
           height: 4px;
           border-radius: 2px;
-          background: var(--ws-input-background);
+          background: var(--ws-range-track-background, var(--ws-input-background));
         }
 
         // Firefox浏览器样式
@@ -117,17 +120,17 @@
           height: 14px;
           border: none;
           border-radius: 50%;
-          background: var(--ws-button-background, #0e639c);
+          background: var(--ws-range-thumb-background, var(--ws-button-background, #0e639c));
           cursor: pointer;
           transition: all 0.15s ease;
 
           &:hover {
-            background: var(--ws-button-hover-background, #1177bb);
+            background: var(--ws-range-thumb-hover-background, var(--ws-button-hover-background, #1177bb));
             transform: scale(1.1);
           }
 
           &:active {
-            background: var(--ws-button-hover-background, #1177bb);
+            background: var(--ws-range-thumb-hover-background, var(--ws-button-hover-background, #1177bb));
             transform: scale(1.15);
           }
         }
@@ -136,7 +139,7 @@
           width: 100%;
           height: 4px;
           border-radius: 2px;
-          background: var(--ws-input-background);
+          background: var(--ws-range-track-background, var(--ws-input-background));
         }
       }
 

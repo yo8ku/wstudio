@@ -1,53 +1,93 @@
 /**
- * 终端服务类型定义
- * 功能：定义终端相关的接口和类型
+ * Terminal service type definitions.
+ * Describe terminal creation inputs, runtime metadata, and shell configuration.
  */
 
-import type { ChildProcess } from 'child_process';
-
-/** 终端创建选项 */
-export interface TerminalOptions {
-  /** Shell 类型或路径 */
-  shell?: string;
-  /** 工作目录 */
-  cwd?: string;
-  /** 环境变量 */
-  env?: Record<string, string>;
-  /** 列数 */
-  cols?: number;
-  /** 行数 */
-  rows?: number;
+export interface TerminalDisposable {
+  dispose(): void;
 }
 
-/** 终端实例 */
-export interface TerminalInstance {
-  /** 终端 ID */
-  id: string;
-  /** 子进程 */
-  process: ChildProcess;
-  /** Shell 类型 */
-  shell: string;
-  /** 创建时间 */
-  createdAt: number;
-}
-
-/** 终端退出事件 */
-export interface TerminalExitEvent {
-  /** 退出码 */
+export interface TerminalPtyExitPayload {
   exitCode: number;
-  /** 信号 */
+  signal?: number;
+}
+
+export interface TerminalPty {
+  readonly pid: number;
+  readonly cols: number;
+  readonly rows: number;
+  readonly process: string;
+  onData(listener: (data: string) => void): TerminalDisposable;
+  onExit(listener: (event: TerminalPtyExitPayload) => void): TerminalDisposable;
+  resize(columns: number, rows: number): void;
+  clear(): void;
+  write(data: string): void;
+  kill(signal?: string): void;
+}
+
+/** PTY runtime compatibility metadata. */
+export interface TerminalPtyInfo {
+  /** The backend used by the Windows PTY host. */
+  backend: 'conpty' | 'winpty';
+  /** Windows build number when available. */
+  buildNumber?: number;
+}
+
+/** Terminal creation options. */
+export interface TerminalOptions {
+  /** Shell command or executable path. */
+  shell?: string;
+  /** Working directory. */
+  cwd?: string;
+  /** Extra environment variables. */
+  env?: Record<string, string>;
+  /** Initial column count. */
+  cols?: number;
+  /** Initial row count. */
+  rows?: number;
+  /** Owner renderer process webContents ID. */
+  ownerWebContentsId?: number;
+}
+
+/** Runtime terminal instance metadata. */
+export interface TerminalInstance {
+  /** Terminal ID. */
+  id: string;
+  /** Backing PTY instance. */
+  pty: TerminalPty;
+  /** Shell command used to create the PTY. */
+  shell: string;
+  /** Effective working directory. */
+  cwd: string;
+  /** Creation timestamp. */
+  createdAt: number;
+  /** Owner renderer process webContents ID. */
+  ownerWebContentsId?: number;
+  /** PTY compatibility metadata. */
+  ptyInfo?: TerminalPtyInfo;
+  /** Data listener disposal handle. */
+  dataListener: TerminalDisposable;
+  /** Exit listener disposal handle. */
+  exitListener: TerminalDisposable;
+}
+
+/** Terminal exit event. */
+export interface TerminalExitEvent {
+  /** Exit code. */
+  exitCode: number;
+  /** Optional signal identifier. */
   signal?: string;
 }
 
-/** Shell 类型 */
+/** Supported shell types. */
 export type ShellType = 'powershell' | 'cmd' | 'bash' | 'git-bash' | 'zsh';
 
-/** Shell 配置 */
+/** Shell configuration. */
 export interface ShellConfig {
-  /** Shell 名称 */
+  /** Display name. */
   name: string;
-  /** Shell 路径 */
+  /** Executable path. */
   path: string;
-  /** Shell 参数 */
+  /** Default shell arguments. */
   args?: string[];
 }

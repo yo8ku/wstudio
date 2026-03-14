@@ -72,12 +72,12 @@ body.window-resizing .monaco-context-menu {
 
 // 滑块条背景色
 body.background-image-enabled input[type="range"] {
-  background: #5e5e5e66;
+  background: var(--ws-range-track-background, var(--ws-input-border, var(--ws-panel-border, #5e5e5e66)));
 }
 
 //滑块条背景色
 body.background-image-enabled .bg-slider {
-  background: #5e5e5e66;
+  background: var(--ws-range-track-background, var(--ws-input-border, var(--ws-panel-border, #5e5e5e66)));
 }
 
 

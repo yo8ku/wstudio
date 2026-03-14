@@ -1,236 +1,410 @@
 /**
- * 终端服务（主进程）
- * 功能：管理 PTY 代理进程，处理终端的创建、销毁和通信
- * 描述：通过 pty-proxy 二进制工具实现真正的伪终端功能
+ * Terminal service.
+ * Hosts PTY instances in the Electron main process and forwards PTY events to renderers.
  */
 
-import { spawn, ChildProcess } from 'child_process';
+import * as os from 'os';
 import { BrowserWindow } from 'electron';
-import * as path from 'path';
-import * as fs from 'fs';
 import { getShellDetector } from './ShellDetector';
-import type { TerminalOptions, TerminalInstance } from './types';
+import type {
+  TerminalDisposable,
+  TerminalInstance,
+  TerminalOptions,
+  TerminalPty,
+  TerminalPtyInfo,
+} from './types';
 
-/** PTY 代理命令 */
-interface PtyCommand {
-  type: 'create' | 'write' | 'resize' | 'close';
-  shell?: string;
-  cwd?: string;
-  data?: string;
-  cols?: number;
-  rows?: number;
+const DEFAULT_COLS = 80;
+const DEFAULT_ROWS = 24;
+const MIN_COLS = 2;
+const MIN_ROWS = 1;
+const TERM_NAME = 'xterm-256color';
+const TERM_PROGRAM = 'note-studio';
+
+interface ResolvedLaunchCommand {
+  executable: string;
+  args: string[];
 }
 
-/** PTY 代理响应 */
-interface PtyResponse {
-  type: 'created' | 'data' | 'exit' | 'closed' | 'error';
-  data?: string;
-  code?: number;
-  success?: boolean;
-  error?: string;
+interface NodePtyModule {
+  spawn(
+    file: string,
+    args: string[] | string,
+    options: {
+      name?: string;
+      cols?: number;
+      rows?: number;
+      cwd?: string;
+      env?: Record<string, string | undefined>;
+      encoding?: string | null;
+      useConpty?: boolean;
+    }
+  ): TerminalPty;
+}
+
+const NOOP_DISPOSABLE: TerminalDisposable = {
+  dispose: () => undefined,
+};
+
+let nodePtyModule: NodePtyModule | null = null;
+
+function loadNodePty(): NodePtyModule {
+  if (nodePtyModule) {
+    return nodePtyModule;
+  }
+
+  try {
+    nodePtyModule = require('node-pty') as NodePtyModule;
+    return nodePtyModule;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `node-pty native module is unavailable. Run "pnpm run rebuild:native" and restart the app. Original error: ${message}`
+    );
+  }
 }
 
 export class TerminalService {
   private terminals: Map<string, TerminalInstance> = new Map();
   private mainWindow: BrowserWindow | null = null;
   private shellDetector = getShellDetector();
-  private proxyPath: string;
 
   constructor(mainWindow?: BrowserWindow) {
     if (mainWindow) {
       this.mainWindow = mainWindow;
     }
-    this.proxyPath = this.getProxyPath();
   }
 
-  /** 获取 PTY 代理路径 */
-  private getProxyPath(): string {
-    const platform = process.platform;
-    const isDev = process.env.NODE_ENV === 'development';
-    
-    let basePath: string;
-    if (isDev) {
-      basePath = path.join(process.cwd(), 'resources', 'bin');
-    } else {
-      basePath = path.join(process.resourcesPath, 'bin');
-    }
-
-    const platformDir = platform === 'win32' ? 'win32' : platform === 'darwin' ? 'darwin' : 'linux';
-    const exeName = platform === 'win32' ? 'pty-proxy.exe' : 'pty-proxy';
-    
-    return path.join(basePath, platformDir, exeName);
-  }
-
-  /** 设置主窗口 */
-  setMainWindow(window: BrowserWindow): void {
+  /** Set the primary window used as a fallback terminal owner. */
+  setMainWindow(window: BrowserWindow | null): void {
     this.mainWindow = window;
   }
 
-  /** 生成终端 ID */
+  /** Generate a stable-enough terminal ID for the session. */
   private generateId(): string {
-    return `terminal-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    return `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
-  /** 创建新终端 */
-  createTerminal(options: TerminalOptions = {}): string {
-    const id = this.generateId();
+  /** Parse a shell command string into an executable and argv list. */
+  private parseCommandLine(command: string): string[] {
+    const tokens: string[] = [];
+    let current = '';
+    let quote: '"' | "'" | null = null;
+    let escaping = false;
 
-    // 检查代理是否存在
-    if (!fs.existsSync(this.proxyPath)) {
-      console.error(`[TerminalService] PTY 代理不存在: ${this.proxyPath}`);
-      throw new Error('PTY 代理未找到');
+    for (const character of command.trim()) {
+      if (escaping) {
+        current += character;
+        escaping = false;
+        continue;
+      }
+
+      if (character === '\\' && quote === '"') {
+        escaping = true;
+        continue;
+      }
+
+      if ((character === '"' || character === "'")) {
+        if (quote === character) {
+          quote = null;
+          continue;
+        }
+
+        if (!quote) {
+          quote = character;
+          continue;
+        }
+      }
+
+      if (!quote && /\s/.test(character)) {
+        if (current) {
+          tokens.push(current);
+          current = '';
+        }
+        continue;
+      }
+
+      current += character;
     }
 
-    try {
-      const proxyProcess = spawn(this.proxyPath, [], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true,
-        env: { ...process.env }, // 继承系统环境变量
-      });
+    if (current) {
+      tokens.push(current);
+    }
 
-      // 保存终端实例
-      this.terminals.set(id, {
-        id,
-        process: proxyProcess,
-        shell: options.shell || 'powershell.exe',
-        createdAt: Date.now(),
-      });
+    return tokens;
+  }
 
-      // 监听代理输出
-      let buffer = '';
-      proxyProcess.stdout?.on('data', (data: Buffer) => {
-        buffer += data.toString();
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        
-        for (const line of lines) {
-          if (line.trim()) {
-            this.handleProxyResponse(id, line.trim());
-          }
-        }
-      });
-
-      // 监听错误
-      proxyProcess.stderr?.on('data', (data: Buffer) => {
-        console.error(`[TerminalService] 代理错误: ${data.toString()}`);
-      });
-
-      // 监听退出
-      proxyProcess.on('exit', (code: number | null) => {
-        console.log(`[TerminalService] 代理退出: id=${id}, code=${code}`);
-        this.terminals.delete(id);
-      });
-
-      // 发送创建命令
-      const shellConfig = this.shellDetector.getDefaultShell();
-      // 将 shell 路径和参数合并（PowerShell 需要 -NoLogo 参数）
-      let shellCommand = options.shell || shellConfig.path;
-      if (shellConfig.args && shellConfig.args.length > 0 && !options.shell) {
-        shellCommand = `${shellConfig.path} ${shellConfig.args.join(' ')}`;
+  /** Resolve the launch command, preferring explicit user input and falling back to the default shell. */
+  private resolveLaunchCommand(shell?: string): ResolvedLaunchCommand {
+    if (shell && shell.trim()) {
+      const tokens = this.parseCommandLine(shell);
+      if (tokens.length > 0) {
+        const [executable, ...args] = tokens;
+        return { executable, args };
       }
-      
-      this.sendCommand(id, {
-        type: 'create',
-        shell: shellCommand,
-        cwd: options.cwd || this.shellDetector.getHomeDirectory(),
-        cols: options.cols || 80,
-        rows: options.rows || 24,
+    }
+
+    const defaultShell = this.shellDetector.getDefaultShell();
+    return {
+      executable: defaultShell.path,
+      args: defaultShell.args ?? [],
+    };
+  }
+
+  /** Normalize PTY dimensions. */
+  private normalizeDimension(value: number | undefined, fallbackValue: number, minValue: number): number {
+    if (!Number.isFinite(value)) {
+      return fallbackValue;
+    }
+
+    return Math.max(minValue, Math.trunc(value as number));
+  }
+
+  /** Build the environment passed to node-pty. */
+  private buildSpawnEnv(extraEnv?: Record<string, string>): Record<string, string> {
+    const env: Record<string, string> = {};
+
+    for (const [key, value] of Object.entries(process.env)) {
+      if (typeof value === 'string') {
+        env[key] = value;
+      }
+    }
+
+    if (extraEnv) {
+      for (const [key, value] of Object.entries(extraEnv)) {
+        env[key] = value;
+      }
+    }
+
+    env.TERM = env.TERM || TERM_NAME;
+    env.COLORTERM = env.COLORTERM || 'truecolor';
+    env.TERM_PROGRAM = env.TERM_PROGRAM || TERM_PROGRAM;
+    env.TERM_PROGRAM_VERSION = env.TERM_PROGRAM_VERSION || '1.0.0';
+
+    return env;
+  }
+
+  /** Read the Windows build number for frontend compatibility heuristics. */
+  private getWindowsBuildNumber(): number | undefined {
+    if (process.platform !== 'win32') {
+      return undefined;
+    }
+
+    const segments = os.release().split('.');
+    const buildSegment = segments[segments.length - 1];
+    const buildNumber = Number.parseInt(buildSegment ?? '', 10);
+
+    return Number.isFinite(buildNumber) ? buildNumber : undefined;
+  }
+
+  /** Infer PTY compatibility metadata for the renderer. */
+  private getPtyInfo(): TerminalPtyInfo | undefined {
+    if (process.platform !== 'win32') {
+      return undefined;
+    }
+
+    const buildNumber = this.getWindowsBuildNumber();
+    return {
+      backend: buildNumber && buildNumber >= 18309 ? 'conpty' : 'winpty',
+      buildNumber,
+    };
+  }
+
+  /** Build node-pty options for the current platform. */
+  private createPty(
+    launchCommand: ResolvedLaunchCommand,
+    cwd: string,
+    cols: number,
+    rows: number,
+    env: Record<string, string>
+  ): TerminalPty {
+    const { spawn } = loadNodePty();
+    const ptyInfo = this.getPtyInfo();
+
+    return spawn(launchCommand.executable, launchCommand.args, {
+      name: TERM_NAME,
+      cols,
+      rows,
+      cwd,
+      env,
+      encoding: 'utf8',
+      useConpty: process.platform === 'win32' ? ptyInfo?.backend === 'conpty' : undefined,
+    });
+  }
+
+  /** Create a terminal backed by node-pty. */
+  createTerminal(options: TerminalOptions = {}): TerminalInstance {
+    const id = this.generateId();
+    const ownerWebContentsId = Number.isInteger(options.ownerWebContentsId)
+      ? options.ownerWebContentsId
+      : this.mainWindow?.webContents.id;
+    const cols = this.normalizeDimension(options.cols, DEFAULT_COLS, MIN_COLS);
+    const rows = this.normalizeDimension(options.rows, DEFAULT_ROWS, MIN_ROWS);
+    const cwd = options.cwd || this.shellDetector.getHomeDirectory();
+    const launchCommand = this.resolveLaunchCommand(options.shell);
+    const ptyInfo = this.getPtyInfo();
+    const shellDescription = [launchCommand.executable, ...launchCommand.args].join(' ').trim();
+
+    try {
+      const pty = this.createPty(
+        launchCommand,
+        cwd,
+        cols,
+        rows,
+        this.buildSpawnEnv(options.env)
+      );
+
+      const instance: TerminalInstance = {
+        id,
+        pty,
+        shell: shellDescription,
+        cwd,
+        createdAt: Date.now(),
+        ownerWebContentsId,
+        ptyInfo,
+        dataListener: NOOP_DISPOSABLE,
+        exitListener: NOOP_DISPOSABLE,
+      };
+
+      this.terminals.set(id, instance);
+
+      instance.dataListener = pty.onData((data: string) => {
+        this.sendToRenderer('terminal:data', id, data);
       });
 
-      console.log(`[TerminalService] 终端创建成功: id=${id}`);
-      return id;
+      instance.exitListener = pty.onExit(({ exitCode, signal }) => {
+        this.sendToRenderer('terminal:exit', id, exitCode);
+        this.disposeTerminalInstance(id);
+        console.log(`[TerminalService] terminal exited: id=${id}, code=${exitCode}, signal=${signal ?? 'none'}`);
+      });
+
+      console.log(`[TerminalService] terminal created: id=${id}, owner=${ownerWebContentsId ?? 'unknown'}`);
+      return instance;
     } catch (error) {
-      console.error('[TerminalService] 创建终端失败:', error);
+      console.error('[TerminalService] failed to create terminal:', error);
       throw error;
     }
   }
 
-  /** 处理代理响应 */
-  private handleProxyResponse(id: string, line: string): void {
-    try {
-      const response: PtyResponse = JSON.parse(line);
-      
-      switch (response.type) {
-        case 'data':
-          if (response.data) {
-            this.sendToRenderer('terminal:data', id, response.data);
-          }
-          break;
-        case 'exit':
-          this.sendToRenderer('terminal:exit', id, response.code || 0);
-          this.terminals.delete(id);
-          break;
-        case 'error':
-          console.error(`[TerminalService] 代理错误: ${response.error}`);
-          break;
-      }
-    } catch (error) {
-      console.debug('[TerminalService] 解析响应失败:', line);
-    }
-  }
-
-  /** 发送命令到代理 */
-  private sendCommand(id: string, command: PtyCommand): void {
+  /** Resolve a tracked terminal instance or throw. */
+  private getTerminalOrThrow(id: string): TerminalInstance {
     const terminal = this.terminals.get(id);
-    if (!terminal) return;
+    if (!terminal) {
+      throw new Error(`Terminal not found: ${id}`);
+    }
 
-    const data = JSON.stringify(command) + '\n';
-    terminal.process.stdin?.write(data);
+    return terminal;
   }
 
-  /** 向渲染进程发送消息 */
-  private sendToRenderer(channel: string, ...args: unknown[]): void {
-    try {
-      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send(channel, ...args);
+  /** Dispose terminal listeners and remove bookkeeping for an instance. */
+  private disposeTerminalInstance(id: string): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal) {
+      return;
+    }
+
+    terminal.dataListener.dispose();
+    terminal.exitListener.dispose();
+    this.terminals.delete(id);
+  }
+
+  /** Resolve the target window that should receive PTY events. */
+  private resolveTargetWindow(terminalId: string): BrowserWindow | null {
+    const terminal = this.terminals.get(terminalId);
+    const ownerWebContentsId = terminal?.ownerWebContentsId;
+
+    if (typeof ownerWebContentsId === 'number') {
+      const ownerWindow = BrowserWindow.getAllWindows().find(
+        (window) => !window.isDestroyed() && window.webContents.id === ownerWebContentsId
+      );
+      if (ownerWindow) {
+        return ownerWindow;
       }
+    }
+
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      return this.mainWindow;
+    }
+
+    return BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) || null;
+  }
+
+  /** Send a terminal event to the owning renderer process. */
+  private sendToRenderer(channel: string, terminalId: string, ...args: unknown[]): void {
+    try {
+      const targetWindow = this.resolveTargetWindow(terminalId);
+      if (!targetWindow || targetWindow.isDestroyed() || targetWindow.webContents.isDestroyed()) {
+        return;
+      }
+
+      targetWindow.webContents.send(channel, terminalId, ...args);
     } catch (error) {
-      console.debug('[TerminalService] 发送消息失败:', error);
+      console.debug('[TerminalService] failed to forward terminal event:', error);
     }
   }
 
-  /** 写入数据到终端 */
+  /** Write user input into the PTY. */
   writeToTerminal(id: string, data: string): void {
-    this.sendCommand(id, { type: 'write', data });
+    if (!data) {
+      return;
+    }
+
+    this.getTerminalOrThrow(id).pty.write(data);
   }
 
-  /** 调整终端大小 */
+  /** Resize the backing PTY. */
   resizeTerminal(id: string, cols: number, rows: number): void {
-    this.sendCommand(id, { type: 'resize', cols, rows });
+    const nextCols = this.normalizeDimension(cols, DEFAULT_COLS, MIN_COLS);
+    const nextRows = this.normalizeDimension(rows, DEFAULT_ROWS, MIN_ROWS);
+    this.getTerminalOrThrow(id).pty.resize(nextCols, nextRows);
   }
 
-  /** 销毁终端 */
-  destroyTerminal(id: string): void {
+  /** Clear the PTY buffer when supported by the backend. */
+  clearTerminal(id: string): void {
+    this.getTerminalOrThrow(id).pty.clear();
+  }
+
+  /** Reassign terminal ownership to another renderer window. */
+  reassignTerminalOwner(id: string, ownerWebContentsId: number): boolean {
     const terminal = this.terminals.get(id);
-    if (!terminal) return;
+    if (!terminal) {
+      return false;
+    }
 
-    this.sendCommand(id, { type: 'close' });
-    
-    setTimeout(() => {
-      if (terminal.process && !terminal.process.killed) {
-        terminal.process.kill();
-      }
-      this.terminals.delete(id);
-    }, 500);
-
-    console.log(`[TerminalService] 终端已销毁: ${id}`);
+    terminal.ownerWebContentsId = ownerWebContentsId;
+    console.log(`[TerminalService] terminal owner updated: id=${id}, owner=${ownerWebContentsId}`);
+    return true;
   }
 
-  /** 获取所有终端 ID */
+  /** Destroy a terminal instance. */
+  destroyTerminal(id: string): void {
+    const terminal = this.getTerminalOrThrow(id);
+
+    this.disposeTerminalInstance(id);
+    terminal.pty.kill();
+    console.log(`[TerminalService] terminal destroyed: ${id}`);
+  }
+
+  /** Return all tracked terminal IDs. */
   getAllTerminalIds(): string[] {
     return Array.from(this.terminals.keys());
   }
 
-  /** 获取终端数量 */
+  /** Return the current tracked terminal count. */
   getTerminalCount(): number {
     return this.terminals.size;
   }
 
-  /** 销毁所有终端 */
+  /** Destroy all tracked terminals. */
   destroyAll(): void {
-    for (const [id] of this.terminals) {
-      this.destroyTerminal(id);
+    for (const id of Array.from(this.terminals.keys())) {
+      try {
+        this.destroyTerminal(id);
+      } catch (error) {
+        console.error(`[TerminalService] failed to destroy terminal: ${id}`, error);
+      }
     }
-    console.log('[TerminalService] 所有终端已销毁');
+
+    console.log('[TerminalService] all terminals destroyed');
   }
 }

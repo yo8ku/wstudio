@@ -7,6 +7,24 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  min-height: 0;
+  min-width: 0;
+
+  &--top,
+  &--bottom {
+    width: 100%;
+  }
+
+  &--left,
+  &--right {
+    height: 100%;
+  }
+
+  &--full {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+  }
 
   &-header {
     display: flex;
@@ -15,6 +33,15 @@
     padding: 0 8px;
     flex-shrink: 0;
     border-top: 1px solid #c2c1c15b;
+
+    &--draggable {
+      -webkit-app-region: drag;
+
+      .panel-container-tab,
+      .panel-container-action-btn {
+        -webkit-app-region: no-drag;
+      }
+    }
   }
 
   &-tabs {
@@ -52,6 +79,7 @@
     align-items: center;
     gap: 8px;
     margin-left: auto;
+    min-width: 0;
   }
 
   &-action-btn {
@@ -75,6 +103,8 @@
     flex: 1;
     overflow: hidden;
     position: relative;
+    min-height: 0;
+    min-width: 0;
   }
 
   &-view {
@@ -86,5 +116,96 @@
     &.active {
       display: block;
     }
+  }
+
+  &-resize-handle {
+    z-index: 11;
+
+    &--top {
+      top: auto;
+      bottom: 0;
+    }
+
+    &--left {
+      left: auto;
+      right: 0;
+    }
+
+    &--right {
+      left: 0;
+      right: auto;
+    }
+
+    &--bottom {
+      top: 0;
+      bottom: auto;
+    }
+  }
+
+  &-terminal {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    background: var(--ws-panel-background);
+  }
+}
+
+.panel-terminal-context-menu {
+  position: fixed;
+  z-index: 1600;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--ws-panel-border);
+  background: var(--ws-panel-background);
+  color: var(--ws-foreground);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+  user-select: none;
+}
+
+.panel-terminal-context-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--ws-list-hoverBackground);
+  }
+
+  &.selected {
+    color: var(--ws-list-activeSelectionForeground, var(--ws-foreground));
+    background: var(--ws-list-activeSelectionBackground, var(--ws-list-hoverBackground));
+  }
+}
+
+.panel-terminal-context-menu-item--submenu-trigger {
+  padding-right: 8px;
+}
+
+.panel-terminal-context-menu-arrow {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.panel-terminal-context-submenu {
+  position: absolute;
+  top: -4px;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid var(--ws-panel-border);
+  background: var(--ws-panel-background);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+
+  &--right {
+    left: calc(100% - 2px);
+  }
+
+  &--left {
+    right: calc(100% - 2px);
   }
 }

@@ -18,6 +18,7 @@ interface ActivityBarProps {
 interface ActivityItem {
   id: ActivityBarItem;
   iconName: string;
+  iconSet?: string;
   title: string;
   visibilityKey?: keyof ActivityBarVisibility;
 }
@@ -33,7 +34,8 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
     {
       id: "explorer",
       title: "资源管理器",
-      iconName: "explorer",
+      iconName: "files-copy",
+      iconSet: "ui",
       visibilityKey: "explorer",
     },
     {
@@ -134,7 +136,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
               <div className="activity-bar-indicator" />
             )}
             <span className="activity-bar-icon">
-              <Icon name={activity.iconName} size={18} />
+              <Icon iconSet={activity.iconSet} name={activity.iconName} size={18} />
             </span>
           </div>
         ))}
@@ -163,7 +165,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
               <div className="activity-bar-indicator" />
             )}
             <span className="activity-bar-icon">
-              <Icon name={activity.iconName} size={24} />
+              <Icon iconSet={activity.iconSet} name={activity.iconName} size={24} />
             </span>
           </div>
         ))}

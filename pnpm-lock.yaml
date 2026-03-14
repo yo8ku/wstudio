@@ -167,8 +167,8 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0(@langchain/core@1.1.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod-to-json-schema@3.24.6(zod@3.25.76))
       node-pty:
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: npm:@homebridge/node-pty-prebuilt-multiarch@^0.13.1
+        version: '@homebridge/node-pty-prebuilt-multiarch@0.13.1'
       sql.js:
         specifier: ^1.12.0
         version: 1.13.0
@@ -975,6 +975,10 @@ packages:
 
   '@hapi/topo@6.0.2':
     resolution: {integrity: sha512-KR3rD5inZbGMrHmgPxsJ9dbi6zEK+C3ZwUwTa+eMwWLz7oijWUTWD2pMSNNYJAU6Qq+65NkxXjqHr/7LM2Xkqg==}
+
+  '@homebridge/node-pty-prebuilt-multiarch@0.13.1':
+    resolution: {integrity: sha512-ccQ60nMcbEGrQh0U9E6x0ajW9qJNeazpcM/9CH6J8leyNtJgb+gu24WTBAfBUVeO486ZhscnaxLEITI2HXwhow==}
+    engines: {node: '>=18.0.0 <25.0.0'}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -4552,9 +4556,6 @@ packages:
     resolution: {integrity: sha512-Tz09sEL2EEuv5fFowm419c1+a/jSMiBjI9gHxVLrVdbUkkNUUfjsVYs9pVZu5oCon/kmRh9TfLEObFtkVxmY0w==}
     engines: {node: '>=8.0.0'}
 
-  nan@2.23.0:
-    resolution: {integrity: sha512-1UxuyYGdoQHcGg87Lkqm3FzefucTa0NAiOcuRsDmysep3c1LVCRK2krrUDafMWtjSG04htvAmvg96+SDknOmgQ==}
-
   nanoid@3.3.11:
     resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -4622,9 +4623,6 @@ packages:
 
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
-
-  node-pty@1.0.0:
-    resolution: {integrity: sha512-wtBMWWS7dFZm/VgqElrTvtfMq4GzJ6+edFI0Y0zyzygUSZMgZdraDUMUhCIvkjhJjme15qWmbyJbtAx4ot4uZA==}
 
   node-releases@2.0.23:
     resolution: {integrity: sha512-cCmFDMSm26S6tQSDpBCg/NR8NENrVPhAJSf+XbxBG4rPFaaonlEoE9wHQmun+cls499TQGSb7ZyPBRlzgKfpeg==}
@@ -6897,6 +6895,11 @@ snapshots:
   '@hapi/topo@6.0.2':
     dependencies:
       '@hapi/hoek': 11.0.7
+
+  '@homebridge/node-pty-prebuilt-multiarch@0.13.1':
+    dependencies:
+      node-addon-api: 7.1.1
+      prebuild-install: 7.1.3
 
   '@iconify/types@2.0.0': {}
 
@@ -11025,8 +11028,6 @@ snapshots:
     dependencies:
       lru.min: 1.1.3
 
-  nan@2.23.0: {}
-
   nanoid@3.3.11: {}
 
   napi-build-utils@2.0.0: {}
@@ -11056,8 +11057,7 @@ snapshots:
 
   node-addon-api@6.1.0: {}
 
-  node-addon-api@7.1.1:
-    optional: true
+  node-addon-api@7.1.1: {}
 
   node-api-version@0.1.4:
     dependencies:
@@ -11102,10 +11102,6 @@ snapshots:
       - supports-color
 
   node-int64@0.4.0: {}
-
-  node-pty@1.0.0:
-    dependencies:
-      nan: 2.23.0
 
   node-releases@2.0.23: {}
 
