@@ -11,7 +11,6 @@ import { SerializeAddon } from 'xterm-addon-serialize';
 import { Unicode11Addon } from 'xterm-addon-unicode11';
 import { WebglAddon } from 'xterm-addon-webgl';
 import { WebLinksAddon } from 'xterm-addon-web-links';
-import { toastService } from '../../../../services/ToastService';
 
 const getTerminalAPI = () => window.electron?.terminal;
 const TERMINAL_FONT_FAMILY = 'Consolas, "Courier New", monospace';
@@ -20,7 +19,6 @@ const TERMINAL_MIN_ROWS = 1;
 const TERMINAL_WRITE_BATCH_SIZE = 64 * 1024;
 const TERMINAL_TRANSPARENT_COLOR = 'rgba(0, 0, 0, 0)';
 const TERMINAL_SEARCH_HIGHLIGHT_LIMIT = 500;
-const TERMINAL_SEARCH_TOAST_DURATION = 1400;
 const TERMINAL_SEARCH_REFRESH_DELAY = 50;
 const TERMINAL_SEARCH_SELECTION_BACKGROUND = 'rgba(229, 196, 83, 0.32)';
 const TERMINAL_SEARCH_DECORATIONS = {
@@ -250,9 +248,7 @@ export class TerminalSession {
   private activeSearchResultIndex = -1;
   private activeSearchResultCount = 0;
   private activeSearchCacheKey = '';
-  private activeSearchToastId: string | number | undefined;
   private searchRefreshTimer: number | null = null;
-  private suppressSearchToastCount = 0;
   private appliedThemeSignature = '';
   private appearanceRefreshFrame: number | null = null;
   private pendingAppearanceForcePtySync = false;
@@ -352,11 +348,20 @@ export class TerminalSession {
   }
 
   private initializeRenderer(): void {
+    if (this.shouldPreferCanvasRenderer()) {
+      this.activateCanvasRenderer();
+      return;
+    }
+
     if (this.tryActivateWebglRenderer()) {
       return;
     }
 
     this.activateCanvasRenderer();
+  }
+
+  private shouldPreferCanvasRenderer(): boolean {
+    return this.isWindowsPlatform();
   }
 
   private tryActivateWebglRenderer(): boolean {
@@ -512,6 +517,10 @@ export class TerminalSession {
     return /mac/i.test(navigator.platform);
   }
 
+  private isWindowsPlatform(): boolean {
+    return /win/i.test(navigator.platform || navigator.userAgent);
+  }
+
   private getSearchPromptSeed(): string {
     if (this.activeSearchQuery) {
       return this.activeSearchQuery;
@@ -521,35 +530,8 @@ export class TerminalSession {
     return selection;
   }
 
-  private getActiveSearchOptionLabels(): string[] {
-    const labels: string[] = [];
-    if (this.activeSearchOptions.caseSensitive) {
-      labels.push('case');
-    }
-    if (this.activeSearchOptions.wholeWord) {
-      labels.push('word');
-    }
-    if (this.activeSearchOptions.regex) {
-      labels.push('regex');
-    }
-    return labels;
-  }
-
-  private getActiveSearchDescription(): string {
-    const optionLabels = this.getActiveSearchOptionLabels();
-    if (optionLabels.length === 0) {
-      return `"${this.activeSearchQuery}"`;
-    }
-
-    return `"${this.activeSearchQuery}" (${optionLabels.join(', ')})`;
-  }
-
   private openSearchPrompt(): void {
     if (!this.searchAddon) {
-      toastService.warning('Terminal search is unavailable', {
-        description: 'Search addon did not initialize.',
-        duration: TERMINAL_SEARCH_TOAST_DURATION,
-      });
       return;
     }
 
@@ -871,17 +853,15 @@ export class TerminalSession {
     container.appendChild(overlay);
 
     this.searchOverlayInputHandler = () => {
-      this.runWithoutSearchToast(() => {
-        const query = input.value.trim();
-        if (!query) {
-          this.clearSearch();
-          this.syncSearchOverlayState();
-          return;
-        }
+      const query = input.value.trim();
+      if (!query) {
+        this.clearSearch();
+        this.syncSearchOverlayState();
+        return;
+      }
 
-        this.search(query, 'next', {
-          incremental: true,
-        });
+      this.search(query, 'next', {
+        incremental: true,
       });
     };
 
@@ -1002,6 +982,10 @@ export class TerminalSession {
       return;
     }
 
+    if (this.searchInputElement) {
+      this.searchInputElement.value = '';
+    }
+    this.clearSearch();
     this.searchOverlay.style.display = 'none';
     this.terminal.focus();
   }
@@ -1144,10 +1128,8 @@ export class TerminalSession {
       return;
     }
 
-    this.runWithoutSearchToast(() => {
-      this.search(query, 'next', {
-        incremental: true,
-      });
+    this.search(query, 'next', {
+      incremental: true,
     });
   }
 
@@ -1201,71 +1183,10 @@ export class TerminalSession {
     };
   }
 
-  private dismissSearchToast(): void {
-    if (this.activeSearchToastId === undefined) {
-      return;
-    }
-
-    toastService.dismiss(this.activeSearchToastId);
-    this.activeSearchToastId = undefined;
-  }
-
-  private showSearchToast(message: string, description?: string, type: 'info' | 'warning' = 'info'): void {
-    this.dismissSearchToast();
-    this.activeSearchToastId = type === 'warning'
-      ? toastService.warning(message, {
-        description,
-        duration: TERMINAL_SEARCH_TOAST_DURATION,
-      })
-      : toastService.info(message, {
-        description,
-        duration: TERMINAL_SEARCH_TOAST_DURATION,
-      });
-  }
-
-  private runWithoutSearchToast(callback: () => void): void {
-    this.suppressSearchToastCount += 1;
-    try {
-      callback();
-    } finally {
-      this.suppressSearchToastCount = Math.max(this.suppressSearchToastCount - 1, 0);
-    }
-  }
-
   private handleSearchResultsChange(resultIndex: number, resultCount: number): void {
     this.activeSearchResultIndex = resultIndex;
     this.activeSearchResultCount = resultCount;
     this.syncSearchOverlayState();
-
-    if (!this.activeSearchQuery) {
-      return;
-    }
-
-    if (this.suppressSearchToastCount > 0) {
-      return;
-    }
-
-    if (this.isSearchOverlayVisible()) {
-      return;
-    }
-
-    if (resultCount <= 0) {
-      this.showSearchToast('No terminal matches', this.getActiveSearchDescription(), 'warning');
-      return;
-    }
-
-    if (resultIndex < 0) {
-      this.showSearchToast(
-        `Terminal matches: ${resultCount}+`,
-        this.getActiveSearchDescription(),
-      );
-      return;
-    }
-
-    this.showSearchToast(
-      `Terminal match ${resultIndex + 1} / ${resultCount}`,
-      this.getActiveSearchDescription(),
-    );
   }
 
   private scheduleSearchRefresh(): void {
@@ -1293,9 +1214,7 @@ export class TerminalSession {
       incremental: true,
     });
 
-    this.runWithoutSearchToast(() => {
-      this.searchAddon?.findNext(query, options);
-    });
+    this.searchAddon?.findNext(query, options);
   }
 
   private createSearchCacheKey(
@@ -1379,7 +1298,6 @@ export class TerminalSession {
     };
     this.activeSearchResultIndex = -1;
     this.activeSearchResultCount = 0;
-    this.dismissSearchToast();
     if (this.searchRefreshTimer !== null) {
       window.clearTimeout(this.searchRefreshTimer);
       this.searchRefreshTimer = null;
@@ -1468,7 +1386,16 @@ export class TerminalSession {
   }
 
   private scheduleOutputFlush(): void {
-    if (this.outputFlushTimer !== null || this.isWritingOutput || this.isDisposed) {
+    if (this.isDisposed) {
+      return;
+    }
+
+    if (!this.isWritingOutput) {
+      this.flushPendingOutput();
+      return;
+    }
+
+    if (this.outputFlushTimer !== null) {
       return;
     }
 
@@ -1919,7 +1846,6 @@ export class TerminalSession {
     this.disposeAppearanceListeners();
     this.disposeSearchResultsSubscription();
     this.disposeSearchOverlay();
-    this.dismissSearchToast();
 
     const terminalAPI = getTerminalAPI();
     const shouldDestroyTerminal = options.destroyTerminal ?? true;
