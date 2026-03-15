@@ -14,12 +14,21 @@ import { WebLinksAddon } from 'xterm-addon-web-links';
 
 const getTerminalAPI = () => window.electron?.terminal;
 const TERMINAL_FONT_FAMILY = 'Consolas, "Courier New", monospace';
+const TERMINAL_DEFAULT_FONT_SIZE = 14;
+const TERMINAL_COMPACT_FONT_SIZE = 12;
+const TERMINAL_DEFAULT_LINE_HEIGHT = 1.05;
+const TERMINAL_COMPACT_LINE_HEIGHT = 1;
+const TERMINAL_COMPACT_HEIGHT_THRESHOLD = 280;
 const TERMINAL_MIN_COLS = 2;
 const TERMINAL_MIN_ROWS = 1;
 const TERMINAL_WRITE_BATCH_SIZE = 64 * 1024;
 const TERMINAL_TRANSPARENT_COLOR = 'rgba(0, 0, 0, 0)';
 const TERMINAL_SEARCH_HIGHLIGHT_LIMIT = 500;
 const TERMINAL_SEARCH_REFRESH_DELAY = 50;
+const TERMINAL_DEBUG_DIAGNOSTICS_ENABLED = true;
+const TERMINAL_DEBUG_LOG_LIMIT = 120;
+const TERMINAL_DEBUG_CODEX_TRACE_DURATION = 8000;
+const TERMINAL_DEBUG_CODEX_OUTPUT_LOG_LIMIT = 24;
 const TERMINAL_SEARCH_SELECTION_BACKGROUND = 'rgba(229, 196, 83, 0.32)';
 const TERMINAL_SEARCH_DECORATIONS = {
   matchBackground: undefined,
@@ -73,6 +82,17 @@ export interface TerminalSessionOptions {
 }
 
 type TerminalSearchDirection = 'next' | 'previous';
+type TerminalDebugValue = string | number | boolean | null | undefined;
+type TerminalBufferSnapshot = {
+  bufferType: 'normal' | 'alternate';
+  viewportY: number;
+  baseY: number;
+  cursorX: number;
+  cursorY: number;
+  termCols: number;
+  termRows: number;
+  viewportScrollTop: number | null;
+};
 
 const TERMINAL_DEFAULT_SEARCH_OPTIONS: Readonly<Pick<ISearchOptions, 'caseSensitive' | 'regex' | 'wholeWord'>> = {
   caseSensitive: false,
@@ -207,6 +227,7 @@ const resolveTerminalTheme = (container: HTMLElement | null): ITheme => {
 export class TerminalSession {
   private terminal: Terminal;
   private fitAddon: FitAddon;
+  private readonly initialOptions: TerminalSessionOptions;
   private searchAddon: SearchAddon | null = null;
   private searchResultsSubscription: TerminalDisposable | null = null;
   private unicode11Addon: Unicode11Addon | null = null;
@@ -237,6 +258,8 @@ export class TerminalSession {
   private disposeTerminalExitListener: (() => void) | null = null;
   private pendingOutputChunks: string[] = [];
   private outputFlushTimer: number | null = null;
+  private startupScrollTopTimer: number | null = null;
+  private createPtyPromise: Promise<void> | null = null;
   private isWritingOutput = false;
   private pendingInputBuffer = '';
   private pendingPtySync = false;
@@ -250,16 +273,21 @@ export class TerminalSession {
   private activeSearchCacheKey = '';
   private searchRefreshTimer: number | null = null;
   private appliedThemeSignature = '';
+  private appliedDensitySignature = '';
   private appearanceRefreshFrame: number | null = null;
   private pendingAppearanceForcePtySync = false;
+  private diagnosticLogCount = 0;
+  private diagnosticCommandBuffer = '';
+  private diagnosticCodexTraceUntil = 0;
+  private diagnosticCodexOutputLogCount = 0;
   private themeChangeHandler: EventListener | null = null;
-  private fontLoadingDoneHandler: EventListener | null = null;
   private isDisposed = false;
 
   public id = '';
   public shell: string;
 
   constructor(options: TerminalSessionOptions = {}) {
+    this.initialOptions = { ...options };
     this.shell = options.shell || 'powershell';
     const initialCols = normalizeTerminalDimension(options.cols, TERMINAL_MIN_COLS) ?? 80;
     const initialRows = normalizeTerminalDimension(options.rows, TERMINAL_MIN_ROWS) ?? 24;
@@ -271,8 +299,8 @@ export class TerminalSession {
       customGlyphs: true,
       drawBoldTextInBrightColors: true,
       fontFamily: TERMINAL_FONT_FAMILY,
-      fontSize: 14,
-      lineHeight: 1.15,
+      fontSize: TERMINAL_DEFAULT_FONT_SIZE,
+      lineHeight: TERMINAL_DEFAULT_LINE_HEIGHT,
       theme: resolveTerminalTheme(null),
       cols: initialCols,
       rows: initialRows,
@@ -283,15 +311,17 @@ export class TerminalSession {
 
     this.fitAddon = new FitAddon();
     this.terminal.loadAddon(this.fitAddon);
-    this.terminal.loadAddon(new WebLinksAddon());
+    this.terminal.loadAddon(new WebLinksAddon((event, uri) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.openTerminalLink(uri);
+    }));
     this.initializeCapabilityAddons();
     this.initializeRenderer();
 
     this.bindEvents();
     this.installAppearanceListeners();
     this.syncThemeOptions();
-
-    void this.createPtyProcess(options);
   }
 
   private initializeCapabilityAddons(): void {
@@ -430,30 +460,12 @@ export class TerminalSession {
       };
       window.addEventListener('theme-changed', this.themeChangeHandler);
     }
-
-    const fontSet = document.fonts;
-    if (fontSet && !this.fontLoadingDoneHandler) {
-      this.fontLoadingDoneHandler = () => {
-        this.scheduleAppearanceRefresh(true);
-      };
-      fontSet.addEventListener('loadingdone', this.fontLoadingDoneHandler);
-      void fontSet.ready.then(() => {
-        if (!this.isDisposed) {
-          this.scheduleAppearanceRefresh(true);
-        }
-      });
-    }
   }
 
   private disposeAppearanceListeners(): void {
     if (this.themeChangeHandler) {
       window.removeEventListener('theme-changed', this.themeChangeHandler);
       this.themeChangeHandler = null;
-    }
-
-    if (this.fontLoadingDoneHandler) {
-      document.fonts.removeEventListener('loadingdone', this.fontLoadingDoneHandler);
-      this.fontLoadingDoneHandler = null;
     }
   }
 
@@ -519,6 +531,25 @@ export class TerminalSession {
 
   private isWindowsPlatform(): boolean {
     return /win/i.test(navigator.platform || navigator.userAgent);
+  }
+
+  private async openTerminalLink(uri: string): Promise<void> {
+    const normalizedUri = uri.trim();
+    if (!normalizedUri) {
+      return;
+    }
+
+    const shellAPI = window.electron?.shell;
+    if (shellAPI?.openExternal) {
+      try {
+        await shellAPI.openExternal(normalizedUri);
+        return;
+      } catch (error) {
+        console.error('[TerminalSession] failed to open terminal link externally:', error);
+      }
+    }
+
+    window.open(normalizedUri, '_blank', 'noopener,noreferrer');
   }
 
   private getSearchPromptSeed(): string {
@@ -1308,7 +1339,183 @@ export class TerminalSession {
     this.syncSearchOverlayState();
   }
 
-  private async createPtyProcess(options: TerminalSessionOptions): Promise<void> {
+  private debugLog(event: string, details: Record<string, TerminalDebugValue> = {}): void {
+    if (!TERMINAL_DEBUG_DIAGNOSTICS_ENABLED || this.diagnosticLogCount >= TERMINAL_DEBUG_LOG_LIMIT) {
+      return;
+    }
+
+    this.diagnosticLogCount += 1;
+    const buffer = this.terminal.buffer.active;
+    const viewport = this.container?.querySelector('.xterm-viewport');
+    const viewportElement = viewport instanceof HTMLElement ? viewport : null;
+    const payload: Record<string, TerminalDebugValue> = {
+      event,
+      index: this.diagnosticLogCount,
+      sessionId: this.id || 'pending',
+      termCols: this.terminal.cols,
+      termRows: this.terminal.rows,
+      lastSyncCols: this.lastSyncedPtySize?.cols ?? null,
+      lastSyncRows: this.lastSyncedPtySize?.rows ?? null,
+      pendingPtySync: this.pendingPtySync,
+      bufferType: buffer.type,
+      viewportY: buffer.viewportY,
+      baseY: buffer.baseY,
+      cursorX: buffer.cursorX,
+      cursorY: buffer.cursorY,
+      containerWidth: this.container?.clientWidth ?? null,
+      containerHeight: this.container?.clientHeight ?? null,
+      viewportClientHeight: viewportElement?.clientHeight ?? null,
+      viewportScrollHeight: viewportElement?.scrollHeight ?? null,
+      viewportScrollTop: viewportElement?.scrollTop ?? null,
+      ...details,
+    };
+
+    try {
+      console.log('[TerminalDebug]', JSON.stringify(payload));
+    } catch {
+      console.log('[TerminalDebug]', payload);
+    }
+  }
+
+  public logViewportDiagnostics(reason: string): void {
+    this.debugLog(reason);
+  }
+
+  private captureBufferSnapshot(): TerminalBufferSnapshot {
+    const viewport = this.container?.querySelector('.xterm-viewport');
+    const viewportElement = viewport instanceof HTMLElement ? viewport : null;
+    const buffer = this.terminal.buffer.active;
+
+    return {
+      bufferType: buffer.type,
+      viewportY: buffer.viewportY,
+      baseY: buffer.baseY,
+      cursorX: buffer.cursorX,
+      cursorY: buffer.cursorY,
+      termCols: this.terminal.cols,
+      termRows: this.terminal.rows,
+      viewportScrollTop: viewportElement?.scrollTop ?? null,
+    };
+  }
+
+  private logBufferTransition(
+    event: string,
+    before: TerminalBufferSnapshot,
+    after: TerminalBufferSnapshot,
+    details: Record<string, TerminalDebugValue> = {}
+  ): void {
+    const changed = (
+      before.bufferType !== after.bufferType
+      || before.viewportY !== after.viewportY
+      || before.baseY !== after.baseY
+      || before.cursorX !== after.cursorX
+      || before.cursorY !== after.cursorY
+      || before.termCols !== after.termCols
+      || before.termRows !== after.termRows
+      || before.viewportScrollTop !== after.viewportScrollTop
+    );
+
+    if (!changed) {
+      return;
+    }
+
+    this.debugLog(event, {
+      beforeBufferType: before.bufferType,
+      afterBufferType: after.bufferType,
+      beforeViewportY: before.viewportY,
+      afterViewportY: after.viewportY,
+      beforeBaseY: before.baseY,
+      afterBaseY: after.baseY,
+      beforeCursorX: before.cursorX,
+      afterCursorX: after.cursorX,
+      beforeCursorY: before.cursorY,
+      afterCursorY: after.cursorY,
+      beforeTermCols: before.termCols,
+      afterTermCols: after.termCols,
+      beforeTermRows: before.termRows,
+      afterTermRows: after.termRows,
+      beforeViewportScrollTop: before.viewportScrollTop,
+      afterViewportScrollTop: after.viewportScrollTop,
+      ...details,
+    });
+  }
+
+  private trackDiagnosticCommandInput(data: string): void {
+    if (!TERMINAL_DEBUG_DIAGNOSTICS_ENABLED || !data) {
+      return;
+    }
+
+    for (const character of data) {
+      if (character === '\r' || character === '\n') {
+        const command = this.diagnosticCommandBuffer.trim();
+        if (command) {
+          this.debugLog('input:command:enter', {
+            command,
+          });
+        }
+        if (command === 'codex') {
+          this.diagnosticCodexTraceUntil = Date.now() + TERMINAL_DEBUG_CODEX_TRACE_DURATION;
+          this.diagnosticCodexOutputLogCount = 0;
+          this.debugLog('trace:codex:start', {
+            durationMs: TERMINAL_DEBUG_CODEX_TRACE_DURATION,
+          });
+        }
+        this.diagnosticCommandBuffer = '';
+        continue;
+      }
+
+      if (character === '\u007f' || character === '\b') {
+        this.diagnosticCommandBuffer = this.diagnosticCommandBuffer.slice(0, -1);
+        continue;
+      }
+
+      if (character >= ' ' && character !== '\u001b') {
+        this.diagnosticCommandBuffer += character;
+      }
+    }
+  }
+
+  private shouldTraceDiagnosticOutput(payload: string): boolean {
+    if (!TERMINAL_DEBUG_DIAGNOSTICS_ENABLED || !payload) {
+      return false;
+    }
+
+    if (
+      payload.includes('\u001b[?1049h')
+      || payload.includes('\u001b[?1049l')
+      || payload.includes('\u001b[?1047h')
+      || payload.includes('\u001b[?1047l')
+      || payload.includes('\u001b[?47h')
+      || payload.includes('\u001b[?47l')
+    ) {
+      return true;
+    }
+
+    if (Date.now() > this.diagnosticCodexTraceUntil) {
+      return false;
+    }
+
+    return this.diagnosticCodexOutputLogCount < TERMINAL_DEBUG_CODEX_OUTPUT_LOG_LIMIT;
+  }
+
+  private summarizeDiagnosticPayload(payload: string): Record<string, TerminalDebugValue> {
+    const normalizedPreview = payload
+      .slice(0, 120)
+      .replace(/\u001b/g, '<ESC>')
+      .replace(/\r/g, '<CR>')
+      .replace(/\n/g, '<LF>');
+
+    return {
+      payloadLength: payload.length,
+      hasAltEnter: payload.includes('\u001b[?1049h') || payload.includes('\u001b[?1047h') || payload.includes('\u001b[?47h'),
+      hasAltExit: payload.includes('\u001b[?1049l') || payload.includes('\u001b[?1047l') || payload.includes('\u001b[?47l'),
+      hasClear: payload.includes('\u001b[2J') || payload.includes('\u001b[3J'),
+      hasCursorHome: payload.includes('\u001b[H'),
+      preview: normalizedPreview,
+    };
+  }
+
+  private async createPtyProcess(): Promise<void> {
     const terminalAPI = getTerminalAPI();
     if (!terminalAPI) {
       console.error('[TerminalSession] terminalAPI unavailable');
@@ -1316,12 +1523,19 @@ export class TerminalSession {
       return;
     }
 
+    const spawnCols = Math.max(TERMINAL_MIN_COLS, this.terminal.cols);
+    const spawnRows = Math.max(TERMINAL_MIN_ROWS, this.terminal.rows);
+    this.debugLog('pty:create:start', {
+      spawnCols,
+      spawnRows,
+    });
+
     try {
       const result = await terminalAPI.create(
-        options.cols || 80,
-        options.rows || 24,
-        options.cwd,
-        options.shell
+        spawnCols,
+        spawnRows,
+        this.initialOptions.cwd,
+        this.initialOptions.shell
       ) as TerminalCreateResult;
 
       if (!result.success) {
@@ -1342,14 +1556,42 @@ export class TerminalSession {
         this.terminal.options.windowsPty = result.ptyInfo;
       }
 
+      this.lastSyncedPtySize = { cols: spawnCols, rows: spawnRows };
+      this.pendingPtySync = false;
+      this.debugLog('pty:create:success', {
+        spawnCols,
+        spawnRows,
+        backend: result.ptyInfo?.backend ?? null,
+        buildNumber: result.ptyInfo?.buildNumber ?? null,
+      });
       this.attachRendererListeners();
       this.flushPendingInput();
-      this.syncPtySize();
+      if (this.terminal.cols !== spawnCols || this.terminal.rows !== spawnRows) {
+        this.syncPtySize(false, 'pty:create:post-create-size-changed');
+      }
+      this.scheduleStartupScrollToTop();
       console.log(`[TerminalSession] terminal created: ${this.id}`);
     } catch (error) {
       console.error('[TerminalSession] failed to create terminal:', error);
       this.enqueueTerminalOutput(`\r\nFailed to create terminal: ${error}\r\n`);
     }
+  }
+
+  private scheduleStartupScrollToTop(): void {
+    if (this.startupScrollTopTimer !== null) {
+      window.clearTimeout(this.startupScrollTopTimer);
+    }
+
+    this.startupScrollTopTimer = window.setTimeout(() => {
+      this.startupScrollTopTimer = null;
+      if (this.isDisposed) {
+        return;
+      }
+
+      this.debugLog('viewport:startup-scroll-top:before');
+      this.terminal.scrollToTop();
+      this.debugLog('viewport:startup-scroll-top:after');
+    }, 300);
   }
 
   private attachRendererListeners(): void {
@@ -1381,6 +1623,10 @@ export class TerminalSession {
       return;
     }
 
+    if (this.shouldTraceDiagnosticOutput(data)) {
+      this.diagnosticCodexOutputLogCount += 1;
+      this.debugLog('output:enqueue', this.summarizeDiagnosticPayload(data));
+    }
     this.pendingOutputChunks.push(data);
     this.scheduleOutputFlush();
   }
@@ -1441,9 +1687,21 @@ export class TerminalSession {
       return;
     }
 
+    const shouldTracePayload = this.shouldTraceDiagnosticOutput(payload);
+    if (shouldTracePayload) {
+      this.diagnosticCodexOutputLogCount += 1;
+      this.debugLog('output:write:before', this.summarizeDiagnosticPayload(payload));
+    }
+
     this.isWritingOutput = true;
+    const beforeSnapshot = this.captureBufferSnapshot();
     this.terminal.write(payload, () => {
       this.isWritingOutput = false;
+      if (shouldTracePayload) {
+        const afterSnapshot = this.captureBufferSnapshot();
+        this.debugLog('output:write:after', this.summarizeDiagnosticPayload(payload));
+        this.logBufferTransition('output:buffer-transition', beforeSnapshot, afterSnapshot, this.summarizeDiagnosticPayload(payload));
+      }
       if (this.pendingOutputChunks.length > 0) {
         this.scheduleOutputFlush();
       }
@@ -1455,6 +1713,7 @@ export class TerminalSession {
       return;
     }
 
+    this.trackDiagnosticCommandInput(data);
     const terminalAPI = getTerminalAPI();
     if (!this.id || !terminalAPI) {
       this.pendingInputBuffer += data;
@@ -1493,7 +1752,8 @@ export class TerminalSession {
       this.terminal.open(container);
     }
 
-    this.fit();
+    this.debugLog('attach:open');
+    this.fit('attach:open');
     this.setupContextMenu();
     this.setupKeyboardShortcuts();
 
@@ -1505,6 +1765,16 @@ export class TerminalSession {
     };
     container.addEventListener('click', this.clickFocusHandler);
     this.terminal.focus();
+  }
+
+  public ensurePtyCreated(): void {
+    if (this.isDisposed || this.id || this.createPtyPromise) {
+      return;
+    }
+
+    this.createPtyPromise = this.createPtyProcess().finally(() => {
+      this.createPtyPromise = null;
+    });
   }
 
   private setupContextMenu(): void {
@@ -1639,20 +1909,27 @@ export class TerminalSession {
     }
   }
 
-  public resize(forcePtySync = false): void {
-    if (this.fit() || forcePtySync) {
-      this.syncPtySize();
+  public resize(forcePtySync = false, reason = 'terminal:resize'): void {
+    this.debugLog('terminal:resize:start', {
+      forcePtySync,
+      reason,
+    });
+    if (this.fit(`${reason}:fit`) || forcePtySync) {
+      this.syncPtySize(forcePtySync, reason);
     }
   }
 
-  public fit(): boolean {
+  public fit(reason = 'fit'): boolean {
     if (!this.container) {
+      this.debugLog('terminal:fit:skip:no-container', { reason });
       return false;
     }
 
+    this.syncLayoutDensity();
     this.syncThemeOptions();
     const dimensions = this.fitAddon.proposeDimensions();
     if (!dimensions) {
+      this.debugLog('terminal:fit:skip:no-dimensions', { reason });
       return false;
     }
 
@@ -1660,41 +1937,153 @@ export class TerminalSession {
     const nextRows = Math.max(TERMINAL_MIN_ROWS, dimensions.rows);
 
     if (nextCols === this.terminal.cols && nextRows === this.terminal.rows) {
+      this.debugLog('terminal:fit:skip:same-size', {
+        reason,
+        proposedCols: nextCols,
+        proposedRows: nextRows,
+      });
       return false;
     }
 
+    const previousCols = this.terminal.cols;
+    const previousRows = this.terminal.rows;
     this.terminal.resize(nextCols, nextRows);
+    this.debugLog('terminal:fit:applied', {
+      reason,
+      previousCols,
+      previousRows,
+      nextCols,
+      nextRows,
+    });
     return true;
   }
 
-  public syncPtySize(): void {
+  public syncPtySize(force = false, reason = 'syncPtySize'): void {
     const cols = this.terminal.cols;
     const rows = this.terminal.rows;
-
-    if (
-      this.lastSyncedPtySize
+    const isSameSizeAsLastSync = (
+      !!this.lastSyncedPtySize
       && this.lastSyncedPtySize.cols === cols
       && this.lastSyncedPtySize.rows === rows
+    );
+
+    if (
+      !force
+      && isSameSizeAsLastSync
       && !this.pendingPtySync
     ) {
+      this.debugLog('pty:sync:skip:same-size', {
+        reason,
+        force,
+      });
       return;
     }
 
     const terminalAPI = getTerminalAPI();
     if (!this.id || !terminalAPI) {
       this.pendingPtySync = true;
+      this.debugLog('pty:sync:deferred', {
+        reason,
+        force,
+      });
+      return;
+    }
+
+    if (force && isSameSizeAsLastSync) {
+      this.debugLog('pty:sync:force-nudge', {
+        reason,
+        force,
+      });
+      void this.forcePtyResize(cols, rows, reason);
       return;
     }
 
     this.pendingPtySync = false;
     this.lastSyncedPtySize = { cols, rows };
+    this.debugLog('pty:sync:request', {
+      reason,
+      force,
+      cols,
+      rows,
+    });
     void terminalAPI.resize(this.id, cols, rows).then((result) => {
+      this.debugLog('pty:sync:result', {
+        reason,
+        force,
+        cols,
+        rows,
+        success: result?.success ?? false,
+      });
       if (!result?.success) {
         this.pendingPtySync = true;
       }
     }).catch(() => {
+      this.debugLog('pty:sync:error', {
+        reason,
+        force,
+        cols,
+        rows,
+      });
       this.pendingPtySync = true;
     });
+  }
+
+  private async forcePtyResize(cols: number, rows: number, reason = 'forcePtyResize'): Promise<void> {
+    const terminalAPI = getTerminalAPI();
+    if (!this.id || !terminalAPI) {
+      this.pendingPtySync = true;
+      this.debugLog('pty:force-resize:deferred', {
+        reason,
+        cols,
+        rows,
+      });
+      return;
+    }
+
+    // Some Windows PTY stacks ignore same-size resize calls, so nudge once before restoring.
+    const nudgedRows = rows + 1;
+
+    this.pendingPtySync = false;
+    this.lastSyncedPtySize = { cols, rows };
+    this.debugLog('pty:force-resize:nudge-request', {
+      reason,
+      cols,
+      rows,
+      nudgedRows,
+    });
+
+    try {
+      const nudgeResult = await terminalAPI.resize(this.id, cols, nudgedRows);
+      this.debugLog('pty:force-resize:nudge-result', {
+        reason,
+        cols,
+        rows,
+        nudgedRows,
+        success: nudgeResult?.success ?? false,
+      });
+      if (!nudgeResult?.success) {
+        this.pendingPtySync = true;
+        return;
+      }
+
+      const result = await terminalAPI.resize(this.id, cols, rows);
+      this.debugLog('pty:force-resize:restore-result', {
+        reason,
+        cols,
+        rows,
+        success: result?.success ?? false,
+      });
+      if (!result?.success) {
+        this.pendingPtySync = true;
+      }
+    } catch {
+      this.debugLog('pty:force-resize:error', {
+        reason,
+        cols,
+        rows,
+      });
+      this.pendingPtySync = true;
+    }
   }
 
   private syncThemeOptions(): boolean {
@@ -1711,6 +2100,29 @@ export class TerminalSession {
 
     this.appliedThemeSignature = nextSignature;
     this.terminal.options.theme = theme;
+    return true;
+  }
+
+  private syncLayoutDensity(): boolean {
+    const containerHeight = this.container?.clientHeight ?? 0;
+    const useCompactDensity = containerHeight > 0 && containerHeight <= TERMINAL_COMPACT_HEIGHT_THRESHOLD;
+    const nextFontSize = useCompactDensity ? TERMINAL_COMPACT_FONT_SIZE : TERMINAL_DEFAULT_FONT_SIZE;
+    const nextLineHeight = useCompactDensity ? TERMINAL_COMPACT_LINE_HEIGHT : TERMINAL_DEFAULT_LINE_HEIGHT;
+    const nextSignature = `${nextFontSize}:${nextLineHeight}`;
+    if (nextSignature === this.appliedDensitySignature) {
+      return false;
+    }
+
+    this.appliedDensitySignature = nextSignature;
+    this.terminal.options.fontSize = nextFontSize;
+    this.terminal.options.lineHeight = nextLineHeight;
+    this.clearTextureAtlas();
+    this.debugLog('terminal:density:applied', {
+      compact: useCompactDensity,
+      densityFontSize: nextFontSize,
+      densityLineHeight: nextLineHeight,
+      densityHeightThreshold: TERMINAL_COMPACT_HEIGHT_THRESHOLD,
+    });
     return true;
   }
 
@@ -1832,10 +2244,16 @@ export class TerminalSession {
       this.outputFlushTimer = null;
     }
 
+    if (this.startupScrollTopTimer !== null) {
+      window.clearTimeout(this.startupScrollTopTimer);
+      this.startupScrollTopTimer = null;
+    }
+
     if (this.appearanceRefreshFrame !== null) {
       window.cancelAnimationFrame(this.appearanceRefreshFrame);
       this.appearanceRefreshFrame = null;
     }
+    this.pendingAppearanceForcePtySync = false;
 
     if (this.searchRefreshTimer !== null) {
       window.clearTimeout(this.searchRefreshTimer);

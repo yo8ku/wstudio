@@ -157,7 +157,7 @@
 
     .xterm {
       height: 100%;
-      padding: 4px 8px 2px;
+      padding: 0 8px 0;
       box-sizing: border-box;
       overflow: hidden;
 
@@ -178,7 +178,6 @@
       .xterm-viewport {
         background: var(--ws-panel-background) !important;
         overflow-y: auto !important;
-        scrollbar-gutter: stable;
         scrollbar-width: thin;
         scrollbar-color: transparent transparent;
         box-sizing: border-box;

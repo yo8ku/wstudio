@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
 import { Icon } from '../../../Icons';
 import { DeleteIcon } from '../../../Icons/DeleteIcon';
+import { useExplorerStore } from '../../../../stores/explorerStore';
 import { TerminalSession, type TerminalSessionOptions } from './TerminalSession';
 import 'xterm/css/xterm.css';
 import './TerminalPanel.scss';
@@ -17,6 +18,8 @@ const POWERSHELL_TERMINAL_COMMAND =
 const TERMINAL_SCROLLBAR_FADE_STEP = 0.01;
 const TERMINAL_SCROLLBAR_FADE_INTERVAL = 10;
 const TERMINAL_SCROLLBAR_VISIBLE_OPACITY = 1;
+const TERMINAL_WHEEL_LINE_HEIGHT = 16;
+const TERMINAL_VISIBILITY_SETTLE_RESIZE_DELAY = 240;
 const TERMINAL_SIDEBAR_DEFAULT_WIDTH = 120;
 const TERMINAL_SIDEBAR_MIN_WIDTH = 48;
 const TERMINAL_SIDEBAR_MAX_WIDTH = 280;
@@ -53,6 +56,19 @@ interface TerminalEntry {
   accentColor?: string | null;
 }
 
+interface TerminalPanelPersistenceState {
+  activeTerminalId: string | null;
+  shell: ShellType;
+  sidebarWidth: number;
+  terminalEntries: TerminalEntry[];
+  terminalSequence: number;
+}
+
+interface TerminalPanelWindow extends Window {
+  __noteStudioTerminalPanelPersistence?: TerminalPanelPersistenceState;
+  __noteStudioTerminalPanelUnloadCleanupInstalled?: boolean;
+}
+
 interface TerminalPanelProps {
   createRequestId?: number;
   shell?: ShellType;
@@ -75,6 +91,50 @@ const INITIAL_SCROLLBAR_STATE: TerminalScrollbarState = {
   thumbTop: 0,
   thumbHeight: 0,
 };
+
+const getTerminalPanelPersistenceState = (): TerminalPanelPersistenceState => {
+  if (typeof window === 'undefined') {
+    return {
+      activeTerminalId: null,
+      shell: 'powershell',
+      sidebarWidth: TERMINAL_SIDEBAR_DEFAULT_WIDTH,
+      terminalEntries: [],
+      terminalSequence: 0,
+    };
+  }
+
+  const terminalWindow = window as TerminalPanelWindow;
+  if (!terminalWindow.__noteStudioTerminalPanelPersistence) {
+    terminalWindow.__noteStudioTerminalPanelPersistence = {
+      activeTerminalId: null,
+      shell: 'powershell',
+      sidebarWidth: TERMINAL_SIDEBAR_DEFAULT_WIDTH,
+      terminalEntries: [],
+      terminalSequence: 0,
+    };
+  }
+
+  return terminalWindow.__noteStudioTerminalPanelPersistence;
+};
+
+const terminalPanelPersistence = getTerminalPanelPersistenceState();
+
+const disposePersistentTerminalPanelSessions = (): void => {
+  terminalPanelPersistence.terminalEntries.forEach((entry) => {
+    entry.session.dispose({ destroyTerminal: true });
+  });
+  terminalPanelPersistence.terminalEntries = [];
+  terminalPanelPersistence.activeTerminalId = null;
+  terminalPanelPersistence.terminalSequence = 0;
+};
+
+if (typeof window !== 'undefined') {
+  const terminalWindow = window as TerminalPanelWindow;
+  if (!terminalWindow.__noteStudioTerminalPanelUnloadCleanupInstalled) {
+    terminalWindow.__noteStudioTerminalPanelUnloadCleanupInstalled = true;
+    window.addEventListener('beforeunload', disposePersistentTerminalPanelSessions);
+  }
+}
 
 const isActionKey = (event: React.KeyboardEvent<HTMLElement>): boolean => (
   event.key === 'Enter' || event.key === ' '
@@ -212,7 +272,7 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!terminalContainerRef.current || attachedRef.current) {
+    if (!isVisible || !terminalContainerRef.current || attachedRef.current) {
       return;
     }
 
@@ -227,14 +287,14 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
     ptySyncSuppressedUntilRef.current = Date.now() + 180;
 
     primaryFrameId = requestAnimationFrame(() => {
-      session.fit();
+      session.fit('view:attach:raf-1');
       secondaryFrameId = requestAnimationFrame(() => {
-        session.fit();
+        session.fit('view:attach:raf-2');
       });
     });
 
     settleTimerId = setTimeout(() => {
-      session.resize(true);
+      session.fit('view:attach:settle');
     }, 120);
 
     return () => {
@@ -246,7 +306,7 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
       attachedRef.current = false;
       session.detach(currentContainer);
     };
-  }, [session]);
+  }, [isVisible, session]);
 
   useEffect(() => {
     if (!attachedRef.current || !isActive || !isVisible) {
@@ -267,7 +327,7 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
 
       windowResizeTimerRef.current = setTimeout(() => {
         isWindowResizingRef.current = false;
-        session.resize(true);
+        session.resize(false, 'view:window-resize:settle');
         windowResizeTimerRef.current = null;
       }, 120);
     };
@@ -300,21 +360,21 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
         frameId = null;
 
         if (isLiveResizing) {
-          session.fit();
+          session.fit('view:resize-observer:live-resize');
           return;
         }
 
         if (isWindowResizingRef.current) {
-          session.fit();
+          session.fit('view:resize-observer:window-resize');
           return;
         }
 
         if (Date.now() < ptySyncSuppressedUntilRef.current) {
-          session.fit();
+          session.fit('view:resize-observer:pty-sync-suppressed');
           return;
         }
 
-        session.resize();
+        session.resize(false, 'view:resize-observer');
       });
     });
 
@@ -342,8 +402,18 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
     let frameId = 0;
     let resizeObserver: ResizeObserver | null = null;
     let boundViewport: HTMLElement | null = null;
+    const terminal = session.getTerminal();
+    const terminalScrollSubscription = terminal.onScroll(() => {
+      session.logViewportDiagnostics('event:terminal:onScroll');
+      scheduleScrollbarStateUpdate();
+    });
+    const terminalResizeSubscription = terminal.onResize(() => {
+      session.logViewportDiagnostics('event:terminal:onResize');
+      scheduleScrollbarStateUpdate();
+    });
 
     const handleViewportScroll = () => {
+      session.logViewportDiagnostics('event:viewport:scroll');
       scheduleScrollbarStateUpdate();
     };
 
@@ -372,6 +442,8 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
 
     return () => {
       cancelAnimationFrame(frameId);
+      terminalScrollSubscription.dispose();
+      terminalResizeSubscription.dispose();
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
@@ -382,24 +454,94 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
   }, [isActive, isVisible, scheduleScrollbarStateUpdate]);
 
   useEffect(() => {
+    if (!attachedRef.current || !isActive || !isVisible || !terminalContainerRef.current) {
+      return;
+    }
+
+    const currentContainer = terminalContainerRef.current;
+
+    const handleTerminalWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) {
+        return;
+      }
+
+      const viewport = viewportRef.current;
+      if (!(viewport instanceof HTMLElement)) {
+        return;
+      }
+
+      const maxScrollTop = viewport.scrollHeight - viewport.clientHeight;
+      if (maxScrollTop <= 0) {
+        return;
+      }
+
+      let deltaY = event.deltaY;
+      if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+        deltaY *= TERMINAL_WHEEL_LINE_HEIGHT;
+      } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+        deltaY *= viewport.clientHeight;
+      }
+
+      if (!Number.isFinite(deltaY) || deltaY === 0) {
+        return;
+      }
+
+      const nextScrollTop = Math.min(
+        Math.max(viewport.scrollTop + deltaY, 0),
+        maxScrollTop
+      );
+
+      if (nextScrollTop === viewport.scrollTop) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      viewport.scrollTop = nextScrollTop;
+      fadeInScrollbarThumb();
+      scheduleScrollbarStateUpdate();
+    };
+
+    currentContainer.addEventListener('wheel', handleTerminalWheel, {
+      passive: false,
+      capture: true,
+    });
+
+    return () => {
+      currentContainer.removeEventListener('wheel', handleTerminalWheel, true);
+    };
+  }, [fadeInScrollbarThumb, isActive, isVisible, scheduleScrollbarStateUpdate]);
+
+  useEffect(() => {
     if (!attachedRef.current || !isActive || !isVisible) {
       return;
     }
 
     let primaryFrameId = 0;
     let secondaryFrameId = 0;
+    let settleTimerId: ReturnType<typeof setTimeout> | null = null;
 
     primaryFrameId = requestAnimationFrame(() => {
-      session.fit();
+      session.fit('view:active:raf-1');
       secondaryFrameId = requestAnimationFrame(() => {
-        session.resize(true);
-        session.focus();
+        session.fit('view:active:raf-2');
       });
     });
+
+    settleTimerId = setTimeout(() => {
+      session.fit('view:active:settle-pre-create');
+      ptySyncSuppressedUntilRef.current = Date.now() + TERMINAL_VISIBILITY_SETTLE_RESIZE_DELAY;
+      session.ensurePtyCreated();
+      session.resize(false, 'view:active:settle-post-create');
+      session.focus();
+    }, TERMINAL_VISIBILITY_SETTLE_RESIZE_DELAY);
 
     return () => {
       cancelAnimationFrame(primaryFrameId);
       cancelAnimationFrame(secondaryFrameId);
+      if (settleTimerId) {
+        clearTimeout(settleTimerId);
+      }
     };
   }, [isActive, isVisible, session]);
 
@@ -581,10 +723,17 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   isVisible = true,
   isLiveResizing = false,
 }) => {
-  const [shell, setShell] = useState<ShellType>(externalShell || 'powershell');
-  const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>([]);
-  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(TERMINAL_SIDEBAR_DEFAULT_WIDTH);
+  const workspacePath = useExplorerStore((state) => state.workspacePath);
+  const [resolvedWorkspacePath, setResolvedWorkspacePath] = useState(() => workspacePath.trim());
+  const [isWorkspacePathReady, setIsWorkspacePathReady] = useState(() => Boolean(workspacePath.trim()));
+  const [shell, setShell] = useState<ShellType>(() => externalShell || terminalPanelPersistence.shell || 'powershell');
+  const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>(() => [...terminalPanelPersistence.terminalEntries]);
+  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(() => (
+    terminalPanelPersistence.activeTerminalId
+    ?? terminalPanelPersistence.terminalEntries[0]?.id
+    ?? null
+  ));
+  const [sidebarWidth, setSidebarWidth] = useState(() => terminalPanelPersistence.sidebarWidth || TERMINAL_SIDEBAR_DEFAULT_WIDTH);
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     position: { x: number; y: number };
@@ -595,8 +744,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const pendingCommandRef = useRef<string | null>(null);
   const terminalEntriesRef = useRef<TerminalEntry[]>([]);
   const activeTerminalIdRef = useRef<string | null>(null);
-  const terminalSequenceRef = useRef(0);
-  const initialShellRef = useRef<ShellType>(externalShell || shell);
+  const terminalSequenceRef = useRef(terminalPanelPersistence.terminalSequence);
+  const initialShellRef = useRef<ShellType>(externalShell || terminalPanelPersistence.shell || 'powershell');
   const lastCreateRequestIdRef = useRef(createRequestId);
   const sidebarResizeStartXRef = useRef(0);
   const sidebarResizeStartWidthRef = useRef(TERMINAL_SIDEBAR_DEFAULT_WIDTH);
@@ -604,12 +753,66 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const normalizedWorkspacePath = workspacePath.trim();
+    if (normalizedWorkspacePath) {
+      setResolvedWorkspacePath(normalizedWorkspacePath);
+      setIsWorkspacePathReady(true);
+      return;
+    }
+
+    const workspaceAPI = window.electron?.workspace;
+    if (!workspaceAPI?.getDir) {
+      setResolvedWorkspacePath('');
+      setIsWorkspacePathReady(true);
+      return;
+    }
+
+    let isMounted = true;
+    setIsWorkspacePathReady(false);
+
+    void workspaceAPI.getDir().then((result) => {
+      if (!isMounted) {
+        return;
+      }
+
+      const fallbackWorkspacePath = result?.success
+        ? String(result.data || '').trim()
+        : '';
+      setResolvedWorkspacePath(fallbackWorkspacePath);
+    }).catch(() => {
+      if (!isMounted) {
+        return;
+      }
+
+      setResolvedWorkspacePath('');
+    }).finally(() => {
+      if (isMounted) {
+        setIsWorkspacePathReady(true);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [workspacePath]);
+
+  useEffect(() => {
     terminalEntriesRef.current = terminalEntries;
+    terminalPanelPersistence.terminalEntries = terminalEntries;
   }, [terminalEntries]);
 
   useEffect(() => {
     activeTerminalIdRef.current = activeTerminalId;
+    terminalPanelPersistence.activeTerminalId = activeTerminalId;
   }, [activeTerminalId]);
+
+  useEffect(() => {
+    terminalPanelPersistence.shell = shell;
+  }, [shell]);
+
+  useEffect(() => {
+    terminalPanelPersistence.sidebarWidth = sidebarWidth;
+  }, [sidebarWidth]);
 
   const handleSidebarResizeMove = useCallback((event: MouseEvent) => {
     if (!isSidebarResizingRef.current) {
@@ -696,9 +899,11 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   const buildTerminalEntry = useCallback((targetShell: ShellType): TerminalEntry => {
     terminalSequenceRef.current += 1;
+    terminalPanelPersistence.terminalSequence = terminalSequenceRef.current;
     const sequence = terminalSequenceRef.current;
     const sessionOptions: TerminalSessionOptions = {
       shell: getShellCommand(targetShell),
+      cwd: resolvedWorkspacePath || undefined,
     };
 
     return {
@@ -706,7 +911,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       title: getShellDisplayName(targetShell),
       session: new TerminalSession(sessionOptions),
     };
-  }, [getShellCommand, getShellDisplayName]);
+  }, [getShellCommand, getShellDisplayName, resolvedWorkspacePath]);
 
   const createTerminalEntry = useCallback((targetShell?: ShellType) => {
     const nextEntry = buildTerminalEntry(targetShell || shell);
@@ -964,6 +1169,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     terminalEntriesRef.current.forEach((entry) => {
       entry.session.dispose({ destroyTerminal: true });
     });
+    terminalPanelPersistence.terminalEntries = [];
+    terminalPanelPersistence.activeTerminalId = null;
 
     const nextEntry = buildTerminalEntry(externalShell);
     setTerminalEntries([nextEntry]);
@@ -989,7 +1196,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }
 
     const frameId = requestAnimationFrame(() => {
-      if (!mounted || terminalEntriesRef.current.length > 0) {
+      if (!mounted || !isVisible || !isWorkspacePathReady || terminalEntriesRef.current.length > 0) {
         return;
       }
 
@@ -1001,11 +1208,24 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     return () => {
       mounted = false;
       cancelAnimationFrame(frameId);
-      terminalEntriesRef.current.forEach((entry) => {
-        entry.session.dispose({ destroyTerminal: true });
-      });
+      terminalPanelPersistence.terminalEntries = terminalEntriesRef.current;
+      terminalPanelPersistence.activeTerminalId = activeTerminalIdRef.current;
+      terminalPanelPersistence.shell = shell;
+      terminalPanelPersistence.sidebarWidth = sidebarWidth;
+      terminalPanelPersistence.terminalSequence = terminalSequenceRef.current;
     };
-  }, [buildTerminalEntry]);
+  }, [buildTerminalEntry, isVisible, isWorkspacePathReady, shell, sidebarWidth]);
+
+  useEffect(() => {
+    if (terminalEntries.length === 0) {
+      setActiveTerminalId(null);
+      return;
+    }
+
+    if (!activeTerminalId || !terminalEntries.some((entry) => entry.id === activeTerminalId)) {
+      setActiveTerminalId(terminalEntries[0].id);
+    }
+  }, [activeTerminalId, terminalEntries]);
 
   const activeTerminalEntry = useMemo(() => (
     terminalEntries.find((entry) => entry.id === activeTerminalId) ?? null

@@ -16,6 +16,7 @@ import { registerInlineChatHistoryHandlers } from './ipc/inlineChatHistoryHandle
 import { registerTerminalHandlers } from './ipc/terminalHandlers';
 import { registerAIModelHandlers } from './ipc/aiModelHandlers';
 import { registerFileReferenceHandlers } from './ipc/fileReferenceHandlers';
+import { registerWorkspaceHandlers } from './ipc/workspaceHandlers';
 import { registerWorkspaceVectorIndexHandlers, setWorkspaceVectorIndexMainWindow } from './ipc/workspaceVectorIndexHandlers';
 import { registerWorkspaceIndexDbHandlers } from './ipc/workspaceIndexDbHandlers';
 import { ThemeService } from './services/ThemeService';
@@ -95,6 +96,7 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   
   // 注册文件操作 IPC 处理器
   registerFileHandlers();
+  registerWorkspaceHandlers(workspaceManager);
   
   // 注册主题 IPC 处理器
   registerThemeHandlers();

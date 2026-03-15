@@ -27,6 +27,39 @@
   width: 100%;
   padding: 4px 4px 0 4px;
   contain: paint;
+
+  &:hover,
+  &:focus-within {
+    .explorer-section-trigger--folder-idle {
+      .explorer-section-chevron {
+        opacity: 1;
+      }
+
+      .explorer-section-folder-icon {
+        opacity: 0;
+      }
+    }
+
+    .explorer-section-trigger--form-idle {
+      .explorer-section-chevron {
+        opacity: 1;
+      }
+
+      .explorer-section-form-icon {
+        opacity: 0;
+      }
+    }
+
+    .explorer-section-trigger--editors-idle {
+      .explorer-section-chevron {
+        opacity: 1;
+      }
+
+      .explorer-section-editors-icon {
+        opacity: 0;
+      }
+    }
+  }
 }
 
 .explorer-section-trigger {
@@ -70,11 +103,16 @@
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      transition: opacity 120ms ease;
     }
 
     .explorer-section-folder-icon {
       display: none;
       font-size: 16px;
+      color: var(--ws-icon-foreground);
+    }
+
+    .explorer-section-chevron {
       color: var(--ws-icon-foreground);
     }
 
@@ -113,7 +151,8 @@
       opacity: 1;
     }
 
-    &:hover {
+    &:hover,
+    &:focus-visible {
       .explorer-section-chevron {
         opacity: 1;
       }
@@ -147,7 +186,8 @@
       opacity: 1;
     }
 
-    &:hover {
+    &:hover,
+    &:focus-visible {
       .explorer-section-chevron {
         opacity: 1;
       }
@@ -181,7 +221,8 @@
       opacity: 1;
     }
 
-    &:hover {
+    &:hover,
+    &:focus-visible {
       .explorer-section-chevron {
         opacity: 1;
       }
