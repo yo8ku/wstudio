@@ -1,0 +1,64 @@
+/**
+ * 通用开关组件样式
+ * 功能：定义 switch 的基础结构和默认视觉变量，允许调用侧通过 CSS 变量覆写尺寸与颜色。
+ */
+
+.ws-switch {
+  --ws-switch-width: 36px;
+  --ws-switch-height: 20px;
+  --ws-switch-padding: 2px;
+  --ws-switch-thumb-size: 14px;
+  --ws-switch-track-off: var(--ws-switch-off-background, var(--ws-input-border));
+  --ws-switch-track-on: var(--ws-switch-on-background, var(--ws-button-background));
+  --ws-switch-border-off: var(--ws-switch-off-border, transparent);
+  --ws-switch-border-on: var(--ws-switch-on-border, transparent);
+  --ws-switch-thumb: var(--ws-switch-thumb-color, var(--ws-button-foreground));
+  --ws-switch-thumb-checked: var(--ws-switch-thumb-checked-color, var(--ws-switch-thumb));
+  --ws-switch-thumb-shadow: none;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  width: var(--ws-switch-width);
+  height: var(--ws-switch-height);
+  padding: var(--ws-switch-padding);
+  border: 1px solid var(--ws-switch-border-off);
+  border-radius: 999px;
+  background-color: var(--ws-switch-track-off);
+  cursor: pointer;
+  flex-shrink: 0;
+  outline: none;
+
+  &.is-checked {
+    justify-content: flex-end;
+    background-color: var(--ws-switch-track-on);
+    border-color: var(--ws-switch-border-on);
+  }
+
+  &.is-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 1px solid var(--ws-focusBorder, var(--ws-accent));
+    outline-offset: 2px;
+  }
+
+  &__thumb {
+    display: block;
+    flex-shrink: 0;
+    min-width: var(--ws-switch-thumb-size);
+    min-height: var(--ws-switch-thumb-size);
+    width: var(--ws-switch-thumb-size);
+    height: var(--ws-switch-thumb-size);
+    border-radius: 50%;
+    background-color: var(--ws-switch-thumb, var(--ws-button-foreground, #ffffff));
+    box-shadow: var(--ws-switch-thumb-shadow);
+  }
+
+  &.is-checked &__thumb {
+    background-color: var(--ws-switch-thumb-checked, var(--ws-switch-thumb, var(--ws-button-foreground, #ffffff)));
+  }
+}

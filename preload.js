@@ -74,22 +74,6 @@ contextBridge.exposeInMainWorld('electron', {
     clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files')
   },
 
-  agentRuntime: {
-    initialize: (input) => ipcRenderer.invoke('agent-runtime:initialize', input),
-    getThread: (input) => ipcRenderer.invoke('agent-runtime:thread:get', input),
-    sendMessage: (input) => ipcRenderer.invoke('agent-runtime:send-message', input),
-    resetConversation: (input) => ipcRenderer.invoke('agent-runtime:reset-conversation', input),
-    respondToRequest: (input) => ipcRenderer.invoke('agent-runtime:request:respond', input),
-    interruptTurn: (input) => ipcRenderer.invoke('agent-runtime:turn:interrupt', input),
-    listToolExecutions: (input) => ipcRenderer.invoke('agent-runtime:tool-execution:list', input),
-    rollbackToolExecution: (input) => ipcRenderer.invoke('agent-runtime:tool-execution:rollback', input),
-    onEvent: (callback) => {
-      const subscription = (event, payload) => callback(payload);
-      ipcRenderer.on('agent-runtime:event', subscription);
-      return () => ipcRenderer.removeListener('agent-runtime:event', subscription);
-    }
-  },
-  
   // 知识库 API
   knowledgeBase: {
     openFolder: () => ipcRenderer.invoke('knowledge-base:open-folder')
@@ -122,17 +106,6 @@ contextBridge.exposeInMainWorld('electron', {
   },
   
   // 片段数据库 API
-  snippet: {
-    initialize: () => ipcRenderer.invoke('snippet:initialize'),
-    add: (snippet) => ipcRenderer.invoke('snippet:add', snippet),
-    update: (id, snippet) => ipcRenderer.invoke('snippet:update', id, snippet),
-    delete: (id) => ipcRenderer.invoke('snippet:delete', id),
-    get: (id) => ipcRenderer.invoke('snippet:get', id),
-    query: (query) => ipcRenderer.invoke('snippet:query', query),
-    getAll: (limit) => ipcRenderer.invoke('snippet:getAll', limit),
-    import: (snippets) => ipcRenderer.invoke('snippet:import', snippets),
-    clearAll: () => ipcRenderer.invoke('snippet:clearAll')
-  },
   
   // 终端 API
   terminal: {
@@ -341,25 +314,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearAll: () => ipcRenderer.invoke('chat-history:clear-all')
   },
 
-  agentRuntime: {
-    initialize: (input) => ipcRenderer.invoke('agent-runtime:initialize', input),
-    getThread: (input) => ipcRenderer.invoke('agent-runtime:thread:get', input),
-    sendMessage: (input) => ipcRenderer.invoke('agent-runtime:send-message', input),
-    resetConversation: (input) => ipcRenderer.invoke('agent-runtime:reset-conversation', input),
-    respondToRequest: (input) => ipcRenderer.invoke('agent-runtime:request:respond', input),
-    interruptTurn: (input) => ipcRenderer.invoke('agent-runtime:turn:interrupt', input),
-    listToolExecutions: (input) => ipcRenderer.invoke('agent-runtime:tool-execution:list', input),
-    rollbackToolExecution: (input) => ipcRenderer.invoke('agent-runtime:tool-execution:rollback', input),
-    onEvent: (callback) => {
-      const subscription = (event, payload) => callback(payload);
-      ipcRenderer.on('agent-runtime:event', subscription);
-      return () => ipcRenderer.removeListener('agent-runtime:event', subscription);
-    }
-  },
-  
   // 常用片段配置 API
-  readSnippetsConfig: () => ipcRenderer.invoke('snippets:read-config'),
-  saveSnippetsConfig: (content) => ipcRenderer.invoke('snippets:save-config', content),
   
   // 系统信息
   platform: process.platform,

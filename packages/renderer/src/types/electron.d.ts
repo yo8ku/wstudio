@@ -1,9 +1,9 @@
-/**
- * Electron API 绫诲瀷瀹氫箟
+﻿/**
+ * Electron API 缁鐎风€规矮绠?
  */
 
 /**
- * 涓婚鎺ュ彛
+ * 娑撳顣介幒銉ュ經
  */
 export interface ITheme {
   id: string;
@@ -14,7 +14,7 @@ export interface ITheme {
 }
 
 /**
- * 鎵╁睍淇℃伅鎺ュ彛
+ * 閹碘晛鐫嶆穱鈩冧紖閹恒儱褰?
  */
 export interface IExtensionInfo {
   extensionId: string;
@@ -46,7 +46,7 @@ export interface IExtensionVersion {
 }
 
 /**
- * 瀹夎缁撴灉鎺ュ彛
+ * 鐎瑰顥婄紒鎾寸亯閹恒儱褰?
  */
 export interface InstallResult {
   success: boolean;
@@ -56,7 +56,7 @@ export interface InstallResult {
 }
 
 /**
- * API 鍝嶅簲鎺ュ彛
+ * API 閸濆秴绨查幒銉ュ經
  */
 export interface APIResponse<T = any> {
   success: boolean;
@@ -133,11 +133,11 @@ export interface ElectronAPI {
       temperature?: number;
     }>) => Promise<{ success: boolean; count?: number }>;
   };
-  // 绐楀彛鐒︾偣鐘舵€佺洃鍚?
+  // 缁愭褰涢悞锔惧仯閻樿埖鈧胶娲冮崥?
   onWindowFocus?: (callback: (focused: boolean) => void) => void;
   onWindowBlur?: (callback: (focused: boolean) => void) => void;
   
-  // 鎵撳紑瑙嗛鏂囦欢瀵硅瘽妗?
+  // 閹垫挸绱戠憴鍡涱暥閺傚洣娆㈢€电鐦藉?
   openVideoFile?: () => Promise<{ canceled: boolean; filePath?: string }>;
   
   chatHistory?: {
@@ -150,8 +150,6 @@ export interface ElectronAPI {
     getMessages: (sessionId: string) => Promise<APIResponse<ChatMessageData[]>>;
     clearAll: () => Promise<APIResponse>;
   };
-  readSnippetsConfig?: () => Promise<string>;
-  saveSnippetsConfig?: (content: string) => Promise<APIResponse>;
   theme?: {
     list: () => Promise<APIResponse<ITheme[]>>;
     getCurrent: () => Promise<APIResponse<ITheme>>;
@@ -182,7 +180,7 @@ export interface FileResult {
 export type WorkspaceLastOpenedResult = APIResponse<string> | FileResult;
 
 /**
- * 鑱婂ぉ妯″瀷鎺ュ彛
+ * 閼卞﹤銇夊Ο鈥崇€烽幒銉ュ經
  */
 export interface ChatModel {
   id: string;
@@ -196,7 +194,7 @@ export interface ChatModel {
 }
 
 /**
- * AI 妯″瀷閰嶇疆鎺ュ彛
+ * AI 濡€崇€烽柊宥囩枂閹恒儱褰?
  */
 export interface AIModelConfig {
   id: string;
@@ -206,53 +204,32 @@ export interface AIModelConfig {
   baseUrl?: string;
   model?: string;
   enabled: boolean;
-  chatModels?: ChatModel[];  // 鍙€夌殑鑱婂ぉ妯″瀷鍒楄〃
+  chatModels?: ChatModel[];  // 閸欘垶鈧娈戦懕濠傘亯濡€崇€烽崚妤勩€?
   
-  // 馃 妯″瀷鍙傛暟锛堟牳蹇冿級
+  // 棣冾潵 濡€崇€烽崣鍌涙殶閿涘牊鐗宠箛鍐跨礆
   parameters?: {
-    temperature?: number;        // 0-2锛屽垱閫犳€э紝0=纭畾锛?=闅忔満
-    maxTokens?: number;          // 1-128000锛屾渶澶ц緭鍑洪暱搴?
-    topP?: number;               // 0-1锛屾牳閲囨牱锛屾帶鍒惰瘝姹囧鏍锋€?
-    frequencyPenalty?: number;   // -2 鍒?2锛岄鐜囨儵缃氾紝鍑忓皯閲嶅鍐呭
-    presencePenalty?: number;    // -2 鍒?2锛岄紦鍔辨柊璇濋
+    temperature?: number;        // 0-2閿涘苯鍨遍柅鐘斥偓褝绱?=绾喖鐣鹃敍?=闂呭繑婧€
+    maxTokens?: number;          // 1-128000閿涘本娓舵径褑绶崙娲毐鎼?
+    topP?: number;               // 0-1閿涘本鐗抽柌鍥ㄧ壉閿涘本甯堕崚鎯扮槤濮瑰洤顦块弽閿嬧偓?
+    frequencyPenalty?: number;   // -2 閸?2閿涘矂顣堕悳鍥ㄥ劦缂冩熬绱濋崙蹇撶毌闁插秴顦查崘鍛啇
+    presencePenalty?: number;    // -2 閸?2閿涘矂绱﹂崝杈ㄦ煀鐠囨繈顣?
   };
   
-  // 鈿欙笍 楂樼骇閰嶇疆锛堝彲閫夛級
+  // 閳挎瑱绗?妤傛楠囬柊宥囩枂閿涘牆褰查柅澶涚礆
   advanced?: {
-    timeout?: number;            // 璇锋眰瓒呮椂锛堟绉掞級
-    maxRetries?: number;         // 閲嶈瘯娆℃暟
-    stream?: boolean;            // 娴佸紡浼犺緭
-    proxy?: string;              // 浠ｇ悊璁剧疆
+    timeout?: number;            // 鐠囬攱鐪扮搾鍛閿涘牊顕犵粔鎺炵礆
+    maxRetries?: number;         // 闁插秷鐦▎鈩冩殶
+    stream?: boolean;            // 濞翠礁绱℃导鐘虹翻
+    proxy?: string;              // 娴狅絿鎮婄拋鍓х枂
     costControl?: {
-      maxCostPerRequest?: number;  // 鍗曟璇锋眰鏈€澶ф垚鏈紙缇庡厓锛?
-      dailyLimit?: number;         // 姣忔棩鎴愭湰闄愬埗锛堢編鍏冿級
+      maxCostPerRequest?: number;  // 閸楁洘顐肩拠閿嬬湴閺堚偓婢堆勫灇閺堫剨绱欑紘搴″帗閿?
+      dailyLimit?: number;         // 濮ｅ繑妫╅幋鎰拱闂勬劕鍩楅敍鍫㈢法閸忓喛绱?
     };
   };
 }
 
 /**
- * 鐗囨鎺ュ彛
- * 娉ㄦ剰锛氫粠 shared 鍖呭鍏ヤ互纭繚绫诲瀷涓€鑷存€?
- */
-export interface Snippet {
-  id?: number;
-  name: string;          // 鐗囨鍚嶇О锛岀敤浜庢樉绀哄拰鍖哄垎鐗囨
-  prefix: string;        // 瑙﹀彂鍓嶇紑锛堝繀濉級锛岀敤浜庤嚜鍔ㄨˉ鍏?
-  body: string;
-  description?: string;
-  language?: string;
-  tags?: string;
-}
-
-export interface SnippetQuery {
-  prefix?: string;
-  language?: string;
-  tags?: string[];
-  limit?: number;
-}
-
-/**
- * 琛ㄥ崟鍒嗙粍鏁版嵁鎺ュ彛
+ * 鐞涖劌宕熼崚鍡欑矋閺佺増宓侀幒銉ュ經
  */
 export interface FormGroupData {
   id: string;
@@ -263,13 +240,13 @@ export interface FormGroupData {
 }
 
 /**
- * 琛ㄥ崟鏁版嵁鎺ュ彛
+ * 鐞涖劌宕熼弫鐗堝祦閹恒儱褰?
  */
 export interface FormTableData {
   id: string;
   name: string;
   groupId: string | null;
-  data: string; // JSON 瀛楃涓诧紝鍖呭惈 columns 鍜?rows
+  data: string; // JSON 鐎涙顑佹稉璇х礉閸栧懎鎯?columns 閸?rows
   sortOrder: number;
   createdAt: number;
   updatedAt: number;
@@ -407,13 +384,13 @@ export interface ElectronIPC {
   };
   form?: {
     initialize: () => Promise<APIResponse>;
-    // 鍒嗙粍鎿嶄綔
+    // 閸掑棛绮嶉幙宥勭稊
     createGroup: (name: string, parentId: string | null) => Promise<APIResponse<FormGroupData>>;
     getAllGroups: () => Promise<APIResponse<FormGroupData[]>>;
     getGroupsByParent: (parentId: string | null) => Promise<APIResponse<FormGroupData[]>>;
     updateGroup: (id: string, updates: Partial<FormGroupData>) => Promise<APIResponse>;
     deleteGroup: (id: string) => Promise<APIResponse>;
-    // 琛ㄥ崟鎿嶄綔
+    // 鐞涖劌宕熼幙宥勭稊
     createForm: (name: string, groupId: string | null, data?: string) => Promise<APIResponse<FormTableData>>;
     getAllForms: () => Promise<APIResponse<FormTableData[]>>;
     getFormsByGroup: (groupId: string | null) => Promise<APIResponse<FormTableData[]>>;
@@ -421,17 +398,6 @@ export interface ElectronIPC {
     queryRows: (params: FormQueryParams) => Promise<APIResponse<FormQueryResult | null>>;
     updateForm: (id: string, updates: Partial<FormTableData>) => Promise<APIResponse>;
     deleteForm: (id: string) => Promise<APIResponse>;
-  };
-  snippet?: {
-    initialize: () => Promise<APIResponse>;
-    add: (snippet: Snippet) => Promise<APIResponse<number>>;
-    update: (id: number, snippet: Partial<Snippet>) => Promise<APIResponse<boolean>>;
-    delete: (id: number) => Promise<APIResponse<boolean>>;
-    get: (id: number) => Promise<APIResponse<Snippet>>;
-    query: (query: SnippetQuery) => Promise<APIResponse<Snippet[]>>;
-    getAll: (limit?: number) => Promise<APIResponse<Snippet[]>>;
-    import: (snippets: Snippet[]) => Promise<APIResponse<number>>;
-    clearAll: () => Promise<APIResponse>;
   };
   terminal: {
     create: (cols: number, rows: number, cwd?: string, shell?: string) => Promise<TerminalCreateResult>;
@@ -544,7 +510,7 @@ export interface ElectronIPC {
 }
 
 /**
- * 鑱婂ぉ娑堟伅鏁版嵁鎺ュ彛
+ * 閼卞﹤銇夊☉鍫熶紖閺佺増宓侀幒銉ュ經
  */
 export interface ChatMessageData {
   id: string;
@@ -553,11 +519,11 @@ export interface ChatMessageData {
   content: string;
   model?: string;
   timestamp: number;
-  reasoning?: string; // 娣卞害鎺ㄧ悊鍐呭锛堜粎 assistant 瑙掕壊锛?
+  reasoning?: string; // 濞ｅ崬瀹抽幒銊ф倞閸愬懎顔愰敍鍫滅矌 assistant 鐟欐帟澹婇敍?
 }
 
 /**
- * 鑱婂ぉ浼氳瘽鏁版嵁鎺ュ彛
+ * 閼卞﹤銇夋导姘崇樈閺佺増宓侀幒銉ュ經
  */
 export interface ChatSessionData {
   id: string;
@@ -568,7 +534,7 @@ export interface ChatSessionData {
 }
 
 /**
- * Embedding 妯″瀷閰嶇疆鎺ュ彛
+ * Embedding 濡€崇€烽柊宥囩枂閹恒儱褰?
  */
 export interface EmbeddingModelConfig {
   id: string;
@@ -587,7 +553,7 @@ export interface EmbeddingModelConfig {
 }
 
 /**
- * Embedding 鏈嶅姟鍟嗛厤缃帴鍙?
+ * Embedding 閺堝秴濮熼崯鍡涘帳缂冾喗甯撮崣?
  */
 export interface EmbeddingProviderConfig {
   id: string;
@@ -599,7 +565,7 @@ export interface EmbeddingProviderConfig {
 }
 
 /**
- * Embedding 缁撴灉鎺ュ彛
+ * Embedding 缂佹挻鐏夐幒銉ュ經
  */
 export interface EmbeddingResult {
   success: boolean;
@@ -611,7 +577,7 @@ export interface EmbeddingResult {
 
 
 /**
- * 鑷畾涔?Embedding 妯″瀷閰嶇疆鎺ュ彛
+ * 閼奉亜鐣炬稊?Embedding 濡€崇€烽柊宥囩枂閹恒儱褰?
  */
 export interface CustomEmbeddingConfig {
   apiEndpoint: string;
@@ -621,7 +587,7 @@ export interface CustomEmbeddingConfig {
 }
 
 /**
- * NoteStudio API 鎺ュ彛锛堥€氳繃 preload 鏆撮湶锛?
+ * NoteStudio API 閹恒儱褰涢敍鍫モ偓姘崇箖 preload 閺嗘挳婀堕敍?
  */
 export interface NoteStudioAPI {
   embedding: {
@@ -650,15 +616,15 @@ declare global {
   }
 }
 
-// ==================== 绗旇绯荤粺绫诲瀷瀹氫箟 ====================
+// ==================== 缁楁棁顔囩化鑽ょ埠缁鐎风€规矮绠?====================
 
 /**
- * 绗旇绫诲瀷
+ * 缁楁棁顔囩猾璇茬€?
  */
 export type NoteType = 'daily' | 'quick' | 'normal';
 
 /**
- * 绗旇鏁版嵁鎺ュ彛
+ * 缁楁棁顔囬弫鐗堝祦閹恒儱褰?
  */
 export interface NoteItem {
   id: string;
@@ -674,7 +640,7 @@ export interface NoteItem {
 }
 
 /**
- * 鏍囩鏁版嵁鎺ュ彛
+ * 閺嶅洨顒烽弫鐗堝祦閹恒儱褰?
  */
 export interface TagItem {
   id: string;
@@ -685,7 +651,7 @@ export interface TagItem {
 }
 
 /**
- * 閾炬帴鏁版嵁鎺ュ彛
+ * 闁剧偓甯撮弫鐗堝祦閹恒儱褰?
  */
 export type LinkTargetKind = 'note' | 'heading' | 'block';
 
@@ -707,7 +673,7 @@ export interface LinkItem {
 }
 
 /**
- * 鏈摼鎺ユ彁鍙婃暟鎹帴鍙?
+ * 閺堫亪鎽奸幒銉﹀絹閸欏﹥鏆熼幑顔藉复閸?
  */
 export interface UnlinkedMentionItem {
   noteId: string;
@@ -737,7 +703,7 @@ export interface LinkAnchorSuggestionItem {
 }
 
 /**
- * 妯℃澘鏁版嵁鎺ュ彛
+ * 濡剝婢橀弫鐗堝祦閹恒儱褰?
  */
 export interface TemplateItem {
   id: string;
@@ -749,7 +715,7 @@ export interface TemplateItem {
 }
 
 /**
- * 绗旇绯荤粺 IPC API 鎺ュ彛
+ * 缁楁棁顔囩化鑽ょ埠 IPC API 閹恒儱褰?
  */
 export interface NoteSystemAPI {
   note: {

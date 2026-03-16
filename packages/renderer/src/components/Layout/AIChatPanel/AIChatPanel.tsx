@@ -3,11 +3,11 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import type { AgentChatTurnFrame } from '@note-studio/shared';
 import { getCachedModels, getModelConfig, type CachedModelInfo } from '../../../services/ModelCacheService';
 import { aiService } from '../../../services/ai/AIService';
 import { isModelEnabled, loadModelEnabledStatesFromDB, type ChatMessage } from '../../../services/ai';
 import { DropdownMenu, type DropdownMenuItem, type DropdownMenuGroup } from '../../common/DropdownMenu';
+import { Switch } from '../../common/Switch';
 import { AIProviderIconFromModel } from '../../Icons/AIProviderIcon';
 import { Icon } from '../../Icons/Icon';
 import { EditIcon } from '../../Icons/EditIcon';
@@ -18,8 +18,6 @@ import { electronStore } from '../../../services/ElectronStoreService';
 import { type ThinkingStep } from '../../ModeThinking';
 import { AssistantTextContextMenu, type AssistantTextContextMenuProps } from './AssistantTextContextMenu';
 import { AIResponseRenderer } from '../../AIResponseRenderer';
-import { agentService } from '../../../services/agent/AgentService';
-import type { AgentTaskType } from '../../../services/agent/types';
 import { tableReferenceService, type FormDetail, type FormInfo } from '../../../services/tableReference';
 import { knowledgeBaseService } from '../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { type KnowledgeItem } from '../Sidebar/KnowledgeBase/types';
@@ -30,13 +28,11 @@ import {
   appendActLogBlock,
   appendToolLogBlock as appendToolLogContentBlock,
   buildAssistantRenderSections,
-  classifyMessageFlow,
   finalizeTextBlock,
   resolvePendingToolCalls,
   resolvePendingToolLogBlocks,
   type ActLog,
   type ContentBlock,
-  type MessageFlowKind,
   type TodoItemStatus,
   type TodoItemView,
   type ToolLog,
@@ -58,7 +54,6 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;  // 保留用于兼容，最终文本
   contentBlocks?: ContentBlock[];  // 交错的内容块
-  flowKind?: MessageFlowKind;
   timestamp: Date;
   model?: string;
   thinkingSteps?: ThinkingStep[];
@@ -90,13 +85,6 @@ interface AIChatPanelProps {
 }
 
 const AI_CHAT_EDITOR_TAB_PATH = 'ai-chat:/main';
-
-interface PendingToolConfirmation {
-  id: string;
-  toolName: string;
-  params: Record<string, unknown>;
-  detail?: string;
-}
 
 interface SlashCommandItem {
   command: string;
@@ -366,7 +354,7 @@ const cleanupMiniMaxMarkup = (text: string): string => {
     .trim();
 };
 
-const AGENT_ENVELOPE_KEYS = new Set([
+const STRUCTURED_ENVELOPE_KEYS = new Set([
   'thinking',
   'reasoning',
   'content',
@@ -427,8 +415,8 @@ const optimizeAssistantOutput = (raw: string): string => {
       return cleanedRaw || raw;
     }
 
-    const isLikelyAgentEnvelope = keys.every(key => AGENT_ENVELOPE_KEYS.has(key));
-    if (!isLikelyAgentEnvelope) {
+    const isLikelyStructuredEnvelope = keys.every(key => STRUCTURED_ENVELOPE_KEYS.has(key));
+    if (!isLikelyStructuredEnvelope) {
       return cleanedRaw || raw;
     }
 
@@ -615,7 +603,7 @@ const normalizeTimelineText = (value: string): string =>
 
 const TODO_ITEM_MAX_COUNT = 64;
 const SIMPLE_TODO_CONTENT_MAX_CHARS = 42;
-type SimpleAgentStepKind = 'requirement' | 'reference' | 'decomposition' | 'outline' | 'writing' | 'tool' | 'verify' | 'other';
+type SimpleStepKind = 'requirement' | 'reference' | 'decomposition' | 'outline' | 'writing' | 'tool' | 'verify' | 'other';
 const REQUIREMENT_BRIEF_STEP_REGEX = /(decompose user requirements|structured writing brief|需求拆解|用户需求|写作需求|writing brief)/i;
 const REFERENCE_ARTICLE_STEP_REGEX = /(reference article|参考文章|读取参考|抽取参考|随机参考|随机抽取|随机提取|风格参考|style reference|\.md\/\.txt|md\/txt)/i;
 const OUTLINE_STEP_REGEX = /(article framework|meta framework|overall framework|structure|outline|heading|框架|结构|大纲|小标题)/i;
@@ -637,12 +625,6 @@ interface ParsedToolFrameResultPayload {
   rawText: string;
 }
 
-interface AgentDiffPreviewPayload {
-  beforeContent: string;
-  afterContent: string;
-  updatedAt: number;
-}
-
 interface ToolFrameSummary {
   summary: string;
   detail?: string;
@@ -653,7 +635,7 @@ interface ToolFrameSummary {
   changedFiles: string[];
 }
 
-const inferSimpleAgentStepKind = (stepType: string, description: string): SimpleAgentStepKind => {
+const inferSimpleStepKind = (stepType: string, description: string): SimpleStepKind => {
   const normalizedDesc = description.trim();
   const normalizedType = stepType.trim();
   if (REQUIREMENT_BRIEF_STEP_REGEX.test(normalizedDesc)) return 'requirement';
@@ -862,7 +844,7 @@ const buildToolFrameSummary = (
 };
 
 const simplifyPlanTodoContent = (content: string): string => {
-  const kind = inferSimpleAgentStepKind('', content);
+  const kind = inferSimpleStepKind('', content);
   switch (kind) {
     case 'requirement':
       return '根据需求，列举执行清单';
@@ -913,7 +895,7 @@ const normalizeTodoItems = (value: unknown): TodoItemView[] => {
     if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) continue;
     const item = rawItem as Record<string, unknown>;
     const id = typeof item.id === 'string' ? item.id.trim() : '';
-    const source: TodoItemView['source'] = item.source === 'plan' ? 'plan' : 'agent';
+  const source: TodoItemView['source'] = item.source === 'plan' ? 'plan' : 'assistant';
     const rawContent = typeof item.content === 'string' ? item.content.trim() : '';
     const content = simplifyTodoDisplayContent(rawContent, source);
     if (!id || !content) continue;
@@ -955,81 +937,6 @@ const TOOL_CONTEXT_BUDGET_CHARS = 180000;
 const TOOL_CONTEXT_KEEP_RECENT_MESSAGES = 16;
 const COMPACT_KEEP_RECENT_MESSAGES = 8;
 const COMPACT_SUMMARY_ITEM_LIMIT = 8;
-const WRITE_STREAM_RENDER_INTERVAL_MS = 20;
-const WRITE_STREAM_RENDER_CHUNK_SIZE = 12;
-const WRITE_STREAM_MIN_VISIBLE_CHARS = 20;
-const WRITE_CONTENT_MARKER_REGEX = /(?:^|\n)\s*(?:[#>*-]+\s*)?(?:\*\*)?(?:生成内容如下|最终内容|正文如下|输出如下)(?:\*\*)?\s*(?:[：:]|\n)\s*/i;
-const WRITE_PROCEDURE_LINE_REGEX = /^\s*(?:[-*]\s*)?(?:工具|参数|tool|params?)\s*[：:]/i;
-const WRITE_PROCEDURE_TOKEN_REGEX = /\b(?:read_file|write_file|edit_file|multi_edit_file|apply_diff|list_files|search_files|run_shell|bash)\b/i;
-const WRITE_PROCEDURE_HINT_REGEX = /(我需要先读取|我将先读取|先读取当前文件|先查询工作区|为了.*上下文.*先读取)/i;
-
-const isProcedureLikeWriteOutput = (value: string): boolean => {
-  const lines = value
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return true;
-
-  let matched = 0;
-  for (const line of lines) {
-    if (
-      WRITE_PROCEDURE_LINE_REGEX.test(line)
-      || WRITE_PROCEDURE_TOKEN_REGEX.test(line)
-      || WRITE_PROCEDURE_HINT_REGEX.test(line)
-    ) {
-      matched += 1;
-    }
-  }
-
-  if (lines.length <= 4) {
-    return matched >= 1;
-  }
-
-  return matched >= Math.max(2, Math.ceil(lines.length / 3));
-};
-
-const normalizeWriteOutputForEditor = (raw: string, final: boolean): string => {
-  const source = raw || '';
-  if (!source) return '';
-
-  const markerMatch = source.match(WRITE_CONTENT_MARKER_REGEX);
-  let content = source;
-
-  if (markerMatch && typeof markerMatch.index === 'number') {
-    content = source.slice(markerMatch.index + markerMatch[0].length);
-  } else {
-    const fallback = source
-      .replace(/^\s*```[a-zA-Z0-9_-]*\s*\n/, '')
-      .replace(/\n?```\s*$/, '')
-      .trimStart();
-    if (!fallback) {
-      return '';
-    }
-    if (final) {
-      if (isProcedureLikeWriteOutput(fallback)) {
-        return '';
-      }
-      return fallback;
-    }
-    const fallbackDraft = fallback.trimEnd();
-    if (fallbackDraft.length < WRITE_STREAM_MIN_VISIBLE_CHARS) {
-      return '';
-    }
-    if (isProcedureLikeWriteOutput(fallbackDraft)) {
-      return '';
-    }
-    return fallbackDraft;
-  }
-
-  content = content.replace(/^\s*```[a-zA-Z0-9_-]*\s*\n/, '');
-  if (final) {
-    content = content.replace(/\n?```\s*$/, '');
-  }
-  content = content.replace(/^\s+/, '');
-  if (!content) return '';
-  if (isProcedureLikeWriteOutput(content)) return '';
-  return content;
-};
 
 const SLASH_COMMAND_ITEMS: SlashCommandItem[] = [
   { command: '/compact', description: '压缩历史上下文，保留最近会话', insertText: '/compact' },
@@ -1304,38 +1211,6 @@ const buildToolActTitle = (toolName: string, argsRaw: string): { title: string; 
   }
 };
 
-const buildToolCallDetail = (toolName: string, params: Record<string, unknown>): string => {
-  if (toolName === 'bash' && typeof params.command === 'string') {
-    return params.command;
-  }
-  if (toolName === 'write_file') {
-    const path = typeof params.path === 'string' ? params.path : '(unknown path)';
-    const content = typeof params.content === 'string' ? params.content : '';
-    return `path: ${path}\ncontent_length: ${content.length}`;
-  }
-  if (toolName === 'edit_file') {
-    const path = typeof params.path === 'string' ? params.path : '(unknown path)';
-    const oldString = typeof params.old_string === 'string'
-      ? params.old_string
-      : (typeof params.oldText === 'string' ? params.oldText : '');
-    const newString = typeof params.new_string === 'string'
-      ? params.new_string
-      : (typeof params.newText === 'string' ? params.newText : '');
-    return `path: ${path}\nold_length: ${oldString.length}\nnew_length: ${newString.length}`;
-  }
-  if (toolName === 'multi_edit_file') {
-    const path = typeof params.path === 'string' ? params.path : '(unknown path)';
-    const edits = Array.isArray(params.edits) ? params.edits.length : 0;
-    return `path: ${path}\nedits: ${edits}`;
-  }
-  if (toolName === 'apply_diff') {
-    const path = typeof params.path === 'string' ? params.path : '(unknown path)';
-    const changes = Array.isArray(params.changes) ? params.changes.length : 0;
-    return `path: ${path}\nchanges: ${changes}`;
-  }
-  return stringifyActDetail(params) || '';
-};
-
 const getToolPrimaryPathFromParams = (params: Record<string, unknown>): string | undefined => {
   const path = typeof params.path === 'string' ? params.path.trim() : '';
   return path || undefined;
@@ -1405,32 +1280,9 @@ const formatToolDuration = (durationMs?: number): string | undefined => {
 };
 
 const DECOMPOSITION_STEP_REGEX = /(?:\u62c6\u89e3|decompos|framework|\u5c0f\u6807\u9898|\u6bb5\u843d|\u53e5\u5f0f|\u7528\u8bcd|\u98ce\u683c|\u8fc7\u6e21|\u573a\u666f|\u6848\u4f8b)/i;
-const SHOW_DECOMPOSITION_STREAM_BLOCK = false;
 
 const isDecompositionStep = (description: string): boolean =>
   DECOMPOSITION_STEP_REGEX.test(description.trim());
-
-const stripDecompositionSection = (fullText: string, decompositionText: string): string => {
-  const normalizedFull = fullText.trim();
-  const normalizedDecomposition = decompositionText.trim();
-  if (!normalizedFull || !normalizedDecomposition) return normalizedFull;
-
-  if (normalizedFull.includes(normalizedDecomposition)) {
-    return normalizedFull.replace(normalizedDecomposition, '').replace(/\n{3,}/g, '\n\n').trim();
-  }
-
-  const firstAnchor = normalizedDecomposition.split(/\r?\n/).find(line => line.trim().length > 0)?.trim() ?? '';
-  if (!firstAnchor) return normalizedFull;
-
-  const anchorIndex = normalizedFull.indexOf(firstAnchor);
-  if (anchorIndex < 0 || anchorIndex > Math.floor(normalizedFull.length * 0.7)) {
-    return normalizedFull;
-  }
-
-  const approxEnd = Math.min(normalizedFull.length, anchorIndex + normalizedDecomposition.length);
-  const stripped = `${normalizedFull.slice(0, anchorIndex)}${normalizedFull.slice(approxEnd)}`;
-  return stripped.replace(/\n{3,}/g, '\n\n').trim();
-};
 
 interface KnowledgeFileCandidate {
   name: string;
@@ -1438,11 +1290,18 @@ interface KnowledgeFileCandidate {
   content?: string;
 }
 
-interface AgentRAGResultItem {
+interface KnowledgeSearchResultItem {
   content?: string;
   childContent?: string;
   filePath?: string;
   score?: number;
+}
+
+interface WorkspaceKnowledgeSearchResult {
+  parentContent: string;
+  childContent: string;
+  filePath: string;
+  score: number;
 }
 
 const normalizeFilePath = (value: string): string =>
@@ -1453,51 +1312,70 @@ const getPathBaseName = (value: string): string => {
   return segments[segments.length - 1] ?? value;
 };
 
-const AGENT_DRAFT_PATH_PREFIX = 'agent-draft:/';
-const AGENT_DRAFT_TITLE_PREFIX = 'untitled-';
-const AGENT_DRAFT_TITLE_REGEX = /^untitled-(\d+)$/i;
-let agentDraftSequenceSeed = 0;
+const searchKnowledgeSnippetsByFile = async (
+  query: string,
+  filePaths: string[],
+  topK: number,
+): Promise<KnowledgeSearchResultItem[]> => {
+  const normalizedQuery = query.trim();
+  const uniquePaths = Array.from(
+    new Set(filePaths.map(filePath => filePath.trim()).filter(filePath => filePath.length > 0)),
+  );
+  if (!normalizedQuery || uniquePaths.length === 0) {
+    return [];
+  }
 
-const pickNextAgentDraftTitle = (): string => {
-  let maxIndex = agentDraftSequenceSeed;
-  const tabsState = (window as any).__editorTabsState as {
-    tabs?: Array<{ title?: string; path?: string }>;
-  } | undefined;
-  const tabs = Array.isArray(tabsState?.tabs) ? tabsState.tabs : [];
+  const embeddingResult = await window.electron?.cloudEmbedding?.generate(normalizedQuery);
+  const queryVector = embeddingResult?.success
+    ? embeddingResult.data?.vectors?.[0]
+    : undefined;
+  if (!Array.isArray(queryVector) || queryVector.length === 0) {
+    return [];
+  }
 
-  for (const tab of tabs) {
-    const tabPath = typeof tab.path === 'string' ? tab.path.trim() : '';
-    const tabTitle = typeof tab.title === 'string' ? tab.title.trim() : '';
-    if (!tabPath.toLowerCase().startsWith(AGENT_DRAFT_PATH_PREFIX)) {
-      continue;
-    }
-    const titleMatch = tabTitle.match(AGENT_DRAFT_TITLE_REGEX);
-    if (titleMatch) {
-      const parsed = Number(titleMatch[1]);
-      if (Number.isFinite(parsed) && parsed > maxIndex) {
-        maxIndex = parsed;
+  const collected: KnowledgeSearchResultItem[] = [];
+  for (const filePath of uniquePaths) {
+    try {
+      const isIndexedResponse = await window.electron?.ipcRenderer.invoke(
+        'workspace-index-db:is-file-indexed',
+        filePath,
+      );
+      const isIndexed = !!(isIndexedResponse?.success && isIndexedResponse.data);
+      if (!isIndexed) {
+        const indexResponse = await window.electron?.ipcRenderer.invoke(
+          'workspace-index-db:priority-index-file',
+          filePath,
+        );
+        if (!indexResponse?.success) {
+          continue;
+        }
       }
+
+      const searchResponse = await window.electron?.ipcRenderer.invoke(
+        'workspace-index-db:search-by-file-path',
+        filePath,
+        queryVector,
+        Math.max(1, Math.min(5, topK)),
+      );
+      const searchItems = Array.isArray(searchResponse?.data)
+        ? (searchResponse.data as WorkspaceKnowledgeSearchResult[])
+        : [];
+
+      for (const item of searchItems) {
+        collected.push({
+          content: item.parentContent,
+          childContent: item.childContent,
+          filePath: item.filePath,
+          score: item.score,
+        });
+      }
+    } catch {
       continue;
-    }
-    const fileName = getPathBaseName(tabPath).replace(/\.md$/i, '');
-    const fileMatch = fileName.match(AGENT_DRAFT_TITLE_REGEX);
-    if (!fileMatch) continue;
-    const parsed = Number(fileMatch[1]);
-    if (Number.isFinite(parsed) && parsed > maxIndex) {
-      maxIndex = parsed;
     }
   }
 
-  agentDraftSequenceSeed = maxIndex + 1;
-  return `${AGENT_DRAFT_TITLE_PREFIX}${agentDraftSequenceSeed}`;
-};
-
-const buildAgentDraftTarget = (): { path: string; name: string } => {
-  const draftTitle = pickNextAgentDraftTitle();
-  return {
-    path: `${AGENT_DRAFT_PATH_PREFIX}${draftTitle}.md`,
-    name: draftTitle,
-  };
+  collected.sort((left, right) => (right.score ?? 0) - (left.score ?? 0));
+  return collected.slice(0, topK);
 };
 
 const VIRTUAL_TAB_PATH_PREFIXES = [
@@ -1510,7 +1388,6 @@ const VIRTUAL_TAB_PATH_PREFIXES = [
   'skills-market:/',
   'preview:/',
   'theme-override://',
-  AGENT_DRAFT_PATH_PREFIX,
 ];
 
 const isVirtualTabPath = (value: string): boolean => {
@@ -1526,28 +1403,6 @@ const isLikelyFileSystemPath = (value: string): boolean => {
   if (trimmed.startsWith('\\\\') || trimmed.startsWith('/')) return true;
   if (trimmed.includes('/') || trimmed.includes('\\')) return true;
   return /\.[a-zA-Z0-9]+$/.test(trimmed);
-};
-
-const normalizeComparablePath = (value: string): string =>
-  value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-
-const isPathInsideBase = (targetPath: string, basePath: string): boolean => {
-  const target = normalizeComparablePath(targetPath);
-  const base = normalizeComparablePath(basePath);
-  if (!target || !base) return false;
-  if (target === base) return true;
-  return target.startsWith(`${base}/`);
-};
-
-const deriveDirectoryPath = (filePath: string): string => {
-  const normalized = filePath.replace(/\\/g, '/').trim();
-  if (!normalized) return '';
-  if (/^[a-zA-Z]:\/[^/]+$/.test(normalized)) {
-    return normalized.slice(0, 3);
-  }
-  const lastSlash = normalized.lastIndexOf('/');
-  if (lastSlash <= 0) return normalized;
-  return normalized.slice(0, lastSlash);
 };
 
 const trimSnippet = (value: string, maxLength = 520): string => {
@@ -2164,7 +2019,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [isLoading, setIsLoading] = useState(false);
   const isMaximized = false;
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
-  const [subMenuType, setSubMenuType] = useState<'none' | 'model' | 'knowledge' | 'form' | 'skills' | 'memory' | 'decompositionRules' | 'writingRules' | 'mcpServer' | 'files'>('none');
+  const [subMenuType, setSubMenuType] = useState<'none' | 'model' | 'knowledge' | 'form' | 'decompositionRules' | 'writingRules' | 'files' | 'skills' | 'memory' | 'mcpServer'>('none');
   const [searchQuery, setSearchQuery] = useState('');
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
@@ -2190,19 +2045,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [isLoadingKnowledgeBases, setIsLoadingKnowledgeBases] = useState(false); // 是否正在加载知识库
   const [filesList, setFilesList] = useState<Array<{ name: string; path: string; type: 'file' | 'directory' }>>([]); // 文件列表
   const [isLoadingFiles, setIsLoadingFiles] = useState(false); // 是否正在加载文件
-  const [skillsList, setSkillsList] = useState<Array<{ name: string; path: string; type: 'file' | 'directory' }>>([]); // 技能包列表
-  const [isLoadingSkills, setIsLoadingSkills] = useState(false); // 是否正在加载技能包
-  const [selectedSkills, setSelectedSkills] = useState<Array<{ name: string; path: string }>>([]); // 用户选中的技能包
   const [selectedFiles, setSelectedFiles] = useState<Array<{ name: string; path: string; type?: 'file' | 'directory' }>>([]); // 用户选中的文件
   const [selectedKbs, setSelectedKbs] = useState<Array<{ id: string; title: string }>>([]); // 用户选中的知识库
   const [selectedForms, setSelectedForms] = useState<Array<{ id: string; name: string }>>([]); // 用户选中的表单
   const [writingRuleDocuments, setWritingRuleDocuments] = useState<WritingRuleDocument[]>([]);
   const [newDecompositionRuleName, setNewDecompositionRuleName] = useState('');
   const [newDecompositionRuleInstruction, setNewDecompositionRuleInstruction] = useState('');
-  const [agentMemoryStats, setAgentMemoryStats] = useState<{ usagePercentage: number; totalEntries: number }>({
-    usagePercentage: 0,
-    totalEntries: 0,
-  });
   const [decompositionRules, setDecompositionRules] = useState<DecompositionRule[]>(() => cloneBuiltinDecompositionRules());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器 ref
@@ -2216,12 +2064,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const historyButtonRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true); // 追踪是否为初始加载
   const providerCacheRef = useRef<{ modelId: string; actualModelId: string } | null>(null); // 缓存已初始化的 provider
-
-  const [pendingToolConfirmation, setPendingToolConfirmation] = useState<PendingToolConfirmation | null>(null);
-  const pendingToolConfirmationResolverRef = useRef<{
-    id: string;
-    resolve: (allowed: boolean) => void;
-  } | null>(null);
   const currentSessionTitle = useMemo(
     () => getChatSessionTitleFromMessages(messages),
     [messages]
@@ -2370,31 +2212,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     }));
   }, [getSelectedModelTabTitle]);
 
-  const refreshAgentMemoryStats = useCallback(() => {
-    try {
-      const stats = agentService.getMemoryStats();
-      setAgentMemoryStats({
-        usagePercentage: Number.isFinite(stats.usagePercentage) ? stats.usagePercentage : 0,
-        totalEntries: Number.isFinite(stats.totalEntries) ? stats.totalEntries : 0,
-      });
-    } catch (error) {
-      console.error('[AIChatPanel] 获取记忆统计失败:', error);
-      setAgentMemoryStats({ usagePercentage: 0, totalEntries: 0 });
-    }
-  }, []);
-
-  const handleClearAgentMemory = useCallback(() => {
-    try {
-      agentService.getMemory().clear();
-      refreshAgentMemoryStats();
-      toastService.success('已清空记忆');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[AIChatPanel] 清空记忆失败:', error);
-      toastService.error(`清空记忆失败: ${errorMessage}`);
-    }
-  }, [refreshAgentMemoryStats]);
-
   const handleToggleDecompositionRule = useCallback((ruleId: string) => {
     setDecompositionRules(prev => prev.map(rule =>
       rule.id === ruleId ? { ...rule, enabled: !rule.enabled } : rule
@@ -2465,6 +2282,18 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       },
     }));
   }, [decompositionRules, writingRuleDocuments]);
+
+  const handleOpenSkillsMarket = useCallback(() => {
+    setSubMenuType('none');
+    setIsContextMenuOpen(false);
+    window.dispatchEvent(new Event('open-skill-market'));
+  }, []);
+
+  const handleOpenAIConfigTab = useCallback(() => {
+    setSubMenuType('none');
+    setIsContextMenuOpen(false);
+    window.dispatchEvent(new CustomEvent('open-ai-config'));
+  }, []);
 
   const handleImportWritingRuleDocuments = useCallback(async () => {
     try {
@@ -2806,89 +2635,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     )));
   }, []);
 
-  const settlePendingToolConfirmation = useCallback((allowed: boolean) => {
-    const pending = pendingToolConfirmationResolverRef.current;
-    if (!pending) return;
-    pendingToolConfirmationResolverRef.current = null;
-    setPendingToolConfirmation(null);
-    pending.resolve(allowed);
-  }, []);
-
-  const requestToolConfirmation = useCallback((
-    toolName: string,
-    params: Record<string, unknown>
-  ): Promise<boolean> => {
-    return new Promise<boolean>(resolve => {
-      // Keep only one pending request to avoid stacked popups.
-      const previous = pendingToolConfirmationResolverRef.current;
-      if (previous) {
-        previous.resolve(false);
-      }
-
-      const id = `tool-confirm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      pendingToolConfirmationResolverRef.current = { id, resolve };
-      setPendingToolConfirmation({
-        id,
-        toolName,
-        params,
-        detail: buildToolCallDetail(toolName, params),
-      });
-    });
-  }, []);
-
   const handleStopGeneration = useCallback(() => {
     setIsLoading(false);
-  }, []);
-
-  const handleToolConfirmActionKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>, allowed: boolean) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      settlePendingToolConfirmation(allowed);
-    },
-    [settlePendingToolConfirmation]
-  );
-
-  useEffect(() => {
-    return () => {
-      const pending = pendingToolConfirmationResolverRef.current;
-      if (!pending) return;
-      pendingToolConfirmationResolverRef.current = null;
-      pending.resolve(false);
-    };
-  }, []);
-
-  const syncEditorTabContent = useCallback((
-    content: string,
-    path?: string,
-    name?: string,
-    markDirty: boolean = false,
-    agentDiffPreview?: AgentDiffPreviewPayload,
-  ) => {
-    if (typeof content !== 'string') return;
-    window.dispatchEvent(new CustomEvent('editor:replace-active-tab-content', {
-      detail: {
-        content,
-        path,
-        name,
-        markDirty,
-        agentDiffPreview,
-      },
-    }));
-  }, []);
-
-  const notifyAgentFileChanged = useCallback((filePath: string) => {
-    const normalizedPath = filePath.trim();
-    if (!normalizedPath) {
-      return;
-    }
-
-    window.dispatchEvent(new CustomEvent('agent:file-changed', {
-      detail: {
-        path: normalizedPath,
-        updatedAt: Date.now(),
-      },
-    }));
   }, []);
 
   const waitForActFrame = useCallback(
@@ -3713,7 +3461,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     
     // Focus search input when opening the menu.
     if (newState) {
-      refreshAgentMemoryStats();
       setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
@@ -3729,12 +3476,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
     // Trigger event or show second-level panel based on action.
     switch (action) {
-      case 'snippets':
-        // Open bottom panel and switch to snippets tab.
+      case 'links':
+        // Open bottom panel and switch to links tab.
         setIsContextMenuOpen(false);
         setSubMenuType('none');
         window.dispatchEvent(new CustomEvent('open-panel', {
-          detail: { view: 'snippets' }
+          detail: { view: 'links' }
         }));
         break;
       case 'knowledge':
@@ -3798,55 +3545,20 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           setIsLoadingForms(false);
         });
         break;
-      case 'skills':
-        // 显示技能包子菜单并加载 .wstudio/skills 列表
-        setSubMenuType('skills');
-        setIsLoadingSkills(true);
-        (async () => {
-          try {
-            // Get current workspace path.
-            const workspaceResult = await (window as any).electron?.workspace?.getDir();
-            if (workspaceResult?.success && workspaceResult.data) {
-              const workspacePath = workspaceResult.data;
-              const skillsPath = workspacePath + '/.wstudio/skills';
-              // 读取 .wstudio/skills 目录下的技能包
-              const treeResult = await (window as any).electron?.folder?.readTree(skillsPath);
-              if (treeResult?.success && treeResult.data && Array.isArray(treeResult.data)) {
-                // 分离文件夹和文件，文件夹在前
-                const folders = treeResult.data.filter((item: any) => item.type === 'directory');
-                const files = treeResult.data.filter((item: any) => item.type !== 'directory');
-                setSkillsList([...folders, ...files].map((item: any) => ({
-                  name: item.name,
-                  path: item.path,
-                  type: item.type === 'directory' ? 'directory' : 'file'
-                })));
-              } else {
-                setSkillsList([]);
-              }
-            } else {
-              setSkillsList([]);
-            }
-          } catch (err) {
-            console.error('[AIChatPanel] 加载技能包失败:', err);
-            setSkillsList([]);
-          } finally {
-            setIsLoadingSkills(false);
-          }
-        })();
-        break;
-      case 'memory':
-        refreshAgentMemoryStats();
-        setSubMenuType('memory');
-        break;
       case 'decompositionRules':
         setSubMenuType('decompositionRules');
         break;
-      case 'writingRules':
-        setSubMenuType('writingRules');
+      case 'skills':
+        setSubMenuType('skills');
+        break;
+      case 'memory':
+        setSubMenuType('memory');
         break;
       case 'mcpServer':
-        // 显示 MCP Server 二级面板
         setSubMenuType('mcpServer');
+        break;
+      case 'writingRules':
+        setSubMenuType('writingRules');
         break;
       case 'clear':
         // 清除对话
@@ -3874,33 +3586,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       console.error('[AIChatPanel] 未选择模型');
       return;
     }
-
-    const liveCurrentTabPath = typeof (window as any).__currentTabPath === 'string'
-      ? (window as any).__currentTabPath.trim()
-      : '';
-    const flowDecision = classifyMessageFlow(trimmedInput, {
-      hasCurrentFile: isLikelyFileSystemPath(currentFilePath.trim() || liveCurrentTabPath),
-      hasSelectedFiles: selectedFiles.length > 0,
-      hasSelectedKnowledgeBases: selectedKbs.length > 0,
-      hasSelectedForms: selectedForms.length > 0,
-      hasSelectedSkills: selectedSkills.length > 0,
-    });
-    const useChatFlowForNonTaskInAgent = flowDecision.kind === 'conversation';
-
-    const clearConsumedAgentSelections = (): void => {
-      if (selectedForms.length > 0) {
-        setSelectedForms([]);
-      }
-      if (selectedKbs.length > 0) {
-        setSelectedKbs([]);
-      }
-      if (selectedFiles.length > 0) {
-        setSelectedFiles([]);
-      }
-      if (selectedSkills.length > 0) {
-        setSelectedSkills([]);
-      }
-    };
 
     // /help: show built-in command help
     if (/^\/help\b/i.test(trimmedInput)) {
@@ -3978,14 +3663,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       return;
     }
 
-    // Non-task query: call AI directly (without Agent workflow).
-    if (useChatFlowForNonTaskInAgent) {
-      const taskDesc = input.trim();
+    const taskDesc = input.trim();
       const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
         content: taskDesc,
-        flowKind: 'conversation',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, userMessage]);
@@ -3998,11 +3680,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         id: assistantMessageId,
         role: 'assistant',
         content: '',
-        flowKind: 'conversation',
         timestamp: new Date(),
         model: selectedModel
       }]);
-      const ignoreReferencedContext = useChatFlowForNonTaskInAgent;
+      const ignoreReferencedContext = false;
 
       try {
         // Reinitialize provider only when model changes.
@@ -4155,20 +3836,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 break;
               }
 
-              let ragResult: any;
-              try {
-                ragResult = await (window as any).electron?.ipcRenderer.invoke('agent:rag:query', {
-                  query: taskDesc,
-                  topK: 3,
-                  fileName,
-                });
-              } catch {
-                continue;
-              }
-
-              const ragItems = Array.isArray(ragResult?.data?.results)
-                ? (ragResult.data.results as AgentRAGResultItem[])
-                : [];
+              const matchingPaths = candidates
+                .filter(candidate =>
+                  typeof candidate.path === 'string'
+                  && candidate.path.length > 0
+                  && getPathBaseName(candidate.name).toLowerCase() === fileName.toLowerCase()
+                )
+                .map(candidate => candidate.path as string);
+              const ragItems = await searchKnowledgeSnippetsByFile(taskDesc, matchingPaths, 3);
 
               for (const item of ragItems) {
                 if (totalSnippetCount >= MAX_SNIPPETS_TOTAL || totalChars >= MAX_TOTAL_CHARS) {
@@ -4984,24 +4659,18 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         toolResult = 'No referenced knowledge files available';
                         resultSummary = 'no referenced knowledge files';
                       } else {
-                        const collected: AgentRAGResultItem[] = [];
+                        const collected: KnowledgeSearchResultItem[] = [];
                         const dedup = new Set<string>();
 
                         for (const fileName of fileNames) {
-                          let ragResult: any;
-                          try {
-                            ragResult = await (window as any).electron?.ipcRenderer.invoke('agent:rag:query', {
-                              query,
-                              topK: 3,
-                              fileName,
-                            });
-                          } catch {
-                            continue;
-                          }
-
-                          const ragItems = Array.isArray(ragResult?.data?.results)
-                            ? (ragResult.data.results as AgentRAGResultItem[])
-                            : [];
+                          const matchingPaths = knowledgeCandidatesForTool
+                            .filter(candidate =>
+                              typeof candidate.path === 'string'
+                              && candidate.path.length > 0
+                              && getPathBaseName(candidate.name).toLowerCase() === fileName.toLowerCase()
+                            )
+                            .map(candidate => candidate.path as string);
+                          const ragItems = await searchKnowledgeSnippetsByFile(query, matchingPaths, 3);
 
                           for (const item of ragItems) {
                             const filePath = typeof item.filePath === 'string' ? item.filePath : '';
@@ -5339,668 +5008,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         setIsLoading(false);
       }
       return;
-    }
-
-    // Agent 模式：调用 Agent 执行任务
-    {
-      const taskDesc = input.trim();
-      const userMessage: Message = {
-        id: Date.now().toString(),
-        role: 'user',
-        content: taskDesc,
-        flowKind: 'agent_task',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, userMessage]);
-      tiptapRef.current?.clear();
-      setInput('');
-      setIsLoading(true);
-
-      const assistantMessageId = (Date.now() + 1).toString();
-      const assistantMessage: Message = {
-        id: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        flowKind: 'agent_task',
-        timestamp: new Date(),
-        model: selectedModel
-      };
-      setMessages(prev => [...prev, assistantMessage]);
-      let finalizeDecompositionBlock: () => void = () => {};
-      const detachTodoListener = (): void => {};
-      const agentTextBlockKey = `${assistantMessageId}-agent-output`;
-      let answerBuffer = '';
-      let answerTimer: ReturnType<typeof setTimeout> | null = null;
-      const flushAnswerBuffer = (): void => {
-        const flushed = answerBuffer;
-        answerBuffer = '';
-        if (answerTimer) {
-          clearTimeout(answerTimer);
-          answerTimer = null;
-        }
-        if (!flushed) return;
-        upsertMessageTextBlock(assistantMessageId, agentTextBlockKey, flushed, {
-          mode: 'append',
-          isStreaming: true,
-        });
-      };
-
-      try {
-        const modelConfig = await getModelConfig(selectedModel);
-        if (!modelConfig) throw new Error(`未找到模型配置：${selectedModel}`);
-
-        const actualModelId = selectedModel.includes(':') ? selectedModel.split(':')[1] : selectedModel;
-
-        await aiService.setProvider(modelConfig.providerId, {
-          id: modelConfig.id || 'default',
-          name: modelConfig.name || modelConfig.configName,
-          apiKey: modelConfig.apiKey,
-          apiEndpoint: modelConfig.apiEndpoint,
-          temperature: 0.7,
-          maxTokens: 4000,
-          modelId: actualModelId
-        });
-
-        await agentService.initialize({
-          execution: { modelId: selectedModel, temperature: 0.7, maxTokens: 4000, streaming: true }
-        });
-
-        // 每次对话前重置记忆，避免上次工具结果污染本次
-        agentService.reset();
-
-        // 获取工作区路径并注册工具（每次都重新注册以确保路径最新）
-        const workspaceResult = await (window as any).electron?.workspace?.getDir();
-        const configuredWorkspacePath = workspaceResult?.success ? String(workspaceResult.data || '') : '';
-
-        // Agent mode constraints: allow file write and command execution (with confirmation).
-        const constraints = { allowFileWrite: true, allowCommandExecution: true };
-        const selectedFormsSnapshot = selectedForms.map(form => ({ ...form }));
-        const selectedKbsSnapshot = selectedKbs.map(kb => ({ ...kb }));
-        const selectedFilesSnapshot = selectedFiles.map(file => ({ ...file }));
-        const selectedSkillsSnapshot = selectedSkills.map(skill => ({ ...skill }));
-        clearConsumedAgentSelections();
-        const liveCurrentTabPath = typeof (window as any).__currentTabPath === 'string'
-          ? (window as any).__currentTabPath.trim()
-          : '';
-        const liveCurrentTabTitle = typeof (window as any).__currentTabTitle === 'string'
-          ? (window as any).__currentTabTitle.trim()
-          : '';
-        const selectedFileFallback = selectedFilesSnapshot.find(item =>
-          item.type === 'file' && typeof item.path === 'string' && item.path.trim().length > 0
-        )?.path?.trim() ?? '';
-        const normalizedCurrentFilePath = currentFilePath.trim() || liveCurrentTabPath || selectedFileFallback;
-        const normalizedCurrentFileName = currentFileName.trim()
-          || liveCurrentTabTitle
-          || (normalizedCurrentFilePath ? getPathBaseName(normalizedCurrentFilePath) : '');
-        const hasWritableCurrentFile = isLikelyFileSystemPath(normalizedCurrentFilePath);
-        const taskType = flowDecision.taskType;
-        const compactAgentOutput = taskType === 'write' || taskType === 'edit';
-        const currentFileForTask = !compactAgentOutput && hasWritableCurrentFile
-          ? normalizedCurrentFilePath
-          : '';
-        const streamingDraftTarget = compactAgentOutput
-          ? buildAgentDraftTarget()
-          : null;
-        const inferredWorkspacePath = hasWritableCurrentFile
-          ? deriveDirectoryPath(normalizedCurrentFilePath)
-          : '';
-        const workspacePath = (() => {
-          if (!configuredWorkspacePath) {
-            return inferredWorkspacePath;
-          }
-          if (
-            inferredWorkspacePath
-            && hasWritableCurrentFile
-            && !isPathInsideBase(normalizedCurrentFilePath, configuredWorkspacePath)
-          ) {
-            return inferredWorkspacePath;
-          }
-          return configuredWorkspacePath;
-        })();
-
-        // 每次按最新上下文重新注册工具，确保当前标签页文件可写。
-        agentService.registerDefaultTools({ workspacePath });
-        const additionalContext: Record<string, unknown> = {};
-        if (!compactAgentOutput && normalizedCurrentFileName) {
-          additionalContext.currentTabTitle = normalizedCurrentFileName;
-        }
-        if (!compactAgentOutput && normalizedCurrentFilePath) {
-          additionalContext.currentTabPath = normalizedCurrentFilePath;
-          additionalContext.currentTabEditPriority = 'prefer_current_tab_file';
-        }
-        if (normalizedCurrentFileName || normalizedCurrentFilePath) {
-          additionalContext.activeTabReference = {
-            title: normalizedCurrentFileName || undefined,
-            path: normalizedCurrentFilePath || undefined,
-            editPolicy: compactAgentOutput
-              ? 'reference_only_unless_user_explicitly_requests_edit'
-              : 'prefer_current_tab_file_when_editing',
-          };
-        }
-        if (compactAgentOutput) {
-          additionalContext.referenceSource = 'random_workspace_article_by_command';
-          additionalContext.referenceDimensions = [
-            'framework',
-            'style',
-            'sentence_patterns',
-            'structure',
-            'logic_chain',
-            'wording',
-            'transitions',
-            'turning_points',
-            'cases',
-          ];
-          additionalContext.decompositionWorkflow = {
-            steps: [
-              'extract_meta_framework',
-              'decide_sub_headings_or_direct_paragraph_decomposition',
-              'paragraph_level_decomposition',
-              'paragraph_by_paragraph_writing',
-              'sentence_level_compare_score_and_optimize_loop',
-            ],
-            paragraphDimensions: [
-              'logic_chain',
-              'transitions',
-              'turning_points',
-              'cases',
-              'word_choice',
-              'information_density',
-              'layout_style',
-              'highlight_lines',
-              'verb_adjective_precision',
-              'rhetorical_devices',
-              'length',
-              'rhythm',
-              'narrative_perspective',
-              'hooks',
-              'emotion_curve',
-              'core_intent',
-              'entry_point',
-              'voice_style',
-              'credibility_backing',
-              'scientific_examples',
-              'verb_noun_ratio',
-              'rhetorical_logic',
-            ],
-          };
-          // Reduce token burn from repeated verify loops for draft-generation mode.
-          additionalContext.verifyGate = {
-            minScore: 80,
-            maxRepairRounds: 1,
-          };
-        }
-        additionalContext.taskIntent = compactAgentOutput
-          ? (taskType === 'edit'
-            ? 'rewrite_by_random_reference_article'
-            : 'generate_by_random_reference_article')
-          : `${taskType}_task`;
-        additionalContext.referencedContext = {
-          files: selectedFilesSnapshot
-            .filter(item => item.type === 'file' && typeof item.path === 'string' && item.path.trim().length > 0)
-            .map(item => ({ name: item.name, path: item.path, type: 'file' })),
-          directories: selectedFilesSnapshot
-            .filter(item => item.type === 'directory' && typeof item.path === 'string' && item.path.trim().length > 0)
-            .map(item => ({ name: item.name, path: item.path, type: 'directory' })),
-          knowledgeBases: selectedKbsSnapshot.map(item => ({ id: item.id, title: item.title })),
-          forms: selectedFormsSnapshot.map(item => ({ id: item.id, name: item.name })),
-          skills: selectedSkillsSnapshot.map(item => ({ name: item.name, path: item.path })),
-        };
-        if (selectedSkillsSnapshot.length > 0) {
-          additionalContext.allowedSkills = selectedSkillsSnapshot.map(item => ({
-            name: item.name,
-            path: item.path,
-          }));
-        }
-        if (enabledDecompositionRules.length > 0) {
-          additionalContext.decompositionRules = enabledDecompositionRules.map(rule => ({
-            id: rule.id,
-            name: rule.name,
-            instruction: rule.instruction,
-          }));
-        }
-        if (enabledWritingRuleDocuments.length > 0) {
-          additionalContext.writingRuleDocuments = enabledWritingRuleDocuments.map(document => ({
-            id: document.id,
-            name: document.name,
-            path: document.path,
-            enabled: document.enabled,
-          }));
-        }
-        const task = agentService.createTask(
-          taskType,
-          taskDesc,
-          {
-            workspacePath,
-            currentFile: currentFileForTask || undefined,
-            externalSessionId: currentSessionId || undefined,
-            additionalContext: Object.keys(additionalContext).length > 0 ? additionalContext : undefined,
-          },
-          constraints
-        );
-
-        if (streamingDraftTarget) {
-          syncEditorTabContent('', streamingDraftTarget.path, streamingDraftTarget.name, false);
-        }
-
-        // Agent mode always requires confirmation.
-        const needsConfirm = true;
-        const decompositionBlockKey = `${assistantMessageId}-decomposition`;
-        let activeStepType = '';
-        let activeStepIsDecomposition = false;
-        let decompositionStreamText = '';
-        let streamingWriteDraft = '';
-        let streamingWriteBuffer = '';
-        let streamingWriteRaw = '';
-        let writeStepPendingFinalize = false;
-        let writeRenderTimer: ReturnType<typeof setInterval> | null = null;
-
-        const resolveStreamingTargetPath = (): string => {
-          if (streamingDraftTarget?.path) {
-            return streamingDraftTarget.path;
-          }
-          if (currentFileForTask) {
-            return currentFileForTask;
-          }
-          const livePath = typeof (window as any).__currentTabPath === 'string'
-            ? (window as any).__currentTabPath.trim()
-            : '';
-          if (isLikelyFileSystemPath(livePath)) {
-            return livePath;
-          }
-          return hasWritableCurrentFile
-            ? normalizedCurrentFilePath
-            : '';
-        };
-
-        const resolveStreamingTargetName = (targetPath: string): string | undefined => {
-          if (streamingDraftTarget && targetPath === streamingDraftTarget.path) {
-            return streamingDraftTarget.name;
-          }
-          if (normalizedCurrentFileName) {
-            return normalizedCurrentFileName;
-          }
-          const liveTitle = typeof (window as any).__currentTabTitle === 'string'
-            ? (window as any).__currentTabTitle.trim()
-            : '';
-          if (liveTitle) {
-            return liveTitle;
-          }
-          return targetPath ? getPathBaseName(targetPath) : undefined;
-        };
-
-        const flushStreamingWriteDraft = (markDirty: boolean): void => {
-          if (!compactAgentOutput) return;
-          if (!streamingWriteDraft) return;
-          const targetPath = resolveStreamingTargetPath();
-          if (!targetPath) return;
-          syncEditorTabContent(
-            streamingWriteDraft,
-            targetPath,
-            resolveStreamingTargetName(targetPath),
-            markDirty
-          );
-        };
-
-        const stopWriteRenderPump = (): void => {
-          if (!writeRenderTimer) return;
-          clearInterval(writeRenderTimer);
-          writeRenderTimer = null;
-        };
-
-        const drainWriteRenderBuffer = (markDirty: boolean, final: boolean): void => {
-          if (streamingWriteBuffer) {
-            streamingWriteRaw += streamingWriteBuffer;
-            streamingWriteBuffer = '';
-          }
-          streamingWriteDraft = normalizeWriteOutputForEditor(streamingWriteRaw, final);
-          flushStreamingWriteDraft(markDirty);
-        };
-
-        const ensureWriteRenderPump = (): void => {
-          if (writeRenderTimer) return;
-          writeRenderTimer = setInterval(() => {
-            if (!streamingWriteBuffer) {
-              if (writeStepPendingFinalize) {
-                writeStepPendingFinalize = false;
-                activeStepType = '';
-                drainWriteRenderBuffer(false, true);
-              }
-              stopWriteRenderPump();
-              return;
-            }
-            const chunk = streamingWriteBuffer.slice(0, WRITE_STREAM_RENDER_CHUNK_SIZE);
-            streamingWriteBuffer = streamingWriteBuffer.slice(chunk.length);
-            if (!chunk) return;
-            streamingWriteRaw += chunk;
-            streamingWriteDraft = normalizeWriteOutputForEditor(streamingWriteRaw, false);
-            flushStreamingWriteDraft(true);
-            if (!streamingWriteBuffer && writeStepPendingFinalize) {
-              writeStepPendingFinalize = false;
-              activeStepType = '';
-              drainWriteRenderBuffer(false, true);
-              stopWriteRenderPump();
-            }
-          }, WRITE_STREAM_RENDER_INTERVAL_MS);
-        };
-
-        const appendDecompositionChunk = (chunk: string): void => {
-          const normalizedChunk = chunk;
-          decompositionStreamText += normalizedChunk;
-          if (!SHOW_DECOMPOSITION_STREAM_BLOCK) {
-            return;
-          }
-          setMessages(prev => prev.map(msg => {
-            if (msg.id !== assistantMessageId) return msg;
-            const blocks = [...(msg.contentBlocks ?? [])];
-            const existingIndex = blocks.findIndex(
-              block => block.type === 'decomposition' && block.key === decompositionBlockKey
-            );
-            if (existingIndex >= 0) {
-              const existing = blocks[existingIndex];
-              if (existing.type === 'decomposition') {
-                blocks[existingIndex] = {
-                  ...existing,
-                  content: existing.content + normalizedChunk,
-                  isStreaming: true,
-                };
-              }
-            } else {
-              blocks.push({
-                type: 'decomposition',
-                key: decompositionBlockKey,
-                title: '拆解过程',
-                content: normalizedChunk,
-                isStreaming: true,
-              });
-            }
-            return { ...msg, contentBlocks: blocks };
-          }));
-        };
-
-        finalizeDecompositionBlock = (): void => {
-          if (!SHOW_DECOMPOSITION_STREAM_BLOCK) {
-            return;
-          }
-          setMessages(prev => prev.map(msg => {
-            if (msg.id !== assistantMessageId) return msg;
-            const blocks = (msg.contentBlocks ?? []).map(block => {
-              if (block.type === 'decomposition' && block.key === decompositionBlockKey) {
-                return { ...block, isStreaming: false };
-              }
-              return block;
-            });
-            return { ...msg, contentBlocks: blocks };
-          }));
-        };
-
-        const handleAgentTurnFrame = (frame: AgentChatTurnFrame): void => {
-          if (frame.kind === 'task') {
-            return;
-          }
-
-          if (frame.kind === 'progress') {
-            return;
-          }
-
-          if (frame.kind === 'reasoning_delta') {
-            upsertThinkingBlock(assistantMessageId, frame.text, {
-              isThinking: true,
-            });
-            return;
-          }
-
-          if (frame.kind === 'tool_started') {
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantMessageId
-                ? {
-                    ...msg,
-                    isThinkingPhase: true,
-                    thinkingStartTime: msg.thinkingStartTime ?? Date.now(),
-                  }
-                : msg
-            ));
-            return;
-          }
-
-          if (frame.kind === 'tool_finished') {
-            return;
-          }
-
-          if (frame.kind === 'error') {
-            return;
-          }
-
-          if (frame.kind !== 'assistant_delta' && frame.kind !== 'final_answer') {
-            return;
-          }
-
-          const content = frame.text;
-          if (!content) {
-            return;
-          }
-
-          if (activeStepIsDecomposition) {
-            appendDecompositionChunk(content);
-            return;
-          }
-          if (compactAgentOutput && activeStepType === 'write') {
-            streamingWriteBuffer += content;
-            ensureWriteRenderPump();
-            return;
-          }
-          if (compactAgentOutput) {
-            return;
-          }
-          if (frame.kind === 'final_answer') {
-            flushAnswerBuffer();
-            upsertMessageTextBlock(assistantMessageId, agentTextBlockKey, content, {
-              mode: 'replace',
-              isStreaming: false,
-            });
-            return;
-          }
-          answerBuffer += content;
-          if (!answerTimer) {
-            answerTimer = setTimeout(flushAnswerBuffer, 90);
-          }
-        };
-
-        await agentService.executeTaskStream(task, {
-          onTurnFrame: handleAgentTurnFrame,
-          onToolResult: (toolName, result, toolCallId) => {
-            if (isWriteToolName(toolName) && result.success) {
-              const data = (result.data ?? {}) as Record<string, unknown>;
-              const changedFiles = (result.changes ?? [])
-                .map((change: { filePath?: string }) => change.filePath)
-                .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-              changedFiles.forEach(filePath => {
-                notifyAgentFileChanged(filePath);
-              });
-              const changeWithContent = (result.changes ?? []).find((change: { newContent?: string }) =>
-                typeof change.newContent === 'string'
-              );
-              const previousContent = typeof changeWithContent?.oldContent === 'string'
-                ? changeWithContent.oldContent
-                : (typeof data.oldContent === 'string' ? data.oldContent : '');
-              const writtenContent = typeof changeWithContent?.newContent === 'string'
-                ? changeWithContent.newContent
-                : (typeof data.newContent === 'string' ? data.newContent : '');
-              const writtenPath = typeof data.path === 'string'
-                ? data.path
-                : (typeof changeWithContent?.filePath === 'string'
-                  ? changeWithContent.filePath
-                  : normalizedCurrentFilePath);
-              const writtenName = writtenPath
-                ? getPathBaseName(writtenPath)
-                : (normalizedCurrentFileName || undefined);
-              const normalizedWrittenContent = normalizeWriteOutputForEditor(writtenContent, true);
-
-              if (normalizedWrittenContent) {
-                syncEditorTabContent(
-                  normalizedWrittenContent,
-                  writtenPath || undefined,
-                  writtenName,
-                  false,
-                  writtenPath && previousContent !== normalizedWrittenContent
-                    ? {
-                        beforeContent: previousContent,
-                        afterContent: normalizedWrittenContent,
-                        updatedAt: Date.now(),
-                      }
-                    : undefined,
-                );
-              }
-            }
-          },
-          onConfirmRequired: needsConfirm
-            ? (toolName, params) => requestToolConfirmation(toolName, params)
-            : undefined,
-          onComplete: (result) => {
-            detachTodoListener();
-            if (pendingToolConfirmationResolverRef.current) {
-              settlePendingToolConfirmation(false);
-            }
-            flushAnswerBuffer();
-            if (writeStepPendingFinalize && !writeRenderTimer) {
-              writeStepPendingFinalize = false;
-              drainWriteRenderBuffer(false, true);
-            } else if (streamingWriteBuffer && !writeRenderTimer) {
-              ensureWriteRenderPump();
-            }
-            const optimizedOutput = result.output ? optimizeAssistantOutput(result.output) : '';
-            const outputWithoutDecomposition = decompositionStreamText.trim()
-              ? stripDecompositionSection(optimizedOutput, decompositionStreamText)
-              : optimizedOutput;
-            const finalSuccessOutput = outputWithoutDecomposition || optimizedOutput;
-            const changedFiles = (result.changes ?? [])
-              .map((change: { filePath?: string }) => change.filePath)
-              .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-            if (compactAgentOutput && result.success && changedFiles.length === 0) {
-              const fallbackWriteContent = typeof result.finalWriteContent === 'string'
-                ? normalizeWriteOutputForEditor(result.finalWriteContent, true).trim()
-                : '';
-              if (fallbackWriteContent) {
-                const fallbackTargetPath = resolveStreamingTargetPath();
-                if (fallbackTargetPath) {
-                  syncEditorTabContent(
-                    fallbackWriteContent,
-                    fallbackTargetPath,
-                    resolveStreamingTargetName(fallbackTargetPath),
-                    true
-                  );
-                }
-              }
-            }
-            const finalSuccessContent = finalSuccessOutput.trim() || '已完成。';
-            const finalContent = result.success
-              ? finalSuccessContent
-              : `**Execution failed**: ${result.error || 'Unknown error'}`;
-            setMessages(prev => prev.map(msg => {
-              if (msg.id !== assistantMessageId) return msg;
-              const elapsed = msg.thinkingStartTime ? Math.max(1, Math.round((Date.now() - msg.thinkingStartTime) / 1000)) : 1;
-              const nextContent = result.success
-                ? (finalContent.trim() || msg.content.trim())
-                : finalContent.trim();
-              let finalizedBlocks: ContentBlock[] = (msg.contentBlocks ?? []).map(block => {
-                if (block.type === 'decomposition' && block.key === decompositionBlockKey) {
-                  return { ...block, isStreaming: false };
-                }
-                if (block.type === 'todo') {
-                  return { ...block, isStreaming: false };
-                }
-                if (block.type === 'thinking') {
-                  return { ...block, isThinking: false, elapsedSeconds: elapsed };
-                }
-                if (block.type === 'tool' && block.tool.status === 'pending') {
-                  return { ...block, tool: { ...block.tool, status: 'success' as const } };
-                }
-                return block;
-              });
-              finalizedBlocks = nextContent
-                ? upsertTextBlock(finalizedBlocks, agentTextBlockKey, nextContent, {
-                    mode: 'replace',
-                    isStreaming: false,
-                  })
-                : finalizeTextBlock(finalizedBlocks, agentTextBlockKey);
-              return {
-                ...msg,
-                isThinking: false,
-                isThinkingPhase: false,
-                elapsedSeconds: elapsed,
-                content: nextContent,
-                contentBlocks: finalizedBlocks,
-                toolCalls: msg.toolCalls?.map(tc =>
-                  tc.status === 'pending' ? { ...tc, status: 'success' as const } : tc
-                ),
-              };
-            }));
-            setIsLoading(false);
-          },
-          onError: (err) => {
-            detachTodoListener();
-            if (pendingToolConfirmationResolverRef.current) {
-              settlePendingToolConfirmation(false);
-            }
-            flushAnswerBuffer();
-            stopWriteRenderPump();
-            writeStepPendingFinalize = false;
-            drainWriteRenderBuffer(false, true);
-            finalizeDecompositionBlock();
-            setMessages(prev => prev.map(msg => {
-              if (msg.id !== assistantMessageId) return msg;
-              const errorText = `\n\n**Error**: ${err.message}`;
-              const nextBlocks = upsertTextBlock((msg.contentBlocks ?? []).map(block =>
-                block.type === 'todo'
-                  ? { ...block, isStreaming: false }
-                  : (block.type === 'thinking'
-                    ? { ...block, isThinking: false, elapsedSeconds: msg.elapsedSeconds }
-                    : block)
-              ), agentTextBlockKey, errorText, {
-                mode: 'append',
-                isStreaming: false,
-              });
-              return {
-                ...msg,
-                isThinking: false,
-                content: msg.content + errorText,
-                contentBlocks: nextBlocks,
-              };
-            }));
-            setIsLoading(false);
-          }
-        });
-        detachTodoListener();
-      } catch (err) {
-        detachTodoListener();
-        if (pendingToolConfirmationResolverRef.current) {
-          settlePendingToolConfirmation(false);
-        }
-        flushAnswerBuffer();
-        finalizeDecompositionBlock();
-        setMessages(prev => prev.map(msg => {
-          if (msg.id !== assistantMessageId) return msg;
-          const errorText = `\n\n**Execution failed**: ${err instanceof Error ? err.message : String(err)}`;
-          const nextBlocks = upsertTextBlock((msg.contentBlocks ?? []).map(block =>
-            block.type === 'todo'
-              ? { ...block, isStreaming: false }
-              : (block.type === 'thinking'
-                ? { ...block, isThinking: false, elapsedSeconds: msg.elapsedSeconds }
-                : block)
-          ), agentTextBlockKey, errorText, {
-            mode: 'append',
-            isStreaming: false,
-          });
-          return {
-            ...msg,
-            isThinking: false,
-            content: msg.content + errorText,
-            contentBlocks: nextBlocks,
-          };
-        }));
-        setIsLoading(false);
-      }
-      return;
-    }
   };
 
   const toggleMaximize = () => {
@@ -6362,13 +5369,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 // }
                 
                 // Whether current assistant message has thinking steps.
-                const showLegacyAgentMessageUi = message.role === 'assistant' && message.flowKind !== 'agent_task';
-                const hasThinkingSteps = showLegacyAgentMessageUi && !!message.thinkingSteps && message.thinkingSteps.length > 0;
+                const showAssistantTimelineUi = message.role === 'assistant';
+                const hasThinkingSteps = showAssistantTimelineUi && !!message.thinkingSteps && message.thinkingSteps.length > 0;
                 const isLatestAssistantMessage = message.role === 'assistant' && index === messages.length - 1;
                 const assistantSections = message.role === 'assistant'
                   ? buildAssistantRenderSections(message.contentBlocks ?? [])
                   : null;
-                const hasStructuredBlocks = showLegacyAgentMessageUi && !!assistantSections && (
+                const hasStructuredBlocks = showAssistantTimelineUi && !!assistantSections && (
                   assistantSections.todoBlocks.length > 0
                   || assistantSections.decompositionBlocks.length > 0
                   || assistantSections.progressTextBlocks.length > 0
@@ -6417,7 +5424,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             {assistantSections.todoBlocks.map(block => {
                               const completedCount = block.items.filter(item => item.status === 'completed').length;
                               const totalCount = block.items.length;
-                              const requirementItems = block.items.filter(item => item.source === 'agent');
+                              const requirementItems = block.items.filter(item => item.source === 'assistant');
                               const requirementCompleted = requirementItems.filter(item => item.status === 'completed').length;
                               const planItems = block.items.filter(item => item.source === 'plan');
                               const planCompleted = planItems.filter(item => item.status === 'completed').length;
@@ -6583,7 +5590,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             )}
 
                             {/* Tool call log for historical message compatibility. */}
-                            {showLegacyAgentMessageUi && message.toolCalls && message.toolCalls.length > 0 && (
+                            {showAssistantTimelineUi && message.toolCalls && message.toolCalls.length > 0 && (
                               <div className="tool-call-log">
                                 {message.toolCalls.map((tc, i) => (
                                   renderToolLogEntry(tc, tc.uiId ?? i)
@@ -6716,9 +5723,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       </div>
                       <div className="context-menu-item context-menu-item-switch" onClick={() => setIsDeepThinkingEnabled(!isDeepThinkingEnabled)}>
                         <span className="context-menu-item-text">思考</span>
-                        <div className={`context-menu-switch ${isDeepThinkingEnabled ? 'active' : ''}`}>
-                          <div className="context-menu-switch-thumb" />
-                        </div>
+                        <Switch
+                          className="context-menu-switch"
+                          checked={isDeepThinkingEnabled}
+                          ariaLabel="切换深度思考"
+                          onChange={setIsDeepThinkingEnabled}
+                        />
                       </div>
                     </div>
 
@@ -6727,14 +5737,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       <div className="context-menu-group-title">技能</div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('skills')}>
                         <span className="context-menu-item-text">Skills</span>
-                        {selectedSkills.length > 0 && <span className="context-menu-item-badge">{selectedSkills.length}</span>}
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('memory')}>
                         <span className="context-menu-item-text">记忆</span>
-                        <span className="context-menu-item-current">{agentMemoryStats.usagePercentage}%</span>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
@@ -6746,15 +5754,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('writingRules')}>
-                        <span className="context-menu-item-text">写作规则</span>
-                        {enabledWritingRuleDocuments.length > 0 && <span className="context-menu-item-badge">{enabledWritingRuleDocuments.length}</span>}
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('mcpServer')}>
+                        <span className="context-menu-item-text">MCP server</span>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('mcpServer')}>
-                        <span className="context-menu-item-text">MCP Server</span>
+                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('writingRules')}>
+                        <span className="context-menu-item-text">写作规则</span>
+                        {enabledWritingRuleDocuments.length > 0 && <span className="context-menu-item-badge">{enabledWritingRuleDocuments.length}</span>}
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
@@ -6981,7 +5989,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                   </>
                 ) : subMenuType === 'skills' ? (
                   <>
-                    {/* Skills 二级菜单 */}
                     <div className="context-menu-header">
                       <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
@@ -6990,62 +5997,31 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <span>返回</span>
                       </div>
                     </div>
-                    {/* 浏览市场选项 */}
-                    <div className="context-menu-list">
-                      <div
-                        className="context-menu-item"
-                        onClick={() => {
-                          // Open skills marketplace.
-                          setSubMenuType('none');
-                          setIsContextMenuOpen(false);
-                          window.dispatchEvent(new CustomEvent('open-skill-market'));
-                        }}
-                      >
-                        <Icon name="store" size={14} />
-                        <span className="context-menu-item-text">浏览市场</span>
+
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">Skills</div>
+                      <div className="context-menu-item" onClick={handleOpenSkillsMarket}>
+                        <span className="context-menu-item-text">打开 Skills 市场</span>
                       </div>
                     </div>
-                    {/* 技能包列表 */}
-                    {isLoadingSkills ? (
+                  </>
+                ) : subMenuType === 'memory' ? (
+                  <>
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">记忆</div>
                       <div className="context-menu-empty">
-                        <span>加载中...</span>
+                        <span>当前 AI panel 已切换为普通对话模式，未启用独立记忆。</span>
                       </div>
-                    ) : skillsList.length === 0 ? (
-                      <div className="context-menu-empty">
-                        <span>暂无技能包</span>
-                      </div>
-                    ) : (
-                      <div className="context-menu-list">
-                        {skillsList.map(skill => (
-                          <div
-                            key={skill.path}
-                            className={`context-menu-item${selectedSkills.some(s => s.path === skill.path) ? ' selected' : ''}`}
-                            onClick={() => {
-                              // Toggle selected state for skill package.
-                              const exists = selectedSkills.some(s => s.path === skill.path);
-                              setSelectedSkills(prev => {
-                                if (exists) return prev.filter(s => s.path !== skill.path);
-                                return [...prev, { name: skill.name, path: skill.path }];
-                              });
-                              // Insert/remove @tag in input text.
-                              if (!exists) {
-                                tiptapRef.current?.insertFileReference(`skill:${skill.path}`, skill.name);
-                              } else {
-                                tiptapRef.current?.removeFileReference(`skill:${skill.path}`);
-                              }
-                            }}
-                          >
-                            <Icon name={skill.type === 'directory' ? 'folder' : 'file'} size={14} />
-                            <span className="context-menu-item-text">{skill.name}</span>
-                            {selectedSkills.some(s => s.path === skill.path) && (
-                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                                <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" />
-                              </svg>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    </div>
                   </>
                 ) : subMenuType === 'decompositionRules' ? (
                   <>
@@ -7116,9 +6092,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             >
                               <span className="context-menu-item-text">{rule.name}</span>
                               <span className="context-menu-rule-instruction" title={rule.instruction}>{rule.instruction}</span>
-                              <div className={`context-menu-switch ${rule.enabled ? 'active' : ''}`}>
-                                <div className="context-menu-switch-thumb" />
-                              </div>
+                              <Switch
+                                className="context-menu-switch"
+                                checked={rule.enabled}
+                                ariaLabel={`切换拆解规则 ${rule.name}`}
+                                onChange={() => handleToggleDecompositionRule(rule.id)}
+                              />
                               {!rule.builtin && (
                                 <div
                                   role="button"
@@ -7145,6 +6124,27 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       )}
                     </div>
 
+                  </>
+                ) : subMenuType === 'mcpServer' ? (
+                  <>
+                    <div className="context-menu-header">
+                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>返回</span>
+                      </div>
+                    </div>
+
+                    <div className="context-menu-group">
+                      <div className="context-menu-group-title">MCP server</div>
+                      <div className="context-menu-empty">
+                        <span>当前 AI panel 保持普通对话模式，未接入 MCP server。</span>
+                      </div>
+                      <div className="context-menu-item" onClick={handleOpenAIConfigTab}>
+                        <span className="context-menu-item-text">打开 AI 配置</span>
+                      </div>
+                    </div>
                   </>
                 ) : subMenuType === 'writingRules' ? (
                   <>
@@ -7204,9 +6204,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             >
                               <span className="context-menu-item-text">{document.name}</span>
                               <span className="context-menu-rule-instruction" title={document.path}>{document.path}</span>
-                              <div className={`context-menu-switch ${document.enabled ? 'active' : ''}`}>
-                                <div className="context-menu-switch-thumb" />
-                              </div>
+                              <Switch
+                                className="context-menu-switch"
+                                checked={document.enabled}
+                                ariaLabel={`切换写作规则 ${document.name}`}
+                                onChange={() => handleToggleWritingRuleDocument(document.id)}
+                              />
                               <div
                                 role="button"
                                 tabIndex={0}
@@ -7250,45 +6253,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       )}
                     </div>
                   </>
-                ) : subMenuType === 'memory' ? (
-                  <>
-                    <div className="context-menu-header">
-                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <span>返回</span>
-                      </div>
-                    </div>
-
-                    <div className="context-menu-group">
-                      <div className="context-menu-group-title">记忆状态</div>
-                      <div className="context-menu-item disabled">
-                        <span className="context-menu-item-text">
-                          使用率 {agentMemoryStats.usagePercentage}% · 共 {agentMemoryStats.totalEntries} 条
-                        </span>
-                      </div>
-                      <div className="context-menu-item" onClick={handleClearAgentMemory}>
-                        <Icon name="refresh" size={14} />
-                        <span className="context-menu-item-text">清空记忆</span>
-                      </div>
-                    </div>
-                  </>
-                ) : subMenuType === 'mcpServer' ? (
-                  <>
-                    {/* MCP Server 二级菜单 */}
-                    <div className="context-menu-header">
-                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <span>返回</span>
-                      </div>
-                    </div>
-                    <div className="context-menu-empty">
-                      <span>暂无 MCP Server</span>
-                    </div>
-                  </>
                 ) : null}
                 </div>
               </div>
@@ -7302,41 +6266,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               </div>
             )}
           </div>
-
-          {pendingToolConfirmation && (
-            <div className="tool-confirm-inline">
-              <div className="tool-confirm-inline__content">
-                <div className="tool-confirm-inline__title">
-                  工具执行确认: {pendingToolConfirmation.toolName}
-                </div>
-                {pendingToolConfirmation.detail && (
-                  <div className="tool-confirm-inline__detail">
-                    {pendingToolConfirmation.detail}
-                  </div>
-                )}
-              </div>
-              <div className="tool-confirm-inline__actions">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className="tool-confirm-inline__btn tool-confirm-inline__btn--deny"
-                  onClick={() => settlePendingToolConfirmation(false)}
-                  onKeyDown={(event) => handleToolConfirmActionKeyDown(event, false)}
-                >
-                  拒绝
-                </div>
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className="tool-confirm-inline__btn tool-confirm-inline__btn--allow"
-                  onClick={() => settlePendingToolConfirmation(true)}
-                  onKeyDown={(event) => handleToolConfirmActionKeyDown(event, true)}
-                >
-                  允许
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Input area */}
           <div className="input-area">

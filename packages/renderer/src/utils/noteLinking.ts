@@ -8,11 +8,9 @@ import type { NoteItem } from '../types/electron';
 
 const SPECIAL_PATH_PREFIXES = [
   'settings:/',
-  'snippet:/',
   'theme-override://',
   'theme-config://',
-  'ai-config:/',
-  'agent-draft:/'
+  'ai-config:/'
 ];
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdown', 'mkd', 'mkdn', 'mdx']);

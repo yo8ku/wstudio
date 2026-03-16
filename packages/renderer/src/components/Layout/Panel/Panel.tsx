@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../Icons';
-import { SnippetsPanel } from './SnippetsPanel';
+import { LinksPanel } from './LinksPanel';
 import { TimelinePanel } from './TimelinePanel';
 import { TerminalPanel } from './TerminalPanel';
 import { ResizeHandle } from '../ResizeHandle';
@@ -12,7 +12,7 @@ import './Panel.scss';
 
 import type { LinkCollectionSort } from '../../Links';
 
-export type PanelView = 'snippets' | 'timeline' | 'terminal';
+export type PanelView = 'links' | 'timeline' | 'terminal';
 export type PanelPlacement = 'top' | 'left' | 'right' | 'bottom';
 
 interface PanelProps {
@@ -231,8 +231,8 @@ export const Panel: React.FC<PanelProps> = ({
       >
         <div className="panel-container-tabs">
           <div
-            className={`panel-container-tab ${activeView === 'snippets' ? 'active' : ''}`}
-            onClick={() => handleViewChange('snippets')}
+            className={`panel-container-tab ${activeView === 'links' ? 'active' : ''}`}
+            onClick={() => handleViewChange('links')}
           >
             链接
           </div>
@@ -318,8 +318,8 @@ export const Panel: React.FC<PanelProps> = ({
       )}
 
       <div className="panel-container-content">
-        <div className={`panel-container-view ${activeView === 'snippets' ? 'active' : ''}`}>
-          <SnippetsPanel
+        <div className={`panel-container-view ${activeView === 'links' ? 'active' : ''}`}>
+          <LinksPanel
             query={linkQuery}
             sortBy={linkSortBy}
             isSearchVisible={isLinkSearchVisible}

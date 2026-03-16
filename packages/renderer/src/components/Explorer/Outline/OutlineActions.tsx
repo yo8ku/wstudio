@@ -6,10 +6,6 @@ export interface OutlineActionsProps {
   onCollapse?: () => void;
 }
 
-/**
- * 大纲工具栏
- * 提供排序、筛选、折叠等操作
- */
 export const OutlineActions: React.FC<OutlineActionsProps> = ({
   onSort,
   onFilter,

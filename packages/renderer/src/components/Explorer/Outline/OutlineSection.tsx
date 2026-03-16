@@ -14,14 +14,10 @@ export interface OutlineSectionProps {
   onSort?: () => void;
   onFilter?: () => void;
   onCollapse?: () => void;
-  showResizeHandle?: boolean; // 是否显示拖动手柄（默认为 true）
+  showResizeHandle?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
 }
 
-/**
- * 大纲面板
- * 显示当前文件的符号结构
- */
 export const OutlineSection: React.FC<OutlineSectionProps> = ({
   nodes,
   selectedNode,
@@ -34,9 +30,13 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
   onExpandedChange,
 }) => {
   const [height, setHeight] = useState(300);
-  // 大纲默认折叠状态，用户需要手动展开
   const [isExpanded, setIsExpanded] = useState(false);
-  const actions = [];
+  const actions: Array<{
+    id: string;
+    icon: React.ReactNode;
+    tooltip: string;
+    onClick: () => void;
+  }> = [];
 
   if (onCollapse) {
     actions.push({
@@ -62,9 +62,9 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
   };
 
   return (
-    <div 
+    <div
       className={`outline-section ${isExpanded ? 'outline-section--expanded' : 'outline-section--collapsed'}`}
-      style={{ 
+      style={{
         '--outline-height': `${height}px`
       } as React.CSSProperties}
     >
@@ -84,21 +84,21 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
         onExpandChange={handleExpandChange}
       >
         <div className="outline-content">
-        {nodes.length === 0 ? (
-          <div className="outline-empty">活动编辑器无法提供大纲信息</div>
-        ) : (
-          <TreeView>
-            {nodes.map((node) => (
-              <OutlineNode
-                key={node.id}
-                node={node}
-                selected={selectedNode?.id === node.id}
-                onSelect={onNodeSelect}
-                onToggle={onNodeToggle}
-              />
-            ))}
-          </TreeView>
-        )}
+          {nodes.length === 0 ? (
+            <div className="outline-empty">活动编辑器无法提供大纲信息</div>
+          ) : (
+            <TreeView>
+              {nodes.map((node) => (
+                <OutlineNode
+                  key={node.id}
+                  node={node}
+                  selected={selectedNode?.id === node.id}
+                  onSelect={onNodeSelect}
+                  onToggle={onNodeToggle}
+                />
+              ))}
+            </TreeView>
+          )}
         </div>
       </ExplorerSection>
     </div>
@@ -106,4 +106,3 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
 };
 
 export default OutlineSection;
-

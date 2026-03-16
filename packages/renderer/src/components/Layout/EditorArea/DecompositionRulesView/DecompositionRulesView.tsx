@@ -4,6 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Switch } from '../../../common/Switch';
 import { Icon } from '../../../Icons/Icon';
 import { electronStore } from '../../../../services/ElectronStoreService';
 import { toastService } from '../../../../services/ToastService';
@@ -626,9 +627,12 @@ export const DecompositionRulesView: React.FC<DecompositionRulesViewProps> = ({
                         </div>
                         <span className="decomposition-rules-view__item-instruction">{rule.instruction}</span>
                       </div>
-                      <div className={`decomposition-rules-view__switch${rule.enabled ? ' is-active' : ''}`}>
-                        <div className="decomposition-rules-view__switch-thumb" />
-                      </div>
+                      <Switch
+                        className="decomposition-rules-view__switch"
+                        checked={rule.enabled}
+                        ariaLabel={`切换拆解规则 ${rule.name}`}
+                        onChange={() => handleToggleRule(rule.id)}
+                      />
                       {!rule.builtin && (
                         <div
                           role="button"

@@ -10,6 +10,7 @@ import { Tooltip } from '../../Tooltip';
 import { Icon } from '../../Icons';
 import { SearchBox } from '../../common/SearchBox';
 import { DropdownMenu } from '../../common/DropdownMenu';
+import { Switch } from '../../common/Switch';
 import { aiService, AI_PROVIDERS, setModelEnabled, isModelEnabled, getProviderModels } from '../../../services/ai';
 import { AIProviderConfig } from '../../../types/aiProvider';
 import { toastService } from '../../../services/ToastService';
@@ -1191,14 +1192,12 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                                     {model.capabilities?.thinking && <ThinkingIcon size={14} />}
                                   </span>
                                   <div className="model-item-actions">
-                                    <label className="model-switch">
-                                      <input
-                                        type="checkbox"
-                                        checked={isEnabled}
-                                        onChange={(e) => toggleModelEnabled(model.id, e.target.checked)}
-                                      />
-                                      <span className="switch-slider"></span>
-                                    </label>
+                                    <Switch
+                                      className="model-switch"
+                                      checked={isEnabled}
+                                      ariaLabel={`切换模型 ${model.displayName || model.name}`}
+                                      onChange={(nextChecked) => toggleModelEnabled(model.id, nextChecked)}
+                                    />
                                     <button
                                       type="button"
                                       className="btn-remove-model"

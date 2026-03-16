@@ -196,30 +196,16 @@
 }
 
 .decomposition-rules-view__switch {
-  width: 30px;
-  height: 18px;
-  border-radius: 999px;
-  border: 1px solid var(--ws-input-border);
-  display: inline-flex;
-  align-items: center;
-  padding: 1px;
-  flex-shrink: 0;
-}
-
-.decomposition-rules-view__switch-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background-color: var(--ws-descriptionForeground);
-}
-
-.decomposition-rules-view__switch.is-active {
-  justify-content: flex-end;
-  border-color: var(--ws-accent);
-}
-
-.decomposition-rules-view__switch.is-active .decomposition-rules-view__switch-thumb {
-  background-color: var(--ws-accent);
+  --ws-switch-width: 30px;
+  --ws-switch-height: 18px;
+  --ws-switch-padding: 1px;
+  --ws-switch-thumb-size: 14px;
+  --ws-switch-track-off: transparent;
+  --ws-switch-track-on: transparent;
+  --ws-switch-border-off: var(--ws-input-border);
+  --ws-switch-border-on: var(--ws-accent);
+  --ws-switch-thumb: var(--ws-descriptionForeground);
+  --ws-switch-thumb-checked: var(--ws-accent);
 }
 
 .decomposition-rules-view__delete {

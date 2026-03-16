@@ -72,7 +72,7 @@ export interface EditorTab {
       enabled: boolean;
     }>;
   };
-  agentDiffPreview?: {
+  diffPreview?: {
     beforeContent: string;
     afterContent: string;
     updatedAt: number;
@@ -114,7 +114,7 @@ interface ReplaceActiveTabContentDetail {
   path?: string;
   name?: string;
   markDirty?: boolean;
-  agentDiffPreview?: EditorTab['agentDiffPreview'];
+  diffPreview?: EditorTab['diffPreview'];
 }
 
 interface UpdateActiveTabTitleDetail {
@@ -144,31 +144,6 @@ interface LastOpenedRestoreResult {
 
 const normalizeComparableFilePath = (value: string): string =>
   value.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-const AGENT_DRAFT_PATH_PREFIX = 'agent-draft:/';
-
-const sanitizeSaveFileName = (value: string): string =>
-  value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-').trim();
-
-const ensureDraftFileExtension = (value: string): string => {
-  if (/\.[a-zA-Z0-9]+$/.test(value)) return value;
-  return `${value}.md`;
-};
-
-const getDraftSaveFileName = (tab: EditorTab): string => {
-  const fromPath = tab.path.startsWith(AGENT_DRAFT_PATH_PREFIX)
-    ? tab.path.slice(AGENT_DRAFT_PATH_PREFIX.length).trim()
-    : '';
-  const baseName = sanitizeSaveFileName(fromPath || tab.title || 'untitled');
-  const safeName = baseName || 'untitled';
-  return ensureDraftFileExtension(safeName);
-};
-
-const buildWorkspaceDefaultSavePath = (workspacePath: string, fileName: string): string => {
-  const normalizedWorkspace = workspacePath.trim().replace(/[\\/]+$/, '');
-  if (!normalizedWorkspace) return '';
-  const separator = normalizedWorkspace.includes('\\') ? '\\' : '/';
-  return `${normalizedWorkspace}${separator}${fileName}`;
-};
 
 const getFileNameFromPath = (value: string): string => {
   const normalized = value.replace(/\\/g, '/');
@@ -188,20 +163,6 @@ const resolveLastOpenedPath = (result: LastOpenedRestoreResult | undefined): str
 
   const normalizedPath = typeof result.data.path === 'string' ? result.data.path.trim() : '';
   return normalizedPath || null;
-};
-
-const appendNumericSuffixToPath = (filePath: string, index: number): string => {
-  const normalized = filePath.replace(/\\/g, '/');
-  const slashIndex = normalized.lastIndexOf('/');
-  const dir = slashIndex >= 0 ? normalized.slice(0, slashIndex + 1) : '';
-  const fileName = slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized;
-  const dotIndex = fileName.lastIndexOf('.');
-  const hasExt = dotIndex > 0 && dotIndex < fileName.length - 1;
-  const baseName = hasExt ? fileName.slice(0, dotIndex) : fileName;
-  const ext = hasExt ? fileName.slice(dotIndex) : '';
-  const suffixed = `${baseName}-${index}${ext}`;
-  const joined = `${dir}${suffixed}`;
-  return filePath.includes('\\') ? joined.replace(/\//g, '\\') : joined;
 };
 
 const pushTabIdToHistory = (history: string[], tabId: string): string[] =>
@@ -591,7 +552,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const updateFileTabContent = useCallback((
     tabId: string,
     content: string,
-    options?: { clearAgentDiffPreview?: boolean }
+    options?: { clearDiffPreview?: boolean }
   ) => {
     const sourceTab = findTabInAllPaneRefs(tabId);
     if (!sourceTab || sourceTab.type !== 'file') {
@@ -616,8 +577,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         isPreview: false,
       };
 
-      if (options?.clearAgentDiffPreview) {
-        nextTab.agentDiffPreview = undefined;
+      if (options?.clearDiffPreview) {
+        nextTab.diffPreview = undefined;
       }
 
       return nextTab;
@@ -633,7 +594,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     tabId: string,
     isComposing: boolean,
     content: string | undefined,
-    options?: { clearAgentDiffPreview?: boolean }
+    options?: { clearDiffPreview?: boolean }
   ) => {
     if (isComposing) {
       composingTabIdsRef.current.add(tabId);
@@ -833,70 +794,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     pickNextActiveForPane
   ]);
 
-
-  // 澶勭悊鍒涘缓鏂扮墖娈?
-  const handleCreateSnippet = useCallback((event: Event) => {
-    const customEvent = event as CustomEvent;
-    const { name } = customEvent.detail;
-    console.log('[EditorArea] 鍒涘缓鏂扮墖娈?', name);
-    
-    // 鍒涘缓 JSONC 鏍煎紡鐨勭墖娈甸厤缃爣绛鹃〉锛屾敮鎸佹敞閲?
-    const snippetTemplate = `{
-  // 鐗囨鍚嶇О锛堢敤浜庢樉绀哄拰鍖哄垎鐗囨锛?
-  "name": "${name}",
-  
-  // 瑙﹀彂鍓嶇紑锛堝繀濉紝鐢ㄤ簬鑷姩琛ュ叏銆傚簲璇ユ槸鐙竴鏃犱簩鐨勶紝渚嬪锛歳fc, mysnippet锛?
-  "prefix": "myprefix",
-  
-  // 鐗囨鍐呭
-  "body": "",
-  
-  // 鐗囨鎻忚堪锛堝彲閫夛級
-  "description": "",
-  
-  // 缂栫▼璇█锛堝彲閫夛級濡傦細javascript, python, html, css 绛?
-  "language": "",
-  
-  // 鏍囩锛堝彲閫夛紝澶氫釜鏍囩鐢ㄩ€楀彿鍒嗛殧锛?
-  "tags": ""
-}`;
-    
-    const newTab: EditorTab = {
-      id: `snippet-${Date.now()}`,
-      title: `${name}.json`,
-      path: `snippet:/new/${name}`,
-      isDirty: false,
-      language: 'jsonc',  // 浣跨敤 jsonc 鏀寔娉ㄩ噴
-      content: snippetTemplate,
-      type: 'file'
-    };
-    
-    setTabs(prev => [...prev, newTab]);
-    setActiveTabId(newTab.id);
-  }, []);
-
-  // 澶勭悊鎻掑叆鐗囨鍒扮紪杈戝櫒
-  const handleInsertSnippet = useCallback((event: Event) => {
-    const customEvent = event as CustomEvent;
-    const { snippet } = customEvent.detail;
-    console.log('[EditorArea] 鎻掑叆鐗囨:', snippet.name);
-    
-    // TODO: 鎻掑叆鐗囨鍒板綋鍓嶆椿鍔ㄧ殑缂栬緫鍣?
-    // 鏆傛椂鍙槸鍒涘缓涓€涓樉绀虹墖娈靛唴瀹圭殑鏍囩椤?
-    const newTab: EditorTab = {
-      id: `snippet-preview-${Date.now()}`,
-      title: `鐗囨: ${snippet.name}`,
-      path: `snippet:/preview/${snippet.id}`,
-      isDirty: false,
-      language: snippet.language || 'plaintext',
-      content: snippet.content,
-      type: 'file'
-    };
-    
-    setTabs(prev => [...prev, newTab]);
-    setActiveTabId(newTab.id);
-  }, []);
-
   // 澶勭悊鎵撳紑缂栬緫鍣ㄦ爣绛鹃〉
   const handleOpenEditorTab = useCallback((event: Event) => {
     const customEvent = event as CustomEvent<{
@@ -987,20 +884,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     setFocusedPaneId('left-top');
   }, [findPaneByPath, setPaneTabs, setPaneActiveTabId]);
 
-  // 娉ㄥ唽鐗囨浜嬩欢鐩戝惉鍣紙鐙珛鐨?useEffect锛?
   useEffect(() => {
-    window.addEventListener('create-snippet', handleCreateSnippet);
-    window.addEventListener('insert-snippet', handleInsertSnippet);
     window.addEventListener('open-editor-tab', handleOpenEditorTab);
     window.addEventListener('open-terminal-tab', handleOpenTerminalTab as EventListener);
     
     return () => {
-      window.removeEventListener('create-snippet', handleCreateSnippet);
-      window.removeEventListener('insert-snippet', handleInsertSnippet);
       window.removeEventListener('open-editor-tab', handleOpenEditorTab);
       window.removeEventListener('open-terminal-tab', handleOpenTerminalTab as EventListener);
     };
-  }, [handleCreateSnippet, handleInsertSnippet, handleOpenEditorTab, handleOpenTerminalTab]);
+  }, [handleOpenEditorTab, handleOpenTerminalTab]);
 
   useEffect(() => () => {
     getAllPaneTabsSnapshot().forEach((tab) => {
@@ -1342,7 +1234,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             path: tab.path || targetPath || tab.path,
             content: detail.content,
             isDirty: markDirty,
-            agentDiffPreview: detail.agentDiffPreview,
+            diffPreview: detail.diffPreview,
           };
         });
 
@@ -1400,7 +1292,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           content: detail.content,
           type: 'file',
           isPreview: false,
-          agentDiffPreview: detail.agentDiffPreview,
+          diffPreview: detail.diffPreview,
         };
         setTabs(prev => [...prev, createdTab]);
         setTimeout(() => setActiveTabId(createdTab.id), 0);
@@ -3059,12 +2951,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       return;
     }
 
-    // 濡傛灉鏄墖娈垫枃浠讹紝宸茬粡鑷姩淇濆瓨锛屼笉闇€瑕佸啀娆′繚瀛?
-    if (tab.path.startsWith('snippet:/')) {
-      updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
-      return;
-    }
-
     // 妫€鏌ユ槸鍚︽槸涓婚瑕嗙洊鏂囦欢锛坱heme-override:// 鍗忚锛?
     const isThemeOverride = tab.path.startsWith('theme-override://');
     
@@ -3140,99 +3026,16 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       return;
     }
 
-    // 濡傛灉鏄棤璺緞鏂囦欢鎴?Agent 涓存椂鏂囨。锛屼娇鐢ㄥ彟瀛樹负
-    const requiresSaveAs = !tab.path
-      || tab.path === ''
-      || tab.path.startsWith(AGENT_DRAFT_PATH_PREFIX);
+    // 濡傛灉鏄棤璺緞鏂囦欢锛屼娇鐢ㄥ彟瀛樹负
+    const requiresSaveAs = !tab.path || tab.path === '';
     if (requiresSaveAs) {
       try {
-        const isAgentDraft = tab.path.startsWith(AGENT_DRAFT_PATH_PREFIX);
-        if (isAgentDraft) {
-          const workspaceResult = await window.electron?.workspace?.getDir();
-          const workspacePath = workspaceResult?.success
-            ? String(workspaceResult.data || '').trim()
-            : '';
-          if (workspacePath) {
-            const fileName = getDraftSaveFileName(tab);
-            const defaultPath = buildWorkspaceDefaultSavePath(workspacePath, fileName);
-            if (defaultPath) {
-              let targetPath = defaultPath;
-              const existsFn = window.electron?.fs?.exists;
-              if (existsFn) {
-                try {
-                  const existsDefault = await existsFn(defaultPath);
-                  if (existsDefault) {
-                    let resolved = '';
-                    for (let i = 1; i <= 200; i += 1) {
-                      const candidate = appendNumericSuffixToPath(defaultPath, i);
-                      const existsCandidate = await existsFn(candidate);
-                      if (!existsCandidate) {
-                        resolved = candidate;
-                        break;
-                      }
-                    }
-                    if (resolved) {
-                      targetPath = resolved;
-                    } else {
-                      targetPath = '';
-                    }
-                  }
-                } catch {
-                  // ignore existence check failure and fallback to default path
-                }
-              }
-
-              let contentToSave = tab.content || '';
-              if (isHtmlContent(contentToSave)) {
-                contentToSave = htmlToMarkdown(contentToSave);
-              }
-              if (targetPath) {
-                const autoSaveResult = await window.electron?.file?.save(targetPath, contentToSave);
-                if (autoSaveResult?.success) {
-                  const savedName = getFileNameFromPath(targetPath);
-                  const syncedNote = await syncFileTabToNoteSystem(tab, {
-                    path: targetPath,
-                    title: savedName,
-                    content: contentToSave,
-                    previousPath: tab.path
-                  });
-                  updateTabInAllPanes(tab.id, current => ({
-                    ...current,
-                    path: targetPath,
-                    title: savedName,
-                    isDirty: false
-                  }));
-                  if (syncedNote) {
-                    setCurrentNote(syncedNote);
-                  }
-                  return;
-                }
-              }
-            }
-          }
-        }
-
-        let saveAsOptions: { defaultPath?: string } | undefined;
-        if (isAgentDraft) {
-          const workspaceResult = await window.electron?.workspace?.getDir();
-          const workspacePath = workspaceResult?.success
-            ? String(workspaceResult.data || '').trim()
-            : '';
-          if (workspacePath) {
-            const fileName = getDraftSaveFileName(tab);
-            const defaultPath = buildWorkspaceDefaultSavePath(workspacePath, fileName);
-            if (defaultPath) {
-              saveAsOptions = { defaultPath };
-            }
-          }
-        }
-
         let contentToSave = tab.content || '';
         if (isHtmlContent(contentToSave)) {
           contentToSave = htmlToMarkdown(contentToSave);
         }
 
-        const result = await window.electron?.file?.saveAs(contentToSave, saveAsOptions);
+        const result = await window.electron?.file?.saveAs(contentToSave);
         if (result?.success && result.data) {
           const syncedNote = await syncFileTabToNoteSystem(tab, {
             path: result.data.path,
@@ -4178,10 +3981,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       <EditorGroup
                         file={extraTab}
                         onContentChange={(content) => {
-                          updateFileTabContent(sourceTab.id, content, { clearAgentDiffPreview: true });
+                          updateFileTabContent(sourceTab.id, content, { clearDiffPreview: true });
                         }}
                         onCompositionStateChange={(isComposing, content) => {
-                          handleFileTabCompositionStateChange(sourceTab.id, isComposing, content, { clearAgentDiffPreview: true });
+                          handleFileTabCompositionStateChange(sourceTab.id, isComposing, content, { clearDiffPreview: true });
                         }}
                       />
                     ) : (
@@ -4365,10 +4168,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       <EditorGroup
                         file={tab}
                         onContentChange={(content) => {
-                          updateFileTabContent(tab.id, content, { clearAgentDiffPreview: true });
+                          updateFileTabContent(tab.id, content, { clearDiffPreview: true });
                         }}
                         onCompositionStateChange={(isComposing, content) => {
-                          handleFileTabCompositionStateChange(tab.id, isComposing, content, { clearAgentDiffPreview: true });
+                          handleFileTabCompositionStateChange(tab.id, isComposing, content, { clearDiffPreview: true });
                         }}
                       />
                     )}
@@ -4452,10 +4255,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                             <EditorGroup
                               file={tab}
                               onContentChange={(content) => {
-                                updateFileTabContent(tab.id, content, { clearAgentDiffPreview: true });
+                                updateFileTabContent(tab.id, content, { clearDiffPreview: true });
                               }}
                               onCompositionStateChange={(isComposing, content) => {
-                                handleFileTabCompositionStateChange(tab.id, isComposing, content, { clearAgentDiffPreview: true });
+                                handleFileTabCompositionStateChange(tab.id, isComposing, content, { clearDiffPreview: true });
                               }}
                             />
                           )}
@@ -4473,7 +4276,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                                   content: markdownContent,
                                   isDirty: true,
                                   isPreview: false,
-                                  agentDiffPreview: undefined,
+                                  diffPreview: undefined,
                                 }));
                               }}
                               editable={true}

@@ -140,10 +140,6 @@
       color: var(--ws-list-activeSelectionForeground, var(--ws-list-inactiveSelectionForeground));
     }
 
-    &.agent-changed {
-      box-shadow: inset 0 0 0 1px rgba(122, 217, 124, 0.45);
-      animation: file-tree-agent-flash 1.6s ease-out;
-    }
   }
 
   .file-tree-children {
@@ -229,19 +225,3 @@
   }
 }
 
-@keyframes file-tree-agent-flash {
-  0% {
-    background-color: rgba(122, 217, 124, 0.26);
-    box-shadow: inset 0 0 0 1px rgba(122, 217, 124, 0.65);
-  }
-
-  55% {
-    background-color: rgba(122, 217, 124, 0.14);
-    box-shadow: inset 0 0 0 1px rgba(122, 217, 124, 0.4);
-  }
-
-  100% {
-    background-color: transparent;
-    box-shadow: inset 0 0 0 1px rgba(122, 217, 124, 0);
-  }
-}

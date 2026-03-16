@@ -2112,6 +2112,7 @@
     }
   ],
   "colors": {
+    "aiZoneBorder.background":"#61afef",
     "border.background":"#23272e",
     "actionBar.toggledBackground": "#525761",
     "activityBar.background": "#16191d",

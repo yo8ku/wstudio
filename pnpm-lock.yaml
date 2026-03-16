@@ -88,15 +88,6 @@ importers:
         specifier: ^9.0.1
         version: 9.0.1
 
-  packages/agent:
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.19
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
-
   packages/global-rag:
     dependencies:
       '@lancedb/lancedb':
@@ -136,9 +127,6 @@ importers:
       '@langchain/textsplitters':
         specifier: ^1.0.1
         version: 1.0.1(@langchain/core@1.1.4)
-      '@note-studio/agent':
-        specifier: workspace:*
-        version: link:../agent
       '@note-studio/global-rag':
         specifier: workspace:*
         version: link:../global-rag

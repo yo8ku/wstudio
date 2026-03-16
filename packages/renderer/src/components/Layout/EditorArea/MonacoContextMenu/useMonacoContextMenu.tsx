@@ -119,7 +119,7 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
 
     const hasText = selectedText.length > 0;
     const hasLinkableText = Boolean(buildBidirectionalLinkText(selectedText));
-    const isFile = Boolean(tabId && !tabId.startsWith('snippet-') && !tabId.includes('snippet'));
+    const isFile = Boolean(tabId);
 
     return [
       {

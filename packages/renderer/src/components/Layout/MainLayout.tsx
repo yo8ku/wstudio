@@ -17,7 +17,6 @@ import { ThemeCommandProvider } from '../../command-center/ThemeCommandProvider'
 import { MarkdownCommandProvider } from '../../command-center/MarkdownCommandProvider';
 import { FileCommandProvider } from '../../command-center/FileCommandProvider';
 import { AIConfigCommandProvider } from '../../command-center/AIConfigCommandProvider';
-import { SnippetsCommandProvider } from '../../command-center/SnippetsCommandProvider';
 import { getGlobalCommandCenter, setGlobalCommandCenter } from '../../command-center/GlobalCommandCenter';
 import { IconThemeProvider } from '../../contexts/IconThemeContext';
 import { BackgroundImage } from '../BackgroundImage';
@@ -25,8 +24,6 @@ import { GlobalModal } from '../GlobalModal';
 import { useBackgroundStore } from '../../stores/backgroundStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useActivityBarStore } from '../../stores/activityBarStore';
-import { snippetService } from '../../services/SnippetService';
-import { shouldMigrateSnippets, migrateSnippetsFromJSON } from '../../utils/migrateSnippets';
 import { notification } from '../Notification';
 
 export type { ActivityBarItem };
@@ -187,18 +184,18 @@ const resolveWindowBackgroundColor = (): string => {
 export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const searchParams = new URLSearchParams(window.location.search);
   const startupPanel = searchParams.get('openPanel');
-  const shouldOpenPanelOnStartup = startupPanel === 'terminal' || startupPanel === 'timeline' || startupPanel === 'snippets' || startupPanel === 'links';
-  const initialPanelView: 'snippets' | 'timeline' | 'terminal' =
+  const shouldOpenPanelOnStartup = startupPanel === 'terminal' || startupPanel === 'timeline' || startupPanel === 'links';
+  const initialPanelView: 'links' | 'timeline' | 'terminal' =
     startupPanel === 'timeline'
       ? 'timeline'
-      : startupPanel === 'snippets' || startupPanel === 'links'
-        ? 'snippets'
+      : startupPanel === 'links'
+        ? 'links'
         : 'terminal';
   const [activeActivity, setActiveActivity] = useState<ActivityBarItem>('explorer');
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isAIChatVisible, setIsAIChatVisible] = useState(false);
   const [isPanelVisible, setIsPanelVisible] = useState(shouldOpenPanelOnStartup);
-  const [panelActiveView, setPanelActiveView] = useState<'snippets' | 'timeline' | 'terminal'>(initialPanelView);
+  const [panelActiveView, setPanelActiveView] = useState<'links' | 'timeline' | 'terminal'>(initialPanelView);
   const [panelPosition, setPanelPosition] = useState<PanelPlacement>('bottom');
   const [aiChatPanelPosition, setAIChatPanelPosition] = useState<'right' | 'left'>('right'); // AI Chat Panel 浣嶇疆
 
@@ -227,7 +224,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const markdownProviderRef = useRef<MarkdownCommandProvider | null>(null);
   const fileProviderRef = useRef<FileCommandProvider | null>(null);
   const aiConfigProviderRef = useRef<AIConfigCommandProvider | null>(null);
-  const snippetsProviderRef = useRef<SnippetsCommandProvider | null>(null);
 
   const handleActivityClick = (activity: ActivityBarItem) => {
     if (activity === 'settings') {
@@ -271,9 +267,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   // 鐩戝惉鎵撳紑搴曢儴闈㈡澘浜嬩欢
   useEffect(() => {
     const handleOpenPanel = (event: Event) => {
-      const customEvent = event as CustomEvent<{ view?: 'snippets' | 'links' | 'timeline' | 'terminal' }>;
-      const requestedView = customEvent.detail?.view || 'terminal';
-      const view = requestedView === 'links' ? 'snippets' : requestedView;
+      const customEvent = event as CustomEvent<{ view?: 'links' | 'timeline' | 'terminal' }>;
+      const view = customEvent.detail?.view || 'terminal';
       
       console.log('[MainLayout] 鎵撳紑搴曢儴闈㈡澘:', view);
       setPanelActiveView(view);
@@ -394,38 +389,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 鍒濆鍖栫墖娈垫暟鎹簱鍜岃縼绉?
-  useEffect(() => {
-    const initSnippetDatabase = async () => {
-      console.log('[MainLayout] 鍒濆鍖栫墖娈垫暟鎹簱...');
-      
-      try {
-        // 鍒濆鍖栨暟鎹簱
-        await snippetService.initialize();
-        console.log('[MainLayout] 鐗囨鏁版嵁搴撳垵濮嬪寲鎴愬姛');
-        
-        // 妫€鏌ユ槸鍚﹂渶瑕佽縼绉?
-        const needMigrate = await shouldMigrateSnippets();
-        if (needMigrate) {
-          console.log('[MainLayout] 妫€娴嬪埌闇€瑕佽縼绉荤墖娈垫暟鎹?..');
-          const result = await migrateSnippetsFromJSON();
-          
-          if (result.success) {
-            console.log('[MainLayout] 成功迁移 ' + result.count + ' 个片段到数据库');
-          } else {
-            console.error('[MainLayout] 鐗囨杩佺Щ澶辫触:', result.error);
-          }
-        } else {
-          console.log('[MainLayout] 鏃犻渶杩佺Щ鐗囨鏁版嵁');
-        }
-      } catch (error) {
-        console.error('[MainLayout] 鐗囨鏁版嵁搴撳垵濮嬪寲澶辫触:', error);
-      }
-    };
-    
-    initSnippetDatabase();
-  }, []);
-
   // 鍒濆鍖栧伐浣滃尯鍚庡彴绱㈠紩鏈嶅姟锛堜娇鐢ㄥ弻 Worker Thread锛屼笉闃诲 UI锛?
   useEffect(() => {
     const initWorkspaceIndexing = async () => {
@@ -532,7 +495,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     markdownProviderRef.current = new MarkdownCommandProvider(commandCenter);
     fileProviderRef.current = new FileCommandProvider(commandCenter);
     aiConfigProviderRef.current = new AIConfigCommandProvider(commandCenter);
-    snippetsProviderRef.current = new SnippetsCommandProvider(commandCenter);
     
     // 绛夊緟鍛戒护鎻愪緵鑰呭垵濮嬪寲瀹屾垚
     Promise.all([
@@ -555,7 +517,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       markdownProviderRef.current = null;
       fileProviderRef.current = null;
       aiConfigProviderRef.current = null;
-      snippetsProviderRef.current = null;
     };
   }, []);
 

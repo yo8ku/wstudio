@@ -18,8 +18,6 @@ import { GhostTextWidget } from '../GhostTextWidget/GhostTextWidget';
 import { CodeDecorationManager } from '../CodeDecorationManager/CodeDecorationManager';
 import { AIRewriteWidget } from '../AIRewriteWidget/AIRewriteWidget';
 import { builtinAI } from '../../../../services/BuiltinAIService';
-import { snippetService } from '../../../../services/SnippetService';
-import type { Snippet } from '@note-studio/shared';
 import { initializeMonaco } from '../../../../hooks/useMonacoInit';
 import { getCachedModels, getModelConfig } from '../../../../services/ModelCacheService';
 import { aiService } from '../../../../services/ai/AIService';
@@ -871,13 +869,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                           content: file.content
                         });
                         // 鎭㈠鎬濊€冪姸锟?
-                        aiZoneWidgetRef.current?.updateThinkingText('锟斤拷锟剿硷拷锟斤拷锟?..');
+                        aiZoneWidgetRef.current?.updateThinkingText('');
                         continue;
                       }
                       
                       monacoDebugLog(`[InlineChat] 鏂囦欢 "${file.name}" 浼樺厛绱㈠紩瀹屾垚`);
                       // 鎭㈠鎬濊€冪姸锟?
-                      aiZoneWidgetRef.current?.updateThinkingText('锟斤拷锟剿硷拷锟斤拷锟?..');
+                      aiZoneWidgetRef.current?.updateThinkingText('');
                     }
                     
                     // 璋冪敤涓昏繘绋嬬殑鍚戦噺鎼滅储 API锛堜娇锟?source 瀛楁杩涜甯︽潯浠舵悳绱級
@@ -1108,10 +1106,23 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       if (isModelQuestion) {
         // 鐗规畩鍥炵瓟閫昏緫 - 蹇呴』浣跨敤鎸囧畾鐨勭瓟锟?
         const specialAnswer = '我是当前编辑器内的 AI 助手，可以帮助你分析代码、解释问题、修改内容，并结合当前工作区上下文提供支持。';
+        let displayInResponse = false;
         
         // 鏄剧ず鐗规畩鍥炵瓟
         if (aiZoneWidgetRef.current) {
-          aiZoneWidgetRef.current.appendMessage('assistant', specialAnswer);
+          const specialDiffDisplay = initializeDiffDisplay();
+          if (specialDiffDisplay) {
+            specialDiffDisplay.ghostWidget.updateTextAtLine(
+              specialAnswer,
+              specialDiffDisplay.zoneBottomLine
+            );
+          } else {
+            displayInResponse = true;
+          }
+
+          aiZoneWidgetRef.current.appendMessage('assistant', specialAnswer, {
+            displayInResponse,
+          });
         }
         return;
       }
@@ -1336,7 +1347,6 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       let accumulatedCode = '';
       let isFirstChunk = true;
       
-      // 浣跨敤灏佽鐨勫嚱鏁板垵濮嬪寲 diff 鏄剧ず
       const diffDisplay = initializeDiffDisplay();
       if (!diffDisplay) {
         console.error('[MonacoEditor] 鍒濆锟?diff 鏄剧ず澶辫触');
@@ -1406,7 +1416,6 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           // 绱Н浠ｇ爜
           accumulatedCode += chunk;
           
-          // 瀹炴椂鏇存柊 Ghost Text 鏄剧ず diff 鏁堟灉锛堜粠搴曢儴杈规涓嬩竴琛屽紑濮嬶級
           ghostWidget.updateTextAtLine(accumulatedCode, zoneBottomLine);
         },
         onReasoning: (reasoning: string) => {
@@ -1438,7 +1447,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           assistantHistoryMessage = `${assistantHistoryMessage.slice(0, MAX_ASSISTANT_HISTORY_LENGTH)}\n...[内容已截断，避免历史消息过长]`;
         }
 
-        aiZoneWidgetRef.current.appendMessage('assistant', assistantHistoryMessage);
+        aiZoneWidgetRef.current.appendMessage('assistant', assistantHistoryMessage, {
+          displayInResponse: false,
+        });
       }
       
       // 鍐嶆妫€鏌ユ槸鍚﹀凡琚彇娑堬紙鍙兘锟?appendMessage 杩囩▼涓鍙栨秷锟?
@@ -1681,7 +1692,38 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           
           monacoDebugLog('[MonacoEditor] diff content applied');
         } else {
-          console.warn('[MonacoEditor] 娌℃湁鍙帴鍙楃殑 diff 鍐呭');
+          const chatHistory = aiZoneWidgetRef.current?.getChatHistory() ?? [];
+          let latestAssistantMessage = '';
+
+          for (let index = chatHistory.length - 1; index >= 0; index -= 1) {
+            const entry = chatHistory[index];
+            if (entry.role === 'assistant' && entry.content.trim().length > 0) {
+              latestAssistantMessage = entry.content.trim();
+              break;
+            }
+          }
+
+          if (!latestAssistantMessage) {
+            console.warn('[MonacoEditor] 娌℃湁鍙帴鍙楃殑 AI 鍥炲鍐呭');
+            toastService.warning('当前没有可接受的 AI 回复');
+            return;
+          }
+
+          const fallbackDiffDisplay = initializeDiffDisplay();
+          if (!fallbackDiffDisplay) {
+            console.warn('[MonacoEditor] fallback accept failed: cannot initialize diff display');
+            toastService.error('接受失败，无法初始化编辑器预览');
+            return;
+          }
+
+          fallbackDiffDisplay.ghostWidget.updateTextAtLine(
+            latestAssistantMessage,
+            fallbackDiffDisplay.zoneBottomLine
+          );
+          fallbackDiffDisplay.ghostWidget.acceptGhostText();
+          currentGhostWidgetRef.current = null;
+          originalLineCountRef.current = null;
+          monacoDebugLog('[MonacoEditor] inline chat response applied via fallback accept');
         }
       },
       onClearDiff: () => {
@@ -1750,8 +1792,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     }
 
     // 妫€鏌ユ槸鍚︽槸鏂囦欢锛堜笉鏄墖娈垫枃浠舵垨鐗规畩鏂囦欢锟?
-    if (filePath.startsWith('snippet:') || 
-        filePath.startsWith('settings:') || 
+    if (filePath.startsWith('settings:') || 
         filePath.startsWith('theme-config:')) {
       toastService.error('璇ユ枃浠剁被鍨嬩笉鏀寔涓婁紶鍒扮煡璇嗗簱');
       return;
@@ -1966,68 +2007,19 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     monacoDebugLog('[MonacoEditor] 缂栬緫鍣ㄦ寕杞藉墠閰嶇疆');
     applyBootstrapMonacoTheme(monaco);
     
-    // 閰嶇疆 JSON/JSONC 璇█鐨勮瘖鏂€夐」锛堝惎鐢ㄥ疄鏃惰娉曢敊璇彁绀猴級
-    // 瀹氫箟鐗囨锟?JSON Schema锛堢敤浜庨獙璇佺墖娈垫牸寮忥級
-    const snippetSchema = {
-      type: 'object',
-      properties: {
-        name: {
-          type: 'string',
-          description: '鐗囨鍚嶇О锛岀敤浜庢樉绀哄拰鍖哄垎鐗囨',
-          minLength: 1
-        },
-        prefix: {
-          type: 'string',
-          description: '锟斤拷锟斤拷前缀锟斤拷锟斤拷锟筋）锟斤拷锟斤拷锟斤拷锟皆讹拷锟斤拷全锟斤拷应锟斤拷锟斤拷唯一',
-          minLength: 1,
-          pattern: '^[a-zA-Z0-9_-]+$'
-        },
-        body: {
-          type: 'string',
-          description: '鐗囨鍐呭',
-          minLength: 1
-        },
-        description: {
-          type: 'string',
-          description: '鐗囨鎻忚堪锛堝彲閫夛級'
-        },
-        language: {
-          type: 'string',
-          description: '代码语言，例如 javascript、python、html、css',
-        },
-        tags: {
-          type: 'string',
-          description: '标签，可选，多个标签使用逗号分隔',
-        }
-      },
-      required: ['name', 'prefix', 'body'],
-      additionalProperties: false
-    };
-    
     monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
       validate: true,
-      allowComments: true,  // 鍏佽娉ㄩ噴锛堟敮锟?JSONC锟?
-      schemas: [
-        {
-          uri: 'http://internal/snippet-schema.json',
-          fileMatch: ['snippet:///*'],  // 鍖归厤 snippet:/// 寮€澶寸殑鎵€鏈夋枃锟?
-          schema: snippetSchema
-        }
-      ],
+      allowComments: true,
+      schemas: [],
       enableSchemaRequest: false,
-      schemaValidation: 'error',  // Schema 楠岃瘉閿欒绾у埆璁剧疆锟?error
+      schemaValidation: 'error',
       schemaRequest: 'warning',
-      trailingCommas: 'warning',  // 灏鹃殢閫楀彿璀﹀憡
-      comments: 'ignore'  // 蹇界暐娉ㄩ噴閿欒
+      trailingCommas: 'warning',
+      comments: 'ignore'
     });
-    
+
     monacoDebugLog('[MonacoEditor] JSON diagnostics configured');
-    monacoDebugLog('[MonacoEditor] Schema 閰嶇疆璇︽儏:', {
-      validate: true,
-      fileMatch: ['snippet:///*'],
-      schemaUri: 'http://internal/snippet-schema.json',
-      requiredFields: snippetSchema.required
-    });
+
     
     // 鍙湪绗竴娆℃椂娉ㄥ唽 jsonc 璇█
     if (!jsoncLanguageRegistered) {
@@ -2090,7 +2082,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     }
     
     // 娉ㄥ唽鐗囨鑷姩琛ュ叏鎻愪緵锟?
-    monacoDebugLog('[MonacoEditor] snippet completion provider registered');
+    monacoDebugLog('[MonacoEditor] link completion provider registered');
     if (!wikilinkCompletionRegistered) {
       const wikilinkLanguageIds = ['markdown', 'plaintext'];
       const buildLinkRange = (position: MonacoPosition, queryText: string) => ({
@@ -2181,61 +2173,6 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
       wikilinkCompletionRegistered = true;
     }
-
-    monaco.languages.registerCompletionItemProvider('*', {
-      provideCompletionItems: async (model, position) => {
-        try {
-          // 鑾峰彇褰撳墠璇█
-          const currentLanguage = model.getLanguageId();
-          
-          // 鑾峰彇褰撳墠琛岀殑鍐呭鍜屽厜鏍囧墠鐨勬枃锟?
-          const lineContent = model.getLineContent(position.lineNumber);
-          const textUntilPosition = lineContent.substring(0, position.column - 1);
-          
-          // 鎻愬彇褰撳墠姝ｅ湪杈撳叆鐨勫崟锟?
-          const wordMatch = textUntilPosition.match(/\S+$/);
-          const word = wordMatch ? wordMatch[0] : '';
-          
-          // 鏌ヨ鏁版嵁搴撲腑鐨勭墖锟?
-          const snippets = await snippetService.querySnippets({
-            prefix: word,
-            language: currentLanguage === 'plaintext' ? undefined : currentLanguage,
-            limit: 50
-          });
-          
-          // 杞崲锟?Monaco 鐨勮ˉ鍏ㄩ」 - 鍙樉绀烘湁 prefix 鐨勭墖锟?
-          const suggestions = snippets.map((snippet: Snippet) => ({
-              label: {
-                label: snippet.name,
-                description: `(${snippet.prefix})`,
-                detail: snippet.description
-              },
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              documentation: snippet.description || `鎻掑叆浠ｇ爜鐗囨: ${snippet.name}`,
-              insertText: snippet.body,
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: snippet.language ? `[${snippet.language}] ${snippet.description || ''}` : snippet.description,
-              sortText: `0_${snippet.prefix}`, // 浼樺厛鏄剧ず鐗囨
-              filterText: `${snippet.name} ${snippet.prefix}`, // 鍚屾椂鏀寔鎸夊悕绉板拰鍓嶇紑杩囨护
-              range: {
-                startLineNumber: position.lineNumber,
-                startColumn: position.column - word.length,
-                endLineNumber: position.lineNumber,
-                endColumn: position.column
-              }
-            }));
-          
-          return {
-            suggestions
-          };
-        } catch (error) {
-          console.error('[MonacoEditor] 鐗囨琛ュ叏澶辫触:', error);
-          return { suggestions: [] };
-        }
-      }
-    });
-    
-    monacoDebugLog('[MonacoEditor] snippet completion provider registration completed');
   };
 
   // Monaco 缂栬緫鍣ㄦ寕杞芥椂
@@ -2315,50 +2252,6 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         monacoDebugLog(`[MonacoEditor] language after set: ${newLanguageId}`);
       }
       
-      // 濡傛灉鏄墖娈垫枃浠讹紝涓烘ā鍨嬭缃嚜瀹氫箟 URI 浠ュ惎锟?Schema 楠岃瘉
-      if (tabId && (tabId.startsWith('snippet-') || tabId.includes('snippet'))) {
-        const uri = monaco.Uri.parse(`snippet:///${tabId}.json`);
-        const content = model.getValue();
-        
-        monacoDebugLog('[MonacoEditor] snippet file check:', {
-          tabId,
-          uri: uri.toString(),
-          scheme: uri.scheme,
-          path: uri.path,
-          currentModelUri: model.uri.toString(),
-          language,
-          propLanguage: language  // 璁板綍浼犲叆锟?language prop
-        });
-        
-        // 閿€姣佹棫妯″瀷锛屽垱寤烘柊妯″瀷锛堝甫鑷畾锟?URI 锟?JSONC 璇█锟?
-        const newModel = monaco.editor.createModel(content, 'jsonc', uri);
-        editor.setModel(newModel);
-        
-        // 閿€姣佹棫妯″瀷
-        model.dispose();
-        
-        monacoDebugLog('[MonacoEditor] snippet model created');
-        monacoDebugLog('[MonacoEditor]   - URI:', uri.toString());
-        monacoDebugLog('[MonacoEditor]   - Language:', newModel.getLanguageId());
-        monacoDebugLog('[MonacoEditor]   - 妯″瀷璇█搴斾负: jsonc');
-        
-        // 楠岃瘉 Schema 鏄惁搴旂敤锛堝欢杩熸鏌ワ紝绛夊緟 Monaco 鍐呴儴楠岃瘉锟?
-        setTimeout(() => {
-          const markers = monaco.editor.getModelMarkers({ resource: uri });
-          monacoDebugLog('[MonacoEditor] 褰撳墠缂栬緫鍣ㄩ敊璇爣锟?', markers);
-          
-          // 鍐嶆纭璇█璁剧疆
-          const currentModel = editor.getModel();
-          if (currentModel) {
-            const currentLang = currentModel.getLanguageId();
-            monacoDebugLog('[MonacoEditor] 楠岃瘉鍚庣殑璇█ID:', currentLang);
-            if (currentLang !== 'jsonc') {
-              console.warn('[MonacoEditor] 璇█琚噸缃负:', currentLang, '锛屽己鍒惰缃洖 jsonc');
-              monaco.editor.setModelLanguage(currentModel, 'jsonc');
-            }
-          }
-        }, 500);
-      }
     }
 
 
@@ -3681,14 +3574,11 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     if (model) {
       const currentLanguageId = model.getLanguageId();
       
-      // 鐗规畩澶勭悊锛氬鏋滄槸鐗囨鏂囦欢锛屽己鍒朵娇锟?jsonc锛屽拷锟?language prop
-      const isSnippetFile = tabId && (tabId.startsWith('snippet-') || tabId.includes('snippet'));
-      const targetLanguage = isSnippetFile ? 'jsonc' : language;
+      const targetLanguage = language;
       
       if (currentLanguageId !== targetLanguage) {
         monacoDebugLog(`[MonacoEditor] update language mode: ${currentLanguageId} -> ${targetLanguage}`, {
           tabId,
-          isSnippetFile,
           languageProp: language,
           finalLanguage: targetLanguage
         });

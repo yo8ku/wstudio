@@ -3,7 +3,7 @@
  * 鏄剧ず宸ヤ綔鍖虹殑鏂囦欢鍜屾枃浠跺す缁撴瀯
  */
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import ExplorerSection from '../ExplorerSection';
 import { FileTreeNode, FileTreeCallbacks } from './types';
 import { InlineInput } from '../Common/InlineInput';
@@ -44,8 +44,6 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
 }) => {
   const scrollbarRef = useRef<CustomScrollbarRef>(null);
   const isRestoringScrollRef = useRef<boolean>(false);
-  const [agentChangedPaths, setAgentChangedPaths] = useState<Record<string, number>>({});
-  
   // 浠?store 鑾峰彇婊氬姩浣嶇疆
   const { fileTreeScrollTop, setFileTreeScrollTop, workspacePath } = useExplorerStore();
 
@@ -84,52 +82,6 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   useEffect(() => {
     scrollbarRef.current?.updateScrollbar();
   }, [nodes]);
-
-  useEffect(() => {
-    const normalizePath = (value: string): string =>
-      value.trim().replace(/\\/g, '/').toLowerCase();
-    const timeoutHandles = new Map<string, number>();
-
-    const handleAgentFileChanged = (event: Event) => {
-      const customEvent = event as CustomEvent<{ path?: string }>;
-      const normalizedPath = typeof customEvent.detail?.path === 'string'
-        ? normalizePath(customEvent.detail.path)
-        : '';
-      if (!normalizedPath) {
-        return;
-      }
-
-      setAgentChangedPaths(previous => ({
-        ...previous,
-        [normalizedPath]: Date.now(),
-      }));
-
-      const existingTimeout = timeoutHandles.get(normalizedPath);
-      if (existingTimeout) {
-        window.clearTimeout(existingTimeout);
-      }
-
-      const timeoutId = window.setTimeout(() => {
-        setAgentChangedPaths(previous => {
-          const next = { ...previous };
-          delete next[normalizedPath];
-          return next;
-        });
-        timeoutHandles.delete(normalizedPath);
-      }, 1800);
-
-      timeoutHandles.set(normalizedPath, timeoutId);
-    };
-
-    window.addEventListener('agent:file-changed', handleAgentFileChanged as EventListener);
-
-    return () => {
-      window.removeEventListener('agent:file-changed', handleAgentFileChanged as EventListener);
-      timeoutHandles.forEach(timeoutId => {
-        window.clearTimeout(timeoutId);
-      });
-    };
-  }, []);
 
   // 鏋勫缓鎿嶄綔鎸夐挳
   const actions = [];
@@ -175,7 +127,6 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     // 鏂囦欢鍜屾枃浠跺す鍏辩敤閫変腑鐘舵€侊細閫氳繃璺緞鍖归厤鍒ゆ柇鏄惁閫変腑
     const isSelected = node.path === selectedFilePath;
     const isContextMenuTarget = node.path === contextMenuSelectionPath;
-    const isAgentChanged = !!agentChangedPaths[node.path.trim().replace(/\\/g, '/').toLowerCase()];
     const icon = node.isDirectory
       ? node.isExpanded
         ? 'codicon-folder-opened'
@@ -265,7 +216,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
         <div
           className={`file-tree-node-content ${isSelected ? 'selected' : ''} ${
             isContextMenuTarget ? 'context-menu-active' : ''
-          } ${isAgentChanged ? 'agent-changed' : ''}`}
+          }`}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
           data-depth={depth}
           onClick={() => {

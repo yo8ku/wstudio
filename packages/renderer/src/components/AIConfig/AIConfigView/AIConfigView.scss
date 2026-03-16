@@ -408,49 +408,17 @@
 
               // Switch 开关样式
               .model-switch {
-                position: relative;
-                display: inline-block;
-                width: 36px;
-                height: 20px;
+                --ws-switch-width: 36px;
+                --ws-switch-height: 20px;
+                --ws-switch-padding: 2px;
+                --ws-switch-thumb-size: 14px;
+                --ws-switch-track-off: var(--ws-input-background, #3c3c3c);
+                --ws-switch-track-on: var(--ws-button-primary-background, #0078d4);
+                --ws-switch-border-off: transparent;
+                --ws-switch-border-on: transparent;
+                --ws-switch-thumb: #fff;
+                --ws-switch-thumb-checked: #fff;
                 flex-shrink: 0;
-
-                input {
-                  opacity: 0;
-                  width: 0;
-                  height: 0;
-
-                  &:checked + .switch-slider {
-                    background-color: var(--ws-button-primary-background, #0078d4);
-                  }
-
-                  &:checked + .switch-slider:before {
-                    transform: translateX(16px);
-                  }
-                }
-
-                .switch-slider {
-                  position: absolute;
-                  cursor: pointer;
-                  top: 0;
-                  left: 0;
-                  right: 0;
-                  bottom: 0;
-                  background-color: var(--ws-input-background, #3c3c3c);
-                  transition: 0.2s;
-                  border-radius: 20px;
-
-                  &:before {
-                    position: absolute;
-                    content: "";
-                    height: 14px;
-                    width: 14px;
-                    left: 3px;
-                    bottom: 3px;
-                    background-color: white;
-                    transition: 0.2s;
-                    border-radius: 50%;
-                  }
-                }
               }
 
               svg {

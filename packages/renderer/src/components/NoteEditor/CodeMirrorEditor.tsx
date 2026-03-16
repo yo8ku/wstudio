@@ -7716,12 +7716,12 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'external-link',
-        label: '鏂板澶栭儴閾炬帴',
+        label: '外部链接',
         action: () => {
           if (view) {
             const { from, to } = view.state.selection.main;
             const selectedText = view.state.sliceDoc(from, to);
-            const linkText = selectedText || '閾炬帴鏂囨湰';
+            const linkText = selectedText || '链接文本';
             view.dispatch({
               changes: { from, to, insert: `[${linkText}](url)` },
             });
@@ -7731,32 +7731,32 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       { id: 'sep1', label: '', separator: true },
       {
         id: 'text-format',
-        label: '鏂囨湰鏍煎紡',
+        label: '文本格式',
         submenu: [
           {
             id: 'bold',
-            label: '鍔犵矖',
+            label: '加粗',
             shortcut: 'Ctrl+B',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `**${selectedText || '绮椾綋鏂囨湰'}**` },
+                  changes: { from, to, insert: `**${selectedText || '粗体文本'}**` },
                 });
               }
             },
           },
           {
             id: 'italic',
-            label: '鏂滀綋',
+            label: '斜体',
             shortcut: 'Ctrl+I',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `*${selectedText || '鏂滀綋鏂囨湰'}*` },
+                  changes: { from, to, insert: `*${selectedText || '斜体文本'}*` },
                 });
               }
             },
@@ -7776,33 +7776,33 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'inline-code',
-            label: '琛屽唴浠ｇ爜',
+            label: '行内代码',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `\`${selectedText || '浠ｇ爜'}\`` },
+                  changes: { from, to, insert: `\`${selectedText || '代码'}\`` },
                 });
               }
             },
           },
           {
             id: 'comment',
-            label: '娉ㄩ噴',
+            label: '注释',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `<!-- ${selectedText || '娉ㄩ噴'} -->` },
+                  changes: { from, to, insert: `<!-- ${selectedText || '注释'} -->` },
                 });
               }
             },
           },
           {
             id: 'clear-format',
-            label: '娓呴櫎鏍煎紡',
+            label: '清除格式',
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
@@ -7827,7 +7827,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'color',
-        label: '棰滆壊',
+        label: '颜色',
         submenu: [
           {
             id: 'bg-slate',
@@ -7936,7 +7936,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'color-sep', label: '', separator: true },
           {
             id: 'text-red',
-            label: '绾㈣壊鏂囧瓧',
+            label: '红色文字',
             color: '#ff0000',
             action: () => {
               if (view) {
@@ -7946,7 +7946,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-orange',
-            label: '姗欒壊鏂囧瓧',
+            label: '橙色文字',
             color: '#ff8000',
             action: () => {
               if (view) {
@@ -7956,7 +7956,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-green',
-            label: '缁胯壊鏂囧瓧',
+            label: '绿色文字',
             color: '#00cc00',
             action: () => {
               if (view) {
@@ -7966,7 +7966,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-blue',
-            label: '钃濊壊鏂囧瓧',
+            label: '蓝色文字',
             color: '#0066ff',
             action: () => {
               if (view) {
@@ -7976,7 +7976,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-purple',
-            label: '绱壊鏂囧瓧',
+            label: '紫色文字',
             color: '#9900ff',
             action: () => {
               if (view) {
@@ -8032,11 +8032,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'paragraph',
-        label: '娈佃惤璁剧疆',
+        label: '段落设置',
         submenu: [
           {
             id: 'h1',
-            label: '鏍囬 1',
+            label: '标题 1',
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -8050,7 +8050,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'h2',
-            label: '鏍囬 2',
+            label: '标题 2',
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -8064,7 +8064,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'h3',
-            label: '鏍囬 3',
+            label: '标题 3',
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -8078,7 +8078,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'quote',
-            label: '寮曠敤',
+            label: '引用',
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -8094,11 +8094,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'insert',
-        label: '鎻掑叆',
+        label: '插入',
         submenu: [
           {
             id: 'heading1',
-            label: '鏍囬1',
+            label: '标题 1',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8113,7 +8113,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'heading2',
-            label: '鏍囬2',
+            label: '标题 2',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8128,7 +8128,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'heading3',
-            label: '鏍囬3',
+            label: '标题 3',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8144,7 +8144,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep1', label: '', separator: true },
           {
             id: 'ordered-list',
-            label: '鏈夊簭鍒楄〃',
+            label: '有序列表',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8159,7 +8159,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'unordered-list',
-            label: '鏃犲簭鍒楄〃',
+            label: '无序列表',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8174,7 +8174,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'todo-list',
-            label: '寰呭姙娓呭崟',
+            label: '待办清单',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8205,7 +8205,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep2', label: '', separator: true },
           {
             id: 'blockquote',
-            label: '寮曠敤',
+            label: '引用',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8220,12 +8220,12 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'callout',
-            label: '鏍囨敞',
+            label: '标注',
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
                 view.dispatch({
-                  changes: { from, insert: '> [!NOTE]\n> 鏍囨敞鍐呭' },
+                  changes: { from, insert: '> [!NOTE]\n> 标注内容' },
                 });
                 view.focus();
               }
@@ -8251,7 +8251,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
-                const table = '| 鍒? | 鍒? | 鍒? |\n| --- | --- | --- |\n| 鍐呭 | 鍐呭 | 鍐呭 |';
+                const table = '| 列 1 | 列 2 | 列 3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |';
                 view.dispatch({
                   changes: { from, insert: table },
                 });
@@ -8261,7 +8261,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep4', label: '', separator: true },
           {
             id: 'video-link',
-            label: '瑙嗛閾炬帴',
+            label: '视频链接',
             action: () => {
               // 鑾峰彇鍏夋爣浣嶇疆鐨勫睆骞曞潗鏍?
               if (view) {
@@ -8289,11 +8289,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'local-embed',
-        label: '鏈湴宓屽叆',
+        label: '本地嵌入',
         submenu: [
           {
             id: 'local-video',
-            label: '鏈湴瑙嗛',
+            label: '本地视频',
             action: async () => {
               if (view) {
                 const result = await window.electron?.video?.open();
@@ -8301,7 +8301,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                   const { from } = view.state.selection.main;
                   const filePath = result.data.path;
                   view.dispatch({
-                    changes: { from, insert: `![瑙嗛](${filePath})` },
+                    changes: { from, insert: `![视频](${filePath})` },
                   });
                   view.focus();
                 }
@@ -8310,7 +8310,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'local-audio',
-            label: '鏈湴闊抽',
+            label: '本地音频',
             action: () => {
               // TODO: 瀹炵幇鏈湴闊抽鎻掑叆
               console.log('本地音频功能待实现');
@@ -8318,7 +8318,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'local-file',
-            label: '鏈湴鏂囦欢',
+            label: '本地文件',
             action: () => {
               // TODO: 瀹炵幇鏈湴鏂囦欢鎻掑叆
               console.log('本地文件功能待实现');
@@ -8355,10 +8355,10 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const { from } = view.state.selection.main;
                 const flowchartTemplate = `\`\`\`mermaid
 flowchart TD
-    A[寮€濮媇 --> B{鍒ゆ柇}
-    B -->|鏄瘄 C[澶勭悊1]
-    B -->|鍚 D[澶勭悊2]
-    C --> E[缁撴潫]
+    A[开始] --> B{条件判断}
+    B -->|是| C[处理方案 A]
+    B -->|否| D[处理方案 B]
+    C --> E[结束]
     D --> E
 \`\`\``;
                 view.dispatch({
@@ -8376,10 +8376,10 @@ flowchart TD
                 const { from } = view.state.selection.main;
                 const sequenceTemplate = `\`\`\`mermaid
 sequenceDiagram
-    participant A as 鐢ㄦ埛
-    participant B as 绯荤粺
-    A->>B: 璇锋眰
-    B-->>A: 鍝嶅簲
+    participant A as 参与者 A
+    participant B as 参与者 B
+    A->>B: 发送请求
+    B-->>A: 返回响应
 \`\`\``;
                 view.dispatch({
                   changes: { from, insert: sequenceTemplate },

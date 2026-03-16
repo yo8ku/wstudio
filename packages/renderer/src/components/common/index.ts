@@ -6,6 +6,7 @@ export { ModelCapabilityBadge } from './ModelCapabilityBadge';
 export { ModelCapabilityList } from './ModelCapabilityList';
 export { SearchBox } from './SearchBox';
 export { DropdownMenu, type DropdownMenuItem, type DropdownMenuGroup } from './DropdownMenu';
+export { Switch, type SwitchProps } from './Switch';
 
 
 

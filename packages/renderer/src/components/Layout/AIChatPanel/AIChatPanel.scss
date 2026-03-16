@@ -644,33 +644,16 @@
 
     // Switch 开关
     .context-menu-switch {
-      width: 32px;
-      height: 18px;
-      border-radius: 9px;
-      background-color: var(--ws-input-background);
-      border: 1px solid var(--ws-input-border);
-      position: relative;
-      transition: background-color 0.2s ease;
-
-      .context-menu-switch-thumb {
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        background-color: var(--ws-foreground);
-        position: absolute;
-        top: 1px;
-        left: 1px;
-        transition: transform 0.2s ease;
-      }
-
-      &.active {
-        background-color: var(--ws-accent, #007acc);
-        border-color: var(--ws-accent, #007acc);
-
-        .context-menu-switch-thumb {
-          transform: translateX(14px);
-        }
-      }
+      --ws-switch-width: 32px;
+      --ws-switch-height: 18px;
+      --ws-switch-padding: 1px;
+      --ws-switch-thumb-size: 14px;
+      --ws-switch-track-off: var(--ws-input-background);
+      --ws-switch-track-on: var(--ws-accent, #007acc);
+      --ws-switch-border-off: var(--ws-input-border);
+      --ws-switch-border-on: var(--ws-accent, #007acc);
+      --ws-switch-thumb: var(--ws-foreground);
+      --ws-switch-thumb-checked: var(--ws-foreground);
     }
 
     // 二级菜单头部

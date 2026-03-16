@@ -12,6 +12,7 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 const rootPackageJsonPath = path.join(repoRoot, 'package.json');
 const electronDir = path.join(repoRoot, 'node_modules', 'electron');
 const nodePtyDir = path.join(repoRoot, 'node_modules', 'node-pty');
+const nodePtyConptyRuntimeDir = path.join(nodePtyDir, 'build', 'Release', 'conpty');
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -53,6 +54,64 @@ function runNode(scriptPath, args, options) {
     stdio: 'inherit',
     ...options,
   });
+}
+
+function resolveNodePtyConptySourceDir() {
+  if (process.platform !== 'win32') {
+    return null;
+  }
+
+  const conptyRoot = path.join(nodePtyDir, 'third_party', 'conpty');
+  if (!fs.existsSync(conptyRoot)) {
+    return null;
+  }
+
+  const archFolder = process.arch === 'arm64' ? 'win10-arm64' : 'win10-x64';
+  const versionDirs = fs.readdirSync(conptyRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+    .reverse();
+
+  for (const versionDir of versionDirs) {
+    const candidateDir = path.join(conptyRoot, versionDir, archFolder);
+    if (fs.existsSync(path.join(candidateDir, 'conpty.dll'))) {
+      return candidateDir;
+    }
+  }
+
+  return null;
+}
+
+function syncNodePtyConptyRuntime() {
+  if (process.platform !== 'win32') {
+    return;
+  }
+
+  if (!fs.existsSync(nodePtyDir)) {
+    return;
+  }
+
+  const sourceDir = resolveNodePtyConptySourceDir();
+  if (!sourceDir) {
+    console.log('[native] node-pty conpty runtime source not found, skipping conpty runtime sync.');
+    return;
+  }
+
+  fs.mkdirSync(nodePtyConptyRuntimeDir, { recursive: true });
+
+  const runtimeFiles = ['conpty.dll', 'OpenConsole.exe'];
+  for (const fileName of runtimeFiles) {
+    const sourcePath = path.join(sourceDir, fileName);
+    if (!fs.existsSync(sourcePath)) {
+      continue;
+    }
+
+    const targetPath = path.join(nodePtyConptyRuntimeDir, fileName);
+    fs.copyFileSync(sourcePath, targetPath);
+  }
+
+  console.log(`[native] Synced node-pty conpty runtime from ${sourceDir}`);
 }
 
 function syncElectronRuntime() {
@@ -122,6 +181,7 @@ async function main() {
   try {
     syncElectronRuntime();
     await rebuildNodePtyForElectron();
+    syncNodePtyConptyRuntime();
   } catch (error) {
     console.error('[native] Electron native dependency sync failed:', error);
     process.exitCode = 1;

@@ -4,8 +4,6 @@
 
 export { Panel } from './Panel';
 export type { PanelView, PanelPlacement } from './Panel';
-export { SnippetsPanel } from './SnippetsPanel';
+export { LinksPanel } from './LinksPanel';
 export { TimelinePanel } from './TimelinePanel';
 export { TerminalPanel } from './TerminalPanel';
-
-

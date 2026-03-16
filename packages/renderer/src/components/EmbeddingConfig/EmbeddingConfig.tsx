@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DropdownMenu } from '../common/DropdownMenu/DropdownMenu';
+import { Switch } from '../common/Switch';
 import { Icon } from '../Icons/Icon';
 import { electronStore } from '../../services/ElectronStoreService';
 import type {
@@ -418,14 +419,14 @@ export const EmbeddingConfig: React.FC = () => {
         </div>
         <div className="embedding-config__header-right">
           <span className="embedding-config__auto-index-label">开启自索引</span>
-          <label className="embedding-config__switch">
-            <input
-              type="checkbox"
-              checked={state.autoIndexEnabled}
-              onChange={handleAutoIndexToggle}
-            />
-            <span className="embedding-config__switch-slider"></span>
-          </label>
+          <Switch
+            className="embedding-config__switch"
+            checked={state.autoIndexEnabled}
+            ariaLabel="切换自动索引"
+            onChange={() => {
+              void handleAutoIndexToggle();
+            }}
+          />
         </div>
       </div>
 

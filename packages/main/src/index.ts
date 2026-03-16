@@ -8,7 +8,6 @@ import { SettingsManager } from './config/SettingsManager';
 import { WorkspaceManager } from './workspace/WorkspaceManager';
 import { PluginAPIAdapter } from './extensions/PluginAPIAdapter';
 import { registerStoreHandlers } from './ipc/storeHandlers';
-import { registerSnippetHandlers } from './ipc/snippetHandlers';
 import { registerFileHandlers } from './ipc/fileHandlers';
 import { registerThemeHandlers } from './ipc/themeHandlers';
 import { registerChatHistoryHandlers } from './ipc/chatHistoryHandlers';
@@ -27,11 +26,6 @@ import { registerNoteSystemHandlers } from './note-system';
 import { registerDatabaseConnectorHandlers, cleanupDatabaseConnections } from './ipc/databaseConnectorHandlers';
 import { registerFormHandlers } from './ipc/formHandlers';
 import { getCodeRunnerService } from './services/CodeRunnerService';
-import { registerAgentFileSystemHandlers } from './ipc/agentFileSystemHandlers';
-import { registerAgentRAGHandlers } from './ipc/agentRAGHandlers';
-import { registerAgentShellHandlers } from './ipc/agentShellHandlers';
-import { registerAgentNetworkHandlers } from './ipc/agentNetworkHandlers';
-import { registerAgentRuntimeHandlers } from './ipc/agentRuntimeHandlers';
 import { registerSkillsMarketHandlers } from './ipc/skillsMarketHandlers';
 import { registerMediaHandlers } from './ipc/mediaHandlers';
 import { builtinAI } from './services/builtinAIInstance';
@@ -92,7 +86,6 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   registerSettingsHandlers(settingsManager, workspaceManager, mainWindow || null);
   
   // 注册片段数据库 IPC 处理器
-  registerSnippetHandlers();
   
   // 注册文件操作 IPC 处理器
   registerFileHandlers();
@@ -129,17 +122,12 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   registerFormHandlers();
 
   // 注册 Agent 文件系统 IPC 处理器
-  registerAgentFileSystemHandlers();
 
   // 注册 Agent RAG IPC 处理器
-  registerAgentRAGHandlers();
 
   // 注册 Agent Shell IPC 处理器
-  registerAgentShellHandlers();
 
   // 注册 Agent 网络 IPC 处理器
-  registerAgentNetworkHandlers();
-  registerAgentRuntimeHandlers();
 
   // 注册 Skills 市场 IPC 处理器
   registerSkillsMarketHandlers();

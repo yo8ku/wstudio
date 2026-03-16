@@ -21,7 +21,7 @@ export interface SidebarProps {
 
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 600;
-const DEFAULT_WIDTH = 256;
+const DEFAULT_WIDTH = 200;
 const COLLAPSE_THRESHOLD = 150; // 小于此宽度时自动收缩
 
 export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
@@ -154,7 +154,7 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
             separator: true
           },
           {
-            id: 'kouzi-agent',
+            id: 'kouzi',
             label: '扣子智能体',
             icon: <KouziIcon size={16} />,
             actionIcon: <Icon name="settings" size={14} />,

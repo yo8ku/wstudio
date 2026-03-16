@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { fork } from 'child_process';
 import { BrowserWindow } from 'electron';
 import { getShellDetector } from './ShellDetector';
 import type {
@@ -45,12 +46,100 @@ interface NodePtyModule {
   ): TerminalPty;
 }
 
+interface NodePtyWindowsAgentInstance {
+  _innerPid: number;
+}
+
+interface NodePtyWindowsAgentPrototype {
+  _getConsoleProcessList?: (this: NodePtyWindowsAgentInstance) => Promise<number[]>;
+}
+
+interface NodePtyWindowsAgentModule {
+  WindowsPtyAgent?: {
+    prototype: NodePtyWindowsAgentPrototype;
+  };
+}
+
+interface ConsoleProcessListMessage {
+  consoleProcessList?: number[];
+}
+
 const NOOP_DISPOSABLE: TerminalDisposable = {
   dispose: () => undefined,
 };
 
 let nodePtyModule: NodePtyModule | null = null;
 let bundledConptyDllAvailable: boolean | null = null;
+let nodePtyWindowsCleanupPatched = false;
+
+function patchNodePtyWindowsCleanup(): void {
+  if (nodePtyWindowsCleanupPatched || process.platform !== 'win32') {
+    return;
+  }
+
+  try {
+    const windowsPtyAgentModule = require('node-pty/lib/windowsPtyAgent') as NodePtyWindowsAgentModule;
+    const prototype = windowsPtyAgentModule.WindowsPtyAgent?.prototype;
+    if (!prototype || !prototype._getConsoleProcessList) {
+      nodePtyWindowsCleanupPatched = true;
+      return;
+    }
+
+    const helperModulePath = require.resolve('node-pty/lib/conpty_console_list_agent');
+    prototype._getConsoleProcessList = function(this: NodePtyWindowsAgentInstance): Promise<number[]> {
+      const fallbackProcessList = Number.isInteger(this._innerPid) && this._innerPid > 0
+        ? [this._innerPid]
+        : [];
+
+      return new Promise<number[]>((resolve) => {
+        const agent = fork(helperModulePath, [this._innerPid.toString()], {
+          silent: true,
+        });
+        let settled = false;
+
+        const finish = (processList: number[]): void => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          clearTimeout(timeout);
+          if (agent.exitCode === null) {
+            agent.kill();
+          }
+          resolve(processList.length > 0 ? processList : fallbackProcessList);
+        };
+
+        agent.stdout?.resume();
+        agent.stderr?.resume();
+
+        agent.on('message', (message) => {
+          const payload = message as ConsoleProcessListMessage;
+          const processList = Array.isArray(payload.consoleProcessList)
+            ? payload.consoleProcessList.filter((pid) => Number.isInteger(pid) && pid > 0)
+            : [];
+          finish(processList);
+        });
+
+        agent.on('error', () => {
+          finish(fallbackProcessList);
+        });
+
+        agent.on('exit', () => {
+          finish(fallbackProcessList);
+        });
+
+        const timeout = setTimeout(() => {
+          finish(fallbackProcessList);
+        }, 5000);
+      });
+    };
+
+    nodePtyWindowsCleanupPatched = true;
+  } catch {
+    // Keep the default node-pty cleanup path when internal modules are unavailable.
+  }
+}
 
 function loadNodePty(): NodePtyModule {
   if (nodePtyModule) {
@@ -59,6 +148,7 @@ function loadNodePty(): NodePtyModule {
 
   try {
     nodePtyModule = require('node-pty') as NodePtyModule;
+    patchNodePtyWindowsCleanup();
     return nodePtyModule;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

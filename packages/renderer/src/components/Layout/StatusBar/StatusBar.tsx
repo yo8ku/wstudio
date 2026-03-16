@@ -8,18 +8,12 @@ import "./StatusBar.scss";
 import { BackgroundImageSettings } from "../../BackgroundImageSettings/index";
 import { Icon } from "../../Icons/Icon";
 import { useActivityBarStore } from "../../../stores/activityBarStore";
-import { useLinkStore } from "../../../stores/linkStore";
-import { useNoteStore } from "../../../stores/noteStore";
 import { notification } from "../../Notification";
 
 interface StatusBarProps {}
 
 export const StatusBar: React.FC<StatusBarProps> = () => {
   const { sidebarPosition } = useActivityBarStore();
-  const currentNote = useNoteStore((state) => state.currentNote);
-  const outlinks = useLinkStore((state) => state.outlinks);
-  const backlinks = useLinkStore((state) => state.backlinks);
-  const loadLinks = useLinkStore((state) => state.loadLinks);
   const [pluginStatusBarItems, setPluginStatusBarItems] = useState<any[]>([]);
   const [wordCount, setWordCount] = useState<number>(0);
 
@@ -280,14 +274,6 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (currentTabType !== "file" || !currentNote?.id) {
-      return;
-    }
-
-    void loadLinks(currentNote.id);
-  }, [currentNote, currentTabType, loadLinks]);
-
   // 闃叉閲嶅鏄剧ず瀹屾垚閫氱煡
   const hasShownCompletedRef = useRef<boolean>(false);
   // 璁板綍鏄惁鏈夋枃浠惰澶勭悊杩囷紙鐢ㄤ簬鍒ゆ柇鏄惁闇€瑕佹樉绀哄畬鎴愰€氱煡锛?
@@ -391,7 +377,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
 
   // 澶х翰鍥炬爣缁勪欢
   const OutlineIcon = () => (
-    <div className="status-bar-info-btn" title="澶х翰">
+    <div className="status-bar-info-btn status-bar-info-btn--icon" title="澶х翰">
       <svg
         width="14"
         height="14"
@@ -572,14 +558,8 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                   );
                 })}
 
-              {currentNote && (
-                <div className="status-bar-info-btn">
-                  {backlinks.length}条反链 {outlinks.length}条出链
-                </div>
-              )}
-
               {/* 鍏夋爣浣嶇疆 */}
-              <div className="status-bar-info-btn">瀛楁暟 {wordCount}</div>
+              <div className="status-bar-info-btn">字数统计： {wordCount}</div>
 
               {/* 鏂囦欢缂栫爜 */}
 
@@ -588,45 +568,51 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
             </>
           )}
 
-          {/* 澶х翰 - 褰撲晶杈规爮鍦ㄥ彸杈规椂鏄剧ず鍦ㄥ彸杈?*/}
-          {sidebarPosition === 'right' && <OutlineIcon />}
+          {currentTabType === "file" && (
+            <div className="status-bar-divider" aria-hidden="true" />
+          )}
 
-          {/* 鑳屾櫙璁剧疆 - 濮嬬粓鏄剧ず */}
-          <div
-            className="status-bar-info-btn"
-            title="鑳屾櫙璁剧疆"
-            onClick={() => setShowBackgroundSettings(true)}
-          >
-            <Icon
-              name="background-settings"
-              iconSet="ui"
-              size={14}
-            />
-          </div>
+          <div className="status-bar-right-icons">
+            {/* 澶х翰 - 褰撲晶杈规爮鍦ㄥ彸杈规椂鏄剧ず鍦ㄥ彸杈?*/}
+            {sidebarPosition === 'right' && <OutlineIcon />}
 
-          {/* 閫氱煡涓績 - 濮嬬粓鏄剧ず */}
-          <div className="status-bar-info-btn" title="閫氱煡涓績">
-            <Icon
-              name="notification"
-              iconSet="ui"
-              size={14}
-            />
-          </div>
-
-          {/* 鍙嶉 - 濮嬬粓鏄剧ず */}
-          <div className="status-bar-info-btn" title="鍙嶉">
-            <svg
-              width="14"
-              height="14"
-              fill="currentColor"
-              viewBox="0 0 20 20"
+            {/* 鑳屾櫙璁剧疆 - 濮嬬粓鏄剧ず */}
+            <div
+              className="status-bar-info-btn status-bar-info-btn--icon"
+              title="鑳屾櫙璁剧疆"
+              onClick={() => setShowBackgroundSettings(true)}
             >
-              <path
-                fillRule="evenodd"
-                d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
-                clipRule="evenodd"
+              <Icon
+                name="background-settings"
+                iconSet="ui"
+                size={14}
               />
-            </svg>
+            </div>
+
+            {/* 閫氱煡涓績 - 濮嬬粓鏄剧ず */}
+            <div className="status-bar-info-btn status-bar-info-btn--icon" title="閫氱煡涓績">
+              <Icon
+                name="notification"
+                iconSet="ui"
+                size={14}
+              />
+            </div>
+
+            {/* 鍙嶉 - 濮嬬粓鏄剧ず */}
+            <div className="status-bar-info-btn status-bar-info-btn--icon" title="鍙嶉">
+              <svg
+                width="14"
+                height="14"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
           </div>
         </div>
       </div>

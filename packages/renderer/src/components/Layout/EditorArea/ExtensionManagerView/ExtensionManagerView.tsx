@@ -1,14 +1,13 @@
-/**
- * 扩展管理标签页视图组件
- * 功能：展示扩展管理界面（已下载、主题、文件图标、插件、片段、挂件、模板）
- * 描述：在 EditorArea 中以标签页形式显示的扩展管理器，使用卡片布局
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import './ExtensionManagerView.scss';
 
-// 扩展类型定义
-type ExtensionCategory = 'downloaded' | 'themes' | 'file-icons' | 'plugins' | 'snippets' | 'widgets' | 'templates';
+type ExtensionCategory =
+  | 'downloaded'
+  | 'themes'
+  | 'file-icons'
+  | 'plugins'
+  | 'widgets'
+  | 'templates';
 
 interface ExtensionItem {
   id: string;
@@ -21,124 +20,147 @@ interface ExtensionItem {
   category: ExtensionCategory;
 }
 
+interface InstalledExtensionRecord {
+  id: string;
+  name?: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  enabled?: boolean;
+}
+
+interface CategoryOption {
+  id: ExtensionCategory;
+  label: string;
+}
+
+const CATEGORIES: CategoryOption[] = [
+  { id: 'downloaded', label: '\u5df2\u4e0b\u8f7d' },
+  { id: 'themes', label: '\u4e3b\u9898' },
+  { id: 'file-icons', label: '\u6587\u4ef6\u56fe\u6807' },
+  { id: 'plugins', label: '\u63d2\u4ef6' },
+  { id: 'widgets', label: '\u6302\u4ef6' },
+  { id: 'templates', label: '\u6a21\u677f' },
+];
+
 export const ExtensionManagerView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<ExtensionCategory>('downloaded');
   const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 分类选项
-  const categories = [
-    { id: 'downloaded' as ExtensionCategory, label: '已下载' },
-    { id: 'themes' as ExtensionCategory, label: '主题' },
-    { id: 'file-icons' as ExtensionCategory, label: '文件图标' },
-    { id: 'plugins' as ExtensionCategory, label: '插件' },
-    { id: 'snippets' as ExtensionCategory, label: '片段' },
-    { id: 'widgets' as ExtensionCategory, label: '挂件' },
-    { id: 'templates' as ExtensionCategory, label: '模板' },
-  ];
-
-  // 加载扩展数据
   useEffect(() => {
-    loadExtensions();
+    void loadExtensions();
   }, [activeCategory]);
 
-  const loadExtensions = async () => {
+  const loadExtensions = async (): Promise<void> => {
     setLoading(true);
     try {
-      // TODO: 根据不同的分类加载不同的数据
-      // 这里暂时使用模拟数据
-      const mockData: ExtensionItem[] = [];
-      
-      if (activeCategory === 'downloaded') {
-        // 加载已下载的所有扩展
-        const result = await window.electron?.ipcRenderer.invoke('extension:list');
-        if (result) {
-          const mappedExtensions = result.map((ext: any) => ({
-            id: ext.id,
-            name: ext.name,
-            description: ext.description,
-            version: ext.version,
-            author: ext.author,
-            enabled: ext.enabled,
-            category: 'downloaded' as ExtensionCategory
-          }));
-          setExtensions(mappedExtensions);
-        } else {
-          setExtensions([]);
-        }
-      } else {
-        // 其他分类暂时显示空数据
-        setExtensions(mockData);
+      if (activeCategory !== 'downloaded') {
+        setExtensions([]);
+        return;
       }
+
+      const result = (await window.electron?.ipcRenderer.invoke(
+        'extension:list'
+      )) as InstalledExtensionRecord[] | undefined;
+
+      if (!Array.isArray(result)) {
+        setExtensions([]);
+        return;
+      }
+
+      const mappedExtensions: ExtensionItem[] = result.map((extension) => ({
+        id: extension.id,
+        name: extension.name,
+        description: extension.description,
+        version: extension.version,
+        author: extension.author,
+        enabled: extension.enabled,
+        category: 'downloaded',
+      }));
+
+      setExtensions(mappedExtensions);
     } catch (error) {
-      console.error('[ExtensionManagerView] 加载扩展失败:', error);
+      console.error('[ExtensionManagerView] Failed to load extensions:', error);
       setExtensions([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // 过滤扩展
-  const filteredExtensions = extensions.filter(ext => 
-    ext.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ext.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ext.author?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredExtensions = extensions.filter((extension) => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return true;
+    }
 
-  // 切换扩展启用状态
-  const toggleExtension = async (extensionId: string) => {
+    return (
+      extension.name?.toLowerCase().includes(normalizedQuery) ||
+      extension.description?.toLowerCase().includes(normalizedQuery) ||
+      extension.author?.toLowerCase().includes(normalizedQuery)
+    );
+  });
+
+  const toggleExtension = async (extensionId: string): Promise<void> => {
     try {
-      const extension = extensions.find(e => e.id === extensionId);
-      if (extension) {
-        const newEnabled = !extension.enabled;
-        await window.electron?.ipcRenderer.invoke('extension:toggle', extensionId, newEnabled);
-        
-        setExtensions(prev => prev.map(e => 
-          e.id === extensionId ? { ...e, enabled: newEnabled } : e
-        ));
+      const currentExtension = extensions.find((extension) => extension.id === extensionId);
+      if (!currentExtension) {
+        return;
       }
+
+      const nextEnabled = !currentExtension.enabled;
+      await window.electron?.ipcRenderer.invoke('extension:toggle', extensionId, nextEnabled);
+
+      setExtensions((previousExtensions) =>
+        previousExtensions.map((extension) =>
+          extension.id === extensionId ? { ...extension, enabled: nextEnabled } : extension
+        )
+      );
     } catch (error) {
-      console.error('[ExtensionManagerView] 切换扩展失败:', error);
+      console.error('[ExtensionManagerView] Failed to toggle extension:', error);
     }
   };
 
+  const activeCategoryLabel =
+    CATEGORIES.find((category) => category.id === activeCategory)?.label ?? activeCategory;
+
   return (
     <div className="extension-manager-view">
-      {/* 顶部搜索框 */}
       <div className="extension-manager-search">
         <div className="search-input-wrapper">
           <svg className="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path 
-              d="M7 12a5 5 0 100-10 5 5 0 000 10zM14 14l-2.9-2.9" 
-              stroke="currentColor" 
-              strokeWidth="1.5" 
+            <path
+              d="M7 12a5 5 0 100-10 5 5 0 000 10zM14 14l-2.9-2.9"
+              stroke="currentColor"
+              strokeWidth="1.5"
               strokeLinecap="round"
             />
           </svg>
           <input
             type="text"
             className="search-input"
-            placeholder="搜索扩展..."
+            placeholder="\u641c\u7d22\u6269\u5c55..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(event) => setSearchQuery(event.target.value)}
           />
           {searchQuery && (
-            <button 
-              className="clear-button"
-              onClick={() => setSearchQuery('')}
-            >
+            <button className="clear-button" onClick={() => setSearchQuery('')}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <path
+                  d="M2 2l10 10M12 2L2 12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
           )}
         </div>
       </div>
 
-      {/* 分类选项卡 */}
       <div className="extension-manager-categories">
-        {categories.map(category => (
+        {CATEGORIES.map((category) => (
           <button
             key={category.id}
             className={`category-tab ${activeCategory === category.id ? 'active' : ''}`}
@@ -149,59 +171,80 @@ export const ExtensionManagerView: React.FC = () => {
         ))}
       </div>
 
-      {/* 扩展卡片内容区 */}
       <div className="extension-manager-view-content">
         {loading ? (
           <div className="loading-state">
             <div className="spinner" />
-            <p>加载中...</p>
+            <p>\u52a0\u8f7d\u4e2d...</p>
           </div>
         ) : filteredExtensions.length === 0 ? (
           <div className="empty-state">
             <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-              <rect x="16" y="16" width="32" height="32" rx="4" stroke="currentColor" strokeWidth="2"/>
-              <path d="M28 28h8M28 36h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <rect x="16" y="16" width="32" height="32" rx="4" stroke="currentColor" strokeWidth="2" />
+              <path d="M28 28h8M28 36h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
             <p className="empty-title">
-              {searchQuery ? '未找到匹配的扩展' : `暂无${categories.find(c => c.id === activeCategory)?.label}`}
+              {searchQuery
+                ? '\u672a\u627e\u5230\u5339\u914d\u7684\u6269\u5c55'
+                : `\u6682\u65e0${activeCategoryLabel}`}
             </p>
             <p className="empty-subtitle">
-              {searchQuery ? '请尝试其他搜索关键词' : '从扩展市场安装扩展'}
+              {searchQuery
+                ? '\u8bf7\u5c1d\u8bd5\u5176\u4ed6\u641c\u7d22\u5173\u952e\u8bcd'
+                : '\u4ece\u6269\u5c55\u5e02\u573a\u5b89\u88c5\u6269\u5c55'}
             </p>
           </div>
         ) : (
           <div className="extensions-grid">
-            {filteredExtensions.map(ext => (
-              <div key={ext.id} className="extension-card">
+            {filteredExtensions.map((extension) => (
+              <div key={extension.id} className="extension-card">
                 <div className="extension-card-header">
                   <div className="extension-icon">
-                    {ext.icon ? (
-                      <img src={ext.icon} alt={ext.name} />
+                    {extension.icon ? (
+                      <img src={extension.icon} alt={extension.name} />
                     ) : (
                       <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                        <rect width="40" height="40" rx="8" fill="var(--ws-button-secondary-background)"/>
-                        <text x="20" y="26" fontSize="16" fill="currentColor" textAnchor="middle" fontWeight="600">
-                          {(ext.name || 'E').charAt(0).toUpperCase()}
+                        <rect
+                          width="40"
+                          height="40"
+                          rx="8"
+                          fill="var(--ws-button-secondary-background)"
+                        />
+                        <text
+                          x="20"
+                          y="26"
+                          fontSize="16"
+                          fill="currentColor"
+                          textAnchor="middle"
+                          fontWeight="600"
+                        >
+                          {(extension.name || 'E').charAt(0).toUpperCase()}
                         </text>
                       </svg>
                     )}
                   </div>
                   <div className="extension-info">
-                    <h3 className="extension-name">{ext.name || '未命名扩展'}</h3>
-                    <p className="extension-author">{ext.author || '未知作者'}</p>
+                    <h3 className="extension-name">
+                      {extension.name || '\u672a\u547d\u540d\u6269\u5c55'}
+                    </h3>
+                    <p className="extension-author">
+                      {extension.author || '\u672a\u77e5\u4f5c\u8005'}
+                    </p>
                   </div>
                 </div>
 
-                <p className="extension-description">{ext.description || '暂无描述'}</p>
+                <p className="extension-description">
+                  {extension.description || '\u6682\u65e0\u63cf\u8ff0'}
+                </p>
 
                 <div className="extension-card-footer">
-                  <span className="extension-version">v{ext.version || '0.0.0'}</span>
-                  {ext.enabled !== undefined && (
+                  <span className="extension-version">v{extension.version || '0.0.0'}</span>
+                  {extension.enabled !== undefined && (
                     <button
-                      className={`extension-toggle ${ext.enabled ? 'enabled' : 'disabled'}`}
-                      onClick={() => toggleExtension(ext.id)}
+                      className={`extension-toggle ${extension.enabled ? 'enabled' : 'disabled'}`}
+                      onClick={() => void toggleExtension(extension.id)}
                     >
-                      {ext.enabled ? '已启用' : '已禁用'}
+                      {extension.enabled ? '\u5df2\u542f\u7528' : '\u5df2\u7981\u7528'}
                     </button>
                   )}
                 </div>
@@ -213,4 +256,3 @@ export const ExtensionManagerView: React.FC = () => {
     </div>
   );
 };
-

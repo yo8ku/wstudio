@@ -5,13 +5,13 @@
 
 .status-bar {
   width: 100%;
-  height: 24px;
-  min-height: 24px;
-  max-height: 24px;
+  height: 100%;
+  min-height: 100%;
+  max-height: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
+  padding: 0 11px;
   font-size: 12px;
   gap: 16px;
   overflow: hidden;
@@ -25,6 +25,22 @@
     height: 100%;
     flex-shrink: 0;
     white-space: nowrap;
+  }
+
+  &-right-icons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    flex-shrink: 0;
+  }
+
+  &-divider {
+    width: 1px;
+    height: 12px;
+    background-color: var(--ws-border-background);
+    align-self: center;
+    flex-shrink: 0;
   }
 
   &-extension-btn {
@@ -48,15 +64,25 @@
   }
 
   &-text {
+    display: inline-flex;
+    align-items: center;
     line-height: 1;
     white-space: nowrap;
     flex-shrink: 0;
   }
 
   &-info-btn {
-    padding: 0 8px;
+    display: inline-flex;
+    align-items: center;
+    height: 100%;
     white-space: nowrap;
     flex-shrink: 0;
+    line-height: 1;
+
+    &--icon {
+      justify-content: center;
+      padding: 0 4px;
+    }
   }
 
   &-indexing {

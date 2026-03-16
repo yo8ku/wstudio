@@ -55,6 +55,7 @@ export interface TipTapInputRef {
   getText: () => string;
   setText: (text: string) => void;
   clear: () => void;
+  insertText: (text: string, replaceAtTrigger?: boolean) => void;
   insertFileReference: (filePath: string, fileName: string) => void;
   removeFileReference: (filePath: string) => void;
   clearAllFileReferences: () => void;
@@ -280,6 +281,25 @@ export const TipTapInput = forwardRef<TipTapInputRef, TipTapInputProps>(
       },
       clear: () => {
         editor?.commands.clearContent();
+      },
+      insertText: (text: string, replaceAtTrigger: boolean = false) => {
+        if (!editor || !text) return;
+
+        const chain = editor.chain().focus();
+
+        if (replaceAtTrigger) {
+          const { selection } = editor.state;
+          const { $from } = selection;
+          const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
+          const atIndex = textBefore.lastIndexOf('@');
+
+          if (atIndex !== -1) {
+            const deleteFrom = $from.pos - (textBefore.length - atIndex);
+            chain.deleteRange({ from: deleteFrom, to: $from.pos });
+          }
+        }
+
+        chain.insertContent(text).run();
       },
       insertFileReference: (filePath: string, fileName: string) => {
         if (!editor) return;

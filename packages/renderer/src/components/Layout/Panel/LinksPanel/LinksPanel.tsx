@@ -1,9 +1,3 @@
-/**
- * SnippetsPanel.tsx
- * 底部链接面板。
- * 功能：显示当前文件的出链、反向链接和提到当前文件名。
- */
-
 import React, { useEffect } from 'react';
 import { useLinkStore } from '../../../../stores/linkStore';
 import { useNoteStore } from '../../../../stores/noteStore';
@@ -16,11 +10,11 @@ import {
   createOutlinkCollectionItems
 } from '../../../Links';
 import { Icon } from '../../../Icons';
-import './SnippetsPanel.scss';
+import './LinksPanel.scss';
 
 import type { LinkCollectionSort } from '../../../Links';
 
-interface SnippetsPanelProps {
+interface LinksPanelProps {
   query?: string;
   sortBy?: LinkCollectionSort;
   isSearchVisible?: boolean;
@@ -31,7 +25,7 @@ interface SnippetsPanelProps {
   onToggleContext?: () => void;
 }
 
-export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
+export const LinksPanel: React.FC<LinksPanelProps> = ({
   query = '',
   sortBy = 'default',
   isSearchVisible = false,
@@ -53,15 +47,17 @@ export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
   const { currentNote, setCurrentNote } = useNoteStore();
 
   useEffect(() => {
-    if (currentNote) {
-      void Promise.all([
-        loadLinks(currentNote.id),
-        findUnlinkedMentions(currentNote.id)
-      ]);
+    if (!currentNote) {
+      return;
     }
+
+    void Promise.all([
+      loadLinks(currentNote.id),
+      findUnlinkedMentions(currentNote.id)
+    ]);
   }, [currentNote, findUnlinkedMentions, loadLinks]);
 
-  const handleOpenNote = async (noteId?: string, lineNumber?: number) => {
+  const handleOpenNote = async (noteId?: string, lineNumber?: number): Promise<void> => {
     if (!noteId) {
       return;
     }
@@ -73,7 +69,7 @@ export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
         setCurrentNote
       });
     } catch (error) {
-      console.error('[SnippetsPanel] 打开笔记失败:', error);
+      console.error('[LinksPanel] Failed to open note:', error);
     }
   };
 
@@ -81,7 +77,7 @@ export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
     sourceNoteId: string,
     position: { start: number; end: number },
     matchedText: string
-  ) => {
+  ): Promise<void> => {
     if (!currentNote) {
       return;
     }
@@ -91,26 +87,24 @@ export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
 
   if (!currentNote) {
     return (
-      <div className="snippets-panel snippets-panel-empty-state">
-        <div className="snippets-panel-empty">
+      <div className="links-panel links-panel-empty-state">
+        <div className="links-panel-empty">
           <Icon name="links" size={42} />
-          <div className="snippets-panel-empty-title">当前文件还没有链接索引</div>
-          <div className="snippets-panel-empty-description">
-            打开或保存一个可索引的文本文件后，这里会显示它的双向链接。
+          <div className="links-panel-empty-title">{'\u8bf7\u5148\u6253\u5f00\u4e00\u7bc7\u7b14\u8bb0'}</div>
+          <div className="links-panel-empty-description">
+            {'\u6253\u5f00\u7b14\u8bb0\u540e\uff0c\u8fd9\u91cc\u4f1a\u663e\u793a\u51fa\u94fe\u3001\u53cd\u5411\u94fe\u63a5\u548c\u672a\u94fe\u63a5\u63d0\u53ca\u3002'}
           </div>
         </div>
       </div>
     );
   }
 
-  const mentionTitle = '提到当前文件名';
-
   return (
-    <div className="snippets-panel">
-      <div className="snippets-panel-content">
+    <div className="links-panel">
+      <div className="links-panel-content">
         {isLoading ? (
-          <div className="snippets-panel-empty">
-            <div className="snippets-panel-empty-title">加载中...</div>
+          <div className="links-panel-empty">
+            <div className="links-panel-empty-title">{'\u52a0\u8f7d\u4e2d...'}</div>
           </div>
         ) : (
           <>
@@ -119,11 +113,11 @@ export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
               sortBy={sortBy}
               isSearchVisible={isSearchVisible}
               showFullContext={showFullContext}
-              searchPlaceholder="搜索链接、来源、锚点或上下文"
+              searchPlaceholder={'\u641c\u7d22\u51fa\u94fe\u3001\u53cd\u5411\u94fe\u63a5\u6216\u63d0\u53ca...'}
               stats={[
-                { label: '出链', count: outlinks.length },
-                { label: '反链', count: backlinks.length },
-                { label: '提到', count: unlinkedMentions.length }
+                { label: '\u51fa\u94fe', count: outlinks.length },
+                { label: '\u53cd\u5411\u94fe\u63a5', count: backlinks.length },
+                { label: '\u63d0\u53ca', count: unlinkedMentions.length }
               ]}
               onQueryChange={onQueryChange}
               onToggleSearch={onToggleSearch}
@@ -132,9 +126,9 @@ export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
             />
 
             <LinkCollection
-              title="出链"
+              title={'\u51fa\u94fe'}
               items={createOutlinkCollectionItems(outlinks, handleOpenNote)}
-              emptyText="暂无出链到其他文件"
+              emptyText={'\u5f53\u524d\u7b14\u8bb0\u6ca1\u6709\u51fa\u94fe'}
               defaultCollapsed
               resetKey={`${currentNote.id}-outlinks`}
               query={query}
@@ -143,9 +137,9 @@ export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
             />
 
             <LinkCollection
-              title="反链"
+              title={'\u53cd\u5411\u94fe\u63a5'}
               items={createBacklinkCollectionItems(backlinks, handleOpenNote)}
-              emptyText="没有笔记链接当前文件"
+              emptyText={'\u5f53\u524d\u7b14\u8bb0\u6ca1\u6709\u53cd\u5411\u94fe\u63a5'}
               defaultCollapsed
               resetKey={`${currentNote.id}-backlinks`}
               query={query}
@@ -154,13 +148,13 @@ export const SnippetsPanel: React.FC<SnippetsPanelProps> = ({
             />
 
             <LinkCollection
-              title={mentionTitle}
+              title={'\u63d0\u53ca'}
               items={createMentionCollectionItems(
                 unlinkedMentions,
                 handleOpenNote,
                 handleConvertMention
               )}
-              emptyText="没有笔记提到当前文件名"
+              emptyText={'\u5f53\u524d\u7b14\u8bb0\u6ca1\u6709\u672a\u94fe\u63a5\u63d0\u53ca'}
               defaultCollapsed
               resetKey={`${currentNote.id}-mentions`}
               query={query}

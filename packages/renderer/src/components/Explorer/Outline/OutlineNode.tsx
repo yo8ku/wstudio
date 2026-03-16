@@ -9,9 +9,6 @@ export interface OutlineNodeProps {
   onToggle?: (node: OutlineNodeType) => void;
 }
 
-/**
- * 大纲节点组件
- * 显示代码符号（类、方法、属性等 */
 export const OutlineNode: React.FC<OutlineNodeProps> = ({
   node,
   level = 0,
@@ -24,26 +21,31 @@ export const OutlineNode: React.FC<OutlineNodeProps> = ({
   const getIcon = (kind: OutlineSymbolKind): string => {
     switch (kind) {
       case OutlineSymbolKind.Class:
-        return 'codicon-symbol-class'; //       case OutlineSymbolKind.Interface:
-        return 'codicon-symbol-interface'; // 接口
+        return 'codicon-symbol-class';
+      case OutlineSymbolKind.Interface:
+        return 'codicon-symbol-interface';
       case OutlineSymbolKind.Method:
-        return 'codicon-symbol-method'; // 方法
+        return 'codicon-symbol-method';
       case OutlineSymbolKind.Function:
-        return 'codicon-symbol-function'; // 函数
+        return 'codicon-symbol-function';
       case OutlineSymbolKind.Property:
-        return 'codicon-symbol-property'; // 属      case OutlineSymbolKind.Field:
-        return 'codicon-symbol-field'; // 字段
+        return 'codicon-symbol-property';
+      case OutlineSymbolKind.Field:
+        return 'codicon-symbol-field';
       case OutlineSymbolKind.Variable:
-        return 'codicon-symbol-variable'; // 变量
+        return 'codicon-symbol-variable';
       case OutlineSymbolKind.Constant:
-        return 'codicon-symbol-constant'; // 常量
+        return 'codicon-symbol-constant';
       case OutlineSymbolKind.Enum:
-        return 'codicon-symbol-enum'; // 枚举
+        return 'codicon-symbol-enum';
       case OutlineSymbolKind.Constructor:
-        return 'codicon-symbol-constructor'; // 构造函数      case OutlineSymbolKind.String:
-        return 'codicon-symbol-string'; // Markdown 标题使用字符串图标      case OutlineSymbolKind.Key:
-        return 'codicon-symbol-key'; // JSON       case OutlineSymbolKind.TypeParameter:
-        return 'codicon-symbol-type-parameter'; // Type 类型
+        return 'codicon-symbol-constructor';
+      case OutlineSymbolKind.String:
+        return 'codicon-symbol-string';
+      case OutlineSymbolKind.Key:
+        return 'codicon-symbol-key';
+      case OutlineSymbolKind.TypeParameter:
+        return 'codicon-symbol-type-parameter';
       default:
         return 'codicon-symbol-misc';
     }
@@ -69,7 +71,7 @@ export const OutlineNode: React.FC<OutlineNodeProps> = ({
         onClick={handleClick}
       >
         {hasChildren && (
-          <i 
+          <i
             className={`outline-chevron codicon ${node.expanded ? 'codicon-chevron-down' : 'codicon-chevron-right'}`}
             onClick={handleToggle}
           />
@@ -97,5 +99,3 @@ export const OutlineNode: React.FC<OutlineNodeProps> = ({
 };
 
 export default OutlineNode;
-
-

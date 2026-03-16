@@ -52,47 +52,17 @@
 
   // Switch 开关样式
   &__switch {
-    position: relative;
-    display: inline-block;
-    width: 36px;
-    height: 20px;
-    cursor: pointer;
-
-    input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-
-      &:checked + .embedding-config__switch-slider {
-        background-color: var(--ws-switch-on-background, var(--ws-button-background));
-      }
-
-      &:checked + .embedding-config__switch-slider::before {
-        transform: translateX(16px);
-      }
-    }
-  }
-
-  &__switch-slider {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--ws-switch-off-background, var(--ws-input-border));
-    border-radius: 10px;
-
-    &::before {
-      content: '';
-      position: absolute;
-      height: 14px;
-      width: 14px;
-      left: 3px;
-      bottom: 3px;
-      background-color: var(--ws-switch-thumb, var(--ws-button-foreground));
-      border-radius: 50%;
-      box-shadow: 0 1px 2px var(--ws-widget-shadow);
-    }
+    --ws-switch-width: 36px;
+    --ws-switch-height: 20px;
+    --ws-switch-padding: 2px;
+    --ws-switch-thumb-size: 14px;
+    --ws-switch-track-off: var(--ws-switch-off-background, var(--ws-input-border));
+    --ws-switch-track-on: var(--ws-switch-on-background, var(--ws-button-background));
+    --ws-switch-border-off: transparent;
+    --ws-switch-border-on: transparent;
+    --ws-switch-thumb: var(--ws-button-foreground, #ffffff);
+    --ws-switch-thumb-checked: var(--ws-button-foreground, #ffffff);
+    --ws-switch-thumb-shadow: 0 1px 2px var(--ws-widget-shadow);
   }
 
   &__content {
