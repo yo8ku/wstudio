@@ -10,7 +10,7 @@ import { Tooltip } from '../../Tooltip';
 import { Icon } from '../../Icons';
 import { SearchBox } from '../../common/SearchBox';
 import { DropdownMenu } from '../../common/DropdownMenu';
-import { aiService, AI_PROVIDERS, setModelEnabled, isModelEnabled } from '../../../services/ai';
+import { aiService, AI_PROVIDERS, setModelEnabled, isModelEnabled, getProviderModels } from '../../../services/ai';
 import { AIProviderConfig } from '../../../types/aiProvider';
 import { toastService } from '../../../services/ToastService';
 import { clearModelCache } from '../../../services/ModelCacheService';
@@ -541,7 +541,6 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       const models = await aiService.getAvailableModels();
       
       // 从配置文件获取模型的 capabilities
-      const { getProviderModels } = await import('../../../services/ai');
       const configModels = await getProviderModels(config.providerId);
       
       const newChatModels: ChatModel[] = models.map(model => {

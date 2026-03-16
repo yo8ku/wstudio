@@ -18,7 +18,7 @@ import {
   ModelCapability,
   ChatMessage
 } from '../../../types/aiProvider';
-import { getModelConfig } from '../index';
+import { getProviderModels } from '../index';
 
 // Gemini OpenAI 兼容模式的 Base URL
 const GEMINI_OPENAI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
@@ -138,7 +138,6 @@ export class GeminiProvider extends BaseAIProvider {
 
   private async fetchModelsFromConfig(): Promise<AIModel[]> {
     try {
-      const { getProviderModels } = await import('../index');
       const configModels = await getProviderModels('gemini');
 
       if (configModels && configModels.length > 0) {

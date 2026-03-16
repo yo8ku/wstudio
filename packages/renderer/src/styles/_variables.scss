@@ -182,6 +182,7 @@
 
   // 默认边框颜色（主题加载前的回退值）
   --ws-panel-border: #3c3c3c;
+  --ws-border-background: var(--ws-panel-border, #3c3c3c);
   // 表格单元格边框颜色（默认使用 panel-border 的值）
   --ws-data-rowCellBorder: var(--ws-panel-border, #3c3c3c);
   // 焦点边框颜色（选中状态）

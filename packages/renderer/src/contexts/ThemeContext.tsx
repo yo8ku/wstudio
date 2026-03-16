@@ -332,6 +332,30 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [theme, setTheme] = useState<ITheme | null>(null);
   const [colors, setColors] = useState<ThemeColors>(defaultColors);
 
+  const resolveChromeBorderColor = (themeColors: ThemeColors, themeData?: ITheme): string => {
+    const borderCandidates = [
+      themeColors.borderColor,
+      themeColors.panelBorder,
+      themeColors.editorGroupBorder,
+      themeColors.sidebarBorder,
+      themeColors.activityBarBorder,
+      themeColors.statusBarBorder,
+      themeColors.titleBarBorder,
+      themeColors.tabBorder,
+      themeColors.menuBorder,
+      themeColors.inputBorder
+    ];
+    const resolvedColor = borderCandidates.find((color) => color && color !== 'transparent');
+
+    if (resolvedColor) {
+      return resolvedColor;
+    }
+
+    return themeData?.type === 'light'
+      ? 'rgba(0, 0, 0, 0.16)'
+      : 'rgba(255, 255, 255, 0.16)';
+  };
+
   /**
    * 从主题数据提取颜色
    * 完全遵循 VSCode 主题规范的颜色键
@@ -535,6 +559,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
    */
   const applyThemeColors = (themeColors: ThemeColors, themeData?: ITheme) => {
     const root = document.documentElement;
+    const currentTheme = themeData || theme;
+    const chromeBorderColor = resolveChromeBorderColor(themeColors, currentTheme ?? undefined);
     
     console.log('[ThemeContext] ==========  开始应用主题颜色 ==========');
     console.log('[ThemeContext] 主题名称:', themeData?.name);
@@ -558,7 +584,6 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     varsToRemove.forEach(varName => root.style.removeProperty(varName));
     
     // ⭐ 应用新主题的 VSCode 变量格式 (用于命令面板等组件)
-    const currentTheme = themeData || theme;
     const scrollbarActiveColor =
       currentTheme?.colors?.['scrollbarSlider.activeBackground']
       || currentTheme?.colors?.['scrollbarSlider.hoverBackground']
@@ -627,6 +652,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     root.style.setProperty('--border-color', themeColors.borderColor);
     root.style.setProperty('--contrast-border', themeColors.contrastBorder);
     root.style.setProperty('--tab-border', themeColors.tabBorder);
+    root.style.setProperty('--ws-border-background', chromeBorderColor);
     
     // 标签页
     root.style.setProperty('--tab-active-bg', themeColors.tabActiveBackground);

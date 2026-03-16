@@ -94,6 +94,11 @@ type TerminalBufferSnapshot = {
   viewportScrollTop: number | null;
 };
 
+type TerminalViewportSize = {
+  width: number;
+  height: number;
+};
+
 const TERMINAL_DEFAULT_SEARCH_OPTIONS: Readonly<Pick<ISearchOptions, 'caseSensitive' | 'regex' | 'wholeWord'>> = {
   caseSensitive: false,
   regex: false,
@@ -275,7 +280,9 @@ export class TerminalSession {
   private appliedThemeSignature = '';
   private appliedDensitySignature = '';
   private appearanceRefreshFrame: number | null = null;
+  private viewportRefreshFrame: number | null = null;
   private pendingAppearanceForcePtySync = false;
+  private lastFittedViewportSize: TerminalViewportSize | null = null;
   private diagnosticLogCount = 0;
   private diagnosticCommandBuffer = '';
   private diagnosticCodexTraceUntil = 0;
@@ -378,8 +385,8 @@ export class TerminalSession {
   }
 
   private initializeRenderer(): void {
-    if (this.shouldPreferCanvasRenderer()) {
-      this.activateCanvasRenderer();
+    if (this.shouldPreferDefaultRenderer()) {
+      this.activeRendererKind = 'dom';
       return;
     }
 
@@ -390,7 +397,7 @@ export class TerminalSession {
     this.activateCanvasRenderer();
   }
 
-  private shouldPreferCanvasRenderer(): boolean {
+  private shouldPreferDefaultRenderer(): boolean {
     return this.isWindowsPlatform();
   }
 
@@ -1754,6 +1761,7 @@ export class TerminalSession {
 
     this.debugLog('attach:open');
     this.fit('attach:open');
+    this.scheduleViewportRefresh('attach:open');
     this.setupContextMenu();
     this.setupKeyboardShortcuts();
 
@@ -1887,6 +1895,10 @@ export class TerminalSession {
     this.container = null;
   }
 
+  public refreshViewport(reason = 'terminal:refresh'): void {
+    this.scheduleViewportRefresh(reason);
+  }
+
   private async handlePaste(): Promise<void> {
     try {
       const text = await navigator.clipboard.readText();
@@ -1914,9 +1926,21 @@ export class TerminalSession {
       forcePtySync,
       reason,
     });
-    if (this.fit(`${reason}:fit`) || forcePtySync) {
+    const fitChanged = this.fit(`${reason}:fit`);
+    if (fitChanged || forcePtySync || this.hasUnsyncedPtySize()) {
       this.syncPtySize(forcePtySync, reason);
     }
+  }
+
+  private hasUnsyncedPtySize(): boolean {
+    if (this.pendingPtySync || !this.lastSyncedPtySize) {
+      return this.pendingPtySync;
+    }
+
+    return (
+      this.lastSyncedPtySize.cols !== this.terminal.cols
+      || this.lastSyncedPtySize.rows !== this.terminal.rows
+    );
   }
 
   public fit(reason = 'fit'): boolean {
@@ -1927,6 +1951,8 @@ export class TerminalSession {
 
     this.syncLayoutDensity();
     this.syncThemeOptions();
+    const viewportWidth = this.container.clientWidth;
+    const viewportHeight = this.container.clientHeight;
     const dimensions = this.fitAddon.proposeDimensions();
     if (!dimensions) {
       this.debugLog('terminal:fit:skip:no-dimensions', { reason });
@@ -1936,11 +1962,28 @@ export class TerminalSession {
     const nextCols = Math.max(TERMINAL_MIN_COLS, dimensions.cols);
     const nextRows = Math.max(TERMINAL_MIN_ROWS, dimensions.rows);
 
+    const previousViewportSize = this.lastFittedViewportSize;
+    const viewportSizeChanged = (
+      !previousViewportSize
+      || previousViewportSize.width !== viewportWidth
+      || previousViewportSize.height !== viewportHeight
+    );
+    this.lastFittedViewportSize = {
+      width: viewportWidth,
+      height: viewportHeight,
+    };
+
     if (nextCols === this.terminal.cols && nextRows === this.terminal.rows) {
+      if (viewportSizeChanged) {
+        this.scheduleViewportRefresh(`${reason}:same-grid-viewport-changed`);
+      }
       this.debugLog('terminal:fit:skip:same-size', {
         reason,
         proposedCols: nextCols,
         proposedRows: nextRows,
+        viewportWidth,
+        viewportHeight,
+        viewportSizeChanged,
       });
       return false;
     }
@@ -1948,12 +1991,15 @@ export class TerminalSession {
     const previousCols = this.terminal.cols;
     const previousRows = this.terminal.rows;
     this.terminal.resize(nextCols, nextRows);
+    this.scheduleViewportRefresh(`${reason}:post-resize`);
     this.debugLog('terminal:fit:applied', {
       reason,
       previousCols,
       previousRows,
       nextCols,
       nextRows,
+      viewportWidth,
+      viewportHeight,
     });
     return true;
   }
@@ -2126,6 +2172,27 @@ export class TerminalSession {
     return true;
   }
 
+  private scheduleViewportRefresh(reason: string): void {
+    if (this.isDisposed) {
+      return;
+    }
+
+    if (this.viewportRefreshFrame !== null) {
+      window.cancelAnimationFrame(this.viewportRefreshFrame);
+    }
+
+    this.viewportRefreshFrame = window.requestAnimationFrame(() => {
+      this.viewportRefreshFrame = null;
+      if (this.isDisposed) {
+        return;
+      }
+
+      this.clearTextureAtlas();
+      this.terminal.refresh(0, Math.max(this.terminal.rows - 1, 0));
+      this.debugLog('terminal:refresh:applied', { reason });
+    });
+  }
+
   private clearTextureAtlas(): void {
     if (!this.activeRendererAddon) {
       return;
@@ -2252,6 +2319,10 @@ export class TerminalSession {
     if (this.appearanceRefreshFrame !== null) {
       window.cancelAnimationFrame(this.appearanceRefreshFrame);
       this.appearanceRefreshFrame = null;
+    }
+    if (this.viewportRefreshFrame !== null) {
+      window.cancelAnimationFrame(this.viewportRefreshFrame);
+      this.viewportRefreshFrame = null;
     }
     this.pendingAppearanceForcePtySync = false;
 

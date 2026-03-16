@@ -129,6 +129,19 @@ interface OpenTerminalTabDetail {
   accentColor?: string | null;
 }
 
+interface LastOpenedFileDescriptor {
+  path?: string;
+  content?: string;
+  name?: string;
+  language?: string;
+}
+
+interface LastOpenedRestoreResult {
+  success: boolean;
+  data?: string | LastOpenedFileDescriptor;
+  error?: string;
+}
+
 const normalizeComparableFilePath = (value: string): string =>
   value.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 const AGENT_DRAFT_PATH_PREFIX = 'agent-draft:/';
@@ -161,6 +174,20 @@ const getFileNameFromPath = (value: string): string => {
   const normalized = value.replace(/\\/g, '/');
   const segments = normalized.split('/').filter(Boolean);
   return segments[segments.length - 1] || value;
+};
+
+const resolveLastOpenedPath = (result: LastOpenedRestoreResult | undefined): string | null => {
+  if (!result?.success || result.data === undefined) {
+    return null;
+  }
+
+  if (typeof result.data === 'string') {
+    const normalizedPath = result.data.trim();
+    return normalizedPath || null;
+  }
+
+  const normalizedPath = typeof result.data.path === 'string' ? result.data.path.trim() : '';
+  return normalizedPath || null;
 };
 
 const appendNumericSuffixToPath = (filePath: string, index: number): string => {
@@ -1005,20 +1032,26 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     const loadLastOpened = async () => {
       try {
         const result = await window.electron?.workspace?.getLastOpened();
-        if (result?.success && result.data) {
-          const { path, content, name, language } = result.data;
-          const newTab: EditorTab = {
-            id: `file-${Date.now()}`,
-            title: name,
-            path: path,
-            isDirty: false,
-            language: language || 'plaintext',
-            content: content,
-            type: 'file'
-          };
-          setTabs([newTab]);
-          setActiveTabId(newTab.id);
-        }
+        const lastOpenedPath = resolveLastOpenedPath(result as LastOpenedRestoreResult | undefined);
+        if (!lastOpenedPath) return;
+
+        const fileResult = await window.electron?.file?.read(lastOpenedPath);
+        const restoredFile = fileResult?.success ? fileResult.data : undefined;
+        const restoredPath = restoredFile?.path?.trim() || '';
+        if (!restoredPath) return;
+
+        const restoredTitle = restoredFile?.name?.trim() || getFileNameFromPath(restoredPath);
+        const newTab: EditorTab = {
+          id: `file-${Date.now()}`,
+          title: restoredTitle,
+          path: restoredPath,
+          isDirty: false,
+          language: restoredFile?.language || 'plaintext',
+          content: restoredFile?.content || '',
+          type: 'file'
+        };
+        setTabs([newTab]);
+        setActiveTabId(newTab.id);
       } catch (error) {
         // 鍔犺浇涓婃鎵撳紑鐨勬枃浠跺け璐ワ紝闈欓粯澶勭悊
       }

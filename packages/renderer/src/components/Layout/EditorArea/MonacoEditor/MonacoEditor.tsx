@@ -7,7 +7,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Editor, { Monaco } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
-import { VSCodeCommandCenter } from '../../../../command-center';
+import { getGlobalCommandCenter } from '../../../../command-center/GlobalCommandCenter';
 import '../../../../command-center/VSCodeCommandCenter.scss';
 import { MonacoContextMenu } from '../MonacoContextMenu/MonacoContextMenu';
 import { useMonacoContextMenu } from '../MonacoContextMenu/useMonacoContextMenu';
@@ -164,7 +164,6 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const [isEditorReady, setIsEditorReady] = useState<boolean>(false);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onCompositionStateChangeRef = useRef(onCompositionStateChange);
-  const commandCenterRef = useRef<VSCodeCommandCenter | null>(null);
   const isSyncingScrollRef = useRef<boolean>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isImeComposingRef = useRef(false);
@@ -3016,16 +3015,13 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           e.stopPropagation();
           
           // 鎵嬪姩瑙﹀彂鍏ㄥ眬鍛戒护涓績
-          const globalCommandCenter = (window as any).__commandCenter;
+          const globalCommandCenter = getGlobalCommandCenter();
           if (globalCommandCenter) {
             globalCommandCenter.show('>');
           }
         }
       }, true);
     }
-
-    // 浣跨敤鍏ㄥ眬鍛戒护涓績瀹炰緥锛堢敱 MainLayout 鍒濆鍖栵級
-    commandCenterRef.current = (window as any).__commandCenter;
 
     // 鍒濆锟?AI 鏀瑰啓缁勪欢
     if (!aiRewriteWidgetRef.current) {
@@ -3042,15 +3038,6 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       });
     }
     
-    // 浼樺厛浣跨敤鍏ㄥ眬鍛戒护涓績瀹炰緥锛岄伩鍏嶉噸澶嶅垱锟?
-    if (!commandCenterRef.current) {
-      commandCenterRef.current = (window as any).__commandCenter || new VSCodeCommandCenter();
-      // 濡傛灉鍒涘缓浜嗘柊瀹炰緥锛屼繚瀛樺埌鍏ㄥ眬
-      if (!(window as any).__commandCenter) {
-        (window as any).__commandCenter = commandCenterRef.current;
-      }
-    }
-
     // 娉ㄥ唽 Ctrl+S 淇濆瓨蹇嵎锟?
     editor.addCommand(
       monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
@@ -3082,7 +3069,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
         monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT
       ),
       () => {
-        const globalCommandCenter = (window as any).__commandCenter || commandCenterRef.current;
+        const globalCommandCenter = getGlobalCommandCenter();
         globalCommandCenter?.show('>');
         // 鍦ㄥ懡浠や腑蹇冩墦寮€鍚庯紝鑷姩杈撳叆涓婚鍛戒护
         setTimeout(() => {
@@ -3806,12 +3793,6 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       compositionCleanupRef.current?.();
       compositionCleanupRef.current = null;
       isImeComposingRef.current = false;
-
-      // 娓呯悊鍛戒护涓績
-      if (commandCenterRef.current) {
-        commandCenterRef.current.dispose();
-        commandCenterRef.current = null;
-      }
 
       // 娓呯悊 diff 鍐呭鍜岀┖锟?
       cleanupPreviousDiff();

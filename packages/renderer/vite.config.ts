@@ -32,7 +32,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@note-studio/theme': path.resolve(__dirname, '../theme/src/index.ts'),
       '@note-studio/shared': path.resolve(__dirname, '../shared/src/index.ts'),
-      '@note-studio/global-rag': path.resolve(__dirname, '../global-rag/src/index.ts')
+      '@note-studio/global-rag': path.resolve(__dirname, '../global-rag/src/browser.ts')
     },
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
     conditions: ['import', 'module', 'browser', 'default'],
@@ -61,6 +61,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'esnext',
+    // Electron renderer 本地加载资源，默认 500k 的 Web 阈值会产生低价值噪音。
+    chunkSizeWarningLimit: 9000,
     rollupOptions: {
       external: ['electron', 'jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events'],
       input: {

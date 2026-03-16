@@ -179,6 +179,8 @@ export interface FileResult {
   error?: string;
 }
 
+export type WorkspaceLastOpenedResult = APIResponse<string> | FileResult;
+
 /**
  * 鑱婂ぉ妯″瀷鎺ュ彛
  */
@@ -394,7 +396,7 @@ export interface ElectronIPC {
   workspace?: {
     getDir: () => Promise<APIResponse<string>>;
     getRecentFiles: () => Promise<APIResponse<string[]>>;
-    getLastOpened: () => Promise<FileResult>;
+    getLastOpened: () => Promise<WorkspaceLastOpenedResult>;
     clearRecentFiles: () => Promise<APIResponse>;
   };
   knowledgeBase?: {

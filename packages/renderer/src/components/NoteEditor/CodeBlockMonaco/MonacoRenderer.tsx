@@ -6,8 +6,10 @@
 
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
+import * as monaco from 'monaco-editor';
 import { CodeBlockMonaco } from './CodeBlockMonaco';
 import type { editor } from 'monaco-editor';
+import { themeService } from '../../../services/ThemeService';
 
 interface MonacoRenderOptions {
   code: string;
@@ -143,13 +145,11 @@ export function updateMonacoTheme(container: HTMLElement, theme: string): void {
   // 直接在现有编辑器上应用主题
   if (editorInstance) {
     // 动态导入 themeService 并应用主题
-    import('../../../services/ThemeService').then(async ({ themeService }) => {
+    void (async () => {
       const themeData = await themeService.getTheme(theme);
       console.log('[MonacoRenderer] themeData:', !!themeData);
       if (themeData) {
         // 动态导入 monaco-editor
-        const monaco = await import('monaco-editor');
-        
         const themeId = `custom-${theme}`;
         
         // 转换主题颜色
@@ -197,7 +197,7 @@ export function updateMonacoTheme(container: HTMLElement, theme: string): void {
         console.log('[MonacoRenderer] 应用主题:', themeId);
         monaco.editor.setTheme(themeId);
       }
-    });
+    })();
   }
 }
 
@@ -220,9 +220,7 @@ export function updateMonacoLanguage(container: HTMLElement, language: string): 
     const model = editorInstance.getModel();
     if (model) {
       // 获取 Monaco 实例并设置语言
-      import('monaco-editor').then((monaco) => {
-        monaco.editor.setModelLanguage(model, language);
-      });
+      monaco.editor.setModelLanguage(model, language);
     }
   }
 }

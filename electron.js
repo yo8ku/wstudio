@@ -2,7 +2,7 @@
  * Electron 婵炴垶鎸诲Σ鎺旀崲濡偐鐭欓悗锝庝簼閸庢瑩鏌涢弬璇插闁哄鍟撮弫?
  */
 
-const { app, BrowserWindow, ipcMain, protocol, dialog, session, shell, Menu, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, dialog, session, shell, Menu, globalShortcut, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
@@ -209,6 +209,49 @@ async function resolveInitialWindowBackgroundColor() {
   }
 }
 
+function setWindowsAccentBorder(targetWindow, shouldHighlight) {
+  if (process.platform !== 'win32' || !targetWindow || targetWindow.isDestroyed()) {
+    return;
+  }
+
+  if (typeof targetWindow.setAccentColor !== 'function') {
+    return;
+  }
+
+  try {
+    targetWindow.setAccentColor(shouldHighlight);
+  } catch (error) {
+    console.warn('[Electron] Failed to update Windows accent border state:', error);
+  }
+}
+
+function registerWindowsAccentBorderSync(targetWindow) {
+  if (
+    process.platform !== 'win32'
+    || !targetWindow
+    || targetWindow.isDestroyed()
+    || !systemPreferences
+    || typeof systemPreferences.on !== 'function'
+    || typeof systemPreferences.removeListener !== 'function'
+  ) {
+    return;
+  }
+
+  const syncAccentBorder = () => {
+    setWindowsAccentBorder(targetWindow, targetWindow.isFocused());
+  };
+
+  systemPreferences.on('color-changed', syncAccentBorder);
+  systemPreferences.on('accent-color-changed', syncAccentBorder);
+  targetWindow.on('focus', syncAccentBorder);
+  targetWindow.on('blur', syncAccentBorder);
+
+  targetWindow.once('closed', () => {
+    systemPreferences.removeListener('color-changed', syncAccentBorder);
+    systemPreferences.removeListener('accent-color-changed', syncAccentBorder);
+  });
+}
+
 /**
  * 闂佸憡甯楃粙鎴犵磽閹惧鈻旈柤濮愬€楀畷鍫曟煥?
  * @param {string} backgroundColor - 缂備焦鍔栭〃鍛般亹濞戙垺鍤勯悘鐐靛亾閻濐垶鏌ょ涵鍜佸殝缂佽鲸鐟╁鍫曞Ψ閵娿儲顔囬悷婊呭閹稿憡鏅堕悩宕団枖濠电姵鍑归弳顖炴煥?
@@ -222,7 +265,8 @@ function createWindow(backgroundColor = '#1e1e1e') {
     minHeight: 600,
     frame: false, // 闂佸搫鍟版慨鍓х博閻斿娴栭柛鈩冪懅瀹曞爼鏌?
     titleBarStyle: 'hidden',
-    frame: true,
+    thickFrame: true,
+    accentColor: true,
     backgroundColor: backgroundColor, // 婵炶揪缍€濞夋洟寮妶鍡欌枖濠电姵鍑归弳顖炴煠閸愬弶婀版繛鍛懇閹虫繄鎷犺缁€澶愭⒑椤掆偓閻忔繈宕㈤妶澶嬪剬闁稿﹦鍠庨ˉ蹇涙⒒閸屻倓绨介柛?
     icon: logIconPath,
     webPreferences: {
@@ -237,6 +281,8 @@ function createWindow(backgroundColor = '#1e1e1e') {
   });
 
   mainWindow = createdWindow;
+  setWindowsAccentBorder(createdWindow, createdWindow.isFocused());
+  registerWindowsAccentBorderSync(createdWindow);
 
   createdWindow.once('ready-to-show', () => {
     if (!createdWindow.isDestroyed()) {

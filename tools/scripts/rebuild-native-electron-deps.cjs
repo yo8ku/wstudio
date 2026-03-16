@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { rebuild } = require('@electron/rebuild');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const rootPackageJsonPath = path.join(repoRoot, 'package.json');
@@ -36,14 +37,6 @@ function resolveElectronVersion() {
   }
 
   return version;
-}
-
-function resolvePrebuildInstallBin() {
-  try {
-    return require.resolve('prebuild-install/bin.js', { paths: [repoRoot] });
-  } catch {
-    return null;
-  }
 }
 
 function resolveNodePtyPackageName() {
@@ -105,59 +98,34 @@ function syncElectronRuntime() {
   }
 }
 
-function rebuildNodePtyForElectron() {
+async function rebuildNodePtyForElectron() {
   if (!fs.existsSync(nodePtyDir)) {
     console.log('[native] node-pty is not installed, skipping Electron native sync.');
     return;
   }
 
   const electronVersion = resolveElectronVersion();
-  const prebuildInstallBin = resolvePrebuildInstallBin();
   const packageName = resolveNodePtyPackageName();
-  const env = {
-    ...process.env,
-    npm_config_runtime: 'electron',
-    npm_config_target: electronVersion,
-    npm_config_disturl: 'https://electronjs.org/headers',
-    npm_config_build_from_source: 'false',
-  };
+  console.log(`[native] Syncing ${packageName} for Electron ${electronVersion} via @electron/rebuild`);
 
-  if (prebuildInstallBin) {
-    console.log(`[native] Syncing ${packageName} for Electron ${electronVersion} via prebuild-install`);
-    const result = runNode(
-      prebuildInstallBin,
-      ['-r', 'electron', '-t', electronVersion, '--verbose'],
-      {
-        cwd: nodePtyDir,
-        env,
-      }
-    );
-
-    if (result.status === 0) {
-      return;
-    }
-
-    console.warn('[native] prebuild-install failed, falling back to package rebuild.');
-  } else {
-    console.warn('[native] prebuild-install is unavailable, falling back to package rebuild.');
-  }
-
-  const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  const rebuildResult = spawnSync(pnpmCommand, ['rebuild', 'node-pty'], {
-    cwd: repoRoot,
-    env,
-    stdio: 'inherit',
+  await rebuild({
+    buildPath: repoRoot,
+    electronVersion,
+    onlyModules: ['node-pty'],
+    force: true,
+    headerURL: 'https://www.electronjs.org/headers',
+    mode: process.platform === 'win32' ? 'sequential' : 'parallel',
   });
+}
 
-  if (rebuildResult.status !== 0) {
-    throw new Error(`Failed to rebuild ${packageName} for Electron ${electronVersion}`);
+async function main() {
+  try {
+    syncElectronRuntime();
+    await rebuildNodePtyForElectron();
+  } catch (error) {
+    console.error('[native] Electron native dependency sync failed:', error);
+    process.exitCode = 1;
   }
 }
 
-try {
-  syncElectronRuntime();
-  rebuildNodePtyForElectron();
-} catch (error) {
-  console.error('[native] Electron native dependency sync failed:', error);
-  process.exitCode = 1;
-}
+void main();

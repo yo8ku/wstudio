@@ -387,6 +387,10 @@ body.background-image-enabled [data-theme-mode='dark'] .sidebar-header>* {
   background-color: var(--ws-editor-background, #1e1e1e);
 }
 
+.main-layout {
+  border: 1px solid var(--ws-border-background);
+}
+
 /* ==================== 滚动条样�?==================== */
 /* 自定义滚动条（WebKit�?*/
 ::-webkit-scrollbar {

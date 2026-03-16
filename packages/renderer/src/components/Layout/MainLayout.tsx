@@ -18,6 +18,7 @@ import { MarkdownCommandProvider } from '../../command-center/MarkdownCommandPro
 import { FileCommandProvider } from '../../command-center/FileCommandProvider';
 import { AIConfigCommandProvider } from '../../command-center/AIConfigCommandProvider';
 import { SnippetsCommandProvider } from '../../command-center/SnippetsCommandProvider';
+import { getGlobalCommandCenter, setGlobalCommandCenter } from '../../command-center/GlobalCommandCenter';
 import { IconThemeProvider } from '../../contexts/IconThemeContext';
 import { BackgroundImage } from '../BackgroundImage';
 import { GlobalModal } from '../GlobalModal';
@@ -523,11 +524,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   // 鍒濆鍖栧叏灞€鍛戒护涓績
   useEffect(() => {
     console.log('[MainLayout] 鍒濆鍖栧叏灞€鍛戒护涓績...');
-    // 濡傛灉鍏ㄥ眬宸叉湁瀹炰緥锛屽鐢紱鍚﹀垯鍒涘缓鏂板疄渚?
-    const commandCenter = (window as any).__commandCenter || new VSCodeCommandCenter();
+    const commandCenter = getGlobalCommandCenter() ?? new VSCodeCommandCenter();
     commandCenterRef.current = commandCenter;
-    // 淇濆瓨鍒板叏灞€锛屼緵鍏朵粬缁勪欢浣跨敤
-    (window as any).__commandCenter = commandCenter;
+    setGlobalCommandCenter(commandCenter);
     iconThemeProviderRef.current = new IconThemeCommandProvider(commandCenter);
     themeProviderRef.current = new ThemeCommandProvider(commandCenter);
     markdownProviderRef.current = new MarkdownCommandProvider(commandCenter);
@@ -544,16 +543,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       console.error('[MainLayout] 鍛戒护鎻愪緵鑰呭垵濮嬪寲澶辫触:', error);
     });
 
-    // 灏嗗懡浠や腑蹇冨疄渚嬫毚闇茬粰鍏ㄥ眬锛屼互渚?MonacoEditor 鍙互璁块棶
-    (window as any).__commandCenter = commandCenterRef.current;
-
     return () => {
+      if (getGlobalCommandCenter() === commandCenter) {
+        setGlobalCommandCenter(null);
+      }
+
+      commandCenter.dispose();
       commandCenterRef.current = null;
       iconThemeProviderRef.current = null;
       themeProviderRef.current = null;
       markdownProviderRef.current = null;
+      fileProviderRef.current = null;
       aiConfigProviderRef.current = null;
-      (window as any).__commandCenter = null;
+      snippetsProviderRef.current = null;
     };
   }, []);
 

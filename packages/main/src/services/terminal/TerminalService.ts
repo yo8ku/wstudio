@@ -3,7 +3,9 @@
  * Hosts PTY instances in the Electron main process and forwards PTY events to renderers.
  */
 
+import * as fs from 'fs';
 import * as os from 'os';
+import * as path from 'path';
 import { BrowserWindow } from 'electron';
 import { getShellDetector } from './ShellDetector';
 import type {
@@ -38,6 +40,7 @@ interface NodePtyModule {
       env?: Record<string, string | undefined>;
       encoding?: string | null;
       useConpty?: boolean;
+      useConptyDll?: boolean;
     }
   ): TerminalPty;
 }
@@ -47,6 +50,7 @@ const NOOP_DISPOSABLE: TerminalDisposable = {
 };
 
 let nodePtyModule: NodePtyModule | null = null;
+let bundledConptyDllAvailable: boolean | null = null;
 
 function loadNodePty(): NodePtyModule {
   if (nodePtyModule) {
@@ -62,6 +66,23 @@ function loadNodePty(): NodePtyModule {
       `node-pty native module is unavailable. Run "pnpm run rebuild:native" and restart the app. Original error: ${message}`
     );
   }
+}
+
+function hasBundledConptyDll(): boolean {
+  if (bundledConptyDllAvailable !== null) {
+    return bundledConptyDllAvailable;
+  }
+
+  try {
+    const nodePtyEntryPath = require.resolve('node-pty');
+    const nodePtyRoot = path.resolve(path.dirname(nodePtyEntryPath), '..');
+    const conptyDllPath = path.join(nodePtyRoot, 'build', 'Release', 'conpty', 'conpty.dll');
+    bundledConptyDllAvailable = fs.existsSync(conptyDllPath);
+  } catch {
+    bundledConptyDllAvailable = false;
+  }
+
+  return bundledConptyDllAvailable;
 }
 
 export class TerminalService {
@@ -220,6 +241,11 @@ export class TerminalService {
   ): TerminalPty {
     const { spawn } = loadNodePty();
     const ptyInfo = this.getPtyInfo();
+    const shouldUseConptyDll = (
+      process.platform === 'win32'
+      && ptyInfo?.backend === 'conpty'
+      && hasBundledConptyDll()
+    );
 
     return spawn(launchCommand.executable, launchCommand.args, {
       name: TERM_NAME,
@@ -229,6 +255,7 @@ export class TerminalService {
       env,
       encoding: 'utf8',
       useConpty: process.platform === 'win32' ? ptyInfo?.backend === 'conpty' : undefined,
+      useConptyDll: shouldUseConptyDll,
     });
   }
 

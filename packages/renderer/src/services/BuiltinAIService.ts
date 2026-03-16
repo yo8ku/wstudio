@@ -14,7 +14,7 @@ async function loadCodeGenPrompt(): Promise<string> {
     return cachedCodeGenPrompt;
   }
   try {
-    const response = await fetch(new URL('../../../../prompts/code/generation.md', import.meta.url));
+    const response = await fetch(new URL('../../../prompts/code/generation.md', import.meta.url));
     if (response.ok) {
       cachedCodeGenPrompt = await response.text();
       return cachedCodeGenPrompt;

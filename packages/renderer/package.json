@@ -4,9 +4,9 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "npx tsc && npx vite build",
-    "dev": "npx vite",
-    "clean": "rm -rf dist"
+    "build": "pnpm exec tsc && pnpm exec vite build",
+    "dev": "pnpm exec vite",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\""
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.0",

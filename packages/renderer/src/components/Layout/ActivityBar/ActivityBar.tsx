@@ -23,6 +23,8 @@ interface ActivityItem {
   visibilityKey?: keyof ActivityBarVisibility;
 }
 
+const ACTIVITY_BAR_ICON_SIZE = 18;
+
 export const ActivityBar: React.FC<ActivityBarProps> = ({
   activeItem,
   onActivityClick,
@@ -136,7 +138,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
               <div className="activity-bar-indicator" />
             )}
             <span className="activity-bar-icon">
-              <Icon iconSet={activity.iconSet} name={activity.iconName} size={18} />
+              <Icon iconSet={activity.iconSet} name={activity.iconName} size={ACTIVITY_BAR_ICON_SIZE} />
             </span>
           </div>
         ))}
@@ -165,7 +167,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
               <div className="activity-bar-indicator" />
             )}
             <span className="activity-bar-icon">
-              <Icon iconSet={activity.iconSet} name={activity.iconName} size={24} />
+              <Icon iconSet={activity.iconSet} name={activity.iconName} size={ACTIVITY_BAR_ICON_SIZE} />
             </span>
           </div>
         ))}

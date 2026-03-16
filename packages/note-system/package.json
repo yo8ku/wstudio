@@ -13,13 +13,13 @@
     }
   },
   "scripts": {
-    "build": "npx tsc -p tsconfig.esm.json && npx tsc -p tsconfig.cjs.json",
-    "build:esm": "npx tsc -p tsconfig.esm.json",
-    "build:cjs": "npx tsc -p tsconfig.cjs.json",
-    "dev": "npx tsc -p tsconfig.esm.json --watch",
+    "build": "pnpm exec tsc -p tsconfig.esm.json && pnpm exec tsc -p tsconfig.cjs.json",
+    "build:esm": "pnpm exec tsc -p tsconfig.esm.json",
+    "build:cjs": "pnpm exec tsc -p tsconfig.cjs.json",
+    "dev": "pnpm exec tsc -p tsconfig.esm.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\""
   },
   "keywords": [
     "note",
