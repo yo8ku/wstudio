@@ -1,31 +1,31 @@
-/**
- * AI 内联聊天小部件样式
- * 功能：定义内联 AI 聊天面板的所有样式
+﻿/**
+ * AI 鍐呰仈鑱婂ぉ灏忛儴浠舵牱寮?
+ * 鍔熻兘锛氬畾涔夊唴鑱?AI 鑱婂ぉ闈㈡澘鐨勬墍鏈夋牱寮?
  */
 
-/* 确保所有 Monaco Editor 容器允许溢出，使边框可以延伸到行号区域 */
-/* monaco-editor 是边框的容器（最外层），必须允许溢出并设置相对定位 */
+/* 纭繚鎵€鏈?Monaco Editor 瀹瑰櫒鍏佽婧㈠嚭锛屼娇杈规鍙互寤朵几鍒拌鍙峰尯鍩?*/
+/* monaco-editor 鏄竟妗嗙殑瀹瑰櫒锛堟渶澶栧眰锛夛紝蹇呴』鍏佽婧㈠嚭骞惰缃浉瀵瑰畾浣?*/
 .monaco-editor.ai-zone-active {
-  position: relative !important; /* 确保边框可以绝对定位 */
+  position: relative !important; /* 纭繚杈规鍙互缁濆瀹氫綅 */
 }
 
-/* overflow-guard 也需要允许溢出（作为备用容器） */
+/* overflow-guard 涔熼渶瑕佸厑璁告孩鍑猴紙浣滀负澶囩敤瀹瑰櫒锛?*/
 .monaco-editor.ai-zone-active .overflow-guard {
   overflow: visible !important;
-  position: relative !important; /* 确保边框可以绝对定位 */
+  position: relative !important; /* 纭繚杈规鍙互缁濆瀹氫綅 */
 }
 
-/* monaco-scrollable-element 也需要允许溢出（作为备用容器） */
+/* monaco-scrollable-element 涔熼渶瑕佸厑璁告孩鍑猴紙浣滀负澶囩敤瀹瑰櫒锛?*/
 .monaco-editor.ai-zone-active .monaco-scrollable-element {
   overflow: visible !important;
-  position: relative !important; /* 确保边框可以绝对定位 */
+  position: relative !important; /* 纭繚杈规鍙互缁濆瀹氫綅 */
 }
 
 .monaco-editor.ai-zone-active .view-zone {
   overflow: visible !important;
   overflow-x: visible !important;
   overflow-y: visible !important;
-  /* 确保 view-zone 内的元素可以接收鼠标事件 */
+  /* 纭繚 view-zone 鍐呯殑鍏冪礌鍙互鎺ユ敹榧犳爣浜嬩欢 */
   pointer-events: auto !important;
 }
 
@@ -33,11 +33,11 @@
   overflow: visible !important;
   overflow-x: visible !important;
   overflow-y: visible !important;
-  /* 确保 view-zones 容器可以接收鼠标事件 */
+  /* 纭繚 view-zones 瀹瑰櫒鍙互鎺ユ敹榧犳爣浜嬩欢 */
   pointer-events: auto !important;
 }
 
-/* 确保 Monaco Editor 的内容区域也允许溢出 */
+/* 纭繚 Monaco Editor 鐨勫唴瀹瑰尯鍩熶篃鍏佽婧㈠嚭 */
 .monaco-editor.ai-zone-active .monaco-editor-background {
   overflow: visible !important;
 }
@@ -58,40 +58,40 @@
   margin: 4px 0 0;
   min-height: 48px;
   overflow: visible !important;
-  /* 宽度由 JavaScript 动态设置，CSS 只设置最大和最小宽度作为后备 */
+  /* 瀹藉害鐢?JavaScript 鍔ㄦ€佽缃紝CSS 鍙缃渶澶у拰鏈€灏忓搴︿綔涓哄悗澶?*/
   max-width: 834px !important;
   min-width: 280px !important;
   display: flex;
   flex-direction: column;
-  /* 确保边框可以延伸到行号区域 */
+  /* 纭繚杈规鍙互寤朵几鍒拌鍙峰尯鍩?*/
   overflow-x: visible !important;
 }
 
-/* 顶部和底部边框（在 monaco-editor 容器层级） */
-/* monaco-editor 是最外层容器，包含行号区域和内容区域，可以确保边框延伸到行号上 */
-/* 使用 position: fixed 使边框相对于视口定位，不会随着编辑器滚动而移动 */
+/* 椤堕儴鍜屽簳閮ㄨ竟妗嗭紙鍦?monaco-editor 瀹瑰櫒灞傜骇锛?*/
+/* monaco-editor 鏄渶澶栧眰瀹瑰櫒锛屽寘鍚鍙峰尯鍩熷拰鍐呭鍖哄煙锛屽彲浠ョ‘淇濊竟妗嗗欢浼稿埌琛屽彿涓?*/
+/* 浣跨敤 position: fixed 浣胯竟妗嗙浉瀵逛簬瑙嗗彛瀹氫綅锛屼笉浼氶殢鐫€缂栬緫鍣ㄦ粴鍔ㄨ€岀Щ鍔?*/
 .ai-zone-border {
   position: fixed;
   height: 1px;
-  /* 边框现在在 monaco-editor 容器层级，可以延伸到行号区域 */
-  /* top、left、width 和 right 位置由 JavaScript 动态设置 */
+  /* 杈规鐜板湪鍦?monaco-editor 瀹瑰櫒灞傜骇锛屽彲浠ュ欢浼稿埌琛屽彿鍖哄煙 */
+  /* top銆乴eft銆亀idth 鍜?right 浣嶇疆鐢?JavaScript 鍔ㄦ€佽缃?*/
   background-color: var(--ws-aiZoneBorder-background);
   flex-shrink: 0;
   pointer-events: none;
-  /* z-index 设置为 0，确保在编辑器内容上方可见（编辑器内容默认 z-index 是 auto/0） */
-  /* 但不遮挡 z-index 为 10 或更高的 UI 元素（titleBar、tab-bar、breadcrumb） */
+  /* z-index 璁剧疆涓?0锛岀‘淇濆湪缂栬緫鍣ㄥ唴瀹逛笂鏂瑰彲瑙侊紙缂栬緫鍣ㄥ唴瀹归粯璁?z-index 鏄?auto/0锛?*/
+  /* 浣嗕笉閬尅 z-index 涓?10 鎴栨洿楂樼殑 UI 鍏冪礌锛坱itleBar銆乼ab-bar銆乥readcrumb锛?*/
   z-index: 1001;
-  /* width 由 JavaScript 动态设置，不在此处设置 */
+  /* width 鐢?JavaScript 鍔ㄦ€佽缃紝涓嶅湪姝ゅ璁剧疆 */
   opacity: 0.6;
 }
 
 .ai-zone-border-top {
-  /* 顶部边框在内容之前 */
+  /* 椤堕儴杈规鍦ㄥ唴瀹逛箣鍓?*/
   top: 0;
 }
 
 .ai-zone-border-bottom {
-  /* 底部边框在内容之后 */
+  /* 搴曢儴杈规鍦ㄥ唴瀹逛箣鍚?*/
   bottom: 0;
 }
 
@@ -99,19 +99,19 @@
   box-sizing: border-box;
 }
 
-/* 内容区域 */
+/* 鍐呭鍖哄煙 */
 .ai-zone-content {
-  padding: 24px 44px 20px 16px; //不要修改这里的44px
+  padding: 12px 44px 12px 0px; //涓嶈淇敼杩欓噷鐨?4px
   width: 100%;
   min-height: 36px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
-  gap: 8px;
+  gap: 6px;
   box-sizing: border-box;
   overflow: visible;
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
 
   textarea {
@@ -119,7 +119,7 @@
   }
 }
 
-/* 输入容器 */
+/* 杈撳叆瀹瑰櫒 */
 .ai-zone-input-wrapper {
   display: flex;
   background: var(--ws-input-background);
@@ -141,7 +141,7 @@
   }
 }
 
-/* 输入框 */
+/* 杈撳叆妗?*/
 .ai-zone-input {
   flex: 1;
   height: 100%;
@@ -161,16 +161,16 @@
   cursor: text;
   min-width: 0;
   max-width: 100%;
-  /* 与覆盖层保持一致的文本换行行为 */
+  /* 涓庤鐩栧眰淇濇寔涓€鑷寸殑鏂囨湰鎹㈣琛屼负 */
   white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-word;
   padding: 8px 12px;
-  /* 确保 textarea 在覆盖层上方，光标可见 */
+  /* 纭繚 textarea 鍦ㄨ鐩栧眰涓婃柟锛屽厜鏍囧彲瑙?*/
   position: relative;
   z-index: 2;
 
-  /* 自定义滚动条样式 */
+  /* 鑷畾涔夋粴鍔ㄦ潯鏍峰紡 */
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -198,31 +198,31 @@
   opacity: 0.6;
 }
 
-/* 底部控制栏（VSCode 风格：紧凑工具栏） */
+/* 搴曢儴鎺у埗鏍忥紙VSCode 椋庢牸锛氱揣鍑戝伐鍏锋爮锛?*/
 .ai-zone-bottom-toolbar {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 28px;
+  min-height: 24px;
   margin-top: 0;
   margin-bottom: 0;
-  padding-bottom: 0; /* 间距通过JavaScript计算底部边框位置时添加 */
+  padding-bottom: 0; /* 闂磋窛閫氳繃JavaScript璁＄畻搴曢儴杈规浣嶇疆鏃舵坊鍔?*/
 }
 
-/* 左侧控制按钮 */
+/* 宸︿晶鎺у埗鎸夐挳 */
 .ai-zone-left-controls {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-/* 右侧控制按钮 */
-/* 添加上下文按钮容器（使用 shadcn Button 组件） */
+/* 鍙充晶鎺у埗鎸夐挳 */
+/* 娣诲姞涓婁笅鏂囨寜閽鍣紙浣跨敤 shadcn Button 缁勪欢锛?*/
 .ai-zone-add-context-btn-container {
   pointer-events: auto !important;
 }
 
-/* shadcn Button 组件覆盖样式 */
+/* shadcn Button 缁勪欢瑕嗙洊鏍峰紡 */
 .ai-zone-add-context-btn {
   pointer-events: auto !important;
   display: flex;
@@ -241,7 +241,7 @@
   }
 }
 
-/* 上下文按钮图标 */
+/* 涓婁笅鏂囨寜閽浘鏍?*/
 .ai-zone-context-icon {
   width: 14px;
   height: 14px;
@@ -250,12 +250,12 @@
   color: var(--ws-icon-foreground);
 }
 
-/* 按钮文字 */
+/* 鎸夐挳鏂囧瓧 */
 .ai-zone-btn-text {
   white-space: nowrap;
 }
 
-/* 工具栏图标按钮（VSCode 风格：紧凑按钮） */
+/* 宸ュ叿鏍忓浘鏍囨寜閽紙VSCode 椋庢牸锛氱揣鍑戞寜閽級 */
 .ai-zone-toolbar-icon-btn {
   display: flex;
   align-items: center;
@@ -303,7 +303,7 @@
   font-size: 12px;
 }
 
-/* 输入框操作按钮容器（VSCode 风格：右侧按钮组） */
+/* 杈撳叆妗嗘搷浣滄寜閽鍣紙VSCode 椋庢牸锛氬彸渚ф寜閽粍锛?*/
 .ai-zone-input-actions {
   display: flex;
   align-items: center;
@@ -313,13 +313,13 @@
   border-left: 1px solid var(--ws-input-border);
   background: transparent;
 
-  /* 当输入框获得焦点时，操作按钮容器也获得焦点样式 */
+  /* 褰撹緭鍏ユ鑾峰緱鐒︾偣鏃讹紝鎿嶄綔鎸夐挳瀹瑰櫒涔熻幏寰楃劍鐐规牱寮?*/
   .ai-zone-input-wrapper:focus-within & {
     border-color: var(--ws-input-focusBorder);
   }
 }
 
-/* 模型下拉框（在输入框内右侧） */
+/* 妯″瀷涓嬫媺妗嗭紙鍦ㄨ緭鍏ユ鍐呭彸渚э級 */
 .ai-zone-input-model-dropdown {
   flex-shrink: 0;
   pointer-events: auto;
@@ -360,7 +360,7 @@
   outline: none;
 }
 
-/* 发送按钮（在输入框内右侧） */
+/* 鍙戦€佹寜閽紙鍦ㄨ緭鍏ユ鍐呭彸渚э級 */
 .ai-zone-send-btn {
   flex-shrink: 0;
   padding: 4px;
@@ -397,7 +397,7 @@
   height: 14px;
 }
 
-/* 关闭按钮 - 在输入框容器内最右侧 */
+/* 鍏抽棴鎸夐挳 - 鍦ㄨ緭鍏ユ瀹瑰櫒鍐呮渶鍙充晶 */
 .ai-zone-close-btn {
   width: 24px;
   height: 24px;
@@ -426,7 +426,7 @@
   }
 }
 
-/* 关闭图标 SVG */
+/* 鍏抽棴鍥炬爣 SVG */
 .ai-zone-close-icon {
   width: 14px;
   height: 14px;
@@ -434,7 +434,7 @@
   pointer-events: none;
 }
 
-/* 发送图标 */
+/* 鍙戦€佸浘鏍?*/
 .ai-zone-send-icon {
   width: 14px;
   height: 14px;
@@ -442,16 +442,16 @@
   pointer-events: none;
 }
 
-/* 消息显示区域（VSCode 风格：简洁布局） */
+/* 娑堟伅鏄剧ず鍖哄煙锛圴SCode 椋庢牸锛氱畝娲佸竷灞€锛?*/
 .ai-zone-message-display {
   padding: 0;
   max-height: 300px;
   overflow-y: auto;
   overflow-x: hidden;
-  min-height: 24px; /* 确保最小高度 */
+  min-height: 24px; /* 纭繚鏈€灏忛珮搴?*/
   box-sizing: border-box;
 
-  /* 自定义滚动条样式 */
+  /* 鑷畾涔夋粴鍔ㄦ潯鏍峰紡 */
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -474,20 +474,20 @@
   }
 }
 
-/* 消息内容容器（带头像） */
+/* 娑堟伅鍐呭瀹瑰櫒锛堝甫澶村儚锛?*/
 .ai-zone-message-content {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
   gap: 12px;
-  padding: 5px 0;
+  padding: 3px 0;
 
   &[hidden] {
     display: none !important;
   }
 }
 
-/* 消息头像 */
+/* 娑堟伅澶村儚 */
 .ai-zone-message-avatar {
   width: 20px;
   height: 20px;
@@ -507,7 +507,7 @@
   }
 }
 
-/* 消息文本 */
+/* 娑堟伅鏂囨湰 */
 .ai-zone-message-text {
   color: var(--ws-foreground);
   font-size: 12px;
@@ -521,7 +521,7 @@
   padding: 0;
 }
 
-/* 思考动画点 */
+/* 鎬濊€冨姩鐢荤偣 */
 .ai-zone-thinking-dots::after {
   content: '';
   animation: thinking-dots 1.2s steps(4, end) infinite;
@@ -547,7 +547,7 @@
   }
 }
 
-/* 内联聊天，历史记录diff内容，消息覆盖层（在底部边框下方） */
+/* 鍐呰仈鑱婂ぉ锛屽巻鍙茶褰昫iff鍐呭锛屾秷鎭鐩栧眰锛堝湪搴曢儴杈规涓嬫柟锛?*/
 .ai-zone-message-overlay {
   font-size: 13px;
   line-height: 20px;
@@ -556,7 +556,7 @@
   word-break: break-word;
   overflow-wrap: break-word;
 
-  /* 自定义滚动条样式 */
+  /* 鑷畾涔夋粴鍔ㄦ潯鏍峰紡 */
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -579,33 +579,32 @@
   }
 }
 
-/* 完成响应显示区域（在 bottomBorder 下方） */
+/* 瀹屾垚鍝嶅簲鏄剧ず鍖哄煙锛堝湪 bottomBorder 涓嬫柟锛?*/
 .ai-zone-completed-response {
-  padding: 8px 16px 16px 16px;
-  margin-top: 1px; /* 在 bottomBorder 下方，留出 1px 间距（border 高度） */
+  padding: 6px 14px 10px 14px;
+  margin-top: 1px; /* 鍦?bottomBorder 涓嬫柟锛岀暀鍑?1px 闂磋窛锛坆order 楂樺害锛?*/
   box-sizing: border-box;
   width: 100%;
   overflow: visible;
   position: relative;
-  z-index: 0; /* 确保在 bottomBorder 下方 */
+  z-index: 0; /* 纭繚鍦?bottomBorder 涓嬫柟 */
 
-  /* 消息内容容器样式（复用） */
+  /* 娑堟伅鍐呭瀹瑰櫒鏍峰紡锛堝鐢級 */
   .ai-zone-message-content {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
     gap: 12px;
-    padding: 12px 0;
+    padding: 8px 0;
   }
 }
 
-/* 选中文件工具栏（VSCode 风格：紧凑布局） */
+/* 閫変腑鏂囦欢宸ュ叿鏍忥紙VSCode 椋庢牸锛氱揣鍑戝竷灞€锛?*/
 .ai-zone-selected-files-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
-  padding: 4px 0 16px 0; /* 增加底部padding，确保与底部边框有足够间距 */
   margin-bottom: 0;
 }
 
@@ -614,15 +613,15 @@
   font-size: 12px;
 }
 
-/* AI 回复完成后的结果操作工具栏（复用选中文件工具栏区域） */
+/* AI 鍥炲瀹屾垚鍚庣殑缁撴灉鎿嶄綔宸ュ叿鏍忥紙澶嶇敤閫変腑鏂囦欢宸ュ叿鏍忓尯鍩燂級 */
 .ai-zone-result-toolbar {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 6px;
 }
 
-/* 结果工具栏中的引用文件显示区域 */
+/* 缁撴灉宸ュ叿鏍忎腑鐨勫紩鐢ㄦ枃浠舵樉绀哄尯鍩?*/
 .ai-zone-referenced-files {
   display: flex;
   align-items: center;
@@ -631,7 +630,7 @@
   width: 100%;
 }
 
-/* 引用文件项 */
+/* 寮曠敤鏂囦欢椤?*/
 .ai-zone-referenced-file-item {
   display: flex;
   align-items: center;
@@ -657,7 +656,7 @@
   white-space: nowrap;
 }
 
-/* 结果工具栏操作按钮容器 */
+/* 缁撴灉宸ュ叿鏍忔搷浣滄寜閽鍣?*/
 .ai-zone-result-actions-container {
   display: flex;
   align-items: center;
@@ -685,6 +684,9 @@
   justify-content: center;
   min-width: 24px;
   height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
   border-radius: 3px;
   cursor: pointer;
   color: var(--ws-icon-foreground);
@@ -701,11 +703,17 @@
   }
 }
 
-/* 文本操作项（关闭 / 接收） */
+/* 鏂囨湰鎿嶄綔椤癸紙鍏抽棴 / 鎺ユ敹锛?*/
 .ai-zone-result-action-text {
   padding: 0 6px;
   font-size: 12px;
   color: var(--ws-foreground);
+}
+
+.ai-zone-result-action-icon-svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .ai-zone-cancel-actions {
@@ -714,17 +722,17 @@
   gap: 4px;
 }
 
-// 内联聊天文件工具栏虚线（暗色模型）
+// 鍐呰仈鑱婂ぉ鏂囦欢宸ュ叿鏍忚櫄绾匡紙鏆楄壊妯″瀷锛?
 [data-theme-mode='dark'] .ai-zone-selected-file-item {
   border: 1px dashed #6d6a6a;
 }
 
-// 内联聊天文件工具栏虚线（亮色模型）
+// 鍐呰仈鑱婂ぉ鏂囦欢宸ュ叿鏍忚櫄绾匡紙浜壊妯″瀷锛?
 [data-theme-mode='light'] .ai-zone-selected-file-item {
   border: 1px dashed #585858;
 }
 
-/* 选中文件项 */
+/* 閫変腑鏂囦欢椤?*/
 .ai-zone-selected-file-item {
   display: flex;
   align-items: center;
@@ -741,7 +749,7 @@
   }
 }
 
-/* 选中智能体工具栏（在智能体图标按钮旁边） */
+/* 閫変腑鏅鸿兘浣撳伐鍏锋爮锛堝湪鏅鸿兘浣撳浘鏍囨寜閽梺杈癸級 */
 .ai-zone-selected-agents-toolbar {
   display: inline-flex;
   align-items: center;
@@ -751,7 +759,7 @@
   margin: 0;
   flex-shrink: 0;
   
-  /* 隐藏滚动条但保持滚动功能 */
+  /* 闅愯棌婊氬姩鏉′絾淇濇寔婊氬姩鍔熻兘 */
   &::-webkit-scrollbar {
     display: none;
   }
@@ -759,20 +767,20 @@
   scrollbar-width: none;
 }
 
-/* 工具栏按钮容器共用样式（智能体、网络搜索等） */
+/* 宸ュ叿鏍忔寜閽鍣ㄥ叡鐢ㄦ牱寮忥紙鏅鸿兘浣撱€佺綉缁滄悳绱㈢瓑锛?*/
 .ai-zone-agent-btn-container,
 .ai-zone-web-search-btn-container {
   border-radius: 4px;
   transition: border-color 0.15s ease;
 }
 
-// 选中状态共用样式
+// 閫変腑鐘舵€佸叡鐢ㄦ牱寮?
 .ai-zone-agent-btn-container.has-selected-agents,
 .ai-zone-web-search-btn-container.has-selected-engine {
   border: 1px dashed;
 }
 
-// 容器虚线边框（暗色主题）
+// 瀹瑰櫒铏氱嚎杈规锛堟殫鑹蹭富棰橈級
 [data-theme-mode='dark'] {
   .ai-zone-agent-btn-container.has-selected-agents,
   .ai-zone-web-search-btn-container.has-selected-engine {
@@ -780,7 +788,7 @@
   }
 }
 
-// 容器虚线边框（亮色主题）
+// 瀹瑰櫒铏氱嚎杈规锛堜寒鑹蹭富棰橈級
 [data-theme-mode='light'] {
   .ai-zone-agent-btn-container.has-selected-agents,
   .ai-zone-web-search-btn-container.has-selected-engine {
@@ -788,7 +796,7 @@
   }
 }
 
-/* 选中项共用样式（智能体、网络搜索等） */
+/* 閫変腑椤瑰叡鐢ㄦ牱寮忥紙鏅鸿兘浣撱€佺綉缁滄悳绱㈢瓑锛?*/
 .ai-zone-selected-agent-item,
 .ai-zone-selected-search-engine-display {
   display: flex;
@@ -803,7 +811,7 @@
   transition: background-color 0.1s ease;
 }
 
-// 网络搜索选中项额外样式
+// 缃戠粶鎼滅储閫変腑椤归澶栨牱寮?
 .ai-zone-selected-search-engine-display {
   border: none;
   background: transparent;
@@ -811,7 +819,7 @@
   border-bottom-right-radius: 4px;
 }
 
-/* 选中项图标容器共用样式 */
+/* 閫変腑椤瑰浘鏍囧鍣ㄥ叡鐢ㄦ牱寮?*/
 .ai-zone-selected-agent-icon {
   display: flex;
   align-items: center;
@@ -827,7 +835,7 @@
   }
 }
 
-/* 选中项名称共用样式 */
+/* 閫変腑椤瑰悕绉板叡鐢ㄦ牱寮?*/
 .ai-zone-selected-agent-name,
 .ai-zone-selected-search-engine-name {
   white-space: nowrap;
@@ -839,7 +847,7 @@
   color: var(--ws-foreground);
 }
 
-/* 移除按钮共用样式（智能体、网络搜索等） */
+/* 绉婚櫎鎸夐挳鍏辩敤鏍峰紡锛堟櫤鑳戒綋銆佺綉缁滄悳绱㈢瓑锛?*/
 .ai-zone-selected-agent-remove,
 .ai-zone-selected-search-engine-remove {
   display: flex;
@@ -869,7 +877,7 @@
   }
 }
 
-/* 选中的搜索引擎显示 */
+/* 閫変腑鐨勬悳绱㈠紩鎿庢樉绀?*/
 .ai-zone-selected-search-engine {
   display: flex;
   align-items: center;
@@ -881,7 +889,7 @@
   white-space: nowrap;
 }
 
-/* 选中文件名 */
+/* 閫変腑鏂囦欢鍚?*/
 .ai-zone-selected-file-name {
   white-space: nowrap;
   overflow: hidden;
@@ -889,7 +897,7 @@
   max-width: 200px;
 }
 
-/* 移除文件按钮 */
+/* 绉婚櫎鏂囦欢鎸夐挳 */
 .ai-zone-selected-file-remove {
   display: flex;
   align-items: center;
@@ -917,7 +925,7 @@
   }
 }
 
-/* 更多文件指示器 */
+/* 鏇村鏂囦欢鎸囩ず鍣?*/
 .ai-zone-selected-file-more {
   cursor: default;
 
@@ -927,7 +935,7 @@
   }
 }
 
-/* 更多文件菜单 */
+/* 鏇村鏂囦欢鑿滃崟 */
 .ai-zone-more-files-menu {
   display: none;
 }
@@ -946,7 +954,7 @@
   flex-direction: column;
   gap: 2px;
 
-  /* 自定义滚动条样式 */
+  /* 鑷畾涔夋粴鍔ㄦ潯鏍峰紡 */
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -1027,15 +1035,15 @@
   }
 }
 
-// Select 组件在内联聊天中的特殊样式
-// @ 菜单的最小和最大高度设置为 300px
+// Select 缁勪欢鍦ㄥ唴鑱旇亰澶╀腑鐨勭壒娈婃牱寮?
+// @ 鑿滃崟鐨勬渶灏忓拰鏈€澶ч珮搴﹁缃负 300px
 .ai-zone-context-select {
-  // 确保 Select 组件在内联聊天中正确显示
+  // 纭繚 Select 缁勪欢鍦ㄥ唴鑱旇亰澶╀腑姝ｇ‘鏄剧ず
   position: relative;
   width: 100%;
-  z-index: 10001; // 确保菜单在编辑器上方
+  z-index: 10001; // 纭繚鑿滃崟鍦ㄧ紪杈戝櫒涓婃柟
 
-  // Select 触发器样式（隐藏，因为内联聊天中不需要显示触发器）
+  // Select 瑙﹀彂鍣ㄦ牱寮忥紙闅愯棌锛屽洜涓哄唴鑱旇亰澶╀腑涓嶉渶瑕佹樉绀鸿Е鍙戝櫒锛?
   .select-trigger {
     display: none !important;
     visibility: hidden !important;
@@ -1049,7 +1057,7 @@
   }
 }
 
-// AI 智能体菜单样式（与 @ 菜单一致，补充悬停反馈）
+// AI 鏅鸿兘浣撹彍鍗曟牱寮忥紙涓?@ 鑿滃崟涓€鑷达紝琛ュ厖鎮仠鍙嶉锛?
 .ai-zone-agent-select {
   position: relative;
   width: 100%;
@@ -1065,7 +1073,7 @@
   }
 }
 
-// 智能体按钮容器
+// 鏅鸿兘浣撴寜閽鍣?
 .ai-zone-agent-btn-container {
   display: inline-flex;
   align-items: center;
@@ -1073,18 +1081,18 @@
   position: relative;
   border-radius: 4px;
   
-  // 选中智能体时，整个容器显示统一的虚线边框
+  // 閫変腑鏅鸿兘浣撴椂锛屾暣涓鍣ㄦ樉绀虹粺涓€鐨勮櫄绾胯竟妗?
   &.ai-zone-agent-selected {
     border: 1px dashed var(--ws-input-border);
     background: var(--ws-input-background);
     
-    // 确保智能体按钮在容器内不显示自己的边框和圆角
+    // 纭繚鏅鸿兘浣撴寜閽湪瀹瑰櫒鍐呬笉鏄剧ず鑷繁鐨勮竟妗嗗拰鍦嗚
     .ai-zone-toolbar-icon-btn {
       border: none;
       border-radius: 0;
       border-top-left-radius: 4px;
       border-bottom-left-radius: 4px;
-      // 移除按钮的默认背景，使用容器的背景
+      // 绉婚櫎鎸夐挳鐨勯粯璁よ儗鏅紝浣跨敤瀹瑰櫒鐨勮儗鏅?
       background: transparent;
       
       &:hover {
@@ -1094,7 +1102,7 @@
   }
 }
 
-// 显示选中智能体的元素
+// 鏄剧ず閫変腑鏅鸿兘浣撶殑鍏冪礌
 .ai-zone-selected-agent-display {
   display: flex;
   align-items: center;
@@ -1103,10 +1111,10 @@
   font-size: 12px;
   color: var(--ws-foreground);
   white-space: nowrap;
-  // 移除单独的边框，使用容器的统一边框
+  // 绉婚櫎鍗曠嫭鐨勮竟妗嗭紝浣跨敤瀹瑰櫒鐨勭粺涓€杈规
   border: none;
   background: transparent;
-  // 右侧圆角，与容器保持一致
+  // 鍙充晶鍦嗚锛屼笌瀹瑰櫒淇濇寔涓€鑷?
   border-top-right-radius: 4px;
   border-bottom-right-radius: 4px;
   
@@ -1130,7 +1138,7 @@
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
-  /* 在工具栏和菜单之间留出更明显的间距，避免视觉遮挡 */
+  /* 鍦ㄥ伐鍏锋爮鍜岃彍鍗曚箣闂寸暀鍑烘洿鏄庢樉鐨勯棿璺濓紝閬垮厤瑙嗚閬尅 */
   margin-top: 22px;
 
   .select-list {
@@ -1160,14 +1168,14 @@
       color: var(--ws-dropdown-hoverForeground);
     }
     
-    // 隐藏勾选图标区域，减少左边距
+    // 闅愯棌鍕鹃€夊浘鏍囧尯鍩燂紝鍑忓皯宸﹁竟璺?
     .select-item-check {
       display: none;
     }
   }
 }
 
-// 网络搜索按钮容器
+// 缃戠粶鎼滅储鎸夐挳瀹瑰櫒
 .ai-zone-web-search-btn-container {
   display: inline-flex;
   align-items: center;
@@ -1175,25 +1183,25 @@
   position: relative;
   border-radius: 4px;
   
-  // 选中搜索引擎时，整个容器显示统一的虚线边框
+  // 閫変腑鎼滅储寮曟搸鏃讹紝鏁翠釜瀹瑰櫒鏄剧ず缁熶竴鐨勮櫄绾胯竟妗?
   &.ai-zone-search-engine-selected {
     border: 1px dashed var(--ws-input-border);
     background: var(--ws-input-background);
     
-    // 确保网络搜索按钮在容器内不显示自己的边框和圆角
+    // 纭繚缃戠粶鎼滅储鎸夐挳鍦ㄥ鍣ㄥ唴涓嶆樉绀鸿嚜宸辩殑杈规鍜屽渾瑙?
     .ai-zone-toolbar-icon-btn {
       border: none;
       border-radius: 0;
       border-top-left-radius: 4px;
       border-bottom-left-radius: 4px;
-      // 移除按钮的默认背景，使用容器的背景
+      // 绉婚櫎鎸夐挳鐨勯粯璁よ儗鏅紝浣跨敤瀹瑰櫒鐨勮儗鏅?
       background: transparent;
     
     &:hover {
         background: var(--ws-button-hoverBackground);
       }
       
-      // 选中状态时显示背景色
+      // 閫変腑鐘舵€佹椂鏄剧ず鑳屾櫙鑹?
       &.active {
         background: var(--ws-button-secondary-background);
         opacity: 1;
@@ -1203,9 +1211,9 @@
   }
 }
 
-// 网络搜索选中项样式已在上方共用样式中定义
+// 缃戠粶鎼滅储閫変腑椤规牱寮忓凡鍦ㄤ笂鏂瑰叡鐢ㄦ牱寮忎腑瀹氫箟
 
-// 网络搜索菜单样式（与 AI 智能体菜单一致）
+// 缃戠粶鎼滅储鑿滃崟鏍峰紡锛堜笌 AI 鏅鸿兘浣撹彍鍗曚竴鑷达級
 .ai-zone-web-search-select {
   position: relative;
   width: 100%;
@@ -1232,7 +1240,7 @@
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
-  /* 在工具栏和菜单之间留出更明显的间距，避免视觉遮挡 */
+  /* 鍦ㄥ伐鍏锋爮鍜岃彍鍗曚箣闂寸暀鍑烘洿鏄庢樉鐨勯棿璺濓紝閬垮厤瑙嗚閬尅 */
   margin-top: 22px;
 
   .select-list {
@@ -1264,28 +1272,32 @@
   }
 }
 
-// 模型下拉 Select 下拉内容样式
-// 使用更高优先级的选择器覆盖 .select-content 的 width: 230px !important
+// 妯″瀷涓嬫媺 Select 涓嬫媺鍐呭鏍峰紡
+// 浣跨敤鏇撮珮浼樺厛绾х殑閫夋嫨鍣ㄨ鐩?.select-content 鐨?width: 230px !important
 .select-content.ai-zone-input-model-select-content {
-  // 固定宽度，与 ai-zone-input-actions 宽度一致
+  // 鍥哄畾瀹藉害锛屼笌 ai-zone-input-actions 瀹藉害涓€鑷?
   width: 200px !important;
   min-width: unset !important;
-  // 圆角
+  max-height: 260px !important;
+  // 鍦嗚
   border-radius: 6px !important;
   
-  // 搜索框样式调整
+  // 鎼滅储妗嗘牱寮忚皟鏁?
   .select-search {
     padding: 6px 8px;
   }
   
-  // 菜单列表内边距调整
+  // 鑿滃崟鍒楄〃鍐呰竟璺濊皟鏁?
   .select-list {
     padding: 4px;
+    max-height: calc(260px - 40px);
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .select-item {
     transition: background-color 0.15s ease, color 0.15s ease;
-    // 减少左侧内边距
+    // 鍑忓皯宸︿晶鍐呰竟璺?
     padding: 6px 8px;
     
     &:hover {
@@ -1293,7 +1305,7 @@
       color: var(--ws-dropdown-hoverForeground);
     }
     
-    // 模型能力图标样式
+    // 妯″瀷鑳藉姏鍥炬爣鏍峰紡
     .model-capability-icon {
       display: inline-flex;
       align-items: center;
@@ -1310,18 +1322,18 @@
     }
   }
   
-  // 分组标题样式调整
+  // 鍒嗙粍鏍囬鏍峰紡璋冩暣
   .select-group-title {
     padding: 6px 8px;
   }
 }
 
 
-// Portal 渲染出来的下拉内容样式（确保不会被 ai-zone-border 遮挡）
+// Portal 娓叉煋鍑烘潵鐨勪笅鎷夊唴瀹规牱寮忥紙纭繚涓嶄細琚?ai-zone-border 閬尅锛?
 .ai-zone-context-select-content {
   position: fixed !important;
   z-index: 100 !important;
-  /* 不强制最小高度，避免底部大面积空白，只限制最大高度 */
+  /* 涓嶅己鍒舵渶灏忛珮搴︼紝閬垮厤搴曢儴澶ч潰绉┖鐧斤紝鍙檺鍒舵渶澶ч珮搴?*/
   max-height: 300px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
   background-color: var(--ws-dropdown-background) !important;
@@ -1329,7 +1341,7 @@
   flex-direction: column !important;
   overflow: hidden !important;
 
-  // 确保菜单内容正确显示
+  // 纭繚鑿滃崟鍐呭姝ｇ‘鏄剧ず
   .select-list {
     max-height: calc(300px - 80px);
     overflow-y: auto;
@@ -1337,7 +1349,7 @@
     flex: 1;
     min-height: 0;
 
-    // 自定义滚动条样式
+    // 鑷畾涔夋粴鍔ㄦ潯鏍峰紡
     &::-webkit-scrollbar {
       width: 6px;
     }
@@ -1352,42 +1364,42 @@
     }
   }
 
-  // 菜单项悬停样式（与 AI 智能体菜单保持一致）
+  // 鑿滃崟椤规偓鍋滄牱寮忥紙涓?AI 鏅鸿兘浣撹彍鍗曚繚鎸佷竴鑷达級
   .select-item {
     transition: background-color 0.15s ease, color 0.15s ease;
 
-    // 键盘高亮样式
+    // 閿洏楂樹寒鏍峰紡
     &.highlighted {
       background-color: var(--ws-dropdown-hoverBackground);
       color: var(--ws-dropdown-hoverForeground);
     }
     
-    // 隐藏勾选图标区域，减少左边距
+    // 闅愯棌鍕鹃€夊浘鏍囧尯鍩燂紝鍑忓皯宸﹁竟璺?
     .select-item-check {
       display: none;
     }
   }
   
-  // 当处于键盘导航模式时，禁用 :hover 效果
+  // 褰撳浜庨敭鐩樺鑸ā寮忔椂锛岀鐢?:hover 鏁堟灉
   &.keyboard-nav .select-item:hover:not(.highlighted) {
     background-color: transparent;
     color: inherit;
   }
   
-  // 当不处于键盘导航模式时，:hover 正常生效
+  // 褰撲笉澶勪簬閿洏瀵艰埅妯″紡鏃讹紝:hover 姝ｅ父鐢熸晥
   &:not(.keyboard-nav) .select-item:hover {
     background-color: var(--ws-dropdown-hoverBackground);
     color: var(--ws-dropdown-hoverForeground);
   }
 
-  // 搜索框样式
+  // 鎼滅储妗嗘牱寮?
   .select-search {
     border-bottom: 1px solid var(--ws-dropdown-border);
     // background-color: var(--ws-dropdown-background);
     flex-shrink: 0;
   }
 
-  // 头部样式
+  // 澶撮儴鏍峰紡
   .select-header {
     border-bottom: 1px solid var(--ws-dropdown-border);
     background-color: var(--ws-dropdown-background);
@@ -1402,28 +1414,28 @@
   display: none !important;
 }
 
-// 确保内联聊天容器不会因为菜单而改变布局
+// 纭繚鍐呰仈鑱婂ぉ瀹瑰櫒涓嶄細鍥犱负鑿滃崟鑰屾敼鍙樺竷灞€
 .ai-zone-container {
-  // 当菜单打开时，确保容器布局不受影响
+  // 褰撹彍鍗曟墦寮€鏃讹紝纭繚瀹瑰櫒甯冨眬涓嶅彈褰卞搷
   position: relative;
   overflow: visible !important;
 
-  // 确保菜单容器不影响布局
+  // 纭繚鑿滃崟瀹瑰櫒涓嶅奖鍝嶅竷灞€
   .ai-zone-context-select {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none; // 不拦截事件，让菜单自己处理
+    pointer-events: none; // 涓嶆嫤鎴簨浠讹紝璁╄彍鍗曡嚜宸卞鐞?
 
     &-content {
-      pointer-events: auto; // 菜单内容可以接收事件
+      pointer-events: auto; // 鑿滃崟鍐呭鍙互鎺ユ敹浜嬩欢
     }
   }
 }
 
-// 文档引用显示区域
+// 鏂囨。寮曠敤鏄剧ず鍖哄煙
 .ai-zone-document-references {
   margin-top: 8px;
   margin-bottom: 8px;
@@ -1434,7 +1446,7 @@
   font-size: 12px;
 }
 
-// 文档引用标题
+// 鏂囨。寮曠敤鏍囬
 .ai-zone-document-references-title {
   font-weight: 500;
   color: var(--ws-foreground);
@@ -1442,14 +1454,14 @@
   font-size: 12px;
 }
 
-// 文档引用列表
+// 鏂囨。寮曠敤鍒楄〃
 .ai-zone-document-references-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-// 文档引用项
+// 鏂囨。寮曠敤椤?
 .ai-zone-document-reference-item {
   display: flex;
   align-items: center;
@@ -1458,19 +1470,19 @@
   line-height: 1.4;
 }
 
-// 文档引用文件名
+// 鏂囨。寮曠敤鏂囦欢鍚?
 .ai-zone-document-reference-file-name {
   color: var(--ws-foreground);
   font-weight: 400;
 }
 
-// 文档引用知识库名
+// 鏂囨。寮曠敤鐭ヨ瘑搴撳悕
 .ai-zone-document-reference-kb-name {
   color: var(--ws-descriptionForeground);
   opacity: 0.8;
 }
 
-// 文档引用片段数
+// 鏂囨。寮曠敤鐗囨鏁?
 .ai-zone-document-reference-chunks {
   color: var(--ws-descriptionForeground);
   opacity: 0.7;
@@ -1478,7 +1490,7 @@
 
 
 
-/* 无可用模型提示（旧版，保留兼容） */
+/* 鏃犲彲鐢ㄦā鍨嬫彁绀猴紙鏃х増锛屼繚鐣欏吋瀹癸級 */
 .ai-zone-no-model-prompt {
   display: flex;
   flex-direction: column;
@@ -1507,7 +1519,7 @@
   }
 }
 
-/* 无可用模型下拉菜单样式 */
+/* 鏃犲彲鐢ㄦā鍨嬩笅鎷夎彍鍗曟牱寮?*/
 .ai-zone-no-model-select-content {
   min-width: 200px;
   
@@ -1556,7 +1568,7 @@
   }
 }
 
-/* 输入框文件引用覆盖层 - 用于显示带样式的 @文件名 块 */
+/* 杈撳叆妗嗘枃浠跺紩鐢ㄨ鐩栧眰 - 鐢ㄤ簬鏄剧ず甯︽牱寮忕殑 @鏂囦欢鍚?鍧?*/
 .ai-zone-input-overlay-container {
   position: relative;
   flex: 1;
@@ -1565,18 +1577,18 @@
   align-items: stretch;
 }
 
-/* 禁用覆盖层方案 - textarea 和 div 的文本渲染差异导致重影问题 */
-/* 改用输入框下方显示文件引用标签的方案 */
+/* 绂佺敤瑕嗙洊灞傛柟妗?- textarea 鍜?div 鐨勬枃鏈覆鏌撳樊寮傚鑷撮噸褰遍棶棰?*/
+/* 鏀圭敤杈撳叆妗嗕笅鏂规樉绀烘枃浠跺紩鐢ㄦ爣绛剧殑鏂规 */
 .ai-zone-input-overlay {
   display: none !important;
 }
 
-/* 不再需要 has-file-refs 类的特殊处理 */
+/* 涓嶅啀闇€瑕?has-file-refs 绫荤殑鐗规畩澶勭悊 */
 .ai-zone-input-overlay-container.has-file-refs .ai-zone-input {
-  /* 保持默认样式 */
+  /* 淇濇寔榛樿鏍峰紡 */
 }
 
-/* 输入框文件引用标签容器 - 显示在输入框下方 */
+/* 杈撳叆妗嗘枃浠跺紩鐢ㄦ爣绛惧鍣?- 鏄剧ず鍦ㄨ緭鍏ユ涓嬫柟 */
 .ai-zone-input-file-refs {
   display: flex;
   flex-wrap: wrap;
@@ -1585,7 +1597,7 @@
   margin-top: 4px;
 }
 
-/* 输入框文件引用标签 */
+/* 杈撳叆妗嗘枃浠跺紩鐢ㄦ爣绛?*/
 .ai-zone-input-file-ref-chip {
   display: inline-flex;
   align-items: center;
@@ -1598,7 +1610,7 @@
   line-height: 1.2;
   white-space: nowrap;
   
-  /* 文件图标 */
+  /* 鏂囦欢鍥炬爣 */
   .ai-zone-input-file-ref-icon {
     display: flex;
     align-items: center;
@@ -1610,12 +1622,12 @@
     }
   }
   
-  /* 文件名 */
+  /* 鏂囦欢鍚?*/
   .ai-zone-input-file-ref-name {
     font-weight: 500;
   }
   
-  /* 移除按钮 */
+  /* 绉婚櫎鎸夐挳 */
   .ai-zone-input-file-ref-remove {
     display: flex;
     align-items: center;
@@ -1644,20 +1656,20 @@
   }
 }
 
-/* 暗色主题下的文件引用标签 */
+/* 鏆楄壊涓婚涓嬬殑鏂囦欢寮曠敤鏍囩 */
 [data-theme-mode='dark'] .ai-zone-input-file-ref-chip {
   background-color: rgba(0, 122, 204, 0.25);
   color: #58a6ff;
 }
 
-/* 亮色主题下的文件引用标签 */
+/* 浜壊涓婚涓嬬殑鏂囦欢寮曠敤鏍囩 */
 [data-theme-mode='light'] .ai-zone-input-file-ref-chip {
   background-color: rgba(0, 122, 204, 0.15);
   color: #0969da;
 }
 
 
-/* TipTap 容器样式 */
+/* TipTap 瀹瑰櫒鏍峰紡 */
 .ai-zone-tiptap-container {
   flex: 1;
   min-width: 0;
@@ -1666,7 +1678,7 @@
   align-items: stretch;
 }
 
-/* TipTap 编辑器样式 */
+/* TipTap 缂栬緫鍣ㄦ牱寮?*/
 .tiptap-input-wrapper {
   flex: 1;
   min-width: 0;
@@ -1674,7 +1686,7 @@
   display: flex;
   align-items: stretch;
 
-  /* EditorContent 生成的 div 容器 */
+  /* EditorContent 鐢熸垚鐨?div 瀹瑰櫒 */
   > div {
     flex: 1;
     width: 100%;
@@ -1683,7 +1695,7 @@
   }
 }
 
-/* ProseMirror 编辑器容器 */
+/* ProseMirror 缂栬緫鍣ㄥ鍣?*/
 .tiptap-input-wrapper .ProseMirror {
   flex: 1;
   width: 100%;
@@ -1697,16 +1709,16 @@
   overflow-y: auto;
   word-wrap: break-word;
   word-break: break-word;
-  /* 允许文本选择 - 关键样式 */
+  /* 鍏佽鏂囨湰閫夋嫨 - 鍏抽敭鏍峰紡 */
   user-select: text !important;
   -webkit-user-select: text !important;
   -moz-user-select: text !important;
   -ms-user-select: text !important;
   cursor: text;
-  /* 确保可以接收鼠标事件 */
+  /* 纭繚鍙互鎺ユ敹榧犳爣浜嬩欢 */
   pointer-events: auto !important;
 
-  /* 文本选择样式 */
+  /* 鏂囨湰閫夋嫨鏍峰紡 */
   &::selection {
     background: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.8)) !important;
     color: inherit;
@@ -1717,7 +1729,7 @@
     color: inherit;
   }
 
-  /* 所有子元素也允许选择和接收鼠标事件 */
+  /* 鎵€鏈夊瓙鍏冪礌涔熷厑璁搁€夋嫨鍜屾帴鏀堕紶鏍囦簨浠?*/
   * {
     user-select: text !important;
     -webkit-user-select: text !important;
@@ -1726,7 +1738,7 @@
     pointer-events: auto !important;
   }
 
-  /* 段落样式 */
+  /* 娈佃惤鏍峰紡 */
   p {
     margin: 0;
     user-select: text !important;
@@ -1754,12 +1766,12 @@
   word-wrap: break-word;
   word-break: break-word;
   
-  /* 段落样式 */
+  /* 娈佃惤鏍峰紡 */
   p {
     margin: 0;
   }
   
-  /* 自定义滚动条样式 */
+  /* 鑷畾涔夋粴鍔ㄦ潯鏍峰紡 */
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -1778,7 +1790,7 @@
   }
 }
 
-/* TipTap 占位符样式 */
+/* TipTap 鍗犱綅绗︽牱寮?*/
 .tiptap-editor.tiptap-empty::before {
   content: attr(data-placeholder);
   color: var(--ws-input-placeholder-foreground);
@@ -1796,7 +1808,7 @@
   height: 0;
 }
 
-/* TipTap 文件引用样式 */
+/* TipTap 鏂囦欢寮曠敤鏍峰紡 */
 .tiptap-file-reference {
   display: inline-flex;
   align-items: center;
@@ -1812,20 +1824,21 @@
   user-select: none;
 }
 
-/* 暗色主题下的文件引用 */
+/* 鏆楄壊涓婚涓嬬殑鏂囦欢寮曠敤 */
 [data-theme-mode='dark'] .tiptap-file-reference {
   background-color: rgba(0, 122, 204, 0.3);
   color: #58a6ff;
 }
 
-/* 亮色主题下的文件引用 */
+/* 浜壊涓婚涓嬬殑鏂囦欢寮曠敤 */
 [data-theme-mode='light'] .tiptap-file-reference {
   background-color: rgba(0, 122, 204, 0.15);
   color: #0969da;
 }
 
-/* 选中状态的文件引用 */
+/* 閫変腑鐘舵€佺殑鏂囦欢寮曠敤 */
 .tiptap-file-reference.ProseMirror-selectednode {
   outline: 2px solid var(--ws-focusBorder);
   outline-offset: 1px;
 }
+

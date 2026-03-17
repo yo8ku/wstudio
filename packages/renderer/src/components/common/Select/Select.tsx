@@ -1,10 +1,10 @@
-/**
- * Select 组件 - 基于 Portal 的下拉选择器
- * 功能：使用 Portal 将下拉菜单渲染到 body，避免层级遮挡问题
- * 描述：用于替代 DropdownMenu，解决边框遮挡下拉菜单的问题
+﻿/**
+ * Select 缁勪欢 - 鍩轰簬 Portal 鐨勪笅鎷夐€夋嫨鍣?
+ * 鍔熻兘锛氫娇鐢?Portal 灏嗕笅鎷夎彍鍗曟覆鏌撳埌 body锛岄伩鍏嶅眰绾ч伄鎸￠棶棰?
+ * 鎻忚堪锛氱敤浜庢浛浠?DropdownMenu锛岃В鍐宠竟妗嗛伄鎸′笅鎷夎彍鍗曠殑闂
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../Icons/Icon';
 import './Select.scss';
@@ -15,69 +15,71 @@ export interface SelectItem {
   icon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   disabled?: boolean;
-  /** 数据类型标识，用于区分文件或文件夹等 */
+  /** 鏁版嵁绫诲瀷鏍囪瘑锛岀敤浜庡尯鍒嗘枃浠舵垨鏂囦欢澶圭瓑 */
   dataType?: string;
-  /** 深度层级，用于文件树缩进（从0开始） */
+  /** 娣卞害灞傜骇锛岀敤浜庢枃浠舵爲缂╄繘锛堜粠0寮€濮嬶級 */
   depth?: number;
-  /** 展开/折叠时使用的值（用于表单等可展开项，点击图标时触发） */
+  /** 灞曞紑/鎶樺彔鏃朵娇鐢ㄧ殑鍊硷紙鐢ㄤ簬琛ㄥ崟绛夊彲灞曞紑椤癸紝鐐瑰嚮鍥炬爣鏃惰Е鍙戯級 */
   expandValue?: string;
 }
 
 export interface SelectGroup {
   groupName: string;
   items: SelectItem[];
-  /** 是否在分组上方显示分割线 */
+  /** 鏄惁鍦ㄥ垎缁勪笂鏂规樉绀哄垎鍓茬嚎 */
   showDivider?: boolean;
 }
 
 export interface SelectProps {
-  /** 当前选中的值 */
+  /** 褰撳墠閫変腑鐨勫€?*/
   value: string;
-  /** 值变化回调 */
+  /** 鍊煎彉鍖栧洖璋?*/
   onChange: (value: string) => void;
-  /** 菜单项列表（支持分组或扁平列表） */
+  /** 鑿滃崟椤瑰垪琛紙鏀寔鍒嗙粍鎴栨墎骞冲垪琛級 */
   items?: SelectItem[];
-  /** 分组列表 */
+  /** 鍒嗙粍鍒楄〃 */
   groups?: SelectGroup[];
-  /** 占位符 */
+  /** 鍗犱綅绗?*/
   placeholder?: string;
-  /** 是否禁用 */
+  /** 鏄惁绂佺敤 */
   disabled?: boolean;
-  /** 自定义类名 */
+  /** 鑷畾涔夌被鍚?*/
   className?: string;
-  /** 是否显示搜索框 */
+  /** 鏄惁鏄剧ず鎼滅储妗?*/
   showSearch?: boolean;
-  /** 菜单弹出位置 */
+  /** 鑿滃崟寮瑰嚭浣嶇疆 */
   placement?: 'top' | 'bottom';
-  /** 菜单打开/关闭状态变化回调 */
+  /** 鑿滃崟鎵撳紑/鍏抽棴鐘舵€佸彉鍖栧洖璋?*/
   onOpenChange?: (isOpen: boolean) => void;
-  /** 受控模式：菜单是否打开 */
+  /** 鍙楁帶妯″紡锛氳彍鍗曟槸鍚︽墦寮€ */
   open?: boolean;
-  /** 头部左侧图标（用于显示后退箭头等） */
+  /** 澶撮儴宸︿晶鍥炬爣锛堢敤浜庢樉绀哄悗閫€绠ご绛夛級 */
   headerLeftIcon?: React.ReactNode;
-  /** 头部左侧图标点击回调 */
+  /** 澶撮儴宸︿晶鍥炬爣鐐瑰嚮鍥炶皟 */
   onHeaderLeftClick?: () => void;
-  /** 菜单项点击回调，返回 false 时不关闭菜单 */
+  /** 鑿滃崟椤圭偣鍑诲洖璋冿紝杩斿洖 false 鏃朵笉鍏抽棴鑿滃崟 */
   onItemClick?: (value: string) => boolean | void;
-  /** 菜单对齐方式：left-左对齐到触发器左边缘，right-右对齐到触发器右边缘，parent-左对齐到父容器左边缘 */
+  /** 鑿滃崟瀵归綈鏂瑰紡锛歭eft-宸﹀榻愬埌瑙﹀彂鍣ㄥ乏杈圭紭锛宺ight-鍙冲榻愬埌瑙﹀彂鍣ㄥ彸杈圭紭锛宲arent-宸﹀榻愬埌鐖跺鍣ㄥ乏杈圭紭 */
   align?: 'left' | 'right' | 'parent';
-  /** 菜单与触发器之间的间距（像素），默认为4 */
+  /** 鑿滃崟涓庤Е鍙戝櫒涔嬮棿鐨勯棿璺濓紙鍍忕礌锛夛紝榛樿涓? */
   menuGap?: number;
-  /** 固定高度（像素），用于保持菜单高度一致 */
+  /** 鍥哄畾楂樺害锛堝儚绱狅級锛岀敤浜庝繚鎸佽彍鍗曢珮搴︿竴鑷?*/
   fixedHeight?: number;
-  /** 菜单高度变化回调，用于记录一级菜单高度 */
+  /** 鑿滃崟楂樺害鍙樺寲鍥炶皟锛岀敤浜庤褰曚竴绾ц彍鍗曢珮搴?*/
   onHeightChange?: (height: number) => void;
+  /** 鎵撳紑鍚庨亣鍒板閮ㄦ粴鍔ㄦ椂鏄惁鍏抽棴鑿滃崟 */
+  closeOnScroll?: boolean;
 }
 
 /**
- * Select 组件
+ * Select 缁勪欢
  */
 export const Select: React.FC<SelectProps> = ({
   value,
   onChange,
   items = [],
   groups = [],
-  placeholder = '请选择',
+  placeholder = '璇烽€夋嫨',
   disabled = false,
   className = '',
   showSearch = false,
@@ -91,8 +93,9 @@ export const Select: React.FC<SelectProps> = ({
   menuGap = 4,
   fixedHeight,
   onHeightChange,
+  closeOnScroll = false,
 }) => {
-  // 如果提供了 open 属性，使用受控模式；否则使用内部状态
+  // 濡傛灉鎻愪緵浜?open 灞炴€э紝浣跨敤鍙楁帶妯″紡锛涘惁鍒欎娇鐢ㄥ唴閮ㄧ姸鎬?
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   const isOpen = open !== undefined ? open : internalIsOpen;
   const setIsOpen = (newIsOpen: boolean) => {
@@ -104,7 +107,7 @@ export const Select: React.FC<SelectProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
   const [actualPlacement, setActualPlacement] = useState<'top' | 'bottom'>('bottom');
-  const [isPositionReady, setIsPositionReady] = useState(false); // 位置是否已计算完成
+  const [isPositionReady, setIsPositionReady] = useState(false); // 浣嶇疆鏄惁宸茶绠楀畬鎴?
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const menuListRef = useRef<HTMLDivElement>(null);
@@ -112,7 +115,7 @@ export const Select: React.FC<SelectProps> = ({
   const contentRef = useRef<HTMLDivElement>(null);
   const lastRectRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null);
 
-  // 计算下拉菜单位置
+  // 璁＄畻涓嬫媺鑿滃崟浣嶇疆
   const updatePosition = useCallback((providedRect?: DOMRect) => {
     if (!containerRef.current && !providedRect) {
       return;
@@ -120,10 +123,10 @@ export const Select: React.FC<SelectProps> = ({
 
     const rect = providedRect ?? containerRef.current!.getBoundingClientRect();
 
-    // 计算下拉菜单的预估高度和宽度
-    // 如果菜单已经渲染，使用实际尺寸；否则使用预估值
-    let menuHeight = 300; // 默认预估高度
-    let menuWidth = Math.max(rect.width, 200); // 默认宽度至少200px
+    // 璁＄畻涓嬫媺鑿滃崟鐨勯浼伴珮搴﹀拰瀹藉害
+    // 濡傛灉鑿滃崟宸茬粡娓叉煋锛屼娇鐢ㄥ疄闄呭昂瀵革紱鍚﹀垯浣跨敤棰勪及鍊?
+    let menuHeight = 300; // 榛樿棰勪及楂樺害
+    let menuWidth = Math.max(rect.width, 200); // 榛樿瀹藉害鑷冲皯200px
     if (contentRef.current) {
       const actualHeight = contentRef.current.offsetHeight;
       const actualWidth = contentRef.current.offsetWidth;
@@ -134,56 +137,56 @@ export const Select: React.FC<SelectProps> = ({
         menuWidth = actualWidth;
       }
     } else if (menuListRef.current) {
-      // 如果菜单列表已渲染但容器未渲染，使用列表高度加上搜索框高度（如果有）
+      // 濡傛灉鑿滃崟鍒楄〃宸叉覆鏌撲絾瀹瑰櫒鏈覆鏌擄紝浣跨敤鍒楄〃楂樺害鍔犱笂鎼滅储妗嗛珮搴︼紙濡傛灉鏈夛級
       const listHeight = menuListRef.current.scrollHeight;
-      const searchHeight = showSearch ? 40 : 0; // 搜索框高度约 40px
-      menuHeight = Math.min(listHeight + searchHeight, 500); // 最大高度限制为 500px
+      const searchHeight = showSearch ? 40 : 0; // 鎼滅储妗嗛珮搴︾害 40px
+      menuHeight = Math.min(listHeight + searchHeight, 500); // 鏈€澶ч珮搴﹂檺鍒朵负 500px
     }
 
-    // 计算可用空间（垂直方向）
+    // 璁＄畻鍙敤绌洪棿锛堝瀭鐩存柟鍚戯級
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    const edgeSpacing = 4; // 边缘间距（防止菜单贴边）
+    const edgeSpacing = 4; // 杈圭紭闂磋窛锛堥槻姝㈣彍鍗曡创杈癸級
 
-    // 判断应该向上还是向下显示
-    // 如果底部空间不够且上方空间足够，则向上显示
+    // 鍒ゆ柇搴旇鍚戜笂杩樻槸鍚戜笅鏄剧ず
+    // 濡傛灉搴曢儴绌洪棿涓嶅涓斾笂鏂圭┖闂磋冻澶燂紝鍒欏悜涓婃樉绀?
     const shouldShowTop = spaceBelow < menuHeight + menuGap && spaceAbove > menuHeight + menuGap;
 
-    // 如果 placement 是 'top'，或者应该向上显示，则向上弹出
+    // 濡傛灉 placement 鏄?'top'锛屾垨鑰呭簲璇ュ悜涓婃樉绀猴紝鍒欏悜涓婂脊鍑?
     const calculatedPlacement = placement === 'top' || shouldShowTop ? 'top' : 'bottom';
     
-    // 保存实际方向
+    // 淇濆瓨瀹為檯鏂瑰悜
     setActualPlacement(calculatedPlacement);
 
-    // 计算水平位置
+    // 璁＄畻姘村钩浣嶇疆
     let leftPosition: number;
     
     if (align === 'parent' && containerRef.current) {
-      // 智能对齐：优先左对齐，如果右侧空间不够则右对齐
-      // 计算左对齐时右侧剩余空间
+      // 鏅鸿兘瀵归綈锛氫紭鍏堝乏瀵归綈锛屽鏋滃彸渚х┖闂翠笉澶熷垯鍙冲榻?
+      // 璁＄畻宸﹀榻愭椂鍙充晶鍓╀綑绌洪棿
       const spaceRightIfLeftAlign = window.innerWidth - rect.left;
       
       if (spaceRightIfLeftAlign >= menuWidth + edgeSpacing) {
-        // 右侧空间足够，使用左对齐（菜单左边缘与触发器左边缘对齐）
+        // 鍙充晶绌洪棿瓒冲锛屼娇鐢ㄥ乏瀵归綈锛堣彍鍗曞乏杈圭紭涓庤Е鍙戝櫒宸﹁竟缂樺榻愶級
         leftPosition = rect.left;
       } else {
-        // 右侧空间不够，使用右对齐（菜单右边缘与触发器右边缘对齐）
+        // 鍙充晶绌洪棿涓嶅锛屼娇鐢ㄥ彸瀵归綈锛堣彍鍗曞彸杈圭紭涓庤Е鍙戝櫒鍙宠竟缂樺榻愶級
         leftPosition = rect.right - menuWidth;
       }
     } else if (align === 'right') {
-      // 右对齐：菜单右边缘与触发器右边缘对齐
+      // 鍙冲榻愶細鑿滃崟鍙宠竟缂樹笌瑙﹀彂鍣ㄥ彸杈圭紭瀵归綈
       leftPosition = rect.right - menuWidth;
     } else {
-      // 左对齐（默认）：菜单左边缘与触发器左边缘对齐
+      // 宸﹀榻愶紙榛樿锛夛細鑿滃崟宸﹁竟缂樹笌瑙﹀彂鍣ㄥ乏杈圭紭瀵归綈
       leftPosition = rect.left;
     }
     
-    // 边界检查：防止菜单超出视窗
-    // 检查左边界
+    // 杈圭晫妫€鏌ワ細闃叉鑿滃崟瓒呭嚭瑙嗙獥
+    // 妫€鏌ュ乏杈圭晫
     if (leftPosition < edgeSpacing) {
       leftPosition = edgeSpacing;
     }
-    // 检查右边界
+    // 妫€鏌ュ彸杈圭晫
     const spaceRight = window.innerWidth - leftPosition;
     if (spaceRight < menuWidth + edgeSpacing) {
       leftPosition = Math.max(edgeSpacing, window.innerWidth - menuWidth - edgeSpacing);
@@ -191,77 +194,107 @@ export const Select: React.FC<SelectProps> = ({
 
     setPosition({
       top: calculatedPlacement === 'top' 
-        ? rect.top - menuHeight - menuGap  // fixed 定位：直接使用视口坐标
+        ? rect.top - menuHeight - menuGap  // fixed 瀹氫綅锛氱洿鎺ヤ娇鐢ㄨ鍙ｅ潗鏍?
         : rect.bottom + menuGap,
       left: leftPosition,
       width: rect.width,
     });
     
-    // 标记位置已计算完成
+    // 鏍囪浣嶇疆宸茶绠楀畬鎴?
     setIsPositionReady(true);
   }, [placement, showSearch, align, menuGap]);
 
-  // 打开菜单时更新位置
-  useEffect(() => {
-    if (isOpen) {
-      // 重置位置就绪状态，在位置计算完成前隐藏菜单
+  // 鎵撳紑鑿滃崟鏃舵洿鏂颁綅缃?
+  useLayoutEffect(() => {
+    if (!isOpen) {
       setIsPositionReady(false);
-      
-      // 先立即计算一次位置（使用预估高度）
-      updatePosition();
-      
-      // 延迟更新位置，确保菜单内容已渲染，可以获取实际高度并重新计算
-      const timer = setTimeout(() => {
-        updatePosition();
-      }, 0);
-      
-      // 使用 requestAnimationFrame 再次更新，确保 DOM 完全渲染
-      const rafTimer = requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          updatePosition();
-        });
-      });
-      
-      // 监听窗口大小变化和滚动
-      const handleResize = () => updatePosition();
-      const handleScroll = () => updatePosition();
-      
-      window.addEventListener('resize', handleResize);
-      window.addEventListener('scroll', handleScroll, true);
-      
-      return () => {
-        clearTimeout(timer);
-        cancelAnimationFrame(rafTimer);
-        window.removeEventListener('resize', handleResize);
-        window.removeEventListener('scroll', handleScroll, true);
-      };
-    } else {
-      // 菜单关闭时重置位置就绪状态
-      setIsPositionReady(false);
+      lastRectRef.current = null;
+      return;
     }
-  }, [isOpen, placement, updatePosition]);
 
-  // 当选中值变化时，提前更新位置以避免位置跳动
-  // 如果菜单关闭，提前计算位置，这样下次打开时位置就是正确的
-  // 如果菜单打开，也需要更新位置以保持对齐
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect) {
+      lastRectRef.current = {
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      };
+    }
+
+    setIsPositionReady(false);
+    updatePosition(rect);
+  }, [isOpen, updatePosition]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      updatePosition();
+    }, 0);
+
+    const rafTimer = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        updatePosition();
+      });
+    });
+
+    const handleResize = () => updatePosition();
+    const handleScroll = (event: Event) => {
+      if (closeOnScroll) {
+        const target = event.target;
+        if (
+          target instanceof Node &&
+          (
+            containerRef.current?.contains(target) ||
+            contentRef.current?.contains(target)
+          )
+        ) {
+          return;
+        }
+
+        setIsOpen(false);
+        setSearchQuery('');
+        return;
+      }
+
+      updatePosition();
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', handleScroll, true);
+
+    return () => {
+      window.clearTimeout(timer);
+      cancelAnimationFrame(rafTimer);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [closeOnScroll, isOpen, updatePosition]);
+
+  // 褰撻€変腑鍊煎彉鍖栨椂锛屾彁鍓嶆洿鏂颁綅缃互閬垮厤浣嶇疆璺冲姩
+  // 濡傛灉鑿滃崟鍏抽棴锛屾彁鍓嶈绠椾綅缃紝杩欐牱涓嬫鎵撳紑鏃朵綅缃氨鏄纭殑
+  // 濡傛灉鑿滃崟鎵撳紑锛屼篃闇€瑕佹洿鏂颁綅缃互淇濇寔瀵归綈
   useEffect(() => {
     if (containerRef.current) {
-      // 使用 requestAnimationFrame 确保 DOM 已经更新（文本内容已变化）
+      // 浣跨敤 requestAnimationFrame 纭繚 DOM 宸茬粡鏇存柊锛堟枃鏈唴瀹瑰凡鍙樺寲锛?
       requestAnimationFrame(() => {
         updatePosition();
       });
     }
   }, [value, updatePosition]);
 
-  // 当菜单内容（groups 或 items）变化时，重新计算位置
-  // 这对于二级菜单切换时保持正确的位置很重要
+  // 褰撹彍鍗曞唴瀹癸紙groups 鎴?items锛夊彉鍖栨椂锛岄噸鏂拌绠椾綅缃?
+  // 杩欏浜庝簩绾ц彍鍗曞垏鎹㈡椂淇濇寔姝ｇ‘鐨勪綅缃緢閲嶈
   useEffect(() => {
     if (isOpen && contentRef.current) {
-      // 使用双重 requestAnimationFrame 确保 DOM 完全更新后再计算位置
+      // 浣跨敤鍙岄噸 requestAnimationFrame 纭繚 DOM 瀹屽叏鏇存柊鍚庡啀璁＄畻浣嶇疆
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           updatePosition();
-          // 报告菜单高度（仅在没有固定高度时）
+          // 鎶ュ憡鑿滃崟楂樺害锛堜粎鍦ㄦ病鏈夊浐瀹氶珮搴︽椂锛?
           if (!fixedHeight && contentRef.current && onHeightChange) {
             const height = contentRef.current.offsetHeight;
             if (height > 0) {
@@ -273,7 +306,7 @@ export const Select: React.FC<SelectProps> = ({
     }
   }, [isOpen, groups, items, updatePosition, fixedHeight, onHeightChange]);
 
-  // 追踪触发器位置变化（例如内联容器随编辑器移动）
+  // 杩借釜瑙﹀彂鍣ㄤ綅缃彉鍖栵紙渚嬪鍐呰仈瀹瑰櫒闅忕紪杈戝櫒绉诲姩锛?
   useEffect(() => {
     if (!isOpen) {
       lastRectRef.current = null;
@@ -313,7 +346,7 @@ export const Select: React.FC<SelectProps> = ({
     };
   }, [isOpen, updatePosition]);
 
-  // 点击外部关闭菜单
+  // 鐐瑰嚮澶栭儴鍏抽棴鑿滃崟
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -325,31 +358,33 @@ export const Select: React.FC<SelectProps> = ({
       ) {
         setIsOpen(false);
         setSearchQuery('');
-        onOpenChange?.(false);
       }
     };
 
     if (isOpen) {
-      // 使用 setTimeout 确保 Portal 内容已经渲染
-      setTimeout(() => {
-        document.addEventListener('mousedown', handleClickOutside);
+      // 浣跨敤 setTimeout 纭繚 Portal 鍐呭宸茬粡娓叉煋
+      const timer = window.setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside, true);
       }, 0);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      return () => {
+        window.clearTimeout(timer);
+        document.removeEventListener('mousedown', handleClickOutside, true);
+      };
     }
   }, [isOpen, onOpenChange]);
 
-  // 失去焦点时关闭菜单
+  // 澶卞幓鐒︾偣鏃跺叧闂彍鍗?
   useEffect(() => {
     if (!isOpen) return;
 
     const handleWindowBlur = () => {
-      // 窗口失去焦点时关闭菜单
+      // 绐楀彛澶卞幓鐒︾偣鏃跺叧闂彍鍗?
       setIsOpen(false);
       setSearchQuery('');
       onOpenChange?.(false);
     };
 
-    // 监听窗口失去焦点事件
+    // 鐩戝惉绐楀彛澶卞幓鐒︾偣浜嬩欢
     window.addEventListener('blur', handleWindowBlur);
 
     return () => {
@@ -357,14 +392,14 @@ export const Select: React.FC<SelectProps> = ({
     };
   }, [isOpen, onOpenChange]);
 
-  // 打开菜单时聚焦搜索框
+  // 鎵撳紑鑿滃崟鏃惰仛鐒︽悳绱㈡
   useEffect(() => {
     if (isOpen && showSearch && searchInputRef.current) {
       searchInputRef.current.focus();
     }
   }, [isOpen, showSearch]);
 
-  // 打开菜单时滚动到选中的项
+  // 鎵撳紑鑿滃崟鏃舵粴鍔ㄥ埌閫変腑鐨勯」
   useEffect(() => {
     if (isOpen && selectedItemRef.current && menuListRef.current) {
       setTimeout(() => {
@@ -387,7 +422,7 @@ export const Select: React.FC<SelectProps> = ({
     }
   }, [isOpen]);
 
-  // 获取显示文本
+  // 鑾峰彇鏄剧ず鏂囨湰
   const getDisplayText = (): string => {
     if (!value) return placeholder;
 
@@ -397,8 +432,8 @@ export const Select: React.FC<SelectProps> = ({
         if (typeof item.label === 'string') {
           return item.label;
         }
-        // 如果是 React 元素，尝试提取文本或返回默认值
-        return '已选择';
+        // 濡傛灉鏄?React 鍏冪礌锛屽皾璇曟彁鍙栨枃鏈垨杩斿洖榛樿鍊?
+        return '宸查€夋嫨';
       }
     }
 
@@ -407,30 +442,30 @@ export const Select: React.FC<SelectProps> = ({
       if (typeof item.label === 'string') {
         return item.label;
       }
-      return '已选择';
+      return '宸查€夋嫨';
     }
     return placeholder;
   };
 
-  // 过滤菜单项
+  // 杩囨护鑿滃崟椤?
   const filterItems = (itemList: SelectItem[]): SelectItem[] => {
     if (!searchQuery) return itemList;
     return itemList.filter(item => {
       if (typeof item.label === 'string') {
         return item.label.toLowerCase().includes(searchQuery.toLowerCase());
       }
-      // 如果是 React 元素，暂时不过滤（可以根据需要实现文本提取）
+      // 濡傛灉鏄?React 鍏冪礌锛屾殏鏃朵笉杩囨护锛堝彲浠ユ牴鎹渶瑕佸疄鐜版枃鏈彁鍙栵級
       return true;
     });
   };
 
-  // 处理菜单项点击
+  // 澶勭悊鑿滃崟椤圭偣鍑?
   const handleItemClick = (itemValue: string, itemDisabled?: boolean) => {
     if (itemDisabled) return;
     onChange(itemValue);
     
-    // 如果提供了 onItemClick 回调，使用它的返回值决定是否关闭菜单
-    // 如果返回 false，则不关闭菜单；否则或未提供回调，默认关闭菜单
+    // 濡傛灉鎻愪緵浜?onItemClick 鍥炶皟锛屼娇鐢ㄥ畠鐨勮繑鍥炲€煎喅瀹氭槸鍚﹀叧闂彍鍗?
+    // 濡傛灉杩斿洖 false锛屽垯涓嶅叧闂彍鍗曪紱鍚﹀垯鎴栨湭鎻愪緵鍥炶皟锛岄粯璁ゅ叧闂彍鍗?
     const shouldClose = onItemClick ? onItemClick(itemValue) !== false : true;
     
     if (shouldClose) {
@@ -438,12 +473,12 @@ export const Select: React.FC<SelectProps> = ({
       setSearchQuery('');
       onOpenChange?.(false);
     } else {
-      // 即使不关闭菜单，也清空搜索框，以便下次显示时是干净的
+      // 鍗充娇涓嶅叧闂彍鍗曪紝涔熸竻绌烘悳绱㈡锛屼互渚夸笅娆℃樉绀烘椂鏄共鍑€鐨?
       setSearchQuery('');
     }
   };
 
-  // 切换菜单打开/关闭
+  // 鍒囨崲鑿滃崟鎵撳紑/鍏抽棴
   const toggleMenu = () => {
     if (!disabled) {
       const newIsOpen = !isOpen;
@@ -452,11 +487,11 @@ export const Select: React.FC<SelectProps> = ({
     }
   };
 
-  // 渲染菜单项
+  // 娓叉煋鑿滃崟椤?
   const renderItem = (item: SelectItem) => {
     const isSelected = item.value === value;
     
-    // 处理图标点击（用于展开/折叠）
+    // 澶勭悊鍥炬爣鐐瑰嚮锛堢敤浜庡睍寮€/鎶樺彔锛?
     const handleIconClick = (e: React.MouseEvent) => {
       if (item.expandValue) {
         e.stopPropagation();
@@ -488,14 +523,14 @@ export const Select: React.FC<SelectProps> = ({
     );
   };
 
-  // 渲染菜单内容
+  // 娓叉煋鑿滃崟鍐呭
   const renderMenuContent = () => {
     if (groups.length > 0) {
       return groups.map((group, groupIndex) => {
         const filteredItems = filterItems(group.items);
         if (filteredItems.length === 0) return null;
 
-        // 使用索引和 groupName 组合作为 key，确保唯一性
+        // 浣跨敤绱㈠紩鍜?groupName 缁勫悎浣滀负 key锛岀‘淇濆敮涓€鎬?
         const groupKey = group.groupName ? `${group.groupName}-${groupIndex}` : `group-${groupIndex}`;
 
         return (
@@ -511,13 +546,13 @@ export const Select: React.FC<SelectProps> = ({
     } else {
       const filteredItems = filterItems(items);
       if (filteredItems.length === 0) {
-        return <div className="select-empty">无匹配项</div>;
+        return <div className="select-empty">鏃犲尮閰嶉」</div>;
       }
       return filteredItems.map(renderItem);
     }
   };
 
-  // 渲染下拉菜单内容（使用 Portal）
+  // 娓叉煋涓嬫媺鑿滃崟鍐呭锛堜娇鐢?Portal锛?
   const renderDropdownContent = () => {
     if (!isOpen) return null;
 
@@ -552,7 +587,7 @@ export const Select: React.FC<SelectProps> = ({
                   ref={searchInputRef}
                   type="text"
                   className="select-search-input"
-                  placeholder="搜索..."
+                  placeholder="鎼滅储..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
@@ -568,7 +603,7 @@ export const Select: React.FC<SelectProps> = ({
               ref={searchInputRef}
               type="text"
               className="select-search-input"
-              placeholder="搜索..."
+              placeholder="鎼滅储..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onClick={(e) => e.stopPropagation()}
@@ -598,4 +633,5 @@ export const Select: React.FC<SelectProps> = ({
     </>
   );
 };
+
 

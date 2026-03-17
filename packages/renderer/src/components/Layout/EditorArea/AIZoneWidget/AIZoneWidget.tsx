@@ -247,6 +247,9 @@ export class AIZoneWidget {
     });
 
     this.scrollDisposable = this.editor.onDidScrollChange(() => {
+      this.closeHistoryMenu();
+      this.closeModelDropdown();
+      this.closeContextMenu();
       this.scheduleLayout();
     });
 
@@ -461,6 +464,45 @@ export class AIZoneWidget {
   clearDiff(): void {
     this.options.onClearDiff?.();
     this.clearCurrentConversation();
+  }
+
+  dismissCompletedResultActions(): void {
+    this.assistantResponse = '';
+    this.submittedReferences = [];
+    this.isGenerating = false;
+    this.isResponseCompleted = false;
+    this.thinkingText = '';
+    this.bottomToolbar.style.display = 'flex';
+    this.renderChatHistory();
+    this.renderThinkingState();
+    this.renderSelectedFilesToolbar();
+    this.updateSendButton();
+    this.scheduleLayout();
+  }
+
+  regenerate(): void {
+    const message = this.getLatestUserMessage();
+    if (!message) {
+      return;
+    }
+
+    this.options.onClearDiff?.();
+    this.removeTrailingAssistantMessages();
+    this.currentUserMessage = message;
+    this.assistantResponse = '';
+    this.isGenerating = true;
+    this.isResponseCompleted = false;
+    this.thinkingText = '';
+    this.bottomToolbar.style.display = 'none';
+    this.closeContextMenu();
+    this.closeHistoryMenu();
+    this.closeModelDropdown();
+    this.renderChatHistory();
+    this.renderThinkingState();
+    this.renderSelectedFilesToolbar();
+    this.updateSendButton();
+    this.scheduleLayout();
+    this.options.onSubmit(message, this.includeSelection, this.selectedModel);
   }
 
   hideThinkingState(): void {
@@ -713,6 +755,7 @@ export class AIZoneWidget {
         showSearch: true,
         align: 'parent',
         menuGap: 3,
+        closeOnScroll: true,
         disabled: !hasModels,
         open: this.isModelDropdownOpen,
         onOpenChange: (isOpen: boolean) => {
@@ -842,7 +885,11 @@ export class AIZoneWidget {
           this.clearDiff();
         })
       );
-
+      leftActions.appendChild(
+        this.createIconActionButton('重新生成', this.getRegenerateIconSvg('ai-zone-result-action-icon-svg'), () => {
+          this.regenerate();
+        })
+      );
       actions.appendChild(leftActions);
       this.selectedFilesToolbar.appendChild(actions);
       return;
@@ -904,6 +951,20 @@ export class AIZoneWidget {
     button.className = 'ai-zone-result-action ai-zone-result-action-text';
     button.textContent = label;
     button.title = title;
+    button.addEventListener('click', (event: MouseEvent) => {
+      event.stopPropagation();
+      onClick();
+    });
+    return button;
+  }
+
+  private createIconActionButton(title: string, svgMarkup: string, onClick: () => void): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ai-zone-result-action ai-zone-result-action-icon';
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.innerHTML = svgMarkup;
     button.addEventListener('click', (event: MouseEvent) => {
       event.stopPropagation();
       onClick();
@@ -1021,19 +1082,31 @@ export class AIZoneWidget {
     const editorRect = editorNode.getBoundingClientRect();
     const contentRect = this.contentNode.getBoundingClientRect();
     if (editorRect.width <= 0 || contentRect.height <= 0) {
+      this.topBorderNode.style.display = 'none';
+      this.bottomBorderNode.style.display = 'none';
       return;
     }
 
     const left = `${editorRect.left}px`;
     const width = `${editorRect.width}px`;
+    const visibleTop = editorRect.top;
+    const visibleBottom = editorRect.bottom;
+    const isTopBorderVisible = contentRect.top >= visibleTop && contentRect.top <= visibleBottom;
+    const isBottomBorderVisible = contentRect.bottom >= visibleTop && contentRect.bottom <= visibleBottom;
 
-    this.topBorderNode.style.left = left;
-    this.topBorderNode.style.width = width;
-    this.topBorderNode.style.top = `${contentRect.top}px`;
+    this.topBorderNode.style.display = isTopBorderVisible ? 'block' : 'none';
+    if (isTopBorderVisible) {
+      this.topBorderNode.style.left = left;
+      this.topBorderNode.style.width = width;
+      this.topBorderNode.style.top = `${contentRect.top}px`;
+    }
 
-    this.bottomBorderNode.style.left = left;
-    this.bottomBorderNode.style.width = width;
-    this.bottomBorderNode.style.top = `${contentRect.bottom}px`;
+    this.bottomBorderNode.style.display = isBottomBorderVisible ? 'block' : 'none';
+    if (isBottomBorderVisible) {
+      this.bottomBorderNode.style.left = left;
+      this.bottomBorderNode.style.width = width;
+      this.bottomBorderNode.style.top = `${contentRect.bottom}px`;
+    }
   }
 
   private focusInput(): void {
@@ -1487,6 +1560,31 @@ export class AIZoneWidget {
     return Array.from(merged.values());
   }
 
+  private getLatestUserMessage(): string {
+    if (this.currentUserMessage.trim().length > 0) {
+      return this.currentUserMessage.trim();
+    }
+
+    for (let index = this.chatHistory.length - 1; index >= 0; index -= 1) {
+      const entry = this.chatHistory[index];
+      if (entry.role === 'user' && entry.content.trim().length > 0) {
+        return entry.content.trim();
+      }
+    }
+
+    return '';
+  }
+
+  private removeTrailingAssistantMessages(): void {
+    while (this.chatHistory.length > 0) {
+      const lastEntry = this.chatHistory[this.chatHistory.length - 1];
+      if (lastEntry.role !== 'assistant') {
+        break;
+      }
+      this.chatHistory.pop();
+    }
+  }
+
   private mountIcon(button: HTMLButtonElement, iconName: string): void {
     const iconContainer = document.createElement('span');
     const root = createRoot(iconContainer);
@@ -1505,6 +1603,15 @@ export class AIZoneWidget {
     return `
       <svg class="${className}" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path d="M10 3a7 7 0 1 0 0 14a7 7 0 0 0 0-14zm-8 7a8 8 0 1 1 16 0a8 8 0 0 1-16 0zm5-2a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V8z"></path>
+      </svg>
+    `;
+  }
+
+  private getRegenerateIconSvg(className = ''): string {
+    return `
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}" aria-hidden="true">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+        <path d="M3 3v5h5"></path>
       </svg>
     `;
   }

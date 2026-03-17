@@ -1,10 +1,10 @@
-/**
- * Monaco 编辑器右键菜单组件
- * 功能：为 Monaco 编辑器提供自定义右键菜单
- * 描述：完全继承主题配色，支持复制、粘贴、剪切等基础功能，以及打开内联聊天
+﻿/**
+ * Monaco 缂栬緫鍣ㄥ彸閿彍鍗曠粍浠?
+ * 鍔熻兘锛氫负 Monaco 缂栬緫鍣ㄦ彁渚涜嚜瀹氫箟鍙抽敭鑿滃崟
+ * 鎻忚堪锛氬畬鍏ㄧ户鎵夸富棰橀厤鑹诧紝鏀寔澶嶅埗銆佺矘璐淬€佸壀鍒囩瓑鍩虹鍔熻兘锛屼互鍙婃墦寮€鍐呰仈鑱婂ぉ
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import './MonacoContextMenu.scss';
 
@@ -41,37 +41,46 @@ export const MonacoContextMenu: React.FC<MonacoContextMenuProps> = ({
   
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
+  const [isPositionReady, setIsPositionReady] = useState(false);
 
-  // 调整菜单位置，防止超出视图
-  useEffect(() => {
-    if (visible && menuRef.current) {
-      const menu = menuRef.current;
-      const rect = menu.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      let adjustedX = x;
-      let adjustedY = y;
-
-      // 检查右边界
-      if (x + rect.width > viewportWidth) {
-        adjustedX = viewportWidth - rect.width - 10;
-      }
-
-      // 检查底部边界
-      if (y + rect.height > viewportHeight) {
-        adjustedY = viewportHeight - rect.height - 10;
-      }
-
-      // 确保不超出左边界和顶部边界
-      adjustedX = Math.max(10, adjustedX);
-      adjustedY = Math.max(10, adjustedY);
-
-      setPosition({ x: adjustedX, y: adjustedY });
+  // 璋冩暣鑿滃崟浣嶇疆锛岄槻姝㈣秴鍑鸿鍥?
+  useLayoutEffect(() => {
+    if (!visible) {
+      setIsPositionReady(false);
+      return;
     }
-  }, [visible, x, y]);
 
-  // 点击外部关闭菜单
+    const menu = menuRef.current;
+    if (!menu) {
+      setPosition({ x, y });
+      setIsPositionReady(true);
+      return;
+    }
+
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let adjustedX = x;
+    let adjustedY = y;
+
+    if (x + menuWidth > viewportWidth) {
+      adjustedX = viewportWidth - menuWidth - 10;
+    }
+
+    if (y + menuHeight > viewportHeight) {
+      adjustedY = viewportHeight - menuHeight - 10;
+    }
+
+    adjustedX = Math.max(10, adjustedX);
+    adjustedY = Math.max(10, adjustedY);
+
+    setPosition({ x: adjustedX, y: adjustedY });
+    setIsPositionReady(true);
+  }, [visible, x, y, menuGroups]);
+
+  // 鐐瑰嚮澶栭儴鍏抽棴鑿滃崟
   useEffect(() => {
     if (!visible) return;
 
@@ -87,7 +96,7 @@ export const MonacoContextMenu: React.FC<MonacoContextMenuProps> = ({
       }
     };
 
-    // 延迟添加监听器，避免立即触发关闭
+    // 寤惰繜娣诲姞鐩戝惉鍣紝閬垮厤绔嬪嵆瑙﹀彂鍏抽棴
     setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleEscape);
@@ -120,6 +129,8 @@ export const MonacoContextMenu: React.FC<MonacoContextMenuProps> = ({
       style={{
         left: `${position.x-13}px`,
         top: `${position.y}px`,
+        opacity: isPositionReady ? 1 : 0,
+        visibility: isPositionReady ? 'visible' : 'hidden',
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -164,9 +175,10 @@ export const MonacoContextMenu: React.FC<MonacoContextMenuProps> = ({
     </div>
   );
 
-  // 使用 Portal 渲染到 body，避免被父容器裁剪
+  // 浣跨敤 Portal 娓叉煋鍒?body锛岄伩鍏嶈鐖跺鍣ㄨ鍓?
   return createPortal(menuContent, document.body);
 };
+
 
 
 

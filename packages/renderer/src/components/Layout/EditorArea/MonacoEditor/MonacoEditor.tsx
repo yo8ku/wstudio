@@ -517,8 +517,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
       return null;
     }
 
-    // 鑾峰彇 AIZoneWidget 搴曢儴杈规鐨勮锟?
-    let zoneBottomLine = aiZoneWidgetRef.current?.getZoneBottomLineNumber() || position.lineNumber;
+    // Ghost 预览应从内联面板底边之后的第一行开始，而不是顶边所在行。
+    const zoneAnchorLine = aiZoneWidgetRef.current?.getZoneBottomLineNumber() || position.lineNumber;
+    let zoneBottomLine = zoneAnchorLine + 1;
     
     // 纭繚琛屽彿鏈夋晥锛堣嚦灏戜负 1锟?
     if (zoneBottomLine < 1) {
@@ -1689,6 +1690,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           
           // 閲嶇疆鍘熷琛屾暟璁板綍锛堝洜涓哄唴瀹瑰凡琚帴鍙楋紝涓嶉渶瑕佹竻闄ょ┖琛岋級
           originalLineCountRef.current = null;
+          aiZoneWidgetRef.current?.dismissCompletedResultActions();
           
           monacoDebugLog('[MonacoEditor] diff content applied');
         } else {
@@ -1723,6 +1725,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
           fallbackDiffDisplay.ghostWidget.acceptGhostText();
           currentGhostWidgetRef.current = null;
           originalLineCountRef.current = null;
+          aiZoneWidgetRef.current?.dismissCompletedResultActions();
           monacoDebugLog('[MonacoEditor] inline chat response applied via fallback accept');
         }
       },
