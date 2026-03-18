@@ -1,0 +1,10 @@
+.background-image-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-position: center center;
+  background-repeat: no-repeat;
+  transform-origin: center center;
+  will-change: opacity, filter, transform;
+}

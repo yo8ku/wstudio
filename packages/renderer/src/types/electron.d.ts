@@ -14,48 +14,6 @@ export interface ITheme {
 }
 
 /**
- * 閹碘晛鐫嶆穱鈩冧紖閹恒儱褰?
- */
-export interface IExtensionInfo {
-  extensionId: string;
-  extensionName: string;
-  displayName: string;
-  publisher: {
-    publisherId: string;
-    publisherName: string;
-    displayName: string;
-  };
-  version: string;
-  description: string;
-  installCount: number;
-  rating: number;
-  ratingCount: number;
-  categories: string[];
-  tags: string[];
-  versions: IExtensionVersion[];
-  icon?: string;
-  publishedDate?: string;
-  lastUpdated?: string;
-}
-
-export interface IExtensionVersion {
-  version: string;
-  lastUpdated: string;
-  assetUri: string;
-  fallbackAssetUri: string;
-}
-
-/**
- * 鐎瑰顥婄紒鎾寸亯閹恒儱褰?
- */
-export interface InstallResult {
-  success: boolean;
-  extensionId: string;
-  extension?: any;
-  error?: string;
-}
-
-/**
  * API 閸濆秴绨查幒銉ュ經
  */
 export interface APIResponse<T = any> {
@@ -80,24 +38,9 @@ export interface TerminalCreateResult extends TerminalOperationResult {
 }
 
 export interface ElectronAPI {
-  extension: {
-    list: () => Promise<any[]>;
-    executeCommand: (command: string, ...args: unknown[]) => Promise<unknown>;
-    sendMessage: (extensionId: string, message: unknown) => Promise<unknown>;
-    onExtensionActivated: (callback: (data: unknown) => void) => void;
-    onExtensionDeactivated: (callback: (data: unknown) => void) => void;
-    onMessage: (callback: (data: unknown) => void) => void;
-    onExtensionInstalled: (callback: (data: { extensionId: string; extension: unknown }) => void) => void;
-  };
-  marketplace: {
-    search: (query: string, pageSize?: number) => Promise<APIResponse<IExtensionInfo[]>>;
-    install: (extensionId: string, version?: string) => Promise<InstallResult>;
-    getDetails: (extensionId: string) => Promise<APIResponse<IExtensionInfo>>;
-  };
   settings?: {
     getAll: () => Promise<APIResponse<Record<string, unknown>>>;
     get: (key: string) => Promise<APIResponse<unknown>>;
-    getPlugin: (key: string) => Promise<APIResponse<unknown>>;
     update: (key: string, value: unknown, target?: 'user' | 'workspace') => Promise<APIResponse>;
     updateMany: (updates: Record<string, unknown>, target?: 'user' | 'workspace') => Promise<APIResponse>;
     reset: (key?: string) => Promise<APIResponse>;

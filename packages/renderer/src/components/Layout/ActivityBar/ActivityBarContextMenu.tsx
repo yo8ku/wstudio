@@ -1,6 +1,5 @@
 /**
- * 活动栏右键菜单组件
- * 功能：为活动栏提供右键菜单，控制各项的显示/隐藏和侧栏位置
+ * Activity bar context menu.
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -25,46 +24,15 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const { visibility, sidebarPosition, toggleVisibility, toggleSidebarPosition } = useActivityBarStore();
 
-  // 菜单项配置
-  const menuItems = [
-    {
-      id: 'explorer',
-      label: '资源管理器',
-      checked: visibility.explorer,
-    },
-    {
-      id: 'search',
-      label: '搜索',
-      checked: visibility.search,
-    },
-    {
-      id: 'sourceControl',
-      label: '源代码管理',
-      checked: visibility.sourceControl,
-    },
-    {
-      id: 'extensions',
-      label: '扩展',
-      checked: visibility.extensions,
-    },
-    {
-      id: 'knowledgeBase',
-      label: '知识库',
-      checked: visibility.knowledgeBase,
-    },
-    {
-      id: 'aiModel',
-      label: 'AI模型',
-      checked: visibility.aiModel,
-    },
-    {
-      id: 'media',
-      label: '素材管理',
-      checked: visibility.media,
-    },
+  const menuItems: Array<{ id: keyof typeof visibility; label: string; checked: boolean }> = [
+    { id: 'explorer', label: '资源管理器', checked: visibility.explorer },
+    { id: 'search', label: '搜索', checked: visibility.search },
+    { id: 'sourceControl', label: '源代码管理', checked: visibility.sourceControl },
+    { id: 'knowledgeBase', label: '知识库', checked: visibility.knowledgeBase },
+    { id: 'aiModel', label: 'AI 模型', checked: visibility.aiModel },
+    { id: 'media', label: '素材管理', checked: visibility.media },
   ];
 
-  // 调整菜单位置，防止超出视图
   useEffect(() => {
     if (visible && menuRef.current) {
       const menu = menuRef.current;
@@ -75,48 +43,43 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
       let adjustedX = x;
       let adjustedY = y;
 
-      // 检查右边界
       if (x + rect.width > viewportWidth) {
         adjustedX = viewportWidth - rect.width - 10;
       }
 
-      // 检查底部边界
       if (y + rect.height > viewportHeight) {
         adjustedY = viewportHeight - rect.height - 10;
       }
 
-      // 确保不超出左边界和顶部边界
-      adjustedX = Math.max(10, adjustedX);
-      adjustedY = Math.max(10, adjustedY);
-
-      menu.style.left = `${adjustedX}px`;
-      menu.style.top = `${adjustedY}px`;
+      menu.style.left = `${Math.max(10, adjustedX)}px`;
+      menu.style.top = `${Math.max(10, adjustedY)}px`;
     }
   }, [visible, x, y]);
 
-  // 点击外部关闭菜单
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      return undefined;
+    }
 
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    const handleClickOutside = (event: MouseEvent): void => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         onClose();
       }
     };
 
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+    const handleEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
         onClose();
       }
     };
 
-    // 延迟添加监听器，避免立即触发关闭
-    setTimeout(() => {
+    const timer = window.setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleEscape);
     }, 0);
 
     return () => {
+      window.clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
@@ -126,15 +89,6 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
     return null;
   }
 
-  const handleItemClick = (itemId: string) => {
-    toggleVisibility(itemId as keyof typeof visibility);
-  };
-
-  const handleToggleSidebarPosition = () => {
-    toggleSidebarPosition();
-    onClose();
-  };
-
   const menuContent = (
     <div
       ref={menuRef}
@@ -143,32 +97,33 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
         left: `${x}px`,
         top: `${y}px`,
       }}
-      onClick={(e) => {
-        e.stopPropagation();
+      onClick={event => {
+        event.stopPropagation();
       }}
     >
-      {menuItems.map((item) => (
+      {menuItems.map(item => (
         <div
           key={item.id}
           className="activity-bar-context-menu-item"
-          onClick={() => handleItemClick(item.id)}
+          onClick={() => toggleVisibility(item.id)}
         >
           <div className="activity-bar-context-menu-item-icon">
             {item.checked && <Icon name="check" size={16} />}
           </div>
-          <div className="activity-bar-context-menu-item-label">
-            {item.label}
-          </div>
+          <div className="activity-bar-context-menu-item-label">{item.label}</div>
         </div>
       ))}
-      
+
       <div className="activity-bar-context-menu-separator" />
-      
+
       <div
         className="activity-bar-context-menu-item"
-        onClick={handleToggleSidebarPosition}
+        onClick={() => {
+          toggleSidebarPosition();
+          onClose();
+        }}
       >
-        <div className="activity-bar-context-menu-item-icon"></div>
+        <div className="activity-bar-context-menu-item-icon" />
         <div className="activity-bar-context-menu-item-label">
           {sidebarPosition === 'left' ? '向右移动主侧栏' : '向左移动主侧栏'}
         </div>
@@ -176,7 +131,5 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
     </div>
   );
 
-  // 使用 Portal 渲染到 body，避免被父容器裁剪
   return createPortal(menuContent, document.body);
 };
-

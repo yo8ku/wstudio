@@ -2,13 +2,9 @@
  * 共享模块统一导出
  */
 
-export * from './protocols/ExtensionProtocol';
-export * from './protocols/MessageTypes';
-export * from './protocols/RPCProtocol';
-export * from './types/vscode-types';
-export * from './types/extension-manifest';
 export * from './types/theme';
 export * from './types/embeddings';
+export * from './types/workbench-background';
 
 // 显式导出主题相关常量，确保构建工具能正确识别
 export { THEME_CHANNELS } from './types/theme';

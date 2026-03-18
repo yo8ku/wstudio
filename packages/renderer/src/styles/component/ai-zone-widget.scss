@@ -1332,7 +1332,7 @@
 // Portal 娓叉煋鍑烘潵鐨勪笅鎷夊唴瀹规牱寮忥紙纭繚涓嶄細琚?ai-zone-border 閬尅锛?
 .ai-zone-context-select-content {
   position: fixed !important;
-  z-index: 100 !important;
+  z-index: 10002 !important;
   /* 涓嶅己鍒舵渶灏忛珮搴︼紝閬垮厤搴曢儴澶ч潰绉┖鐧斤紝鍙檺鍒舵渶澶ч珮搴?*/
   max-height: 300px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
@@ -1369,9 +1369,14 @@
     transition: background-color 0.15s ease, color 0.15s ease;
 
     // 閿洏楂樹寒鏍峰紡
-    &.highlighted {
-      background-color: var(--ws-dropdown-hoverBackground);
-      color: var(--ws-dropdown-hoverForeground);
+    &.selected {
+      background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22))))) !important;
+      color: var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground)))) !important;
+    }
+
+    &.selected:hover {
+      background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22))))) !important;
+      color: var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground)))) !important;
     }
     
     // 闅愯棌鍕鹃€夊浘鏍囧尯鍩燂紝鍑忓皯宸﹁竟璺?
@@ -1381,9 +1386,21 @@
   }
   
   // 褰撳浜庨敭鐩樺鑸ā寮忔椂锛岀鐢?:hover 鏁堟灉
-  &.keyboard-nav .select-item:hover:not(.highlighted) {
+  &.keyboard-nav .select-item:hover:not(.selected) {
     background-color: transparent;
     color: inherit;
+  }
+
+  .select-item[data-type='file'].selected,
+  .select-item[data-type='folder'].selected,
+  .select-item[data-type='form'].selected,
+  .select-item[data-type='form-column'].selected,
+  .select-item[data-type='file'].selected:hover,
+  .select-item[data-type='folder'].selected:hover,
+  .select-item[data-type='form'].selected:hover,
+  .select-item[data-type='form-column'].selected:hover {
+    background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22))))) !important;
+    color: var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground)))) !important;
   }
   
   // 褰撲笉澶勪簬閿洏瀵艰埅妯″紡鏃讹紝:hover 姝ｅ父鐢熸晥

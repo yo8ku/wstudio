@@ -6,7 +6,12 @@
   "private": true,
   "main": "electron.js",
   "workspaces": [
-    "packages/*"
+    "packages/shared",
+    "packages/theme",
+    "packages/global-rag",
+    "packages/note-system",
+    "packages/main",
+    "packages/renderer"
   ],
   "scripts": {
     "postinstall": "pnpm run rebuild:native",

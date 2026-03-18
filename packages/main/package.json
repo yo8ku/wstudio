@@ -7,10 +7,7 @@
     "dev": "pnpm exec tsc --watch",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "test:marketplace": "ts-node src/extensions/marketplace/test-marketplace.ts",
-    "example:marketplace": "ts-node src/extensions/marketplace/example-usage.ts",
-    "test:compatibility": "ts-node src/services/CompatibilityService.example.ts"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.3",

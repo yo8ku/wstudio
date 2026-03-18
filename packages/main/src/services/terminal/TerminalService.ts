@@ -153,9 +153,31 @@ function loadNodePty(): NodePtyModule {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `node-pty native module is unavailable. Run "pnpm run rebuild:native" and restart the app. Original error: ${message}`
+      formatNodePtyUnavailableMessage(message)
     );
   }
+}
+
+function formatNodePtyUnavailableMessage(message: string): string {
+  const normalizedMessage = message.trim();
+  const baseMessage = 'node-pty native module is unavailable.';
+
+  if (
+    process.platform === 'win32'
+    && (
+      normalizedMessage.includes('conpty.node')
+      || normalizedMessage.includes('pty.node')
+    )
+  ) {
+    return (
+      `${baseMessage} Missing Windows terminal native binary. ` +
+      'Electron 36.9.5 does not have a matching prebuilt binary for the bundled node-pty package. ' +
+      'Install Visual Studio with the "Desktop development with C++" workload, run "pnpm run rebuild:native", and restart the app. ' +
+      `Original error: ${normalizedMessage}`
+    );
+  }
+
+  return `${baseMessage} Run "pnpm run rebuild:native" and restart the app. Original error: ${normalizedMessage}`;
 }
 
 function hasBundledConptyDll(): boolean {

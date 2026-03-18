@@ -1,7 +1,7 @@
-/**
- * 设置管理器
- * 负责管理用户设置的读取、写入和监听
- * 支持 JSONC 格式（JSON with Comments）
+﻿/**
+ * Settings manager.
+ * Responsible for loading, writing, and watching user settings.
+ * Supports JSONC (JSON with comments).
  */
 
 import * as fs from 'fs/promises';
@@ -9,20 +9,21 @@ import * as path from 'path';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
 import * as jsonc from 'jsonc-parser';
+import {
+  DEFAULT_WORKBENCH_BACKGROUND_SETTINGS,
+  type WorkbenchBackgroundSettings,
+} from '@note-studio/shared';
 
 export interface SettingsSchema {
-  // 文件设置
   'files.autoSave': 'off' | 'afterDelay' | 'onFocusChange' | 'onWindowChange';
   'files.autoSaveDelay': number;
   'files.encoding': string;
   'files.eol': '\n' | '\r\n' | 'auto';
-  
-  // 工作区设置
   'workbench.colorTheme': string;
-  'workbench.iconTheme'?: string ;
+  'workbench.iconTheme'?: string;
+  'workbench.background': WorkbenchBackgroundSettings;
 }
 
-// 聊天模型接口
 export interface ChatModel {
   id: string;
   name: string;
@@ -34,7 +35,6 @@ export interface ChatModel {
   };
 }
 
-// AI 模型配置接口
 export interface AIModelConfig {
   id: string;
   name: string;
@@ -43,50 +43,39 @@ export interface AIModelConfig {
   baseUrl?: string;
   model?: string;
   enabled: boolean;
-  chatModels?: ChatModel[];  // 可选的聊天模型列表
-  
-  // 🧠 模型参数（核心）
+  chatModels?: ChatModel[];
   parameters?: {
-    temperature?: number;        // 0-2，创造性，0=确定，2=随机
-    maxTokens?: number;          // 1-128000，最大输出长度
-    topP?: number;               // 0-1，核采样，控制词汇多样性
-    frequencyPenalty?: number;   // -2 到 2，频率惩罚，减少重复内容
-    presencePenalty?: number;    // -2 到 2，鼓励新话题
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+    frequencyPenalty?: number;
+    presencePenalty?: number;
   };
-  
-  // ⚙️ 高级配置（可选）
   advanced?: {
-    timeout?: number;            // 请求超时（毫秒）
-    maxRetries?: number;         // 重试次数
-    stream?: boolean;            // 流式传输
-    proxy?: string;              // 代理设置
+    timeout?: number;
+    maxRetries?: number;
+    stream?: boolean;
+    proxy?: string;
     costControl?: {
-      maxCostPerRequest?: number;  // 单次请求最大成本（美元）
-      dailyLimit?: number;         // 每日成本限制（美元）
+      maxCostPerRequest?: number;
+      dailyLimit?: number;
     };
   };
 }
 
 export type SettingsValue = SettingsSchema[keyof SettingsSchema];
 
-/**
- * 默认设置
- */
 const DEFAULT_SETTINGS: SettingsSchema = {
-  // 文件
   'files.autoSave': 'afterDelay',
   'files.autoSaveDelay': 1000,
   'files.encoding': 'utf8',
   'files.eol': 'auto',
-  
-  // 工作区
-  'workbench.colorTheme': 'One Dark Pro'
-
+  'workbench.colorTheme': 'One Dark Pro',
+  'workbench.background': { ...DEFAULT_WORKBENCH_BACKGROUND_SETTINGS },
 };
-
 export class SettingsManager extends EventEmitter {
   private settings: Partial<SettingsSchema> = {};
-  private pluginSettings: Record<string, any> = {}; // 存储插件配置（不在 SettingsSchema 中的键）
+  private pluginSettings: Record<string, any> = {}; // 瀛樺偍鎻掍欢閰嶇疆锛堜笉鍦?SettingsSchema 涓殑閿級
   private settingsPath: string;
   private userSettingsPath: string;
   private workspaceSettingsPath: string | null = null;
@@ -94,47 +83,47 @@ export class SettingsManager extends EventEmitter {
   constructor() {
     super();
     
-    // 用户设置路径
+    // 鐢ㄦ埛璁剧疆璺緞
     const userDataPath = app.getPath('userData');
     this.settingsPath = path.join(userDataPath, 'User');
     this.userSettingsPath = path.join(this.settingsPath, 'settings.json');
   }
 
   /**
-   * 初始化设置管理器
+   * 鍒濆鍖栬缃鐞嗗櫒
    */
   async initialize(): Promise<void> {
     try {
       
-      // 确保设置目录存在
+      // 纭繚璁剧疆鐩綍瀛樺湪
       await fs.mkdir(this.settingsPath, { recursive: true });
       
-      // 检查配置文件是否存在，不存在则创建默认配置
+      // 妫€鏌ラ厤缃枃浠舵槸鍚﹀瓨鍦紝涓嶅瓨鍦ㄥ垯鍒涘缓榛樿閰嶇疆
       await this.ensureSettingsFile();
       
-      // 加载用户设置
+      // 鍔犺浇鐢ㄦ埛璁剧疆
       await this.loadSettings();
       
     } catch (error) {
-      console.error('[SettingsManager] 初始化失败:', error);
-      // 即使初始化失败，也要确保有默认设置可用
+      console.error('[SettingsManager] 鍒濆鍖栧け璐?', error);
+      // 鍗充娇鍒濆鍖栧け璐ワ紝涔熻纭繚鏈夐粯璁よ缃彲鐢?
       this.settings = { ...DEFAULT_SETTINGS };
     }
   }
 
   /**
-   * 确保设置文件存在，如果不存在则创建默认配置文件
-   * 这是应用首次启动时写入完整配置的关键方法
-   * 创建的文件支持 JSONC 格式（带注释）
+   * 纭繚璁剧疆鏂囦欢瀛樺湪锛屽鏋滀笉瀛樺湪鍒欏垱寤洪粯璁ら厤缃枃浠?
+   * 杩欐槸搴旂敤棣栨鍚姩鏃跺啓鍏ュ畬鏁撮厤缃殑鍏抽敭鏂规硶
+   * 鍒涘缓鐨勬枃浠舵敮鎸?JSONC 鏍煎紡锛堝甫娉ㄩ噴锛?
    */
   private async ensureSettingsFile(): Promise<void> {
     try {
-      // 检查文件是否存在
+      // 妫€鏌ユ枃浠舵槸鍚﹀瓨鍦?
       await fs.access(this.userSettingsPath);
     } catch (error) {
-      // 文件不存在，创建默认配置
+      // 鏂囦欢涓嶅瓨鍦紝鍒涘缓榛樿閰嶇疆
       try {
-        // 创建带注释的 JSONC 格式配置文件
+        // 鍒涘缓甯︽敞閲婄殑 JSONC 鏍煎紡閰嶇疆鏂囦欢
         const defaultContent = this.generateDefaultSettingsWithComments();
         await fs.writeFile(this.userSettingsPath, defaultContent, 'utf-8');
       } catch (writeError) {
@@ -144,55 +133,58 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 生成带注释的默认配置内容
+   * 鐢熸垚甯︽敞閲婄殑榛樿閰嶇疆鍐呭
    */
   private generateDefaultSettingsWithComments(): string {
     return `{
  
-  // ==================== 文件设置 ====================
+  // ==================== 鏂囦欢璁剧疆 ====================
   
-  // 自动保存：off, afterDelay, onFocusChange, onWindowChange
+  // 鑷姩淇濆瓨锛歰ff, afterDelay, onFocusChange, onWindowChange
   "files.autoSave": "${DEFAULT_SETTINGS['files.autoSave']}",
   
-  // 自动保存延迟（毫秒）
+  // 鑷姩淇濆瓨寤惰繜锛堟绉掞級
   "files.autoSaveDelay": ${DEFAULT_SETTINGS['files.autoSaveDelay']},
   
-  // 文件编码
+  // 鏂囦欢缂栫爜
   "files.encoding": "${DEFAULT_SETTINGS['files.encoding']}",
   
-  // 换行符：\\n, \\r\\n, auto
+  // 鎹㈣绗︼細\\n, \\r\\n, auto
   "files.eol": "${DEFAULT_SETTINGS['files.eol']}",
 
-  // ==================== 工作区设置 ====================
+  // ==================== 宸ヤ綔鍖鸿缃?====================
   
-  // 颜色主题
-  "workbench.colorTheme": "${DEFAULT_SETTINGS['workbench.colorTheme']}"
+  // 棰滆壊涓婚
+  "workbench.colorTheme": "${DEFAULT_SETTINGS['workbench.colorTheme']}",
+
+  // 鑳屾櫙鍥剧墖璁剧疆
+  "workbench.background": ${JSON.stringify(DEFAULT_SETTINGS['workbench.background'], null, 2).replace(/\n/g, '\n  ')}
 }
 `;
   }
 
   /**
-   * 加载设置
-   * 安全机制：如果加载失败，自动回退到默认设置
+   * 鍔犺浇璁剧疆
+   * 瀹夊叏鏈哄埗锛氬鏋滃姞杞藉け璐ワ紝鑷姩鍥為€€鍒伴粯璁よ缃?
    */
   private async loadSettings(): Promise<void> {
     try {
-      console.log('[SettingsManager] ========== 开始加载设置 ==========');
+      console.log('[SettingsManager] ========== 寮€濮嬪姞杞借缃?==========');
 
-      // 加载用户设置（带自动恢复机制）
+      // 鍔犺浇鐢ㄦ埛璁剧疆锛堝甫鑷姩鎭㈠鏈哄埗锛?
       const userSettings = await this.loadUserSettings(true);
       
-      // 加载工作区设置（如果存在）
+      // 鍔犺浇宸ヤ綔鍖鸿缃紙濡傛灉瀛樺湪锛?
       const workspaceSettings = await this.loadWorkspaceSettings();
       
-      // 合并设置（工作区设置优先级更高）
+      // 鍚堝苟璁剧疆锛堝伐浣滃尯璁剧疆浼樺厛绾ф洿楂橈級
       this.settings = {
         ...DEFAULT_SETTINGS,
         ...userSettings,
         ...workspaceSettings,
       };
       
-      // 过滤掉所有无效的键（防止内存中残留重复配置）
+      // 杩囨护鎺夋墍鏈夋棤鏁堢殑閿紙闃叉鍐呭瓨涓畫鐣欓噸澶嶉厤缃級
       const validSettings: Partial<SettingsSchema> = {};
       for (const key of Object.keys(this.settings)) {
         if (key in DEFAULT_SETTINGS) {
@@ -202,100 +194,100 @@ export class SettingsManager extends EventEmitter {
       this.settings = validSettings;
       
     } catch (error) {
-      // 安全机制：回退到默认设置
+      // 瀹夊叏鏈哄埗锛氬洖閫€鍒伴粯璁よ缃?
       this.settings = { ...DEFAULT_SETTINGS };
-      // 尝试恢复配置文件
+      // 灏濊瘯鎭㈠閰嶇疆鏂囦欢
       await this.recoverSettingsFile();
     }
   }
 
   /**
-   * 恢复配置文件
-   * 当配置文件损坏或被删除时，自动重新创建默认配置文件
-   * 这是防止恶意破坏的安全机制
+   * 鎭㈠閰嶇疆鏂囦欢
+   * 褰撻厤缃枃浠舵崯鍧忔垨琚垹闄ゆ椂锛岃嚜鍔ㄩ噸鏂板垱寤洪粯璁ら厤缃枃浠?
+   * 杩欐槸闃叉鎭舵剰鐮村潖鐨勫畨鍏ㄦ満鍒?
    */
   private async recoverSettingsFile(): Promise<void> {
     try {
       const defaultContent = this.generateDefaultSettingsWithComments();
       await fs.writeFile(this.userSettingsPath, defaultContent, 'utf-8');
     } catch (error) {
-      console.error('[SettingsManager]  恢复配置文件失败:', error);
+      console.error('[SettingsManager]  鎭㈠閰嶇疆鏂囦欢澶辫触:', error);
     }
   }
 
   /**
-   * 加载用户设置
-   * 安全机制：文件不存在或损坏时自动恢复
-   * 支持 JSONC 格式（带注释的 JSON）
+   * 鍔犺浇鐢ㄦ埛璁剧疆
+   * 瀹夊叏鏈哄埗锛氭枃浠朵笉瀛樺湪鎴栨崯鍧忔椂鑷姩鎭㈠
+   * 鏀寔 JSONC 鏍煎紡锛堝甫娉ㄩ噴鐨?JSON锛?
    */
   private async loadUserSettings(updatePluginSettings = false): Promise<Partial<SettingsSchema>> {
     try {
       const content = await fs.readFile(this.userSettingsPath, 'utf-8');
       
-      // 检查文件内容是否为空或只有空白字符
+      // 妫€鏌ユ枃浠跺唴瀹规槸鍚︿负绌烘垨鍙湁绌虹櫧瀛楃
       const trimmedContent = content.trim();
       if (!trimmedContent || trimmedContent === '' || trimmedContent === '{}') {
         await this.recoverSettingsFile();
         return {};
       }
       
-      // 尝试解析 JSONC（支持注释）
+      // 灏濊瘯瑙ｆ瀽 JSONC锛堟敮鎸佹敞閲婏級
       let parsed: any;
       try {
-        // 使用 jsonc-parser 解析，支持注释和尾随逗号
+        // 浣跨敤 jsonc-parser 瑙ｆ瀽锛屾敮鎸佹敞閲婂拰灏鹃殢閫楀彿
         const errors: jsonc.ParseError[] = [];
         parsed = jsonc.parse(trimmedContent, errors);
         
-        // 如果解析结果为 null 或 undefined，说明文件格式错误
+        // 濡傛灉瑙ｆ瀽缁撴灉涓?null 鎴?undefined锛岃鏄庢枃浠舵牸寮忛敊璇?
         if (parsed === null || parsed === undefined) {
           await this.recoverSettingsFile();
           return {};
         }
         
         if (errors.length > 0) {
-          console.error('[SettingsManager]  配置文件 JSONC 解析出现错误:', errors);
+          console.error('[SettingsManager]  閰嶇疆鏂囦欢 JSONC 瑙ｆ瀽鍑虹幇閿欒:', errors);
           await this.recoverSettingsFile();
           return {};
         }
       } catch (parseError) {
-        console.error('[SettingsManager]  配置文件解析失败，文件可能已损坏:', parseError);
+        console.error('[SettingsManager]  閰嶇疆鏂囦欢瑙ｆ瀽澶辫触锛屾枃浠跺彲鑳藉凡鎹熷潖:', parseError);
         await this.recoverSettingsFile();
         return {};
       }
       
       
-      // 分离标准设置和插件设置
+      // 鍒嗙鏍囧噯璁剧疆鍜屾彃浠惰缃?
       const filtered: Partial<SettingsSchema> = {};
       const pluginConfig: Record<string, any> = {};
       for (const key of Object.keys(parsed)) {
         if (key in DEFAULT_SETTINGS) {
           filtered[key as keyof SettingsSchema] = parsed[key] as any;
         } else {
-          // 保留插件配置（不在 DEFAULT_SETTINGS 中的键）
+          // 淇濈暀鎻掍欢閰嶇疆锛堜笉鍦?DEFAULT_SETTINGS 涓殑閿級
           pluginConfig[key] = parsed[key];
         }
       }
       
-      // 保存插件配置到内存（仅初始化时）
+      // 淇濆瓨鎻掍欢閰嶇疆鍒板唴瀛橈紙浠呭垵濮嬪寲鏃讹級
       if (updatePluginSettings) {
         this.pluginSettings = { ...this.pluginSettings, ...pluginConfig };
       }
       return filtered;
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
-      // 文件不存在
+      // 鏂囦欢涓嶅瓨鍦?
       if (err.code === 'ENOENT') {
         return {};
       }
-      // 其他错误（权限问题、磁盘错误等）
+      // 鍏朵粬閿欒锛堟潈闄愰棶棰樸€佺鐩橀敊璇瓑锛?
       await this.recoverSettingsFile();
       return {};
     }
   }
 
   /**
-   * 加载工作区设置
-   * 支持 JSONC 格式（带注释的 JSON）
+   * 鍔犺浇宸ヤ綔鍖鸿缃?
+   * 鏀寔 JSONC 鏍煎紡锛堝甫娉ㄩ噴鐨?JSON锛?
    */
   private async loadWorkspaceSettings(): Promise<Partial<SettingsSchema>> {
     if (!this.workspaceSettingsPath) {
@@ -305,7 +297,7 @@ export class SettingsManager extends EventEmitter {
     try {
       const content = await fs.readFile(this.workspaceSettingsPath, 'utf-8');
       
-      // 使用 jsonc-parser 解析，支持注释和尾随逗号
+      // 浣跨敤 jsonc-parser 瑙ｆ瀽锛屾敮鎸佹敞閲婂拰灏鹃殢閫楀彿
       const errors: jsonc.ParseError[] = [];
       const parsed = jsonc.parse(content, errors);
       
@@ -313,7 +305,7 @@ export class SettingsManager extends EventEmitter {
         return {};
       }
       
-      // 过滤掉无效的键（只保留在 DEFAULT_SETTINGS 中定义的键）
+      // 杩囨护鎺夋棤鏁堢殑閿紙鍙繚鐣欏湪 DEFAULT_SETTINGS 涓畾涔夌殑閿級
       const filtered: Partial<SettingsSchema> = {};
       for (const key of Object.keys(parsed)) {
         if (key in DEFAULT_SETTINGS) {
@@ -331,15 +323,15 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 设置工作区路径
+   * 璁剧疆宸ヤ綔鍖鸿矾寰?
    */
   setWorkspacePath(workspacePath: string): void {
     this.workspaceSettingsPath = path.join(workspacePath, '.vscode', 'settings.json');
-    this.loadSettings(); // 重新加载设置
+    this.loadSettings(); // 閲嶆柊鍔犺浇璁剧疆
   }
 
   /**
-   * 获取设置值
+   * 鑾峰彇璁剧疆鍊?
    */
   get<K extends keyof SettingsSchema>(key: K): SettingsSchema[K] {
     const result = (this.settings[key] ?? DEFAULT_SETTINGS[key]) as SettingsSchema[K];
@@ -347,28 +339,28 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 获取插件配置（支持任意键）
+   * 鑾峰彇鎻掍欢閰嶇疆锛堟敮鎸佷换鎰忛敭锛?
    */
   getPluginSetting<T = any>(key: string, defaultValue?: T): T | undefined {
-    // 先检查是否是标准设置
+    // 鍏堟鏌ユ槸鍚︽槸鏍囧噯璁剧疆
     if (key in DEFAULT_SETTINGS) {
       return this.get(key as keyof SettingsSchema) as T;
     }
-    // 检查插件配置
+    // 妫€鏌ユ彃浠堕厤缃?
     const value = this.pluginSettings[key];
     const result = value !== undefined ? (value as T) : defaultValue;
     return result;
   }
 
   /**
-   * 获取所有设置
+   * 鑾峰彇鎵€鏈夎缃?
    */
   getAll(): Partial<SettingsSchema> {
     return { ...this.settings };
   }
 
   /**
-   * 获取所有设置（包括默认值）
+   * 鑾峰彇鎵€鏈夎缃紙鍖呮嫭榛樿鍊硷級
    */
   getAllWithDefaults(): SettingsSchema {
     return {
@@ -378,22 +370,22 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 重新加载设置文件到内存
+   * 閲嶆柊鍔犺浇璁剧疆鏂囦欢鍒板唴瀛?
    */
   async reload(): Promise<void> {
     await this.loadSettings();
   }
 
   /**
-   * 获取用户实际配置的设置（不包括默认值）
-   * 只返回用户在 settings.json 中显式配置的内容
+   * 鑾峰彇鐢ㄦ埛瀹為檯閰嶇疆鐨勮缃紙涓嶅寘鎷粯璁ゅ€硷級
+   * 鍙繑鍥炵敤鎴峰湪 settings.json 涓樉寮忛厤缃殑鍐呭
    */
   async getUserConfiguredSettings(): Promise<Partial<SettingsSchema>> {
     try {
-      // 直接从文件读取用户设置
+      // 鐩存帴浠庢枃浠惰鍙栫敤鎴疯缃?
       const userSettings = await this.loadUserSettings();
       
-      // 如果有工作区设置，也读取并合并
+      // 濡傛灉鏈夊伐浣滃尯璁剧疆锛屼篃璇诲彇骞跺悎骞?
       const workspaceSettings = await this.loadWorkspaceSettings();
       
       return {
@@ -401,13 +393,13 @@ export class SettingsManager extends EventEmitter {
         ...workspaceSettings,
       };
     } catch (error) {
-      console.error('[SettingsManager] 获取用户配置失败:', error);
+      console.error('[SettingsManager] 鑾峰彇鐢ㄦ埛閰嶇疆澶辫触:', error);
       return {};
     }
   }
 
   /**
-   * 更新设置
+   * 鏇存柊璁剧疆
    */
   async update<K extends keyof SettingsSchema>(
     key: K,
@@ -415,27 +407,27 @@ export class SettingsManager extends EventEmitter {
     target: 'user' | 'workspace' = 'user'
   ): Promise<void> {
     try {
-      // 更新内存中的设置
+      // 鏇存柊鍐呭瓨涓殑璁剧疆
       this.settings[key] = value;
 
-      // 保存到文件
+      // 淇濆瓨鍒版枃浠?
       if (target === 'user') {
         await this.saveUserSettings();
       } else if (target === 'workspace' && this.workspaceSettingsPath) {
         await this.saveWorkspaceSettings();
       }
 
-      // 触发变更事件
+      // 瑙﹀彂鍙樻洿浜嬩欢
       this.emit('change', key, value);
       
     } catch (error) {
-      console.error('[SettingsManager] 更新设置失败:', error);
+      console.error('[SettingsManager] 鏇存柊璁剧疆澶辫触:', error);
       throw error;
     }
   }
 
   /**
-   * 更新插件配置（支持任意键）
+   * 鏇存柊鎻掍欢閰嶇疆锛堟敮鎸佷换鎰忛敭锛?
    */
   async updatePluginSetting(
     key: string,
@@ -443,25 +435,25 @@ export class SettingsManager extends EventEmitter {
     target: 'user' | 'workspace' = 'user'
   ): Promise<void> {
     try {
-      // 如果是标准设置，使用标准方法
+      // 濡傛灉鏄爣鍑嗚缃紝浣跨敤鏍囧噯鏂规硶
       if (key in DEFAULT_SETTINGS) {
         await this.update(key as keyof SettingsSchema, value, target);
         return;
       }
-      // 更新插件配置
+      // 鏇存柊鎻掍欢閰嶇疆
       this.pluginSettings[key] = value;
 
-      // 保存到文件
+      // 淇濆瓨鍒版枃浠?
       if (target === 'user') {
         await this.saveUserSettings();
       } else if (target === 'workspace' && this.workspaceSettingsPath) {
         await this.saveWorkspaceSettings();
       }
 
-      // 触发变更事件
+      // 瑙﹀彂鍙樻洿浜嬩欢
       this.emit('change', key, value);
       
-      // 发送 IPC 事件到渲染进程，通知配置已保存（用于调试）
+      // 鍙戦€?IPC 浜嬩欢鍒版覆鏌撹繘绋嬶紝閫氱煡閰嶇疆宸蹭繚瀛橈紙鐢ㄤ簬璋冭瘯锛?
       try {
         const { BrowserWindow } = require('electron');
         const mainWindow = BrowserWindow.getAllWindows()[0];
@@ -469,23 +461,23 @@ export class SettingsManager extends EventEmitter {
           mainWindow.webContents.send('settings:plugin-config-saved', { key, success: true });
         }
       } catch (error) {
-        // 忽略错误，这只是调试功能
+        // 蹇界暐閿欒锛岃繖鍙槸璋冭瘯鍔熻兘
       }
     } catch (error) {
-      console.error('[SettingsManager] 更新插件配置失败:', error);
+      console.error('[SettingsManager] 鏇存柊鎻掍欢閰嶇疆澶辫触:', error);
       throw error;
     }
   }
 
   /**
-   * 批量更新设置
+   * 鎵归噺鏇存柊璁剧疆
    */
   async updateMany(
     updates: Partial<SettingsSchema>,
     target: 'user' | 'workspace' = 'user'
   ): Promise<void> {
     try {
-      // 过滤掉无效的键（只保留在 DEFAULT_SETTINGS 中定义的键）
+      // 杩囨护鎺夋棤鏁堢殑閿紙鍙繚鐣欏湪 DEFAULT_SETTINGS 涓畾涔夌殑閿級
       const validUpdates: Partial<SettingsSchema> = {};
       for (const key of Object.keys(updates)) {
         if (key in DEFAULT_SETTINGS) {
@@ -493,37 +485,37 @@ export class SettingsManager extends EventEmitter {
         }
       }
 
-      // 更新内存中的设置
+      // 鏇存柊鍐呭瓨涓殑璁剧疆
       Object.assign(this.settings, validUpdates);
 
-      // 保存到文件
+      // 淇濆瓨鍒版枃浠?
       if (target === 'user') {
         await this.saveUserSettings();
       } else if (target === 'workspace' && this.workspaceSettingsPath) {
         await this.saveWorkspaceSettings();
       }
 
-      // 触发变更事件（只触发有效键的事件）
+      // 瑙﹀彂鍙樻洿浜嬩欢锛堝彧瑙﹀彂鏈夋晥閿殑浜嬩欢锛?
       for (const [key, value] of Object.entries(validUpdates)) {
         this.emit('change', key, value);
       }
       
     } catch (error) {
-      console.error('[SettingsManager] 批量更新设置失败:', error);
+      console.error('[SettingsManager] 鎵归噺鏇存柊璁剧疆澶辫触:', error);
       throw error;
     }
   }
 
   /**
-   * 重置设置为默认值
+   * 閲嶇疆璁剧疆涓洪粯璁ゅ€?
    */
   async reset(key?: keyof SettingsSchema): Promise<void> {
     try {
       if (key) {
-        // 重置单个设置
+        // 閲嶇疆鍗曚釜璁剧疆
         this.settings[key] = DEFAULT_SETTINGS[key] as any;
       } else {
-        // 重置所有设置
+        // 閲嶇疆鎵€鏈夎缃?
         this.settings = { ...DEFAULT_SETTINGS };
       }
 
@@ -531,13 +523,13 @@ export class SettingsManager extends EventEmitter {
       this.emit('reset', key);
       
     } catch (error) {
-      console.error('[SettingsManager] 重置设置失败:', error);
+      console.error('[SettingsManager] 閲嶇疆璁剧疆澶辫触:', error);
       throw error;
     }
   }
 
   /**
-   * 过滤掉与默认值相同的设置项
+   * 杩囨护鎺変笌榛樿鍊肩浉鍚岀殑璁剧疆椤?
    */
   private filterDefaultValues(settings: Partial<SettingsSchema>): Partial<SettingsSchema> {
     const filtered: Partial<SettingsSchema> = {};
@@ -546,7 +538,7 @@ export class SettingsManager extends EventEmitter {
       const typedKey = key as keyof SettingsSchema;
       const defaultValue = DEFAULT_SETTINGS[typedKey];
       
-      // 如果值与默认值不同，或者默认设置中没有这个键，则保留
+      // 濡傛灉鍊间笌榛樿鍊间笉鍚岋紝鎴栬€呴粯璁よ缃腑娌℃湁杩欎釜閿紝鍒欎繚鐣?
       if (JSON.stringify(value) !== JSON.stringify(defaultValue)) {
         filtered[typedKey] = value as any;
       }
@@ -556,12 +548,12 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 保存用户设置
-   * 保留文件中的注释和格式
+   * 淇濆瓨鐢ㄦ埛璁剧疆
+   * 淇濈暀鏂囦欢涓殑娉ㄩ噴鍜屾牸寮?
    */
   private async saveUserSettings(): Promise<void> {
     try {
-      // 读取现有文件内容
+      // 璇诲彇鐜版湁鏂囦欢鍐呭
       let existingContent = '';
       try {
         existingContent = await fs.readFile(this.userSettingsPath, 'utf-8');
@@ -569,27 +561,27 @@ export class SettingsManager extends EventEmitter {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
           throw error;
         }
-        console.log('[SettingsManager] 文件不存在，将创建新文件');
+        console.log('[SettingsManager] 鏂囦欢涓嶅瓨鍦紝灏嗗垱寤烘柊鏂囦欢');
       }
 
-      // 读取现有的用户设置（已经过滤了无效键）
-      // 注意：loadUserSettings 会更新 this.pluginSettings，所以先保存当前值
+      // 璇诲彇鐜版湁鐨勭敤鎴疯缃紙宸茬粡杩囨护浜嗘棤鏁堥敭锛?
+      // 娉ㄦ剰锛歭oadUserSettings 浼氭洿鏂?this.pluginSettings锛屾墍浠ュ厛淇濆瓨褰撳墠鍊?
       const currentPluginSettings = { ...this.pluginSettings };
       const existingSettings = await this.loadUserSettings();
       
-      // 恢复 pluginSettings（因为 loadUserSettings 可能覆盖了它）
+      // 鎭㈠ pluginSettings锛堝洜涓?loadUserSettings 鍙兘瑕嗙洊浜嗗畠锛?
       this.pluginSettings = { ...this.pluginSettings, ...currentPluginSettings };
       
-      // 只保存与默认值不同的设置
+      // 鍙繚瀛樹笌榛樿鍊间笉鍚岀殑璁剧疆
       const settingsToSave = this.filterDefaultValues(this.settings);
       
-      // 保留现有设置中的值（避免丢失数据）
+      // 淇濈暀鐜版湁璁剧疆涓殑鍊硷紙閬垮厤涓㈠け鏁版嵁锛?
       const mergedSettings = {
         ...existingSettings,
         ...settingsToSave,
       };
       
-      // 分离标准设置和插件设置
+      // 鍒嗙鏍囧噯璁剧疆鍜屾彃浠惰缃?
       const validSettings: Partial<SettingsSchema> = {};
       for (const key of Object.keys(mergedSettings)) {
         if (key in DEFAULT_SETTINGS) {
@@ -597,20 +589,20 @@ export class SettingsManager extends EventEmitter {
         }
       }
       
-      // 合并插件配置
+      // 鍚堝苟鎻掍欢閰嶇疆
       const allSettings = {
         ...validSettings,
         ...this.pluginSettings,
       };
       
       
-      // 检查文件是否为空或只有 {}
+      // 妫€鏌ユ枃浠舵槸鍚︿负绌烘垨鍙湁 {}
       const trimmedContent = existingContent.trim();
       const isEmpty = !trimmedContent || trimmedContent === '{}';
       
-      // 如果文件存在且有内容（且不是空的 {}），尝试保留注释，但优先确保配置正确写入
+      // 濡傛灉鏂囦欢瀛樺湪涓旀湁鍐呭锛堜笖涓嶆槸绌虹殑 {}锛夛紝灏濊瘯淇濈暀娉ㄩ噴锛屼絾浼樺厛纭繚閰嶇疆姝ｇ‘鍐欏叆
       if (trimmedContent && !isEmpty) {
-        // 解析现有内容
+        // 瑙ｆ瀽鐜版湁鍐呭
         let existingParsed: any = {};
         try {
           const errors: jsonc.ParseError[] = [];
@@ -626,21 +618,21 @@ export class SettingsManager extends EventEmitter {
         const existingKeysSet = new Set(Object.keys(existingParsed));
         
         
-        // 检查是否有新键需要添加
+        // 妫€鏌ユ槸鍚︽湁鏂伴敭闇€瑕佹坊鍔?
         const hasNewKeys = Object.keys(allSettings).some(key => !existingKeysSet.has(key));
         
         if (hasNewKeys) {
-          // 如果有新键，直接合并并重新写入（确保新键一定被写入）
+          // 濡傛灉鏈夋柊閿紝鐩存帴鍚堝苟骞堕噸鏂板啓鍏ワ紙纭繚鏂伴敭涓€瀹氳鍐欏叆锛?
           const mergedConfig = {
             ...existingParsed,
             ...allSettings
           };
           
-          // 生成带注释的 JSON 内容（包含插件配置）
+          // 鐢熸垚甯︽敞閲婄殑 JSON 鍐呭锛堝寘鍚彃浠堕厤缃級
           const newContent = this.generateSettingsWithCommentsAndPlugins(validSettings, this.pluginSettings);
           await fs.writeFile(this.userSettingsPath, newContent, 'utf-8');
         } else {
-          // 没有新键，使用 jsonc-parser 保留注释
+          // 娌℃湁鏂伴敭锛屼娇鐢?jsonc-parser 淇濈暀娉ㄩ噴
           let newContent = existingContent;
           const formattingOptions: jsonc.FormattingOptions = {
             tabSize: 2,
@@ -648,13 +640,13 @@ export class SettingsManager extends EventEmitter {
             eol: '\n'
           };
           
-          // 更新所有键
+          // 鏇存柊鎵€鏈夐敭
           for (const [key, value] of Object.entries(allSettings)) {
             const edits = jsonc.modify(newContent, [key], value, { formattingOptions });
             newContent = jsonc.applyEdits(newContent, edits);
           }
           
-          // 删除不再存在的键（只删除标准设置）
+          // 鍒犻櫎涓嶅啀瀛樺湪鐨勯敭锛堝彧鍒犻櫎鏍囧噯璁剧疆锛?
           const existingKeys = Object.keys(existingSettings);
           for (const key of existingKeys) {
             if (!(key in validSettings) && key in DEFAULT_SETTINGS) {
@@ -666,7 +658,7 @@ export class SettingsManager extends EventEmitter {
           await fs.writeFile(this.userSettingsPath, newContent, 'utf-8');
         }
         
-        // 验证写入是否成功
+        // 楠岃瘉鍐欏叆鏄惁鎴愬姛
         try {
           const verifyContent = await fs.readFile(this.userSettingsPath, 'utf-8');
           try {
@@ -674,23 +666,23 @@ export class SettingsManager extends EventEmitter {
             const verifyParsed = jsonc.parse(verifyContent, errors);
             if (verifyParsed && errors.length === 0) {
             } else {
-              console.warn('[SettingsManager] 验证：文件解析失败，但文件已写入');
+              console.warn('[SettingsManager] 楠岃瘉锛氭枃浠惰В鏋愬け璐ワ紝浣嗘枃浠跺凡鍐欏叆');
             }
           } catch (parseError) {
-            console.warn('[SettingsManager] 验证：文件解析时出错，但文件已写入:', parseError);
+            console.warn('[SettingsManager] 楠岃瘉锛氭枃浠惰В鏋愭椂鍑洪敊锛屼絾鏂囦欢宸插啓鍏?', parseError);
           }
         } catch (verifyError) {
-          console.error('[SettingsManager] 验证文件写入时出错:', verifyError);
+          console.error('[SettingsManager] 楠岃瘉鏂囦欢鍐欏叆鏃跺嚭閿?', verifyError);
         }
       } else {
-        // 如果文件不存在或为空，创建新的带注释的文件
+        // 濡傛灉鏂囦欢涓嶅瓨鍦ㄦ垨涓虹┖锛屽垱寤烘柊鐨勫甫娉ㄩ噴鐨勬枃浠?
         const content = this.generateSettingsWithComments(validSettings);
-        // 将插件配置添加到文件末尾
+        // 灏嗘彃浠堕厤缃坊鍔犲埌鏂囦欢鏈熬
         let finalContent = content;
         if (Object.keys(this.pluginSettings).length > 0) {
-          // 移除最后的 } 和换行
+          // 绉婚櫎鏈€鍚庣殑 } 鍜屾崲琛?
           finalContent = content.trim().slice(0, -1);
-          // 添加插件配置
+          // 娣诲姞鎻掍欢閰嶇疆
           const pluginConfigStr = Object.entries(this.pluginSettings)
             .map(([key, value]) => `  "${key}": ${JSON.stringify(value)}`)
             .join(',\n');
@@ -699,8 +691,8 @@ export class SettingsManager extends EventEmitter {
         await fs.writeFile(this.userSettingsPath, finalContent, 'utf-8');
       }
     } catch (error) {
-      console.error('[SettingsManager] 保存设置失败:', error);
-      // 如果保存失败，回退到简单的 JSON 保存
+      console.error('[SettingsManager] 淇濆瓨璁剧疆澶辫触:', error);
+      // 濡傛灉淇濆瓨澶辫触锛屽洖閫€鍒扮畝鍗曠殑 JSON 淇濆瓨
       const existingSettings = await this.loadUserSettings();
       const settingsToSave = this.filterDefaultValues(this.settings);
       const mergedSettings = { ...existingSettings, ...settingsToSave };
@@ -712,7 +704,7 @@ export class SettingsManager extends EventEmitter {
         }
       }
       
-      // 合并插件配置
+      // 鍚堝苟鎻掍欢閰嶇疆
       const allSettings = {
         ...validSettings,
         ...this.pluginSettings,
@@ -724,13 +716,13 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 生成带注释的设置内容（用于更新后的设置）
+   * 鐢熸垚甯︽敞閲婄殑璁剧疆鍐呭锛堢敤浜庢洿鏂板悗鐨勮缃級
    */
   private generateSettingsWithComments(settings: Partial<SettingsSchema>): string {
     const lines: string[] = ['{'];
     const keys = Object.keys(settings) as Array<keyof SettingsSchema>;
     
-    // 按类别组织设置
+    // 鎸夌被鍒粍缁囪缃?
     const categories = {
       'Editor': keys.filter(k => k.startsWith('editor.')),
       'Files': keys.filter(k => k.startsWith('files.')),
@@ -769,18 +761,18 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 生成带注释的设置内容（包含插件配置）
+   * 鐢熸垚甯︽敞閲婄殑璁剧疆鍐呭锛堝寘鍚彃浠堕厤缃級
    */
   private generateSettingsWithCommentsAndPlugins(settings: Partial<SettingsSchema>, pluginSettings: Record<string, any>): string {
-    // 先生成标准设置的带注释内容
+    // 鍏堢敓鎴愭爣鍑嗚缃殑甯︽敞閲婂唴瀹?
     const standardContent = this.generateSettingsWithComments(settings);
     
-    // 如果有插件配置，添加到文件末尾
+    // 濡傛灉鏈夋彃浠堕厤缃紝娣诲姞鍒版枃浠舵湯灏?
     if (Object.keys(pluginSettings).length > 0) {
-      // 移除最后的 }
+      // 绉婚櫎鏈€鍚庣殑 }
       const contentWithoutBrace = standardContent.trim().slice(0, -1);
       
-      // 添加插件配置
+      // 娣诲姞鎻掍欢閰嶇疆
       const pluginConfigLines: string[] = [];
       for (const [key, value] of Object.entries(pluginSettings)) {
         const valueStr = JSON.stringify(value, null, 2).split('\n').map((line, index) => 
@@ -796,20 +788,20 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 保存工作区设置
-   * 保留文件中的注释和格式
+   * 淇濆瓨宸ヤ綔鍖鸿缃?
+   * 淇濈暀鏂囦欢涓殑娉ㄩ噴鍜屾牸寮?
    */
   private async saveWorkspaceSettings(): Promise<void> {
     if (!this.workspaceSettingsPath) {
-      throw new Error('工作区路径未设置');
+      throw new Error('宸ヤ綔鍖鸿矾寰勬湭璁剧疆');
     }
 
-    // 确保 .vscode 目录存在
+    // 纭繚 .vscode 鐩綍瀛樺湪
     const vscodeDir = path.dirname(this.workspaceSettingsPath);
     await fs.mkdir(vscodeDir, { recursive: true });
 
     try {
-      // 读取现有文件内容
+      // 璇诲彇鐜版湁鏂囦欢鍐呭
       let existingContent = '';
       try {
         existingContent = await fs.readFile(this.workspaceSettingsPath, 'utf-8');
@@ -819,19 +811,19 @@ export class SettingsManager extends EventEmitter {
         }
       }
 
-      // 读取现有的工作区设置（已经过滤了无效键）
+      // 璇诲彇鐜版湁鐨勫伐浣滃尯璁剧疆锛堝凡缁忚繃婊や簡鏃犳晥閿級
       const existingSettings = await this.loadWorkspaceSettings();
       
-      // 只保存与默认值不同的设置
+      // 鍙繚瀛樹笌榛樿鍊间笉鍚岀殑璁剧疆
       const settingsToSave = this.filterDefaultValues(this.settings);
       
-      // 保留现有设置中的值（避免丢失数据）
+      // 淇濈暀鐜版湁璁剧疆涓殑鍊硷紙閬垮厤涓㈠け鏁版嵁锛?
       const mergedSettings = {
         ...existingSettings,
         ...settingsToSave,
       };
 
-      // 过滤掉无效的键（只保留在 DEFAULT_SETTINGS 中定义的键）
+      // 杩囨护鎺夋棤鏁堢殑閿紙鍙繚鐣欏湪 DEFAULT_SETTINGS 涓畾涔夌殑閿級
       const validSettings: Partial<SettingsSchema> = {};
       for (const key of Object.keys(mergedSettings)) {
         if (key in DEFAULT_SETTINGS) {
@@ -839,24 +831,24 @@ export class SettingsManager extends EventEmitter {
         }
       }
 
-      // 如果文件存在且有内容，使用 jsonc-parser 的编辑功能保留注释
+      // 濡傛灉鏂囦欢瀛樺湪涓旀湁鍐呭锛屼娇鐢?jsonc-parser 鐨勭紪杈戝姛鑳戒繚鐣欐敞閲?
       if (existingContent.trim()) {
         let newContent = existingContent;
         
-        // 使用 jsonc-parser 的编辑 API 保留注释
+        // 浣跨敤 jsonc-parser 鐨勭紪杈?API 淇濈暀娉ㄩ噴
         const formattingOptions: jsonc.FormattingOptions = {
           tabSize: 2,
           insertSpaces: true,
           eol: '\n'
         };
         
-        // 为每个要更新的键生成编辑操作
+        // 涓烘瘡涓鏇存柊鐨勯敭鐢熸垚缂栬緫鎿嶄綔
         for (const [key, value] of Object.entries(validSettings)) {
           const edits = jsonc.modify(newContent, [key], value, { formattingOptions });
           newContent = jsonc.applyEdits(newContent, edits);
         }
         
-        // 删除不再存在的键
+        // 鍒犻櫎涓嶅啀瀛樺湪鐨勯敭
         const existingKeys = Object.keys(existingSettings);
         for (const key of existingKeys) {
           if (!(key in validSettings)) {
@@ -867,13 +859,13 @@ export class SettingsManager extends EventEmitter {
         
         await fs.writeFile(this.workspaceSettingsPath, newContent, 'utf-8');
       } else {
-        // 如果文件不存在或为空，创建新的带注释的文件
+        // 濡傛灉鏂囦欢涓嶅瓨鍦ㄦ垨涓虹┖锛屽垱寤烘柊鐨勫甫娉ㄩ噴鐨勬枃浠?
         const content = this.generateSettingsWithComments(validSettings);
         await fs.writeFile(this.workspaceSettingsPath, content, 'utf-8');
       }
     } catch (error) {
-      console.error('[SettingsManager] 保存工作区设置失败:', error);
-      // 如果保存失败，回退到简单的 JSON 保存
+      console.error('[SettingsManager] 淇濆瓨宸ヤ綔鍖鸿缃け璐?', error);
+      // 濡傛灉淇濆瓨澶辫触锛屽洖閫€鍒扮畝鍗曠殑 JSON 淇濆瓨
       const existingSettings = await this.loadWorkspaceSettings();
       const settingsToSave = this.filterDefaultValues(this.settings);
       const mergedSettings = { ...existingSettings, ...settingsToSave };
@@ -891,7 +883,7 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 获取设置文件路径
+   * 鑾峰彇璁剧疆鏂囦欢璺緞
    */
   getSettingsPath(target: 'user' | 'workspace' = 'user'): string {
     if (target === 'workspace' && this.workspaceSettingsPath) {
@@ -901,38 +893,39 @@ export class SettingsManager extends EventEmitter {
   }
 
   /**
-   * 获取默认设置
+   * 鑾峰彇榛樿璁剧疆
    */
   getDefaults(): SettingsSchema {
     return { ...DEFAULT_SETTINGS };
   }
 
   /**
-   * 导入设置
-   * 支持 JSONC 格式（带注释的 JSON）
+   * 瀵煎叆璁剧疆
+   * 鏀寔 JSONC 鏍煎紡锛堝甫娉ㄩ噴鐨?JSON锛?
    */
   async importSettings(settingsJson: string, target: 'user' | 'workspace' = 'user'): Promise<void> {
     try {
-      // 使用 jsonc-parser 解析，支持注释和尾随逗号
+      // 浣跨敤 jsonc-parser 瑙ｆ瀽锛屾敮鎸佹敞閲婂拰灏鹃殢閫楀彿
       const errors: jsonc.ParseError[] = [];
       const imported = jsonc.parse(settingsJson, errors);
       
       if (errors.length > 0) {
-        console.error('[SettingsManager] 导入的设置 JSONC 解析出现错误:', errors);
+        console.error('[SettingsManager] 瀵煎叆鐨勮缃?JSONC 瑙ｆ瀽鍑虹幇閿欒:', errors);
         throw new Error('Invalid JSONC format');
       }
       
       await this.updateMany(imported, target);
     } catch (error) {
-      console.error('[SettingsManager] 导入设置失败:', error);
+      console.error('[SettingsManager] 瀵煎叆璁剧疆澶辫触:', error);
       throw error;
     }
   }
 
   /**
-   * 导出设置
+   * 瀵煎嚭璁剧疆
    */
   exportSettings(): string {
     return JSON.stringify(this.settings, null, 2);
   }
 }
+

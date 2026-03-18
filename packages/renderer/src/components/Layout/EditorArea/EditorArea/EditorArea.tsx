@@ -1,12 +1,12 @@
 ﻿/**
- * 缂栬緫鍣ㄥ尯鍩熷鍣?
- * 鍔熻兘锛氱鐞嗙紪杈戝櫒鏍囩椤点€佹枃浠朵繚瀛樺拰蹇嵎閿?
- * 鎻忚堪锛氭彁渚涙枃浠剁紪杈戙€佷繚瀛樸€侀瑙堢瓑鏍稿績鍔熻兘
+ * 缂傛牞绶崳銊ュ隘閸╃喎顔愰崳?
+ * 閸旂喕鍏橀敍姘鳖吀閻炲棛绱潏鎴濇珤閺嶅洨顒锋い鐐光偓浣规瀮娴犳湹绻氱€涙ê鎷拌箛顐ｅ祹闁?
+ * 閹诲繗鍫敍姘絹娓氭稒鏋冩禒鍓佺椽鏉堟垯鈧椒绻氱€涙ǜ鈧線顣╃憴鍫㈢搼閺嶇绺鹃崝鐔诲厴
  */
 
-// 椤跺眰鏃ュ織 - 妯″潡鍔犺浇鏃剁珛鍗虫墽琛?
+// 妞よ泛鐪伴弮銉ョ箶 - 濡€虫健閸旂姾娴囬弮鍓佺彌閸楄櫕澧界悰?
 console.log('========================================');
-console.log('[EditorArea 妯″潡] 鏂囦欢琚姞杞斤紒');
+console.log('');
 console.log('========================================');
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -18,7 +18,6 @@ import { SettingsView } from '../../../Settings/SettingsView';
 import { MarkdownPreview } from '../../../Editor/MarkdownPreview';
 import { KnowledgeBaseView } from '../KnowledgeBaseView';
 import { AIConfigView } from '../../../AIConfig/AIConfigView';
-import { ExtensionManagerView } from '../ExtensionManagerView';
 import { ResizableDivider } from '../ResizableDivider';
 import { LanceDBView } from '../LanceDBView';
 import { TableDesigner } from '../TableDesigner';
@@ -31,6 +30,7 @@ import { AIChatPanel } from '../../AIChatPanel/AIChatPanel';
 import { MediaPanel } from '../../Sidebar/MediaPanel';
 import { TerminalSessionView } from '../../Panel/TerminalPanel/TerminalPanel';
 import type { TerminalSession } from '../../Panel/TerminalPanel/TerminalSession';
+import type { SettingsCategory } from '../../Sidebar/SettingsSidebar';
 import { htmlToMarkdown, markdownToHtml, isHtmlContent } from '../../../NoteEditor/utils/formatConverter';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { saveAndRemoveTableDataService } from '../../../../services/tableData';
@@ -48,15 +48,15 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'extension-manager' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat' | 'terminal';
-  isPreview?: boolean;  // 鏂板锛氭槸鍚︿负棰勮妯″紡锛堝崟鍑绘墦寮€锛?
-  sourceTabId?: string;  // 鏂板锛氶瑙堟爣绛鹃〉鍏宠仈鐨勬簮鏂囦欢鏍囩椤礗D
-  splitSourceTabId?: string;  // 分屏标签关联的源文件标签页 ID
-  knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 鐭ヨ瘑搴撴暟鎹紙鐢ㄤ簬 knowledge 绫诲瀷锛?
-  configId?: string;  // 鏂板锛欰I閰嶇疆ID锛堢敤浜?ai-config 绫诲瀷锛屼紭鍏堜娇鐢ㄦ瀛楁锛?
-  configIndex?: number;  // 宸插簾寮冿細AI閰嶇疆绱㈠紩锛堢敤浜?ai-config 绫诲瀷锛屼繚鐣欑敤浜庡悜鍚庡吋瀹癸級
-  mermaidData?: { code: string; title: string };  // Mermaid 娴佺▼鍥炬暟鎹紙鐢ㄤ簬 mermaid-designer 绫诲瀷锛?
-  formId?: string;  // 琛ㄥ崟ID锛堢敤浜?table-designer 绫诲瀷锛?
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat' | 'terminal';
+  isPreview?: boolean;  // 閺傛澘顤冮敍姘Ц閸氾缚璐熸０鍕潔濡€崇础閿涘牆宕熼崙缁樺ⅵ瀵偓閿?
+  sourceTabId?: string;  // 閺傛澘顤冮敍姘额暕鐟欏牊鐖ｇ粵楣冦€夐崗瀹犱粓閻ㄥ嫭绨弬鍥︽閺嶅洨顒锋い绀桪
+  splitSourceTabId?: string;  // 鍒嗗睆鏍囩鍏宠仈鐨勬簮鏂囦欢鏍囩椤?ID
+  knowledgeData?: { id: string; items: KnowledgeItem[]; description?: string };  // 閻儴鐦戞惔鎾存殶閹诡噯绱欓悽銊ょ艾 knowledge 缁鐎烽敍?
+  configId?: string;  // 閺傛澘顤冮敍娆癐闁板秶鐤咺D閿涘牏鏁ゆ禍?ai-config 缁鐎烽敍灞肩喘閸忓牅濞囬悽銊︻劃鐎涙顔岄敍?
+  configIndex?: number;  // 瀹告彃绨惧鍐跨窗AI闁板秶鐤嗙槐銏犵穿閿涘牏鏁ゆ禍?ai-config 缁鐎烽敍灞肩箽閻ｆ瑧鏁ゆ禍搴℃倻閸氬骸鍚嬬€圭櫢绱?
+  mermaidData?: { code: string; title: string };  // Mermaid 濞翠胶鈻奸崶鐐殶閹诡噯绱欓悽銊ょ艾 mermaid-designer 缁鐎烽敍?
+  formId?: string;  // 鐞涖劌宕烮D閿涘牏鏁ゆ禍?table-designer 缁鐎烽敍?
   decompositionRulesData?: {
     rules: Array<{
       id: string;
@@ -129,6 +129,10 @@ interface OpenTerminalTabDetail {
   accentColor?: string | null;
 }
 
+interface OpenSettingsDetail {
+  category?: SettingsCategory;
+}
+
 interface LastOpenedFileDescriptor {
   path?: string;
   content?: string;
@@ -184,16 +188,30 @@ const getMostRecentTabId = (history: string[], currentTabs: EditorTab[]): string
 
 const buildExtraSplitTabId = (paneId: string): string => `extra-split-${paneId}`;
 
+const scheduleSettingsNavigation = (category?: SettingsCategory): void => {
+  if (!category) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent<OpenSettingsDetail>('settings:navigate', {
+        detail: { category },
+      }));
+    });
+  });
+};
+
 export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   console.log('========================================');
-  console.log('[EditorArea 组件] 组件函数被调用（渲染）');
+  console.log('');
   console.log('========================================');
   
-  // 宸︿晶缂栬緫鍣ㄧ粍
+  // 瀹革缚鏅剁紓鏍帆閸ｃ劎绮?
   const [tabs, setTabs] = useState<EditorTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   
-  // 鍙充晶缂栬緫鍣ㄧ粍锛堢敤浜庡垎鍓茶鍥撅級
+  // 閸欏厖鏅剁紓鏍帆閸ｃ劎绮嶉敍鍫㈡暏娴滃骸鍨庨崜鑼额潒閸ユ拝绱?
   const [rightTabs, setRightTabs] = useState<EditorTab[]>([]);
   const [rightActiveTabId, setRightActiveTabId] = useState<string | null>(null);
   const [leftBottomTabs, setLeftBottomTabs] = useState<EditorTab[]>([]);
@@ -205,22 +223,22 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const [draggingTab, setDraggingTab] = useState<{ tabId: string; sourcePaneId: EditorPaneId } | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{ paneId: EditorPaneId; placement: PaneDropPlacement } | null>(null);
   
-  // 鍒嗗壊瑙嗗浘鏄惁婵€娲?
+  // 閸掑棗澹婄憴鍡楁禈閺勵垰鎯佸┑鈧ú?
   const [isSplitView, setIsSplitView] = useState(false);
   const [leftVerticalSplit, setLeftVerticalSplit] = useState(false);
   const [rightVerticalSplit, setRightVerticalSplit] = useState(false);
   
-  // 宸︿晶缂栬緫鍣ㄧ粍瀹藉害锛堝儚绱狅級
+  // 瀹革缚鏅剁紓鏍帆閸ｃ劎绮嶇€硅棄瀹抽敍鍫濆剼缁辩媴绱?
   const [leftWidth, setLeftWidth] = useState<number | null>(null);
   const [leftTopHeight, setLeftTopHeight] = useState<number | null>(null);
   const [rightTopHeight, setRightTopHeight] = useState<number | null>(null);
   const [rightColumnWidths, setRightColumnWidths] = useState<Record<string, number>>({});
   const [hasCustomizedHorizontalSplit, setHasCustomizedHorizontalSplit] = useState(false);
 
-  // 璺熻釜鍝簺閰嶇疆鏍囩椤垫湁鏈繚瀛樼殑鏇存敼
+  // 鐠虹喕閲滈崫顏冪昂闁板秶鐤嗛弽鍥╊劮妞ゅ灚婀侀張顏冪箽鐎涙娈戦弴瀛樻暭
   const [unsavedConfigTabs, setUnsavedConfigTabs] = useState<Set<string>>(new Set());
 
-  // 缂栬緫鍣ㄧ被鍨嬬姸鎬侊細'monaco' | 'codemirror'
+  // 缂傛牞绶崳銊ц閸ㄥ濮搁幀渚婄窗'monaco' | 'codemirror'
   const [editorType, setEditorType] = useState<'monaco' | 'codemirror'>('monaco');
   const editorGroupsRef = useRef<HTMLDivElement | null>(null);
   const previousTabsLengthRef = useRef<number>(0);
@@ -404,7 +422,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   }, [extraRightSplitPanes]);
 
   useEffect(() => {
-    // 仅在存在分屏状态时才尝试自动收敛，避免对普通单标签场景造成干扰
+    // 浠呭湪瀛樺湪鍒嗗睆鐘舵€佹椂鎵嶅皾璇曡嚜鍔ㄦ敹鏁涳紝閬垮厤瀵规櫘閫氬崟鏍囩鍦烘櫙閫犳垚骞叉壈
     if (!isSplitView && !leftVerticalSplit && !rightVerticalSplit && extraRightSplitPanes.length === 0) {
       return;
     }
@@ -745,7 +763,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
 
     if (tab.type !== 'file' && targetPaneId !== 'left-top') {
-      toastService.info('仅文件标签支持分屏移动');
+      toastService.info('');
       return;
     }
 
@@ -794,7 +812,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     pickNextActiveForPane
   ]);
 
-  // 澶勭悊鎵撳紑缂栬緫鍣ㄦ爣绛鹃〉
+  // 婢跺嫮鎮婇幍鎾崇磻缂傛牞绶崳銊︾垼缁涢箖銆?
   const handleOpenEditorTab = useCallback((event: Event) => {
     const customEvent = event as CustomEvent<{
       path?: string;
@@ -807,9 +825,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     if (!path) return;
 
     const resolvedType: EditorTab['type'] = type === 'ai-chat' ? 'ai-chat' : 'file';
-    console.log('[EditorArea] 打开编辑器标签页:', title, resolvedType);
+    console.log('[EditorArea] 鎵撳紑缂栬緫鍣ㄦ爣绛鹃〉:', title, resolvedType);
 
-    // 检查是否已经打开相同路径的标签页（四个分区都检查）
+    // 妫€鏌ユ槸鍚﹀凡缁忔墦寮€鐩稿悓璺緞鐨勬爣绛鹃〉锛堝洓涓垎鍖洪兘妫€鏌ワ級
     const existingTabResult = findPaneByPath(path, resolvedType);
     if (existingTabResult) {
       const { paneId, tab } = existingTabResult;
@@ -823,10 +841,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       return;
     }
 
-    // 创建新的标签页
+    // 鍒涘缓鏂扮殑鏍囩椤?
     const newTab: EditorTab = {
       id: `${resolvedType || 'editor'}-${Date.now()}`,
-      title: title || (resolvedType === 'ai-chat' ? '未选择模型' : '新文件'),
+      title: title || (resolvedType === 'ai-chat' ? '鏈€夋嫨妯″瀷' : ''),
       path,
       isDirty: false,
       language: resolvedType === 'file' ? (language || 'plaintext') : undefined,
@@ -869,7 +887,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     const newTab: EditorTab = {
       id: id || `terminal-tab-${Date.now()}`,
-      title: title || '终端',
+      title: title || '缁堢',
       path: resolvedPath,
       isDirty: false,
       type: 'terminal',
@@ -900,12 +918,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     });
   }, [disposeTabResources, getAllPaneTabsSnapshot]);
 
-  // 鐩戝惉鎻掑叆鏁版嵁搴撹〃鏍间簨浠讹紝璺宠浆鍒版枃浠剁紪杈戝櫒鏍囩椤?
+  // 閻╂垵鎯夐幓鎺戝弳閺佺増宓佹惔鎾广€冮弽闂寸皑娴犺绱濈捄瀹犳祮閸掔増鏋冩禒鍓佺椽鏉堟垵娅掗弽鍥╊劮妞?
   useEffect(() => {
     const handleInsertDatabaseTable = (event: Event) => {
       const customEvent = event as CustomEvent<{ focusEditor?: boolean }>;
       if (customEvent.detail?.focusEditor) {
-        // 鎵惧埌绗竴涓枃浠剁被鍨嬬殑鏍囩椤碉紙闈炶璁″櫒锛?
+        // 閹垫儳鍩岀粭顑跨娑擃亝鏋冩禒鍓佽閸ㄥ娈戦弽鍥╊劮妞ょ绱欓棃鐐额啎鐠佲€虫珤閿?
         const fileTab = tabs.find(t => t.type === 'file');
         if (fileTab) {
           setActiveTabId(fileTab.id);
@@ -919,7 +937,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, [tabs]);
 
-  // 鍔犺浇涓婃鎵撳紑鐨勬枃妗?
+  // 閸旂姾娴囨稉濠冾偧閹垫挸绱戦惃鍕瀮濡?
   useEffect(() => {
     const loadLastOpened = async () => {
       try {
@@ -945,39 +963,39 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         setTabs([newTab]);
         setActiveTabId(newTab.id);
       } catch (error) {
-        // 鍔犺浇涓婃鎵撳紑鐨勬枃浠跺け璐ワ紝闈欓粯澶勭悊
+        // 閸旂姾娴囨稉濠冾偧閹垫挸绱戦惃鍕瀮娴犺泛銇戠拹銉礉闂堟瑩绮径鍕倞
       }
     };
 
     loadLastOpened();
   }, []);
 
-  // 鐩戝惉鎵撳紑鏂囦欢浜嬩欢
+  // 閻╂垵鎯夐幍鎾崇磻閺傚洣娆㈡禍瀣╂
   useEffect(() => {
-    console.log('[EditorArea] ========== useEffect 寮€濮嬫敞鍐屼簨浠剁洃鍚櫒 ==========');
-    console.log('[EditorArea] 褰撳墠 tabs 鏁伴噺:', tabs.length);
+    console.log('[EditorArea] ========== useEffect 瀵偓婵鏁為崘灞肩皑娴犲墎娲冮崥顒€娅?==========');
+    console.log('[EditorArea] 瑜版挸澧?tabs 閺佷即鍣?', tabs.length);
     
     const handleOpenFile = async (event: Event) => {
       tabChangeReasonOverrideRef.current = 'open';
-      console.log('[EditorArea] ========== 鏀跺埌 open-file 浜嬩欢 ==========');
-      console.log('[EditorArea] 浜嬩欢绫诲瀷:', event.type);
-      console.log('[EditorArea] 浜嬩欢瀵硅薄:', event);
+      console.log('[EditorArea] ========== 閺€璺哄煂 open-file 娴滃娆?==========');
+      console.log('[EditorArea] 娴滃娆㈢猾璇茬€?', event.type);
+      console.log('[EditorArea] 娴滃娆㈢€电钖?', event);
       
       const customEvent = event as CustomEvent<{ 
         path?: string; 
         content?: string; 
         name?: string; 
         language?: string;
-        isPreview?: boolean;  // 鏂板锛氭槸鍚︿负棰勮妯″紡
-        lineNumber?: number;  // 鏂板锛氳瀹氫綅鐨勮鍙?
-        column?: number;      // 鏂板锛氳瀹氫綅鐨勫垪鍙?
+        isPreview?: boolean;  // 閺傛澘顤冮敍姘Ц閸氾缚璐熸０鍕潔濡€崇础
+        lineNumber?: number;  // 閺傛澘顤冮敍姘愁洣鐎规矮缍呴惃鍕攽閸?
+        column?: number;      // 閺傛澘顤冮敍姘愁洣鐎规矮缍呴惃鍕灙閸?
       }>;
       
-      console.log('[EditorArea] 浜嬩欢璇︽儏:', customEvent.detail);
-      console.log('[EditorArea] 璇︽儏绫诲瀷:', typeof customEvent.detail);
+      console.log('[EditorArea] 娴滃娆㈢拠锔藉剰:', customEvent.detail);
+      console.log('[EditorArea] 鐠囷附鍎忕猾璇茬€?', typeof customEvent.detail);
       
       if (customEvent.detail) {
-        // 浣跨敤鑷畾涔変簨浠朵腑鐨勬枃浠舵暟鎹?
+        // 娴ｈ法鏁ら懛顏勭暰娑斿绨ㄦ禒鏈佃厬閻ㄥ嫭鏋冩禒鑸垫殶閹?
         const { path, content, name, language, isPreview = false, lineNumber, column } = customEvent.detail;
         
         console.log('[EditorArea] Opening file:', {
@@ -1036,17 +1054,17 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           return;
         }
         
-        // 浣跨敤鍑芥暟寮忔洿鏂版潵璁块棶鏈€鏂扮殑 tabs 鐘舵€侊紝閬垮厤闂寘闂
+        // 娴ｈ法鏁ら崙鑺ユ殶瀵繑娲块弬鐗堟降鐠佸潡妫堕張鈧弬鎵畱 tabs 閻樿埖鈧緤绱濋柆鍨帳闂傤厼瀵橀梻顕€顣?
         setTabs(currentTabs => {
-          // 妫€鏌ユ槸鍚﹀凡缁忔墦寮€浜嗚鏂囦欢
+          // 濡偓閺屻儲妲搁崥锕€鍑＄紒蹇斿ⅵ瀵偓娴滃棜顕氶弬鍥︽
           const existingTab = currentTabs.find(tab => tab.path === path);
           
           if (existingTab) {
-            // 璁剧疆涓烘椿鍔ㄦ爣绛?
+            // 鐠佸墽鐤嗘稉鐑樻た閸斻劍鐖ｇ粵?
             setTimeout(() => setActiveTabId(existingTab.id), 0);
             
-            // 濡傛灉鏄弻鍑绘墦寮€锛堥潪棰勮锛夛紝灏嗛瑙堟爣绛捐浆涓哄浐瀹氭爣绛?
-            // 鍚屾椂鏇存柊鏍囩鐨勫唴瀹癸紙濡傛灉鎻愪緵浜嗭級
+            // 婵″倹鐏夐弰顖氬蓟閸戠粯澧﹀鈧敍鍫ユ姜妫板嫯顫嶉敍澶涚礉鐏忓棝顣╃憴鍫熺垼缁涙崘娴嗘稉鍝勬祼鐎规碍鐖ｇ粵?
+            // 閸氬本妞傞弴瀛樻煀閺嶅洨顒烽惃鍕敶鐎圭櫢绱欐俊鍌涚亯閹绘劒绶垫禍鍡礆
             if (!isPreview && existingTab.isPreview) {
               return currentTabs.map(tab => 
                 tab.id === existingTab.id 
@@ -1059,7 +1077,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   : tab
               );
             } else if (content !== undefined) {
-              // 鏇存柊鍐呭锛堝鏋滄彁渚涗簡鏂板唴瀹癸級
+              // 閺囧瓨鏌婇崘鍛啇閿涘牆顩ч弸婊勫絹娓氭稐绨￠弬鏉垮敶鐎圭櫢绱?
               return currentTabs.map(tab => 
                 tab.id === existingTab.id 
                   ? { 
@@ -1070,15 +1088,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   : tab
               );
             }
-            // 娌℃湁鍙樺寲锛岃繑鍥炲師鏁扮粍
+            // 濞屸剝婀侀崣妯哄閿涘矁绻戦崶鐐插斧閺佹壆绮?
             return currentTabs;
           }
           
-          // 濡傛灉鏄瑙堟ā寮忥紝鏇挎崲鐜版湁鐨勯瑙堟爣绛?
+          // 婵″倹鐏夐弰顖烆暕鐟欏牊膩瀵骏绱濋弴鎸庡床閻滅増婀侀惃鍕暕鐟欏牊鐖ｇ粵?
           if (isPreview) {
             const previewTab = currentTabs.find(tab => tab.isPreview);
             if (previewTab) {
-              // 鏇挎崲棰勮鏍囩
+              // 閺囨寧宕叉０鍕潔閺嶅洨顒?
               const newId = `file-${Date.now()}`;
               setTimeout(() => setActiveTabId(newId), 0);
               return currentTabs.map(tab => 
@@ -1096,7 +1114,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             }
           }
           
-          // 鍒涘缓鏂版爣绛?
+          // 閸掓稑缂撻弬鐗堢垼缁?
           const newTab: EditorTab = {
             id: `file-${Date.now()}`,
             title: name || 'Untitled',
@@ -1119,10 +1137,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           return [...currentTabs, newTab];
         });
         
-        // 闇€瑕佸湪鐘舵€佹洿鏂板悗鑾峰彇 existingTab.id 鎴?newTab.id 鏉ヨ缃椿鍔ㄦ爣绛?
-        // 鐢变簬鎴戜滑鍦ㄥ嚱鏁板紡鏇存柊涓棤娉曠洿鎺ヨ闂紝鎴戜滑浣跨敤 setTimeout 鍦ㄤ笂闈㈢殑浠ｇ爜涓缃?
+        // 闂団偓鐟曚礁婀悩鑸碘偓浣规纯閺傛澘鎮楅懢宄板絿 existingTab.id 閹?newTab.id 閺夈儴顔曠純顔芥た閸斻劍鐖ｇ粵?
+        // 閻㈠彉绨幋鎴滄粦閸︺劌鍤遍弫鏉跨础閺囧瓨鏌婃稉顓熸￥濞夋洜娲块幒銉問闂傤噯绱濋幋鎴滄粦娴ｈ法鏁?setTimeout 閸︺劋绗傞棃銏㈡畱娴狅絿鐖滄稉顓☆啎缂?
         
-        // 濡傛灉鎸囧畾浜嗚鍙凤紝瑙﹀彂瀹氫綅浜嬩欢
+        // 婵″倹鐏夐幐鍥х暰娴滃棜顢戦崣鍑ょ礉鐟欙箑褰傜€规矮缍呮禍瀣╂
         if (lineNumber) {
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent('editor-reveal-line', {
@@ -1131,7 +1149,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           }, 100);
         }
       } else {
-        // 鎵撳紑鏂囦欢瀵硅瘽妗嗭紙闈為瑙堟ā寮忥級
+        // 閹垫挸绱戦弬鍥︽鐎电鐦藉鍡礄闂堢偤顣╃憴鍫熌佸蹇ョ礆
         try {
           const result = await window.electron?.file?.open();
           if (result?.success && result.data) {
@@ -1164,13 +1182,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               return;
             }
             
-            // 浣跨敤鍑芥暟寮忔洿鏂?
+            // 娴ｈ法鏁ら崙鑺ユ殶瀵繑娲块弬?
             setTabs(currentTabs => {
-              // 妫€鏌ユ槸鍚﹀凡缁忔墦寮€浜嗚鏂囦欢
+              // 濡偓閺屻儲妲搁崥锕€鍑＄紒蹇斿ⅵ瀵偓娴滃棜顕氶弬鍥︽
               const existingTab = currentTabs.find(tab => tab.path === path);
               
               if (existingTab) {
-                // 鍥哄畾棰勮鏍囩
+                // 閸ュ搫鐣炬０鍕潔閺嶅洨顒?
                 if (existingTab.isPreview) {
                   setTimeout(() => setActiveTabId(existingTab.id), 0);
                   return currentTabs.map(tab => 
@@ -1196,7 +1214,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             });
           }
         } catch (error) {
-          // 鎵撳紑鏂囦欢澶辫触锛岄潤榛樺鐞?
+          // 閹垫挸绱戦弬鍥︽婢惰精瑙﹂敍宀勬饯姒涙ê顦╅悶?
         }
       }
     };
@@ -1299,26 +1317,35 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }
     };
 
-    const handleOpenSettings = () => {
-      // 浣跨敤鍑芥暟寮忔洿鏂版潵璁块棶鏈€鏂扮殑 tabs 鐘舵€?
+    const handleOpenSettings = (event?: Event) => {
+      const customEvent = event as CustomEvent<OpenSettingsDetail> | undefined;
+      const category = customEvent?.detail?.category;
+
+      // 娴ｈ法鏁ら崙鑺ユ殶瀵繑娲块弬鐗堟降鐠佸潡妫堕張鈧弬鎵畱 tabs 閻樿埖鈧?
       setTabs(currentTabs => {
-        // 妫€鏌ユ槸鍚﹀凡缁忔湁璁剧疆鏍囩椤?
+        // 濡偓閺屻儲妲搁崥锕€鍑＄紒蹇旀箒鐠佸墽鐤嗛弽鍥╊劮妞?
         const settingsTab = currentTabs.find(tab => tab.type === 'settings');
         
         if (settingsTab) {
-          // 濡傛灉宸插瓨鍦紝鐩存帴婵€娲?
-          setTimeout(() => setActiveTabId(settingsTab.id), 0);
+          // 婵″倹鐏夊鎻掔摠閸︻煉绱濋惄瀛樺复濠碘偓濞?
+          setTimeout(() => {
+            setActiveTabId(settingsTab.id);
+            scheduleSettingsNavigation(category);
+          }, 0);
           return currentTabs;
         } else {
-          // 鍚﹀垯鍒涘缓鏂扮殑璁剧疆鏍囩椤?
+          // 閸氾箑鍨崚娑樼紦閺傛壆娈戠拋鍓х枂閺嶅洨顒锋い?
           const newTab: EditorTab = {
             id: `settings-${Date.now()}`,
-            title: '璁剧疆',
+            title: '',
             path: 'settings:/',
             isDirty: false,
             type: 'settings'
           };
-          setTimeout(() => setActiveTabId(newTab.id), 0);
+          setTimeout(() => {
+            setActiveTabId(newTab.id);
+            scheduleSettingsNavigation(category);
+          }, 0);
           return [...currentTabs, newTab];
         }
       });
@@ -1334,7 +1361,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         } else {
           const newTab: EditorTab = {
             id: `media-${Date.now()}`,
-            title: '绱犳潗绠＄悊',
+            title: '缁辩姵娼楃粻锛勬倞',
             path: 'media:/',
             isDirty: false,
             type: 'media'
@@ -1345,42 +1372,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
-    const handleOpenExtensionManager = () => {
-      // 浣跨敤鍑芥暟寮忔洿鏂版潵璁块棶鏈€鏂扮殑 tabs 鐘舵€?
-      setTabs(currentTabs => {
-        // 妫€鏌ユ槸鍚﹀凡缁忔湁鎵╁睍绠＄悊鏍囩椤?
-        const extensionManagerTab = currentTabs.find(tab => tab.type === 'extension-manager');
-        
-        if (extensionManagerTab) {
-          // 濡傛灉宸插瓨鍦紝鐩存帴婵€娲?
-          setTimeout(() => setActiveTabId(extensionManagerTab.id), 0);
-          console.log('[EditorArea] 婵€娲荤幇鏈夋墿灞曠鐞嗘爣绛鹃〉');
-          return currentTabs;
-        } else {
-          // 鍚﹀垯鍒涘缓鏂扮殑鎵╁睍绠＄悊鏍囩椤?
-          const newTab: EditorTab = {
-            id: `extension-manager-${Date.now()}`,
-            title: '鎵╁睍绠＄悊',
-            path: 'extension-manager:/',
-            isDirty: false,
-            type: 'extension-manager'
-          };
-          setTimeout(() => setActiveTabId(newTab.id), 0);
-          console.log('[EditorArea] 创建新的扩展管理标签页');
-          return [...currentTabs, newTab];
-        }
-      });
-    };
-
     const handleOpenSettingsJson = (event: Event) => {
       const customEvent = event as CustomEvent<{ content: string }>;
       const jsonContent = customEvent.detail?.content || '{}';
       
-      // 妫€鏌ユ槸鍚﹀凡缁忔湁 settings.json 鏍囩椤?
+      // 濡偓閺屻儲妲搁崥锕€鍑＄紒蹇旀箒 settings.json 閺嶅洨顒锋い?
       const settingsJsonTab = tabs.find(tab => tab.path === 'settings:/settings.json');
       
       if (settingsJsonTab) {
-        // 濡傛灉宸插瓨鍦紝鏇存柊鍐呭骞舵縺娲?
+        // 婵″倹鐏夊鎻掔摠閸︻煉绱濋弴瀛樻煀閸愬懎顔愰獮鑸电负濞?
         setTabs(prev => prev.map(tab => 
           tab.path === 'settings:/settings.json' 
             ? { ...tab, content: jsonContent }
@@ -1388,13 +1388,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         ));
         setActiveTabId(settingsJsonTab.id);
       } else {
-        // 鍚﹀垯鍒涘缓鏂扮殑 settings.json 鏍囩椤?
+        // 閸氾箑鍨崚娑樼紦閺傛壆娈?settings.json 閺嶅洨顒锋い?
         const newTab: EditorTab = {
           id: `settings-json-${Date.now()}`,
           title: 'settings.json',
           path: 'settings:/settings.json',
           isDirty: false,
-          language: 'jsonc',  // 浣跨敤 jsonc 鏀寔娉ㄩ噴
+          language: 'jsonc',  // 娴ｈ法鏁?jsonc 閺€顖涘瘮濞夈劑鍣?
           content: jsonContent,
           type: 'file'
         };
@@ -1411,10 +1411,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }>;
       const { content, sourceTabId, title } = customEvent.detail;
       
-      // 鍦ㄥ彸渚х紪杈戝櫒缁勫垱寤洪瑙堟爣绛鹃〉
+      // 閸︺劌褰告笟褏绱潏鎴濇珤缂佸嫬鍨卞娲暕鐟欏牊鐖ｇ粵楣冦€?
       const previewTab: EditorTab = {
         id: `preview-${sourceTabId}`,
-        title: `棰勮 - ${title}`,
+        title: `妫板嫯顫?- ${title}`,
         path: `preview:/${sourceTabId}`,
         isDirty: false,
         language: 'markdown',
@@ -1423,22 +1423,22 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         sourceTabId: sourceTabId
       };
       
-      // 妫€鏌ュ彸渚ф槸鍚﹀凡鏈夎棰勮鏍囩
+      // 濡偓閺屻儱褰告笟褎妲搁崥锕€鍑￠張澶庮嚉妫板嫯顫嶉弽鍥╊劮
       const existingPreview = rightTabs.find(tab => tab.sourceTabId === sourceTabId);
       
       if (existingPreview) {
-        // 鏇存柊鍐呭
+        // 閺囧瓨鏌婇崘鍛啇
         setRightTabs(prev => prev.map(tab => 
           tab.id === existingPreview.id ? { ...tab, content } : tab
         ));
         setRightActiveTabId(existingPreview.id);
       } else {
-        // 鍒涘缓鏂伴瑙堟爣绛?
+        // 閸掓稑缂撻弬浼搭暕鐟欏牊鐖ｇ粵?
         setRightTabs(prev => [...prev, previewTab]);
         setRightActiveTabId(previewTab.id);
       }
       
-      // 婵€娲诲垎鍓茶鍥?
+      // 濠碘偓濞茶鍨庨崜鑼额潒閸?
       setIsSplitView(true);
     };
 
@@ -1452,7 +1452,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         } else {
           const newTab: EditorTab = {
             id: `lancedb-view-${Date.now()}`,
-            title: '鏌ョ湅鍒嗗潡鏁版嵁',
+            title: '',
             path: 'lancedb-view:/',
             isDirty: false,
             type: 'lancedb-view'
@@ -1463,13 +1463,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
-    // 鎵撳紑琛ㄦ牸璁捐鍣?
+    // 閹垫挸绱戠悰銊︾壐鐠佹崘顓搁崳?
     const handleOpenTableDesigner = (event: Event) => {
       const customEvent = event as CustomEvent<{ formId?: string; formName?: string; newTab?: boolean }>;
       const { formId, formName, newTab } = customEvent.detail || {};
       
       setTabs(currentTabs => {
-        // 濡傛灉鏈?formId锛屾鏌ユ槸鍚﹀凡缁忔墦寮€
+        // 婵″倹鐏夐張?formId閿涘本顥呴弻銉︽Ц閸氾箑鍑＄紒蹇斿ⅵ瀵偓
         if (formId && !newTab) {
           const existingTab = currentTabs.find(tab => tab.formId === formId);
           if (existingTab) {
@@ -1479,7 +1479,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         }
         
         const tabId = `table-designer-${formId || Date.now()}`;
-        const tabTitle = formName ? `表格 - ${formName}` : '表格设计器';
+        const tabTitle = formName ? `琛ㄦ牸 - ${formName}` : '琛ㄦ牸璁捐鍣?';
         const newTabItem: EditorTab = {
           id: tabId,
           title: tabTitle,
@@ -1493,7 +1493,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
-    // 鎵撳紑 Mermaid 娴佺▼鍥捐璁″櫒
+    // 閹垫挸绱?Mermaid 濞翠胶鈻奸崶鎹愵啎鐠佲€虫珤
     const handleOpenMermaidDesigner = (event: Event) => {
       const customEvent = event as CustomEvent<{ code: string; title: string }>;
       const { code, title } = customEvent.detail;
@@ -1501,7 +1501,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       setTabs(currentTabs => {
         const newTab: EditorTab = {
           id: `mermaid-designer-${Date.now()}`,
-          title: title || '娴佺▼鍥捐璁″櫒',
+          title: title || '濞翠胶鈻奸崶鎹愵啎鐠佲€虫珤',
           path: `mermaid-designer:/${Date.now()}`,
           isDirty: false,
           type: 'mermaid-designer',
@@ -1512,7 +1512,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       });
     };
 
-    // 鎵撳紑 Skills 甯傚満
+    // 閹垫挸绱?Skills 鐢倸婧€
     const handleOpenSkillsMarket = () => {
       setTabs(currentTabs => {
         const existingTab = currentTabs.find(tab => tab.type === 'skills-market');
@@ -1523,7 +1523,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         } else {
           const newTab: EditorTab = {
             id: `skills-market-${Date.now()}`,
-            title: 'Skills 甯傚満',
+            title: 'Skills 鐢倸婧€',
             path: 'skills-market:/',
             isDirty: false,
             type: 'skills-market'
@@ -1567,7 +1567,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
         const newTab: EditorTab = {
           id: `decomposition-rules-${Date.now()}`,
-          title: '鎷嗚В瑙勫垯绠＄悊',
+          title: '閹峰棜袙鐟欏嫬鍨粻锛勬倞',
           path: 'decomposition-rules:/',
           isDirty: false,
           type: 'decomposition-rules',
@@ -1594,7 +1594,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
         const newTab: EditorTab = {
           id: `prompt-management-${Date.now()}`,
-          title: '提示词管理',
+          title: '',
           path: 'prompt-management:/',
           isDirty: false,
           type: 'prompt-management',
@@ -1634,7 +1634,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('editor:replace-active-tab-content', handleReplaceActiveTabContent as EventListener);
     window.addEventListener('open-settings', handleOpenSettings);
     window.addEventListener('open-media-panel', handleOpenMediaPanel);
-    window.addEventListener('open-extension-manager', handleOpenExtensionManager);
     window.addEventListener('open-lancedb-view', handleOpenLanceDBView);
     window.addEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
     window.addEventListener('open-form-view', handleOpenTableDesigner as EventListener);
@@ -1646,12 +1645,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
     window.addEventListener('editor:update-active-tab-title', handleUpdateActiveTabTitle as EventListener);
     
-    console.log('[EditorArea] ========== 鎵€鏈変簨浠剁洃鍚櫒宸叉敞鍐?==========');
-    console.log('[EditorArea] open-file 鐩戝惉鍣?', handleOpenFile);
+    console.log('[EditorArea] ========== 閹碘偓閺堝绨ㄦ禒鍓佹磧閸氼剙娅掑鍙夋暈閸?==========');
+    console.log('[EditorArea] open-file 閻╂垵鎯夐崳?', handleOpenFile);
 
-    // 鐩戝惉鍏抽棴鎵€鏈夌紪杈戝櫒浜嬩欢
+    // 閻╂垵鎯夐崗鎶芥４閹碘偓閺堝绱潏鎴濇珤娴滃娆?
     const handleCloseAllEditors = () => {
-      console.log('[EditorArea] 关闭所有编辑器标签页');
+      console.log('');
       setTabs([]);
       setActiveTabId(null);
       setRightTabs([]);
@@ -1672,7 +1671,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
     window.addEventListener('close-all-editors', handleCloseAllEditors);
 
-    // 鐩戝惉鍒囨崲缂栬緫鍣ㄧ被鍨嬩簨浠?
+    // 閻╂垵鎯夐崚鍥ㄥ床缂傛牞绶崳銊ц閸ㄥ绨ㄦ禒?
     const handleToggleEditorType = () => {
       setEditorType(prev => {
         if (prev === 'monaco') return 'codemirror';
@@ -1681,7 +1680,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
     window.addEventListener('toggle-editor-type', handleToggleEditorType);
 
-    // 鐩戝惉璁剧疆缂栬緫鍣ㄧ被鍨嬩簨浠?
+    // 閻╂垵鎯夌拋鍓х枂缂傛牞绶崳銊ц閸ㄥ绨ㄦ禒?
     const handleSetEditorType = (event: Event) => {
       const customEvent = event as CustomEvent<'monaco' | 'codemirror'>;
       setEditorType(customEvent.detail);
@@ -1693,7 +1692,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('editor:replace-active-tab-content', handleReplaceActiveTabContent as EventListener);
       window.removeEventListener('open-settings', handleOpenSettings);
       window.removeEventListener('open-media-panel', handleOpenMediaPanel);
-      window.removeEventListener('open-extension-manager', handleOpenExtensionManager);
       window.removeEventListener('open-lancedb-view', handleOpenLanceDBView);
       window.removeEventListener('open-table-designer', handleOpenTableDesigner as EventListener);
       window.removeEventListener('open-form-view', handleOpenTableDesigner as EventListener);
@@ -1711,7 +1709,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 鐩戝惉琛ㄦ牸鍚嶇О鍙樻洿浜嬩欢锛堢嫭绔嬬殑 useEffect锛?
+  // 閻╂垵鎯夌悰銊︾壐閸氬秶袨閸欐ɑ娲挎禍瀣╂閿涘牏瀚粩瀣畱 useEffect閿?
   useEffect(() => {
     const handleTableNameChange = (event: Event) => {
       const customEvent = event as CustomEvent<{ formId: string; newName: string }>;
@@ -1721,7 +1719,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         setTabs(currentTabs => 
           currentTabs.map(tab => 
             tab.formId === formId 
-              ? { ...tab, title: `琛ㄦ牸 - ${newName}` }
+              ? { ...tab, title: `鐞涖劍鐗?- ${newName}` }
               : tab
           )
         );
@@ -1735,7 +1733,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 鐩戝惉鎵撳紑鐭ヨ瘑搴撲簨浠讹紙鐙珛鐨?useEffect锛屾棤渚濊禆锛?
+  // 閻╂垵鎯夐幍鎾崇磻閻儴鐦戞惔鎾茬皑娴犺绱欓悪顒傜彌閻?useEffect閿涘本妫ゆ笟婵婄閿?
   useEffect(() => {
     const handleOpenKnowledge = (event: Event) => {
       const customEvent = event as CustomEvent<{ 
@@ -1748,16 +1746,16 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       const { id, title, description, items } = customEvent.detail;
       
       setTabs(prev => {
-        // 鏌ユ壘鏄惁宸插瓨鍦ㄧ煡璇嗗簱绫诲瀷鐨勬爣绛鹃〉锛堜笉鍖哄垎 id锛?
+        // 閺屻儲澹橀弰顖氭儊瀹告彃鐡ㄩ崷銊х叀鐠囧棗绨辩猾璇茬€烽惃鍕垼缁涢箖銆夐敍鍫滅瑝閸栧搫鍨?id閿?
         const existingKnowledgeTab = prev.find(tab => tab.type === 'knowledge');
         
-        // 鏍囩椤垫爣棰樺彧鏄剧ず鐭ヨ瘑搴撳悕绉帮紝涓嶅寘鍚厤缃彉鍖栨彁绀?
-        const tabTitle = `鐭ヨ瘑搴?- ${title}`;
+        // 閺嶅洨顒锋い鍨垼妫版ê褰ч弰鍓с仛閻儴鐦戞惔鎾虫倳缁夊府绱濇稉宥呭瘶閸氼偊鍘ょ純顔煎綁閸栨牗褰佺粈?
+        const tabTitle = `閻儴鐦戞惔?- ${title}`;
         
         if (existingKnowledgeTab) {
-          // 濡傛灉宸插瓨鍦ㄧ煡璇嗗簱鏍囩椤碉紝鏇存柊鍏舵爣棰樺拰鏁版嵁
+          // 婵″倹鐏夊鎻掔摠閸︺劎鐓＄拠鍡楃氨閺嶅洨顒锋い纰夌礉閺囧瓨鏌婇崗鑸电垼妫版ê鎷伴弫鐗堝祦
           setActiveTabId(existingKnowledgeTab.id);
-          console.log('[EditorArea] 鏇存柊鐭ヨ瘑搴撴爣绛鹃〉:', tabTitle);
+          console.log('[EditorArea] 閺囧瓨鏌婇惌銉ㄧ槕鎼存挻鐖ｇ粵楣冦€?', tabTitle);
           return prev.map(tab => 
             tab.id === existingKnowledgeTab.id 
               ? { 
@@ -1769,7 +1767,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               : tab
           );
         } else {
-          // 鍒涘缓鏂扮殑鐭ヨ瘑搴撴爣绛鹃〉锛堥娆℃墦寮€锛?
+          // 閸掓稑缂撻弬鎵畱閻儴鐦戞惔鎾寸垼缁涢箖銆夐敍鍫ヮ浕濞嗏剝澧﹀鈧敍?
           const newTab: EditorTab = {
             id: `knowledge-${Date.now()}`,
             title: tabTitle,
@@ -1779,7 +1777,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             knowledgeData: { id, items, description }
           };
           setActiveTabId(newTab.id);
-          console.log('[EditorArea] 鍒涘缓鐭ヨ瘑搴撴爣绛鹃〉:', tabTitle);
+          console.log('[EditorArea] 閸掓稑缂撻惌銉ㄧ槕鎼存挻鐖ｇ粵楣冦€?', tabTitle);
           return [...prev, newTab];
         }
       });
@@ -1790,40 +1788,40 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('open-knowledge', handleOpenKnowledge as EventListener);
     };
-  }, []); // 鏃犱緷璧栵紝鍙敞鍐屼竴娆?
+  }, []); // 閺冪姳绶风挧鏍电礉閸欘亝鏁為崘灞肩濞?
 
-  // 鐩戝惉鍏抽棴鐭ヨ瘑搴撴爣绛鹃〉浜嬩欢
+  // 閻╂垵鎯夐崗鎶芥４閻儴鐦戞惔鎾寸垼缁涢箖銆夋禍瀣╂
   useEffect(() => {
     const handleCloseKnowledgeTab = (event: Event) => {
       const customEvent = event as CustomEvent<{ knowledgeId: string }>;
       const { knowledgeId } = customEvent.detail;
       
       setTabs(prev => {
-        // 鏌ユ壘鍖归厤鐨勭煡璇嗗簱鏍囩椤?
+        // 閺屻儲澹橀崠褰掑帳閻ㄥ嫮鐓＄拠鍡楃氨閺嶅洨顒锋い?
         const knowledgeTab = prev.find(
           tab => tab.type === 'knowledge' && 
                  (tab.knowledgeData?.id === knowledgeId || tab.path === `knowledge:/${knowledgeId}`)
         );
         
         if (knowledgeTab) {
-          console.log('[EditorArea] 鍏抽棴鐭ヨ瘑搴撴爣绛鹃〉:', knowledgeTab.title, '鐭ヨ瘑搴揑D:', knowledgeId);
+          console.log('[EditorArea] 閸忔娊妫撮惌銉ㄧ槕鎼存挻鐖ｇ粵楣冦€?', knowledgeTab.title, '閻儴鐦戞惔鎻慏:', knowledgeId);
           
-          // 绉婚櫎鐭ヨ瘑搴撴爣绛鹃〉
+          // 缁夊娅庨惌銉ㄧ槕鎼存挻鐖ｇ粵楣冦€?
           const remainingTabs = prev.filter(tab => tab.id !== knowledgeTab.id);
           
-          // 浣跨敤鍑芥暟寮忔洿鏂版潵鑾峰彇鏈€鏂扮殑 activeTabId
+          // 娴ｈ法鏁ら崙鑺ユ殶瀵繑娲块弬鐗堟降閼惧嘲褰囬張鈧弬鎵畱 activeTabId
           setActiveTabId(currentActiveTabId => {
-            // 濡傛灉鍏抽棴鐨勬槸褰撳墠娲诲姩鏍囩锛岄渶瑕佸垏鎹㈠埌鍏朵粬鏍囩
+            // 婵″倹鐏夐崗鎶芥４閻ㄥ嫭妲歌ぐ鎾冲濞茶濮╅弽鍥╊劮閿涘矂娓剁憰浣稿瀼閹广垹鍩岄崗鏈电铂閺嶅洨顒?
             if (currentActiveTabId === knowledgeTab.id) {
               if (remainingTabs.length > 0) {
-                // 鍒囨崲鍒版渶鍚庝竴涓爣绛鹃〉
+                // 閸掑洦宕查崚鐗堟付閸氬簼绔存稉顏呯垼缁涢箖銆?
                 return remainingTabs[remainingTabs.length - 1].id;
               } else {
-                // 娌℃湁鍏朵粬鏍囩椤典簡锛屾竻闄ゆ椿鍔ㄦ爣绛?
+                // 濞屸剝婀侀崗鏈电铂閺嶅洨顒锋い鍏哥啊閿涘本绔婚梽銈嗘た閸斻劍鐖ｇ粵?
                 return null;
               }
             }
-            // 涓嶆槸娲诲姩鏍囩锛屼繚鎸佸綋鍓嶆椿鍔ㄦ爣绛句笉鍙?
+            // 娑撳秵妲稿ú璇插З閺嶅洨顒烽敍灞肩箽閹镐礁缍嬮崜宥嗘た閸斻劍鐖ｇ粵鍙ョ瑝閸?
             return currentActiveTabId;
           });
           
@@ -1839,15 +1837,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('close-knowledge-tab', handleCloseKnowledgeTab as EventListener);
     };
-  }, []); // 鏃犱緷璧栵紝鍙敞鍐屼竴娆?
+  }, []); // 閺冪姳绶风挧鏍电礉閸欘亝鏁為崘灞肩濞?
 
-  // 淇鍑芥暟锛氬皢杩涘害涓?100% 浣嗙姸鎬佷粛涓?processing 鐨勬枃浠舵洿鏂颁负 completed
+  // 娣囶喖顦查崙鑺ユ殶閿涙艾鐨㈡潻娑樺娑?100% 娴ｅ棛濮搁幀浣风矝娑?processing 閻ㄥ嫭鏋冩禒鑸垫纯閺傞璐?completed
   const fixProcessingFilesWith100Percent = useCallback(async (knowledgeBase: KnowledgeItem): Promise<boolean> => {
     if (!knowledgeBase.children) {
       return false;
     }
     
-    // 閫掑綊鏌ユ壘鎵€鏈夐渶瑕佷慨澶嶇殑鏂囦欢锛堝寘鎷瓙鏂囦欢澶逛腑鐨勬枃浠讹級
+    // 闁帒缍婇弻銉﹀閹碘偓閺堝娓剁憰浣锋叏婢跺秶娈戦弬鍥︽閿涘牆瀵橀幏顒€鐡欓弬鍥︽婢堕€涜厬閻ㄥ嫭鏋冩禒璁圭礆
     const collectFilesToFix = (items: KnowledgeItem[]): KnowledgeItem[] => {
       const filesToFix: KnowledgeItem[] = [];
       for (const item of items) {
@@ -1867,7 +1865,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     const filesToFix = collectFilesToFix(knowledgeBase.children);
     
     if (filesToFix.length > 0) {
-      console.log('[EditorArea] 鍙戠幇闇€瑕佷慨澶嶇殑鏂囦欢锛坧rocessing 100%锛?', filesToFix.length);
+      console.log('[EditorArea] 閸欐垹骞囬棁鈧憰浣锋叏婢跺秶娈戦弬鍥︽閿涘潷rocessing 100%閿?', filesToFix.length);
       for (const file of filesToFix) {
         if (file.path) {
           try {
@@ -1876,18 +1874,18 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               'completed',
               100
             );
-            console.log('[EditorArea] 宸蹭慨澶嶆枃浠剁姸鎬?', file.title);
+            console.log('[EditorArea] 瀹歌弓鎱ㄦ径宥嗘瀮娴犲墎濮搁幀?', file.title);
           } catch (error) {
-            console.error('[EditorArea] 淇鏂囦欢鐘舵€佸け璐?', file.title, error);
+            console.error('[EditorArea] 娣囶喖顦查弬鍥︽閻樿埖鈧礁銇戠拹?', file.title, error);
           }
         }
       }
-      return true; // 琛ㄧず鏈夋枃浠惰淇
+      return true; // 鐞涖劎銇氶張澶嬫瀮娴犳儼顫︽穱顔碱槻
     }
-    return false; // 琛ㄧず娌℃湁鏂囦欢闇€瑕佷慨澶?
+    return false; // 鐞涖劎銇氬▽鈩冩箒閺傚洣娆㈤棁鈧憰浣锋叏婢?
   }, []);
 
-  // 缁勪欢鍒濆鍖栨椂妫€鏌ュ苟淇鎵€鏈夌煡璇嗗簱涓殑 processing 100% 鏂囦欢
+  // 缂佸嫪娆㈤崚婵嗩潗閸栨牗妞傚Λ鈧弻銉ヨ嫙娣囶喖顦查幍鈧張澶岀叀鐠囧棗绨辨稉顓犳畱 processing 100% 閺傚洣娆?
   useEffect(() => {
     const checkAndFixAllKnowledgeBases = async () => {
       try {
@@ -1902,63 +1900,63 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         }
         
         if (hasFixedAny) {
-          console.log('[EditorArea] 鍒濆鍖栨椂宸蹭慨澶嶆墍鏈夌煡璇嗗簱涓殑 processing 100% 鏂囦欢');
-          // 瑙﹀彂鐭ヨ瘑搴撴洿鏂颁簨浠朵互鍒锋柊UI
+          console.log('');
+          // 鐟欙箑褰傞惌銉ㄧ槕鎼存挻娲块弬棰佺皑娴犳湹浜掗崚閿嬫煀UI
           window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
             detail: { knowledgeId: 'all' }
           }));
         }
       } catch (error) {
-        console.error('[EditorArea] 鍒濆鍖栨鏌ョ煡璇嗗簱鏂囦欢鐘舵€佸け璐?', error);
+        console.error('[EditorArea] 閸掓繂顫愰崠鏍梾閺屻儳鐓＄拠鍡楃氨閺傚洣娆㈤悩鑸碘偓浣搞亼鐠?', error);
       }
     };
     
     checkAndFixAllKnowledgeBases();
   }, [fixProcessingFilesWith100Percent]);
 
-  // 鐩戝惉鐭ヨ瘑搴撴洿鏂颁簨浠讹紙鍒锋柊鐭ヨ瘑搴撴暟鎹級
+  // 閻╂垵鎯夐惌銉ㄧ槕鎼存挻娲块弬棰佺皑娴犺绱欓崚閿嬫煀閻儴鐦戞惔鎾存殶閹诡噯绱?
   useEffect(() => {
     const handleKnowledgeBaseUpdated = async (event: Event) => {
       const customEvent = event as CustomEvent<{ knowledgeId: string }>;
       const { knowledgeId } = customEvent.detail;
       
-      console.log('[EditorArea] 鐭ヨ瘑搴撳凡鏇存柊锛岄噸鏂板姞杞芥暟鎹?', knowledgeId);
+      console.log('[EditorArea] 閻儴鐦戞惔鎾冲嚒閺囧瓨鏌婇敍宀勫櫢閺傛澘濮炴潪鑺ユ殶閹?', knowledgeId);
       
-      // 閲嶆柊鍔犺浇鐭ヨ瘑搴撴暟鎹?
+      // 闁插秵鏌婇崝鐘烘祰閻儴鐦戞惔鎾存殶閹?
       const data = await knowledgeBaseService.loadFromStorage();
       
-      // 璋冭瘯锛氭鏌ユ暟鎹腑鏄惁鍖呭惈澶勭悊鐘舵€?
+      // 鐠嬪啳鐦敍姘梾閺屻儲鏆熼幑顔昏厬閺勵垰鎯侀崠鍛儓婢跺嫮鎮婇悩鑸碘偓?
       const knowledgeBase = data.created.find(kb => kb.id === knowledgeId);
       if (knowledgeBase && knowledgeBase.children) {
         const filesWithStatus = knowledgeBase.children.filter(
           (item: KnowledgeItem) => item.type === 'file' && item.metadata?.processingStatus
         );
-        console.log('[EditorArea] 鎵惧埌甯﹀鐞嗙姸鎬佺殑鏂囦欢:', filesWithStatus.length, filesWithStatus.map(item => ({
+        console.log('[EditorArea] 閹垫儳鍩岀敮锕€顦╅悶鍡欏Ц閹胶娈戦弬鍥︽:', filesWithStatus.length, filesWithStatus.map(item => ({
           title: item.title,
           status: item.metadata?.processingStatus,
           progress: item.metadata?.processingProgress
         })));
         
-        // 鑷姩淇锛氬皢杩涘害涓?100% 浣嗙姸鎬佷粛涓?processing 鐨勬枃浠舵洿鏂颁负 completed
+        // 閼奉亜濮╂穱顔碱槻閿涙艾鐨㈡潻娑樺娑?100% 娴ｅ棛濮搁幀浣风矝娑?processing 閻ㄥ嫭鏋冩禒鑸垫纯閺傞璐?completed
         const hasFixed = await fixProcessingFilesWith100Percent(knowledgeBase);
         if (hasFixed) {
-          // 閲嶆柊鍔犺浇鏁版嵁浠ュ弽鏄犱慨澶嶅悗鐨勭姸鎬?
+          // 闁插秵鏌婇崝鐘烘祰閺佺増宓佹禒銉ュ冀閺勭姳鎱ㄦ径宥呮倵閻ㄥ嫮濮搁幀?
           const fixedData = await knowledgeBaseService.loadFromStorage();
-          // 鏇存柊 data 寮曠敤
+          // 閺囧瓨鏌?data 瀵洜鏁?
           Object.assign(data, fixedData);
         }
       }
       
-      // 鏇存柊宸︿晶瀵瑰簲鐨勭煡璇嗗簱鏍囩椤垫暟鎹?
+      // 閺囧瓨鏌婂锔挎櫠鐎电懓绨查惃鍕叀鐠囧棗绨遍弽鍥╊劮妞ゅ灚鏆熼幑?
       setTabs(prev => {
         const updated = prev.map(tab => {
           if (tab.type === 'knowledge' && tab.knowledgeData?.id === knowledgeId) {
-            // 鏌ユ壘鐭ヨ瘑搴撻」锛岃幏鍙栫煡璇嗗簱鍚嶇О
+            // 閺屻儲澹橀惌銉ㄧ槕鎼存捇銆嶉敍宀冨箯閸欐牜鐓＄拠鍡楃氨閸氬秶袨
             const knowledgeBase = data.created.find(kb => kb.id === knowledgeId);
             const baseTitle = knowledgeBase?.title || '';
             const configChanged = knowledgeBase?.metadata?.configChanged;
-            // 鏍囩椤垫爣棰樺彧鏄剧ず鐭ヨ瘑搴撳悕绉帮紝涓嶅寘鍚厤缃彉鍖栨彁绀?
-            const newTitle = `鐭ヨ瘑搴?- ${baseTitle}`;
+            // 閺嶅洨顒锋い鍨垼妫版ê褰ч弰鍓с仛閻儴鐦戞惔鎾虫倳缁夊府绱濇稉宥呭瘶閸氼偊鍘ょ純顔煎綁閸栨牗褰佺粈?
+            const newTitle = `閻儴鐦戞惔?- ${baseTitle}`;
             
             const newTab = {
               ...tab,
@@ -1966,10 +1964,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               knowledgeData: {
                 id: knowledgeId,
                 items: data.created,
-                description: tab.knowledgeData?.description // 淇濈暀鍘熸湁鎻忚堪
+                description: tab.knowledgeData?.description // 娣囨繄鏆€閸樼喐婀侀幓蹇氬牚
               }
             };
-            console.log('[EditorArea] 鏇存柊宸︿晶鐭ヨ瘑搴撴爣绛鹃〉鏁版嵁:', {
+            console.log('[EditorArea] 閺囧瓨鏌婂锔挎櫠閻儴鐦戞惔鎾寸垼缁涢箖銆夐弫鐗堝祦:', {
               tabId: tab.id,
               knowledgeId,
               itemsCount: data.created.length,
@@ -1988,16 +1986,16 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         return updated;
       });
       
-      // 鏇存柊鍙充晶瀵瑰簲鐨勭煡璇嗗簱鏍囩椤垫暟鎹?
+      // 閺囧瓨鏌婇崣鍏呮櫠鐎电懓绨查惃鍕叀鐠囧棗绨遍弽鍥╊劮妞ゅ灚鏆熼幑?
       setRightTabs(prev => {
         const updated = prev.map(tab => {
           if (tab.type === 'knowledge' && tab.knowledgeData?.id === knowledgeId) {
-            // 鏌ユ壘鏇存柊鍚庣殑鐭ヨ瘑搴撴暟鎹?
+            // 閺屻儲澹橀弴瀛樻煀閸氬海娈戦惌銉ㄧ槕鎼存挻鏆熼幑?
             const updatedKnowledgeBase = data.created.find(kb => kb.id === knowledgeId);
             const baseTitle = updatedKnowledgeBase?.title || '';
             const configChanged = updatedKnowledgeBase?.metadata?.configChanged;
-            // 鏍囩椤垫爣棰樺彧鏄剧ず鐭ヨ瘑搴撳悕绉帮紝涓嶅寘鍚厤缃彉鍖栨彁绀?
-            const newTitle = `鐭ヨ瘑搴?- ${baseTitle}`;
+            // 閺嶅洨顒锋い鍨垼妫版ê褰ч弰鍓с仛閻儴鐦戞惔鎾虫倳缁夊府绱濇稉宥呭瘶閸氼偊鍘ょ純顔煎綁閸栨牗褰佺粈?
+            const newTitle = `閻儴鐦戞惔?- ${baseTitle}`;
             
             const newTab = {
               ...tab,
@@ -2005,10 +2003,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               knowledgeData: {
                 id: knowledgeId,
                 items: data.created,
-                description: tab.knowledgeData?.description // 淇濈暀鍘熸湁鎻忚堪
+                description: tab.knowledgeData?.description // 娣囨繄鏆€閸樼喐婀侀幓蹇氬牚
               }
             };
-            console.log('[EditorArea] 鏇存柊鍙充晶鐭ヨ瘑搴撴爣绛鹃〉鏁版嵁:', {
+            console.log('[EditorArea] 閺囧瓨鏌婇崣鍏呮櫠閻儴鐦戞惔鎾寸垼缁涢箖銆夐弫鐗堝祦:', {
               tabId: tab.id,
               knowledgeId,
               itemsCount: data.created.length,
@@ -2035,19 +2033,19 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, []);
 
-  // 鐩戝惉鎵撳紑 AI 閰嶇疆浜嬩欢锛堢嫭绔嬬殑 useEffect锛屾棤渚濊禆锛?
+  // 閻╂垵鎯夐幍鎾崇磻 AI 闁板秶鐤嗘禍瀣╂閿涘牏瀚粩瀣畱 useEffect閿涘本妫ゆ笟婵婄閿?
   useEffect(() => {
     const handleOpenAIConfig = async (event: Event) => {
       const customEvent = event as CustomEvent<{ configId?: string; configIndex?: number }>;
-      // 浼樺厛浣跨敤 configId锛屽鏋滄病鏈夊垯浣跨敤 configIndex锛堝悜鍚庡吋瀹癸級
+      // 娴兼ê鍘涙担璺ㄦ暏 configId閿涘苯顩ч弸婊勭梾閺堝鍨担璺ㄦ暏 configIndex閿涘牆鎮滈崥搴″悑鐎圭櫢绱?
       const configId = customEvent?.detail?.configId;
       const configIndex = customEvent?.detail?.configIndex;
       
-      console.log('[EditorArea] 鎵撳紑 AI 閰嶇疆锛岄厤缃甀D:', configId, '閰嶇疆绱㈠紩(搴熷純):', configIndex);
+      console.log('[EditorArea] 閹垫挸绱?AI 闁板秶鐤嗛敍宀勫帳缂冪攢D:', configId, '闁板秶鐤嗙槐銏犵穿(鎼寸喎绱?:', configIndex);
       
-      // 濡傛灉娌℃湁 configId锛屽皾璇曚粠 configIndex 鑾峰彇閰嶇疆淇℃伅
+      // 婵″倹鐏夊▽鈩冩箒 configId閿涘苯鐨剧拠鏇氱矤 configIndex 閼惧嘲褰囬柊宥囩枂娣団剝浼?
       let actualConfigId = configId;
-      let configName = 'AI 妯″瀷閰嶇疆';
+      let configName = 'AI 濡€崇€烽柊宥囩枂';
       
       if (!actualConfigId && configIndex !== undefined) {
         try {
@@ -2057,19 +2055,19 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             configName = configs[configIndex].name || configName;
           }
         } catch (error) {
-          console.error('[EditorArea] 浠庣储寮曡幏鍙栭厤缃甀D澶辫触:', error);
+          console.error('[EditorArea] 娴犲海鍌ㄥ鏇″箯閸欐牠鍘ょ純鐢€D婢惰精瑙?', error);
         }
       }
       
-      // 濡傛灉娌℃湁 configId 涔熸病鏈?configIndex锛屽垱寤烘柊閰嶇疆
+      // 婵″倹鐏夊▽鈩冩箒 configId 娑旂喐鐥呴張?configIndex閿涘苯鍨卞鐑樻煀闁板秶鐤?
       if (!actualConfigId) {
-        console.log('[EditorArea] 没有配置ID，创建新的 AI 配置标签页');
+        console.log('');
         const tempConfigId = `temp-config-${Date.now()}`;
         
         setTabs(prev => {
           const newTab: EditorTab = {
             id: `ai-config-${Date.now()}`,
-            title: '鏂板缓閰嶇疆',
+            title: '閺傛澘缂撻柊宥囩枂',
             path: `ai-config:/${tempConfigId}`,
             isDirty: false,
             type: 'ai-config',
@@ -2077,13 +2075,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           };
           
           setActiveTabId(newTab.id);
-          console.log('[EditorArea] 鍒涘缓鏂扮殑 AI 閰嶇疆鏍囩椤垫垚鍔燂紝鏍囩ID:', newTab.id);
+          console.log('[EditorArea] 閸掓稑缂撻弬鎵畱 AI 闁板秶鐤嗛弽鍥╊劮妞ゅ灚鍨氶崝鐕傜礉閺嶅洨顒稩D:', newTab.id);
           return [...prev, newTab];
         });
         return;
       }
       
-      // 鑾峰彇閰嶇疆淇℃伅锛堢敤浜庢爣棰橈級
+      // 閼惧嘲褰囬柊宥囩枂娣団剝浼呴敍鍫㈡暏娴滃孩鐖ｆ０姗堢礆
       if (configId && !configName) {
         try {
           const config = await window.electron?.ipcRenderer.invoke('ai-model:get', actualConfigId);
@@ -2091,38 +2089,38 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             configName = config.name;
           }
         } catch (error) {
-          console.error('[EditorArea] 鑾峰彇閰嶇疆鍚嶇О澶辫触:', error);
+          console.error('[EditorArea] 閼惧嘲褰囬柊宥囩枂閸氬秶袨婢惰精瑙?', error);
         }
       }
       
       setTabs(prev => {
-        // 鏌ユ壘鏄惁宸插瓨鍦ㄧ浉鍚宑onfigId鐨凙I閰嶇疆鏍囩椤?
+        // 閺屻儲澹橀弰顖氭儊瀹告彃鐡ㄩ崷銊ф祲閸氬畱onfigId閻ㄥ嚈I闁板秶鐤嗛弽鍥╊劮妞?
         const existingAIConfigTab = prev.find(tab => 
           tab.type === 'ai-config' && tab.configId === actualConfigId
         );
         
         if (existingAIConfigTab) {
-          // 濡傛灉宸插瓨鍦ㄧ浉鍚岀殑AI閰嶇疆鏍囩椤碉紝鐩存帴婵€娲诲畠
+          // 婵″倹鐏夊鎻掔摠閸︺劎娴夐崥宀€娈慉I闁板秶鐤嗛弽鍥╊劮妞ょ绱濋惄瀛樺复濠碘偓濞茶鐣?
           setActiveTabId(existingAIConfigTab.id);
-          console.log('[EditorArea] 婵€娲诲凡瀛樺湪鐨?AI 閰嶇疆鏍囩椤碉紝閰嶇疆ID:', actualConfigId, '鏍囩ID:', existingAIConfigTab.id);
-          return prev; // 涓嶄慨鏀?tabs
+          console.log('[EditorArea] 濠碘偓濞茶鍑＄€涙ê婀惃?AI 闁板秶鐤嗛弽鍥╊劮妞ょ绱濋柊宥囩枂ID:', actualConfigId, '閺嶅洨顒稩D:', existingAIConfigTab.id);
+          return prev; // 娑撳秳鎱ㄩ弨?tabs
         } else {
-          // 涓嶅瓨鍦ㄧ浉鍚岀殑AI閰嶇疆鏍囩椤碉紝鍒涘缓鏂扮殑
-          console.log('[EditorArea] 鍒涘缓鏂扮殑 AI 閰嶇疆鏍囩椤碉紝閰嶇疆ID:', actualConfigId, '閰嶇疆鍚嶇О:', configName);
+          // 娑撳秴鐡ㄩ崷銊ф祲閸氬瞼娈慉I闁板秶鐤嗛弽鍥╊劮妞ょ绱濋崚娑樼紦閺傛壆娈?
+          console.log('[EditorArea] 閸掓稑缂撻弬鎵畱 AI 闁板秶鐤嗛弽鍥╊劮妞ょ绱濋柊宥囩枂ID:', actualConfigId, '闁板秶鐤嗛崥宥囆?', configName);
           
           const tabPath = `ai-config:/${actualConfigId}`;
           const newTab: EditorTab = {
             id: `ai-config-${Date.now()}`,
-            title: `閰嶇疆 - ${configName}`,
+            title: `闁板秶鐤?- ${configName}`,
             path: tabPath,
             isDirty: false,
             type: 'ai-config',
             configId: actualConfigId,
-            configIndex // 淇濈暀鐢ㄤ簬鍚戝悗鍏煎
+            configIndex // 娣囨繄鏆€閻劋绨崥鎴濇倵閸忕厧顔?
           };
           
           setActiveTabId(newTab.id);
-          console.log('[EditorArea] 鍒涘缓鏂扮殑 AI 閰嶇疆鏍囩椤垫垚鍔燂紝鏍囩ID:', newTab.id);
+          console.log('[EditorArea] 閸掓稑缂撻弬鎵畱 AI 闁板秶鐤嗛弽鍥╊劮妞ゅ灚鍨氶崝鐕傜礉閺嶅洨顒稩D:', newTab.id);
           return [...prev, newTab];
         }
       });
@@ -2133,31 +2131,31 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('open-ai-config', handleOpenAIConfig as EventListener);
     };
-  }, []); // 鏃犱緷璧栵紝鍙敞鍐屼竴娆?
+  }, []); // 閺冪姳绶风挧鏍电礉閸欘亝鏁為崘灞肩濞?
 
-  // 鐩戝惉 AI 閰嶇疆淇濆瓨浜嬩欢锛屾洿鏂颁复鏃堕厤缃殑 ID
+  // 閻╂垵鎯?AI 闁板秶鐤嗘穱婵嗙摠娴滃娆㈤敍灞炬纯閺傞澶嶉弮鍫曞帳缂冾喚娈?ID
   useEffect(() => {
     const handleAIConfigSaved = (event: Event) => {
       const customEvent = event as CustomEvent<{ tempId: string; realId: string; configName: string }>;
       const { tempId, realId, configName } = customEvent.detail;
       
-      console.log('[EditorArea] 鏀跺埌 AI 閰嶇疆淇濆瓨浜嬩欢锛屾洿鏂颁复鏃堕厤缃甀D:', { tempId, realId, configName });
+      console.log('[EditorArea] 閺€璺哄煂 AI 闁板秶鐤嗘穱婵嗙摠娴滃娆㈤敍灞炬纯閺傞澶嶉弮鍫曞帳缂冪攢D:', { tempId, realId, configName });
       
       setTabs(prev => {
         return prev.map(tab => {
           if (tab.type === 'ai-config' && tab.configId === tempId) {
-            console.log('[EditorArea] 鏇存柊鏍囩椤?configId:', { oldId: tempId, newId: realId });
+            console.log('[EditorArea] 閺囧瓨鏌婇弽鍥╊劮妞?configId:', { oldId: tempId, newId: realId });
             return {
               ...tab,
               configId: realId,
-              title: `閰嶇疆 - ${configName}`
+              title: `闁板秶鐤?- ${configName}`
             };
           }
           return tab;
         });
       });
       
-      // 浠庢湭淇濆瓨鍒楄〃涓Щ闄わ紙浣跨敤鏂扮殑 realId锛?
+      // 娴犲孩婀穱婵嗙摠閸掓銆冩稉顓犘╅梽銈忕礄娴ｈ法鏁ら弬鎵畱 realId閿?
       setUnsavedConfigTabs(prev => {
         const newSet = new Set(prev);
         newSet.delete(tempId);
@@ -2170,13 +2168,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => window.removeEventListener('ai-config-saved', handleAIConfigSaved as EventListener);
   }, []);
 
-  // 鐩戝惉 AI 閰嶇疆鏈繚瀛樼姸鎬佸彉鍖?
+  // 閻╂垵鎯?AI 闁板秶鐤嗛張顏冪箽鐎涙濮搁幀浣稿綁閸?
   useEffect(() => {
     const handleUnsavedStatus = (event: Event) => {
       const customEvent = event as CustomEvent<{ configId: string; hasUnsavedChanges: boolean }>;
       const { configId, hasUnsavedChanges } = customEvent.detail;
       
-      console.log('[EditorArea] 鏀跺埌 AI 閰嶇疆鏈繚瀛樼姸鎬?', { configId, hasUnsavedChanges });
+      console.log('[EditorArea] 閺€璺哄煂 AI 闁板秶鐤嗛張顏冪箽鐎涙濮搁幀?', { configId, hasUnsavedChanges });
       
       setUnsavedConfigTabs(prev => {
         const newSet = new Set(prev);
@@ -2193,44 +2191,44 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return () => window.removeEventListener('ai-config-unsaved-status', handleUnsavedStatus as EventListener);
   }, []);
 
-  // 鐩戝惉 AI 閰嶇疆鏇存柊浜嬩欢锛屾洿鏂版爣绛鹃〉鏍囬锛堢嫭绔嬬殑 useEffect锛屾棤渚濊禆锛?
+  // 閻╂垵鎯?AI 闁板秶鐤嗛弴瀛樻煀娴滃娆㈤敍灞炬纯閺傜増鐖ｇ粵楣冦€夐弽鍥暯閿涘牏瀚粩瀣畱 useEffect閿涘本妫ゆ笟婵婄閿?
   useEffect(() => {
     const handleAIConfigUpdated = async () => {
       try {
-        console.log('[EditorArea] 鏀跺埌 AI 閰嶇疆鏇存柊浜嬩欢锛屽紑濮嬫洿鏂版爣绛鹃〉鏍囬');
+        console.log('[EditorArea] 閺€璺哄煂 AI 闁板秶鐤嗛弴瀛樻煀娴滃娆㈤敍灞界磻婵娲块弬鐗堢垼缁涢箖銆夐弽鍥暯');
         
-        // 鑾峰彇鏈€鏂扮殑閰嶇疆鍒楄〃
+        // 閼惧嘲褰囬張鈧弬鎵畱闁板秶鐤嗛崚妤勩€?
         const configs = await window.electron?.ipcRenderer.invoke('ai-model:list');
         if (!configs || configs.length === 0) {
-          console.log('[EditorArea] 未获取到配置列表，跳过标题更新');
+          console.log('');
           return;
         }
         
-        // 鍒涘缓閰嶇疆ID鍒伴厤缃璞＄殑鏄犲皠
+        // 閸掓稑缂撻柊宥囩枂ID閸掍即鍘ょ純顔碱嚠鐠烇紕娈戦弰鐘茬殸
         const configMap = new Map<string, { id: string; name: string }>(
           configs.map((c: { id: string; name: string }) => [c.id, c])
         );
         
-        // 鏇存柊鎵€鏈?AI 閰嶇疆鏍囩椤电殑鏍囬
+        // 閺囧瓨鏌婇幍鈧張?AI 闁板秶鐤嗛弽鍥╊劮妞ょ數娈戦弽鍥暯
         setTabs(prev => {
           const updated = prev.map(tab => {
             if (tab.type === 'ai-config') {
-              // 浼樺厛浣跨敤 configId
+              // 娴兼ê鍘涙担璺ㄦ暏 configId
               if (tab.configId) {
                 const config = configMap.get(tab.configId);
                 if (config?.name) {
-                  const newTitle = `閰嶇疆 - ${config.name}`;
-                  console.log('[EditorArea] 鏇存柊鏍囩椤垫爣棰?閫氳繃configId):', { oldTitle: tab.title, newTitle, configId: tab.configId });
+                  const newTitle = `闁板秶鐤?- ${config.name}`;
+                  console.log('[EditorArea] 閺囧瓨鏌婇弽鍥╊劮妞ゅ灚鐖ｆ０?闁俺绻僣onfigId):', { oldTitle: tab.title, newTitle, configId: tab.configId });
                   return { ...tab, title: newTitle };
                 }
               } 
-              // 鍚戝悗鍏煎锛氬鏋滄病鏈?configId锛屼娇鐢?configIndex
+              // 閸氭垵鎮楅崗鐓庮啇閿涙艾顩ч弸婊勭梾閺?configId閿涘奔濞囬悽?configIndex
               else if (tab.configIndex !== undefined) {
                 const config = configs[tab.configIndex];
                 if (config?.name) {
-                  const newTitle = `閰嶇疆 - ${config.name}`;
-                  console.log('[EditorArea] 鏇存柊鏍囩椤垫爣棰?閫氳繃configIndex):', { oldTitle: tab.title, newTitle, configIndex: tab.configIndex });
-                  // 鍚屾椂鏇存柊 configId 浠ヤ究鍚庣画浣跨敤
+                  const newTitle = `闁板秶鐤?- ${config.name}`;
+                  console.log('[EditorArea] 閺囧瓨鏌婇弽鍥╊劮妞ゅ灚鐖ｆ０?闁俺绻僣onfigIndex):', { oldTitle: tab.title, newTitle, configIndex: tab.configIndex });
+                  // 閸氬本妞傞弴瀛樻煀 configId 娴犮儰绌堕崥搴ｇ敾娴ｈ法鏁?
                   return { ...tab, title: newTitle, configId: config.id };
                 }
               }
@@ -2240,15 +2238,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           return updated;
         });
         
-        console.log('[EditorArea] AI 配置标签页标题更新完成');
+        console.log('');
       } catch (error) {
-        console.error('[EditorArea] 鏇存柊 AI 閰嶇疆鏍囩椤垫爣棰樺け璐?', error);
+        console.error('[EditorArea] 閺囧瓨鏌?AI 闁板秶鐤嗛弽鍥╊劮妞ゅ灚鐖ｆ０妯恒亼鐠?', error);
       }
     };
 
     window.addEventListener('ai-config-updated', handleAIConfigUpdated);
     
-    // 鐩戝惉 IPC 娑堟伅锛堢敤浜庝富杩涚▼閫氱煡鐨勬洿鏂帮級
+    // 閻╂垵鎯?IPC 濞戝牊浼呴敍鍫㈡暏娴滃簼瀵屾潻娑氣柤闁氨鐓￠惃鍕纯閺傚府绱?
     const ipcRenderer = window.electron?.ipcRenderer;
     if (ipcRenderer) {
       ipcRenderer.on('ai-model-config-updated', handleAIConfigUpdated);
@@ -2260,9 +2258,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         ipcRenderer.removeListener('ai-model-config-updated', handleAIConfigUpdated);
       }
     };
-  }, []); // 鏃犱緷璧栵紝鍙敞鍐屼竴娆?
+  }, []); // 閺冪姳绶风挧鏍电礉閸欘亝鏁為崘灞肩濞?
 
-  // 褰撴椿鍔ㄦ爣绛炬敼鍙樻椂锛岄€氱煡鏂囦欢鏍戞洿鏂伴€変腑鐘舵€?
+  // 瑜版挻妞块崝銊︾垼缁涚偓鏁奸崣妯绘閿涘矂鈧氨鐓￠弬鍥︽閺嶆垶娲块弬浼粹偓澶夎厬閻樿埖鈧?
   useEffect(() => {
     const activeTab = tabs.find(tab => tab.id === activeTabId);
     const previousTabsLength = previousTabsLengthRef.current;
@@ -2299,7 +2297,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }));
     
     if (activeTab && activeTab.type === 'file' && activeTab.path) {
-      // 娲惧彂鑷畾涔変簨浠讹紝閫氱煡鏂囦欢鏍戝綋鍓嶆縺娲荤殑鏂囦欢
+      // 濞叉儳褰傞懛顏勭暰娑斿绨ㄦ禒璁圭礉闁氨鐓￠弬鍥︽閺嶆垵缍嬮崜宥嗙负濞茶崵娈戦弬鍥︽
       window.dispatchEvent(new CustomEvent('editor-active-file-change', {
         detail: { path: activeTab.path }
       }));
@@ -2311,7 +2309,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
-  // 褰撴椿鍔ㄦ爣绛鹃〉鍙樺寲鏃讹紝閫氱煡鐘舵€佹爮鏇存柊璇█绫诲瀷
+  // 瑜版挻妞块崝銊︾垼缁涢箖銆夐崣妯哄閺冭绱濋柅姘辩叀閻樿埖鈧焦鐖弴瀛樻煀鐠囶叀鈻堢猾璇茬€?
   useEffect(() => {
     if (activeTab?.language) {
       const event = new CustomEvent('tab:language-changed', {
@@ -2321,28 +2319,28 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
   }, [activeTab?.language, activeTabId]);
 
-  // 澶勭悊鏍囩椤靛垏鎹?
+  // 婢跺嫮鎮婇弽鍥╊劮妞ら潧鍨忛幑?
   const handleTabClick = (tabId: string) => {
     tabChangeReasonOverrideRef.current = 'switch';
     setActiveTabId(tabId);
     setFocusedPaneId('left-top');
     
-    // 閫氱煡 FileExplorer 鏇存柊閫変腑鐘舵€侊紙浠呴拡瀵规枃浠剁被鍨嬬殑鏍囩椤碉級
+    // 闁氨鐓?FileExplorer 閺囧瓨鏌婇柅澶夎厬閻樿埖鈧緤绱欐禒鍛存嫛鐎佃鏋冩禒鍓佽閸ㄥ娈戦弽鍥╊劮妞ょ绱?
     const clickedTab = tabs.find(tab => tab.id === tabId);
     if (clickedTab?.type === 'file' && clickedTab?.path) {
       window.dispatchEvent(new CustomEvent('tab-switched', {
         detail: { path: clickedTab.path }
       }));
-      console.log('[EditorArea] 鏍囩椤靛垏鎹?', clickedTab.path);
+      console.log('[EditorArea] 閺嶅洨顒锋い闈涘瀼閹?', clickedTab.path);
     }
     
-    // 濡傛灉鏄〃鏍艰璁″櫒鏍囩椤碉紝閫氱煡渚ц竟鏍忔洿鏂拌〃鍗曢€変腑鐘舵€?
+    // 婵″倹鐏夐弰顖濄€冮弽鑹邦啎鐠佲€虫珤閺嶅洨顒锋い纰夌礉闁氨鐓℃笟褑绔熼弽蹇旀纯閺傛媽銆冮崡鏇⑩偓澶夎厬閻樿埖鈧?
     if (clickedTab?.type === 'table-designer' && clickedTab?.formId) {
       window.dispatchEvent(new CustomEvent('form-tab-activated', {
         detail: { formId: clickedTab.formId }
       }));
     } else {
-      // 闈炶〃鏍艰璁″櫒鏍囩椤碉紝娓呴櫎琛ㄥ崟閫変腑鐘舵€?
+      // 闂堢偠銆冮弽鑹邦啎鐠佲€虫珤閺嶅洨顒锋い纰夌礉濞撳懘娅庣悰銊ュ礋闁鑵戦悩鑸碘偓?
       window.dispatchEvent(new Event('form-tab-deactivated'));
     }
   };
@@ -2393,7 +2391,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       return;
     }
 
-    toastService.info('暂不支持在新窗口打开，已为你在右侧分屏打开');
+    toastService.info('鏆備笉鏀寔鍦ㄦ柊绐楀彛鎵撳紑锛屽凡涓轰綘鍦ㄥ彸渚у垎灞忔墦寮€');
     handleSplitHorizontal(tabId);
   };
 
@@ -2402,20 +2400,20 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     const closingTab = tabs.find(tab => tab.id === tabId);
     disposeTabResources(closingTab);
     
-    // 濡傛灉鏄?AI 閰嶇疆鏍囩椤碉紝妫€鏌ユ槸鍚︽湁鏈繚瀛樼殑鏇存敼
+    // 婵″倹鐏夐弰?AI 闁板秶鐤嗛弽鍥╊劮妞ょ绱濆Λ鈧弻銉︽Ц閸氾附婀侀張顏冪箽鐎涙娈戦弴瀛樻暭
     if (closingTab?.type === 'ai-config' && closingTab.configId) {
       if (unsavedConfigTabs.has(closingTab.configId)) {
-        // 鏄剧ず纭瀵硅瘽妗?
+        // 閺勫墽銇氱涵顔款吇鐎电鐦藉?
         const confirmed = window.confirm(
-          '您有未保存的更改，关闭后将丢失。\n\n确定要关闭吗？'
+          '鎮ㄦ湁鏈繚瀛樼殑鏇存敼锛屽叧闂悗灏嗕涪澶便€俓n\n纭畾瑕佸叧闂悧锛?'
         );
         
         if (!confirmed) {
-          console.log('[EditorArea] 鐢ㄦ埛鍙栨秷鍏抽棴鏈繚瀛樼殑閰嶇疆');
-          return; // 鐢ㄦ埛鍙栨秷鍏抽棴
+          console.log('[EditorArea] 閻劍鍩涢崣鏍ㄧХ閸忔娊妫撮張顏冪箽鐎涙娈戦柊宥囩枂');
+          return; // 閻劍鍩涢崣鏍ㄧХ閸忔娊妫?
         }
         
-        // 鐢ㄦ埛纭鍏抽棴锛屼粠鏈繚瀛樺垪琛ㄤ腑绉婚櫎
+        // 閻劍鍩涚涵顔款吇閸忔娊妫撮敍灞肩矤閺堫亙绻氱€涙ê鍨悰銊よ厬缁夊娅?
         setUnsavedConfigTabs(prev => {
           const newSet = new Set(prev);
           newSet.delete(closingTab.configId!);
@@ -2424,13 +2422,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }
     }
     
-    // 濡傛灉鏄〃鏍艰璁″櫒鏍囩椤碉紝鑷姩淇濆瓨鏁版嵁
+    // 婵″倹鐏夐弰顖濄€冮弽鑹邦啎鐠佲€虫珤閺嶅洨顒锋い纰夌礉閼奉亜濮╂穱婵嗙摠閺佺増宓?
     if (closingTab?.type === 'table-designer' && closingTab.formId) {
       saveAndRemoveTableDataService(closingTab.formId).then(success => {
         if (success) {
-          console.log('[EditorArea] 琛ㄦ牸鏁版嵁鑷姩淇濆瓨鎴愬姛:', closingTab.formId);
+          console.log('[EditorArea] 鐞涖劍鐗搁弫鐗堝祦閼奉亜濮╂穱婵嗙摠閹存劕濮?', closingTab.formId);
         } else {
-          console.warn('[EditorArea] 琛ㄦ牸鏁版嵁鑷姩淇濆瓨澶辫触:', closingTab.formId);
+          console.warn('[EditorArea] 鐞涖劍鐗搁弫鐗堝祦閼奉亜濮╂穱婵嗙摠婢惰精瑙?', closingTab.formId);
         }
       });
     }
@@ -2440,21 +2438,21 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     tabActivationHistoryRef.current = nextTabHistory;
     setTabs(newTabs);
     
-    // 閫氱煡 FileExplorer 绉婚櫎瀵瑰簲鐨勭紪杈戝櫒锛堜粎閽堝鏂囦欢绫诲瀷鐨勬爣绛鹃〉锛?
+    // 闁氨鐓?FileExplorer 缁夊娅庣€电懓绨查惃鍕椽鏉堟垵娅掗敍鍫滅矌闁藉牆顕弬鍥︽缁鐎烽惃鍕垼缁涢箖銆夐敍?
     if (closingTab?.type === 'file' && closingTab?.path) {
       window.dispatchEvent(new CustomEvent('remove-editor', {
         detail: { path: closingTab.path }
       }));
-      console.log('[EditorArea] 閫氱煡 FileExplorer 绉婚櫎缂栬緫鍣?', closingTab.path);
+      console.log('[EditorArea] 闁氨鐓?FileExplorer 缁夊娅庣紓鏍帆閸?', closingTab.path);
     }
     
-    // 濡傛灉鍏抽棴鐨勬槸 AI 閰嶇疆鏍囩椤碉紝閫氱煡渚ц竟鏍忔竻闄ら€変腑鐘舵€?
+    // 婵″倹鐏夐崗鎶芥４閻ㄥ嫭妲?AI 闁板秶鐤嗛弽鍥╊劮妞ょ绱濋柅姘辩叀娓氀嗙珶閺嶅繑绔婚梽銈夆偓澶夎厬閻樿埖鈧?
     if (closingTab?.type === 'ai-config') {
       window.dispatchEvent(new Event('ai-config-tab-closed'));
-      console.log('[EditorArea] AI 閰嶇疆鏍囩椤靛凡鍏抽棴');
+      console.log('[EditorArea] AI 闁板秶鐤嗛弽鍥╊劮妞ら潧鍑￠崗鎶芥４');
     }
     
-    // 濡傛灉鍏抽棴鐨勬槸琛ㄦ牸璁捐鍣ㄦ爣绛鹃〉锛岄€氱煡渚ц竟鏍忔竻闄よ〃鍗曢€変腑鐘舵€?
+    // 婵″倹鐏夐崗鎶芥４閻ㄥ嫭妲哥悰銊︾壐鐠佹崘顓搁崳銊︾垼缁涢箖銆夐敍宀勨偓姘辩叀娓氀嗙珶閺嶅繑绔婚梽銈堛€冮崡鏇⑩偓澶夎厬閻樿埖鈧?
     if (closingTab?.type === 'table-designer') {
       window.dispatchEvent(new CustomEvent('form-tab-closed', {
         detail: { formId: closingTab.formId }
@@ -2465,7 +2463,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       const nextActiveTabId = getMostRecentTabId(nextTabHistory, newTabs);
       setActiveTabId(nextActiveTabId);
       
-      // 閫氱煡 FileExplorer 鏇存柊閫変腑鐘舵€佸埌涓嬩竴涓爣绛鹃〉
+      // 闁氨鐓?FileExplorer 閺囧瓨鏌婇柅澶夎厬閻樿埖鈧礁鍩屾稉瀣╃娑擃亝鐖ｇ粵楣冦€?
       const nextTab = nextActiveTabId
         ? newTabs.find(tab => tab.id === nextActiveTabId)
         : null;
@@ -2473,11 +2471,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         window.dispatchEvent(new CustomEvent('tab-switched', {
           detail: { path: nextTab.path }
         }));
-        console.log('[EditorArea] 鍏抽棴鍚庡垏鎹㈠埌涓嬩竴涓爣绛鹃〉:', nextTab.path);
+        console.log('[EditorArea] 閸忔娊妫撮崥搴″瀼閹广垹鍩屾稉瀣╃娑擃亝鐖ｇ粵楣冦€?', nextTab.path);
       }
     }
     
-    // 鍏抽棴婧愭枃妗ｆ椂锛屽悓鏃跺叧闂搴旂殑棰勮鏍囩椤?
+    // 閸忔娊妫村┃鎰瀮濡楋絾妞傞敍灞芥倱閺冭泛鍙ч梻顓烆嚠鎼存梻娈戞０鍕潔閺嶅洨顒锋い?
     const newRightTabs = rightTabs.filter(
       tab => tab.sourceTabId !== tabId && tab.splitSourceTabId !== tabId
     );
@@ -2491,14 +2489,14 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       rightTabActivationHistoryRef.current = nextRightHistory;
       setRightTabs(newRightTabs);
       
-      // 濡傛灉鍏抽棴鐨勯瑙堟爣绛炬槸褰撳墠婵€娲荤殑锛屽垏鎹㈠埌绗竴涓?
+      // 婵″倹鐏夐崗鎶芥４閻ㄥ嫰顣╃憴鍫熺垼缁涚偓妲歌ぐ鎾冲濠碘偓濞茶崵娈戦敍灞藉瀼閹广垹鍩岀粭顑跨娑?
       if (rightActiveTabId && !newRightTabs.find(tab => tab.id === rightActiveTabId)) {
         const nextRightActiveTabId = getMostRecentTabId(nextRightHistory, newRightTabs);
         if (nextRightActiveTabId) {
           setRightActiveTabId(nextRightActiveTabId);
         } else {
           setRightActiveTabId(null);
-          // 鍙充晶娌℃湁鏍囩椤典簡锛屽叧闂垎鍓茶鍥?
+          // 閸欏厖鏅跺▽鈩冩箒閺嶅洨顒锋い鍏哥啊閿涘苯鍙ч梻顓炲瀻閸撹尪顫嬮崶?
           if (rightBottomTabs.length === 0 && extraRightSplitPanes.length === 0) {
             setIsSplitView(false);
           }
@@ -2522,7 +2520,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }
     } else if (newRightTabs.length === 0 && rightBottomTabs.length === 0 && extraRightSplitPanes.length === 0) {
       setRightActiveTabId(null);
-      // 鍙充晶娌℃湁鏍囩椤典簡锛屽叧闂垎鍓茶鍥?
+      // 閸欏厖鏅跺▽鈩冩箒閺嶅洨顒锋い鍏哥啊閿涘苯鍙ч梻顓炲瀻閸撹尪顫嬮崶?
       setIsSplitView(false);
     }
   };
@@ -2753,7 +2751,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     const targetPaneId = resolveDirectionalTargetPane(located.paneId, direction);
     if (!targetPaneId) {
-      toastService.info('当前方向无法分屏');
+      toastService.info('褰撳墠鏂瑰悜鏃犳硶鍒嗗睆');
       return;
     }
     ensurePaneVisibleForDrop(targetPaneId);
@@ -2795,7 +2793,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     const targetPaneId = resolveDirectionalTargetPane(located.paneId, direction);
     if (!targetPaneId) {
-      toastService.info('当前方向无法移动');
+      toastService.info('褰撳墠鏂瑰悜鏃犳硶绉诲姩');
       return;
     }
 
@@ -2830,7 +2828,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }
       await window.electron?.ipcRenderer.invoke('open-in-explorer', located.tab.path);
     } catch (error) {
-      console.error('[EditorArea] 在资源管理器中打开失败:', error);
+      console.error('[EditorArea] 鍦ㄨ祫婧愮鐞嗗櫒涓墦寮€澶辫触:', error);
     }
   }, [findPaneByTabId]);
 
@@ -2888,7 +2886,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     rightBottomActiveTabId
   ]);
 
-  // 将当前活动文件同步到 note-system，供双向链接/反向链接查询使用
+  // 灏嗗綋鍓嶆椿鍔ㄦ枃浠跺悓姝ュ埌 note-system锛屼緵鍙屽悜閾炬帴/鍙嶅悜閾炬帴鏌ヨ浣跨敤
   useEffect(() => {
     let cancelled = false;
 
@@ -2911,7 +2909,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           resetLinkState();
         }
       } catch (error) {
-        console.error('[EditorArea] 同步当前文件到 note-system 失败:', error);
+        console.error('[EditorArea] 鍚屾褰撳墠鏂囦欢鍒?note-system 澶辫触:', error);
         if (!cancelled) {
           setCurrentNote(null);
           resetLinkState();
@@ -2939,60 +2937,60 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     syncFileTabToNoteSystem
   ]);
 
-  // 淇濆瓨鏂囦欢鍑芥暟
+  // 娣囨繂鐡ㄩ弬鍥︽閸戣姤鏆?
   const saveFile = async (tab: EditorTab) => {
     if (!tab || tab.type !== 'file') {
       return;
     }
 
-    // 濡傛灉鏄?settings.json锛屽凡缁忚嚜鍔ㄤ繚瀛橈紝涓嶉渶瑕佸啀娆′繚瀛?
+    // 婵″倹鐏夐弰?settings.json閿涘苯鍑＄紒蹇氬殰閸斻劋绻氱€涙﹫绱濇稉宥夋付鐟曚礁鍟€濞嗏€茬箽鐎?
     if (tab.path === 'settings:/settings.json') {
       updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
       return;
     }
 
-    // 妫€鏌ユ槸鍚︽槸涓婚瑕嗙洊鏂囦欢锛坱heme-override:// 鍗忚锛?
+    // 濡偓閺屻儲妲搁崥锔芥Ц娑撳顣界憰鍡欐磰閺傚洣娆㈤敍鍧県eme-override:// 閸楀繗顔呴敍?
     const isThemeOverride = tab.path.startsWith('theme-override://');
     
-    // 濡傛灉鏄富棰樿鐩栨枃浠讹紝浣跨敤涓婚瑕嗙洊淇濆瓨API
+    // 婵″倹鐏夐弰顖欏瘜妫版顩惄鏍ㄦ瀮娴犺绱濇担璺ㄦ暏娑撳顣界憰鍡欐磰娣囨繂鐡ˋPI
     if (isThemeOverride) {
       try {
-        console.log('[EditorArea] 澶勭悊涓婚瑕嗙洊鏂囦欢淇濆瓨:', tab.path);
+        console.log('[EditorArea] 婢跺嫮鎮婃稉濠氼暯鐟曞棛娲婇弬鍥︽娣囨繂鐡?', tab.path);
         
-        // 浠庤矾寰勬彁鍙栧熀纭€涓婚ID
-        // 渚嬪锛歵heme-override://quiet-light.json 鈫?quiet-light
+        // 娴犲氦鐭惧鍕絹閸欐牕鐔€绾偓娑撳顣絀D
+        // 娓氬顩ч敍姝礹eme-override://quiet-light.json 閳?quiet-light
         const baseThemeId = tab.path.replace('theme-override://', '').replace('.json', '');
-        console.log('[EditorArea] 鍩虹涓婚ID:', baseThemeId);
+        console.log('[EditorArea] 閸╄櫣顢呮稉濠氼暯ID:', baseThemeId);
         
-        // 瑙ｆ瀽棰滆壊瑕嗙洊鍐呭
+        // 鐟欙絾鐎芥０婊嗗鐟曞棛娲婇崘鍛啇
         const parseErrors: jsonc.ParseError[] = [];
         const parsedConfig = jsonc.parse(tab.content || '', parseErrors, {
           allowTrailingComma: true,
           allowEmptyContent: false
         });
         
-        // 妫€鏌ヨВ鏋愰敊璇?
+        // 濡偓閺屻儴袙閺嬫劙鏁婄拠?
         if (parseErrors.length > 0) {
-          console.warn('[EditorArea] 主题覆盖配置 JSON 解析错误，仅清除脏标记');
+          console.warn('');
           updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
           return;
         }
         
-        // 楠岃瘉鏍煎紡锛氬繀椤诲寘鍚?colors 瀵硅薄
+        // 妤犲矁鐦夐弽鐓庣础閿涙艾绻€妞よ瀵橀崥?colors 鐎电钖?
         if (!parsedConfig || !parsedConfig.colors) {
-          console.warn('[EditorArea] 涓婚瑕嗙洊閰嶇疆缁撴瀯涓嶅畬鏁达紝闇€瑕佸寘鍚?colors 瀛楁');
-          toastService.error('淇濆瓨澶辫触', {
-            description: '涓婚瑕嗙洊鏂囦欢蹇呴』鍖呭惈 colors 瀛楁'
+          console.warn('');
+          toastService.error('娣囨繂鐡ㄦ径杈Е', {
+            description: '娑撳顣界憰鍡欐磰閺傚洣娆㈣箛鍛淬€忛崠鍛儓 colors 鐎涙顔?'
           });
           return;
         }
         
-        console.log('[EditorArea] 鍑嗗淇濆瓨涓婚棰滆壊瑕嗙洊');
-        console.log('[EditorArea] 鍩虹涓婚:', baseThemeId);
-        console.log('[EditorArea] 瑕嗙洊棰滆壊鏁伴噺:', Object.keys(parsedConfig.colors || {}).length);
+        console.log('');
+        console.log('[EditorArea] 閸╄櫣顢呮稉濠氼暯:', baseThemeId);
+        console.log('[EditorArea] 鐟曞棛娲婃０婊嗗閺佷即鍣?', Object.keys(parsedConfig.colors || {}).length);
         
-        // 璋冪敤 IPC 淇濆瓨涓婚瑕嗙洊鍒版枃浠剁郴缁?
-        // 浼犻€掞細鍩虹涓婚ID + 瑕嗙洊鐨勯鑹?
+        // 鐠嬪啰鏁?IPC 娣囨繂鐡ㄦ稉濠氼暯鐟曞棛娲婇崚鐗堟瀮娴犲墎閮寸紒?
+        // 娴肩娀鈧帪绱伴崺铏诡攨娑撳顣絀D + 鐟曞棛娲婇惃鍕杹閼?
         try {
           const result = await window.electron?.ipcRenderer.invoke('theme:save-override', {
             baseThemeId,
@@ -3000,33 +2998,33 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           });
           
           if (result?.success) {
-            console.log('[EditorArea] 鉁?涓婚瑕嗙洊宸叉垚鍔熶繚瀛?', baseThemeId);
-            toastService.success('涓婚瑕嗙洊淇濆瓨鎴愬姛', {
-              description: `已保存 ${Object.keys(parsedConfig.colors || {}).length} 个颜色覆盖`
+            console.log('[EditorArea] 閴?娑撳顣界憰鍡欐磰瀹稿弶鍨氶崝鐔剁箽鐎?', baseThemeId);
+            toastService.success('娑撳顣界憰鍡欐磰娣囨繂鐡ㄩ幋鎰', {
+              description: `宸蹭繚瀛?${Object.keys(parsedConfig.colors || {}).length} 涓鑹茶鐩朻`
             });
-            // 娓呴櫎鑴忔爣璁帮紝琛ㄧず宸蹭繚瀛?
+            // 濞撳懘娅庨懘蹇旂垼鐠佸府绱濈悰銊с仛瀹歌弓绻氱€?
             updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
           } else {
-            console.error('[EditorArea] 淇濆瓨涓婚瑕嗙洊澶辫触:', result?.error);
-            toastService.error('淇濆瓨涓婚瑕嗙洊澶辫触', {
-              description: result?.error || '鏈煡閿欒'
+            console.error('[EditorArea] 娣囨繂鐡ㄦ稉濠氼暯鐟曞棛娲婃径杈Е:', result?.error);
+            toastService.error('娣囨繂鐡ㄦ稉濠氼暯鐟曞棛娲婃径杈Е', {
+              description: result?.error || '閺堫亞鐓￠柨娆掝嚖'
             });
           }
         } catch (error) {
-          console.error('[EditorArea] 璋冪敤涓婚瑕嗙洊淇濆瓨 IPC 澶辫触:', error);
-          toastService.error('淇濆瓨涓婚瑕嗙洊澶辫触', {
-            description: error instanceof Error ? error.message : '璋冪敤淇濆瓨鎺ュ彛澶辫触'
+          console.error('[EditorArea] 鐠嬪啰鏁ゆ稉濠氼暯鐟曞棛娲婃穱婵嗙摠 IPC 婢惰精瑙?', error);
+          toastService.error('娣囨繂鐡ㄦ稉濠氼暯鐟曞棛娲婃径杈Е', {
+            description: error instanceof Error ? error.message : '鐠嬪啰鏁ゆ穱婵嗙摠閹恒儱褰涙径杈Е'
           });
         }
       } catch (error) {
-        console.error('[EditorArea] 澶勭悊涓婚瑕嗙洊淇濆瓨鏃跺彂鐢熼敊璇?', error);
-        // 鍙戠敓閿欒鏃朵粛鐒舵竻闄よ剰鏍囪
+        console.error('[EditorArea] 婢跺嫮鎮婃稉濠氼暯鐟曞棛娲婃穱婵嗙摠閺冭泛褰傞悽鐔兼晩鐠?', error);
+        // 閸欐垹鏁撻柨娆掝嚖閺冩湹绮涢悞鑸电闂勩倛鍓伴弽鍥唶
         updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
       }
       return;
     }
 
-    // 濡傛灉鏄棤璺緞鏂囦欢锛屼娇鐢ㄥ彟瀛樹负
+    // 婵″倹鐏夐弰顖涙￥鐠侯垰绶為弬鍥︽閿涘奔濞囬悽銊ュ綗鐎涙ü璐?
     const requiresSaveAs = !tab.path || tab.path === '';
     if (requiresSaveAs) {
       try {
@@ -3054,14 +3052,14 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           }
         }
       } catch (error) {
-        // 鍙﹀瓨涓烘枃浠跺け璐ワ紝闈欓粯澶勭悊
+        // 閸欙箑鐡ㄦ稉鐑樻瀮娴犺泛銇戠拹銉礉闂堟瑩绮径鍕倞
       }
       return;
     }
 
-    // 淇濆瓨鏂囦欢
+    // 娣囨繂鐡ㄩ弬鍥︽
     try {
-      // 濡傛灉鍐呭鏄?HTML 鏍煎紡锛岃浆鎹负 Markdown 淇濆瓨
+      // 婵″倹鐏夐崘鍛啇閺?HTML 閺嶇厧绱￠敍宀冩祮閹诡澀璐?Markdown 娣囨繂鐡?
       let contentToSave = tab.content || '';
       if (isHtmlContent(contentToSave)) {
         contentToSave = htmlToMarkdown(contentToSave);
@@ -3074,22 +3072,22 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           title: tab.title,
           content: contentToSave
         });
-        // 娓呴櫎鑴忔爣璁?
+        // 濞撳懘娅庨懘蹇旂垼鐠?
         updateTabInAllPanes(tab.id, current => ({ ...current, isDirty: false }));
         if (syncedNote) {
           setCurrentNote(syncedNote);
         }
       }
     } catch (error) {
-      // 淇濆瓨鏂囦欢寮傚父锛岄潤榛樺鐞?
+      // 娣囨繂鐡ㄩ弬鍥︽瀵倸鐖堕敍宀勬饯姒涙ê顦╅悶?
     }
   };
 
-  // 鐩戝惉娲诲姩鏍囩椤靛彉鍖栵紝閫氱煡鐘舵€佹爮鍜屽ぇ绾?
+  // 閻╂垵鎯夊ú璇插З閺嶅洨顒锋い闈涘綁閸栨牭绱濋柅姘辩叀閻樿埖鈧焦鐖崪灞姐亣缁?
   useEffect(() => {
     const currentActiveTab = getFocusedActiveTab();
 
-    // 鍚屾鍏ㄥ眬褰撳墠鏍囩涓婁笅鏂囷紝渚?AI 闈㈡澘绛夊叏灞€缁勪欢璇诲彇
+    // 閸氬本顒為崗銊ョ湰瑜版挸澧犻弽鍥╊劮娑撳﹣绗呴弬鍥风礉娓?AI 闂堛垺婢樼粵澶婂弿鐏炩偓缂佸嫪娆㈢拠璇插絿
     (window as any).__currentTabTitle = currentActiveTab?.title || '';
     (window as any).__currentTabPath = currentActiveTab?.path || '';
     
@@ -3105,7 +3103,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }
     }));
 
-    // 閫氱煡澶х翰缁勪欢鏇存柊
+    // 闁氨鐓℃径褏缈扮紒鍕閺囧瓨鏌?
     if (currentActiveTab && currentActiveTab.type === 'file') {
       window.dispatchEvent(new CustomEvent('editor:content-changed', {
         detail: {
@@ -3115,7 +3113,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         }
       }));
     } else {
-      // 闈炴枃浠舵爣绛鹃〉锛屾竻绌哄ぇ绾?
+      // 闂堢偞鏋冩禒鑸电垼缁涢箖銆夐敍灞剧缁屽搫銇囩痪?
       window.dispatchEvent(new CustomEvent('editor:content-changed', {
         detail: {
           content: '',
@@ -3126,7 +3124,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
   }, [activeTabId, tabs, rightActiveTabId, rightTabs, leftBottomActiveTabId, leftBottomTabs, rightBottomActiveTabId, rightBottomTabs, focusedPaneId, getFocusedActiveTab]);
 
-  // 鐩戝惉淇濆瓨浜嬩欢
+  // 閻╂垵鎯夋穱婵嗙摠娴滃娆?
   useEffect(() => {
     const handleSaveFile = (event: Event) => {
       const customEvent = event as CustomEvent<{ tabId?: string }>;
@@ -3137,7 +3135,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         return;
       }
 
-      // 鏌ユ壘瑕佷繚瀛樼殑鏍囩椤?
+      // 閺屻儲澹樼憰浣风箽鐎涙娈戦弽鍥╊劮妞?
       const located = findPaneByTabId(targetTabId);
       if (located) {
         saveFile(located.tab);
@@ -3151,13 +3149,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, [tabs, activeTabId, rightTabs, leftBottomTabs, rightBottomTabs, getFocusedActiveTab, findPaneByTabId]);
 
-  // 鐩戝惉鍏抽棴鏂囦欢浜嬩欢
+  // 閻╂垵鎯夐崗鎶芥４閺傚洣娆㈡禍瀣╂
   useEffect(() => {
     const handleCloseFile = (event: Event) => {
       const customEvent = event as CustomEvent<{ path: string }>;
       const { path } = customEvent.detail;
       
-      // 鏌ユ壘瀵瑰簲鐨勬爣绛鹃〉骞跺叧闂?
+      // 閺屻儲澹樼€电懓绨查惃鍕垼缁涢箖銆夐獮璺哄彠闂?
       const filePane = findPaneByPath(path, 'file');
       if (filePane) {
         closeTabByPane(filePane.paneId, filePane.tab.id);
@@ -3171,7 +3169,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   }, [tabs, rightTabs, leftBottomTabs, rightBottomTabs, findPaneByPath, closeTabByPane]);
 
-  // 灏嗕繚瀛樺嚱鏁版毚闇插埌鍏ㄥ眬锛屼緵蹇嵎閿娇鐢?
+  // 鐏忓棔绻氱€涙ê鍤遍弫鐗堟瘹闂囨彃鍩岄崗銊ョ湰閿涘奔绶佃箛顐ｅ祹闁款喕濞囬悽?
   useEffect(() => {
     (window as any).__editorSaveFile = () => {
       const focusedTab = getFocusedActiveTab();
@@ -3197,7 +3195,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     if (hasCustomizedHorizontalSplit && leftWidth !== null) {
       return { width: `${leftWidth}px`, flex: 'none' };
     }
-    // 默认等分：未拖动主分隔线时，左侧也参与平均分配宽度。
+    // 榛樿绛夊垎锛氭湭鎷栧姩涓诲垎闅旂嚎鏃讹紝宸︿晶涔熷弬涓庡钩鍧囧垎閰嶅搴︺€?
     return {
       flex: '1 1 0',
       width: 'auto',
@@ -3582,9 +3580,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
   return (
     <div className={`editor-area ${draggingTab ? 'is-tab-dragging' : ''} ${className}`}>
-      {/* 缂栬緫鍣ㄧ粍瀹瑰櫒 - 鏀寔鍒嗗睆 */}
+      {/* 缂傛牞绶崳銊х矋鐎圭懓娅?- 閺€顖涘瘮閸掑棗鐫?*/}
       <div className="editor-area-groups" ref={editorGroupsRef}>
-        {/* 宸︿晶缂栬緫鍣ㄧ粍 */}
+        {/* 瀹革缚鏅剁紓鏍帆閸ｃ劎绮?*/}
         <div 
           className={`editor-area-group ${isSplitView ? 'split-left' : 'full'}`}
           style={leftColumnStyle}
@@ -3596,7 +3594,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             onDragLeave={(event) => handlePaneDragLeave('left-top', event)}
             onDrop={(event) => handlePaneDrop('left-top', event)}
           >
-          {/* 宸︿晶鏍囩鏍?- 濮嬬粓鏄剧ず锛屽嵆浣挎病鏈夋爣绛?*/}
+          {/* 瀹革缚鏅堕弽鍥╊劮閺?- 婵绮撻弰鍓с仛閿涘苯宓嗘担鎸庣梾閺堝鐖ｇ粵?*/}
           {tabs.length > 0 ? (
             <TabBar
               tabs={tabs}
@@ -3621,28 +3619,28 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             <div className="tab-bar-placeholder" />
           )}
 
-          {/* 宸︿晶闈㈠寘灞?*/}
+          {/* 瀹革缚鏅堕棃銏犲瘶鐏?*/}
           {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && activeTab.type !== 'prompt-management' && activeTab.type !== 'ai-chat' && activeTab.type !== 'terminal' && (
             <Breadcrumb path={activeTab.path} />
           )}
 
-          {/* 宸︿晶缂栬緫鍣ㄥ唴瀹?*/}
+          {/* 瀹革缚鏅剁紓鏍帆閸ｃ劌鍞寸€?*/}
           <div className="editor-area-content">
             {renderDropIndicator('left-top')}
-            {/* 绌虹姸鎬?*/}
+            {/* 缁岃櫣濮搁幀?*/}
             {!activeTab && (
               <div className="editor-area-empty">
                 <div className="editor-area-empty-content">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <p className="title">娌℃湁鎵撳紑鐨勭紪杈戝櫒</p>
-                  <p className="subtitle">从文件浏览器打开文件开始编辑</p>
+                  <p className="title">濞屸剝婀侀幍鎾崇磻閻ㄥ嫮绱潏鎴濇珤</p>
+                  <p className="subtitle">浠庢枃浠舵祻瑙堝櫒鎵撳紑鏂囦欢寮€濮嬬紪杈?</p>
                 </div>
               </div>
             )}
 
-            {/* 娓叉煋鎵€鏈夋爣绛鹃〉锛岄€氳繃 display 鎺у埗鍙鎬э紝閬垮厤閲嶆柊鍔犺浇 */}
+            {/* 濞撳弶鐓嬮幍鈧張澶嬬垼缁涢箖銆夐敍宀勨偓姘崇箖 display 閹貉冨煑閸欘垵顫嗛幀褝绱濋柆鍨帳闁插秵鏌婇崝鐘烘祰 */}
             {tabs.map((tab) => {
               const isActive = tab.id === activeTabId;
               
@@ -3653,8 +3651,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}
                 >
                   {tab.type === 'settings' && <SettingsView />}
-                  
-                  {tab.type === 'extension-manager' && <ExtensionManagerView />}
                   
                   {tab.type === 'lancedb-view' && <LanceDBView />}
 
@@ -3716,10 +3712,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       knowledgeDescription={tab.knowledgeData?.description || ''}
                       items={tab.knowledgeData?.items || []}
                       onFileOpen={async (item) => {
-                        // 鍦ㄧ紪杈戝櫒涓墦寮€鏂囦欢
+                        // 閸︺劎绱潏鎴濇珤娑擃厽澧﹀鈧弬鍥︽
                         if (item.type === 'file' && item.path) {
                           try {
-                            // 璇诲彇鏂囦欢鍐呭
+                            // 鐠囪褰囬弬鍥︽閸愬懎顔?
                             const result = await window.electron?.file?.read(item.path);
                             if (result?.success && result.data) {
                               window.dispatchEvent(new CustomEvent('open-file', {
@@ -3733,12 +3729,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                               }));
                             }
                           } catch (error) {
-                            console.error('[EditorArea] 璇诲彇鏂囦欢澶辫触:', error);
+                            console.error('[EditorArea] 鐠囪褰囬弬鍥︽婢惰精瑙?', error);
                           }
                         }
                       }}
                       onFileDelete={(item) => {
-                        // 瑙﹀彂鍒犻櫎浜嬩欢
+                        // 鐟欙箑褰傞崚鐘绘珟娴滃娆?
                         window.dispatchEvent(new CustomEvent('delete-knowledge-item', {
                           detail: { itemId: item.id }
                         }));
@@ -3753,7 +3749,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                         console.log('[EditorArea] Monaco content change, hasNewlines:', content.includes('\n'));
                         updateFileTabContent(tab.id, content);
 
-                        // 濡傛灉鏄綋鍓嶆椿鍔ㄦ爣绛鹃〉锛岃Е鍙戝ぇ绾叉洿鏂颁簨浠?
+                        // 婵″倹鐏夐弰顖氱秼閸撳秵妞块崝銊︾垼缁涢箖銆夐敍宀冃曢崣鎴濄亣缁惧弶娲块弬棰佺皑娴?
                         if (tab.id === activeTabId) {
                           window.dispatchEvent(new CustomEvent('editor:content-changed', {
                             detail: {
@@ -3774,7 +3770,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     <CodeMirrorEditor
                       content={(() => {
                         const rawContent = tab.content || '';
-                        // CodeMirror 浣跨敤 Markdown 婧愮爜
+                        // CodeMirror 娴ｈ法鏁?Markdown 濠ф劗鐖?
                         const isHtml = isHtmlContent(rawContent);
                         return isHtml ? htmlToMarkdown(rawContent) : rawContent;
                       })()}
@@ -3786,7 +3782,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                           isPreview: false
                         }));
 
-                        // 濡傛灉鏄綋鍓嶆椿鍔ㄦ爣绛鹃〉锛岃Е鍙戝ぇ绾叉洿鏂颁簨浠?
+                        // 婵″倹鐏夐弰顖氱秼閸撳秵妞块崝銊︾垼缁涢箖銆夐敍宀冃曢崣鎴濄亣缁惧弶娲块弬棰佺皑娴?
                         if (tab.id === activeTabId) {
                           window.dispatchEvent(new CustomEvent('editor:content-changed', {
                             detail: {
@@ -3855,7 +3851,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   {!leftBottomActiveTab && (
                     <div className="editor-area-empty">
                       <div className="editor-area-empty-content">
-                        <p className="title">没有打开的编辑器</p>
+                        <p className="title">娌℃湁鎵撳紑鐨勭紪杈戝櫒</p>
                       </div>
                     </div>
                   )}
@@ -3917,7 +3913,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           )}
         </div>
 
-        {/* 鍙皟鏁村ぇ灏忕殑鍒嗛殧鏉?*/}
+        {/* 閸欘垵鐨熼弫鏉戙亣鐏忓繒娈戦崚鍡涙閺?*/}
         {isSplitView && (
           <ResizableDivider
             onResize={handleResizeMainSplit}
@@ -3927,7 +3923,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           />
         )}
 
-        {/* 鍙充晶缂栬緫鍣ㄧ粍 */}
+        {/* 閸欏厖鏅剁紓鏍帆閸ｃ劎绮?*/}
         {isSplitView && extraRightSplitPanes.map((pane, index) => {
           const sourceLocated = findPaneByPath(pane.sourcePath, 'file');
           if (!sourceLocated || sourceLocated.tab.type !== 'file') {
@@ -4035,7 +4031,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               onDragLeave={(event) => handlePaneDragLeave('right-top', event)}
               onDrop={(event) => handlePaneDrop('right-top', event)}
             >
-            {/* 鍙充晶鏍囩鏍?*/}
+            {/* 閸欏厖鏅堕弽鍥╊劮閺?*/}
             {rightTabs.length > 0 && (
               <TabBar
                 tabs={rightTabs}
@@ -4058,15 +4054,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               />
             )}
 
-            {/* 鍙充晶闈㈠寘灞?*/}
+            {/* 閸欏厖鏅堕棃銏犲瘶鐏?*/}
             {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && rightActiveTab.type !== 'decomposition-rules' && rightActiveTab.type !== 'prompt-management' && rightActiveTab.type !== 'ai-chat' && rightActiveTab.type !== 'terminal' && (
               <Breadcrumb path={rightActiveTab.path} />
             )}
 
-            {/* 鍙充晶缂栬緫鍣ㄥ唴瀹?*/}
+            {/* 閸欏厖鏅剁紓鏍帆閸ｃ劌鍞寸€?*/}
             <div className="editor-area-content">
               {renderDropIndicator('right-top')}
-              {/* 娓叉煋鎵€鏈夊彸渚ф爣绛鹃〉锛岄€氳繃 display 鎺у埗鍙鎬э紝閬垮厤閲嶆柊鍔犺浇 */}
+              {/* 濞撳弶鐓嬮幍鈧張澶婂礁娓氀勭垼缁涢箖銆夐敍宀勨偓姘崇箖 display 閹貉冨煑閸欘垵顫嗛幀褝绱濋柆鍨帳闁插秵鏌婇崝鐘烘祰 */}
               {rightTabs.map((tab) => {
                 const isActive = tab.id === rightActiveTabId;
                 
@@ -4077,8 +4073,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}
                   >
                     {tab.type === 'settings' && <SettingsView />}
-                    
-                    {tab.type === 'extension-manager' && <ExtensionManagerView />}
                     
                     {tab.type === 'lancedb-view' && <LanceDBView />}
 
@@ -4152,7 +4146,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                                 }));
                               }
                             } catch (error) {
-                              console.error('[EditorArea] 璇诲彇鏂囦欢澶辫触:', error);
+                              console.error('[EditorArea] 鐠囪褰囬弬鍥︽婢惰精瑙?', error);
                             }
                           }
                         }}
@@ -4229,7 +4223,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     {!rightBottomActiveTab && (
                       <div className="editor-area-empty">
                         <div className="editor-area-empty-content">
-                          <p className="title">没有打开的编辑器</p>
+                          <p className="title">娌℃湁鎵撳紑鐨勭紪杈戝櫒</p>
                         </div>
                       </div>
                     )}
@@ -4297,4 +4291,5 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     </div>
   );
 };
+
 

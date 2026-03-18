@@ -83,7 +83,6 @@ contextBridge.exposeInMainWorld('electron', {
   settings: {
     getAll: () => ipcRenderer.invoke('settings:get-all'),
     get: (key) => ipcRenderer.invoke('settings:get', key),
-    getPlugin: (key) => ipcRenderer.invoke('settings:get-plugin', key),
     update: (key, value, target) => ipcRenderer.invoke('settings:update', key, value, target),
     updateMany: (updates, target) => ipcRenderer.invoke('settings:update-many', updates, target),
     reset: (key) => ipcRenderer.invoke('settings:reset', key),
@@ -224,37 +223,6 @@ contextBridge.exposeInMainWorld('electron', {
 
 // 保持向后兼容
 contextBridge.exposeInMainWorld('electronAPI', {
-  // 扩展相关 API
-  extension: {
-    list: () => ipcRenderer.invoke('extension:list'),
-    toggle: (extensionId, enabled) => ipcRenderer.invoke('extension:toggle', extensionId, enabled),
-    executeCommand: (command, ...args) => 
-      ipcRenderer.invoke('extension:execute-command', command, ...args),
-    sendMessage: (extensionId, message) => 
-      ipcRenderer.invoke('extension:send-message', extensionId, message),
-    
-    // 监听扩展事件
-    onExtensionActivated: (callback) => {
-      ipcRenderer.on('extension:activated', (event, data) => callback(data));
-    },
-    onExtensionDeactivated: (callback) => {
-      ipcRenderer.on('extension:deactivated', (event, data) => callback(data));
-    },
-    onMessage: (callback) => {
-      ipcRenderer.on('extension:message', (event, data) => callback(data));
-    },
-    onExtensionInstalled: (callback) => {
-      ipcRenderer.on('extension:installed', (event, data) => callback(data));
-    }
-  },
-  
-  // 市场相关 API
-  marketplace: {
-    search: (query, pageSize) => ipcRenderer.invoke('marketplace:search', query, pageSize),
-    install: (extensionId, version) => ipcRenderer.invoke('marketplace:install', extensionId, version),
-    getDetails: (extensionId) => ipcRenderer.invoke('marketplace:get-details', extensionId)
-  },
-  
   // AI 相关 API
   ai: {
     fetch: (url, options) => ipcRenderer.invoke('ai:fetch', url, options)
@@ -271,7 +239,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settings: {
     getAll: () => ipcRenderer.invoke('settings:get-all'),
     get: (key) => ipcRenderer.invoke('settings:get', key),
-    getPlugin: (key) => ipcRenderer.invoke('settings:get-plugin', key),
     update: (key, value, target) => ipcRenderer.invoke('settings:update', key, value, target),
     updateMany: (updates, target) => ipcRenderer.invoke('settings:update-many', updates, target),
     reset: (key) => ipcRenderer.invoke('settings:reset', key),

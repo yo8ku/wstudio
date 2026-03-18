@@ -1,6 +1,5 @@
 /**
- * 设置侧边栏组件
- * 功能：设置界面的左侧分类导航栏，包含用户信息区域
+ * Settings sidebar category navigation.
  */
 
 import React, { useState } from 'react';
@@ -29,8 +28,7 @@ export type SettingsCategory =
   | 'data-settings-siyuan'
   | 'data-settings-custom'
   | 'document-processing'
-  | 'application'
-  | 'extensions';
+  | 'application';
 
 interface SettingsSidebarProps {
   activeCategory: SettingsCategory;
@@ -55,8 +53,8 @@ const categories: CategoryItem[] = [
   { id: 'window', label: '窗口' },
   { id: 'ai', label: 'AI' },
   { id: 'shortcuts', label: '快捷键' },
-  { 
-    id: 'cloud-backup', 
+  {
+    id: 'cloud-backup',
     label: '云端备份',
     children: [
       { id: 'cloud-backup-local', label: '本地备份' },
@@ -66,8 +64,8 @@ const categories: CategoryItem[] = [
       { id: 'cloud-backup-custom', label: '自定义' },
     ]
   },
-  { 
-    id: 'data-settings', 
+  {
+    id: 'data-settings',
     label: '数据设置',
     children: [
       { id: 'data-settings-notion', label: 'Notion' },
@@ -80,47 +78,44 @@ const categories: CategoryItem[] = [
   },
   { id: 'document-processing', label: '文档处理' },
   { id: 'application', label: '应用程序' },
-  { id: 'extensions', label: '扩展' },
 ];
 
 export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
   activeCategory,
   onCategoryChange,
 }) => {
-  // 折叠状态
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['cloud-backup', 'data-settings']));
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    new Set(['cloud-backup', 'data-settings'])
+  );
 
-  // 用户信息（后续可从 store 或 API 获取）
   const userInfo = {
     name: 'ikun',
     email: 'ikun@example.com',
     avatar: ikunAvatar,
-    isLoggedIn: true,
     membership: 'member' as const,
   };
 
-  // 切换折叠状态
-  const toggleExpand = (categoryId: string) => {
-    setExpandedCategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(categoryId)) {
-        newSet.delete(categoryId);
+  const toggleExpand = (categoryId: string): void => {
+    setExpandedCategories(previous => {
+      const next = new Set(previous);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
       } else {
-        newSet.add(categoryId);
+        next.add(categoryId);
       }
-      return newSet;
+      return next;
     });
   };
 
-  // 检查子分类是否激活
   const isChildActive = (category: CategoryItem): boolean => {
-    if (!category.children) return false;
+    if (!category.children) {
+      return false;
+    }
     return category.children.some(child => child.id === activeCategory);
   };
 
   return (
     <div className="settings-sidebar">
-      {/* 用户信息区域 */}
       <div className="settings-sidebar-user">
         <div className="user-avatar">
           <img src={userInfo.avatar} alt={userInfo.name} />
@@ -136,9 +131,8 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
         </div>
       </div>
 
-      {/* 分类导航 */}
       <div className="settings-sidebar-content">
-        {categories.map((category) => (
+        {categories.map(category => (
           <div key={category.id} className="settings-sidebar-group">
             <div
               className={`settings-sidebar-item ${
@@ -161,11 +155,10 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               )}
               <span className="item-label">{category.label}</span>
             </div>
-            
-            {/* 子分类 */}
+
             {category.children && expandedCategories.has(category.id) && (
               <div className="settings-sidebar-children">
-                {category.children.map((child) => (
+                {category.children.map(child => (
                   <div
                     key={child.id}
                     className={`settings-sidebar-item settings-sidebar-item--child ${

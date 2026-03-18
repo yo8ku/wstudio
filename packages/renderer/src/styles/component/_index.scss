@@ -11,7 +11,6 @@
 
 
 //扩展管理
-@use './ExtensionManagerView';
 
 // VSCodeCommandCenter 命令中心
 @use './command-centerWidget.scss';
@@ -29,7 +28,6 @@
 @use './Card.scss';
 
 //扩展窗口
-@use './extensions-modal.scss';
 
 
 //内联聊天
@@ -114,7 +112,6 @@
 @use './ImportNoteDialog.scss';
 
 // Extensions 扩展
-@use './Extensions.scss';
 
 // ThemesTabContent 主题标签内容
 @use './ThemesTabContent.scss';

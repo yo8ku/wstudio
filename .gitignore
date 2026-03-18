@@ -6,8 +6,6 @@ node_modules/
 
 LaenceDBView/
 
-.kiro/
-
 *.txt
 *.md
 *.ps1
@@ -16,15 +14,6 @@ LaenceDBView/
 
 # 忽略临时文档
 docs/
-
-.claude/
-
-.kiro/
-
-
-__pycache__/
-*.pyc
-*.py
 
 # Build outputs (构建输出 - 通过编译生成)
 dist/
@@ -82,7 +71,6 @@ Desktop.ini
 *~
 *.sublime-workspace
 *.sublime-project
-.cursor/
 
 # Temporary files (临时文件)
 *.tmp
@@ -97,9 +85,6 @@ reflog.txt
 tempResouce/
 tempResource/
 
-# 忽略模型文件
-*.onnx
-*.bin
 
 # Environment variables (环境变量 - 敏感信息)
 .env
@@ -119,10 +104,12 @@ coverage/
 # TypeScript (TS 构建缓存)
 *.tsbuildinfo
 
-# Python bundle (已移除 Python 依赖，此目录可删除)
-python_bundle/
 
 # Embedding models (嵌入模型 - 文件过大，不应提交到仓库)
 resources/models/
 packages/Embeddings/models/
 packages/renderer/public/models/
+WStudio_Server/
+apps/
+packages/web-ui/
+packages/api-client/

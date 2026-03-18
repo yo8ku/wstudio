@@ -43,6 +43,17 @@ interface InlineAIChatProps {
 
 const createId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const trimContent = (content: string, limit: number): string => content.length > limit ? `${content.slice(0, limit)}\n...` : content;
+const getSelectableAtMenuValues = (groups: SelectGroup[]): string[] => {
+  const values: string[] = [];
+  for (const group of groups) {
+    for (const item of group.items) {
+      if (!item.disabled) {
+        values.push(item.value);
+      }
+    }
+  }
+  return values;
+};
 
 export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, onInsert, initialSelection, view }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -67,6 +78,8 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const modelTriggerRef = useRef<HTMLSpanElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const atMenuValues = getSelectableAtMenuValues(atMenuGroups);
+  const highlightedAtMenuValue = atMenuValues[atMenuHighlightIndex] ?? '';
 
   useEffect(() => {
     const loadModels = async (): Promise<void> => {
@@ -198,7 +211,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
   };
 
   const handleAtMenuNavigate = (direction: 'up' | 'down'): void => {
-    const totalItems = atMenuGroups.reduce((count, group) => count + group.items.length, 0);
+    const totalItems = atMenuValues.length;
     if (totalItems === 0) return;
     setAtMenuHighlightIndex((currentIndex) => direction === 'up'
       ? (currentIndex <= 0 ? totalItems - 1 : currentIndex - 1)
@@ -206,15 +219,49 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
   };
 
   const handleAtMenuSelectHighlighted = async (): Promise<void> => {
-    let currentIndex = 0;
-    for (const group of atMenuGroups) {
-      for (const item of group.items) {
-        if (currentIndex === atMenuHighlightIndex) {
-          await handleAtMenuSelect(item.value);
-          return;
-        }
-        currentIndex += 1;
-      }
+    const selectedValue = atMenuValues[atMenuHighlightIndex];
+    if (selectedValue) {
+      await handleAtMenuSelect(selectedValue);
+    }
+  };
+
+  const handleAtMenuDropdownKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
+    if (!isAtMenuOpen) {
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      event.stopPropagation();
+      handleAtMenuNavigate('up');
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      handleAtMenuNavigate('down');
+      return;
+    }
+
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      void handleAtMenuSelectHighlighted();
+      return;
+    }
+
+    if (event.key === 'ArrowLeft' && event.altKey && atMenuLevel === 'detail') {
+      event.preventDefault();
+      event.stopPropagation();
+      void loadLevel1Menu();
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeAtMenu();
     }
   };
 
@@ -338,7 +385,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
           </div>
           <div className="cm-inline-ai-at-menu">
             <span className="cm-inline-ai-at-trigger" onClick={() => { if (isAtMenuOpen) closeAtMenu(); else { void loadLevel1Menu(); setIsAtMenuOpen(true); } }} title="Add context">@</span>
-            {isAtMenuOpen && <Select value="" onChange={(value: string) => { void handleAtMenuSelect(value); }} groups={atMenuGroups} placeholder="Select context..." className="cm-inline-ai-at-select" showSearch={true} open={true} align="right" headerLeftIcon={atMenuLevel === 'detail' ? <Icon name="chevron-left" size={16} /> : undefined} onHeaderLeftClick={atMenuLevel === 'detail' ? () => { void loadLevel1Menu(); } : undefined} fixedHeight={atMenuLevel === 'detail' ? atMenuHeight : undefined} onHeightChange={atMenuLevel === 'main' ? setAtMenuHeight : undefined} onItemClick={(value: string) => !(value.startsWith('category-') || value.startsWith('folder-'))} onOpenChange={(open: boolean) => { if (!open) closeAtMenu(); }} />}
+            {isAtMenuOpen && <Select value={highlightedAtMenuValue} onChange={(value: string) => { void handleAtMenuSelect(value); }} groups={atMenuGroups} placeholder="Select context..." className="cm-inline-ai-at-select" showSearch={true} open={true} align="right" headerLeftIcon={atMenuLevel === 'detail' ? <Icon name="chevron-left" size={16} /> : undefined} onHeaderLeftClick={atMenuLevel === 'detail' ? () => { void loadLevel1Menu(); } : undefined} fixedHeight={atMenuLevel === 'detail' ? atMenuHeight : undefined} onHeightChange={atMenuLevel === 'main' ? setAtMenuHeight : undefined} onItemClick={(value: string) => !(value.startsWith('category-') || value.startsWith('folder-'))} onOpenChange={(open: boolean) => { if (!open) closeAtMenu(); }} onDropdownKeyDown={handleAtMenuDropdownKeyDown} />}
           </div>
           <span className="cm-inline-ai-close" onClick={onClose} title="Close"><Icon name="close" size={14} /></span>
         </div>

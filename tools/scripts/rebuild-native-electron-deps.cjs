@@ -12,6 +12,7 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 const rootPackageJsonPath = path.join(repoRoot, 'package.json');
 const electronDir = path.join(repoRoot, 'node_modules', 'electron');
 const nodePtyDir = path.join(repoRoot, 'node_modules', 'node-pty');
+const nodePtyReleaseDir = path.join(nodePtyDir, 'build', 'Release');
 const nodePtyConptyRuntimeDir = path.join(nodePtyDir, 'build', 'Release', 'conpty');
 
 function readJson(filePath) {
@@ -114,6 +115,29 @@ function syncNodePtyConptyRuntime() {
   console.log(`[native] Synced node-pty conpty runtime from ${sourceDir}`);
 }
 
+function ensureNodePtyNativeBinary() {
+  if (!fs.existsSync(nodePtyDir)) {
+    return;
+  }
+
+  if (process.platform !== 'win32') {
+    return;
+  }
+
+  const hasConptyBinary = fs.existsSync(path.join(nodePtyReleaseDir, 'conpty.node'));
+  const hasWinptyBinary = fs.existsSync(path.join(nodePtyReleaseDir, 'pty.node'));
+
+  if (hasConptyBinary || hasWinptyBinary) {
+    return;
+  }
+
+  throw new Error(
+    'node-pty Windows native binary was not produced. ' +
+    'Electron 36.9.5 does not have a matching prebuilt binary for this package on Windows. ' +
+    'Install Visual Studio with the "Desktop development with C++" workload, then rerun "pnpm run rebuild:native".'
+  );
+}
+
 function syncElectronRuntime() {
   if (!fs.existsSync(path.join(electronDir, 'package.json'))) {
     console.log('[native] electron is not installed, skipping Electron runtime sync.');
@@ -170,7 +194,7 @@ async function rebuildNodePtyForElectron() {
   await rebuild({
     buildPath: repoRoot,
     electronVersion,
-    onlyModules: ['node-pty'],
+    onlyModules: [packageName],
     force: true,
     headerURL: 'https://www.electronjs.org/headers',
     mode: process.platform === 'win32' ? 'sequential' : 'parallel',
@@ -181,6 +205,7 @@ async function main() {
   try {
     syncElectronRuntime();
     await rebuildNodePtyForElectron();
+    ensureNodePtyNativeBinary();
     syncNodePtyConptyRuntime();
   } catch (error) {
     console.error('[native] Electron native dependency sync failed:', error);

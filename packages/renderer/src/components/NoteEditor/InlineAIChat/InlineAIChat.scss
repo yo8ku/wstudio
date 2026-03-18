@@ -486,6 +486,20 @@
   max-width: 280px;
   max-height: 350px;
 
+  .select-item.selected,
+  .select-item.selected:hover,
+  .select-item[data-type='file'].selected,
+  .select-item[data-type='file'].selected:hover,
+  .select-item[data-type='folder'].selected,
+  .select-item[data-type='folder'].selected:hover,
+  .select-item[data-type='form'].selected,
+  .select-item[data-type='form'].selected:hover,
+  .select-item[data-type='form-column'].selected,
+  .select-item[data-type='form-column'].selected:hover {
+    background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22))))) !important;
+    color: var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground)))) !important;
+  }
+
   // 隐藏勾选标记占位空间
   .select-item .select-item-check {
     display: none;

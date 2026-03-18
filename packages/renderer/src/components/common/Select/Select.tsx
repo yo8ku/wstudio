@@ -69,6 +69,7 @@ export interface SelectProps {
   onHeightChange?: (height: number) => void;
   /** 鎵撳紑鍚庨亣鍒板閮ㄦ粴鍔ㄦ椂鏄惁鍏抽棴鑿滃崟 */
   closeOnScroll?: boolean;
+  onDropdownKeyDown?: React.KeyboardEventHandler<HTMLElement>;
 }
 
 /**
@@ -94,6 +95,7 @@ export const Select: React.FC<SelectProps> = ({
   fixedHeight,
   onHeightChange,
   closeOnScroll = false,
+  onDropdownKeyDown,
 }) => {
   // 濡傛灉鎻愪緵浜?open 灞炴€э紝浣跨敤鍙楁帶妯″紡锛涘惁鍒欎娇鐢ㄥ唴閮ㄧ姸鎬?
   const [internalIsOpen, setInternalIsOpen] = useState(false);
@@ -108,6 +110,7 @@ export const Select: React.FC<SelectProps> = ({
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
   const [actualPlacement, setActualPlacement] = useState<'top' | 'bottom'>('bottom');
   const [isPositionReady, setIsPositionReady] = useState(false); // 浣嶇疆鏄惁宸茶绠楀畬鎴?
+  const [isKeyboardNavigating, setIsKeyboardNavigating] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const menuListRef = useRef<HTMLDivElement>(null);
@@ -208,6 +211,7 @@ export const Select: React.FC<SelectProps> = ({
   useLayoutEffect(() => {
     if (!isOpen) {
       setIsPositionReady(false);
+      setIsKeyboardNavigating(false);
       lastRectRef.current = null;
       return;
     }
@@ -225,6 +229,25 @@ export const Select: React.FC<SelectProps> = ({
     setIsPositionReady(false);
     updatePosition(rect);
   }, [isOpen, updatePosition]);
+
+  const handleDropdownKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (
+      event.key === 'ArrowUp' ||
+      event.key === 'ArrowDown' ||
+      event.key === 'Enter' ||
+      event.key === 'Escape'
+    ) {
+      setIsKeyboardNavigating(true);
+    }
+
+    onDropdownKeyDown?.(event);
+  };
+
+  const handleDropdownMouseMove = () => {
+    if (isKeyboardNavigating) {
+      setIsKeyboardNavigating(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -399,7 +422,7 @@ export const Select: React.FC<SelectProps> = ({
     }
   }, [isOpen, showSearch]);
 
-  // 鎵撳紑鑿滃崟鏃舵粴鍔ㄥ埌閫変腑鐨勯」
+  // 鎵撳紑鑿滃崟鎴栧綋鍓嶉」鍙樺寲鏃舵粴鍔ㄥ埌閫変腑鐨勯」
   useEffect(() => {
     if (isOpen && selectedItemRef.current && menuListRef.current) {
       setTimeout(() => {
@@ -420,7 +443,7 @@ export const Select: React.FC<SelectProps> = ({
         }
       }, 0);
     }
-  }, [isOpen]);
+  }, [isOpen, value]);
 
   // 鑾峰彇鏄剧ず鏂囨湰
   const getDisplayText = (): string => {
@@ -490,6 +513,12 @@ export const Select: React.FC<SelectProps> = ({
   // 娓叉煋鑿滃崟椤?
   const renderItem = (item: SelectItem) => {
     const isSelected = item.value === value;
+    const selectedStyle: React.CSSProperties | undefined = isSelected
+      ? {
+          backgroundColor: 'var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22)))))',
+          color: 'var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground))))',
+        }
+      : undefined;
     
     // 澶勭悊鍥炬爣鐐瑰嚮锛堢敤浜庡睍寮€/鎶樺彔锛?
     const handleIconClick = (e: React.MouseEvent) => {
@@ -505,6 +534,9 @@ export const Select: React.FC<SelectProps> = ({
         ref={isSelected ? selectedItemRef : null}
         className={`select-item ${isSelected ? 'selected' : ''} ${item.disabled ? 'disabled' : ''}`}
         onClick={() => handleItemClick(item.value, item.disabled)}
+        style={selectedStyle}
+        aria-selected={isSelected}
+        data-selected={isSelected ? 'true' : 'false'}
         data-type={item.dataType}
         data-depth={item.depth !== undefined ? item.depth : undefined}
       >
@@ -559,7 +591,9 @@ export const Select: React.FC<SelectProps> = ({
     return createPortal(
       <div
         ref={contentRef}
-        className={`select-content ${actualPlacement === 'top' ? 'placement-top' : ''} ${className ? `${className}-content` : ''}`}
+        className={`select-content ${actualPlacement === 'top' ? 'placement-top' : ''} ${isKeyboardNavigating ? 'keyboard-nav' : ''} ${className ? `${className}-content` : ''}`}
+        onKeyDown={handleDropdownKeyDown}
+        onMouseMove={handleDropdownMouseMove}
         style={{
           '--select-content-top': `${position.top}px`,
           '--select-content-left': `${position.left}px`,
@@ -591,6 +625,7 @@ export const Select: React.FC<SelectProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
+                  onKeyDown={handleDropdownKeyDown}
                 />
               </div>
             )}
@@ -607,6 +642,7 @@ export const Select: React.FC<SelectProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onClick={(e) => e.stopPropagation()}
+              onKeyDown={handleDropdownKeyDown}
             />
           </div>
         )}

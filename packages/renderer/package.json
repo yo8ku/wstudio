@@ -4,8 +4,8 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "pnpm exec tsc && pnpm exec vite build",
-    "dev": "pnpm exec vite",
+    "build": "pnpm exec tsc && node ../../node_modules/vite/bin/vite.js build",
+    "dev": "node ../../node_modules/vite/bin/vite.js",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\""
   },
   "dependencies": {

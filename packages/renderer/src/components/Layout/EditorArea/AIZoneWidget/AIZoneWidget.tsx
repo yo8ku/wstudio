@@ -48,6 +48,14 @@ interface MutableViewZone extends monaco.editor.IViewZone {
 
 type ContextMenuSource = 'toolbar' | 'input';
 
+interface ContextMenuKeyboardEventLike {
+  key: string;
+  altKey: boolean;
+  shiftKey: boolean;
+  preventDefault: () => void;
+  stopPropagation: () => void;
+}
+
 const DEFAULT_ZONE_HEIGHT = 152;
 const MIN_ZONE_HEIGHT = 132;
 const MAX_ZONE_WIDTH = 834;
@@ -125,6 +133,54 @@ export class AIZoneWidget {
   private targetLineNumber = 0;
   private thinkingText = '';
   private currentHeight = DEFAULT_ZONE_HEIGHT;
+  private contextMenuCloseRenderScheduled = false;
+  private readonly handleContextMenuKeyDown = (event: KeyboardEvent): void => {
+    this.handleContextMenuKeyboardEvent(event);
+  };
+
+  private readonly handleContextMenuReactKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
+    this.handleContextMenuKeyboardEvent(event);
+  };
+
+  private handleContextMenuKeyboardEvent(event: ContextMenuKeyboardEventLike): void {
+    if (!this.isContextMenuOpen) {
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.navigateContextMenu('up');
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.navigateContextMenu('down');
+      return;
+    }
+
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.selectHighlightedContextMenuItem();
+      return;
+    }
+
+    if (event.key === 'ArrowLeft' && event.altKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.goBackToLevel1Menu();
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeContextMenu();
+    }
+  }
 
   public selectedText = '';
   public includeSelection = false;
@@ -637,6 +693,7 @@ export class AIZoneWidget {
       React.createElement(TipTapInput, {
         ref: (ref: TipTapInputRef | null) => {
           this.tiptapInputRef = ref;
+          this.syncTipTapAtMenuState();
         },
         placeholder: LABEL_PLACEHOLDER,
         onSubmit: () => {
@@ -670,6 +727,21 @@ export class AIZoneWidget {
           void this.goBackToLevel1Menu();
         },
       })
+    );
+  }
+
+  private syncTipTapAtMenuState(): void {
+    this.tiptapInputRef?.setAtMenuState(
+      this.isContextMenuOpen && this.contextMenuSource === 'input',
+      (direction: 'up' | 'down') => {
+        this.navigateContextMenu(direction);
+      },
+      () => {
+        void this.selectHighlightedContextMenuItem();
+      },
+      () => {
+        void this.goBackToLevel1Menu();
+      }
     );
   }
 
@@ -1276,7 +1348,7 @@ export class AIZoneWidget {
     this.resetContextMenuState();
     this.closeHistoryMenu();
     this.closeModelDropdown();
-    this.positionContextMenu(buttonRect.bottom + 4, buttonRect.left, buttonRect.width, buttonRect.height);
+    this.positionContextMenu(buttonRect.bottom, buttonRect.left, buttonRect.width, buttonRect.height);
     await this.renderContextMenu();
   }
 
@@ -1298,6 +1370,7 @@ export class AIZoneWidget {
       return;
     }
 
+    document.removeEventListener('keydown', this.handleContextMenuKeyDown, true);
     this.isContextMenuOpen = false;
     this.contextMenuLevel = 'main';
     this.currentCategory = '';
@@ -1305,8 +1378,25 @@ export class AIZoneWidget {
     this.contextMenuValues = [];
     this.expandedFolders = new Set<string>();
     this.contextMenuContainer.style.visibility = 'hidden';
-    this.contextMenuRoot.render(React.createElement(React.Fragment));
-    this.renderTipTapInput();
+    this.syncTipTapAtMenuState();
+    this.scheduleContextMenuCloseRender();
+  }
+
+  private scheduleContextMenuCloseRender(): void {
+    if (this.contextMenuCloseRenderScheduled) {
+      return;
+    }
+
+    this.contextMenuCloseRenderScheduled = true;
+    queueMicrotask(() => {
+      this.contextMenuCloseRenderScheduled = false;
+
+      if (this.disposed || this.isContextMenuOpen) {
+        return;
+      }
+
+      this.contextMenuRoot.render(React.createElement(React.Fragment));
+    });
   }
 
   private async renderContextMenu(): Promise<void> {
@@ -1357,6 +1447,7 @@ export class AIZoneWidget {
         className: 'ai-zone-context-select',
         showSearch: true,
         open: true,
+        placement: 'bottom',
         align: 'left',
         menuGap: 4,
         headerLeftIcon: this.contextMenuLevel === 'detail'
@@ -1375,10 +1466,14 @@ export class AIZoneWidget {
             this.closeContextMenu();
           }
         },
+        onDropdownKeyDown: this.handleContextMenuReactKeyDown,
       })
     );
 
     this.isContextMenuOpen = true;
+    this.syncTipTapAtMenuState();
+    document.removeEventListener('keydown', this.handleContextMenuKeyDown, true);
+    document.addEventListener('keydown', this.handleContextMenuKeyDown, true);
     this.renderTipTapInput();
   }
 

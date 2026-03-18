@@ -3,7 +3,6 @@ import type { ActivityBarItem } from '../../MainLayout';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
 import { Search } from '../Search/Search';
 import { SourceControl } from '../SourceControl/SourceControl';
-import { Extensions } from '../Extensions/Extensions';
 import { KnowledgeBase } from '../KnowledgeBase/KnowledgeBase';
 import { AIModel } from '../AIModel/AIModel';
 import { Settings } from '../Settings/Settings';
@@ -211,19 +210,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
           }
         ];
       
-      case 'extensions':
-        // 扩展菜单
-        return [
-          {
-            id: 'refresh-extensions',
-            label: '刷新',
-            onClick: () => {
-              console.log('刷新扩展');
-              // TODO: 实现刷新扩展功能
-            }
-          }
-        ];
-      
       case 'knowledge-base':
         // 知识库菜单
         return [
@@ -335,8 +321,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
         return <Search />;
       case 'source-control':
         return <SourceControl />;
-      case 'extensions':
-        return <Extensions />;
       case 'knowledge-base':
         return <KnowledgeBase />;
       case 'ai-model':
@@ -355,7 +339,6 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
       'explorer': '资源管理器',
       'search': '搜索',
       'source-control': '源文件管理',
-      'extensions': '扩展',
       'knowledge-base': '知识库',
       'ai-model': 'AI 模型',
       'user': '用户',

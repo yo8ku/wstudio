@@ -132,6 +132,15 @@
       color: var(--ws-button-foreground);
     }
 
+    &.selected {
+      background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22)))));
+      color: var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground))));
+
+      .select-item-check {
+        color: inherit;
+      }
+    }
+
     &.disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -190,6 +199,11 @@
     text-align: center;
     font-size: 13px;
     color: var(--ws-descriptionForeground);
+  }
+
+  &.keyboard-nav .select-item:hover:not(.selected) {
+    background-color: transparent;
+    color: var(--ws-foreground);
   }
 }
 
@@ -260,13 +274,13 @@
 
   // 选中状态
   &.selected {
-    background-color: var(--ws-list-active-selection-background);
-    color: var(--ws-list-active-selection-foreground);
+    background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22)))));
+    color: var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground))));
   }
 
   &.selected:hover {
-    background-color: var(--ws-list-active-selection-background);
-    color: var(--ws-list-active-selection-foreground);
+    background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22)))));
+    color: var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground))));
   }
 }
 

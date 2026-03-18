@@ -10,6 +10,7 @@ import { Sidebar } from './Sidebar/Sidebar';
 import { EditorArea } from './EditorArea/EditorArea/EditorArea';
 import { StatusBar } from './StatusBar/StatusBar';
 import { AIChatPanel } from './AIChatPanel/AIChatPanel';
+import { BackgroundImageLayer } from './BackgroundImageLayer/BackgroundImageLayer';
 import { Panel, type PanelPlacement } from './Panel';
 import { VSCodeCommandCenter } from '../../command-center/VSCodeCommandCenter';
 import { IconThemeCommandProvider } from '../../command-center/IconThemeCommandProvider';
@@ -19,9 +20,7 @@ import { FileCommandProvider } from '../../command-center/FileCommandProvider';
 import { AIConfigCommandProvider } from '../../command-center/AIConfigCommandProvider';
 import { getGlobalCommandCenter, setGlobalCommandCenter } from '../../command-center/GlobalCommandCenter';
 import { IconThemeProvider } from '../../contexts/IconThemeContext';
-import { BackgroundImage } from '../BackgroundImage';
 import { GlobalModal } from '../GlobalModal';
-import { useBackgroundStore } from '../../stores/backgroundStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useActivityBarStore } from '../../stores/activityBarStore';
 import { notification } from '../Notification';
@@ -209,10 +208,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     setIsPanelVisible(true);
   };
 
-  // 鑾峰彇鑳屾櫙鍥剧墖閰嶇疆锛堣闃呯姸鎬佷互瑙﹀彂閲嶆柊娓叉煋锛?
-  const { config } = useBackgroundStore();
-  const backgroundEnabled = config.enabled && !!config.imagePath;
-  
   // 鑾峰彇鍙充晶娲诲姩鏍忕殑鏄剧ず鐘舵€?
   // 鑾峰彇涓讳晶鏍忎綅缃?
   const { sidebarPosition, setSidebarPosition } = useActivityBarStore();
@@ -337,7 +332,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         window.cancelAnimationFrame(frameId);
       }
     };
-  }, [currentTheme, backgroundEnabled]);
+  }, [currentTheme]);
 
   useEffect(() => {
     let resizeTimeoutId: number | null = null;
@@ -563,25 +558,24 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     height: '100%',
     display: 'flex',
     flexDirection: 'column' as const,
-    // 褰撹儗鏅浘鐗囧惎鐢ㄦ椂锛屼娇鐢ㄩ€忔槑鑳屾櫙锛涘惁鍒欎娇鐢ㄤ富棰樿儗鏅壊
-    backgroundColor: backgroundEnabled ? 'transparent' : 'var(--ws-editor-background)',
+    backgroundColor: 'transparent',
     overflow: 'hidden' as const,
-    position: 'relative' as const
-  }), [backgroundEnabled]);
+    position: 'relative' as const,
+    isolation: 'isolate' as const
+  }), []);
 
   const isPanelHorizontal = panelPosition === 'top' || panelPosition === 'bottom';
 
   return (
     <IconThemeProvider>
-      {/* 鑳屾櫙鍥剧墖 */}
-      <BackgroundImage />
-      
       <div 
         className={`main-layout ${className}`} 
         style={mainLayoutStyle}
       >
+        <BackgroundImageLayer />
+
         {/* 鏍囬鏍忥紙鍖呭惈鑿滃崟鏍忥級 */}
-        <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative'}}>
+        <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative', zIndex: 1 }}>
           <TitleBar 
             onToggleSidebar={() => setIsSidebarVisible(!isSidebarVisible)}
             onToggleAIPanel={() => setIsAIChatVisible(!isAIChatVisible)}
@@ -598,6 +592,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
             flexDirection: 'row',
             overflow: 'hidden',
             position: 'relative',
+            zIndex: 1,
             minHeight: 0
           }}
         >

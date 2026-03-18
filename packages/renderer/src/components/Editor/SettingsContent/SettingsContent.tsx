@@ -4,10 +4,12 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { DEFAULT_WORKBENCH_BACKGROUND_SETTINGS, type WorkbenchBackgroundSettings } from '@note-studio/shared';
 import type { SettingsCategory } from '../../Layout/Sidebar/SettingsSidebar';
 import { DropdownMenu } from '@/components/common/DropdownMenu';
 import { SearchInput } from '@/components/common/SearchInput';
 import { EmbeddingConfig } from '@/components/EmbeddingConfig';
+import { BackgroundImageSettings } from '@/components/Settings/BackgroundImageSettings/BackgroundImageSettings';
 import './SettingsContent.scss';
 
 interface SettingDefinition {
@@ -23,20 +25,18 @@ interface SettingDefinition {
   default?: any;
 }
 
-interface Extension {
-  id: string;
-  name: string;
-  displayName: string;
-  version: string;
-  description: string;
-  enabled?: boolean;
-  categories?: string[];
-}
-
 interface SettingsContentProps {
   activeCategory: SettingsCategory;
   onActiveCategoryChange?: (category: SettingsCategory) => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
+}
+
+interface SettingsChangedPayload {
+  key?: string | null;
+  value?: string | number | boolean | WorkbenchBackgroundSettings | null;
+  updatedKeys?: string[];
+  reset?: boolean;
+  imported?: boolean;
 }
 
 export const SettingsContent: React.FC<SettingsContentProps> = ({ 
@@ -49,7 +49,12 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [modifiedKeys, setModifiedKeys] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>('');
-  const [extensions, setExtensions] = useState<Extension[]>([]);
+
+  const syncSettingsState = (nextSettings: Record<string, any>): void => {
+    const normalizedSettings = nextSettings ?? {};
+    setSettings(normalizedSettings);
+    setJsonContent(JSON.stringify(normalizedSettings, null, 2));
+  };
 
   // 设置定义（根据分类组织）
   const settingDefinitions: SettingDefinition[] = [
@@ -167,6 +172,15 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
 
     // 窗口
     {
+      key: 'workbench.background',
+      title: 'Background Image',
+      description: '配置工作台背景图片、透明度、模糊和铺满方式',
+      type: 'object',
+      category: 'workbench',
+      default: DEFAULT_WORKBENCH_BACKGROUND_SETTINGS,
+    },
+
+    {
       key: 'window.zoomLevel',
       title: 'Zoom Level',
       description: '调整窗口的缩放级别',
@@ -216,31 +230,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   // 加载设置
   useEffect(() => {
     loadSettings();
-    loadExtensions();
   }, []);
-
-  // 加载扩展列表
-  const loadExtensions = async () => {
-    try {
-      const result = await window.electronAPI?.extension?.list();
-      if (result) {
-        // 过滤掉主题扩展（categories 包含 "Themes" 的）
-        const nonThemeExtensions = result.filter((ext: Extension) => 
-          !ext.categories?.includes('Themes')
-        );
-        setExtensions(nonThemeExtensions);
-      }
-    } catch (error) {
-      console.error('加载扩展列表失败:', error);
-    }
-  };
 
   const loadSettings = async () => {
     try {
       const result = await window.electronAPI?.settings?.getAll();
-      if (result?.success && result.data) {
-        setSettings(result.data);
-        setJsonContent(JSON.stringify(result.data, null, 2));
+      if (result?.success) {
+        syncSettingsState((result.data as Record<string, any> | undefined) ?? {});
       }
     } catch (error) {
       console.error('加载设置失败:', error);
@@ -250,14 +246,32 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
 
   // 监听设置变化
   useEffect(() => {
-    const handleSettingsChanged = (_event: any, newSettings: Record<string, any>) => {
-      setSettings(newSettings);
-      setJsonContent(JSON.stringify(newSettings, null, 2));
+    const handleSettingsChanged = (payload: SettingsChangedPayload) => {
+      if (payload.reset || payload.imported || (payload.updatedKeys?.length ?? 0) > 0) {
+        void loadSettings();
+        return;
+      }
+
+      const changedKey = payload.key;
+
+      if (typeof changedKey === 'string' && payload.value !== undefined) {
+        setSettings(previousSettings => {
+          const nextSettings = {
+            ...(previousSettings ?? {}),
+            [changedKey]: payload.value,
+          };
+          setJsonContent(JSON.stringify(nextSettings, null, 2));
+          return nextSettings;
+        });
+        return;
+      }
+
+      void loadSettings();
     };
 
-    window.electronAPI?.on?.('settings:changed', handleSettingsChanged);
+    const unsubscribe = window.electronAPI?.on?.('settings:changed', handleSettingsChanged);
     return () => {
-      window.electronAPI?.off?.('settings:changed', handleSettingsChanged);
+      unsubscribe?.();
     };
   }, []);
 
@@ -266,7 +280,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     try {
       const result = await window.electronAPI?.settings?.update(key, value);
       if (result?.success) {
-        setSettings(prev => ({ ...prev, [key]: value }));
+        setSettings(prev => ({ ...(prev ?? {}), [key]: value }));
         setModifiedKeys(prev => new Set([...prev, key]));
       } else {
         setError(result?.error || '更新失败');
@@ -342,8 +356,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     'data-settings-siyuan',
     'data-settings-custom',
     'document-processing',
-    'application',
-    'extensions'
+    'application'
   ];
 
   // 使用 IntersectionObserver 监听滚动并自动选中对应分类
@@ -381,7 +394,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
 
   // 渲染设置控件
   const renderSettingControl = (def: SettingDefinition) => {
-    const value = settings[def.key] ?? def.default;
+    const value = (settings ?? {})[def.key] ?? def.default;
 
     switch (def.type) {
       case 'boolean':
@@ -432,6 +445,14 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         if (def.key === 'embedding.config') {
           return <EmbeddingConfig />;
         }
+        if (def.key === 'workbench.background') {
+          return (
+            <BackgroundImageSettings
+              value={(value as WorkbenchBackgroundSettings | undefined) ?? DEFAULT_WORKBENCH_BACKGROUND_SETTINGS}
+              onChange={(nextValue) => updateSetting(def.key, nextValue)}
+            />
+          );
+        }
         return null;
 
       default:
@@ -466,41 +487,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
 
               {/* 遍历所有分类并显示 */}
               {allCategories.map((category) => {
-                // 特殊处理扩展分类
-                if (category === 'extensions') {
-                  return (
-                    <div key={category} id={`category-${category}`} className="category-section">
-                      <h2 className="category-title">扩展</h2>
-                      {extensions.length === 0 ? (
-                        <div className="empty-state">未找到扩展</div>
-                      ) : (
-                        <div className="extensions-list">
-                          {extensions.map((ext) => (
-                            <div key={ext.id} className="extension-item">
-                              <div className="extension-content">
-                                <div className="extension-info">
-                                  <div className="extension-header">
-                                    <h3 className="extension-name">{ext.displayName}</h3>
-                                    <span className="extension-version">v{ext.version}</span>
-                                  </div>
-                                  <p className="extension-description">{ext.description}</p>
-                                  <code className="extension-id">{ext.id}</code>
-                                </div>
-                                <div className="extension-status">
-                                  <span className={`status-badge ${ext.enabled ? 'enabled' : 'disabled'}`}>
-                                    {ext.enabled ? '已启用' : '已禁用'}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                // 普通设置分类
+                // 鏅€氳缃垎绫?
                 const categorySettings = getCategorySettings(category);
                 const categoryLabels: Record<SettingsCategory, string> = {
                   'commonly-used': '常用设置',
@@ -523,8 +510,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                   'data-settings-siyuan': '思源笔记',
                   'data-settings-custom': '自定义数据源',
                   'document-processing': '文档处理',
-                  'application': '应用程序',
-                  'extensions': '扩展'
+                  'application': '应用程序'
                 };
 
                 if (categorySettings.length === 0) return null;

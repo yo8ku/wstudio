@@ -1,5 +1,5 @@
-/**
- * Electron 婵炴垶鎸诲Σ鎺旀崲濡偐鐭欓悗锝庝簼閸庢瑩鏌涢弬璇插闁哄鍟撮弫?
+﻿/**
+ * Electron 濠电偞鍨堕幐璇参ｉ幒鏃€宕叉俊顖濆亹閻瑩鎮楅敐搴濈凹闁稿孩鐟╅弻娑㈠棘鐠囨彃顬夐梺鍝勵儏閸熸挳寮?
  */
 
 const { app, BrowserWindow, ipcMain, protocol, dialog, session, shell, Menu, globalShortcut, systemPreferences } = require('electron');
@@ -10,14 +10,14 @@ const https = require('https');
 const http = require('http');
 const { fileURLToPath } = require('url');
 
-// 閻庢鍠掗崑鎾绘煕濞嗘劕鐏﹂懚鈺冣偓娈垮枛缁诲绮崨顖滅焿濞达絿鍎ら弳蹇涙倵閻熼偊妲搁柛娆忕箳閹峰啴鏁冮埀顒勫箟閿熺姵鏅柛顐犲灪閺呯霉濠х姴濯担鍓插殨闊洤娴烽悷鎾趁归崗闂翠孩闁搞倖绮撳畷婵嬪Ω閵夛箑鍓婚梺姹囧焺閻撳妲?
-// 濠电偛顦崝宥夊礈娴煎瓨鏅慨妯虹－缁犵懓鈽夐幘宕囆＄紒鍙樺嵆濮婅棄顓奸崟顓犘ｉ柣搴ｆ嚀椤︻垶宕ｈ箛娑樼畱鐟滄繄妲愬┑瀣倞闁绘绮剧粈?CSP 婵炲濮寸粔鍫曞礉瑜旈弻鍛潩瀹曞洨鐣?HTTP 闂佸憡绻傜粔瀵歌姳閸欏绶為柡澶嬪灦鐎?meta 闂佸搫绉村ú銊╊敆妞嬪孩濯奸柛鎾楀懏鐎?
-// 闁荤姭鍋撻柨鏇楀亾闁硅绻濆鐢割敆閸愵喚鍙愰柣鐘叉搐閻°劌危?"This warning will not show up once the app is packaged"
+// 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥箓鎳氶埡鍐ｅ亾濞堝灝鏋涚紒璇差儑缁參宕ㄩ婊呯効婵炶揪绲块崕銈夊汲韫囨稒鍊甸柣鐔煎亰濡叉悂鏌涘▎蹇曠闁瑰嘲鍟撮弫鍐焵椤掑嫬绠熼柨鐔哄У閺咁剟鏌涢鐘茬仾闁哄懐顭堥湁婵犙呭Т婵厽鎷呴崜鎻掓闂婎偄娲ゅù鐑芥偡閹捐秮褰掑礂闂傜繝瀛╅梺鎼炲€栫划鎾崇暦濠靛惟闁靛绠戦崜濠氭⒑濮瑰洤鐒洪柣鎾愁槺濡?
+// 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥΟ铏癸紞缂佺姷鎳撻埥澶愬箻瀹曞泦锛勭磼閸欐ê宓嗘慨濠呮椤撳ジ宕熼鐘橈綁鏌ｆ惔锝嗗殌妞わ富鍨跺畷锝堢疀濞戞鐣遍悷婊勭箘濡叉劕鈹戠€ｎ亞鍊為梺缁橆焾缁墽绮?CSP 濠电偛顕慨瀵哥矓閸洖绀夌憸鏃堝蓟閸涱収娼╃€规洖娲ㄩ悾?HTTP 闂備礁鎲＄换鍌滅矓鐎垫瓕濮抽柛娆忣槸缁剁偤鏌℃径瀣仸閻?meta 闂備礁鎼粔鏉懨洪妸鈺婃晢濡炲瀛╂刊濂告煕閹炬鎳忛悗?
+// 闂佽崵濮崑鎾绘煥閺囨浜鹃梺纭咁嚋缁绘繂顕ｉ悽鍓叉晢闁告劦鍠氶崣鎰版煟閻樺弶鎼愰柣掳鍔屽嵄?"This warning will not show up once the app is packaged"
 if (process.env.NODE_ENV === 'development') {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 }
 
-// 闁荤姳绀佹晶浠嬫偪閸℃あ鐔煎灳閾忣偄浠撮柣鐔哥懕缁查箖鎮楅悾灞惧磯妞ゆ牗姘ㄧ粣鐐烘煥濞戞瀚伴柣?@note-studio 闂佸搫瀚慨鎾儍閻樼粯鏅?packages 闂佺儵鏅╅崰鏍礊?
+// 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冦亗閻旂厧鐏抽柧蹇ｅ亜娴犳挳鏌ｉ悢鍝ユ嚂缂佹煡绠栭幃妤呮偩鐏炴儳纾銈嗙墬濮樸劎绮ｉ悙鐑樼叆婵炴垶顭堢€氫即鏌?@note-studio 闂備礁鎼€氼喗鎱ㄩ幘顔藉剭闁绘绮弲?packages 闂備胶鍎甸弲鈺呭窗閺嶎偆绀?
 const Module = require('module');
 const originalResolveFilename = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain) {
@@ -31,16 +31,16 @@ Module._resolveFilename = function(request, parent, isMain) {
   return originalResolveFilename.call(this, request, parent, isMain);
 };
 
-const { initializeExtensions, pluginManager, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
+const { initializeExtensions, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
 const { ThemeService } = require('./packages/main/dist/main/src/services/ThemeService.js');
 const { registerSettingsHandlers } = require('./packages/main/dist/main/src/ipc/settingsHandlers.js');
-// 闁诲海鏁搁崢褔宕ｉ崱娆戠＜闁割偁鍩勬导鍌炴煛閸繄孝濠殿喚鍠栭幆鍕矙閸喖缍樺┑鈽嗗灙閳ь剝娅曢崑?
+// 闂佽娴烽弫鎼佸储瑜斿畷锝夊幢濞嗘垹锛滈梺鍓插亖閸╁嫭瀵奸崒鐐寸厸闁割偅绻勫瓭婵犳鍠氶崰鏍箚閸曨厾鐭欓柛顭戝枛缂嶆ê鈹戦埥鍡楃仚闁逞屽墲濞呮洟宕?
 const { TerminalService } = require('./packages/main/dist/main/src/services/terminal/index.js');
 const { setTerminalService } = require('./packages/main/dist/main/src/ipc/terminalHandlers.js');
-// 婵炲瓨绮嶉崹褰掝敂?Embedding 闂佸搫鐗嗙粔瀛樻叏?
+// 濠电偛鐡ㄧ划宥夊垂瑜版帩鏁?Embedding 闂備礁鎼悧鍡欑矓鐎涙ɑ鍙?
 const { cloudEmbeddingService } = require('./packages/main/dist/main/src/services/CloudEmbeddingService.js');
 const { getAllEmbeddingProviders, getEnabledEmbeddingModels } = require('./packages/main/dist/main/src/services/EmbeddingModelConfig.js');
-// 閻庤鎮堕崕鎵礊閺冨牆绀岄柛婵嗗閸婂姊洪幓鎺旂闁稿被鍔岄锝夊即閻斿摜鐤€闂?
+// 闁诲氦顫夐幃鍫曞磿閹殿喚绀婇柡鍐ㄧ墕缁€宀勬煕濠靛棗顏柛濠傤煼濮婃椽骞撻幒鏃傤唺闂佺琚崝宀勵敋閿濆鍗抽柣鏂挎憸閻も偓闂?
 const { workspaceVectorIndexService } = require('./packages/main/dist/main/src/services/WorkspaceVectorIndexService.js');
 
 const logIconPath = path.join(__dirname, 'log', 'log.png');
@@ -48,11 +48,11 @@ const DEV_SERVER_URL = 'http://127.0.0.1:5173';
 const DEV_SERVER_MAX_RETRIES = 8;
 const DEV_SERVER_RETRY_DELAY_MS = 750;
 if (!fs.existsSync(logIconPath)) {
-  console.warn('[Electron] 闁圭厧鐡ㄥ濠氬极閵堝鐐婇柣鎰靛墰閸ㄥジ鏌￠崼顐＄凹濠㈣锕㈠畷姘辨暜椤斿墽顦俊顐ｆ緲鐎氼垶顢橀崫銉﹀磯妞ゆ牗姘ㄧ粣?', logIconPath);
+  console.warn('[Electron] 闂佸湱鍘ч悺銊ヮ潖婵犳艾鏋侀柕鍫濐槸閻愬﹪鏌ｉ幇闈涘闁搞劌銈搁弻锟犲醇椤愶紕鍑规繝銏ｎ潐閿曘垹鐣峰杈ㄦ殰妞ゆ柨澧介ˇ顔戒繆椤愶絾绶查悗姘煎灦椤㈡﹢宕妷锕€纾銈嗙墬濮樸劎绮?', logIconPath);
 }
 
-// 婵帗绋掗…鍫ヮ敇婵犳艾瑙︽い鏍ㄧ矋閺嗗繒鐥褍鍘告繛鍡愬灲瀹曟繈鎮╅悜鈺佷壕闁绘洖鍊荤粈澶愭⒑椤掆偓閻忔繈宕?Windows frameless 缂備焦鍔栭〃鍛般亹濞戙垺鏅?resize 闂佸搫鍟冲▔娑㈠吹椤撱垺鍋濆ù鐓庮嚟閹枫劑骞栫€涙ɑ绀夐挊鐔兼偨椤栧棗绉电€?
-// 婵犵鈧啿鈧灝銆掗崼鏇炵闁圭儤鎸鹃崣鈧?GPU 闂佺绻掗崢褔顢欓幇鐗堚拻妞ゆ洍鍋撴い锝勭矙閺佸秶浠﹂挊澶庮唹闂備緡鍋呮穱铏规崲閸愵喗鍋濇い鏍ㄥ嚬閺嗘棃鏌涘▎鎰惰€块柛锝呮惈椤曪綁宕崟顐ゅ幀闂佺绻戞繛濠偽涢幘顔芥櫢?
+// 濠殿喗甯楃粙鎺椻€﹂崼銉晣濠电姵鑹剧憴锔姐亜閺嶃劎鐭嬮柡鍡楃箳閻ヮ亪顢樿閸樺憡绻涢崱鎰伈鐎规洘绻堥幃鈺呮倻閳轰椒澹曢梺缁樻礀閸婅崵绮堟径鎰拺妞ゆ巻鍋撻柣蹇旂箞瀹?Windows frameless 缂傚倷鐒﹂崝鏍€冮崨鑸汗婵炴垯鍨洪弲?resize 闂備礁鎼崯鍐测枖濞戙垹鍚规い鎾卞灪閸嬫繂霉閻撳寒鍤熼柟鏋姂楠炴牜鈧稒蓱缁€澶愭寠閻斿吋鍋ㄦい鏍ф缁夌數鈧?
+// 濠电姷顣介埀顒€鍟块埀顒€鐏濋妴鎺楀醇閺囩偟顔婇梺鍦劋閹搁箖宕ｉ埀?GPU 闂備胶顭堢换鎺楀储瑜旈、娆撳箛閻楀牃鎷诲銈嗘磵閸嬫挻銇勯敐鍕煓闁轰礁绉舵禒锕傛寠婢跺寒鍞归梻鍌欑贰閸嬪懏绌遍搹瑙勫床闁告劦鍠楅崑婵囥亜閺嶃劌鍤柡鍡樻閺屾稑鈻庨幇鎯扳偓鍧楁煕閿濆懏鎯堟い鏇秮瀹曨偊宕熼銈呭箑闂備胶顭堢换鎴炵箾婵犲伣娑㈠箻椤旇姤娅?
 if (process.env.NOTE_STUDIO_DISABLE_HARDWARE_ACCELERATION === 'true') {
   app.disableHardwareAcceleration();
   console.log('[Electron] Hardware acceleration disabled via env flag.');
@@ -60,8 +60,8 @@ if (process.env.NOTE_STUDIO_DISABLE_HARDWARE_ACCELERATION === 'true') {
   console.log('[Electron] Hardware acceleration remains enabled.');
 }
 
-// 濠电偛顦崝宀勫船娴犲鍤婃い蹇撳閺嗘澘鈽夐弬娆炬Ц鐎规洘顨堥幏瀣敊閺勫繒顦伴梺缁橆殙椤顭囬崼銉ョ闊洦鍑归崬鎾煥濞戞澧曠紒鐑╁亾婵＄偑鍊涢褍锕?app.whenReady 婵炴垶鏌ㄩ鍛櫠閻樺灚瀚柛鎰典簼閺嗗繘鏌?
-// 闁哄鏅滈悷锕傛偋?local-file:// 闂佸憡顨呯换妤咁敊閸涙潙绠ョ€广儱鐗嗛崢鎾煥?<video>闂?audio>闂?img> 缂備焦绋戦ˇ浼存偉閿濆洨椹抽柛娆嶅劥閸橆剚鎱ㄥ┑鎾跺埌闁绘牞鍩栭幏鍛崉閵婏附娈?
+// 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞濞寸姴顑嗛崵濠冦亜韫囨挸顏柡鍡樻緲閳藉寮▎鐐﹂悗瑙勬礃椤ㄥ牓骞忕€ｎ噮鏁婇柡鍕箳椤︿即姊虹紒姗嗘畽妞ゎ偄顦…鍥醇閵夈儳顢呴棅顐㈡处閸戝綊宕幘顔界叆婵炴垶顭囨晶鏇犵磼閻戔晛浜惧┑锛勫亼閸婃盯顢氳閿?app.whenReady 濠电偞鍨堕弻銊╊敄閸涱喗娅犻柣妯虹仛鐎氼剟鏌涢幇鍏哥凹闁哄棗绻橀弻?
+// 闂佸搫顦弲婊堟偡閿曞倹鍋?local-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑欐綑缁犮儳鈧箍鍎遍悧鍡涘储閹绢喗鐓?<video>闂?audio>闂?img> 缂傚倷鐒︾粙鎴λ囨导瀛樺亯闁挎繂娲ㄦす鎶芥煕濞嗗秴鍔ラ柛姗嗗墯閹便劌鈹戦幘璺哄煂闂佺粯鐗為崺鏍箯閸涱垱宕夐柕濠忛檮濞?
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'local-file',
@@ -101,11 +101,11 @@ async function loadDevServerWithRetry(targetWindow, targetUrl = DEV_SERVER_URL, 
     const isRetriable = /ERR_EMPTY_RESPONSE|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_ABORTED/i.test(errorMessage);
 
     if (!isRetriable || attempt >= DEV_SERVER_MAX_RETRIES || !targetWindow || targetWindow.isDestroyed()) {
-      console.error('[Electron] 閻庢鍠掗崑鎾绘煕濞嗘劕鐏︽繝鈧崶顒€绀夐柍銉ㄦ珪閻濄倝鏌涢弮鍌毿繛鏉戞处瀵板嫭娼忛銉?', errorMessage);
+      console.error('[Electron] 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥附绻濋埀顒勫炊椤掆偓缁€澶愭煃閵夈劍鐝柣婵勫€濋弻娑㈠籍閸屾顒佺箾閺夋垶澶勭€垫澘瀚蹇涱敃閵?', errorMessage);
       throw error;
     }
 
-    console.warn(`[Electron] 閻庢鍠掗崑鎾绘煕濞嗘劕鐏︽繝鈧崶顒€绀夐柍銉ㄦ珪閻濄倝鏌￠崱妤€鈧绮径鎰煑妞ゆ牗绮嶉弳蹇涙煥濞戞鐏辨い?${attempt} 濠电偛妫寸换婵嬪闯閹间焦鏅? ${errorMessage}`);
+    console.warn(`[Electron] 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥附绻濋埀顒勫炊椤掆偓缁€澶愭煃閵夈劍鐝柣婵勫€濋弻锟犲幢濡も偓閳ь剟顥撶划顓熷緞閹邦剛鐓戝銈嗙墬缁秹寮宠箛娑欑叆婵炴垶顭囬悘杈ㄣ亜?${attempt} 婵犵數鍋涘Λ瀵告崲濠靛闂柟闂寸劍閺? ${errorMessage}`);
     await sleep(DEV_SERVER_RETRY_DELAY_MS);
     await loadDevServerWithRetry(targetWindow, targetUrl, attempt + 1);
   }
@@ -253,8 +253,8 @@ function registerWindowsAccentBorderSync(targetWindow) {
 }
 
 /**
- * 闂佸憡甯楃粙鎴犵磽閹惧鈻旈柤濮愬€楀畷鍫曟煥?
- * @param {string} backgroundColor - 缂備焦鍔栭〃鍛般亹濞戙垺鍤勯悘鐐靛亾閻濐垶鏌ょ涵鍜佸殝缂佽鲸鐟╁鍫曞Ψ閵娿儲顔囬悷婊呭閹稿憡鏅堕悩宕団枖濠电姵鍑归弳顖炴煥?
+ * 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎯ь嚟閳绘棃鏌ゆ慨鎰偓妤€鐣烽崼鏇熺叆?
+ * @param {string} backgroundColor - 缂傚倷鐒﹂崝鏍€冮崨鑸汗婵炴垯鍨洪崵鍕倶閻愰潧浜鹃柣婵愬灦閺屻倗娑甸崪浣告疂缂備浇椴搁悷鈺侇嚕閸洖唯闁靛鍎查鍥偡濠婂懎顣奸柟绋挎啞閺呭爼鎮╁畷鍥ｆ灃婵犵數濮甸崙褰掑汲椤栫偞鐓?
  */
 function createWindow(backgroundColor = '#1e1e1e') {
   const createdWindow = new BrowserWindow({
@@ -263,11 +263,11 @@ function createWindow(backgroundColor = '#1e1e1e') {
     show: false,
     minWidth: 300,
     minHeight: 600,
-    frame: false, // 闂佸搫鍟版慨鍓х博閻斿娴栭柛鈩冪懅瀹曞爼鏌?
+    frame: false, // 闂備礁鎼崯鐗堟叏閸撗呭崥闁绘柨顨庡ù鏍煕閳╁啰鎳呯€规洖鐖奸弻?
     titleBarStyle: 'hidden',
     thickFrame: true,
     accentColor: true,
-    backgroundColor: backgroundColor, // 婵炶揪缍€濞夋洟寮妶鍡欌枖濠电姵鍑归弳顖炴煠閸愬弶婀版繛鍛懇閹虫繄鎷犺缁€澶愭⒑椤掆偓閻忔繈宕㈤妶澶嬪剬闁稿﹦鍠庨ˉ蹇涙⒒閸屻倓绨介柛?
+    backgroundColor: backgroundColor, // 濠电偠鎻紞鈧繛澶嬫礋瀵偊濡堕崱娆屾灃婵犵數濮甸崙褰掑汲椤栫偞鐓犻柛鎰级濠€鐗堢箾閸涱喚鎳囬柟铏箘閹风姾顦寸紒鈧径鎰拺妞ゆ巻鍋撻柣蹇旂箞瀹曘垽濡舵径瀣壃闂佺锕﹂崰搴ㄋ夎箛娑欌拻闁稿被鍊撶花浠嬫煕?
     icon: logIconPath,
     webPreferences: {
       nodeIntegration: false,
@@ -275,8 +275,8 @@ function createWindow(backgroundColor = '#1e1e1e') {
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: true,
       allowRunningInsecureContent: false,
-      webviewTag: true, // 闂佸憡鍑归崹鎶藉极?webview 闂佸搫绉村ú銊╊敆閻戣姤鏅€光偓閳ь剟寮妶鍡欘洸閹艰揪绱曢妶鐢告煕韫囧鍔ユい顐㈩儐閿涙劙骞嬮悙鏉戝晩闂佽　鍋撻柟顖嗗嫮褰?
-      backgroundThrottling: false // 缂備礁鍊烽懗鍫曞极閵堝瑙﹂幖绮光偓鎶藉彙闂佺厧鎼崐鍦矈閿曞倹鏅€光偓閳ь剟鍨惧Ο鑽も攳婵犻潧鐗忛惌鎺旂磼閺冩垵鐏犻柛妯荤矒瀵粙宕堕渚婄础闂佺粯鍨抽悞锕傤敆濠婂牊鏅?
+      webviewTag: true, // 闂備礁鎲￠崙褰掑垂閹惰棄鏋?webview 闂備礁鎼粔鏉懨洪妸鈺婃晢闁绘垼濮ら弲顒傗偓鍏夊亾闁逞屽墴瀵偊濡堕崱娆樻锤闁硅壈鎻槐鏇㈠Χ閻㈠憡鐓曢煫鍥ь儏閸斻儲銇勯銏╁剱闁挎稒鍔欓獮瀣倷閺夋垵鏅╅梻浣姐€€閸嬫捇鏌熼鍡楀瑜?
+      backgroundThrottling: false // 缂傚倷绀侀崐鐑芥嚄閸洖鏋侀柕鍫濐槸鐟欙箓骞栫划鍏夊亾閹惰棄褰欓梻浣哄帶閹碱偊宕愰崷顓犵焾闁挎洖鍊归弲顒傗偓鍏夊亾闁逞屽墴閸ㄦ儳螣閼姐倐鏀冲┑鐘绘涧閻楀繘鎯岄幒鏃傜＜闁哄啯鍨甸悘鐘绘煕濡崵鐭掔€殿喕绮欏畷鍫曨敆娓氬﹦纭€闂備胶绮崹鎶芥倿閿曞偆鏁嗘繝濠傜墛閺?
     }
   });
 
@@ -290,7 +290,7 @@ function createWindow(backgroundColor = '#1e1e1e') {
     }
   });
 
-  // 閻庢鍠掗崑鎾绘煕濞嗘劕鐏﹂懚鈺冣偓娈垮枛妤犲繒妲愭导鏉戠闁绘鍎ょ粊?Vite 閻庢鍠掗崑鎾绘煕濞嗘劕鐏︽繝鈧崶顒€绀夐柍銉ㄦ珪閻?
+  // 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥箓鎳氶埡鍐ｅ亾濞堝灝鏋涘Δ鐘茬箳濡叉劖瀵奸弶鎴狀槷闂佺粯顭囬崕銈囩矈?Vite 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥附绻濋埀顒勫炊椤掆偓缁€澶愭煃閵夈劍鐝柣?
   let resizeStateResetTimer = null;
   const emitResizeState = (isResizing) => {
     if (createdWindow.isDestroyed()) {
@@ -327,11 +327,11 @@ function createWindow(backgroundColor = '#1e1e1e') {
   });
 
   if (process.env.NODE_ENV === 'development') {
-    console.log(`[Electron] 閻庢鍠掗崑鎾绘煕濞嗘劕鐏﹂懚鈺冣偓娈垮枛妤犲繒妲愭导鏉戠闁绘鍎ょ粊?Vite 閻庢鍠掗崑鎾绘煕濞嗘劕鐏︽繝鈧崶顒€绀夐柍銉ㄦ珪閻?${DEV_SERVER_URL}`);
+    console.log(`[Electron] 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥箓鎳氶埡鍐ｅ亾濞堝灝鏋涘Δ鐘茬箳濡叉劖瀵奸弶鎴狀槷闂佺粯顭囬崕銈囩矈?Vite 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥附绻濋埀顒勫炊椤掆偓缁€澶愭煃閵夈劍鐝柣?${DEV_SERVER_URL}`);
     void loadDevServerWithRetry(createdWindow, DEV_SERVER_URL);
     createdWindow.webContents.openDevTools();
   } else {
-    // 闂佹眹鍨婚崰宥嗩殽閸ヮ灛鐔煎灳瀹曞洨顢呴梺鎸庣⊕閼圭偓鎱ㄩ悙瀛樺闁兼亽鍎抽埀顒夊灠椤曟瑩宕崟顒€鈧敻鏌ｉ妸銉ヮ仾闁哄鍟撮弫?
+    // 闂備焦鐪归崹濠氬窗瀹ュ棭娈介柛銉仜閻旂厧鐏崇€规洖娲ㄩ、鍛存⒑閹稿海鈯曢柤鍦亾閹便劑鎮欑€涙ê顫￠梺鍏间航閸庢娊鍩€椤掑鐏犳い鏇熺懇瀹曨偊宕熼鈧埀顒傛暬閺岋綁濡搁妷銉痪闂佸搫顑呴崯鎾极?
     console.log('[Electron] Production mode: loading built renderer files.');
     createdWindow.loadFile(path.join(__dirname, 'packages/renderer/dist/index.html'));
   }
@@ -348,23 +348,23 @@ function createWindow(backgroundColor = '#1e1e1e') {
       mainWindow = fallbackWindow;
       workspaceVectorIndexService.setMainWindow(fallbackWindow);
     }
-    // 濠电偞鎸搁幊妯衡枍鎼淬劌瑙﹂柟杈剧畱濞呫倗绱掓笟鍨仼缂佹墎鏅犲闈涱吋閸涱収娼抽梺姹囧妼鐎氼噣鎮伴妷鈺佺煑闁挎繂鎳愮粚鍧楁煥?
+    // 婵犵數鍋為幐鎼佸箠濡　鏋嶉幖娣妼鐟欙箓鏌熸潏鍓х暠婵炲懌鍊楃槐鎺撶瑹閸喚浠肩紓浣瑰閺呯姴顕ｉ棃娑卞悑闁告侗鍙庡鎶芥⒑濮瑰洤濡奸悗姘煎櫍閹即濡烽埡浣虹厬闂佹寧绻傞幊鎰矚閸ф鐓?
     
   });
 
-  // 闁荤姳绀佹晶浠嬫偪閸℃稑瑙﹂柟杈剧畱濞呫倗绱掓笟鍨仼缂佹墎鏅犲闈涱吋閸涱収娼抽梺姹囧妼鐎氼亞鈧潧鐬肩划锝呂旈埀顒冦亹濞戞﹩鍤曢柡鍥╁У閺嗗繘鏌ㄥ☉妯煎ⅱ闁轰降鍊栫粋宥嗘償閳ュ磭宀涢梻渚囧亗濞村洨鎹㈠Ο缁樺劅闁挎棁娉曢惃鎴澝归悩渚晣缂?
+  // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪☉鐟欙箓鏌熸潏鍓х暠婵炲懌鍊楃槐鎺撶瑹閸喚浠肩紓浣瑰閺呯姴顕ｉ棃娑卞悑闁告侗鍙庡鎶芥⒑濮瑰洤濡奸悗姘间簽閳ь剟娼ч惉鑲╁垝閿濆憘鏃堝焵椤掑啨浜规繛鎴烇供閸ゆ洟鏌￠崶鈺佇ｉ柡鍡楃箻閺屻劌鈽夊Ο鐓庘叡闂佽桨闄嶉崐鏍矉瀹ュ棙鍎熼柍銉ョ－瀹€娑㈡⒒娓氬洤浜楁繛鏉戞川閹广垹螣缂佹ê鍔呴梺鎸庢濞夋洟鎯冮幋婢濆綊鎮╂笟顖氭櫍缂?
   workspaceVectorIndexService.setMainWindow(createdWindow);
 
-  // F12 闂傚倸鎳庣换鎴濐渻閸岀偛绠ラ柟鎯х－绾?DevTools闂佹寧绋戦悧濠囧蓟閻斿摜鐟归柤鎰佸灣濞堝爼鎮归崶銊︾┛缂?
+  // F12 闂傚倸鍊搁幊搴ｆ崲閹存繍娓婚柛宀€鍋涚粻銉╂煙閹咃紞缁?DevTools闂備焦瀵х粙鎴︽偋婵犲洤钃熼柣鏂挎憸閻熷綊鏌ら幇浣哥仯婵炲牆鐖奸幃褰掑炊閵婏妇鈹涚紓?
   createdWindow.webContents.on('before-input-event', (_event, input) => {
     if (input.key === 'F12') {
       createdWindow.webContents.toggleDevTools();
     }
   });
 
-  // 闂佺儵鏅滈崹鐢稿箚婢跺鈧帡宕ｆ径灞藉脯闁哄鏅滅粙鎾诲煝閻撳海鏆﹂柍鍝勫€婚惃?
+  // 闂備胶鍎甸弲婊堝垂閻㈢绠氬璺侯焾閳ь剚甯″畷锝嗗緞鐏炶棄鑴梺鍝勵槴閺呮粎绮欓幘璇茬厺闁绘挸娴烽弳锕傛煃閸濆嫬鈧鎯?
   createdWindow.webContents.on('render-process-gone', (_event, details) => {
-    console.error('[Electron] 濠电偞鎸稿鍫曟偂鐎ｎ偅浜ゆ繛鎴炲焹閺屻倗鈧娲嶉弲婊呰姳?', details.reason, details.exitCode);
+    console.error('[Electron] 婵犵數鍋為幐绋款嚕閸洘鍋傞悗锝庡亝娴溿倖绻涢幋鐐茬劰闁哄被鍊楅埀顒冾潐濞插秹寮插鍛板С?', details.reason, details.exitCode);
   });
   createdWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     if (level >= 2) { // warning=2, error=3
@@ -372,7 +372,7 @@ function createWindow(backgroundColor = '#1e1e1e') {
     }
   });
   
-  // 闂佺儵鏅滈崹鐢稿箚婢跺瞼鐜绘俊銈傚亾鐟滅増鐩幃鐐烘晜閹傚寲闂佸憡鐟﹂敋閻?
+  // 闂備胶鍎甸弲婊堝垂閻㈢绠氬璺虹灱閻滅粯淇婇妶鍌氫壕閻熸粎澧楅惄顖炲箖閻愮儤鏅滈柟顖嗗倸瀵查梻浣告啞閻燂箓鏁嬮柣?
   createdWindow.on('focus', () => {
     createdWindow.webContents.send('window-focus');
   });
@@ -381,21 +381,21 @@ function createWindow(backgroundColor = '#1e1e1e') {
     createdWindow.webContents.send('window-blur');
   });
   
-  // 缂備焦鍔栭〃鍛般亹濞戙垹绀夐柣妯煎劋缁佷即鎮楅悷鐗堟拱闁搞劍宀稿畷銉︽償閿濆棛鏆犳繝銏ｆ硾鐎氼噣骞?
+  // 缂傚倷鐒﹂崝鏍€冮崨鑸汗婵炴垯鍨圭粈澶愭煟濡厧鍔嬬紒浣峰嵆閹鎮烽悧鍫熸嫳闂佹悶鍔嶅畝绋跨暦閵夛附鍎熼柨婵嗘閺嗙姵绻濋姀锝嗙【閻庢凹鍣ｉ獮?
   createdWindow.webContents.on('did-finish-load', () => {
     console.log('[Electron] Renderer did-finish-load.');
-    // 濠电偛顦崝宥夊礈娴煎瓨鏅慨婵堟晿in-process:ready 婵炲瓨绮岄鍕枎閵忋倖鏅?initializeExtensions 闁诲海鎳撻張顒勫垂濮樿泛瑙﹂幖绮光偓宕囧矝闂備緡鍋傜欢銈囨濠靛洨鈻旂€广儱鎳忛煬顒勫级閳哄倻鎳囬柛锝囧厴瀹曪綁骞嬮娑橆伓?
+    // 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥ┑鍫熸櫩in-process:ready 濠电偛鐡ㄧ划宀勵敄閸曨偀鏋庨柕蹇嬪€栭弲?initializeExtensions 闂佽娴烽幊鎾诲嫉椤掑嫬鍨傛慨妯挎硾鐟欙箓骞栫划鍏夊亾瀹曞洤鐭濋梻鍌欑贰閸嬪倻娆㈤妶鍥潟婵犻潧娲ㄩ埢鏃傗偓骞垮劚閹冲繘鐓鍕骇闁冲搫鍊婚幊鍥煕閿濆洤鍘寸€规洩缍侀獮瀣敍濞戞﹩浼?
   });
 
   return createdWindow;
 }
 
 /**
- * 闁圭厧鐡ㄥ濠氬极閵堝洨鐭欓悗锝庝簽绾板秹鎮樿箛姘惈闁告閰ｅ畷銉︽償閳ュ磭浠存繝娈垮枛椤戝懐鈧?
+ * 闂佸湱鍘ч悺銊ヮ潖婵犳艾鏋侀柕鍫濇川閻瑩鎮楅敐搴濈敖缁炬澘绉归幃妯跨疀濮橆偄鎯堥梺鍛婎殔闁帮絽鐣烽妷锔藉劅闁炽儱纾禒瀛樼節濞堝灝鏋涙い鎴濇噽閳?
  */
 app.whenReady().then(async () => {
   
-  // 闁荤姳绀佹晶浠嬫偪閸℃ɑ鍎熼柡鍐ㄥ€归弳蹇涙煠閹稿海鐭婄€规洜鍠栭弫宥囦沪閼恒儱鍓婚梺娲绘娇閸斿秹鎮ラ敐澶婄闁糕剝鐟у浠嬪级閸喎鐏ラ柟鐑╂櫊楠炴垿鎮滈懞銉︽闂佹寧绋戝﹢鎲坮l+X/C/V/A/Z闂?
+  // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩兩戦崕鐔兼煛閸愩劌鈧綊寮宠箛娑欑厾闁圭娴烽惌濠勨偓瑙勬礈閸犳牠寮鍥︽勃闁兼亽鍎遍崜濠氭⒑濞茬粯濞囬柛鏂跨Ч閹儵鏁愭径濠勵槱闂佺硶鍓濋悷褍顪冩禒瀣骇闁割偆鍠庨悘銉╂煙閻戔晜娅婃鐐村灴閹粓鎳為妷锔筋唵闂備焦瀵х粙鎴濓耿閹插澁l+X/C/V/A/Z闂?
   const template = [
     {
       label: 'Edit',
@@ -414,20 +414,20 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(menu);
   console.log('[Electron] Application menu initialized.');
   
-  // 闂佺绻堥崝宀勬儑椤掑倹濯奸柛鎾楀懏鐎?Content Security Policy (CSP)
-  // 闂婎偄娲ら幊姗€濡磋箛娑樻嵍闁靛鍎遍悘锛勨偓鐐瑰€涘▍锝夋偘閵夆晛鐭楅柨婵嗗椤撴椽鏌涢幘宕囆ユい鏃€娲滅槐鏃堫敋閸℃瑧顦繛瀵稿О閸庢娊鍨惧Ο鑽も攳婵犻潧娲ら。鏌ユ煛閸繍妲兼い鏇ㄥ墮鏁堥柛宀€鍋涢崢鎾箹鐎涙ɑ鈷掗柡?CSP
+  // 闂備胶顭堢换鍫ュ礉瀹€鍕剳妞ゆ帒鍊规刊濂告煕閹炬鎳忛悗?Content Security Policy (CSP)
+  // 闂傚鍋勫ú銈夊箠濮椻偓婵＄绠涘☉妯诲祶闂侀潧顭堥崕閬嶆倶閿涘嫧鍋撻悙鐟扳偓娑樷枍閿濆鍋橀柕澶嗘櫅閻鏌ㄥ┑鍡楊伀妞ゆ挻妞介弻娑㈠箻瀹曞泦銉︺亜閺冣偓濞叉粎妲愰弮鍫晪闁糕剝鐟чˇ顔界箾鐎电袨闁稿孩濞婇崹鎯熼懡銈傛敵濠电娀娼уú銈夈€傞弻銉︾厸闁割偅绻嶅Σ鍏笺亜閺囥劌澧弫鍫ユ煕瀹€鈧崑娑㈠储閹绢喖绠归悗娑櫳戦埛鎺楁煛?CSP
   const defaultSession = session.defaultSession;
   
-  // 闁诲氦顫夐惌顔剧不?CSP 缂備焦绋掗悧婊堝汲?
-  // 濠电偛顦崝宥夊礈娴煎瓨鏅慨妯荤樂閳哄懏鏅?unsafe-eval 闂佸憡鐟崹鐢稿礂濡顕辨慨姗嗗墮椤ㄦ盯鏌?Vite HMR闂佹寧绋戦懟顖炪€呰瀵顭ㄩ崼婊勬崳闂佸憡甯婇崡鍐参涢懜纰夌矗婵☆垱顑欓崵鐐烘煙椤撴粌鐏╂い?
-  // 闂佹眹鍨婚崰宥嗩殽閸ヮ灛鐔煎灳瀹曞洨顢呴梺鎸庣⊕濮樸劋绨洪梺?unsafe-eval闂佹寧绋戦張顒€煤鐠恒劉鍋撻悷閭︽Ц闁?
-  // 闂佺绻嬪ù鍥敊韫囨稒鏅?jsdelivr CDN 闂佸憡姊绘慨鎯?Monaco Editor 闂佺厧鐡ㄧ喊宥咃耿?
-  // frame-src 闂佺绻嬪ù鍥敊韫囨稑绀夐柣妯煎劋缁佷即鎮峰▎蹇旑棦妞わ絽鐖奸悰顕€宕橀幓鎺楀彙闂佹眹鍔岀€氼剛绮婇悽绋跨闁靛闄勭亸锟犳煛閳ь剟骞嗚閻濄倝鏌ㄥ☉妯荤缂備焦姊归悷锝夊焵椤戣法鐤噊uTube闂侀潧妫斿鎺旀椤撱垺鐓€闁告垯鍊楃粈?
+  // 闂佽姘﹂～澶愭儗椤斿墽涓?CSP 缂傚倷鐒︾粙鎺楁偋濠婂牆姹?
+  // 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥΟ鑽ゆ▊闁冲搫鎳忛弲?unsafe-eval 闂備礁鎲￠悷顖炲垂閻㈢绀傛俊顖濐嚙椤曡鲸鎱ㄥ鍡楀妞ゃ劍鐩弻?Vite HMR闂備焦瀵х粙鎴︽嚐椤栫偑鈧懓顦圭€殿喚顭堥…銊╁醇濠婂嫭宕抽梻浣告啞鐢﹪宕￠崘鍙傛盯鎳滅喊澶岀煑濠碘槅鍨遍娆撳吹閻愮儤鐓欐い鎾寸矊閻忊晜銇?
+  // 闂備焦鐪归崹濠氬窗瀹ュ棭娈介柛銉仜閻旂厧鐏崇€规洖娲ㄩ、鍛存⒑閹稿海鈯曟慨妯稿妺缁ㄦ椽姊?unsafe-eval闂備焦瀵х粙鎴﹀嫉椤掆偓鐓ら悹鎭掑妷閸嬫捇鎮烽柇锔叫﹂梺?
+  // 闂備胶顭堢换瀣归崶顒夋晩闊洦绋掗弲?jsdelivr CDN 闂備礁鎲″缁樻叏閹灐?Monaco Editor 闂備胶鍘ч悺銊у枈瀹ュ拑鑰?
+  // frame-src 闂備胶顭堢换瀣归崶顒夋晩闊洦绋戠粈澶愭煟濡厧鍔嬬紒浣峰嵆閹嘲鈻庤箛鏃戞＆濡炪倧绲介悥濂告偘椤曗偓瀹曟﹢骞撻幒妤€褰欓梻浣圭湽閸斿瞼鈧凹鍓涚划濠囨偨缁嬭法顦ч梺闈涱檧闂勫嫮浜搁敓鐘崇厸闁逞屽墴楠炲棜顦抽柣婵勫€濋弻銊モ槈濡崵顔囩紓鍌欑劍濮婂綊鎮烽敐澶婄劦妞ゆ垼娉曢悿鍣妘Tube闂備線娼уΛ鏂款渻閹烘梹顫曟い鎾卞灪閻撯偓闂佸憡鍨崐妤冪矆?
   const cspHeader = process.env.NODE_ENV === 'development'
     ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';"
     : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';";
   
-  // 闂佺懓鍤栭梽鍕春閸涙潙绠ラ柍褜鍓熷鍨緞婵犲啯鍎ラ柟鐓庣摠閺屻劑鎳熼悢闈炲海鎷犻幓鎺濇奖 CSP 闂?
+  // 闂備胶鎳撻崵鏍⒔閸曨垰鏄ラ柛娑欐綑缁犮儵鏌嶈閸撶喎顕ｉ崹顐㈢窞濠电姴鍟崕銉╂煙閻撳海鎽犻柡灞诲姂閹崇喖鎮㈤棃鐐叉捣閹风娀骞撻幒婵囧 CSP 闂?
   defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -442,7 +442,7 @@ app.whenReady().then(async () => {
     console.log('[Electron] Development CSP includes unsafe-eval for Vite HMR.');
   }
   
-  // 濠电偛顦崝宀勫船娴犲鍤婃い蹇撳閺嗘澘鈽夐弬娆炬Ц鐎规洘顨堥幏瀣敊绾拌鲸袩闂佽崵鍋涘Λ妤呭吹闁秵鏅?
+  // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞濞寸姴顑嗛崵濠冦亜韫囨挸顏柡鍡樻緲閳藉寮▎鐐﹂悗瑙勬礃椤ㄥ牓骞忕€ｎ噮鏁婄痪鎷岄哺琚╅梻浣藉吹閸嬫稑螞濡ゅ懎鍚归梺顒€绉甸弲?
   const ensureExtendedLengthPath = (filePath) => {
     if (process.platform !== 'win32') {
       return filePath;
@@ -506,7 +506,7 @@ app.whenReady().then(async () => {
     }
 
     url = url.replace(/^[/\\]+([a-zA-Z]:)/, '$1');
-    console.log('[Electron] 缂備礁顦…宄扳枍鎼淬劌纭€闊洦鍑归崬鎾煕閹惧磭肖缂佽鲸鍨垮畷顏嗕沪閸撗冨绩闁荤姴娲㈤崹鐟邦嚕椤掑嫬鏋侀柡澶嬪閸?', url);
+    console.log('[Electron] 缂傚倷绀侀ˇ顖炩€﹀畡鎵虫瀺閹兼番鍔岀涵鈧棅顐㈡处閸戝綊宕幘顔界厱闁规儳纾倴缂備浇椴搁崹鍨暦椤忓棔娌柛鎾楀啫缁╅梺鑽ゅТ濞层垽宕归悷閭﹀殨妞ゆ帒瀚弸渚€鏌℃径瀣嚋闁?', url);
 
     const decodedParts = url.split('/').map(part => {
       try {
@@ -523,11 +523,11 @@ app.whenReady().then(async () => {
     return normalizedPath;
   };
 
-  // 闂佸吋鍎抽崲鑼躲亹閸ヮ剙妫橀柛銉檮椤愪粙鏌?MIME 缂備緡鍋夐褔鎮?
+  // 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉墮濡﹢鏌涢妷顖炴妞ゆ劒绮欓弻?MIME 缂傚倷绶￠崑澶愵敋瑜旈幃?
   const getMimeType = (filePath) => {
     const ext = path.extname(filePath).toLowerCase();
     const mimeTypes = {
-      // 闁荤喐鐟ュΛ婵嬨€?
+      // 闂佽崵鍠愰悷銉ノ涘┑瀣ㄢ偓?
       '.mp4': 'video/mp4',
       '.webm': 'video/webm',
       '.ogg': 'video/ogg',
@@ -535,18 +535,18 @@ app.whenReady().then(async () => {
       '.mov': 'video/quicktime',
       '.avi': 'video/x-msvideo',
       '.mkv': 'video/x-matroska',
-      // 闂傚倸锕ユ繛濠囥€?
+      // 闂傚倸鍊搁敃銉︾箾婵犲洢鈧?
       '.mp3': 'audio/mpeg',
       '.wav': 'audio/wav',
       '.flac': 'audio/flac',
-      // 闂佹悶鍎辨晶鑺ユ櫠?
+      // 闂備焦鎮堕崕杈ㄦ櫠閼恒儲娅?
       '.png': 'image/png',
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',
       '.gif': 'image/gif',
       '.svg': 'image/svg+xml',
       '.webp': 'image/webp',
-      // 闂佺绻戝﹢鍦垝?
+      // 闂備胶顭堢换鎴濓耿閸︻厼鍨?
       '.html': 'text/html',
       '.css': 'text/css',
       '.js': 'application/javascript',
@@ -557,32 +557,32 @@ app.whenReady().then(async () => {
   };
 
   const handleFileProtocol = (protocolName) => (request, callback) => {
-    console.log(`[Electron] ${protocolName} 闂佸憡顨呯换妤咁敊閸涱垱瀚氶梺鍨儑濠€?`, request.url);
+    console.log(`[Electron] ${protocolName} 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞灡鐎氭岸姊洪崹顕呭剳婵犫偓?`, request.url);
     
     try {
       let resolvedPath;
       
-      // 闂佺儵鏅涢悺銊ф暜閹绢喗鏅?URL 婵炴垶鎼╅崢鍊熴亹娓氣偓瀹曪綁寮介鍌滃敶闂?
+      // 闂備胶鍎甸弲娑㈡偤閵娧勬殰闁圭虎鍠楅弲?URL 濠电偞鍨堕幖鈺呭储閸婄喆浜瑰〒姘ｅ亾鐎规洩缍佸浠嬵敆閸屾粌鏁堕梻?
       let urlPath = request.url;
       
-      // 缂備礁顦…宄扳枍鎼淬劌纭€闊洦鍑归崬鎾煕閹惧磭肖缂?(local-file:// 闂?local-file:///)
+      // 缂傚倷绀侀ˇ顖炩€﹀畡鎵虫瀺閹兼番鍔岀涵鈧棅顐㈡处閸戝綊宕幘顔界厱闁规儳纾倴缂?(local-file:// 闂?local-file:///)
       if (protocolName === 'local-file') {
         urlPath = urlPath.replace(/^local-file:\/\/\/?/, '');
       } else if (protocolName === 'vscode-file') {
         urlPath = urlPath.replace(/^vscode-file:\/\/vscode-app\/?/, '');
       }
       
-      // 缂備礁顦…宄扳枍鎼淬劌钃熼柕澶樼厛閸ゅ嫰鏌涘▎蹇撯偓褰掑汲閻旂厧妞介悘鐐跺Г閹劙鏌?
+      // 缂傚倷绀侀ˇ顖炩€﹀畡鎵虫瀺閹兼番鍔岄拑鐔兼煏婢舵鍘涢柛銈呭閺屾稑鈻庤箛鎾亾瑜版帒姹查柣鏃傚帶濡炰粙鎮橀悙璺盒撻柟顖涘姍閺?
       const queryIndex = urlPath.indexOf('?');
       const hashIndex = urlPath.indexOf('#');
       if (queryIndex !== -1) urlPath = urlPath.substring(0, queryIndex);
       if (hashIndex !== -1) urlPath = urlPath.substring(0, hashIndex);
       
-      // URL 闁荤喐鐟辩徊鍧楁偉濠婂牆鏋佺紓鍫㈠█閸ゅ鎮规笟顖氱仩缂?
+      // URL 闂佽崵鍠愰悷杈╁緤閸ф鍋夋繝濠傜墕閺嬩胶绱撻崼銏犫枅闁搞倕顑夐幃瑙勭瑹椤栨氨浠╃紓?
       try {
         urlPath = decodeURIComponent(urlPath);
       } catch (e) {
-        // 婵犵鈧啿鈧綊鎮樻径鎰瀬缂傚牏濮风粔濂告偡濞嗘瑧鎮奸柣鏍ㄧ矋瀵板嫭娼忛銉愭洟鏌ㄥ☉妯垮闁汇劌澧介幏鐘诲即閳垛晛浜鹃柟鐗堟緲閸斻儵鏌涢幒鎴烆棥鐞氭瑩鏌?
+        // 濠电姷顣介埀顒€鍟块埀顒€缍婇幃妯诲緞閹邦剚鐎紓鍌氱墢婵绮旀總鍛婂仭婵炲棙鐟ч幃濂告煟閺嶃劎鐭嬬€垫澘瀚蹇涱敃閵夋劖娲熼弻銊モ槈濡灝顏梺姹囧妼婢т粙骞忛悩璇插嵆闁冲灈鏅涙禍楣冩煙閻楀牊绶查柛鏂诲劦閺屾盯骞掗幋鐑嗘％閻炴碍鐟╅弻?
         const parts = urlPath.split('/');
         urlPath = parts.map(part => {
           try {
@@ -593,100 +593,100 @@ app.whenReady().then(async () => {
         }).join('/');
       }
       
-      console.log(`[Electron] URL闁荤喐鐟辩徊鍧楁偉濠婂牊鏅?`, urlPath);
+      console.log(`[Electron] URL闂佽崵鍠愰悷杈╁緤閸ф鍋夋繝濠傜墛閺?`, urlPath);
       
-      // Windows 闁荤姳璀﹂崹鎵閻愭潙绶為柛鏇ㄥ幗閸?
+      // Windows 闂佽崵濮崇拃锕傚垂閹殿喗顐介柣鎰綑缁剁偤鏌涢弴銊ュ箺闁?
       if (process.platform === 'win32') {
-        // 婵犮垼娉涚€氼噣骞?/C:/... 闂佸搫绉堕崢褏妲?
+        // 濠电姰鍨煎▔娑氣偓姘煎櫍楠?/C:/... 闂備礁鎼粔鍫曞储瑜忓Σ?
         if (/^\/[A-Za-z]:/.test(urlPath)) {
           urlPath = urlPath.substring(1);
         }
-        // 婵犮垼娉涚€氼噣骞?c/Users/... 闂佸搫绉堕崢褏妲愰敓鐘虫櫖闁割偆鍠撻妶濠氭偡濞嗗繒澧曟繛鍛浮瀹曪綁顢涘┑鍡楀箣婵炴潙鍚嬪銊ょ昂闂傚倸瀚ㄩ崐鏇㈠疮鐎ｎ喖鐭楅柛鎴欏€楃粈?
-        // 濠碘槅鍋€閸嬫挻绻涢弶鎴剱婵″弶鎮傚畷銉╂晜閼恒儛?"闂佺儵鏅滈…鍥敄?Users" 闂?"闂佺儵鏅滈…鍥敄?..." 闂佹眹鍔岀€氼叀鍟梺?
+        // 濠电姰鍨煎▔娑氣偓姘煎櫍楠?c/Users/... 闂備礁鎼粔鍫曞储瑜忓Σ鎰版晸閻樿櫕娅栭梺鍓插亞閸犳捇濡舵繝姘仭婵炲棗绻掓晶鏇熺箾閸涱喖娴€规洩缍侀、娑樷攽閸℃绠ｅ┑鐐存綑閸氬顫濋妸銈囨槀闂傚倸鍊哥€氥劑宕愰弴銏犵柈閻庯綆鍠栭惌妤呮煕閹存瑥鈧绮?
+        // 婵犵妲呴崑鈧柛瀣尰缁绘盯寮堕幋顓炲壉濠碘€冲级閹倸鐣烽妷鈺傛櫆闁兼亽鍎?"闂備胶鍎甸弲婊堚€﹂崶顒夋晞?Users" 闂?"闂備胶鍎甸弲婊堚€﹂崶顒夋晞?..." 闂備焦鐪归崝宀€鈧凹鍙€閸燁垶姊?
         else if (/^[A-Za-z]\//.test(urlPath)) {
-          // 闂侀潻璐熼崝搴∶鸿箛鏇犵當闁挎洍鍋撻柟顔筋殔鑿愰悹鍥ㄥ絻椤綁鏌涢幇顓炵瑨鐟? c/Users -> C:/Users
+          // 闂備線娼荤拹鐔煎礉鎼粹埗楦跨疀閺囩姷鐣堕梺鎸庢磵閸嬫捇鏌熼绛嬫當閼挎劙鎮归崶銊ョ祷妞ゎ偓缍侀弻娑㈠箛椤撶偟鐟ㄩ悷? c/Users -> C:/Users
           urlPath = urlPath.charAt(0).toUpperCase() + ':' + urlPath.substring(1);
         }
         
-        // 缂佺虎鍙庨崰鏇犳崲濮樿埖鍎庢俊顖溾拡閸庡﹤顭块崼鍡楀暙閺?
+        // 缂備胶铏庨崣搴ㄥ窗閺囩姵宕叉慨妯垮煐閸庡孩淇婇婧炬嫛闁稿骸锕ら…鍧楀醇閸℃鏆欓柡?
         if (/^[a-z]:/.test(urlPath)) {
           urlPath = urlPath.charAt(0).toUpperCase() + urlPath.substring(1);
         }
       }
       
-      // 闁哄鍎愰崜姘暦閸欏鈻旈柧蹇撶秺閸忓洨绱撴担鍝勬灆闁活厽鍎抽銉╁礋椤掑倸顥曢梺?
+      // 闂佸搫顦遍崕鎰板礈濮橆剛鏆﹂柛娆忣槺閳绘棃鏌ц箛鎾剁Ш闁稿繐娲ㄧ槐鎾存媴閸濆嫭鐏嗛梺娲诲幗閸庢娊顢氶妷鈺佺妞ゆ帒鍊搁ˉ鏇㈡⒑?
       resolvedPath = path.normalize(urlPath);
       
-      console.log(`[Electron] 闁荤喐鐟辩徊楣冩倵娴犲瑙﹂幖杈剧稻閻ｉ亶鏌￠崒姘煑婵炲棎鍨婚幑鍕敍濮樿京鐛?`, resolvedPath);
+      console.log(`[Electron] 闂佽崵鍠愰悷杈╁緤妤ｅ啯鍊靛ù鐘差儏鐟欙箓骞栨潏鍓хɑ闁伙綁浜堕弻锟犲磼濮橆厾鐓戝┑鐐叉閸ㄥ骞戦崟顖ｆ晬婵浜悰?`, resolvedPath);
       
-      // 濠碘槅鍋€閸嬫捇鏌＄仦璇插姕闁哄鍟粋鎺楁嚋閸倣锕傛煕濮樺墽鐣遍柣掳鍔戦弫?
+      // 婵犵妲呴崑鈧柛瀣崌閺岋紕浠︾拠鎻掑闂佸搫顑呴崯顖滅矉閹烘鍤嬮柛顭戝€ｉ敃鍌涚厱婵ê澧介悾閬嶆煟鎺抽崝鎴﹀极?
       if (fs.existsSync(resolvedPath)) {
         const mimeType = getMimeType(resolvedPath);
-        console.log(`[Electron] 闂佸搫鍊稿ú锝呪枎閵忊懇鍋撳☉娅亜锕㈤鍫熸櫖閻庢侗婀塎E缂備緡鍋夐褔鎮?`, mimeType);
+        console.log(`[Electron] 闂備礁鎼崐绋棵洪敐鍛瀻闁靛繆鎳囬崑鎾斥槈濞咁収浜滈敃銏ゎ敂閸喐娅栭柣搴緱濠€濉嶦缂傚倷绶￠崑澶愵敋瑜旈幃?`, mimeType);
         return callback({ 
           path: resolvedPath,
           mimeType: mimeType
         });
       } else {
-        console.log(`[Electron] 闂佸搫鍊稿ú锝呪枎閵忥紕鈻旂€广儱鎳愰幗鐘绘煥?`, resolvedPath);
+        console.log(`[Electron] 闂備礁鎼崐绋棵洪敐鍛瀻闁靛骏绱曢埢鏃傗偓骞垮劚閹虫劙骞楅悩缁樼叆?`, resolvedPath);
         return callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
       }
     } catch (error) {
-      console.error(`[Electron] 闂佸憡顨呯换妤咁敊閸涱喖绶為柛鏇ㄥ幗閸婄偤姊洪幐搴ｆ噯妞?`, error);
+      console.error(`[Electron] 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞枛缁剁偤鏌涢弴銊ュ箺闁稿﹦鍋ゅ娲箰鎼达絾鍣?`, error);
       return callback({ error: -2 }); // net::ERR_FAILED
     }
   };
   
-  // 濠电偛顦崝宀勫船?local-file:// 闂佸憡顨呯换妤咁敊閸涘瓨鍋ㄩ柕濞垮€楅懝楣冩煕閺冨倸鞋婵炴潙娲鐢割敆閳ь剙锕㈤幘顔兼闁搞儻闄勯?
+  // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞?local-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑樼摠閸嬨劑鏌曟繛鍨偓妤呮嚌妤ｅ啯鐓曢柡鍐ㄥ€搁瀷濠电偞娼欏ú顓烆嚕閻㈠壊鏁嗛柍褜鍓欓敃銏ゅ箻椤斿吋顥濋梺鎼炲劵闂勫嫰顢?
   protocol.registerFileProtocol('local-file', handleFileProtocol('local-file'));
-  // console.log('[Electron]  local-file:// 闂佸憡顨呯换妤咁敊閸涱収鍟呴柛娆忣槹閺嗗牓鏌?);
+  // console.log('[Electron]  local-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞弾閸熷懘鏌涘▎蹇ｆЧ闁哄棗鐗撻弻?);
   
-  // 濠电偛顦崝宀勫船?vscode-file:// 闂佸憡顨呯换妤咁敊閸涱喗濯存繝濞惧亾閻犳劗鍠愬鍕炊閳哄倹娈㈤梺鎸庣☉閻楀棝宕ョ€ｎ兘鍋撶涵鍜佹綈婵☆偒鍋婇幃褔宕奸悢灏佹寘闁诲繒鍋炲ú鈺冩?
+  // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞?vscode-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞枟婵瓨绻濇繛鎯т壕闁荤姵鍔楅崰鎰嚗閸曨垰鐐婇柍鍝勫€瑰▓銏ゆ⒑閹稿海鈽夐柣妤€妫濆畷銉р偓锝庡厴閸嬫挾娑甸崪浣圭秷濠碘槅鍋掗崑濠囧箖瑜斿畷濂告偄鐏忎焦瀵橀梺璇茬箳閸嬬偛煤閳哄啯顫?
   protocol.registerFileProtocol('vscode-file', handleFileProtocol('vscode-file'));
-  // console.log('[Electron]  vscode-file:// 闂佸憡顨呯换妤咁敊閸涱収鍟呴柛娆忣槹閺嗗牓鏌?);
+  // console.log('[Electron]  vscode-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞弾閸熷懘鏌涘▎蹇ｆЧ闁哄棗鐗撻弻?);
   
-  // 闂?闂佺绻愰悧鍡涘垂閸偅鍙忛悗锝庝簻椤曆囨煙绾版ɑ娅呴柣顐㈢Ф閸栨牠鎳￠妶鍥х厷闂佹寧绋戦悧濠囧极閻愬搫绀冮悘鐐村劤椤ｆ煡鏌?IPC 婵犮垼娉涚€氼噣骞冩繝鍥ч棷妞ゎ厽甯炵粈?
-  // 濠电偛顦崝宥夊礈娴煎瓨鏅慨姗嗗墰缁犳垵顪冮妶鍫殭婵犫偓椤忓牆绀嗘繛鎴烆焽缁憋妇绱掗幇顓ф當鐟滅増绋掔粙濠勨偓锝庝簻椤ゅ懏绻涙径鍫濆闁?IPC 婵犮垼娉涚€氼噣骞冩繝鍥ч棷妞ゎ厽甯炵粈澶愭煕濮樺墽鐣遍柛顭戝灠閵嗘帡宕ｆ径灞藉脯闁哄鏅滅粙鎾诲煝閸忕厧顕辨慨姗嗗幗閺嗩亪鏌?"No handler registered" 闂備焦瀵ч悷銊╊敋?
+  // 闂?闂備胶顭堢换鎰版偋閸℃稑鍨傞柛顭戝亝閸欏繘鎮楅敐搴濈盎妞ゆ泦鍥ㄧ厵缁剧増蓱濞呭懘鏌ｉ銏⑿ら柛鏍ㄧ墵閹筹繝濡堕崶褏鍘烽梻浣瑰缁嬫垿鎮ф繝鍥ф瀬闁绘劕鎼粈鍐倶閻愭潙鍔ゆい锝嗙叀閺?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶褔妫峰銈庡幗鐢偟绮?
+  // 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥ鍡楀缂佺姵鍨甸—鍐Χ閸偄娈┑鐘亾妞ゅ繐鐗嗙粈鍡樼箾閹寸儐鐒界紒鎲嬪缁辨帡骞囬褎鐣堕悷婊呭缁嬫帞绮欐繝鍕ㄥ亾閿濆簼绨绘い銈呮噺缁绘稒寰勯崼婵嗩瀳闂?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶褔妫峰銈庡幗鐢偟绮堟径鎰厱婵ê澧介悾閬嶆煕椤垵鐏犻柕鍡樺浮瀹曪絾寰勭仦钘夎劘闂佸搫顦弲婊呯矙閹捐鐓濋柛蹇曞帶椤曡鲸鎱ㄥ鍡楀箺闁哄棭浜弻?"No handler registered" 闂傚倷鐒︾€笛囨偡閵娾晩鏁?
   try {
-    await initializeExtensions(null); // 闂佸搫妫楅崐鐟邦渻閸屾稓鈻旂€广儱瀚悙濠囨⒑椤愶絽绗ч柣娑栧劦瀹曪綁鏁愯箛鏇狀槷闂佺绻愰悧濠囧极閻愮儤鏅?IPC 婵犮垼娉涚€氼噣骞冩繝鍥ㄦ櫢?
+    await initializeExtensions(null); // 闂備礁鎼Λ妤呭磹閻熼偊娓婚柛灞剧〒閳绘梻鈧箍鍎辩€氼噣鎮欐繝鍥ㄢ拺妞ゆ劧绲界粭褔鏌ｅ☉鏍у姦鐎规洩缍侀弫鎰疀閺囩媭妲烽梻浣侯焾缁绘劙鎮ф繝鍥ф瀬闁绘劗鍎ら弲?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶銊︽?
     
-    // 婵炶揪缍€濞夋洟寮妶鍡╂付婵☆垱顑欓崥鍥煠閸愬弶婀版繛鍛懇閹虫繄鎷犺缁€鍕槈閹炬剚鐓兼い锝勭矙閹姤娼忛妸顭戞船闂佸搫鏈幑浣烘崲濡偐鐭欓悗锝庡墻閸氣偓闂佽崵鍋涘Λ瀵告?
+    // 濠电偠鎻紞鈧繛澶嬫礋瀵偊濡堕崱鈺備粯濠碘槅鍨遍娆撳触閸ヮ剚鐓犻柛鎰级濠€鐗堢箾閸涱喚鎳囬柟铏箘閹风姾顦寸紒鈧崟顐熸闁圭偓鍓氶悡鍏笺亜閿濆嫮鐭欓柟顔垮Г濞煎繘濡搁…鎴炶埞闂備礁鎼張顒勫箲娴ｇ儤宕叉俊顖濆亹閻瑩鎮楅敐搴″⒒闁告埃鍋撻梻浣藉吹閸嬫稑螞鐎靛憡顫?
     const backgroundColor = await resolveInitialWindowBackgroundColor();
     
-    // 闂佸憡甯楃粙鎴犵磽閹惧墎鐜绘俊銈傚亾鐟?
+    // 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎯у閻滅粯淇婇妶鍌氫壕閻?
     createWindow(backgroundColor);
 
-    // 闂佸憡甯楃换鍌烇綖閹版澘绀岄柡宥庡亞閻帞绱掗弮鎴濈仭婵犫偓閸ヮ剙绀夐柍钘夋噽缁€鍕煕閿斿搫濡奸柛銊ュ船椤曟瑩鎼归崷顓炵倞闂佸憡鐟辩徊浠嬪箖濡ゅ啰鍗氶悗锝庝簻缁侇噣鏌涢幒鎾剁畵妞ゎ偅鍔欏畷鐘诲冀閻㈢數顦?
+    // 闂備礁鎲＄敮妤冩崲閸岀儑缍栭柟鐗堟緲缁€宀勬煛瀹ュ骸浜為柣顓熷笧缁辨帡寮幋婵堜画濠电姭鍋撻柛銉墮缁€澶愭煃閽樺鍣界紒鈧崟顖涚厱闁挎柨鎼俊濂告煕閵娿儱鑸规い鏇熺懇閹煎綊宕烽鐐靛€為梻浣告啞閻熻京寰婃禒瀣畺婵°倕鍟伴崡姘舵倵閿濆簼绨荤紒渚囧櫍閺屾盯骞掗幘鍓佺暤濡炪値鍋呴崝娆忕暦閻樿鍐€闁汇垻鏁搁ˇ?
     if (mainWindow) {
       try {
         terminalService = new TerminalService(mainWindow);
         setTerminalService(terminalService);
         console.log('[Electron] Terminal service initialized.');
       } catch (error) {
-        console.error('[Electron] 缂傚倷绀侀悧蹇涱敂椤掑嫬瀚夌€广儱鎳庨～銈夋煕閹烘挾绠撴い顐ｅ姍瀹曠娀寮借娴滃ジ鏌?', error);
+        console.error('[Electron] 缂傚倸鍊风粈渚€鎮ц箛娑辨晜妞ゆ帒瀚€氬鈧箍鍎遍幊搴綖閵堝鐓曢柟鐑樻尵缁犳挻銇勯锝呭鐎规洜濞€瀵€燁槹濞存粌銈搁弻?', error);
       }
     }
 
-    // 婵☆偓绲鹃悧妤咁敃婵傜绀嗘繝闈涙－濞兼鏌涢弽銊уⅹ闁告埊绱曠槐鎺曠疀閹捐埖娈梺?IPC 濠电偛顦崝宀勫船娴犲妞介悘鐐村劤閳锋牠鎮橀悙瀛樼濠殿喚鍋炲顏堝棘閵堝洨顦柡澶嗘櫆閻熲晠宕抽悜钘夌煑妞ゅ繐娉氭径鎰闁告侗鍨冲畷鍫曟煕濞嗘瑧鍒扮紒鎵佹櫊閹粙鈥﹂幒鎾愁伓?    // 婵炲瓨绮岄張顒勵敃婵傜绠ョ憸鎴︺€?initializeExtensions 婵炴潙鍚嬪畝鎼佸闯閸涘﹤绶炵€广儱妫欓弳鍫ユ煕閹邦剛鐒搁柛搴㈡尦閺?ipcMain.handle闂佹寧绋戦懟顖烆敋闁秵鍤婇柡澶嬪灩绾惧鏌涘▎鎰仴闁诡垰閰ｅ畷婵嬪Ω閵夈儱鑰垮┑顔界箑缁鳖噣骞?    registerSettingsHandlers(settingsManager, workspaceManager, mainWindow);
+    // 濠碘槅鍋撶徊楣冩偋濡ゅ拋鏁冨┑鍌滎焾缁€鍡樼節闂堟稒锛嶆繛鍏碱殜閺屾盯寮介妸褍鈪归梺鍛婂煀缁辨洜妲愰幒鏇犵杸闁规崘鍩栧▓顕€姊?IPC 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞濞寸姴顑呭浠嬫倶閻愭潙鍔ら柍閿嬬墵閹﹢鎮欑€涙顦ユ繝娈垮枤閸嬬偛顭囬鍫濇闁靛牆娲ㄩˇ顕€鏌℃径鍡樻珕闁荤啿鏅犲畷鎶芥倻閽樺鐓戝銈呯箰濞夋碍寰勯幇顒傤槯闂佸憡渚楅崹鍐茬暦閸洘鐓曟繛鍡樼懅閸掓壆绱掗幍浣规珚闁诡喕绮欓垾锕傚箳閹炬剚浼?    // 濠电偛鐡ㄧ划宀勫嫉椤掑嫷鏁冨┑鍌滎焾缁犮儳鎲搁幋锔衡偓?initializeExtensions 濠电偞娼欓崥瀣暆閹间礁闂柛娑橈工缁剁偟鈧箍鍎卞Λ娆撳汲閸儲鐓曢柟閭﹀墰閻掓悂鏌涙惔銏″唉闁?ipcMain.handle闂備焦瀵х粙鎴︽嚐椤栫儐鏁嬮梺顒€绉甸崵濠囨煛婢跺鐏╃痪鎯ь煼閺屾稑鈻庨幇顒備淮闂佽鍨伴柊锝呯暦濠靛惟闁靛鍎遍懓鍨攽椤旂晫绠戠紒槌栧櫍楠?    registerSettingsHandlers(settingsManager, workspaceManager, mainWindow);
     registerSettingsHandlers(settingsManager, workspaceManager, mainWindow);
     console.log('[Electron] Settings IPC handlers registered.');
     
-    // 濡絽鍟粩?闂佸湱顣介崑鎾绘煛閸繍妲搁柛銊ョ仛閹便劎鈧綆浜滈褔鎮楅悷鐗堟拱闁搞劍宀搁弫宥呯暆閳ь剟鎮洪幋婵愬殫闁告稒鐣埀顒€顦靛Λ鍐閻樺樊娼遍柡澶屽仩濡嫰骞冨Δ鍛劵婵浜崣鈧┑鐐存尭瀵爼鎮＄€ｎ偅浜ゆ繛鎴炲焹閺?
+    // 婵☆偓绲介崯顐ょ博?闂備礁婀遍。浠嬪磻閹剧粯鐓涢柛顐ｇ箥濡叉悂鏌涢妸銉т粵闁逛究鍔庨埀顒婄秵娴滄粓顢氳閹鎮烽悧鍫熸嫳闂佹悶鍔嶅畝鎼佸极瀹ュ懐鏆嗛柍褜鍓熼幃娲箣濠垫劕娈梺鍛婄⊕閻ｎ亪鍩€椤掆偓椤﹂潧螞閸愵喖顫呴柣妯烘▕濞奸亶鏌℃径灞戒哗婵☆偄瀚伴獮鍐ㄎ旈崨顔惧姷濠殿喗顭堟禍顒勫矗閳ь剙鈹戦悙瀛樺碍鐎殿喖鐖奸幃锛勨偓锝庡亝娴溿倖绻涢幋鐐茬劰闁?
     const sendReadyEvent = () => {
       if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send('main-process:ready');
       }
     };
     
-    // 婵犵鈧啿鈧綊鎮樻径瀣ㄤ簻闁汇垹鎲″銊р偓鐟版啞瑜板啯鎱ㄩ悙瀛樺闁芥ê顦遍弳姘舵煙鐎涙ê濮х紒杈ㄧ箘缁晝鈧綆浜滅粊顕€鏌涘▎鎰伌闁逞屽厸缁躲倗妲愰柆宥呰Е闁挎洍鍋撻柛顭戝灣缁灚寰勬繝鍕€€闂佸憡姊绘慨鎯归崶鈹惧亾閻熺増婀伴柛銊﹀哺瀹曘儲鎯旈垾宕囧矝闂?
+    // 濠电姷顣介埀顒€鍟块埀顒€缍婇幃妯诲緞鐎ｃ劋绨婚梺姹囧灩閹测€愁浖閵娧€鍋撻悷鐗堝暈鐟滄澘鍟幈銊╂倷鐎涙ê顫￠梺鑺ッˇ閬嶅汲濮樿埖鐓欓悗娑櫭慨褏绱掓潏銊х畼缂侇喒鏅濋埀顒婄秵娴滄粎绮婇鈧弻娑樷枎閹邦剛浼岄梺閫炲苯鍘哥紒韬插€楀Σ鎰版焼瀹ュ懓袝闂佹寧娲嶉崑鎾绘煕椤垵鐏ｇ紒顔肩仛瀵板嫭绻濋崟顓р偓鈧梻浣告啞濮婄粯鎱ㄩ幆顬″綊宕堕埞鎯т壕闁荤喓澧楀﹢浼存煕閵婏箑鍝虹€规洏鍎查幆鏃堝灳瀹曞洤鐭濋梻?
     if (mainWindow && mainWindow.webContents.isLoading()) {
       mainWindow.webContents.once('did-finish-load', sendReadyEvent);
     } else {
       sendReadyEvent();
     }
   } catch (error) {
-    console.error('[Electron]  闂佸湱顣介弲娑㈡儓瀹ュ洤瀵查柤濮愬€楅崺鐘绘煕閹烘挾绠撴い顐ｅ姍瀹曠娀寮借娴滃ジ鏌?', error);
-    // 闂佸憡顨呴崢鏍ㄧ箾閸ャ劌绶為弶鍫亯琚濇繛鎴炴⒒閸犲酣宕归崡鐑嗗殘闁惧繐婀卞畷鍫曟煕濞嗘瑧绉剁紒杈ㄧ懇閺屽棝宕归鐓庤祴闁圭厧鐡ㄥ濠氬极閵堝纭€闁炽儴灏欑粔鍫曟煥濞戞﹩妾х紒杈ㄧ箖閹峰懘宕卞☉妤冪礆闂佺绻愮粔褰掑闯閸涘﹤绶炵€广儱鎳庨悘锟犳煥?
+    console.error('[Electron]  闂備礁婀遍。浠嬪疾濞戙垺鍎撶€广儱娲ょ€垫煡鏌ゆ慨鎰偓妤呭春閻樼粯鐓曢柟鐑樻尵缁犳挻銇勯锝呭鐎规洜濞€瀵€燁槹濞存粌銈搁弻?', error);
+    // 闂備礁鎲￠〃鍛村储閺嶃劎绠鹃柛銉ｅ妼缁剁偤寮堕崼顐函鐞氭繃绻涢幋鐐粹拻闁哥姴閰ｅ畷褰掑础閻戝棗娈橀梺鎯х箰濠€鍗炵暦閸洘鐓曟繛鍡樼懅缁夊墎绱掓潏銊ф噰闁哄苯妫濆畷褰掝敊閻撳氦绁撮梺鍦帶閻°劌顫忔繝姘瀬闁靛牆顦涵鈧梺鐐藉劥鐏忔瑧绮旈崼鏇熺叆婵炴垶锕╁褏绱掓潏銊х畺闁瑰嘲鎳樺畷鍗炩槈濡ゅ啰绀嗛梻浣侯焾缁绘劗绮旇ぐ鎺戦棷闁告稑锕ょ欢鐐碘偓骞垮劚閹冲酣鎮橀敓鐘崇叆?
     if (!mainWindow) {
       createWindow(await resolveInitialWindowBackgroundColor());
     }
@@ -700,7 +700,7 @@ app.whenReady().then(async () => {
 });
 
 /**
- * 闂佸湱顣介崑鎾绘煛閸繍妲洪柣娑栧劦瀹曪綁鏁愰崨顓炵稑闂傚倸鍋嗛崢钘夘渻閸岀偞鐒婚柍褜鍓熷畷娆撴偖鐎靛摜顦﹎acOS 闂傚倸瀚ㄩ崐鏇⑺囨繝姘櫢?
+ * 闂備礁婀遍。浠嬪磻閹剧粯鐓涢柛顐ｇ箥濡叉椽鏌ｅ☉鏍у姦鐎规洩缍侀弫鎰板川椤撶偟绋戦梻鍌氬€搁崑鍡涘储閽樺娓婚柛宀€鍋為悞濠氭煃瑜滈崜鐔风暦濞嗘挻鍋栭悗闈涙憸椤︼箮acOS 闂傚倸鍊哥€氥劑宕愰弴鈶哄洦绻濆顓熸?
  */
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -709,65 +709,14 @@ app.on('window-all-closed', () => {
 });
 
 /**
- * 闁圭厧鐡ㄥ濠氬极閵堝鐒婚柍褜鍓熷畷娆撳传閸曨偒鏋€濠电偞鎸搁幊鎰板箖?
+ * 闂佸湱鍘ч悺銊ヮ潖婵犳艾鏋侀柕鍫濐槹閻掑鏌嶈閸撶喎鐣峰▎鎾充紶闁告洦鍋掗弸鈧繝鐢靛仦閹告悂骞婇幇鏉跨畺?
  */
 app.on('before-quit', () => {
-  console.log('[Electron] 闁圭厧鐡ㄥ濠氬极閵堝纭€闁告劘灏欏▓娲⒑椤愮喎浜鹃梺鍛婂灩鐏忋劎妲愬┑鍡愨偓鎺楀川椤栨稑鈧偤鎮硅鐎氼厾鑺?..');
+  console.log('[Electron] 闂佸湱鍘ч悺銊ヮ潖婵犳艾鏋侀柕鍫濐槸绾偓闂佸憡鍔樼亸娆忊枔濞差亝鈷戞い鎰枎娴滈箖姊洪崨濠傜仼閻忓繈鍔庡Σ鎰攽閸℃劏鍋撻幒妤€宸濇い鏍ㄧ☉閳ь剛鍋ら幃纭咁槻閻庢凹鍘鹃懞?..');
 });
 
-/**
- * IPC 闂備緡鍋呴惌顔界┍婵犲啫绶為柛鏇ㄥ幗閸?
- */
-ipcMain.handle('extension:list', async () => {
-  // 闂佸吋鍎抽崲鑼躲亹閸ヮ剙绠ラ柍褜鍓熷鍨緞鐎ｎ亞绁烽梺?
-  const allPlugins = pluginManager.getAllExtensions();
-  
-  // 闁哄鏅涘ú锕傚箮閵堝鏅?TypeScript 闂佺儵鏅濋…鍫ュ矗瑜旈幆鍐礋椤掆偓缁茶霉閻樹警鍟囩紒杈ㄧ懄娣囧﹪宕掑☉姘嚱闂佸搫鐗嗛¨鈧紒?
-  const filteredPlugins = allPlugins.filter(plugin => {
-    const name = (plugin.name || '').toLowerCase();
-    const id = (plugin.id || '').toLowerCase();
-    return !name.includes('typescript') && 
-           !id.includes('typescript') &&
-           !name.includes('ts-language') &&
-           !id.includes('vscode.typescript');
-  });
-  
-  console.log(`[IPC] 闁哄鏅滈弻銊ッ洪弽顓炵闁瑰搫绉甸浠嬫煕閹烘搩娈欓柕? ${filteredPlugins.length} 婵炴垶鎼╂禍婵娿亹閸愵喗鏅?(闂佽鍓涚划顖炲汲? ${allPlugins.length})`);
-  
-  return filteredPlugins;
-});
-
-ipcMain.handle('extension:toggle', async (event, extensionId, enabled) => {
-  try {
-    console.log('[IPC] extension:toggle', extensionId, enabled ? 'enabled' : 'disabled');
-    // TODO: 闁诲骸婀遍崑鐔肩嵁閸ヮ剙绠ラ柍杞拌兌濞兼棃鏌ｉ妸銉ヮ仼闁诡垰閰ｉ弫?缂備礁鍊烽懗鍫曞极閵堝鐒婚柡鍕箳鐢?
-    return { success: true };
-  } catch (error) {
-    console.error('[IPC] 闂佸憡甯掑ú锕€鐣烽弻銉ョ闁宠桨鑳跺鏂款熆閹壆绨块悷?', error);
-    return { success: false, error: error.message };
-  }
-});
-
-/**
- * 婵炴垶鎸搁…鐑姐€傛禒瀣剮缂佸鐏濊ぐ?IPC 婵犮垼娉涚€氼噣骞?
- * 濠电偛顦崝宥夊礈娴煎瓨鏅慨姗嗗亜閻︽粓鏌?IPC 婵犮垼娉涚€氼噣骞冩繝鍥ч棷闁靛鍎遍崵鎺楁煥?storeHandlers.ts 婵炴垶鎼╅崢浠嬪极閻愬搫绀冪€光偓鐎ｎ剛顦柡澶嗘櫆閻熲晠宕抽悜钘夌煑妞ゅ繐鍟扮粻浠嬫煟閿濆棛鎳佺紒銊ｅ妽缁傛帡宕滄担鍦紘闂?
- */
-
-// 婵炴垶鎸搁…鐑姐€傞悾灞藉闁煎鍊楅崺鐘绘煟濠婂嫭绶叉繝鈧鍫熷仺閺夊牄鍔忛々顐︽煛鐏炵偓宕勭紒缁橆焽缁瑧鈧綆鍠掗崑鎾愁潩瀹曞洨鐣?IPC 闂佸憡绮岄張顒勫蓟婵犲啰鈻斿┑鐘冲嚬閺嗩垶鏌℃担鍝勵暭鐎规挷鐒﹂幆鏃堝箻妫版繂鎮侀梺?
-// 闂佸搫鍞查崨顔炬殸婵炴垶鎸搁…鐑姐€傞懞銉ь洸閻庯絺鏅滈浠嬫煟閳哄倸鐏ラ柟顖氼樀瀹曟娊濡搁妷銉ユ缂備礁顦…宄扳枍?
-
-ipcMain.handle('extension:execute-command', async (event, command, ...args) => {
-  // 闁哄鏅滈悷鈺呭闯閻戣姤顥嗛柍褜鍓涢幉鐗堟媴閸濄儲婢栭梺缁樼矋濠㈡﹢骞婇埄鍐浄闁靛牆妫楅埛鏃堟偠濞戞鐒搁柍褜鍓氬Σ鎺旀?
-  console.log('[IPC] 闂佸湱鐟抽崱鈺傛杸闂佸憡绋掗崹婵嬪箮?', command, args);
-  return { success: true };
-});
-
-/**
- * AI 闂佺儵鏅濋…鍫ュ矗?IPC 婵犮垼娉涚€氼噣骞?
- * 婵炲濯寸徊鍧楀箖?fetch 闁荤姴娲弨閬嶆儑娴煎瓨鏅€光偓閸曨亞绱氶梺绋跨箰缁夌數鎲伴崱娑樿摕闁规儳婀辩粻鑽ょ磼鐎ｎ亶鍎庨柤鍨灴閺?SSL 闂佸憡顨呯换妤咁敊閸涘瓨鐓ユ繛鍡樺俯閸?
- */
 ipcMain.handle('ai:fetch', async (event, url, options = {}) => {
-  console.log('[IPC] AI Fetch 闁荤姴娲弨閬嶆儑?', url);
+  console.log('[IPC] AI Fetch 闂佽崵濮村ú顓㈠绩闁秵鍎?', url);
   
   return new Promise((resolve, reject) => {
     try {
@@ -775,34 +724,34 @@ ipcMain.handle('ai:fetch', async (event, url, options = {}) => {
       const isHttps = urlObj.protocol === 'https:';
       const client = isHttps ? https : http;
       
-      // 闂佸憡鍨靛Λ妤吽囬鍌涘珰闂佸灝顑囧﹢鎾⒑椤愩埄妯€闁?
+      // 闂備礁鎲￠崹闈浳涘Δ鍚藉洭顢楅崒娑樼彴闂備礁鐏濋鍥э耿閹绢喗鈷戞い鎰╁焺濡偓闂?
       const requestOptions = {
         hostname: urlObj.hostname,
         port: urlObj.port || (isHttps ? 443 : 80),
         path: urlObj.pathname + urlObj.search,
         method: options.method || 'GET',
         headers: options.headers || {},
-        // 缂備礁鍊烽懗鍫曞极閵堝洦瀚氬ù锝呭槻婵稑螖閻樿尙鐒烽柣锕€顦甸弫宥呯暆閸曨亞绱氶梺绋跨箰缁夌兘宕靛鍛┏闁诡垎鍕偓鎶芥偣閸ワ附顦烽柛鏃傚枛濮婂顢氶埀顒勩€?
+        // 缂傚倷绀侀崐鐑芥嚄閸洖鏋侀柕鍫濇处鐎氭艾霉閿濆懎妲诲┑顔界☉铻栭柣妯垮皺閻掔兘鏌ｉ敃鈧ˇ鐢稿极瀹ュ懐鏆嗛柛鏇ㄤ簽缁辨岸姊虹粙璺ㄧ缂佸鍏樺畷闈涱煥閸涱垶鈹忛梺璇″瀻閸曨偀鍋撻幎鑺ュ仯闁搞儻闄勯ˇ鐑芥煕閺冨倸鏋涙慨濠傤煼椤㈡岸鍩€椤掑嫨鈧?
         rejectUnauthorized: false
       };
       
-      // 闂佸憡鐟﹂崹濂稿箲閿濆洦瀚氶梺鍨儑濠€?
+      // 闂備礁鎲￠悷锕傚垂婵傜绠查柨婵嗘处鐎氭岸姊洪崹顕呭剳婵犫偓?
       const req = client.request(requestOptions, (res) => {
         let body = '';
         
-        // 闁荤姳绀佹晶浠嬫偪閸℃瑧纾介柡宥庡亞閸?
+        // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪懅绾句粙鏌″搴′簽闁?
         res.setEncoding('utf8');
         
-        // 闂佽　鍋撻柛顐ｆ礃閼茬娀鏌涘┑鍡櫺㈢紒銊︾叀瀵偊鎮ч崼婵堛偊
+        // 闂備浇銆€閸嬫捇鏌涢锝嗙闁艰尙濞€閺屾稑鈹戦崱娅恒垻绱掗妸锔惧弨鐎殿噮鍋婇幃褔宕煎┑鍫涘亰
         res.on('data', (chunk) => {
           body += chunk;
         });
         
-        // 闂佸憡绻傜粔瀵歌姳閼碱剛纾奸柟鎯х摠鐏?
+        // 闂備礁鎲＄换鍌滅矓鐎垫瓕濮抽柤纰卞墰绾惧ジ鏌熼幆褏鎽犻悘?
         res.on('end', () => {
-          console.log('[IPC] AI Fetch 闂佸憡绻傜粔瀵歌姳閺屻儲鍋愰悹浣筋潐鐎?', res.statusCode);
+          console.log('[IPC] AI Fetch 闂備礁鎲＄换鍌滅矓鐎垫瓕濮抽柡灞诲劜閸嬫劙鎮规担绛嬫綈閻?', res.statusCode);
           
-          // 闁诲繐绻愬Λ妤呭箹闁垮鍎熼柡鍐ㄦ处缁侇噣鏌熺拠鈩冪窔閻犳劗鍠栧畷锝夘敍濮樿京顣查梺鍛婂笚椤ㄥ懐鈧灚鐓￠幆鍐礋椤掑倸顥曢梺?
+          // 闂佽绻愮换鎰涘Δ鍛闂佸灝顑嗛崕鐔兼煛閸愩劍澶勭紒渚囧櫍閺岀喓鎷犻埄鍐獢闁荤姵鍔楅崰鏍х暦閿濆鏁嶆慨妯夸含椤ｆ煡姊洪崨濠傜瑲妞ゃ劌鎳愰埀顒€鐏氶悡锟犲箚閸愵喖绀嬫い鎺戝€搁ˉ鏇㈡⒑?
           resolve({
             status: res.statusCode,
             statusText: res.statusMessage || '',
@@ -812,37 +761,37 @@ ipcMain.handle('ai:fetch', async (event, url, options = {}) => {
         });
       });
       
-      // 闂備焦瀵ч悷銊╊敋閵堝棗绶為柛鏇ㄥ幗閸?
+      // 闂傚倷鐒︾€笛囨偡閵娾晩鏁嬮柕鍫濇缁剁偤鏌涢弴銊ュ箺闁?
       req.on('error', (error) => {
-        console.error('[IPC] AI Fetch 闂備焦瀵ч悷銊╊敋?', error);
+        console.error('[IPC] AI Fetch 闂傚倷鐒︾€笛囨偡閵娾晩鏁?', error);
         reject(error);
       });
       
-      // 闂佸憡鐟﹂崹鍧楀焵椤戞寧绁版い鏇ㄥ墮鏁堥柛灞剧懅缁夊ジ鏌ㄥ☉妯煎妞も敪鍥у嚑婵犲﹤瀚粻鎺楁煥?
+      // 闂備礁鎲￠悷锕傚垂閸ф鐒垫い鎴炲缁佺増銇勯弴銊ュ閺佸牓鏌涚仦鍓ф噮缂佸銈搁弻銊モ槈濡厧顣哄銈傛暘閸パ冨殤濠电姴锕ょ€氼厾绮婚幒妤佺叆?
       if (options.body) {
         req.write(options.body);
       }
       
-      // 缂傚倷鐒﹂幐璇差焽椤愩倖瀚氶梺鍨儑濠€?
+      // 缂傚倸鍊烽悞锕傚箰鐠囧樊鐒芥い鎰╁€栫€氭岸姊洪崹顕呭剳婵犫偓?
       req.end();
     } catch (error) {
-      console.error('[IPC] AI Fetch 閻庢鍠栭崐鎼佹偉?', error);
+      console.error('[IPC] AI Fetch 闁诲孩顔栭崰鏍磹閹间焦鍋?', error);
       reject(error);
     }
   });
 });
 
 ipcMain.handle('extension:send-message', async (event, extensionId, message) => {
-  // 闁哄鏅滈悷鈺呭闯閻戣姤顥嗛柍褜鍓涢幉鐗堟媴閸濄儲婢栭梺缁樼矌婢ф鏅剁捄銊ゆ勃闁哄洨鍠撳暩闂佽鍙庨崹鎷屻亹閸岀偞鐒诲〒姘ｅ亾闁逞屽墯濡叉帞娆?
-  console.log('[IPC] 闂佸憡鐟﹂崹鍧楀焵椤戣法鍔嶇紒澶屽厴楠炰線顢涘顒傚帓闂佸湱顣介弲娑㈡儓?', extensionId, message);
+  // 闂佸搫顦弲婊堟偡閳哄懎闂柣鎴ｅГ椤ュ棝鏌嶈閸撴盯骞夐悧鍫熷闁告縿鍎插鏍⒑缂佹鐭屽褎顨嗛弲鍓佹崉閵娿倖鍕冮梺鍝勬川閸犳挸鏆╅梻浣筋嚃閸欏酣宕归幏灞讳汗闁稿瞼鍋為悞璇层€掑锝呬壕闂侀€炲苯澧俊鍙夊笧濞?
+  console.log('[IPC] 闂備礁鎲￠悷锕傚垂閸ф鐒垫い鎴ｆ硶閸斿秶绱掓径灞藉幋妤犵偘绶氶、娑橆潩椤掑倸甯撻梻浣告贡椤ｄ粙寮插☉銏″創?', extensionId, message);
   return { success: true };
 });
 
 /**
- * 闂佸搫鍊稿ú锝呪枎閵忋倕绠肩€广儱瀚粙?IPC 婵犮垼娉涚€氼噣骞?
+ * 闂備礁鎼崐绋棵洪敐鍛瀻闁靛繈鍊曠粻鑲┾偓骞垮劚鐎氼喚绮?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠?
  */
 
-// 闂佺懓鐏氶幐鍝ユ閹达箑妫橀柛銉檮椤愪粙鎮楅悽娈挎敯闁伙缚绮欓弫?
+// 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟杈剧畱濡﹢鏌涢妷顖炴妞ゆ劒绮欓幃妤呮偨濞堟寧鏁梺浼欑細缁瑩寮?
 ipcMain.handle('file:open', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -858,7 +807,7 @@ ipcMain.handle('file:open', async () => {
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
       
-      // 婵°倗濮撮惌渚€鎯佹径鎰闁搞儻闄勯鐣岀磼椤愩儺鍤欓柣?
+      // 濠德板€楁慨鎾儗娓氣偓閹焦寰勯幇顒侇棟闂佹悶鍎婚梽鍕敃閻ｅ瞼纾兼い鎰╁労閸ゆ瑩鏌?
       if (!workspaceManager.isSupportedFileType(filePath)) {
         return {
           success: false,
@@ -869,7 +818,7 @@ ipcMain.handle('file:open', async () => {
       const content = await fsPromises.readFile(filePath, 'utf-8');
       const language = workspaceManager.getFileLanguage(filePath);
       
-      // 濠电儑缍€椤曆勬叏閻愬搫绀嗛柣妤€鐗婃禒姗€寮堕埡鍌氱仸闁哄鍟粋鎺旀崉閸濆嫮浠氶梺?
+      // 婵犵數鍎戠紞鈧い鏇嗗嫭鍙忛柣鎰惈缁€鍡涙煟濡も偓閻楀﹥绂掑鈧鍫曞煛閸屾氨浠搁梺鍝勵儏閸燁垳绮嬮幒鏃€宕夐柛婵嗗娴犳岸姊?
       workspaceManager.addRecentFile(filePath);
       workspaceManager.setLastOpenedFile(filePath);
       
@@ -886,7 +835,7 @@ ipcMain.handle('file:open', async () => {
 
     return { success: false, error: 'User canceled' };
   } catch (error) {
-    console.error('[IPC] 闂佺懓鐏氶幐鍝ユ閹达箑妫橀柛銉檮椤愯棄顭块幆鎵翱閻?', error);
+    console.error('[IPC] 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟杈剧畱濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀箚閹殿喚缈遍柣?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -894,7 +843,7 @@ ipcMain.handle('file:open', async () => {
   }
 });
 
-// 闂佺懓鐏氶幐鍝ユ閹寸姵鍠嗛柛鈩冧緱閺嗐儵鏌￠崒姘煑婵炲棎鍨婚埀顒傛暩椤㈠﹪鎯佹禒瀣櫢?
+// 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟瀵稿У閸犲棝鏌涢埄鍐х繁闁哄棎鍎甸弻锟犲磼濮橆厾鐓戝┑鐐叉閸ㄥ鍩€椤掑倹鏆╂い銏狅躬閹焦绂掔€ｎ偅娅?
 ipcMain.handle('video:open', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -918,7 +867,7 @@ ipcMain.handle('video:open', async () => {
 
     return { success: false, error: 'User canceled' };
   } catch (error) {
-    console.error('[IPC] 闂佺懓鐏氶幐鍝ユ閹寸姵鍠嗛柛鈩冧緱閺嗐儵鏌￠崒姘煑婵炲棎鍨哄鍕綇椤愩儛?', error);
+    console.error('[IPC] 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟瀵稿У閸犲棝鏌涢埄鍐х繁闁哄棎鍎甸弻锟犲磼濮橆厾鐓戝┑鐐叉閸ㄥ搫顕ラ崟顒佺秶妞ゆ劑鍎?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -926,10 +875,10 @@ ipcMain.handle('video:open', async () => {
   }
 });
 
-// 闁荤姴娲╅褑銇愰崶顒€绠伴柛銉戝懏姣庨柣鐘辫閸ㄦ壆娆㈤悙鐑樺剭闁告洦鍓氶悗顔济归悩渚晣缂佽鲸鐟╅幃浠嬪Ω閵堝洩澹橀梺鍝勫€稿ú锝呪枎閵忋倕鍐€闁瑰瓨绻傞拑鐔兼煕閹寸姷甯涘褝绠戦锝夊焵椤掑嫭鏅?
+// 闂佽崵濮村ú鈺咁敋瑜戦妵鎰板炊椤掆偓缁犱即鏌涢妷鎴濇噺濮ｅ酣鏌ｉ悩杈劅闁搞劍澹嗗▎銏ゆ倷閻戞ê鍓梺鍛婃处閸撴岸鎮楅娴庡綊鎮╂笟顖氭櫍缂備浇椴搁悷鈺呭箖娴犲惟闁靛牆娲╂竟姗€姊洪崫鍕偓绋棵洪敐鍛瀻闁靛繈鍊曢崘鈧梺鐟扮摠缁诲倿鎷戦悢鍏肩厱闁瑰濮风敮娑橆熆瑜濈粻鎴︻敋閿濆鐒垫い鎺戝閺?
 ipcMain.handle('file:read', async (event, filePath) => {
   try {
-    // 濠碘槅鍋€閸嬫捇鏌＄仦璇插姕闁哄鍟粋鎺楁嚋閸倣锕傛煕濮樺墽鐣遍柣掳鍔戦弫?
+    // 婵犵妲呴崑鈧柛瀣崌閺岋紕浠︾拠鎻掑闂佸搫顑呴崯顖滅矉閹烘鍤嬮柛顭戝€ｉ敃鍌涚厱婵ê澧介悾閬嶆煟鎺抽崝鎴﹀极?
     const stats = await fsPromises.stat(filePath);
     if (!stats.isFile()) {
       return {
@@ -941,7 +890,7 @@ ipcMain.handle('file:read', async (event, filePath) => {
     const content = await fsPromises.readFile(filePath, 'utf-8');
     const language = workspaceManager.getFileLanguage(filePath);
     
-    // 濠电儑缍€椤曆勬叏閻愬搫绀嗛柣妤€鐗婃禒姗€寮堕埡鍌氱仸闁哄鍟粋鎺旀崉閸濆嫮浠氶梺?
+    // 婵犵數鍎戠紞鈧い鏇嗗嫭鍙忛柣鎰惈缁€鍡涙煟濡も偓閻楀﹥绂掑鈧鍫曞煛閸屾氨浠搁梺鍝勵儏閸燁垳绮嬮幒鏃€宕夐柛婵嗗娴犳岸姊?
     workspaceManager.addRecentFile(filePath);
     workspaceManager.setLastOpenedFile(filePath);
     
@@ -955,7 +904,7 @@ ipcMain.handle('file:read', async (event, filePath) => {
       }
     };
   } catch (error) {
-    console.error('[IPC] 闁荤姴娲╅褑銇愰崶顒€妫橀柛銉檮椤愯棄顭块幆鎵翱閻?', error);
+    console.error('[IPC] 闂佽崵濮村ú鈺咁敋瑜戦妵鎰板炊椤掆偓濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀箚閹殿喚缈遍柣?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -963,7 +912,7 @@ ipcMain.handle('file:read', async (event, filePath) => {
   }
 });
 
-// 闂佺懓鐏氶幐鍝ユ閹达箑鐐婇柛鎾楀喚鏆梺鍝勫€稿ú锝呪枎閵忊懇鍋撻悽娈挎敯闁伙缚绮欓弫?
+// 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟杈剧畱閻愬﹪鏌涢幘妤€鍠氶弳顒勬⒑閸濆嫬鈧煤閿濆應鏋庨柕蹇婃噰閸嬫捇鎮藉▓鎸庢暞闂佷紮缂氱划娆撳极?
 ipcMain.handle('image:open', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -987,7 +936,7 @@ ipcMain.handle('image:open', async () => {
 
     return { success: false, error: 'User canceled' };
   } catch (error) {
-    console.error('[IPC] 闂佺懓鐏氶幐鍝ユ閹达箑鐐婇柛鎾楀喚鏆繝銏″劶缁墽鎲?', error);
+    console.error('[IPC] 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟杈剧畱閻愬﹪鏌涢幘妤€鍠氶弳顒佺節閵忊€冲姸缂侇喖澧介幉?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -995,7 +944,7 @@ ipcMain.handle('image:open', async () => {
   }
 });
 
-// 闂佺懓鐏氶幐鍝ユ閹寸偛绶炴慨姗嗗幗閻庮喖霉閻樿尙鍩ｉ柍褜鍓欓ˇ鎵偓姘ュ妿閳ь剛鏁搁、濠囨儊閽樺娴栭柛鈽嗗幘缁€鍕煟椤剙濡虹紒顭戝墴閹矂濡烽妸褎顫氶柟鐓庣摠閹告悂顢氶柆宥呯闁靛鍨崇粈?
+// 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟瀵稿仜缁剁偞鎱ㄥ鍡楀箺闁诲寒鍠栭湁闁绘灏欓崺锝夋煃瑜滈崜娆撍囬幍顔瑰亾濮樸儱濡块柍褜鍓涢弫鎼併€佹繝鍥ㄥ剨闁芥ê顦藉ù鏍煕閳藉棗骞樼紒鈧崟顖涚厽妞ゎ偒鍓欐俊铏圭磼椤垵澧撮柟顖氱焸婵＄兘濡歌椤岸鏌熼悡搴ｆ憼闁瑰憡鎮傞、姘舵焼瀹ュ懐顦ч梺闈涱樈閸ㄥ磭绮?
 ipcMain.handle('file:openMultiple', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -1009,7 +958,7 @@ ipcMain.handle('file:openMultiple', async () => {
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
-      // 闁哄鏅涘ú锕傚箮閵堝妫橀柛銉檮椤愮晫绱掗銉殭闁诲海鍏橀弫宥囦沪閽樺閿柡澶嗘櫆閺屻劌煤閺嶎厼缁╂い鏍ㄧ☉閻︻噣鏌ｉ妸銉ヮ仾闁哄鍟撮弫?
+      // 闂佸搫顦弲娑樏洪敃鍌氱闁靛牆顦Λ姗€鏌涢妷顖炴妞ゆ劗鏅槐鎺楊敃閵夘喖娈梺璇叉捣閸忔﹢寮鍥︽勃闁芥ê顦伴柨顓㈡煛婢跺棙娅嗛柡灞诲妼鐓ら柡宥庡幖缂佲晜銇勯弽銊р槈闁伙富鍣ｉ弻锝夊Ω閵夈儺浠鹃梺鍝勵儏閸熸挳寮?
       const supportedExtensions = ['md', 'markdown', 'json', 'txt'];
       const filteredPaths = result.filePaths.filter(filePath => {
         const ext = path.extname(filePath).toLowerCase().slice(1);
@@ -1031,7 +980,7 @@ ipcMain.handle('file:openMultiple', async () => {
 
     return { success: false, error: 'User canceled' };
   } catch (error) {
-    console.error('[IPC] 闂佺懓鐏氶幐鍝ユ閹寸偛绶炴慨姗嗗幗閻庮喖霉閻樼儤纭炬い鏇ㄥ枤閹风姴鈹戦崶鑸垫暠婵犮垺鍎肩划鍓ф喆?', error);
+    console.error('[IPC] 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟瀵稿仜缁剁偞鎱ㄥ鍡楀箺闁诲寒鍠栭湁闁绘鍎ょ涵鐐亜閺囥劌鏋ら柟椋庡Т閳规垿宕堕懜鍨殸濠电姰鍨洪崕鑲╁垝閸撗勫枂?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1039,7 +988,7 @@ ipcMain.handle('file:openMultiple', async () => {
   }
 });
 
-// 闂佺懓鐏氶幐鍝ユ閹达箑妫橀柛銉檮椤愯棄顭块崜浣瑰殌妞ゆ洦鍠氶幏鐘测攽閸ヨ埖鏁遍梺鎸庣☉閻楀繘寮妶鍡欘洸閹肩补鈧尙鐭楁繛杈剧稻缁瞼浜搁鐐存櫖閻忕偠鍋愮粣妤呮偣娴ｇ鈷旈柣銈呮椤斿繘濡烽妶鍥┾枙闂佸憡鐗炲▍锝吤洪幏灞讳汗闁哄浂浜炵粈?
+// 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟杈剧畱濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈屽銈嗘处閸犳岸骞忛悩娴嬫斀闁搞儴鍩栭弫閬嶆⒑閹稿海鈽夐柣妤€绻樺顐﹀Χ閸℃瑯娲搁柟鑲╄ˉ閳ь剝灏欓惌妤佺箾鏉堝墽绋荤紒顔肩灱娴滄悂顢涢悙瀛樻珫闁诲繒鍋犻崑鎰玻濡ゅ懏鍋ｅù锝囶焾閳锋棃鏌ｉ妶鍛棞妞ゆ柨绻樻俊鐑藉Χ閸モ斁鏋欓梻浣告啞閻楃偛鈻嶉敐鍚ゆ椽骞忕仦璁虫睏闂佸搫娴傛禍鐐电矆?
 ipcMain.handle('folder:open', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -1049,7 +998,7 @@ ipcMain.handle('folder:open', async () => {
     if (!result.canceled && result.filePaths.length > 0) {
       const folderPath = result.filePaths[0];
       
-      // 婵烇絽娲︾换鍌炴偤閵娿儺鍟呴柕澶堝€楃粙濠囨煕閺嶎厾绱伴柣顓㈢畺閺?
+      // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞垮労閸熷懘鏌曟径鍫濃偓妤冪矙婵犲洦鐓曢柡宥庡幘缁变即鏌ｉ銏㈢暫闁?
       workspaceManager.setWorkspaceDir(folderPath);
       
       return {
@@ -1063,7 +1012,7 @@ ipcMain.handle('folder:open', async () => {
 
     return { success: false, error: 'User canceled' };
   } catch (error) {
-    console.error('[IPC] 闂佺懓鐏氶幐鍝ユ閹达箑妫橀柛銉檮椤愯棄顭块崜浣瑰殌闁靛洦鍨块弫?', error);
+    console.error('[IPC] 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟杈剧畱濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈岄梺闈涙处閸ㄥ潡寮?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1071,7 +1020,7 @@ ipcMain.handle('folder:open', async () => {
   }
 });
 
-// 闂佺懓鐏氶幐鍝ユ閹达箑妫橀柛銉檮椤愯棄顭块崜浣瑰殌妞ゆ洦鍠氶幏鐘测攽閸ヨ埖鏁遍梺鎸庣☉閻楀繘寮妶鍡欘洸閹艰揪绲块崣鈧柣鐘叉搐濡鑺辨潏鈹惧亾閻㈤潧甯堕柛娆忔閺佸秶浠﹂懖鈺冩喒闁荤姳绀佹晶浠嬫偪閸℃鍟呴柕澶堝€楃粙濠囨煕閺嶎剚顏犳繛鍙夊閵囨劙寮撮鍡欘槴
+// 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟杈剧畱濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈屽銈嗘处閸犳岸骞忛悩娴嬫斀闁搞儴鍩栭弫閬嶆⒑閹稿海鈽夐柣妤€绻樺顐﹀Χ閸℃瑯娲搁柟鑹版彧缁插潡宕ｉ埀顒勬煟閻樺弶鎼愭俊顐ｎ殘閼鸿鲸娼忛埞鎯т壕闁汇垽娼х敮鍫曟煕濞嗗繑顥㈤柡浣哥Ф娴狅箓鎳栭埡鍐╁枓闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冾殢閸熷懘鏌曟径鍫濃偓妤冪矙婵犲洦鐓曢柡宥庡墯椤忕姵绻涢崣澶婎€滈柕鍥ㄥ姍瀵挳顢旈崱娆樻Т
 ipcMain.handle('knowledge-base:open-folder', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -1081,7 +1030,7 @@ ipcMain.handle('knowledge-base:open-folder', async () => {
     if (!result.canceled && result.filePaths.length > 0) {
       const folderPath = result.filePaths[0];
       
-      // 闂佹椿鍘归崕鎾儊閹寸偞鍎熼柟鐐墯閸ゃ倝鏌涜箛瀣姕闁哄鍟粋鎺旀崉閹帊绮存繛鎴炴尭缁夌兘顢欓弴鐘电＞妞ゆ棃妫跨槐锝吤归敐鍡欑煀閻忓浚鍨堕幆鍕敊閼测晝协闂佹寧绋戞總鏃傛偖闁秵鍤€闁告侗鍘鹃弳姘舵煕韫囧濡块悗姘煎弮閺?
+      // 闂備焦妞块崢褰掑磿閹绢喗鍎婇柟瀵稿仦閸庣喖鏌熼悙顒€澧柛銈冨€濋弻娑滅疀鐎ｎ亜濮曢梺鍝勵儏閸燁垳绮嬮幒鏃€宕夐柟顓熷笂缁瓨绻涢幋鐐村碍缂佸鍏橀、娆撳即閻樼數锛炲銈嗘濡法妲愰敐鍚ゅ綊鏁愰崱娆戠厐闁诲繐娴氶崹鍫曞箚閸曨垼鏁婇柤娴嬫櫇鍗忛梻浣瑰缁嬫垶绺介弮鍌涘仏闂侇剙绉甸崵鈧梺鍛婁緱閸橀箖寮冲鑸电厱闊洤顑呮俊鍧楁倵濮樼厧寮柡?
       
       return {
         success: true,
@@ -1094,7 +1043,7 @@ ipcMain.handle('knowledge-base:open-folder', async () => {
 
     return { success: false, error: 'User canceled' };
   } catch (error) {
-    console.error('[IPC] 闂佺懓鐏氶幐鍝ユ閹达箑妫橀柛銉檮椤愯棄顭块崜浣瑰殌闁靛洦鍨块弫?', error);
+    console.error('[IPC] 闂備胶鎳撻悘姘跺箰閸濄儲顫曢柟杈剧畱濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈岄梺闈涙处閸ㄥ潡寮?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1102,13 +1051,13 @@ ipcMain.handle('knowledge-base:open-folder', async () => {
   }
 });
 
-// 闂佽顔栭崑鍛嚕閸ф妫橀柛銉檮椤愯棄顭块崼鏇楀亾濞戞粌骞€闂佹眹鍔岀€氼參寮鈧獮鎰媴鐟欏嫮鈧喖霉閻樹警鍟囩紒杈ㄧ懇閹粙濡搁妶鍥闂佹椿鍘归崕鎾儊閹寸偞鍎熼柟鐐墯閸ゃ倝鏌涜箛瀣姷缂?
+// 闂備浇顫夐鏍磻閸涱収鍤曢柛褎顨呭Λ姗€鏌涢妷顖炴妞ゆ劘妫勯…鍧楀醇閺囨浜炬繛鎴炵矊楠炩偓闂備焦鐪归崝宀€鈧凹鍙冨顐︻敋閳ь剟鐛幇顓熷閻熸瑥瀚埀顒夊枛闇夐柣妯硅閸熷洨绱掓潏銊ф噰闁诡喕绮欐俊鎼佸Χ閸ヮ亜顥濋梻浣规た閸樺綊宕曢幘顔藉剨闁瑰鍋為崕鐔兼煙閻愵剙澧柛銈冨€濋弻娑滅疀鐎ｎ亜濮风紓?
 ipcMain.handle('folder:scanFiles', async (event, folderPath) => {
   try {
     const supportedExtensions = ['md', 'markdown', 'json', 'txt'];
     const filePaths = [];
 
-    // 闂備緡鍋呯敮鎺旂礊婵犲洤绠ユい鎰剁到娴煎酣鏌￠崒姘煑婵炲棎鍨介弫?
+    // 闂傚倷绶￠崑鍛暜閹烘梻绀婂┑鐘叉搐缁犮儲銇勯幇鍓佸埌濞寸厧閰ｉ弻锟犲磼濮橆厾鐓戝┑鐐叉閸ㄤ粙寮?
     const scanDirectory = async (dirPath) => {
       const entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
       
@@ -1116,10 +1065,10 @@ ipcMain.handle('folder:scanFiles', async (event, folderPath) => {
         const fullPath = path.join(dirPath, entry.name);
         
         if (entry.isDirectory()) {
-          // 闂備緡鍋呯敮鎺旂礊婵犲洤绠ユい鎰剁到娴煎酣鎮楀☉娆忓闁哄鍟粋鎺旀崉閹帊绮?
+          // 闂傚倷绶￠崑鍛暜閹烘梻绀婂┑鐘叉搐缁犮儲銇勯幇鍓佸埌濞寸厧閰ｉ幃妤€鈽夊▎蹇擃潔闂佸搫顑呴崯顖滅矉閹烘梹宕夐柟顓熷笂缁?
           await scanDirectory(fullPath);
         } else if (entry.isFile()) {
-          // 濠碘槅鍋€閸嬫捇鏌＄仦璇插姕闁哄鍟粋鎺楁嚋闂堟稈鎸呴柣蹇曞仦濞叉牠骞?
+          // 婵犵妲呴崑鈧柛瀣崌閺岋紕浠︾拠鎻掑闂佸搫顑呴崯顖滅矉閹烘鍤嬮梻鍫熺▓閹稿懘鏌ｈ箛鏇炰沪婵炲弶鐗犻獮?
           const ext = path.extname(entry.name).toLowerCase().slice(1);
           if (supportedExtensions.includes(ext)) {
             filePaths.push(fullPath);
@@ -1135,7 +1084,7 @@ ipcMain.handle('folder:scanFiles', async (event, folderPath) => {
       data: filePaths
     };
   } catch (error) {
-    console.error('[IPC] 闂佽顔栭崑鍛嚕閸ф妫橀柛銉檮椤愯棄顭块崜浣瑰殌闁靛洦鍨块弫?', error);
+    console.error('[IPC] 闂備浇顫夐鏍磻閸涱収鍤曢柛褎顨呭Λ姗€鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈岄梺闈涙处閸ㄥ潡寮?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1143,7 +1092,7 @@ ipcMain.handle('folder:scanFiles', async (event, folderPath) => {
   }
 });
 
-// 闁荤姴娲╅褑銇愰崶顒€妫橀柛銉檮椤愯棄顭跨捄鐑樿础婵炲弶濯介妵鎰板即閻樺灚灏濋梺?
+// 闂佽崵濮村ú鈺咁敋瑜戦妵鎰板炊椤掆偓濡﹢鏌涢妷顖炴妞ゆ劘妫勯…璺ㄦ崉閻戞纭€濠电偛寮舵刊浠嬪Φ閹版澘鍗抽柣妯虹仛鐏忔繈姊?
 ipcMain.handle('folder:read-tree', async (event, folderPath) => {
   try {
     const readDirectory = async (dirPath) => {
@@ -1173,7 +1122,7 @@ ipcMain.handle('folder:read-tree', async (event, folderPath) => {
           const ext = path.extname(entry.name).toLowerCase();
           let language = 'text';
           
-          // 闂佸搫绉烽～澶婄暤娓氣偓楠炲秹鍩℃担鐑樼秾闂佸憡鑹剧粔鍫曞灳濡皷鍋撶憴鍕孩妞ゆ洏鍨婚幊娑㈠焵?
+          // 闂備礁鎼粔鐑斤綖婢跺﹦鏆ゅ〒姘ｅ亾妤犵偛绉归崺鈩冩媴閻戞绉鹃梻浣告啞閼瑰墽绮旈崼鏇炵伋婵☆垰鐨烽崑鎾舵喆閸曨亙瀛╁銈嗘磸閸ㄥ骞婂☉銏犵劦?
           if (['.js', '.jsx'].includes(ext)) language = 'javascript';
           else if (['.ts', '.tsx'].includes(ext)) language = 'typescript';
           else if (['.md', '.markdown'].includes(ext)) language = 'markdown';
@@ -1195,7 +1144,7 @@ ipcMain.handle('folder:read-tree', async (event, folderPath) => {
         }
       }
       
-      // 闂佸湱鍎ょ敮鎺旇姳椤撱垺鏅慨妯块哺缁愭鎲搁悧鍫熺婵犫偓椤忓牆绀堢€广儱绻掔粈澶愭煛閸屾碍鐭楁繛鍡愬灲瀹曠兘濡搁妷锕€鈧敻鏌ㄥ☉妯垮闁诡喖娲幊娑㈩敂閸涱厾妯嗛柣搴㈢⊕椤ㄥ棝鎯佸┑瀣闁圭儤鍨圭喊?
+      // 闂備礁婀遍崕銈囨暜閹烘棁濮虫い鎾卞灪閺咁剚鎱ㄥΟ鍧楀摵缂佹劖顨堥幉鎼佹偋閸喓顦ュ┑鐘亾妞ゅ繐鐗嗙粈鍫⑩偓骞垮劚缁绘帞绮堟径鎰厸闁稿本纰嶉惌妤佺箾閸℃劕鐏茬€规洜鍏樻俊鎼佸Ψ閿曗偓閳ь剛鏁婚弻銊モ槈濡灝顏梺璇″枛濞差參骞婂☉銏╂晜闁告侗鍘惧Ο鍡涙煟鎼淬垻鈯曟い銊ユ閹礁鈹戠€ｎ亞顔婇梺鍦劋閸ㄥ湱鍠?
       nodes.sort((a, b) => {
         if (a.type === b.type) {
           return a.name.localeCompare(b.name);
@@ -1213,7 +1162,7 @@ ipcMain.handle('folder:read-tree', async (event, folderPath) => {
       data: tree
     };
   } catch (error) {
-    console.error('[IPC] 闁荤姴娲╅褑銇愰崶顒€妫橀柛銉檮椤愯棄顭跨捄鐑樿础缂侇喓鍔戝鎼佸礋椤愮姳鏉梺?', error);
+    console.error('[IPC] 闂佽崵濮村ú鈺咁敋瑜戦妵鎰板炊椤掆偓濡﹢鏌涢妷顖炴妞ゆ劘妫勯…璺ㄦ崉閻戞纭€缂備緡鍠撻崝鎴濐嚕閹间礁绀嬫い鎰С閺夘參姊?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1221,12 +1170,12 @@ ipcMain.handle('folder:read-tree', async (event, folderPath) => {
   }
 });
 
-// 闂備緡鍋呯敮鎺旂礊婵犲洦鍤旂€瑰嫭婢樼徊鍧楁煙绾版ê浜鹃梺鍝勭墕椤﹂亶鎮烽鍡樺闁绘鐗婇悗顔济归悩渚晣缂佽鲸鐟﹀濠氬炊閵婏箑袘闂佺懓鎼ˇ浼村几閸愨晝顩烽悹鐑樹航娴犳岸鏌?
+// 闂傚倷绶￠崑鍛暜閹烘梻绀婂┑鐘叉处閸ゆ梻鈧懓瀚妯煎緤閸ф鐓欑痪鐗埫禍楣冩⒑閸濆嫮澧曟い锕備憾閹兘顢旈崱妯侯€涢梺缁橆殔閻楀﹪鎮楅娴庡綊鎮╂笟顖氭櫍缂備浇椴搁悷锕€顭囨繝姘倞闁靛绠戣闂備胶鎳撻幖顐λ囨导鏉戝嚑闁告劏鏅濋々鐑芥偣閻戞ü鑸ù鐘冲哺閺?
 ipcMain.handle('folder:get-all-notes', async (event, folderPath) => {
   try {
     const allFiles = [];
     
-    // 闂備緡鍋呯敮鎺旂礊婵犲嫭瀚氶悹鍥ㄥ絻缁插潡鏌熺喊妯轰壕闂佸搫鐗嗛ˇ浼村几閸愵喗鏅?
+    // 闂傚倷绶￠崑鍛暜閹烘梻绀婂┑鐘插鐎氭岸鎮归崶銊ョ祷缂佹彃娼￠弻鐔哄枈濡桨澹曢梻浣告惈閻楀棝藝娴兼潙鍑犻柛鎰靛枟閺?
     const readFilesRecursively = async (dirPath) => {
       const entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
       
@@ -1239,10 +1188,10 @@ ipcMain.handle('folder:get-all-notes', async (event, folderPath) => {
         const fullPath = path.join(dirPath, entry.name);
         
         if (entry.isDirectory()) {
-          // 闂備緡鍋呯敮鎺旂礊婵犲啫绶為柛鏇ㄥ幗閸婄偤鎮楀☉娆忓婵炶弓鍗抽弫?
+          // 闂傚倷绶￠崑鍛暜閹烘梻绀婂┑鐘插暙缁剁偤鏌涢弴銊ュ箺闁稿﹦鍋ら幃妤€鈽夊▎蹇擃潕濠电偠寮撻崡鎶藉极?
           await readFilesRecursively(fullPath);
         } else {
-          // 闂佸憡鐟禍婵嬪锤婵犲洤绀夐柣妯挎珪閻庮喖霉閻樹警鍟囩紒杈ㄧ懇瀵劑顢涘☉妯兼Х闂佹眹鍔岀€氼噣鎮烽鍡樺闁绘鐗忔竟鎰偓娈垮枛妤犲繒妲?
+          // 闂備礁鎲￠悷顖涚濠靛閿ゅ┑鐘叉搐缁€澶愭煟濡寧鐝柣搴枛闇夐柣妯硅閸熷洨绱掓潏銊ф噰鐎殿喓鍔戦、娑樷槈濡吋啸闂備焦鐪归崝宀€鈧凹鍣ｉ幃鐑筋敂閸℃ê顎涢梺缁橆殔閻楀繑绔熼幇顔瑰亾濞堝灝鏋涘Δ鐘茬箳濡?
           const ext = path.extname(entry.name).toLowerCase();
           const supportedExtensions = ['.md', '.markdown', '.txt', '.json'];
           
@@ -1250,11 +1199,11 @@ ipcMain.handle('folder:get-all-notes', async (event, folderPath) => {
             const relativePath = path.relative(folderPath, fullPath);
             const stats = await fsPromises.stat(fullPath);
             
-            // 闁荤姴娲╅褑銇愰崶顒€妫橀柛銉檮椤愮晫绱掑Δ濠傚幐缂佹梹鎸抽弫?
+            // 闂佽崵濮村ú鈺咁敋瑜戦妵鎰板炊椤掆偓濡﹢鏌涢妷顖炴妞ゆ劗鏅槐鎺懳旀繝鍌氬箰缂備焦姊归幐鎶藉极?
             let firstLine = '';
             try {
               const content = await fsPromises.readFile(fullPath, 'utf-8');
-              // 闂佸吋鍎抽崲鑼躲亹閸モ晝绠旀い鎴ｆ硶椤忛亶鎮跺☉妯肩劯婵炵⒈浜炵划姘跺传閸曨偅鏆ラ梺?
+              // 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉㈡櫇缁犳梹銇勯幋锝嗙《妞ゅ繘浜堕幃璺衡槈濡偐鍔┑鐐碘拡娴滅偟鍒掑璺轰紶闁告洦鍋呴弳銉╂⒑?
               const lines = content.split('\n');
               for (const line of lines) {
                 const trimmedLine = line.trim();
@@ -1264,7 +1213,7 @@ ipcMain.handle('folder:get-all-notes', async (event, folderPath) => {
                 }
               }
             } catch (error) {
-              console.warn(`[IPC] 闁荤姴娲╅褑銇愰崶顒€妫橀柛銉檮椤愮晫绱掑Δ濠傚幐缂佹柨顕幃鎵沪婵劒鏉梺? ${fullPath}`, error);
+              console.warn(`[IPC] 闂佽崵濮村ú鈺咁敋瑜戦妵鎰板炊椤掆偓濡﹢鏌涢妷顖炴妞ゆ劗鏅槐鎺懳旀繝鍌氬箰缂備焦鏌ㄩ顓㈠箖閹殿喕娌┑顔藉姃閺夘參姊? ${fullPath}`, error);
             }
             
             allFiles.push({
@@ -1285,7 +1234,7 @@ ipcMain.handle('folder:get-all-notes', async (event, folderPath) => {
     
     await readFilesRecursively(folderPath);
     
-    // 闂佸湱顭堥ˇ顖炲箖閺囩姷鐭撻柣妤€鐗嗙粭鎾绘煥?
+    // 闂備礁婀遍…鍫ニ囬鐐茬畺闁哄洨濮烽惌鎾绘煟濡も偓閻楀棛绮幘缁樼叆?
     allFiles.sort((a, b) => a.name.localeCompare(b.name));
     
     return {
@@ -1293,7 +1242,7 @@ ipcMain.handle('folder:get-all-notes', async (event, folderPath) => {
       data: allFiles
     };
   } catch (error) {
-    console.error('[IPC] 闂佸吋鍎抽崲鑼躲亹閸ヮ剙绠ラ柍褜鍓熷鍨緞瀹€鈧幊澶愭偣娴ｅ搫顣奸柡瀣暞缁傛帞鎹勯幁鎺嶆澀闂?', error);
+    console.error('[IPC] 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉墮缁犮儵鏌嶈閸撶喎顕ｉ崹顐㈢窞鐎光偓閳ь剟骞婃径鎰仯濞达絽鎼。濂告煛鐎ｎ亜鏆炵紒鍌涘笧閹瑰嫰骞侀幒宥嗘線闂?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1301,12 +1250,12 @@ ipcMain.handle('folder:get-all-notes', async (event, folderPath) => {
   }
 });
 
-// 闂佸憡甯楃粙鎴犵磽閹捐妫橀柣妤€鐗婇悗顕€鏌?
+// 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎹愵嚙濡﹢鏌ｅΔ鈧悧濠囨倵椤曗偓閺?
 ipcMain.handle('folder:create-file', async (event, parentPath, fileName) => {
   try {
     const filePath = path.join(parentPath, fileName);
     
-    // 濠碘槅鍋€閸嬫捇鏌＄仦璇插姕闁哄鍟粋鎺楁嚋閸倣锕傛煕濮樺墽鐣遍柛鎴磿閳ь剚绋掗敋婵犫偓?
+    // 婵犵妲呴崑鈧柛瀣崌閺岋紕浠︾拠鎻掑闂佸搫顑呴崯顖滅矉閹烘鍤嬮柛顭戝€ｉ敃鍌涚厱婵ê澧介悾閬嶆煕閹搭垳纾块柍褜鍓氱粙鎺楁晪濠电姭鍋?
     try {
       await fsPromises.access(filePath);
       return {
@@ -1314,10 +1263,10 @@ ipcMain.handle('folder:create-file', async (event, parentPath, fileName) => {
         error: 'File already exists.'
       };
     } catch {
-      // 闂佸搫鍊稿ú锝呪枎閵忥紕鈻旂€广儱鎳愰幗鐘绘煕閿旇崵鍘滅紒杈ㄧ箘缁辨帟顦撮柣銏狀煼瀹曟艾鈽夊Ο鑲╁
+      // 闂備礁鎼崐绋棵洪敐鍛瀻闁靛骏绱曢埢鏃傗偓骞垮劚閹虫劙骞楅悩缁樼厱闁挎棁宕甸崢婊呯磼鏉堛劎绠樼紒杈ㄥ笩椤︽挳鏌ｉ姀鐙€鐓肩€规洘鑹鹃埥澶娢熼懖鈺侇槱
     }
     
-    // 闂佸憡甯楃粙鎴犵磽閹惧墎鐭氶柣鎴炆戦悗顕€鏌?
+    // 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎯у閻岸鏌ｉ幋鐐嗘垿鎮楅鈧弻?
     await fsPromises.writeFile(filePath, '', 'utf-8');
     
     return {
@@ -1328,7 +1277,7 @@ ipcMain.handle('folder:create-file', async (event, parentPath, fileName) => {
       }
     };
   } catch (error) {
-    console.error('[IPC] 闂佸憡甯楃粙鎴犵磽閹捐妫橀柛銉檮椤愯棄顭块幆鎵翱閻?', error);
+    console.error('[IPC] 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎹愵嚙濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀箚閹殿喚缈遍柣?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1336,27 +1285,27 @@ ipcMain.handle('folder:create-file', async (event, parentPath, fileName) => {
   }
 });
 
-// 婵犮垼娉涚粔鎾春濡ゅ懎妫橀柛銉檮椤愪粙鏌涢幒鎾愁棆婵炶弓鍗冲浠嬪炊閵婏妇鈧喖霉閻樼儤纭鹃柕?
+// 濠电姰鍨煎▔娑氱矓閹绢喖鏄ユ俊銈呮噹濡﹢鏌涢妷顖炴妞ゆ劒绮欓弻娑㈠箳閹炬剚妫嗗┑鐐跺紦閸楀啿顕ｆ禒瀣倞闁靛濡囬埀顒夊枛闇夐柣妯煎劋绾箖鏌?
 ipcMain.handle('file:copy-to-folder', async (event, sourcePath, targetFolderPath) => {
   try {
-    // 缂佺虎鍙庨崰鏇犳崲濮樿埖鍎庢い鏃傛櫕閸ㄥジ鏌￠崒姘煑婵炲棎鍨哄鍕偡閹殿喗鎲奸梺?
+    // 缂備胶铏庨崣搴ㄥ窗閺囩姵宕叉慨妯垮煐閸庡孩銇勯弮鍌涙珪闁搞劌銈搁弻锟犲磼濮橆厾鐓戝┑鐐叉閸ㄥ搫顕ラ崟顖涘仭闁规鍠楅幉濂告⒑?
     await fsPromises.mkdir(targetFolderPath, { recursive: true });
     
-    // 闂佸吋鍎抽崲鑼躲亹閸パ€鏀﹂柟閭﹀幗閻庮喖霉閻樼儤纭鹃柟?
+    // 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉戔偓閺€锕傛煙闁箑骞楅柣搴枛闇夐柣妯煎劋绾箖鏌?
     const fileName = path.basename(sourcePath);
     const targetPath = path.join(targetFolderPath, fileName);
     
-    // 濠碘槅鍋€閸嬫捇鏌＄仦璇插姢婵炶弓鍗冲浠嬪炊閵婏妇鈧喖霉閻樺搫鐓愭俊鍙夋倐瀹曘儵鏁冮埀顒勫礄閿涘嫧鍋撳☉娅亜锕?
+    // 婵犵妲呴崑鈧柛瀣崌閺岋紕浠︾拠鎻掑Б濠电偠寮撻崡鍐差嚕娴犲鐐婇柕濠忓閳ь剦鍠栭湁闁绘ê鎼悡鎰繆閸欏鍊愮€规洏鍎甸弫鍐焵椤掑嫬绀勯柨娑樺閸嬫挸鈽夊▍顓т簻閿?
     try {
       await fsPromises.access(targetPath);
-      // 闂佸搫鍊稿ú锝呪枎閵忕媭鍟呴柟缁樺笧閹界娀鏌涢敂鑽ゅ帨缂佽鲸绻堥幃浠嬫偄缁嬭法浜ｉ梺鍝勫€绘晶妤呭几閸愨晝顩烽悹铏瑰劋閸?
+      // 闂備礁鎼崐绋棵洪敐鍛瀻闁靛繒濯崯鍛存煙缂佹ê绗ч柟鐣屽█閺屾盯鏁傞懡銈呭辅缂備浇椴哥换鍫ュ箖娴犲鍋勭紒瀣硶娴滐綁姊洪崫鍕偓缁樻櫠濡ゅ懎鍑犻柛鎰ㄦ櫇椤╃兘鎮归搹鐟板妺闁?
       const ext = path.extname(fileName);
       const nameWithoutExt = path.basename(fileName, ext);
       const timestamp = Date.now();
       const newFileName = `${nameWithoutExt}_${timestamp}${ext}`;
       const newTargetPath = path.join(targetFolderPath, newFileName);
       
-      // 婵犮垼娉涚粔鎾春濡ゅ懎妫橀柛銉檮椤?
+      // 濠电姰鍨煎▔娑氱矓閹绢喖鏄ユ俊銈呮噹濡﹢鏌涢妷顖炴妞?
       await fsPromises.copyFile(sourcePath, newTargetPath);
       
       return {
@@ -1367,7 +1316,7 @@ ipcMain.handle('file:copy-to-folder', async (event, sourcePath, targetFolderPath
         }
       };
     } catch {
-      // 闂佸搫鍊稿ú锝呪枎閵忥紕鈻旂€广儱鎳愰幗鐘绘煕閿旇崵鍘滅紒杈ㄧ箞閹嫮鈧稒锚婢跺秴顭跨捄铏剐㈤柛?
+      // 闂備礁鎼崐绋棵洪敐鍛瀻闁靛骏绱曢埢鏃傗偓骞垮劚閹虫劙骞楅悩缁樼厱闁挎棁宕甸崢婊呯磼鏉堛劎绠為柟顖氬閳ь剚绋掗敋濠㈣泛绉撮…璺ㄦ崉閾忓墣銏ゆ煕?
       await fsPromises.copyFile(sourcePath, targetPath);
       
       return {
@@ -1379,7 +1328,7 @@ ipcMain.handle('file:copy-to-folder', async (event, sourcePath, targetFolderPath
       };
     }
   } catch (error) {
-    console.error('[IPC] 婵犮垼娉涚粔鎾春濡ゅ懎妫橀柛銉檮椤愯棄顭块幆鎵翱閻?', error);
+    console.error('[IPC] 濠电姰鍨煎▔娑氱矓閹绢喖鏄ユ俊銈呮噹濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀箚閹殿喚缈遍柣?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1387,12 +1336,12 @@ ipcMain.handle('file:copy-to-folder', async (event, sourcePath, targetFolderPath
   }
 });
 
-// 闂佸憡甯楃粙鎴犵磽閹捐妫橀柣妤€鐗婇悗顔济归悩鐑樼【闁?
+// 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎹愵嚙濡﹢鏌ｅΔ鈧悧濠囨倵椤旀祹褰掓偐閻戞銆愰梺?
 ipcMain.handle('folder:create-folder', async (event, parentPath, folderName) => {
   try {
     const folderPath = path.join(parentPath, folderName);
     
-    // 濠碘槅鍋€閸嬫捇鏌＄仦璇插姕闁哄鍟粋鎺旀崉閹帊绮撮梺鍝勫閸ㄤ即骞嗘担鍓插晠闁圭粯甯為幗鐘绘煥?
+    // 婵犵妲呴崑鈧柛瀣崌閺岋紕浠︾拠鎻掑闂佸搫顑呴崯顖滅矉閹烘梹宕夐柟顓熷笂缁挳姊洪崫鍕伌闁搞劋鍗抽獮鍡樻媴閸撴彃鏅犻梺鍦帛鐢偤骞楅悩缁樼叆?
     try {
       await fsPromises.access(folderPath);
       return {
@@ -1400,10 +1349,10 @@ ipcMain.handle('folder:create-folder', async (event, parentPath, folderName) => 
         error: 'Folder already exists.'
       };
     } catch {
-      // 闂佸搫鍊稿ú锝呪枎閵忊€崇窞闂侇偅绋撻悷婵嬫倵濞戞顏勶耿椤忓牊鏅€光偓閳ь剟骞嬫搴ｇ＜妞ゆ挾鍋涢悘锟犳煥?
+      // 闂備礁鎼崐绋棵洪敐鍛瀻闁靛繆鈧磭绐為梻渚囧亝缁嬫捇鎮峰┑瀣€垫繛鎴烆仾椤忓嫸鑰挎い蹇撶墛閺咁剛鈧厜鍋撻柍褜鍓熼獮瀣槹鎼达絿锛滃銈嗘尵閸嬫盯鎮橀敓鐘崇叆?
     }
     
-    // 闂佸憡甯楃粙鎴犵磽閹捐妫橀柛銉檮椤愪粙鏌?
+    // 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎹愵嚙濡﹢鏌涢妷顖炴妞ゆ劒绮欓弻?
     await fsPromises.mkdir(folderPath, { recursive: false });
     
     return {
@@ -1414,7 +1363,7 @@ ipcMain.handle('folder:create-folder', async (event, parentPath, folderName) => 
       }
     };
   } catch (error) {
-    console.error('[IPC] 闂佸憡甯楃粙鎴犵磽閹捐妫橀柛銉檮椤愯棄顭块崜浣瑰殌闁靛洦鍨块弫?', error);
+    console.error('[IPC] 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎹愵嚙濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈岄梺闈涙处閸ㄥ潡寮?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1422,10 +1371,10 @@ ipcMain.handle('folder:create-folder', async (event, parentPath, folderName) => 
   }
 });
 
-// 缂佺虎鍙庨崰鏇犳崲濮樿泛妫橀柛銉檮椤愯棄顭块崜浣瑰殌闁宦板姂瀹曠兘鈥﹂幒鏃傤槱闂備緡鍋呯敮鎺旂礊婵犲洤绀嗘繛鎴烆焽缁憋箓鏌?
+// 缂備胶铏庨崣搴ㄥ窗閺囩姵宕叉慨妯挎硾濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈岄梺瀹︽澘濮傜€规洜鍏橀垾锕傚箳閺冨偆妲遍梻鍌欑贰閸嬪懐鏁幒鏃傜濠电姴娲ょ粈鍡樼箾閹寸儐鐒界紒鎲嬬畵閺?
 ipcMain.handle('folder:ensure-dir', async (event, dirPath) => {
   try {
-    // 婵炶揪缍€濞夋洟寮?recursive: true 缂佺虎鍙庨崰鏇犳崲濮樿泛绠ラ柍褜鍓熷鍨緞鐏炵晫鍘梺鍝勫€稿ú锝呪枎閵忊€崇窞鐟滅増甯掗崢鎾偠濮樼厧浜滈柛銊╀憾閺?
+    // 濠电偠鎻紞鈧繛澶嬫礋瀵?recursive: true 缂備胶铏庨崣搴ㄥ窗閺囩姵宕叉慨妯挎硾缁犮儵鏌嶈閸撶喎顕ｉ崹顐㈢窞閻忕偟鏅崢顒勬⒑閸濆嫬鈧煤閿濆應鏋庨柕蹇娾偓宕囩獮閻熸粎澧楃敮鎺楀储閹绢喗鍋犳慨妯煎帶娴滄粓鏌涢妸鈺€鎲鹃柡?
     await fsPromises.mkdir(dirPath, { recursive: true });
     
     return {
@@ -1435,7 +1384,7 @@ ipcMain.handle('folder:ensure-dir', async (event, dirPath) => {
       }
     };
   } catch (error) {
-    console.error('[IPC] 缂佺虎鍙庨崰鏇犳崲濮樿泛妫橀柛銉檮椤愯棄顭块崜浣瑰殌闁宦板姂瀹曠兘濡搁妷锝勬澀闂?', error);
+    console.error('[IPC] 缂備胶铏庨崣搴ㄥ窗閺囩姵宕叉慨妯挎硾濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈岄梺瀹︽澘濮傜€规洜鍏樻俊鎼佸Ψ閿濆嫭婢€闂?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1443,7 +1392,7 @@ ipcMain.handle('folder:ensure-dir', async (event, dirPath) => {
   }
 });
 
-// 闁诲繒鍋炲ú鏍閹达箑妫橀柛銉檮椤愯棄顭块崜浣诡仧缂佽鲸鐟╅獮濠囧箳閹存繍娼遍柡澶屽仩濡嫰鎮哄▎鎾村剮妞ゆ棁鍋愮粔鍧楁煥?
+// 闂佽绻掗崑鐐裁洪弽顐ｎ潟闁硅揪绠戝Λ姗€鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｈ浠х紓浣介哺閻熲晠鐛繝鍥х闁瑰瓨绻嶅閬嶆煛婢跺苯浠╂俊顐㈠閹搫鈻庨幘鏉戝壆濡炪倖妫侀崑鎰矓閸ф鐓?
 ipcMain.handle('folder:expand', async (event, folderPath, rootPath) => {
   try {
     const readDirectory = async (dirPath) => {
@@ -1473,7 +1422,7 @@ ipcMain.handle('folder:expand', async (event, folderPath, rootPath) => {
           const ext = path.extname(entry.name).toLowerCase();
           let language = 'text';
           
-          // 闂佸搫绉烽～澶婄暤娓氣偓楠炲秹鍩℃担鐑樼秾闂佸憡鑹剧粔鍫曞灳濡皷鍋撶憴鍕孩妞ゆ洏鍨婚幊娑㈠焵?
+          // 闂備礁鎼粔鐑斤綖婢跺﹦鏆ゅ〒姘ｅ亾妤犵偛绉归崺鈩冩媴閻戞绉鹃梻浣告啞閼瑰墽绮旈崼鏇炵伋婵☆垰鐨烽崑鎾舵喆閸曨亙瀛╁銈嗘磸閸ㄥ骞婂☉銏犵劦?
           if (['.js', '.jsx'].includes(ext)) language = 'javascript';
           else if (['.ts', '.tsx'].includes(ext)) language = 'typescript';
           else if (['.md', '.markdown'].includes(ext)) language = 'markdown';
@@ -1495,7 +1444,7 @@ ipcMain.handle('folder:expand', async (event, folderPath, rootPath) => {
         }
       }
       
-      // 闂佸湱鍎ょ敮鎺旇姳椤撱垺鏅慨妯块哺缁愭鎲搁悧鍫熺婵犫偓椤忓牆绀堢€广儱绻掔粈澶愭煛閸屾碍鐭楁繛鍡愬灲瀹曠兘濡搁妷锕€鈧敻鏌ㄥ☉妯垮闁诡喖娲幊娑㈩敂閸涱厾妯嗛柣搴㈢⊕椤ㄥ棝鎯佸┑瀣闁圭儤鍨圭喊?
+      // 闂備礁婀遍崕銈囨暜閹烘棁濮虫い鎾卞灪閺咁剚鎱ㄥΟ鍧楀摵缂佹劖顨堥幉鎼佹偋閸喓顦ュ┑鐘亾妞ゅ繐鐗嗙粈鍫⑩偓骞垮劚缁绘帞绮堟径鎰厸闁稿本纰嶉惌妤佺箾閸℃劕鐏茬€规洜鍏樻俊鎼佸Ψ閿曗偓閳ь剛鏁婚弻銊モ槈濡灝顏梺璇″枛濞差參骞婂☉銏╂晜闁告侗鍘惧Ο鍡涙煟鎼淬垻鈯曟い銊ユ閹礁鈹戠€ｎ亞顔婇梺鍦劋閸ㄥ湱鍠?
       nodes.sort((a, b) => {
         if (a.type === b.type) {
           return a.name.localeCompare(b.name);
@@ -1513,7 +1462,7 @@ ipcMain.handle('folder:expand', async (event, folderPath, rootPath) => {
       data: children
     };
   } catch (error) {
-    console.error('[IPC] 闁诲繒鍋炲ú鏍閹达箑妫橀柛銉檮椤愯棄顭块崜浣瑰殌闁靛洦鍨块弫?', error);
+    console.error('[IPC] 闂佽绻掗崑鐐裁洪弽顐ｎ潟闁硅揪绠戝Λ姗€鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈岄梺闈涙处閸ㄥ潡寮?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1521,7 +1470,7 @@ ipcMain.handle('folder:expand', async (event, folderPath, rootPath) => {
   }
 });
 
-// 闂佸憡鐟辩粻鎴︽偤閵婏妇鈻旈柛婵嗗閸ょ娀鎮归崶銊х畺妞?
+// 闂備礁鎲￠悷杈╃不閹达附鍋ら柕濠忓閳绘棃鏌涘┑鍡楊伌闁搞倗濞€閹綊宕堕妸褏鐣哄?
 ipcMain.handle('file:save-as', async (event, content = '', options = {}) => {
   try {
     const requestedDefaultPath =
@@ -1541,7 +1490,7 @@ ipcMain.handle('file:save-as', async (event, content = '', options = {}) => {
     if (!result.canceled && result.filePath) {
       await fsPromises.writeFile(result.filePath, content, 'utf-8');
       
-      // 濠电儑缍€椤曆勬叏閻愬搫绀嗛柣妤€鐗婃禒姗€寮堕埡鍌氱仸闁哄鍟粋鎺旀崉閸濆嫮浠氶梺?
+      // 婵犵數鍎戠紞鈧い鏇嗗嫭鍙忛柣鎰惈缁€鍡涙煟濡も偓閻楀﹥绂掑鈧鍫曞煛閸屾氨浠搁梺鍝勵儏閸燁垳绮嬮幒鏃€宕夐柛婵嗗娴犳岸姊?
       workspaceManager.addRecentFile(result.filePath);
       
       return {
@@ -1556,7 +1505,7 @@ ipcMain.handle('file:save-as', async (event, content = '', options = {}) => {
 
     return { success: false, error: 'User canceled' };
   } catch (error) {
-    console.error('[IPC] 闂佸憡鐟辩粻鎴︽偤閵婏妇鈻旈柛婵嗗娴滃ジ鏌?', error);
+    console.error('[IPC] 闂備礁鎲￠悷杈╃不閹达附鍋ら柕濠忓閳绘棃鏌涘┑鍡楊仴濞存粌銈搁弻?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1564,13 +1513,13 @@ ipcMain.handle('file:save-as', async (event, content = '', options = {}) => {
   }
 });
 
-// 婵烇絽娲︾换鍌炴偤閵娾晛妫橀柛銉檮椤?
+// 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅濡﹢鏌涢妷顖炴妞?
 ipcMain.handle('file:save', async (event, filePath, content) => {
   try {
     await fsPromises.writeFile(filePath, content, 'utf-8');
     return { success: true };
   } catch (error) {
-    console.error('[IPC] 婵烇絽娲︾换鍌炴偤閵娾晛妫橀柛銉檮椤愯棄顭块幆鎵翱閻?', error);
+    console.error('[IPC] 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅濡﹢鏌涢妷顖炴妞ゆ劘妫勯…鍧楀箚閹殿喚缈遍柣?', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1579,7 +1528,7 @@ ipcMain.handle('file:save', async (event, filePath, content) => {
 });
 
 /**
- * 缂備焦鍔栭〃鍛般亹濞戙垹绠崇憸宥夊春?IPC 婵犮垼娉涚€氼噣骞?
+ * 缂傚倷鐒﹂崝鏍€冮崨鑸汗婵炴垯鍨圭粻宕囨喐瀹ュ鏄?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠?
  */
 ipcMain.on('minimize-window', () => {
   const win = BrowserWindow.getFocusedWindow();
