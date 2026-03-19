@@ -3,24 +3,35 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import {
+  EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT,
+  type WorkbenchContributionSnapshot,
+} from '@note-studio/shared';
 import { TitleBar } from '../TitleBar/TitleBar';
 import { ActivityBar } from './ActivityBar';
 import type { ActivityBarItem } from './ActivityBar/ActivityBar';
+import {
+  isPluginActivityBarItem,
+  toPluginActivityBarItem,
+} from './ActivityBar/ActivityBar';
 import { Sidebar } from './Sidebar/Sidebar';
 import { EditorArea } from './EditorArea/EditorArea/EditorArea';
 import { StatusBar } from './StatusBar/StatusBar';
 import { AIChatPanel } from './AIChatPanel/AIChatPanel';
 import { BackgroundImageLayer } from './BackgroundImageLayer/BackgroundImageLayer';
-import { Panel, type PanelPlacement } from './Panel';
+import { Panel, type PanelPlacement, type PanelView } from './Panel';
 import { VSCodeCommandCenter } from '../../command-center/VSCodeCommandCenter';
 import { IconThemeCommandProvider } from '../../command-center/IconThemeCommandProvider';
 import { ThemeCommandProvider } from '../../command-center/ThemeCommandProvider';
 import { MarkdownCommandProvider } from '../../command-center/MarkdownCommandProvider';
 import { FileCommandProvider } from '../../command-center/FileCommandProvider';
 import { AIConfigCommandProvider } from '../../command-center/AIConfigCommandProvider';
+import { ExtensionDevelopmentCommandProvider } from '../../command-center/ExtensionDevelopmentCommandProvider';
+import { PluginCommandProvider } from '../../command-center/PluginCommandProvider';
 import { getGlobalCommandCenter, setGlobalCommandCenter } from '../../command-center/GlobalCommandCenter';
 import { IconThemeProvider } from '../../contexts/IconThemeContext';
 import { GlobalModal } from '../GlobalModal';
+import { workbenchContributionService } from '../../services/WorkbenchContributionService';
 import { useThemeStore } from '../../stores/themeStore';
 import { useActivityBarStore } from '../../stores/activityBarStore';
 import { notification } from '../Notification';
@@ -184,7 +195,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const searchParams = new URLSearchParams(window.location.search);
   const startupPanel = searchParams.get('openPanel');
   const shouldOpenPanelOnStartup = startupPanel === 'terminal' || startupPanel === 'timeline' || startupPanel === 'links';
-  const initialPanelView: 'links' | 'timeline' | 'terminal' =
+  const initialPanelView: PanelView =
     startupPanel === 'timeline'
       ? 'timeline'
       : startupPanel === 'links'
@@ -194,9 +205,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isAIChatVisible, setIsAIChatVisible] = useState(false);
   const [isPanelVisible, setIsPanelVisible] = useState(shouldOpenPanelOnStartup);
-  const [panelActiveView, setPanelActiveView] = useState<'links' | 'timeline' | 'terminal'>(initialPanelView);
+  const [panelActiveView, setPanelActiveView] = useState<PanelView>(initialPanelView);
   const [panelPosition, setPanelPosition] = useState<PanelPlacement>('bottom');
   const [aiChatPanelPosition, setAIChatPanelPosition] = useState<'right' | 'left'>('right'); // AI Chat Panel 浣嶇疆
+  const [workbenchContributions, setWorkbenchContributions] = useState<WorkbenchContributionSnapshot>(
+    EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT,
+  );
 
   const handleToggleTerminalPanel = () => {
     if (panelActiveView === 'terminal') {
@@ -219,6 +233,28 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const markdownProviderRef = useRef<MarkdownCommandProvider | null>(null);
   const fileProviderRef = useRef<FileCommandProvider | null>(null);
   const aiConfigProviderRef = useRef<AIConfigCommandProvider | null>(null);
+  const extensionDevelopmentProviderRef = useRef<ExtensionDevelopmentCommandProvider | null>(null);
+  const pluginCommandProviderRef = useRef<PluginCommandProvider | null>(null);
+  const panelRevealTokensRef = useRef(new Map<string, number>());
+  const pluginActivityItems = useMemo(
+    () => workbenchContributions.viewContainers.map(container => ({
+      id: toPluginActivityBarItem(container.containerKey),
+      title: container.title,
+      iconPath: container.icon,
+    })),
+    [workbenchContributions.viewContainers],
+  );
+
+  const loadWorkbenchContributions = useCallback(async (): Promise<void> => {
+    try {
+      const snapshot = await workbenchContributionService.getContributions();
+      setWorkbenchContributions(snapshot);
+    } catch (error) {
+      console.error('[MainLayout] 加载插件工作台贡献失败:', error);
+      setWorkbenchContributions(EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT);
+      notification.error('加载插件工作台视图失败');
+    }
+  }, []);
 
   const handleActivityClick = (activity: ActivityBarItem) => {
     if (activity === 'settings') {
@@ -262,7 +298,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   // 鐩戝惉鎵撳紑搴曢儴闈㈡澘浜嬩欢
   useEffect(() => {
     const handleOpenPanel = (event: Event) => {
-      const customEvent = event as CustomEvent<{ view?: 'links' | 'timeline' | 'terminal' }>;
+      const customEvent = event as CustomEvent<{ view?: PanelView }>;
       const view = customEvent.detail?.view || 'terminal';
       
       console.log('[MainLayout] 鎵撳紑搴曢儴闈㈡澘:', view);
@@ -481,6 +517,69 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
   // 鍒濆鍖栧叏灞€鍛戒护涓績
   useEffect(() => {
+    void loadWorkbenchContributions();
+    const unsubscribe = workbenchContributionService.subscribe((snapshot) => {
+      setWorkbenchContributions(snapshot);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [loadWorkbenchContributions]);
+
+  useEffect(() => {
+    if (!isPluginActivityBarItem(activeActivity)) {
+      return;
+    }
+
+    const stillExists = pluginActivityItems.some(item => item.id === activeActivity);
+    if (!stillExists) {
+      setActiveActivity('explorer');
+    }
+  }, [activeActivity, pluginActivityItems]);
+
+  useEffect(() => {
+    const currentPanels = workbenchContributions.runtimeWebviewPanels;
+    const revealTokens = panelRevealTokensRef.current;
+    let nextFocusedPanelKey: string | null = null;
+
+    for (const panel of currentPanels) {
+      const previousRevealToken = revealTokens.get(panel.panelInstanceKey);
+      if (previousRevealToken === undefined || panel.revealToken > previousRevealToken) {
+        nextFocusedPanelKey = panel.panelInstanceKey;
+      }
+
+      revealTokens.set(panel.panelInstanceKey, panel.revealToken);
+    }
+
+    for (const panelInstanceKey of Array.from(revealTokens.keys())) {
+      const stillExists = currentPanels.some(panel => panel.panelInstanceKey === panelInstanceKey);
+      if (!stillExists) {
+        revealTokens.delete(panelInstanceKey);
+      }
+    }
+
+    if (nextFocusedPanelKey) {
+      setPanelActiveView(`plugin-webview:${nextFocusedPanelKey}` as PanelView);
+      setIsPanelVisible(true);
+    }
+  }, [workbenchContributions.runtimeWebviewPanels]);
+
+  useEffect(() => {
+    if (!panelActiveView.startsWith('plugin-webview:')) {
+      return;
+    }
+
+    const activePanelInstanceKey = panelActiveView.slice('plugin-webview:'.length);
+    const stillExists = workbenchContributions.runtimeWebviewPanels.some(
+      panel => panel.panelInstanceKey === activePanelInstanceKey,
+    );
+    if (!stillExists) {
+      setPanelActiveView('terminal');
+    }
+  }, [panelActiveView, workbenchContributions.runtimeWebviewPanels]);
+
+  useEffect(() => {
     console.log('[MainLayout] 鍒濆鍖栧叏灞€鍛戒护涓績...');
     const commandCenter = getGlobalCommandCenter() ?? new VSCodeCommandCenter();
     commandCenterRef.current = commandCenter;
@@ -490,10 +589,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     markdownProviderRef.current = new MarkdownCommandProvider(commandCenter);
     fileProviderRef.current = new FileCommandProvider(commandCenter);
     aiConfigProviderRef.current = new AIConfigCommandProvider(commandCenter);
+    extensionDevelopmentProviderRef.current = new ExtensionDevelopmentCommandProvider(commandCenter);
+    pluginCommandProviderRef.current = new PluginCommandProvider(commandCenter);
     
     // 绛夊緟鍛戒护鎻愪緵鑰呭垵濮嬪寲瀹屾垚
     Promise.all([
-      iconThemeProviderRef.current.ensureInitialized()
+      iconThemeProviderRef.current.ensureInitialized(),
+      pluginCommandProviderRef.current.ensureInitialized(),
     ]).then(() => {
       console.log('[MainLayout] 全局命令中心初始化完成');
     }).catch(error => {
@@ -505,6 +607,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         setGlobalCommandCenter(null);
       }
 
+      pluginCommandProviderRef.current?.dispose();
       commandCenter.dispose();
       commandCenterRef.current = null;
       iconThemeProviderRef.current = null;
@@ -512,6 +615,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       markdownProviderRef.current = null;
       fileProviderRef.current = null;
       aiConfigProviderRef.current = null;
+      extensionDevelopmentProviderRef.current = null;
+      pluginCommandProviderRef.current = null;
     };
   }, []);
 
@@ -610,6 +715,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 <ActivityBar 
                   activeItem={activeActivity}
                   onActivityClick={handleActivityClick}
+                  additionalItems={pluginActivityItems}
                 />
               </div>
               
@@ -618,6 +724,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 <Sidebar 
                   activeView={activeActivity}
                   onClose={() => setIsSidebarVisible(false)}
+                  workbenchContributions={workbenchContributions}
                 />
               )}
 
@@ -655,6 +762,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 placement={panelPosition}
                 onPlacementChange={setPanelPosition}
                 onClose={() => setIsPanelVisible(false)}
+                runtimeWebviewPanels={workbenchContributions.runtimeWebviewPanels}
               />
             )}
 
@@ -669,6 +777,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 placement={panelPosition}
                 onPlacementChange={setPanelPosition}
                 onClose={() => setIsPanelVisible(false)}
+                runtimeWebviewPanels={workbenchContributions.runtimeWebviewPanels}
               />
             )}
           </div>
@@ -714,6 +823,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 <Sidebar 
                   activeView={activeActivity}
                   onClose={() => setIsSidebarVisible(false)}
+                  workbenchContributions={workbenchContributions}
                 />
               )}
               
@@ -722,6 +832,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 <ActivityBar 
                   activeItem={activeActivity}
                   onActivityClick={handleActivityClick}
+                  additionalItems={pluginActivityItems}
                 />
               </div>
             </div>

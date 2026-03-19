@@ -19,7 +19,7 @@
 - [开发环境搭建](./development/getting-started.md) - 如何开始开发
 - [项目架构](./development/architecture.md) - 架构设计说明
 - [项目结构](./development/project-structure.md) - 目录结构说明
-- [插件开发](../packages/plugin-system/QUICK_START.md) - 如何开发插件
+- [插件开发](./extension-development.md) - 如何开发插件
 - [贡献指南](./development/contributing.md) - 如何贡献代码
 - [代码规范](./development/code-style.md) - 编码规范
 

@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import type { WorkbenchNoteMenuContext } from '@note-studio/shared';
 import { EditorTab } from '../EditorArea';
 import { Icon } from '../../../Icons/Icon';
 import { MonacoContextMenu } from '../MonacoContextMenu/MonacoContextMenu';
@@ -12,6 +13,11 @@ import type { MenuGroup } from '../MonacoContextMenu/MonacoContextMenu';
 import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
 import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
 import { useExplorerStore } from '../../../../stores/explorerStore';
+import { useWorkbenchMenuContributions } from '../../../../hooks/useWorkbenchMenuContributions';
+import {
+  executeWorkbenchMenuContribution,
+  groupWorkbenchMenuContributions,
+} from '../../../../utils/workbenchMenus';
 import { FileParser } from '@note-studio/global-rag';
 import './TabBar.scss';
 
@@ -87,6 +93,21 @@ const toBreadcrumbPathText = (fullPath: string, workspacePath: string): string =
   return fallbackSegments.slice(-4).join(' / ');
 };
 
+const toWorkspaceRelativePath = (
+  fullPath: string | undefined,
+  workspacePath: string | null,
+): string | null => {
+  if (!fullPath) {
+    return null;
+  }
+
+  if (!workspacePath) {
+    return null;
+  }
+
+  return toRelativePath(fullPath, workspacePath);
+};
+
 export const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTabId,
@@ -116,6 +137,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   const [codeMirrorMode, setCodeMirrorMode] = useState<'source' | 'preview'>('source');
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
   const workspacePath = useExplorerStore((state) => state.workspacePath);
+  const noteContextMenus = useWorkbenchMenuContributions('note/context');
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
   const nextEditorType = editorType === 'monaco' ? 'codemirror' : 'monaco';
@@ -592,6 +614,42 @@ export const TabBar: React.FC<TabBarProps> = ({
     const breadcrumbPathText = canOperateFile
       ? toBreadcrumbPathText(contextTargetTab.path, workspacePath || '')
       : '';
+    const noteMenuContext: WorkbenchNoteMenuContext = {
+      kind: 'note/context',
+      tabId: contextTargetTab.id,
+      tabType: contextTargetTab.type || 'file',
+      title: contextTargetTab.title || '',
+      path: contextTargetTab.path ?? null,
+      language: contextTargetTab.language ?? null,
+      isDirty: Boolean(contextTargetTab.isDirty),
+      isPreview: Boolean(contextTargetTab.isPreview),
+      workspaceRelativePath: toWorkspaceRelativePath(
+        contextTargetTab.path,
+        workspacePath,
+      ),
+    };
+    const pluginContextMenuItems: ContextMenuItem[] = [];
+    const groupedNoteContextMenus = groupWorkbenchMenuContributions(noteContextMenus);
+
+    groupedNoteContextMenus.forEach((group, groupIndex) => {
+      if (groupIndex > 0) {
+        pluginContextMenuItems.push({
+          id: `plugin-group-separator-${group.key}`,
+          label: '',
+          separator: true,
+        });
+      }
+
+      group.items.forEach((menu) => {
+        pluginContextMenuItems.push({
+          id: menu.menuItemId,
+          label: menu.title,
+          onClick: () => {
+            void executeWorkbenchMenuContribution(menu, [noteMenuContext]);
+          },
+        });
+      });
+    });
 
     return [
       {
@@ -764,11 +822,22 @@ export const TabBar: React.FC<TabBarProps> = ({
           },
         ],
       },
+      ...(pluginContextMenuItems.length > 0
+        ? [
+          {
+            id: 'separator-plugin-note-context',
+            label: '',
+            separator: true,
+          },
+          ...pluginContextMenuItems,
+        ]
+        : []),
     ];
   }, [
     closeTabs,
     contextTargetTab,
     copyText,
+    noteContextMenus,
     handleAddTabToChatClick,
     handleOpenInExplorerByTab,
     handleRevealInExplorerViewByTab,

@@ -2,65 +2,27 @@
 
 ## 插件 API
 
-详细的插件开发文档请参考：[插件系统快速开始](../packages/plugin-system/QUICK_START.md)
+详细的插件开发文档请参考：[WStudio 插件开发说明](./extension-development.md)。
 
-### 命令系统
+当前插件 API 的真实源码入口：
 
-```typescript
-// 注册命令
-api.commands.register(
-  id: string,
-  handler: (...args: any[]) => any
-): void
+- `packages/extension-api/src/manifest.ts`
+- `packages/extension-api/src/contributes.ts`
+- `packages/extension-api/src/context.ts`
+- `packages/extension-api/src/plugin.ts`
+- `packages/shared/src/types/extension.ts`
 
-// 执行命令
-api.commands.execute(
-  id: string,
-  ...args: any[]
-): Promise<any>
+### 主要 API 分组
 
-// 获取所有命令
-api.commands.getAll(): string[]
-```
-
-### UI 交互
-
-```typescript
-// 显示消息
-api.ui.showMessage(
-  message: string,
-  type: 'info' | 'warning' | 'error'
-): void
-
-// 显示通知
-api.ui.showNotification(
-  title: string,
-  message: string,
-  type: 'info' | 'warning' | 'error'
-): void
-```
-
-### 事件系统
-
-```typescript
-// 监听事件
-api.events.on(
-  event: string,
-  handler: (...args: any[]) => void
-): void
-
-// 触发事件
-api.events.emit(
-  event: string,
-  ...args: any[]
-): void
-
-// 取消监听
-api.events.off(
-  event: string,
-  handler: Function
-): void
-```
+- `context.commands`
+- `context.window`
+- `context.workspace`
+- `context.storage`
+- `context.settings`
+- `context.webview`
+- `context.notes`
+- `context.editor`
+- `context.ai`
 
 ## 原生 API
 

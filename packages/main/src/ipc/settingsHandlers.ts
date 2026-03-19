@@ -8,7 +8,7 @@ import { promises as fsPromises } from 'fs';
 import * as path from 'path';
 import { SettingsManager, SettingsSchema } from '../config/SettingsManager';
 import { WorkspaceManager } from '../workspace/WorkspaceManager';
-import type { WorkbenchBackgroundSettings } from '@note-studio/shared';
+import type { JsonValue } from '@note-studio/shared';
 
 type SettingsTarget = 'user' | 'workspace';
 
@@ -52,21 +52,63 @@ const broadcastSettingsChanged = (payload: Record<string, SerializableValue>): v
   }
 };
 
+const isSerializableJsonValue = (value: SerializableValue): value is JsonValue =>
+  value !== undefined;
+
+const resolveWorkbenchBackgroundSettings = (value: JsonValue): {
+  readonly enabled: boolean;
+  readonly imagePath: string;
+  readonly opacity: number;
+  readonly blur: number;
+  readonly fit: string;
+} | null => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Record<string, JsonValue>;
+  if (
+    typeof candidate.enabled === 'boolean'
+    && typeof candidate.imagePath === 'string'
+    && typeof candidate.opacity === 'number'
+    && typeof candidate.blur === 'number'
+    && typeof candidate.fit === 'string'
+  ) {
+    return {
+      enabled: candidate.enabled,
+      imagePath: candidate.imagePath,
+      opacity: candidate.opacity,
+      blur: candidate.blur,
+      fit: candidate.fit,
+    };
+  }
+
+  return null;
+};
+
 const toSerializableSettingsValue = (
-  value: SettingsSchema[keyof SettingsSchema]
+  value: JsonValue
 ): SerializableValue => {
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return value;
   }
 
-  const backgroundValue = value as WorkbenchBackgroundSettings;
-  return {
-    enabled: backgroundValue.enabled,
-    imagePath: backgroundValue.imagePath,
-    opacity: backgroundValue.opacity,
-    blur: backgroundValue.blur,
-    fit: backgroundValue.fit,
-  };
+  if (value === null) {
+    return null;
+  }
+
+  const backgroundValue = resolveWorkbenchBackgroundSettings(value);
+  if (backgroundValue) {
+    return {
+      enabled: backgroundValue.enabled,
+      imagePath: backgroundValue.imagePath,
+      opacity: backgroundValue.opacity,
+      blur: backgroundValue.blur,
+      fit: backgroundValue.fit,
+    };
+  }
+
+  return value as SerializableValue;
 };
 
 const ensureSettingsFileExists = async (settingsPath: string): Promise<void> => {
@@ -104,10 +146,16 @@ export const registerSettingsHandlers = (
 
   handlersRegistered = true;
 
-  ipcMain.handle('settings:get-all', async (): Promise<SettingsResponse<Partial<SettingsSchema>>> => {
+  ipcMain.handle('settings:get-all', async (): Promise<SettingsResponse<Record<string, SerializableValue>>> => {
     try {
-      const settings = await settingsManager.getUserConfiguredSettings();
-      return { success: true, data: settings };
+      const settings = await settingsManager.getAllConfiguredSettings();
+      const data: Record<string, SerializableValue> = {};
+
+      for (const [key, value] of Object.entries(settings)) {
+        data[key] = toSerializableSettingsValue(value);
+      }
+
+      return { success: true, data };
     } catch (error) {
       console.error('[Settings IPC] Failed to get settings:', error);
       return { success: false, error: toErrorMessage(error instanceof Error ? error : String(error)) };
@@ -116,10 +164,13 @@ export const registerSettingsHandlers = (
 
   ipcMain.handle(
     'settings:get',
-    async (_event, key: keyof SettingsSchema): Promise<SettingsResponse<SettingsSchema[keyof SettingsSchema]>> => {
+    async (_event, key: string): Promise<SettingsResponse<SerializableValue>> => {
       try {
-        const value = settingsManager.get(key);
-        return { success: true, data: value };
+        const value = settingsManager.getSettingValue(key);
+        return {
+          success: true,
+          data: value === undefined ? undefined : toSerializableSettingsValue(value),
+        };
       } catch (error) {
         console.error('[Settings IPC] Failed to get setting value:', error);
         return { success: false, error: toErrorMessage(error instanceof Error ? error : String(error)) };
@@ -131,12 +182,16 @@ export const registerSettingsHandlers = (
     'settings:update',
     async (
       _event,
-      key: keyof SettingsSchema,
-      value: SettingsSchema[keyof SettingsSchema],
+      key: string,
+      value: SerializableValue,
       target: SettingsTarget = 'user'
     ): Promise<SettingsResponse<void>> => {
       try {
-        await settingsManager.update(key, value, target);
+        if (!isSerializableJsonValue(value)) {
+          throw new Error('settings:update 不支持 undefined 值。');
+        }
+
+        await settingsManager.updateSettingValue(key, value, target);
         broadcastSettingsChanged({ key, value: toSerializableSettingsValue(value) });
         return { success: true };
       } catch (error) {
@@ -150,11 +205,20 @@ export const registerSettingsHandlers = (
     'settings:update-many',
     async (
       _event,
-      updates: Partial<SettingsSchema>,
+      updates: Record<string, SerializableValue>,
       target: SettingsTarget = 'user'
     ): Promise<SettingsResponse<void>> => {
       try {
-        await settingsManager.updateMany(updates, target);
+        const serializableUpdates: Record<string, JsonValue> = {};
+        for (const [key, value] of Object.entries(updates)) {
+          if (!isSerializableJsonValue(value)) {
+            throw new Error(`settings:update-many 不支持 undefined 值: ${key}`);
+          }
+
+          serializableUpdates[key] = value;
+        }
+
+        await settingsManager.updateManySettingValues(serializableUpdates, target);
         broadcastSettingsChanged({ updatedKeys: Object.keys(updates) });
         return { success: true };
       } catch (error) {
@@ -164,9 +228,9 @@ export const registerSettingsHandlers = (
     }
   );
 
-  ipcMain.handle('settings:reset', async (_event, key?: keyof SettingsSchema): Promise<SettingsResponse<void>> => {
+  ipcMain.handle('settings:reset', async (_event, key?: string): Promise<SettingsResponse<void>> => {
     try {
-      await settingsManager.reset(key);
+      await settingsManager.resetSettingValue(key);
       broadcastSettingsChanged({ key: key ?? null, reset: true });
       return { success: true };
     } catch (error) {

@@ -34,6 +34,7 @@ import { ModelCapability } from '../../../../types/modelCapabilities';
 import { DEFAULT_CHAT_SETTINGS } from '../../../AIChatSettings/AIChatSettings';
 import { getAIZoneSystemPromptAsync } from '../../../../services/ai/SystemPrompt';
 import type { LinkAnchorSuggestionItem, LinkTargetSuggestionItem } from '../../../../types/electron';
+import { useWorkbenchMenuContributions } from '../../../../hooks/useWorkbenchMenuContributions';
 
 const MAX_INLINE_CHAT_HISTORY_MESSAGES = 12;
 const MONACO_EDITOR_DEBUG_LOGS = false;
@@ -179,6 +180,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const [showSelectKnowledgeBaseDialog, setShowSelectKnowledgeBaseDialog] = useState(false);
   const forceApplyColorsRef = useRef<(() => void) | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null); // 鐢ㄤ簬鍙栨秷 AI 璇锋眰
+  const editorContextMenus = useWorkbenchMenuContributions('editor/context');
   
   // 棰滆壊閫夋嫨锟?MutationObserver 鐨勬竻鐞嗗嚱锟?
   const colorPickerObserverCleanupRef = useRef<(() => void) | null>(null);
@@ -1996,7 +1998,10 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     onOpenInlineChat: handleOpenInlineChat,
     onUploadToKnowledgeBase: handleUploadToKnowledgeBase,
     tabId,
-    tabTitle
+    tabTitle,
+    filePath,
+    language,
+    pluginMenus: editorContextMenus,
   });
 
   const handleEditorChange = (value: string | undefined) => {

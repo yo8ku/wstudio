@@ -70,7 +70,7 @@ pnpm build:electron
 ### 开发文档
 - [项目架构](./docs/development/architecture.md)
 - [项目结构](./docs/development/project-structure.md)
-- [插件开发](./packages/plugin-system/QUICK_START.md)
+- [插件开发](./docs/extension-development.md)
 
 ### API 文档
 - [API 索引](./docs/api/README.md)

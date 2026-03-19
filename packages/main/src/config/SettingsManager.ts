@@ -11,6 +11,7 @@ import { EventEmitter } from 'events';
 import * as jsonc from 'jsonc-parser';
 import {
   DEFAULT_WORKBENCH_BACKGROUND_SETTINGS,
+  type JsonValue,
   type WorkbenchBackgroundSettings,
 } from '@note-studio/shared';
 
@@ -65,6 +66,8 @@ export interface AIModelConfig {
 
 export type SettingsValue = SettingsSchema[keyof SettingsSchema];
 
+type PluginSettingsMap = Record<string, JsonValue>;
+
 const DEFAULT_SETTINGS: SettingsSchema = {
   'files.autoSave': 'afterDelay',
   'files.autoSaveDelay': 1000,
@@ -75,7 +78,7 @@ const DEFAULT_SETTINGS: SettingsSchema = {
 };
 export class SettingsManager extends EventEmitter {
   private settings: Partial<SettingsSchema> = {};
-  private pluginSettings: Record<string, any> = {}; // 瀛樺偍鎻掍欢閰嶇疆锛堜笉鍦?SettingsSchema 涓殑閿級
+  private pluginSettings: PluginSettingsMap = {}; // 瀛樺偍鎻掍欢閰嶇疆锛堜笉鍦?SettingsSchema 涓殑閿級
   private settingsPath: string;
   private userSettingsPath: string;
   private workspaceSettingsPath: string | null = null;
@@ -109,6 +112,10 @@ export class SettingsManager extends EventEmitter {
       // 鍗充娇鍒濆鍖栧け璐ワ紝涔熻纭繚鏈夐粯璁よ缃彲鐢?
       this.settings = { ...DEFAULT_SETTINGS };
     }
+  }
+
+  private isStandardSettingsKey(key: string): key is keyof SettingsSchema {
+    return key in DEFAULT_SETTINGS;
   }
 
   /**
@@ -258,13 +265,13 @@ export class SettingsManager extends EventEmitter {
       
       // 鍒嗙鏍囧噯璁剧疆鍜屾彃浠惰缃?
       const filtered: Partial<SettingsSchema> = {};
-      const pluginConfig: Record<string, any> = {};
+      const pluginConfig: PluginSettingsMap = {};
       for (const key of Object.keys(parsed)) {
         if (key in DEFAULT_SETTINGS) {
           filtered[key as keyof SettingsSchema] = parsed[key] as any;
         } else {
           // 淇濈暀鎻掍欢閰嶇疆锛堜笉鍦?DEFAULT_SETTINGS 涓殑閿級
-          pluginConfig[key] = parsed[key];
+          pluginConfig[key] = parsed[key] as JsonValue;
         }
       }
       
@@ -341,15 +348,23 @@ export class SettingsManager extends EventEmitter {
   /**
    * 鑾峰彇鎻掍欢閰嶇疆锛堟敮鎸佷换鎰忛敭锛?
    */
-  getPluginSetting<T = any>(key: string, defaultValue?: T): T | undefined {
+  getPluginSetting<TValue extends JsonValue>(key: string, defaultValue?: TValue): TValue | undefined {
     // 鍏堟鏌ユ槸鍚︽槸鏍囧噯璁剧疆
-    if (key in DEFAULT_SETTINGS) {
-      return this.get(key as keyof SettingsSchema) as T;
+    if (this.isStandardSettingsKey(key)) {
+      return this.get(key) as TValue;
     }
     // 妫€鏌ユ彃浠堕厤缃?
     const value = this.pluginSettings[key];
-    const result = value !== undefined ? (value as T) : defaultValue;
+    const result = value !== undefined ? (value as TValue) : defaultValue;
     return result;
+  }
+
+  getSettingValue(key: string): JsonValue | undefined {
+    if (this.isStandardSettingsKey(key)) {
+      return this.get(key) as JsonValue;
+    }
+
+    return this.pluginSettings[key];
   }
 
   /**
@@ -357,6 +372,23 @@ export class SettingsManager extends EventEmitter {
    */
   getAll(): Partial<SettingsSchema> {
     return { ...this.settings };
+  }
+
+  async getAllConfiguredSettings(): Promise<Record<string, JsonValue>> {
+    const standardSettings = await this.getUserConfiguredSettings();
+    const result: Record<string, JsonValue> = {};
+
+    for (const [key, value] of Object.entries(standardSettings)) {
+      if (value !== undefined) {
+        result[key] = value as JsonValue;
+      }
+    }
+
+    for (const [key, value] of Object.entries(this.pluginSettings)) {
+      result[key] = value;
+    }
+
+    return result;
   }
 
   /**
@@ -431,13 +463,13 @@ export class SettingsManager extends EventEmitter {
    */
   async updatePluginSetting(
     key: string,
-    value: any,
+    value: JsonValue,
     target: 'user' | 'workspace' = 'user'
   ): Promise<void> {
     try {
       // 濡傛灉鏄爣鍑嗚缃紝浣跨敤鏍囧噯鏂规硶
-      if (key in DEFAULT_SETTINGS) {
-        await this.update(key as keyof SettingsSchema, value, target);
+      if (this.isStandardSettingsKey(key)) {
+        await this.update(key, value as SettingsSchema[typeof key], target);
         return;
       }
       // 鏇存柊鎻掍欢閰嶇疆
@@ -506,6 +538,66 @@ export class SettingsManager extends EventEmitter {
     }
   }
 
+  async updateSettingValue(
+    key: string,
+    value: JsonValue,
+    target: 'user' | 'workspace' = 'user',
+  ): Promise<void> {
+    if (this.isStandardSettingsKey(key)) {
+      await this.update(key, value as SettingsSchema[typeof key], target);
+      return;
+    }
+
+    if (target === 'workspace') {
+      throw new Error('插件设置暂不支持保存到 workspace。');
+    }
+
+    await this.updatePluginSetting(key, value, 'user');
+  }
+
+  async updateManySettingValues(
+    updates: Record<string, JsonValue>,
+    target: 'user' | 'workspace' = 'user',
+  ): Promise<void> {
+    const standardUpdates: Partial<SettingsSchema> = {};
+    const pluginUpdates: PluginSettingsMap = {};
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (this.isStandardSettingsKey(key)) {
+        Object.assign(standardUpdates, {
+          [key]: value as SettingsSchema[typeof key],
+        });
+        continue;
+      }
+
+      pluginUpdates[key] = value;
+    }
+
+    if (Object.keys(pluginUpdates).length > 0 && target === 'workspace') {
+      throw new Error('插件设置暂不支持保存到 workspace。');
+    }
+
+    Object.assign(this.settings, standardUpdates);
+
+    for (const [key, value] of Object.entries(pluginUpdates)) {
+      this.pluginSettings[key] = value;
+    }
+
+    if (target === 'user') {
+      await this.saveUserSettings();
+    } else if (this.workspaceSettingsPath) {
+      await this.saveWorkspaceSettings();
+    }
+
+    for (const [key, value] of Object.entries(standardUpdates)) {
+      this.emit('change', key, value);
+    }
+
+    for (const [key, value] of Object.entries(pluginUpdates)) {
+      this.emit('change', key, value);
+    }
+  }
+
   /**
    * 閲嶇疆璁剧疆涓洪粯璁ゅ€?
    */
@@ -526,6 +618,37 @@ export class SettingsManager extends EventEmitter {
       console.error('[SettingsManager] 閲嶇疆璁剧疆澶辫触:', error);
       throw error;
     }
+  }
+
+  async resetSettingValue(
+    key?: string,
+    target: 'user' | 'workspace' = 'user',
+  ): Promise<void> {
+    if (typeof key === 'string') {
+      if (this.isStandardSettingsKey(key)) {
+        await this.reset(key);
+        return;
+      }
+
+      if (target === 'workspace') {
+        throw new Error('插件设置暂不支持保存到 workspace。');
+      }
+
+      delete this.pluginSettings[key];
+      await this.saveUserSettings();
+      this.emit('reset', key);
+      return;
+    }
+
+    this.settings = { ...DEFAULT_SETTINGS };
+    if (target === 'user') {
+      this.pluginSettings = {};
+      await this.saveUserSettings();
+    } else if (this.workspaceSettingsPath) {
+      await this.saveWorkspaceSettings();
+    }
+
+    this.emit('reset', undefined);
   }
 
   /**
@@ -763,7 +886,7 @@ export class SettingsManager extends EventEmitter {
   /**
    * 鐢熸垚甯︽敞閲婄殑璁剧疆鍐呭锛堝寘鍚彃浠堕厤缃級
    */
-  private generateSettingsWithCommentsAndPlugins(settings: Partial<SettingsSchema>, pluginSettings: Record<string, any>): string {
+  private generateSettingsWithCommentsAndPlugins(settings: Partial<SettingsSchema>, pluginSettings: PluginSettingsMap): string {
     // 鍏堢敓鎴愭爣鍑嗚缃殑甯︽敞閲婂唴瀹?
     const standardContent = this.generateSettingsWithComments(settings);
     
@@ -914,7 +1037,7 @@ export class SettingsManager extends EventEmitter {
         throw new Error('Invalid JSONC format');
       }
       
-      await this.updateMany(imported, target);
+      await this.updateManySettingValues(imported as Record<string, JsonValue>, target);
     } catch (error) {
       console.error('[SettingsManager] 瀵煎叆璁剧疆澶辫触:', error);
       throw error;
@@ -925,7 +1048,10 @@ export class SettingsManager extends EventEmitter {
    * 瀵煎嚭璁剧疆
    */
   exportSettings(): string {
-    return JSON.stringify(this.settings, null, 2);
+    return JSON.stringify({
+      ...this.settings,
+      ...this.pluginSettings,
+    }, null, 2);
   }
 }
 

@@ -1,12 +1,17 @@
 /**
- * Status bar with editor state and indexing progress.
+ * Status bar with editor state and plugin entry actions.
  */
 
 import React, { useEffect, useState } from 'react';
+import type { WorkbenchMenuContributionEntry } from '@note-studio/shared';
 import './StatusBar.scss';
 import { Icon } from '../../Icons/Icon';
+import { ThemedMaskIcon } from '../../Icons/ThemedMaskIcon';
 import { useActivityBarStore } from '../../../stores/activityBarStore';
 import type { SettingsCategory } from '../Sidebar/SettingsSidebar';
+import { notification } from '../../Notification';
+import { workbenchContributionService } from '../../../services/WorkbenchContributionService';
+import { useWorkbenchMenuContributions } from '../../../hooks/useWorkbenchMenuContributions';
 
 interface StatusBarProps {}
 
@@ -63,12 +68,27 @@ const getWordCount = (content: string): number => {
   return content.replace(/\s+/g, '').length;
 };
 
+function ExtensionEntryIcon({ menu }: { menu: WorkbenchMenuContributionEntry }): React.ReactElement {
+  if (!menu.icon) {
+    return <Icon className="extension-icon" name="extensions" size={14} />;
+  }
+
+  return (
+    <ThemedMaskIcon
+      className="extension-icon"
+      source={menu.icon}
+      size={14}
+    />
+  );
+}
+
 export const StatusBar: React.FC<StatusBarProps> = () => {
   const { sidebarPosition } = useActivityBarStore();
   const [wordCount, setWordCount] = useState<number>(0);
   const [currentLanguage, setCurrentLanguage] = useState<string>('Markdown');
   const [currentTabType, setCurrentTabType] = useState<string | null>('file');
   const [vectorIndexingProgress, setVectorIndexingProgress] = useState<VectorIndexingProgress | null>(null);
+  const statusBarMenus = useWorkbenchMenuContributions('statusBar');
 
   useEffect(() => {
     const handleTabLanguageChange = (event: Event): void => {
@@ -124,7 +144,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     const unsubscribe = window.electron?.workspaceVectorIndex?.onProgress?.(
       (progress: VectorIndexingProgress) => {
         setVectorIndexingProgress(progress);
-      }
+      },
     );
 
     return () => {
@@ -135,7 +155,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
   }, []);
 
   const OutlineIcon = (): React.ReactElement => (
-    <div className="status-bar-info-btn status-bar-info-btn--icon" title="大纲">
+    <div className="status-bar-info-btn status-bar-info-btn--icon" title="Outline">
       <svg
         width="14"
         height="14"
@@ -166,6 +186,17 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     }));
   };
 
+  const handleExecuteStatusBarMenu = async (menu: WorkbenchMenuContributionEntry): Promise<void> => {
+    try {
+      await workbenchContributionService.executeCommand({
+        commandId: menu.commandId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      notification.error(`插件命令执行失败: ${message}`);
+    }
+  };
+
   return (
     <div className="status-bar">
       <div
@@ -182,7 +213,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
           <div
             className="status-bar-indexing"
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            title={vectorIndexingProgress.currentFile || '正在索引工作区文件...'}
+            title={vectorIndexingProgress.currentFile || 'Scanning workspace files...'}
           >
             <Icon
               name="sync"
@@ -227,7 +258,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
           <div
             className="status-bar-indexing"
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            title={vectorIndexingProgress.vectorization.currentFile || '正在向量化...'}
+            title={vectorIndexingProgress.vectorization.currentFile || 'Vectorizing files...'}
           >
             <Icon
               name="sync"
@@ -239,7 +270,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
               }}
             />
             <span className="status-bar-text" style={{ fontSize: '11px', opacity: 0.8 }}>
-              向量化
+              Vectorizing
             </span>
             <div
               style={{
@@ -275,7 +306,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
       <div className="status-bar-right">
         {currentTabType === 'file' && (
           <>
-            <div className="status-bar-info-btn">字数统计： {wordCount}</div>
+            <div className="status-bar-info-btn">字数统计: {wordCount}</div>
             <div className="status-bar-info-btn">{currentLanguage}</div>
             <div className="status-bar-divider" aria-hidden="true" />
           </>
@@ -283,6 +314,19 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
 
         <div className="status-bar-right-icons">
           {sidebarPosition === 'right' && <OutlineIcon />}
+
+          {statusBarMenus.map(menu => (
+            <div
+              key={menu.menuItemId}
+              className="status-bar-info-btn status-bar-extension-btn status-bar-info-btn--icon status-bar-info-btn--action"
+              title={`${menu.extensionDisplayName}: ${menu.title}`}
+              onClick={() => {
+                void handleExecuteStatusBarMenu(menu);
+              }}
+            >
+              <ExtensionEntryIcon menu={menu} />
+            </div>
+          ))}
 
           <div
             className="status-bar-info-btn status-bar-info-btn--icon status-bar-info-btn--action"
@@ -305,11 +349,11 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
             </svg>
           </div>
 
-          <div className="status-bar-info-btn status-bar-info-btn--icon" title="通知中心">
+          <div className="status-bar-info-btn status-bar-info-btn--icon" title="Notifications">
             <Icon name="notification" iconSet="ui" size={14} />
           </div>
 
-          <div className="status-bar-info-btn status-bar-info-btn--icon" title="反馈">
+          <div className="status-bar-info-btn status-bar-info-btn--icon" title="Feedback">
             <svg
               width="14"
               height="14"

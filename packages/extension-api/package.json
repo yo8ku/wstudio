@@ -1,0 +1,29 @@
+{
+  "name": "@note-studio/extension-api",
+  "version": "1.0.0",
+  "description": "Note Studio 插件系统对外 SDK 契约",
+  "type": "commonjs",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "require": "./dist/cjs/index.js",
+      "import": "./dist/esm/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm build:cjs && pnpm build:esm",
+    "build:cjs": "pnpm exec tsc --project tsconfig.cjs.json",
+    "build:esm": "pnpm exec tsc --project tsconfig.esm.json",
+    "dev": "pnpm exec tsc --watch",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\""
+  },
+  "dependencies": {
+    "@note-studio/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

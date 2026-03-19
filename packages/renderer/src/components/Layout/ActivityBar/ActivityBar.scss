@@ -53,4 +53,9 @@
     align-items: center;
     justify-content: center;
   }
+
+  &-plugin-icon {
+    display: block;
+    flex-shrink: 0;
+  }
 }

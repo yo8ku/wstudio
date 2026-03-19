@@ -1,0 +1,42 @@
+<!-- Starter webview markup for the WStudio plugin scaffold. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WStudio Plugin Starter Panel</title>
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <main class="starter-page">
+      <section class="starter-hero">
+        <img class="starter-hero__badge" src="../assets/plugin-icon.svg" alt="WStudio Plugin Starter icon" />
+        <div class="starter-hero__content">
+          <p class="starter-kicker">WStudio Plugin Package</p>
+          <h1 class="starter-title">WStudio Plugin Starter</h1>
+          <p class="starter-description">
+            This starter demonstrates a complete plugin package with host code,
+            a styled webview, and bundled static assets.
+          </p>
+        </div>
+      </section>
+
+      <section class="starter-card">
+        <div class="starter-actions">
+          <div class="starter-action" id="request-state" role="button" tabindex="0">
+            Request Starter State
+          </div>
+          <div class="starter-action starter-action--secondary" id="send-ping" role="button" tabindex="0">
+            Send Ping
+          </div>
+        </div>
+      </section>
+
+      <section class="starter-card">
+        <pre class="starter-log" id="starter-log">Waiting for plugin messages...</pre>
+      </section>
+    </main>
+
+    <script src="../scripts/panel.js"></script>
+  </body>
+</html>

@@ -22,8 +22,16 @@ import { tableReferenceService, type FormDetail, type FormInfo } from '../../../
 import { knowledgeBaseService } from '../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { type KnowledgeItem } from '../Sidebar/KnowledgeBase/types';
 import { toastService } from '../../../services/ToastService';
+import { aiPanelContributionService } from '../../../services/AIPanelContributionService';
 import { getAIZoneSystemPromptAsync } from '../../../services/ai/SystemPrompt';
 import { TipTapInput, type TipTapInputRef } from '../EditorArea/AIZoneWidget/TipTapInput';
+import {
+  EMPTY_AI_PANEL_CONTRIBUTION_SNAPSHOT,
+  type AIPanelCommandContributionEntry,
+  type AIPanelContributionEntry,
+  type AIPanelContributionSnapshot,
+  type AIPanelSkillContributionEntry,
+} from '@note-studio/shared';
 import {
   appendActLogBlock,
   appendToolLogBlock as appendToolLogContentBlock,
@@ -943,6 +951,19 @@ const SLASH_COMMAND_ITEMS: SlashCommandItem[] = [
   { command: '/help', description: '查看可用命令说明', insertText: '/help' },
   { command: '/clear', description: '清空当前对话', insertText: '/clear' },
 ];
+
+const normalizeSlashSearchKeyword = (value: string): string => value.trim().toLowerCase();
+
+const matchesSlashSearchKeyword = (
+  keyword: string,
+  values: readonly string[],
+): boolean => {
+  if (!keyword) {
+    return true;
+  }
+
+  return values.some((value) => value.toLowerCase().includes(keyword));
+};
 
 interface ReadFileChunkResult {
   chunkText: string;
@@ -2021,6 +2042,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [subMenuType, setSubMenuType] = useState<'none' | 'model' | 'knowledge' | 'form' | 'decompositionRules' | 'writingRules' | 'files' | 'skills' | 'memory' | 'mcpServer'>('none');
   const [searchQuery, setSearchQuery] = useState('');
+  const [aiPanelContributions, setAiPanelContributions] = useState<AIPanelContributionSnapshot>(
+    EMPTY_AI_PANEL_CONTRIBUTION_SNAPSHOT,
+  );
+  const [isLoadingAIPanelContributions, setIsLoadingAIPanelContributions] = useState(false);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [isHoveringHandle, setIsHoveringHandle] = useState(false);
@@ -2182,14 +2207,124 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     };
   }, [currentSessionId, currentSessionTitle, isLoading, messages]);
 
-  const handleInsertSlashCommand = useCallback((insertText: string) => {
-    tiptapRef.current?.setText(insertText);
-    setInput(insertText);
+  const closeSlashContextMenu = useCallback(() => {
     setIsContextMenuOpen(false);
     setSubMenuType('none');
     setSearchQuery('');
     tiptapRef.current?.focus();
   }, []);
+
+  const loadAIPanelContributions = useCallback(async () => {
+    setIsLoadingAIPanelContributions(true);
+    try {
+      const snapshot = await aiPanelContributionService.getContributions();
+      setAiPanelContributions(snapshot);
+    } catch (error) {
+      console.error('[AIChatPanel] 加载 AI panel 插件贡献失败:', error);
+      setAiPanelContributions(EMPTY_AI_PANEL_CONTRIBUTION_SNAPSHOT);
+    } finally {
+      setIsLoadingAIPanelContributions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isContextMenuOpen) {
+      return;
+    }
+
+    loadAIPanelContributions().catch((error) => {
+      console.error('[AIChatPanel] 刷新 AI panel 插件贡献失败:', error);
+    });
+  }, [isContextMenuOpen, loadAIPanelContributions]);
+
+  const handleInsertSlashCommand = useCallback((insertText: string) => {
+    tiptapRef.current?.setText(insertText);
+    setInput(insertText);
+    closeSlashContextMenu();
+  }, [closeSlashContextMenu]);
+
+  const normalizedSlashSearchQuery = useMemo(
+    () => normalizeSlashSearchKeyword(searchQuery),
+    [searchQuery],
+  );
+
+  const filteredBuiltinSlashCommands = useMemo(
+    () => SLASH_COMMAND_ITEMS.filter((command) => matchesSlashSearchKeyword(
+      normalizedSlashSearchQuery,
+      [command.command, command.description],
+    )),
+    [normalizedSlashSearchQuery],
+  );
+
+  const filteredAIPanelCommandContributions = useMemo(
+    () => aiPanelContributions.commands.filter((item) => matchesSlashSearchKeyword(
+      normalizedSlashSearchQuery,
+      [
+        item.title,
+        item.description,
+        item.commandId,
+        item.insertText ?? '',
+        ...item.keywords,
+      ],
+    )),
+    [aiPanelContributions.commands, normalizedSlashSearchQuery],
+  );
+
+  const filteredAIPanelSkillContributions = useMemo(
+    () => aiPanelContributions.skills.filter((item) => matchesSlashSearchKeyword(
+      normalizedSlashSearchQuery,
+      [
+        item.title,
+        item.description,
+        (
+          ('commandId' in item && typeof item.commandId === 'string')
+            ? item.commandId
+            : item.toolId
+        ) ?? '',
+        ...item.keywords,
+      ],
+    )),
+    [aiPanelContributions.skills, normalizedSlashSearchQuery],
+  );
+
+  const handleExecuteAIPanelContribution = useCallback(async (
+    item: AIPanelContributionEntry,
+  ) => {
+    if (item.kind === 'command' && item.insertText) {
+      handleInsertSlashCommand(item.insertText);
+      return;
+    }
+
+    if (item.kind === 'skill' && item.requiresConfirmation) {
+      const confirmed = window.confirm(`确定执行技能“${item.title}”吗？`);
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    const response = await aiPanelContributionService.executeItem({
+      kind: item.kind,
+      itemId: item.itemId,
+    });
+
+    if (!response.success || !response.data) {
+      toastService.error(response.error?.message ?? `执行“${item.title}”失败`);
+      return;
+    }
+
+    if (response.data.type === 'insert-text') {
+      handleInsertSlashCommand(response.data.insertText);
+      if (response.data.message) {
+        toastService.info(response.data.message);
+      }
+      return;
+    }
+
+    closeSlashContextMenu();
+    if (response.data.message) {
+      toastService.success(response.data.message);
+    }
+  }, [closeSlashContextMenu, handleInsertSlashCommand]);
 
   const enabledDecompositionRules = getEnabledDecompositionRules(decompositionRules);
   const enabledWritingRuleDocuments = useMemo(
@@ -5741,6 +5876,26 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                           <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
+                      {filteredAIPanelSkillContributions.map((item: AIPanelSkillContributionEntry) => (
+                        <div
+                          key={item.itemId}
+                          className="context-menu-item context-menu-item-multiline"
+                          onClick={() => {
+                            void handleExecuteAIPanelContribution(item);
+                          }}
+                          title={item.description}
+                        >
+                          <div className="context-menu-item-content">
+                            <span className="context-menu-item-text">{item.title}</span>
+                            <span className="context-menu-item-description">{item.description}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {isLoadingAIPanelContributions && (
+                        <div className="context-menu-empty">
+                          <span className="context-menu-empty-text">正在加载插件技能...</span>
+                        </div>
+                      )}
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('memory')}>
                         <span className="context-menu-item-text">记忆</span>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
@@ -5771,22 +5926,34 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
                     <div className="context-menu-group">
                       <div className="context-menu-group-title">命令</div>
-                      {SLASH_COMMAND_ITEMS
-                        .filter(cmd => {
-                          const keyword = searchQuery.trim().toLowerCase();
-                          if (!keyword) return true;
-                          return cmd.command.toLowerCase().includes(keyword)
-                            || cmd.description.toLowerCase().includes(keyword);
-                        })
-                        .map(cmd => (
+                      {filteredBuiltinSlashCommands.map(cmd => (
                           <div
                             key={cmd.command}
                             className="context-menu-item"
                             onClick={() => handleInsertSlashCommand(cmd.insertText)}
+                            title={cmd.description}
                           >
                             <span className="context-menu-item-text">{cmd.command}</span>
                           </div>
                         ))}
+                      {filteredAIPanelCommandContributions.length > 0 && (
+                        <div className="context-menu-group-section-label">插件命令</div>
+                      )}
+                      {filteredAIPanelCommandContributions.map((item: AIPanelCommandContributionEntry) => (
+                        <div
+                          key={item.itemId}
+                          className="context-menu-item context-menu-item-multiline"
+                          onClick={() => {
+                            void handleExecuteAIPanelContribution(item);
+                          }}
+                          title={item.description}
+                        >
+                          <div className="context-menu-item-content">
+                            <span className="context-menu-item-text">{item.title}</span>
+                            <span className="context-menu-item-description">{item.description}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </>
                 ) : subMenuType === 'model' ? (

@@ -7,6 +7,7 @@ input[type="text"],
 input[type="number"],
 input[type="password"],
 textarea {
+  border: 1px solid var(--ws-input-border);
   background-color: var(--ws-input-background);
   color: var(--ws-input-foreground);
 }

@@ -26,6 +26,7 @@ import { MermaidDesigner } from '../../../NoteEditor/Mermaid/MermaidDesigner';
 import { SkillsMarketView } from '../SkillsMarketView';
 import { DecompositionRulesView } from '../DecompositionRulesView';
 import { PromptManagementView } from '../PromptManagementView';
+import { ExtensionView } from '../ExtensionView';
 import { AIChatPanel } from '../../AIChatPanel/AIChatPanel';
 import { MediaPanel } from '../../Sidebar/MediaPanel';
 import { TerminalSessionView } from '../../Panel/TerminalPanel/TerminalPanel';
@@ -39,6 +40,14 @@ import { toastService } from '../../../../services/ToastService';
 import { useLinkStore } from '../../../../stores/linkStore';
 import { useNoteStore } from '../../../../stores/noteStore';
 import { getNoteByPath, isLinkableFile, upsertNoteByPath } from '../../../../utils/noteLinking';
+import type {
+  ExtensionHostTextEditPayload,
+  PluginEditorApplyTextEditsRequestPayload,
+  PluginEditorApplyTextEditsResponsePayload,
+  PluginEditorStateRequestPayload,
+  PluginEditorStateResponsePayload,
+} from '@note-studio/shared';
+import { PLUGIN_EDITOR_BRIDGE_CHANNELS } from '@note-studio/shared';
 import './EditorArea.scss';
 
 export interface EditorTab {
@@ -48,7 +57,7 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat' | 'terminal';
+  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat' | 'terminal' | 'extension';
   isPreview?: boolean;  // 閺傛澘顤冮敍姘Ц閸氾缚璐熸０鍕潔濡€崇础閿涘牆宕熼崙缁樺ⅵ瀵偓閿?
   sourceTabId?: string;  // 閺傛澘顤冮敍姘额暕鐟欏牊鐖ｇ粵楣冦€夐崗瀹犱粓閻ㄥ嫭绨弬鍥︽閺嶅洨顒锋い绀桪
   splitSourceTabId?: string;  // 鍒嗗睆鏍囩鍏宠仈鐨勬簮鏂囦欢鏍囩椤?ID
@@ -94,6 +103,7 @@ type PaneDropPlacement = 'full' | 'left' | 'right' | 'top' | 'bottom';
 type PaneMoveDirection = 'left' | 'right' | 'up' | 'down';
 
 const TAB_DRAG_MIME = 'application/x-note-studio-tab';
+const EDITOR_BRIDGE_PANE_ORDER: EditorPaneId[] = ['left-top', 'right-top', 'left-bottom', 'right-bottom'];
 
 interface EditorTabsStateItem {
   id: string;
@@ -153,6 +163,86 @@ const getFileNameFromPath = (value: string): string => {
   const normalized = value.replace(/\\/g, '/');
   const segments = normalized.split('/').filter(Boolean);
   return segments[segments.length - 1] || value;
+};
+
+const getLineStartOffsets = (content: string): number[] => {
+  const offsets = [0];
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === '\n') {
+      offsets.push(index + 1);
+    }
+  }
+  return offsets;
+};
+
+const getOffsetFromLineColumn = (
+  content: string,
+  line: number,
+  column: number,
+): number => {
+  const lineStartOffsets = getLineStartOffsets(content);
+  const lineIndex = line - 1;
+  if (lineIndex < 0 || lineIndex >= lineStartOffsets.length) {
+    throw new Error(`Line out of range: ${line}`);
+  }
+
+  const lineStartOffset = lineStartOffsets[lineIndex];
+  const nextLineOffset = lineIndex + 1 < lineStartOffsets.length
+    ? lineStartOffsets[lineIndex + 1] - 1
+    : content.length;
+  const lineEndOffset = nextLineOffset > lineStartOffset && content[nextLineOffset - 1] === '\r'
+    ? nextLineOffset - 1
+    : nextLineOffset;
+  const maxColumn = (lineEndOffset - lineStartOffset) + 1;
+
+  if (column < 1 || column > maxColumn) {
+    throw new Error(`Column out of range: ${column}`);
+  }
+
+  return lineStartOffset + column - 1;
+};
+
+const applyTextEditsToContent = (
+  content: string,
+  edits: readonly ExtensionHostTextEditPayload[],
+): string => {
+  const mappedEdits = edits.map((edit) => {
+    const startOffset = getOffsetFromLineColumn(
+      content,
+      edit.range.startLine,
+      edit.range.startColumn,
+    );
+    const endOffset = getOffsetFromLineColumn(
+      content,
+      edit.range.endLine,
+      edit.range.endColumn,
+    );
+
+    if (endOffset < startOffset) {
+      throw new Error('Text edit range is invalid.');
+    }
+
+    return {
+      startOffset,
+      endOffset,
+      text: edit.text,
+    };
+  });
+
+  mappedEdits.sort((left, right) => {
+    if (left.startOffset !== right.startOffset) {
+      return right.startOffset - left.startOffset;
+    }
+    return right.endOffset - left.endOffset;
+  });
+
+  let nextContent = content;
+  for (const edit of mappedEdits) {
+    nextContent =
+      `${nextContent.slice(0, edit.startOffset)}${edit.text}${nextContent.slice(edit.endOffset)}`;
+  }
+
+  return nextContent;
 };
 
 const resolveLastOpenedPath = (result: LastOpenedRestoreResult | undefined): string | null => {
@@ -608,6 +698,71 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     setRightBottomTabs(prev => prev.map(tab => shouldUpdate(tab) ? buildNextTab(tab) : tab));
   }, [findTabInAllPaneRefs]);
 
+  const getPaneSnapshot = useCallback((paneId: EditorPaneId): {
+    readonly tabs: EditorTab[];
+    readonly activeTabId: string | null;
+  } => {
+    if (paneId === 'left-top') {
+      return {
+        tabs: tabsRef.current,
+        activeTabId: activeTabIdRef.current,
+      };
+    }
+    if (paneId === 'right-top') {
+      return {
+        tabs: rightTabsRef.current,
+        activeTabId: rightActiveTabIdRef.current,
+      };
+    }
+    if (paneId === 'left-bottom') {
+      return {
+        tabs: leftBottomTabsRef.current,
+        activeTabId: leftBottomActiveTabIdRef.current,
+      };
+    }
+
+    return {
+      tabs: rightBottomTabsRef.current,
+      activeTabId: rightBottomActiveTabIdRef.current,
+    };
+  }, []);
+
+  const resolvePluginEditorTab = useCallback((documentUri?: string | null): EditorTab | null => {
+    const normalizedDocumentUri = typeof documentUri === 'string' && documentUri.trim().length > 0
+      ? normalizeComparableFilePath(documentUri)
+      : null;
+
+    if (normalizedDocumentUri) {
+      const matchedTab = getAllPaneTabsSnapshot().find((tab) =>
+        tab.type === 'file' && normalizeComparableFilePath(tab.path) === normalizedDocumentUri,
+      );
+      return matchedTab ?? null;
+    }
+
+    const orderedPaneIds: EditorPaneId[] = [];
+    for (const paneId of [focusedPaneIdRef.current, ...EDITOR_BRIDGE_PANE_ORDER]) {
+      if (!orderedPaneIds.includes(paneId)) {
+        orderedPaneIds.push(paneId);
+      }
+    }
+
+    for (const paneId of orderedPaneIds) {
+      const snapshot = getPaneSnapshot(paneId);
+      if (!snapshot.activeTabId) {
+        continue;
+      }
+
+      const activeTab = snapshot.tabs.find((tab) =>
+        tab.id === snapshot.activeTabId && tab.type === 'file',
+      );
+      if (activeTab) {
+        return activeTab;
+      }
+    }
+
+    return getAllPaneTabsSnapshot().find((tab) => tab.type === 'file') ?? null;
+  }, [getAllPaneTabsSnapshot, getPaneSnapshot]);
+
   const handleFileTabCompositionStateChange = useCallback((
     tabId: string,
     isComposing: boolean,
@@ -692,6 +847,24 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
     for (const pane of paneOrder) {
       const found = pane.tabs.find(tab => tab.path === path && (tab.type || 'file') === type);
+      if (found) {
+        return { paneId: pane.paneId, tab: found };
+      }
+    }
+
+    return null;
+  }, [tabs, leftBottomTabs, rightTabs, rightBottomTabs]);
+
+  const findPaneByType = useCallback((type: EditorTab['type']): { paneId: EditorPaneId; tab: EditorTab } | null => {
+    const paneOrder: Array<{ paneId: EditorPaneId; tabs: EditorTab[] }> = [
+      { paneId: 'left-top', tabs },
+      { paneId: 'left-bottom', tabs: leftBottomTabs },
+      { paneId: 'right-top', tabs: rightTabs },
+      { paneId: 'right-bottom', tabs: rightBottomTabs },
+    ];
+
+    for (const pane of paneOrder) {
+      const found = pane.tabs.find(tab => (tab.type || 'file') === type);
       if (found) {
         return { paneId: pane.paneId, tab: found };
       }
@@ -824,16 +997,29 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     const { path, content, language, title, type } = customEvent.detail || {};
     if (!path) return;
 
-    const resolvedType: EditorTab['type'] = type === 'ai-chat' ? 'ai-chat' : 'file';
+    const resolvedType: EditorTab['type'] =
+      type === 'ai-chat' || type === 'extension' ? type : 'file';
     console.log('[EditorArea] 鎵撳紑缂栬緫鍣ㄦ爣绛鹃〉:', title, resolvedType);
 
     // 妫€鏌ユ槸鍚﹀凡缁忔墦寮€鐩稿悓璺緞鐨勬爣绛鹃〉锛堝洓涓垎鍖洪兘妫€鏌ワ級
-    const existingTabResult = findPaneByPath(path, resolvedType);
+    const existingTabResult = resolvedType === 'extension'
+      ? findPaneByType('extension')
+      : findPaneByPath(path, resolvedType);
     if (existingTabResult) {
       const { paneId, tab } = existingTabResult;
-      if (resolvedType === 'ai-chat' && title && tab.title !== title) {
+      const shouldUpdateAiChatTitle = resolvedType === 'ai-chat' && !!title && tab.title !== title;
+      const shouldUpdateExtensionTitle = resolvedType === 'extension' && !!title && tab.title !== title;
+      const shouldUpdateExtensionPath = resolvedType === 'extension' && tab.path !== path;
+
+      if (shouldUpdateAiChatTitle || shouldUpdateExtensionTitle || shouldUpdateExtensionPath) {
         setPaneTabs(paneId, prev => prev.map(item =>
-          item.id === tab.id ? { ...item, title } : item
+          item.id === tab.id
+            ? {
+                ...item,
+                title: shouldUpdateAiChatTitle || shouldUpdateExtensionTitle ? title || item.title : item.title,
+                path: shouldUpdateExtensionPath ? path : item.path,
+              }
+            : item
         ));
       }
       setPaneActiveTabId(paneId, tab.id);
@@ -844,7 +1030,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     // 鍒涘缓鏂扮殑鏍囩椤?
     const newTab: EditorTab = {
       id: `${resolvedType || 'editor'}-${Date.now()}`,
-      title: title || (resolvedType === 'ai-chat' ? '鏈€夋嫨妯″瀷' : ''),
+      title: title || (resolvedType === 'ai-chat' ? '鏈€夋嫨妯″瀷' : resolvedType === 'extension' ? 'Extension' : ''),
       path,
       isDirty: false,
       language: resolvedType === 'file' ? (language || 'plaintext') : undefined,
@@ -855,7 +1041,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newTab.id);
     setFocusedPaneId('left-top');
-  }, [findPaneByPath, setPaneTabs, setPaneActiveTabId]);
+  }, [findPaneByPath, findPaneByType, setPaneTabs, setPaneActiveTabId]);
 
   const handleOpenTerminalTab = useCallback((event: Event) => {
     const customEvent = event as CustomEvent<OpenTerminalTabDetail>;
@@ -1708,6 +1894,95 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const ipcRenderer = window.electron?.ipcRenderer;
+    if (!ipcRenderer) {
+      return;
+    }
+
+    const handlePluginEditorStateRequest = (
+      _event: Event,
+      payload: PluginEditorStateRequestPayload,
+    ): void => {
+      if (typeof payload?.requestId !== 'string' || payload.requestId.length === 0) {
+        return;
+      }
+
+      const targetTab = resolvePluginEditorTab(null);
+      const response: PluginEditorStateResponsePayload = {
+        requestId: payload.requestId,
+        ok: true,
+        documentUri: targetTab?.path ?? null,
+        content: targetTab ? targetTab.content ?? '' : null,
+        selection: null,
+        error: null,
+      };
+
+      ipcRenderer.send(PLUGIN_EDITOR_BRIDGE_CHANNELS.stateResponse, response);
+    };
+
+    const handlePluginEditorApplyTextEdits = (
+      _event: Event,
+      payload: PluginEditorApplyTextEditsRequestPayload,
+    ): void => {
+      if (typeof payload?.requestId !== 'string' || payload.requestId.length === 0) {
+        return;
+      }
+
+      const createResponse = (
+        ok: boolean,
+        error: string | null,
+      ): PluginEditorApplyTextEditsResponsePayload => ({
+        requestId: payload.requestId,
+        ok,
+        error,
+      });
+
+      if (typeof payload.documentUri !== 'string' || !Array.isArray(payload.edits)) {
+        ipcRenderer.send(
+          PLUGIN_EDITOR_BRIDGE_CHANNELS.applyTextEditsResponse,
+          createResponse(false, 'Renderer editor bridge payload is invalid.'),
+        );
+        return;
+      }
+
+      try {
+        const targetTab = resolvePluginEditorTab(payload.documentUri);
+        if (!targetTab || targetTab.type !== 'file') {
+          throw new Error(`Open editor tab not found for ${payload.documentUri}`);
+        }
+
+        const nextContent = applyTextEditsToContent(targetTab.content ?? '', payload.edits);
+        updateFileTabContent(targetTab.id, nextContent, { clearDiffPreview: true });
+
+        ipcRenderer.send(
+          PLUGIN_EDITOR_BRIDGE_CHANNELS.applyTextEditsResponse,
+          createResponse(true, null),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ipcRenderer.send(
+          PLUGIN_EDITOR_BRIDGE_CHANNELS.applyTextEditsResponse,
+          createResponse(false, message),
+        );
+      }
+    };
+
+    const unsubscribeState = ipcRenderer.on(
+      PLUGIN_EDITOR_BRIDGE_CHANNELS.requestState,
+      handlePluginEditorStateRequest,
+    );
+    const unsubscribeApplyTextEdits = ipcRenderer.on(
+      PLUGIN_EDITOR_BRIDGE_CHANNELS.applyTextEdits,
+      handlePluginEditorApplyTextEdits,
+    );
+
+    return () => {
+      unsubscribeState();
+      unsubscribeApplyTextEdits();
+    };
+  }, [resolvePluginEditorTab, updateFileTabContent]);
 
   // 閻╂垵鎯夌悰銊︾壐閸氬秶袨閸欐ɑ娲挎禍瀣╂閿涘牏瀚粩瀣畱 useEffect閿?
   useEffect(() => {
@@ -3674,6 +3949,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
                   {tab.type === 'prompt-management' && <PromptManagementView />}
 
+                  {tab.type === 'extension' && <ExtensionView extensionPath={tab.path} />}
+
                   {tab.type === 'media' && <MediaPanel />}
 
                   {tab.type === 'ai-chat' && (
@@ -4095,6 +4372,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     )}
 
                     {tab.type === 'prompt-management' && <PromptManagementView />}
+
+                    {tab.type === 'extension' && <ExtensionView extensionPath={tab.path} />}
 
                     {tab.type === 'ai-chat' && (
                       <AIChatPanel

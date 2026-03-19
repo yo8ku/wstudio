@@ -598,6 +598,22 @@
         white-space: nowrap;
       }
 
+      .context-menu-item-content {
+        min-width: 0;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .context-menu-item-description {
+        font-size: 11px;
+        color: var(--ws-descriptionForeground);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
       &:hover {
         background-color: var(--ws-dropdown-listBackground);
       }
@@ -616,6 +632,14 @@
       &.context-menu-item-switch {
         justify-content: space-between;
         padding-right: 10px;
+      }
+
+      &.context-menu-item-multiline {
+        align-items: flex-start;
+        height: auto;
+        min-height: 42px;
+        padding-top: 6px;
+        padding-bottom: 6px;
       }
     }
 
@@ -639,6 +663,13 @@
         padding: 4px 10px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+      }
+
+      .context-menu-group-section-label {
+        padding: 6px 10px 4px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--ws-descriptionForeground);
       }
     }
 

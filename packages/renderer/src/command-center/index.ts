@@ -9,5 +9,6 @@ export { MarkdownCommandProvider } from './MarkdownCommandProvider';
 export { MonacoMarkdownActions } from './MonacoMarkdownActions';
 export { FileCommandProvider } from './FileCommandProvider';
 export { AIConfigCommandProvider } from './AIConfigCommandProvider';
+export { ExtensionDevelopmentCommandProvider } from './ExtensionDevelopmentCommandProvider';
 export type { Command, CommandMode, CommandItem, CommandHistory } from './CommandTypes';
 

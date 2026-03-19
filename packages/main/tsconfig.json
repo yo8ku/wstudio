@@ -4,6 +4,10 @@
     "outDir": "./dist",
     "lib": ["ES2020", "DOM"],
     "paths": {
+      "@note-studio/extension-api": ["../extension-api/src/index.ts"],
+      "@note-studio/extension-api/*": ["../extension-api/src/*"],
+      "@note-studio/extension-runtime": ["../extension-runtime/src/index.ts"],
+      "@note-studio/extension-runtime/*": ["../extension-runtime/src/*"],
       "@note-studio/global-rag": ["../global-rag/src/index.ts"],
       "@note-studio/global-rag/*": ["../global-rag/src/*"],
       "@note-studio/note-system": ["../note-system/src/index.ts"],

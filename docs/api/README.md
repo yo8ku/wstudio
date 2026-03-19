@@ -8,7 +8,7 @@ Note Studio API 文档总览。
 
 为插件开发者提供的 API 接口。
 
-- [插件 API 完整文档](../../packages/plugin-system/QUICK_START.md)
+- [插件 API 完整文档](../extension-development.md)
 - 自定义插件 API
 
 **主要功能**：
@@ -70,15 +70,14 @@ AI 服务 API。
 
 ### 插件开发
 
-```typescript
-import { PluginAPI } from '@note-studio/plugin-system';
-
-export function activate(api: PluginAPI) {
-  // 注册命令
-  api.commands.register('hello', () => {
-    api.ui.showMessage('Hello World!', 'info');
-  });
-}
+```javascript
+module.exports = {
+  async activate(context) {
+    context.commands.register('local.my-plugin.hello', async () => {
+      await context.window.showInfo('Hello World!');
+    });
+  },
+};
 ```
 
 ### 使用核心 API
@@ -119,7 +118,7 @@ function MyComponent() {
 
 ## 相关链接
 
-- [插件开发指南](../../packages/plugin-system/QUICK_START.md)
+- [插件开发指南](../extension-development.md)
 - [项目架构](../development/architecture.md)
 - [GitHub 仓库](https://github.com/yo8ku/WiseAI-Note-Studio)
 

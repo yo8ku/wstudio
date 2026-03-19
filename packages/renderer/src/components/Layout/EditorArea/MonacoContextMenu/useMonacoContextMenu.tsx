@@ -6,9 +6,18 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import * as monaco from 'monaco-editor';
+import type {
+  WorkbenchEditorMenuContext,
+  WorkbenchMenuContributionEntry,
+  WorkbenchTextRange,
+} from '@note-studio/shared';
 import type { MenuGroup } from './MonacoContextMenu';
 import { openBidirectionalLinksPanel } from '../../../../utils/noteLinking';
 import { buildBidirectionalLinkText } from '../../../../utils/bidirectionalLink';
+import {
+  executeWorkbenchMenuContribution,
+  groupWorkbenchMenuContributions,
+} from '../../../../utils/workbenchMenus';
 
 export interface UseMonacoContextMenuOptions {
   editor: monaco.editor.IStandaloneCodeEditor | null;
@@ -16,12 +25,51 @@ export interface UseMonacoContextMenuOptions {
   onUploadToKnowledgeBase?: () => void;
   tabId?: string;
   tabTitle?: string;
+  filePath?: string;
+  language?: string;
+  pluginMenus?: readonly WorkbenchMenuContributionEntry[];
 }
 
 export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
-  const { editor, onOpenInlineChat, onUploadToKnowledgeBase, tabId } = options;
+  const {
+    editor,
+    onOpenInlineChat,
+    onUploadToKnowledgeBase,
+    tabId,
+    tabTitle,
+    filePath,
+    language,
+    pluginMenus = [],
+  } = options;
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [selectionText, setSelectionText] = useState('');
+  const [selectionRange, setSelectionRange] = useState<WorkbenchTextRange | null>(null);
+
+  const captureSelectionContext = useCallback((): void => {
+    if (!editor) {
+      setSelectionText('');
+      setSelectionRange(null);
+      return;
+    }
+
+    const selection = editor.getSelection();
+    const model = editor.getModel();
+
+    if (!selection || selection.isEmpty() || !model) {
+      setSelectionText('');
+      setSelectionRange(null);
+      return;
+    }
+
+    setSelectionText(model.getValueInRange(selection));
+    setSelectionRange({
+      startLine: selection.startLineNumber,
+      startColumn: selection.startColumn,
+      endLine: selection.endLineNumber,
+      endColumn: selection.endColumn,
+    });
+  }, [editor]);
 
   const handleCut = useCallback(() => {
     if (!editor) return;
@@ -106,20 +154,29 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
   }, [editor]);
 
   const menuGroups: MenuGroup[] = useMemo(() => {
-    const selectedText = editor ? (() => {
-      const selection = editor.getSelection();
-      const model = editor.getModel();
-
-      if (!selection || selection.isEmpty() || !model) {
-        return '';
-      }
-
-      return model.getValueInRange(selection);
-    })() : '';
-
-    const hasText = selectedText.length > 0;
-    const hasLinkableText = Boolean(buildBidirectionalLinkText(selectedText));
+    const hasText = selectionText.length > 0;
+    const hasLinkableText = Boolean(buildBidirectionalLinkText(selectionText));
     const isFile = Boolean(tabId);
+    const editorMenuContext: WorkbenchEditorMenuContext = {
+      kind: 'editor/context',
+      tabId: tabId ?? null,
+      title: tabTitle ?? null,
+      path: filePath ?? null,
+      language: language ?? null,
+      selectionText,
+      hasSelection: hasText,
+      selectionRange,
+    };
+    const pluginMenuGroups = groupWorkbenchMenuContributions(pluginMenus).map((group, groupIndex) => ({
+      id: `plugin-group-${groupIndex}`,
+      items: group.items.map((menu) => ({
+        id: menu.menuItemId,
+        label: menu.title,
+        action: () => {
+          void executeWorkbenchMenuContribution(menu, [editorMenuContext]);
+        },
+      })),
+    }));
 
     return [
       {
@@ -239,24 +296,31 @@ export const useMonacoContextMenu = (options: UseMonacoContextMenuOptions) => {
             disabled: false
           }
         ]
-      }
+      },
+      ...pluginMenuGroups,
     ];
   }, [
-    editor,
     handleCopy,
     handleCut,
     handlePaste,
     handleSelectAll,
     handleSetBidirectionalLink,
+    filePath,
+    language,
     onOpenInlineChat,
     onUploadToKnowledgeBase,
-    tabId
+    pluginMenus,
+    selectionRange,
+    selectionText,
+    tabId,
+    tabTitle,
   ]);
 
   const showMenu = useCallback((x: number, y: number) => {
+    captureSelectionContext();
     setPosition({ x, y });
     setVisible(true);
-  }, []);
+  }, [captureSelectionContext]);
 
   const hideMenu = useCallback(() => {
     setVisible(false);

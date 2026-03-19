@@ -8,7 +8,7 @@ import { persist } from 'zustand/middleware';
 export interface ActivityBarVisibility {
   explorer: boolean;
   search: boolean;
-  sourceControl: boolean;
+  extensions: boolean;
   knowledgeBase: boolean;
   aiModel: boolean;
   media: boolean;
@@ -31,7 +31,7 @@ export const useActivityBarStore = create<ActivityBarStore>()(
       visibility: {
         explorer: true,
         search: true,
-        sourceControl: true,
+        extensions: true,
         knowledgeBase: true,
         aiModel: true,
         media: true,
@@ -76,6 +76,6 @@ export const useActivityBarStore = create<ActivityBarStore>()(
           },
         };
       },
-    }
-  )
+    },
+  ),
 );

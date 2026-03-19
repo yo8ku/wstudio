@@ -9,10 +9,10 @@ import { Icon } from '../../Icons';
 import './ActivityBarContextMenu.scss';
 
 export interface ActivityBarContextMenuProps {
-  visible: boolean;
-  x: number;
-  y: number;
-  onClose: () => void;
+  readonly visible: boolean;
+  readonly x: number;
+  readonly y: number;
+  readonly onClose: () => void;
 }
 
 export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
@@ -22,12 +22,17 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
   onClose,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
-  const { visibility, sidebarPosition, toggleVisibility, toggleSidebarPosition } = useActivityBarStore();
+  const {
+    visibility,
+    sidebarPosition,
+    toggleVisibility,
+    toggleSidebarPosition,
+  } = useActivityBarStore();
 
   const menuItems: Array<{ id: keyof typeof visibility; label: string; checked: boolean }> = [
     { id: 'explorer', label: '资源管理器', checked: visibility.explorer },
     { id: 'search', label: '搜索', checked: visibility.search },
-    { id: 'sourceControl', label: '源代码管理', checked: visibility.sourceControl },
+    { id: 'extensions', label: '扩展插件', checked: visibility.extensions },
     { id: 'knowledgeBase', label: '知识库', checked: visibility.knowledgeBase },
     { id: 'aiModel', label: 'AI 模型', checked: visibility.aiModel },
     { id: 'media', label: '素材管理', checked: visibility.media },
@@ -97,7 +102,7 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
         left: `${x}px`,
         top: `${y}px`,
       }}
-      onClick={event => {
+      onClick={(event) => {
         event.stopPropagation();
       }}
     >

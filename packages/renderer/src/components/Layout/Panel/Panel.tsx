@@ -1,18 +1,24 @@
 /**
  * Panel container component.
- * Provides tab switching, resize support, and terminal panel placement controls.
+ * Provides tab switching, resize support, terminal placement controls, and runtime plugin webview panels.
  */
+
 import React, { useEffect, useRef, useState } from 'react';
+import type { WorkbenchRuntimeWebviewPanelEntry } from '@note-studio/shared';
 import { Icon } from '../../Icons';
 import { LinksPanel } from './LinksPanel';
+import { PluginRuntimeWebviewPanels } from './PluginRuntimeWebviewPanels';
 import { TimelinePanel } from './TimelinePanel';
 import { TerminalPanel } from './TerminalPanel';
 import { ResizeHandle } from '../ResizeHandle';
+import { workbenchContributionService } from '../../../services/WorkbenchContributionService';
 import './Panel.scss';
 
 import type { LinkCollectionSort } from '../../Links';
 
-export type PanelView = 'links' | 'timeline' | 'terminal';
+type BuiltinPanelView = 'links' | 'timeline' | 'terminal';
+export type PluginPanelView = `plugin-webview:${string}`;
+export type PanelView = BuiltinPanelView | PluginPanelView;
 export type PanelPlacement = 'top' | 'left' | 'right' | 'bottom';
 
 interface PanelProps {
@@ -28,15 +34,44 @@ interface PanelProps {
   draggableHeader?: boolean;
   onClose?: () => void;
   onPlacementChange?: (placement: PanelPlacement) => void;
+  runtimeWebviewPanels?: readonly WorkbenchRuntimeWebviewPanelEntry[];
 }
 
 interface TerminalHeaderContextMenuState {
-  x: number;
-  y: number;
+  readonly x: number;
+  readonly y: number;
 }
+
+interface PanelTab {
+  readonly id: PanelView;
+  readonly label: string;
+  readonly supportsContextMenu?: boolean;
+}
+
+const BUILTIN_PANEL_TABS: readonly PanelTab[] = [
+  { id: 'links', label: '链接' },
+  { id: 'timeline', label: '时间线' },
+  { id: 'terminal', label: '终端', supportsContextMenu: true },
+] as const;
 
 const VIEWPORT_PADDING = 8;
 const SUBMENU_FALLBACK_WIDTH = 128;
+
+function toPluginPanelView(panelInstanceKey: string): PluginPanelView {
+  return `plugin-webview:${panelInstanceKey}`;
+}
+
+function isPluginPanelView(view: PanelView): view is PluginPanelView {
+  return view.startsWith('plugin-webview:');
+}
+
+function getPanelInstanceKeyFromView(view: PanelView): string | null {
+  if (!isPluginPanelView(view)) {
+    return null;
+  }
+
+  return view.slice('plugin-webview:'.length);
+}
 
 export const Panel: React.FC<PanelProps> = ({
   initialHeight = 300,
@@ -51,6 +86,7 @@ export const Panel: React.FC<PanelProps> = ({
   draggableHeader = false,
   onClose,
   onPlacementChange,
+  runtimeWebviewPanels = [],
 }) => {
   const [activeView, setActiveView] = useState<PanelView>(initialActiveView);
   const [height, setHeight] = useState(initialHeight);
@@ -136,7 +172,7 @@ export const Panel: React.FC<PanelProps> = ({
     }
 
     const triggerElement = contextMenuRef.current.querySelector(
-      '.panel-terminal-context-menu-item--submenu-trigger'
+      '.panel-terminal-context-menu-item--submenu-trigger',
     ) as HTMLElement | null;
     if (!triggerElement) {
       return;
@@ -159,6 +195,20 @@ export const Panel: React.FC<PanelProps> = ({
 
     setSubmenuTopOffset(nextTop);
   }, [contextMenu, showMoveSubmenu]);
+
+  useEffect(() => {
+    if (!isPluginPanelView(activeView)) {
+      return;
+    }
+
+    const panelInstanceKey = getPanelInstanceKeyFromView(activeView);
+    const stillExists = runtimeWebviewPanels.some(
+      panel => panel.panelInstanceKey === panelInstanceKey,
+    );
+    if (!stillExists) {
+      setActiveView('terminal');
+    }
+  }, [activeView, runtimeWebviewPanels]);
 
   const handleViewChange = (view: PanelView) => {
     setActiveView(view);
@@ -190,8 +240,25 @@ export const Panel: React.FC<PanelProps> = ({
     closeContextMenu();
   };
 
+  const handleClosePanel = (): void => {
+    const panelInstanceKey = getPanelInstanceKeyFromView(activeView);
+    if (!panelInstanceKey) {
+      onClose?.();
+      return;
+    }
+
+    void workbenchContributionService.disposeWebviewPanel({
+      panelInstanceKey,
+    }).catch((error) => {
+      console.error('[Panel] 关闭插件 webview 面板失败:', error);
+    }).finally(() => {
+      onClose?.();
+    });
+  };
+
   const panelResizeHandleClassName = `panel-container-resize-handle panel-container-resize-handle--${placement}`;
   const shouldRenderResizeHandle = !fullSize;
+  const activeRuntimePanelInstanceKey = getPanelInstanceKeyFromView(activeView);
 
   return (
     <div
@@ -229,46 +296,39 @@ export const Panel: React.FC<PanelProps> = ({
         className={`panel-container-header${draggableHeader ? ' panel-container-header--draggable' : ''}`}
         onContextMenu={handleTerminalHeaderContextMenu}
       >
-        <div className="panel-container-tabs">
-          <div
-            className={`panel-container-tab ${activeView === 'links' ? 'active' : ''}`}
-            onClick={() => handleViewChange('links')}
-          >
-            链接
-          </div>
-          <div
-            className={`panel-container-tab ${activeView === 'timeline' ? 'active' : ''}`}
-            onClick={() => handleViewChange('timeline')}
-          >
-            时间线
-          </div>
-          <div
-            className={`panel-container-tab ${activeView === 'terminal' ? 'active' : ''}`}
-            onClick={() => handleViewChange('terminal')}
-            onContextMenu={handleTerminalHeaderContextMenu}
-          >
-            终端
-          </div>
+        <div className='panel-container-tabs'>
+          {BUILTIN_PANEL_TABS.map((tab) => (
+            <div
+              key={tab.id}
+              className={`panel-container-tab ${activeView === tab.id ? 'active' : ''}`}
+              onClick={() => handleViewChange(tab.id)}
+              onContextMenu={tab.supportsContextMenu ? handleTerminalHeaderContextMenu : undefined}
+              title={tab.label}
+              aria-label={tab.label}
+            >
+              {tab.label}
+            </div>
+          ))}
         </div>
 
-        <div className="panel-container-actions">
+        <div className='panel-container-actions'>
           {activeView === 'terminal' && (
             <button
-              className="panel-container-action-btn"
+              className='panel-container-action-btn'
               onClick={() => setTerminalCreateRequestId((previous) => previous + 1)}
-              title="新建终端"
+              title='新建终端'
             >
-              <Icon name="plus" size={14} />
+              <Icon name='plus' size={14} />
             </button>
           )}
           {onClose && (
             <button
-              className="panel-container-action-btn"
-              onClick={onClose}
-              title="关闭面板"
+              className='panel-container-action-btn'
+              onClick={handleClosePanel}
+              title='关闭面板'
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.708-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z" />
+              <svg width='16' height='16' viewBox='0 0 16 16' fill='currentColor'>
+                <path d='M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.708-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z' />
               </svg>
             </button>
           )}
@@ -278,18 +338,18 @@ export const Panel: React.FC<PanelProps> = ({
       {contextMenu && (
         <div
           ref={contextMenuRef}
-          className="panel-terminal-context-menu"
+          className='panel-terminal-context-menu'
           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           onContextMenu={(event) => {
             event.preventDefault();
           }}
         >
           <div
-            className="panel-terminal-context-menu-item panel-terminal-context-menu-item--submenu-trigger"
+            className='panel-terminal-context-menu-item panel-terminal-context-menu-item--submenu-trigger'
             onMouseEnter={() => setShowMoveSubmenu(true)}
           >
             <span>面板移动</span>
-            <span className="panel-terminal-context-menu-arrow">▶</span>
+            <span className='panel-terminal-context-menu-arrow'>▸</span>
             {showMoveSubmenu && (
               <div
                 ref={moveSubmenuRef}
@@ -317,7 +377,7 @@ export const Panel: React.FC<PanelProps> = ({
         </div>
       )}
 
-      <div className="panel-container-content">
+      <div className='panel-container-content'>
         <div className={`panel-container-view ${activeView === 'links' ? 'active' : ''}`}>
           <LinksPanel
             query={linkQuery}
@@ -334,7 +394,7 @@ export const Panel: React.FC<PanelProps> = ({
           <TimelinePanel />
         </div>
         <div className={`panel-container-view ${activeView === 'terminal' ? 'active' : ''}`}>
-          <div className="panel-container-terminal">
+          <div className='panel-container-terminal'>
             <TerminalPanel
               createRequestId={terminalCreateRequestId}
               isVisible={activeView === 'terminal'}
@@ -342,6 +402,10 @@ export const Panel: React.FC<PanelProps> = ({
             />
           </div>
         </div>
+        <PluginRuntimeWebviewPanels
+          panels={runtimeWebviewPanels}
+          activePanelInstanceKey={activeRuntimePanelInstanceKey}
+        />
       </div>
     </div>
   );

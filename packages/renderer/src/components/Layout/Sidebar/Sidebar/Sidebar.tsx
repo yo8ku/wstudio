@@ -1,47 +1,120 @@
-import React, { useState, useRef, useEffect } from 'react';
-import type { ActivityBarItem } from '../../MainLayout';
+/**
+ * Sidebar 负责渲染主侧边栏内容、标题栏菜单和插件 view container。
+ */
+
+import React, { useEffect, useRef, useState } from 'react';
+import type {
+  WorkbenchContributionSnapshot,
+  WorkbenchSidebarTitleMenuContext,
+} from '@note-studio/shared';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
 import { Search } from '../Search/Search';
-import { SourceControl } from '../SourceControl/SourceControl';
+import { Extensions } from '../Extensions';
 import { KnowledgeBase } from '../KnowledgeBase/KnowledgeBase';
 import { AIModel } from '../AIModel/AIModel';
 import { Settings } from '../Settings/Settings';
 import { UserSidebar } from '../User/UserSidebar';
-import { NotionIcon, YuqueIcon, JoplinIcon, ObsidianIcon, SiyuanIcon, FeishuIcon, KouziIcon } from '../../../Icons';
-import { Icon } from '../../../Icons';
-import { SidebarHeaderMenu, SidebarHeaderMenuItem } from '../SidebarHeaderMenu';
+import type { ActivityBarItem } from '../../ActivityBar/ActivityBar';
+import {
+  getPluginContainerKeyFromActivityBarItem,
+  isPluginActivityBarItem,
+} from '../../ActivityBar/ActivityBar';
+import {
+  FeishuIcon,
+  Icon,
+  JoplinIcon,
+  KouziIcon,
+  NotionIcon,
+  ObsidianIcon,
+  SiyuanIcon,
+  YuqueIcon,
+} from '../../../Icons';
+import { SidebarHeaderMenu, type SidebarHeaderMenuItem } from '../SidebarHeaderMenu';
 import { useActivityBarStore } from '../../../../stores/activityBarStore';
+import { PluginWorkbenchViews } from '../PluginWorkbenchViews/PluginWorkbenchViews';
+import {
+  executeWorkbenchMenuContribution,
+  groupWorkbenchMenuContributions,
+} from '../../../../utils/workbenchMenus';
 import './Sidebar.scss';
 
 export interface SidebarProps {
   activeView: ActivityBarItem;
   onClose: () => void;
+  workbenchContributions?: WorkbenchContributionSnapshot;
 }
 
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 600;
-const DEFAULT_WIDTH = 200;
-const COLLAPSE_THRESHOLD = 150; // 小于此宽度时自动收缩
+const DEFAULT_WIDTH = 230;
+const COLLAPSE_THRESHOLD = 150;
 
-export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
+function getSidebarTitle(
+  activeView: ActivityBarItem,
+  pluginContainerTitle: string | null,
+): string {
+  if (pluginContainerTitle) {
+    return pluginContainerTitle;
+  }
+
+  switch (activeView) {
+    case 'explorer':
+      return '资源管理器';
+    case 'search':
+      return '搜索';
+    case 'extensions':
+      return '扩展插件';
+    case 'knowledge-base':
+      return '知识库';
+    case 'ai-model':
+      return 'AI 模型';
+    case 'user':
+      return '用户';
+    case 'settings':
+      return '设置';
+    case 'media':
+      return '素材管理';
+    default:
+      return '';
+  }
+}
+
+export function Sidebar({
+  activeView,
+  onClose,
+  workbenchContributions,
+}: SidebarProps): JSX.Element {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [outlineChecked, setOutlineChecked] = useState(true);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  
-  // 获取侧边栏位置
   const { sidebarPosition } = useActivityBarStore();
-  
-  // 大纲默认勾选状态
-  const [outlineChecked, setOutlineChecked] = useState(true);
 
-  // 根据不同的视图返回对应的菜单配置
-  const getMenuItems = (): SidebarHeaderMenuItem[] => {
+  const activePluginContainer = isPluginActivityBarItem(activeView)
+    ? (
+      workbenchContributions?.viewContainers.find(
+        container => container.containerKey === getPluginContainerKeyFromActivityBarItem(activeView),
+      ) ?? null
+    )
+    : null;
+  const activePluginViews = activePluginContainer
+    ? (
+      workbenchContributions?.views.filter(
+        view => view.containerKey === activePluginContainer.containerKey,
+      ) ?? []
+    )
+    : [];
+  const sidebarTitleMenus = workbenchContributions?.menus.filter(
+    menu => menu.location === 'sidebar/title',
+  ) ?? [];
+  const title = getSidebarTitle(activeView, activePluginContainer?.title ?? null);
+
+  const getBuiltInMenuItems = (): SidebarHeaderMenuItem[] => {
     switch (activeView) {
       case 'explorer':
-        // 资源管理器菜单
         return [
           {
             id: 'outline',
@@ -50,18 +123,17 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
             onClick: () => {
               setOutlineChecked(!outlineChecked);
               console.log('切换大纲显示:', !outlineChecked);
-              // TODO: 实现打开/关闭大纲功能
-            }
+            },
           },
           {
             id: 'separator-1',
             label: '',
-            separator: true
+            separator: true,
           },
           {
             id: 'import-notes-header',
             label: '其他笔记',
-            disabled: true
+            disabled: true,
           },
           {
             id: 'import-notion',
@@ -70,12 +142,10 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
               console.log('导入 Notion');
-              // TODO: 实现导入 Notion 功能
             },
-            onActionClick: (e: React.MouseEvent) => {
+            onActionClick: () => {
               console.log('Notion 设置');
-              // TODO: 实现 Notion 设置功能
-            }
+            },
           },
           {
             id: 'import-yuque',
@@ -84,12 +154,10 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
               console.log('导入语雀');
-              // TODO: 实现导入语雀功能
             },
-            onActionClick: (e: React.MouseEvent) => {
+            onActionClick: () => {
               console.log('语雀设置');
-              // TODO: 实现语雀设置功能
-            }
+            },
           },
           {
             id: 'import-joplin',
@@ -98,12 +166,10 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
               console.log('导入 Joplin');
-              // TODO: 实现导入 Joplin 功能
             },
-            onActionClick: (e: React.MouseEvent) => {
+            onActionClick: () => {
               console.log('Joplin 设置');
-              // TODO: 实现 Joplin 设置功能
-            }
+            },
           },
           {
             id: 'import-obsidian',
@@ -112,12 +178,10 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
               console.log('导入 Obsidian');
-              // TODO: 实现导入 Obsidian 功能
             },
-            onActionClick: (e: React.MouseEvent) => {
+            onActionClick: () => {
               console.log('Obsidian 设置');
-              // TODO: 实现 Obsidian 设置功能
-            }
+            },
           },
           {
             id: 'import-siyuan',
@@ -126,12 +190,10 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
               console.log('导入思源笔记');
-              // TODO: 实现导入思源笔记功能
             },
-            onActionClick: (e: React.MouseEvent) => {
+            onActionClick: () => {
               console.log('思源笔记设置');
-              // TODO: 实现思源笔记设置功能
-            }
+            },
           },
           {
             id: 'import-feishu',
@@ -140,17 +202,15 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
               console.log('导入飞书');
-              // TODO: 实现导入飞书功能
             },
-            onActionClick: (e: React.MouseEvent) => {
+            onActionClick: () => {
               console.log('飞书设置');
-              // TODO: 实现飞书设置功能
-            }
+            },
           },
           {
             id: 'separator-2',
             label: '',
-            separator: true
+            separator: true,
           },
           {
             id: 'kouzi',
@@ -158,169 +218,131 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
             icon: <KouziIcon size={16} />,
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
-              console.log('扣子智能体');
-              // TODO: 实现扣子智能体功能
+              console.log('打开扣子智能体');
             },
-            onActionClick: (e: React.MouseEvent) => {
+            onActionClick: () => {
               console.log('扣子智能体设置');
-              // TODO: 实现扣子智能体设置功能
-            }
-          }
+            },
+          },
         ];
-      
       case 'search':
-        // 搜索菜单
         return [
           {
             id: 'refresh-search',
             label: '刷新',
             onClick: () => {
               console.log('刷新搜索');
-              // TODO: 实现刷新搜索功能
-            }
+            },
           },
           {
             id: 'clear-search',
             label: '清除搜索结果',
             onClick: () => {
               console.log('清除搜索结果');
-              // TODO: 实现清除搜索功能
-            }
-          }
-        ];
-      
-      case 'source-control':
-        // 源文件管理菜单
-        return [
-          {
-            id: 'commit',
-            label: '提交',
-            onClick: () => {
-              console.log('提交更改');
-              // TODO: 实现提交功能
-            }
+            },
           },
-          {
-            id: 'refresh-git',
-            label: '刷新',
-            onClick: () => {
-              console.log('刷新源文件管理');
-              // TODO: 实现刷新功能
-            }
-          }
         ];
-      
       case 'knowledge-base':
-        // 知识库菜单
         return [
           {
             id: 'add-folder',
             label: '添加文件夹',
             onClick: () => {
               console.log('添加文件夹到知识库');
-              // TODO: 实现添加文件夹功能
-            }
+            },
           },
           {
             id: 'refresh-kb',
             label: '刷新',
             onClick: () => {
               console.log('刷新知识库');
-              // TODO: 实现刷新知识库功能
-            }
+            },
           },
           {
-            id: 'separator-1',
+            id: 'separator-kb',
             label: '',
-            separator: true
+            separator: true,
           },
           {
             id: 'kb-settings',
             label: '知识库设置',
             onClick: () => {
               console.log('打开知识库设置');
-              // TODO: 实现知识库设置功能
-            }
-          }
+            },
+          },
         ];
-      
       case 'ai-model':
-        // AI 模型菜单（AI 模型视图不显示标题栏，所以不需要菜单）
         return [];
-
+      case 'extensions':
+        return [];
       case 'user':
-        // 用户菜单
         return [
           {
             id: 'profile',
             label: '个人资料',
             onClick: () => {
               console.log('查看个人资料');
-              // TODO: 实现查看个人资料功能
-            }
+            },
           },
           {
-            id: 'separator-1',
+            id: 'separator-user',
             label: '',
-            separator: true
+            separator: true,
           },
           {
             id: 'logout',
             label: '退出登录',
             onClick: () => {
               console.log('退出登录');
-              // TODO: 实现退出登录功能
-            }
-          }
+            },
+          },
         ];
-      
       case 'settings':
-        // 设置菜单
         return [
           {
             id: 'reset-settings',
             label: '重置所有设置',
             onClick: () => {
               console.log('重置所有设置');
-              // TODO: 实现重置设置功能
-            }
+            },
           },
           {
-            id: 'separator-1',
+            id: 'separator-settings',
             label: '',
-            separator: true
+            separator: true,
           },
           {
             id: 'export-settings',
             label: '导出设置',
             onClick: () => {
               console.log('导出设置');
-              // TODO: 实现导出设置功能
-            }
+            },
           },
           {
             id: 'import-settings',
             label: '导入设置',
             onClick: () => {
               console.log('导入设置');
-              // TODO: 实现导入设置功能
-            }
-          }
+            },
+          },
         ];
-      
       default:
         return [];
     }
   };
 
-  const renderContent = () => {
+  const renderContent = (): JSX.Element | null => {
+    if (activePluginContainer) {
+      return <PluginWorkbenchViews views={activePluginViews} />;
+    }
+
     switch (activeView) {
       case 'explorer':
         return <FileExplorer />;
       case 'search':
         return <Search />;
-      case 'source-control':
-        return <SourceControl />;
+      case 'extensions':
+        return <Extensions />;
       case 'knowledge-base':
         return <KnowledgeBase />;
       case 'ai-model':
@@ -334,71 +356,97 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
     }
   };
 
-  const getTitle = () => {
-    const titles: Record<ActivityBarItem, string> = {
-      'explorer': '资源管理器',
-      'search': '搜索',
-      'source-control': '源文件管理',
-      'knowledge-base': '知识库',
-      'ai-model': 'AI 模型',
-      'user': '用户',
-      'settings': '设置',
-      'media': '素材管理'
-    };
-    return titles[activeView];
+  const sidebarTitleContext: WorkbenchSidebarTitleMenuContext = {
+    kind: 'sidebar/title',
+    activeView,
+    title,
+    containerId: activePluginContainer?.containerId ?? null,
+    containerKey: activePluginContainer?.containerKey ?? null,
+    containerExtensionId: activePluginContainer?.extensionId ?? null,
   };
 
-  // 打开菜单
-  const handleMenuClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
-    if (menuButtonRef.current) {
-      const rect = menuButtonRef.current.getBoundingClientRect();
-      // 根据侧边栏位置调整菜单位置
-      // 左侧：菜单在按钮左下方
-      // 右侧：菜单在按钮右下方（向左对齐）
-      const menuWidth = 200; // 菜单最小宽度
-      setMenuPosition({
-        x: sidebarPosition === 'left' ? rect.left : rect.right - menuWidth,
-        y: rect.bottom + 4
+  const pluginMenuItems: SidebarHeaderMenuItem[] = [];
+  const groupedSidebarMenus = groupWorkbenchMenuContributions(sidebarTitleMenus);
+  groupedSidebarMenus.forEach((group, groupIndex) => {
+    if (groupIndex > 0) {
+      pluginMenuItems.push({
+        id: `plugin-group-separator-${group.key}`,
+        label: '',
+        separator: true,
       });
-      setIsMenuOpen(true);
     }
+
+    group.items.forEach((menu) => {
+      pluginMenuItems.push({
+        id: menu.menuItemId,
+        label: menu.title,
+        onClick: () => {
+          void executeWorkbenchMenuContribution(menu, [sidebarTitleContext]);
+        },
+      });
+    });
+  });
+
+  const menuItems = getBuiltInMenuItems();
+  if (pluginMenuItems.length > 0) {
+    if (menuItems.length > 0 && !menuItems[menuItems.length - 1].separator) {
+      menuItems.push({
+        id: 'plugin-menu-separator',
+        label: '',
+        separator: true,
+      });
+    }
+    menuItems.push(...pluginMenuItems);
+  }
+
+  const handleMenuClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    event.stopPropagation();
+
+    if (!menuButtonRef.current) {
+      return;
+    }
+
+    const rect = menuButtonRef.current.getBoundingClientRect();
+    const menuWidth = 200;
+    setMenuPosition({
+      x: sidebarPosition === 'left' ? rect.left : rect.right - menuWidth,
+      y: rect.bottom + 4,
+    });
+    setIsMenuOpen(true);
   };
 
-  // 关闭菜单
-  const handleMenuClose = () => {
+  const handleMenuClose = (): void => {
     setIsMenuOpen(false);
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleMouseDown = (event: React.MouseEvent): void => {
+    event.preventDefault();
     setIsResizing(true);
   };
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing || !sidebarRef.current) return;
-      
+    const handleMouseMove = (event: MouseEvent): void => {
+      if (!isResizing || !sidebarRef.current) {
+        return;
+      }
+
       const rect = sidebarRef.current.getBoundingClientRect();
-      // 根据侧边栏位置计算新宽度
-      const newWidth = sidebarPosition === 'left' 
-        ? e.clientX - rect.left  // 左侧：从左边界到鼠标位置
-        : rect.right - e.clientX; // 右侧：从鼠标位置到右边界
-      
-      // 如果宽度小于收缩阈值，自动关闭侧边栏
+      const newWidth = sidebarPosition === 'left'
+        ? event.clientX - rect.left
+        : rect.right - event.clientX;
+
       if (newWidth < COLLAPSE_THRESHOLD) {
         onClose();
         setIsResizing(false);
         return;
       }
-      
-      // 限制在最小和最大宽度之间
+
       if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
         setWidth(newWidth);
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (): void => {
       setIsResizing(false);
     };
 
@@ -418,30 +466,31 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
   }, [isResizing, onClose, sidebarPosition]);
 
   const showSidebarHeader = activeView !== 'ai-model' && activeView !== 'explorer';
-  const showHeaderMenu = activeView !== 'explorer';
+  const showHeaderMenu = menuItems.length > 0;
 
   return (
-    <div 
+    <div
       ref={sidebarRef}
       className="sidebar"
       data-position={sidebarPosition}
-      style={{ 
+      style={{
         width: `${width}px`,
         minWidth: `${MIN_WIDTH}px`,
-        maxWidth: `${MAX_WIDTH}px`
+        maxWidth: `${MAX_WIDTH}px`,
       }}
     >
-      {/* AI 模型视图不显示标题栏 */}
       {showSidebarHeader && (
         <div className="sidebar-header">
-          <span>{getTitle()}</span>
-          <button
-            ref={menuButtonRef}
-            onClick={handleMenuClick}
-            title="更多选项"
-          >
-            <Icon name="more-horizontal" size={16} />
-          </button>
+          <span>{title}</span>
+          {showHeaderMenu && (
+            <button
+              ref={menuButtonRef}
+              onClick={handleMenuClick}
+              title="更多选项"
+            >
+              <Icon name="more-horizontal" size={16} />
+            </button>
+          )}
         </div>
       )}
 
@@ -454,13 +503,12 @@ export function Sidebar({ activeView, onClose }: SidebarProps): JSX.Element {
         onMouseDown={handleMouseDown}
       />
 
-      {/* 下拉菜单 */}
       {showHeaderMenu && (
         <SidebarHeaderMenu
           isOpen={isMenuOpen}
           position={menuPosition}
           onClose={handleMenuClose}
-          items={getMenuItems()}
+          items={menuItems}
         />
       )}
     </div>

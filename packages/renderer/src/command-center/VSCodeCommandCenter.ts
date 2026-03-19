@@ -163,6 +163,14 @@ export class VSCodeCommandCenter {
     commands.forEach(cmd => this.registerCommand(cmd));
   }
 
+  unregisterCommand(commandId: string): void {
+    this.commands.delete(commandId);
+  }
+
+  unregisterCommands(commandIds: readonly string[]): void {
+    commandIds.forEach(commandId => this.unregisterCommand(commandId));
+  }
+
   registerMode(mode: CommandMode): void {
     this.modes.set(mode.prefix, mode);
   }

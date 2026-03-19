@@ -31,7 +31,14 @@ Module._resolveFilename = function(request, parent, isMain) {
   return originalResolveFilename.call(this, request, parent, isMain);
 };
 
-const { initializeExtensions, settingsManager, workspaceManager, builtinAI } = require('./packages/main/dist/main/src/index.js');
+const {
+  initializeExtensions,
+  settingsManager,
+  workspaceManager,
+  builtinAI,
+  pluginEditorBridge,
+  pluginDiscoveryService
+} = require('./packages/main/dist/main/src/index.js');
 const { ThemeService } = require('./packages/main/dist/main/src/services/ThemeService.js');
 const { registerSettingsHandlers } = require('./packages/main/dist/main/src/ipc/settingsHandlers.js');
 // 闂佽娴烽弫鎼佸储瑜斿畷锝夊幢濞嗘垹锛滈梺鍓插亖閸╁嫭瀵奸崒鐐寸厸闁割偅绻勫瓭婵犳鍠氶崰鏍箚閸曨厾鐭欓柛顭戝枛缂嶆ê鈹戦埥鍡楃仚闁逞屽墲濞呮洟宕?
@@ -75,6 +82,16 @@ protocol.registerSchemesAsPrivileged([
   },
   {
     scheme: 'vscode-file',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: false
+    }
+  },
+  {
+    scheme: 'wstudio-extension',
     privileges: {
       standard: true,
       secure: true,
@@ -281,6 +298,7 @@ function createWindow(backgroundColor = '#1e1e1e') {
   });
 
   mainWindow = createdWindow;
+  pluginEditorBridge.setMainWindow(createdWindow);
   setWindowsAccentBorder(createdWindow, createdWindow.isFocused());
   registerWindowsAccentBorderSync(createdWindow);
 
@@ -347,6 +365,7 @@ function createWindow(backgroundColor = '#1e1e1e') {
       const fallbackWindow = BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) || null;
       mainWindow = fallbackWindow;
       workspaceVectorIndexService.setMainWindow(fallbackWindow);
+      pluginEditorBridge.setMainWindow(fallbackWindow);
     }
     // 婵犵數鍋為幐鎼佸箠濡　鏋嶉幖娣妼鐟欙箓鏌熸潏鍓х暠婵炲懌鍊楃槐鎺撶瑹閸喚浠肩紓浣瑰閺呯姴顕ｉ棃娑卞悑闁告侗鍙庡鎶芥⒑濮瑰洤濡奸悗姘煎櫍閹即濡烽埡浣虹厬闂佹寧绻傞幊鎰矚閸ф鐓?
     
@@ -374,6 +393,8 @@ function createWindow(backgroundColor = '#1e1e1e') {
   
   // 闂備胶鍎甸弲婊堝垂閻㈢绠氬璺虹灱閻滅粯淇婇妶鍌氫壕閻熸粎澧楅惄顖炲箖閻愮儤鏅滈柟顖嗗倸瀵查梻浣告啞閻燂箓鏁嬮柣?
   createdWindow.on('focus', () => {
+    mainWindow = createdWindow;
+    pluginEditorBridge.setMainWindow(createdWindow);
     createdWindow.webContents.send('window-focus');
   });
   
@@ -424,8 +445,8 @@ app.whenReady().then(async () => {
   // 闂備胶顭堢换瀣归崶顒夋晩闊洦绋掗弲?jsdelivr CDN 闂備礁鎲″缁樻叏閹灐?Monaco Editor 闂備胶鍘ч悺銊у枈瀹ュ拑鑰?
   // frame-src 闂備胶顭堢换瀣归崶顒夋晩闊洦绋戠粈澶愭煟濡厧鍔嬬紒浣峰嵆閹嘲鈻庤箛鏃戞＆濡炪倧绲介悥濂告偘椤曗偓瀹曟﹢骞撻幒妤€褰欓梻浣圭湽閸斿瞼鈧凹鍓涚划濠囨偨缁嬭法顦ч梺闈涱檧闂勫嫮浜搁敓鐘崇厸闁逞屽墴楠炲棜顦抽柣婵勫€濋弻銊モ槈濡崵顔囩紓鍌欑劍濮婂綊鎮烽敐澶婄劦妞ゆ垼娉曢悿鍣妘Tube闂備線娼уΛ鏂款渻閹烘梹顫曟い鎾卞灪閻撯偓闂佸憡鍨崐妤冪矆?
   const cspHeader = process.env.NODE_ENV === 'development'
-    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';"
-    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';";
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';"
+    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';";
   
   // 闂備胶鎳撻崵鏍⒔閸曨垰鏄ラ柛娑欐綑缁犮儵鏌嶈閸撶喎顕ｉ崹顐㈢窞濠电姴鍟崕銉╂煙閻撳海鎽犻柡灞诲姂閹崇喖鎮㈤棃鐐叉捣閹风娀骞撻幒婵囧 CSP 闂?
   defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -556,6 +577,54 @@ app.whenReady().then(async () => {
     return mimeTypes[ext] || 'application/octet-stream';
   };
 
+  const isPathInsideRoot = (rootDirectory, targetPath) => {
+    const relativePath = path.relative(rootDirectory, targetPath);
+    return relativePath.length > 0
+      && !relativePath.startsWith('..')
+      && !path.isAbsolute(relativePath);
+  };
+
+  const resolveExtensionAssetPath = (requestUrl) => {
+    try {
+      const parsedUrl = new URL(requestUrl);
+      const extensionId = decodeURIComponent(parsedUrl.hostname);
+      if (!extensionId) {
+        return null;
+      }
+
+      const descriptor = pluginDiscoveryService.getById(extensionId);
+      if (!descriptor) {
+        return null;
+      }
+
+      const relativeAssetPath = parsedUrl.pathname
+        .split('/')
+        .filter(segment => segment.length > 0)
+        .map(segment => {
+          try {
+            return decodeURIComponent(segment);
+          } catch (error) {
+            return segment;
+          }
+        })
+        .join(path.sep);
+
+      if (!relativeAssetPath) {
+        return null;
+      }
+
+      const resolvedAssetPath = path.resolve(descriptor.rootDirectory, relativeAssetPath);
+      if (!isPathInsideRoot(descriptor.rootDirectory, resolvedAssetPath)) {
+        return null;
+      }
+
+      return resolvedAssetPath;
+    } catch (error) {
+      console.error('[Electron] Failed to resolve wstudio-extension asset path:', error);
+      return null;
+    }
+  };
+
   const handleFileProtocol = (protocolName) => (request, callback) => {
     console.log(`[Electron] ${protocolName} 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞灡鐎氭岸姊洪崹顕呭剳婵犫偓?`, request.url);
     
@@ -636,6 +705,23 @@ app.whenReady().then(async () => {
       return callback({ error: -2 }); // net::ERR_FAILED
     }
   };
+
+  const handleExtensionAssetProtocol = (request, callback) => {
+    try {
+      const resolvedPath = resolveExtensionAssetPath(request.url);
+      if (!resolvedPath || !fs.existsSync(resolvedPath)) {
+        return callback({ error: -6 });
+      }
+
+      return callback({
+        path: resolvedPath,
+        mimeType: getMimeType(resolvedPath)
+      });
+    } catch (error) {
+      console.error('[Electron] Failed to handle wstudio-extension protocol request:', error);
+      return callback({ error: -2 });
+    }
+  };
   
   // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞?local-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑樼摠閸嬨劑鏌曟繛鍨偓妤呮嚌妤ｅ啯鐓曢柡鍐ㄥ€搁瀷濠电偞娼欏ú顓烆嚕閻㈠壊鏁嗛柍褜鍓欓敃銏ゅ箻椤斿吋顥濋梺鎼炲劵闂勫嫰顢?
   protocol.registerFileProtocol('local-file', handleFileProtocol('local-file'));
@@ -644,6 +730,8 @@ app.whenReady().then(async () => {
   // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞?vscode-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞枟婵瓨绻濇繛鎯т壕闁荤姵鍔楅崰鎰嚗閸曨垰鐐婇柍鍝勫€瑰▓銏ゆ⒑閹稿海鈽夐柣妤€妫濆畷銉р偓锝庡厴閸嬫挾娑甸崪浣圭秷濠碘槅鍋掗崑濠囧箖瑜斿畷濂告偄鐏忎焦瀵橀梺璇茬箳閸嬬偛煤閳哄啯顫?
   protocol.registerFileProtocol('vscode-file', handleFileProtocol('vscode-file'));
   // console.log('[Electron]  vscode-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞弾閸熷懘鏌涘▎蹇ｆЧ闁哄棗鐗撻弻?);
+
+  protocol.registerFileProtocol('wstudio-extension', handleExtensionAssetProtocol);
   
   // 闂?闂備胶顭堢换鎰版偋閸℃稑鍨傞柛顭戝亝閸欏繘鎮楅敐搴濈盎妞ゆ泦鍥ㄧ厵缁剧増蓱濞呭懘鏌ｉ銏⑿ら柛鏍ㄧ墵閹筹繝濡堕崶褏鍘烽梻浣瑰缁嬫垿鎮ф繝鍥ф瀬闁绘劕鎼粈鍐倶閻愭潙鍔ゆい锝嗙叀閺?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶褔妫峰銈庡幗鐢偟绮?
   // 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥ鍡楀缂佺姵鍨甸—鍐Χ閸偄娈┑鐘亾妞ゅ繐鐗嗙粈鍡樼箾閹寸儐鐒界紒鎲嬪缁辨帡骞囬褎鐣堕悷婊呭缁嬫帞绮欐繝鍕ㄥ亾閿濆簼绨绘い銈呮噺缁绘稒寰勯崼婵嗩瀳闂?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶褔妫峰銈庡幗鐢偟绮堟径鎰厱婵ê澧介悾閬嶆煕椤垵鐏犻柕鍡樺浮瀹曪絾寰勭仦钘夎劘闂佸搫顦弲婊呯矙閹捐鐓濋柛蹇曞帶椤曡鲸鎱ㄥ鍡楀箺闁哄棭浜弻?"No handler registered" 闂傚倷鐒︾€笛囨偡閵娾晩鏁?

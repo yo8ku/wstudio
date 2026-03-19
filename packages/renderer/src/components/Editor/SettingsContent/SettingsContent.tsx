@@ -4,13 +4,25 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { DEFAULT_WORKBENCH_BACKGROUND_SETTINGS, type WorkbenchBackgroundSettings } from '@note-studio/shared';
+import {
+  DEFAULT_WORKBENCH_BACKGROUND_SETTINGS,
+  type JsonValue,
+  type WorkbenchBackgroundSettings,
+} from '@note-studio/shared';
 import type { SettingsCategory } from '../../Layout/Sidebar/SettingsSidebar';
 import { DropdownMenu } from '@/components/common/DropdownMenu';
 import { SearchInput } from '@/components/common/SearchInput';
 import { EmbeddingConfig } from '@/components/EmbeddingConfig';
 import { BackgroundImageSettings } from '@/components/Settings/BackgroundImageSettings/BackgroundImageSettings';
+import { workbenchContributionService } from '@/services/WorkbenchContributionService';
 import './SettingsContent.scss';
+
+type SettingValue = JsonValue;
+
+interface SettingOptionDefinition {
+  readonly label: string;
+  readonly value: SettingValue;
+}
 
 interface SettingDefinition {
   key: string;
@@ -19,10 +31,12 @@ interface SettingDefinition {
   type: 'boolean' | 'number' | 'string' | 'select' | 'object';
   category: SettingsCategory;
   subcategory?: string;
-  options?: string[];
+  options?: readonly SettingOptionDefinition[];
   min?: number;
   max?: number;
-  default?: any;
+  defaultValue?: SettingValue;
+  extensionDisplayName?: string;
+  isPluginSetting?: boolean;
 }
 
 interface SettingsContentProps {
@@ -33,7 +47,7 @@ interface SettingsContentProps {
 
 interface SettingsChangedPayload {
   key?: string | null;
-  value?: string | number | boolean | WorkbenchBackgroundSettings | null;
+  value?: SettingValue | null;
   updatedKeys?: string[];
   reset?: boolean;
   imported?: boolean;
@@ -44,13 +58,14 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   onActiveCategoryChange,
   scrollContainerRef 
 }) => {
-  const [settings, setSettings] = useState<Record<string, any>>({});
+  const [settings, setSettings] = useState<Record<string, SettingValue>>({});
+  const [pluginSettingDefinitions, setPluginSettingDefinitions] = useState<readonly SettingDefinition[]>([]);
   const [jsonContent, setJsonContent] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [modifiedKeys, setModifiedKeys] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>('');
 
-  const syncSettingsState = (nextSettings: Record<string, any>): void => {
+  const syncSettingsState = (nextSettings: Record<string, SettingValue>): void => {
     const normalizedSettings = nextSettings ?? {};
     setSettings(normalizedSettings);
     setJsonContent(JSON.stringify(normalizedSettings, null, 2));
@@ -67,7 +82,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       category: 'commonly-used',
       min: 8,
       max: 100,
-      default: 14,
+      defaultValue: 14,
     },
     {
       key: 'editor.tabSize',
@@ -77,7 +92,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       category: 'commonly-used',
       min: 1,
       max: 8,
-      default: 4,
+      defaultValue: 4,
     },
     {
       key: 'files.autoSave',
@@ -85,8 +100,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '控制脏文件的自动保存',
       type: 'select',
       category: 'commonly-used',
-      options: ['off', 'afterDelay', 'onFocusChange', 'onWindowChange'],
-      default: 'off',
+      options: [
+        { label: 'off', value: 'off' },
+        { label: 'afterDelay', value: 'afterDelay' },
+        { label: 'onFocusChange', value: 'onFocusChange' },
+        { label: 'onWindowChange', value: 'onWindowChange' },
+      ],
+      defaultValue: 'off',
     },
     {
       key: 'workbench.colorTheme',
@@ -94,7 +114,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '指定工作台中使用的颜色主题',
       type: 'string',
       category: 'commonly-used',
-      default: 'One Dark Pro',
+      defaultValue: 'One Dark Pro',
     },
 
     // 文本编辑
@@ -106,7 +126,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       category: 'text-editor',
       min: 0,
       max: 100,
-      default: 0,
+      defaultValue: 0,
     },
     {
       key: 'editor.insertSpaces',
@@ -114,7 +134,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: 'Tab 键时插入空格',
       type: 'boolean',
       category: 'text-editor',
-      default: true,
+      defaultValue: true,
     },
     {
       key: 'editor.wordWrap',
@@ -122,8 +142,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '控制折行方式',
       type: 'select',
       category: 'text-editor',
-      options: ['off', 'on', 'wordWrapColumn', 'bounded'],
-      default: 'off',
+      options: [
+        { label: 'off', value: 'off' },
+        { label: 'on', value: 'on' },
+        { label: 'wordWrapColumn', value: 'wordWrapColumn' },
+        { label: 'bounded', value: 'bounded' },
+      ],
+      defaultValue: 'off',
     },
     {
       key: 'editor.minimap.enabled',
@@ -131,7 +156,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '控制是否显示小地图',
       type: 'boolean',
       category: 'text-editor',
-      default: true,
+      defaultValue: true,
     },
     {
       key: 'editor.lineNumbers',
@@ -139,8 +164,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '控制行号的显示',
       type: 'select',
       category: 'text-editor',
-      options: ['off', 'on', 'relative', 'interval'],
-      default: 'on',
+      options: [
+        { label: 'off', value: 'off' },
+        { label: 'on', value: 'on' },
+        { label: 'relative', value: 'relative' },
+        { label: 'interval', value: 'interval' },
+      ],
+      defaultValue: 'on',
     },
 
     // 工作台
@@ -150,7 +180,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '指定工作台中使用的图标主题',
       type: 'string',
       category: 'workbench',
-      default: 'vs-seti',
+      defaultValue: 'vs-seti',
     },
     {
       key: 'workbench.sideBar.location',
@@ -158,8 +188,11 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '控制侧边栏的位置',
       type: 'select',
       category: 'workbench',
-      options: ['left', 'right'],
-      default: 'left',
+      options: [
+        { label: 'left', value: 'left' },
+        { label: 'right', value: 'right' },
+      ],
+      defaultValue: 'left',
     },
     {
       key: 'workbench.activityBar.visible',
@@ -167,7 +200,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '控制活动栏的可见性',
       type: 'boolean',
       category: 'workbench',
-      default: true,
+      defaultValue: true,
     },
 
     // 窗口
@@ -177,7 +210,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '配置工作台背景图片、透明度、模糊和铺满方式',
       type: 'object',
       category: 'workbench',
-      default: DEFAULT_WORKBENCH_BACKGROUND_SETTINGS,
+      defaultValue: {
+        enabled: DEFAULT_WORKBENCH_BACKGROUND_SETTINGS.enabled,
+        imagePath: DEFAULT_WORKBENCH_BACKGROUND_SETTINGS.imagePath,
+        opacity: DEFAULT_WORKBENCH_BACKGROUND_SETTINGS.opacity,
+        blur: DEFAULT_WORKBENCH_BACKGROUND_SETTINGS.blur,
+        fit: DEFAULT_WORKBENCH_BACKGROUND_SETTINGS.fit,
+      },
     },
 
     {
@@ -188,7 +227,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       category: 'window',
       min: -5,
       max: 5,
-      default: 0,
+      defaultValue: 0,
     },
     {
       key: 'window.title',
@@ -196,7 +235,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '控制窗口标题',
       type: 'string',
       category: 'window',
-      default: '${activeEditorShort}${separator}${rootName}',
+      defaultValue: '${activeEditorShort}${separator}${rootName}',
     },
 
     // AI
@@ -206,8 +245,14 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '读写文件时使用的默认字符集编码',
       type: 'select',
       category: 'ai',
-      options: ['utf8', 'utf8bom', 'utf16le', 'utf16be', 'gbk'],
-      default: 'utf8',
+      options: [
+        { label: 'utf8', value: 'utf8' },
+        { label: 'utf8bom', value: 'utf8bom' },
+        { label: 'utf16le', value: 'utf16le' },
+        { label: 'utf16be', value: 'utf16be' },
+        { label: 'gbk', value: 'gbk' },
+      ],
+      defaultValue: 'utf8',
     },
     {
       key: 'search.useIgnoreFiles',
@@ -215,7 +260,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       description: '控制在搜索中是否使用 .gitignore 和 .ignore 文件',
       type: 'boolean',
       category: 'ai',
-      default: true,
+      defaultValue: true,
     },
     // Embedding 配置（特殊处理，使用自定义组件）
     {
@@ -228,19 +273,81 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   ];
 
   // 加载设置
+  const allSettingDefinitions = [...settingDefinitions, ...pluginSettingDefinitions];
+
+  const serializeSelectValue = (value: SettingValue): string => JSON.stringify(value);
+
+  const resolveSelectOptionValue = (
+    def: SettingDefinition,
+    serializedValue: string,
+  ): SettingValue | null => {
+    const matchedOption = def.options?.find(option =>
+      serializeSelectValue(option.value) === serializedValue,
+    );
+    return matchedOption?.value ?? null;
+  };
+
+  const resolveBackgroundSettingsValue = (value: SettingValue | undefined): WorkbenchBackgroundSettings => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return DEFAULT_WORKBENCH_BACKGROUND_SETTINGS;
+    }
+
+    const candidate = value as Record<string, SettingValue>;
+    if (
+      typeof candidate.enabled !== 'boolean'
+      || typeof candidate.imagePath !== 'string'
+      || typeof candidate.opacity !== 'number'
+      || typeof candidate.blur !== 'number'
+      || typeof candidate.fit !== 'string'
+    ) {
+      return DEFAULT_WORKBENCH_BACKGROUND_SETTINGS;
+    }
+
+    return {
+      enabled: candidate.enabled,
+      imagePath: candidate.imagePath,
+      opacity: candidate.opacity,
+      blur: candidate.blur,
+      fit: candidate.fit as WorkbenchBackgroundSettings['fit'],
+    };
+  };
+
   useEffect(() => {
-    loadSettings();
+    void loadSettings();
+    void loadPluginSettings();
   }, []);
 
   const loadSettings = async () => {
     try {
       const result = await window.electronAPI?.settings?.getAll();
       if (result?.success) {
-        syncSettingsState((result.data as Record<string, any> | undefined) ?? {});
+        syncSettingsState((result.data as Record<string, SettingValue> | undefined) ?? {});
       }
     } catch (error) {
       console.error('加载设置失败:', error);
       setError('加载设置失败');
+    }
+  };
+
+  const loadPluginSettings = async (): Promise<void> => {
+    try {
+      const snapshot = await workbenchContributionService.getContributions();
+      setPluginSettingDefinitions(
+        snapshot.settings.map(setting => ({
+          key: setting.key,
+          title: setting.title,
+          description: setting.description,
+          type: setting.type,
+          category: 'application',
+          options: setting.options,
+          defaultValue: setting.defaultValue,
+          extensionDisplayName: setting.extensionDisplayName,
+          isPluginSetting: true,
+        })),
+      );
+    } catch (error) {
+      console.error('鍔犺浇鎻掍欢璁剧疆瀹氫箟澶辫触:', error);
+      setPluginSettingDefinitions([]);
     }
   };
 
@@ -257,8 +364,8 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       if (typeof changedKey === 'string' && payload.value !== undefined) {
         setSettings(previousSettings => {
           const nextSettings = {
-            ...(previousSettings ?? {}),
-            [changedKey]: payload.value,
+            ...previousSettings,
+            [changedKey]: payload.value as SettingValue,
           };
           setJsonContent(JSON.stringify(nextSettings, null, 2));
           return nextSettings;
@@ -276,7 +383,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   }, []);
 
   // 更新设置
-  const updateSetting = async (key: string, value: any) => {
+  const updateSetting = async (key: string, value: SettingValue) => {
     try {
       const result = await window.electronAPI?.settings?.update(key, value);
       if (result?.success) {
@@ -316,7 +423,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
 
   // 根据分类过滤设置
   const getCategorySettings = useCallback((category: SettingsCategory) => {
-    return settingDefinitions.filter(def => {
+    return allSettingDefinitions.filter(def => {
       // 根据分类过滤
       if (def.category !== category) return false;
       
@@ -332,7 +439,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       
       return true;
     });
-  }, [searchQuery, settingDefinitions]);
+  }, [allSettingDefinitions, searchQuery]);
 
   // 所有分类列表
   const allCategories: SettingsCategory[] = [
@@ -394,7 +501,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
 
   // 渲染设置控件
   const renderSettingControl = (def: SettingDefinition) => {
-    const value = (settings ?? {})[def.key] ?? def.default;
+    const value = (settings ?? {})[def.key] ?? def.defaultValue;
 
     switch (def.type) {
       case 'boolean':
@@ -402,7 +509,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
           <label>
             <input
               type="checkbox"
-              checked={value}
+              checked={Boolean(value)}
               onChange={(e) => updateSetting(def.key, e.target.checked)}
               className="control-checkbox"
             />
@@ -413,7 +520,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         return (
           <input
             type="number"
-            value={value}
+            value={typeof value === 'number' ? value : Number(def.defaultValue ?? 0)}
             min={def.min}
             max={def.max}
             onChange={(e) => updateSetting(def.key, Number(e.target.value))}
@@ -425,7 +532,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         return (
           <input
             type="text"
-            value={value}
+            value={typeof value === 'string' ? value : ''}
             onChange={(e) => updateSetting(def.key, e.target.value)}
             className="control-input"
           />
@@ -434,9 +541,17 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       case 'select':
         return (
           <DropdownMenu
-            value={value}
-            onChange={(newValue: string) => updateSetting(def.key, newValue)}
-            items={def.options?.map(option => ({ value: option, label: option })) || []}
+            value={serializeSelectValue(value ?? def.defaultValue ?? '')}
+            onChange={(newValue: string) => {
+              const nextValue = resolveSelectOptionValue(def, newValue);
+              if (nextValue !== null) {
+                void updateSetting(def.key, nextValue);
+              }
+            }}
+            items={def.options?.map(option => ({
+              value: serializeSelectValue(option.value),
+              label: option.label,
+            })) || []}
           />
         );
 
@@ -448,8 +563,14 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         if (def.key === 'workbench.background') {
           return (
             <BackgroundImageSettings
-              value={(value as WorkbenchBackgroundSettings | undefined) ?? DEFAULT_WORKBENCH_BACKGROUND_SETTINGS}
-              onChange={(nextValue) => updateSetting(def.key, nextValue)}
+              value={resolveBackgroundSettingsValue(value)}
+              onChange={(nextValue) => updateSetting(def.key, {
+                enabled: nextValue.enabled,
+                imagePath: nextValue.imagePath,
+                opacity: nextValue.opacity,
+                blur: nextValue.blur,
+                fit: nextValue.fit,
+              })}
             />
           );
         }
@@ -537,11 +658,16 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                               <div className="setting-info">
                                 <div className="setting-header">
                                   <h3 className="setting-title">{def.title}</h3>
+                                  {def.isPluginSetting && def.extensionDisplayName && (
+                                    <span className="setting-source-badge">{def.extensionDisplayName}</span>
+                                  )}
                                   {isModified && (
                                     <span className="modified-badge">已修改</span>
                                   )}
                                 </div>
-                                <p className="setting-description">{def.description}</p>
+                                <p className="setting-description">
+                                  {def.description || (def.isPluginSetting ? '插件贡献设置项' : '')}
+                                </p>
                                 <code className="setting-key">{def.key}</code>
                               </div>
                               <div className="setting-controls">

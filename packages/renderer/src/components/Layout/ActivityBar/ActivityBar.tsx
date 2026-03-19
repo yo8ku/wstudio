@@ -4,34 +4,60 @@
 
 import React, { useState } from 'react';
 import { Icon } from '../../Icons';
+import { ThemedMaskIcon } from '../../Icons/ThemedMaskIcon';
 import {
   useActivityBarStore,
-  ActivityBarVisibility
+  type ActivityBarVisibility,
 } from '../../../stores/activityBarStore';
 import { ActivityBarContextMenu } from './ActivityBarContextMenu';
 import './ActivityBar.scss';
 
-export type ActivityBarItem =
-  | 'explorer'
-  | 'search'
-  | 'source-control'
-  | 'knowledge-base'
-  | 'ai-model'
-  | 'media'
-  | 'user'
-  | 'settings';
+export const BUILTIN_ACTIVITY_BAR_ITEMS = [
+  'explorer',
+  'search',
+  'knowledge-base',
+  'ai-model',
+  'media',
+  'extensions',
+  'user',
+  'settings',
+] as const;
+
+export type BuiltinActivityBarItem = (typeof BUILTIN_ACTIVITY_BAR_ITEMS)[number];
+export type PluginActivityBarItem = `plugin-view:${string}`;
+export type ActivityBarItem = BuiltinActivityBarItem | PluginActivityBarItem;
+
+export interface AdditionalActivityBarItem {
+  readonly id: PluginActivityBarItem;
+  readonly iconPath: string | null;
+  readonly title: string;
+}
+
+export function toPluginActivityBarItem(containerKey: string): PluginActivityBarItem {
+  return `plugin-view:${containerKey}`;
+}
+
+export function isPluginActivityBarItem(value: string): value is PluginActivityBarItem {
+  return value.startsWith('plugin-view:');
+}
+
+export function getPluginContainerKeyFromActivityBarItem(item: PluginActivityBarItem): string {
+  return item.slice('plugin-view:'.length);
+}
 
 interface ActivityBarProps {
-  activeItem: ActivityBarItem;
-  onActivityClick: (item: ActivityBarItem) => void;
+  readonly activeItem: ActivityBarItem;
+  readonly onActivityClick: (item: ActivityBarItem) => void;
+  readonly additionalItems?: readonly AdditionalActivityBarItem[];
 }
 
 interface ActivityItem {
-  id: ActivityBarItem;
-  iconName: string;
-  iconSet?: string;
-  title: string;
-  visibilityKey?: keyof ActivityBarVisibility;
+  readonly id: ActivityBarItem;
+  readonly iconName?: string;
+  readonly iconPath?: string | null;
+  readonly iconSet?: string;
+  readonly title: string;
+  readonly visibilityKey?: keyof ActivityBarVisibility;
 }
 
 const ACTIVITY_BAR_ICON_SIZE = 18;
@@ -39,11 +65,12 @@ const ACTIVITY_BAR_ICON_SIZE = 18;
 export const ActivityBar: React.FC<ActivityBarProps> = ({
   activeItem,
   onActivityClick,
+  additionalItems = [],
 }) => {
   const { visibility } = useActivityBarStore();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
-  const topActivities: ActivityItem[] = [
+  const topActivities: readonly ActivityItem[] = [
     {
       id: 'explorer',
       title: '资源管理器',
@@ -56,12 +83,6 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       title: '搜索',
       iconName: 'search',
       visibilityKey: 'search',
-    },
-    {
-      id: 'source-control',
-      title: '源代码管理',
-      iconName: 'source-control',
-      visibilityKey: 'sourceControl',
     },
     {
       id: 'knowledge-base',
@@ -81,9 +102,15 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       iconName: 'media',
       visibilityKey: 'media',
     },
+    {
+      id: 'extensions',
+      title: '扩展插件',
+      iconName: 'extensions-manager',
+      visibilityKey: 'extensions',
+    },
   ];
 
-  const bottomActivities: ActivityItem[] = [
+  const bottomActivities: readonly ActivityItem[] = [
     {
       id: 'user',
       title: '用户',
@@ -107,7 +134,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
 
   const handleActivityKeyDown = (
     event: React.KeyboardEvent<HTMLDivElement>,
-    item: ActivityBarItem
+    item: ActivityBarItem,
   ): void => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -116,13 +143,34 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   };
 
   const visibleTopActivities = topActivities.filter(
-    activity => !activity.visibilityKey || visibility[activity.visibilityKey]
+    activity => !activity.visibilityKey || visibility[activity.visibilityKey],
   );
+  const renderedTopActivities = [...visibleTopActivities, ...additionalItems];
+
+  const renderActivityIcon = (activity: ActivityItem): React.ReactNode => {
+    if (activity.iconPath) {
+      return (
+        <ThemedMaskIcon
+          className="activity-bar-plugin-icon"
+          source={activity.iconPath}
+          size={ACTIVITY_BAR_ICON_SIZE}
+        />
+      );
+    }
+
+    return (
+      <Icon
+        iconSet={activity.iconSet}
+        name={activity.iconName ?? 'extensions'}
+        size={ACTIVITY_BAR_ICON_SIZE}
+      />
+    );
+  };
 
   return (
     <div className="activity-bar" onContextMenu={handleContextMenu}>
       <div className="activity-bar-top">
-        {visibleTopActivities.map(activity => (
+        {renderedTopActivities.map(activity => (
           <div
             key={activity.id}
             onClick={() => onActivityClick(activity.id)}
@@ -136,7 +184,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
           >
             {activeItem === activity.id && <div className="activity-bar-indicator" />}
             <span className="activity-bar-icon">
-              <Icon iconSet={activity.iconSet} name={activity.iconName} size={ACTIVITY_BAR_ICON_SIZE} />
+              {renderActivityIcon(activity)}
             </span>
           </div>
         ))}
@@ -159,7 +207,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
           >
             {activeItem === activity.id && <div className="activity-bar-indicator" />}
             <span className="activity-bar-icon">
-              <Icon iconSet={activity.iconSet} name={activity.iconName} size={ACTIVITY_BAR_ICON_SIZE} />
+              {renderActivityIcon(activity)}
             </span>
           </div>
         ))}

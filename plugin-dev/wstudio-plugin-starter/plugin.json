@@ -1,0 +1,55 @@
+{
+  "id": "local.wstudio-plugin-starter",
+  "name": "local.wstudio-plugin-starter",
+  "displayName": "WStudio Plugin Starter",
+  "version": "1.0.0",
+  "main": "scripts/main.cjs",
+  "description": "Starter extension package for developing WStudio plugins.",
+  "engines": {
+    "wstudio": "^2.0.0"
+  },
+  "permissions": [
+    "webview"
+  ],
+  "activationEvents": [
+    "onCommand:local.wstudio-plugin-starter.open-panel"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "id": "local.wstudio-plugin-starter.open-panel",
+        "title": "Open WStudio Plugin Starter Panel",
+        "category": "WStudio Starter",
+        "icon": "assets/plugin-icon.svg"
+      }
+    ],
+    "menus": [
+      {
+        "location": "commandPalette",
+        "command": "local.wstudio-plugin-starter.open-panel"
+      },
+      {
+        "location": "statusBar",
+        "command": "local.wstudio-plugin-starter.open-panel",
+        "group": "primary"
+      }
+    ],
+    "settings": [
+      {
+        "key": "panelTitle",
+        "title": "Panel Title",
+        "description": "Controls the title shown by the starter webview panel.",
+        "type": "string",
+        "defaultValue": "WStudio Plugin Starter Panel"
+      }
+    ],
+    "webviews": [
+      {
+        "id": "local.wstudio-plugin-starter.panel",
+        "title": "WStudio Plugin Starter Panel",
+        "entry": "webviews/panel.html",
+        "retainContextWhenHidden": true
+      }
+    ]
+  }
+}
