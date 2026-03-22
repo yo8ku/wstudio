@@ -47,7 +47,7 @@ const workspaceManager = new WorkspaceManager();
 export async function initializeExtensions(mainWindow?: BrowserWindow | null): Promise<void> {
   registerStoreHandlers();
   registerSettingsHandlers(settingsManager, workspaceManager, mainWindow || null);
-  registerFileHandlers();
+  registerFileHandlers(settingsManager);
   registerWorkspaceHandlers(workspaceManager);
   registerThemeHandlers();
   registerChatHistoryHandlers();

@@ -910,8 +910,8 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
           >
             {item.type === 'folder' && (
               <span className={`chevron ${isExpanded ? 'expanded' : ''}`}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M6 4l4 4-4 4V4z"/>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m6 4.5 3.5 3.5L6 11.5"/>
                 </svg>
               </span>
             )}

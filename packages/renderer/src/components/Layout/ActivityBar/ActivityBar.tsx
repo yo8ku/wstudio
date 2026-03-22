@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { VscFiles } from 'react-icons/vsc';
 import { Icon } from '../../Icons';
 import { ThemedMaskIcon } from '../../Icons/ThemedMaskIcon';
 import {
@@ -114,12 +115,12 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
     {
       id: 'user',
       title: '用户',
-      iconName: 'user',
+      iconName: 'circle-user-round',
     },
     {
       id: 'settings',
       title: '设置',
-      iconName: 'settings-activity',
+      iconName: 'bolt',
     },
   ];
 
@@ -148,6 +149,15 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   const renderedTopActivities = [...visibleTopActivities, ...additionalItems];
 
   const renderActivityIcon = (activity: ActivityItem): React.ReactNode => {
+    if (activity.id === 'explorer') {
+      return (
+        <VscFiles
+          size={ACTIVITY_BAR_ICON_SIZE}
+          className="activity-bar-plugin-icon"
+        />
+      );
+    }
+
     if (activity.iconPath) {
       return (
         <ThemedMaskIcon
@@ -182,7 +192,6 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
             title={activity.title}
             onKeyDown={event => handleActivityKeyDown(event, activity.id)}
           >
-            {activeItem === activity.id && <div className="activity-bar-indicator" />}
             <span className="activity-bar-icon">
               {renderActivityIcon(activity)}
             </span>
@@ -205,7 +214,6 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
             title={activity.title}
             onKeyDown={event => handleActivityKeyDown(event, activity.id)}
           >
-            {activeItem === activity.id && <div className="activity-bar-indicator" />}
             <span className="activity-bar-icon">
               {renderActivityIcon(activity)}
             </span>

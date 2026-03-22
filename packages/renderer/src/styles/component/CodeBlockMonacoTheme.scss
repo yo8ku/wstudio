@@ -1,0 +1,26 @@
+/**
+ * CodeBlockMonacoTheme 代码块 Monaco 主题样式
+ * 功能：为嵌入在 CodeMirror 代码块中的 Monaco 编辑器提供共享颜色样式
+ */
+
+.monaco-editor {
+  background-color: var(--ws-editor-background);
+  color: var(--ws-editor-foreground);
+}
+
+.monaco-editor .line-numbers {
+  color: var(--ws-editorLineNumber-foreground);
+}
+
+.monaco-editor .current-line {
+  background-color: var(--ws-editor-lineHighlightBackground);
+  border-color: var(--ws-editor-lineHighlightBorder);
+}
+
+.monaco-editor .selection {
+  background-color: var(--ws-editor-selectionBackground);
+}
+
+.monaco-editor .cursor {
+  background-color: var(--ws-editorCursor-foreground);
+}

@@ -76,12 +76,26 @@ export class WorkspaceIndexDatabase {
   private lanceDb: lancedb.Connection | null = null;
   private childrenTable: lancedb.Table | null = null;
   
-  private dbPath: string;
-  private lanceDbPath: string;
+  private dbPath: string = '';
+  private lanceDbPath: string = '';
   private isInitialized: boolean = false;
 
-  private constructor() {
-    const userDataPath = app.getPath('userData');
+  private constructor() {}
+
+  private resolveUserDataPath(): string {
+    if (!app) {
+      throw new Error('[WorkspaceIndexDatabase] Electron app is unavailable before initialization');
+    }
+
+    return app.getPath('userData');
+  }
+
+  private ensureStoragePaths(): void {
+    if (this.dbPath && this.lanceDbPath) {
+      return;
+    }
+
+    const userDataPath = this.resolveUserDataPath();
     this.dbPath = path.join(userDataPath, 'workspace-index.db');
     this.lanceDbPath = path.join(userDataPath, 'workspace-vectors');
   }
@@ -98,6 +112,8 @@ export class WorkspaceIndexDatabase {
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
+
+    this.ensureStoragePaths();
 
     try {
       // 初始化 SQLite

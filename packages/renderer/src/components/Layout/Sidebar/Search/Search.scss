@@ -157,16 +157,22 @@
         }
 
         &::before {
-          content: '▶';
+          content: '';
+          width: 6px;
+          height: 6px;
           display: inline-block;
-          margin-right: 4px;
-          font-size: 10px;
+          margin-right: 6px;
+          margin-top: -1px;
+          border-right: 1.5px solid currentColor;
+          border-bottom: 1.5px solid currentColor;
+          transform: rotate(-45deg);
+          transform-origin: center;
           transition: transform 0.2s;
         }
       }
 
       &[open] summary::before {
-        transform: rotate(90deg);
+        transform: rotate(45deg);
       }
 
       .options-content {
@@ -396,16 +402,22 @@
         }
 
         &::before {
-          content: '▶';
+          content: '';
+          width: 6px;
+          height: 6px;
           display: inline-block;
-          margin-right: 4px;
-          font-size: 10px;
+          margin-right: 6px;
+          margin-top: -1px;
+          border-right: 1.5px solid currentColor;
+          border-bottom: 1.5px solid currentColor;
+          transform: rotate(-45deg);
+          transform-origin: center;
           transition: transform 0.2s;
         }
       }
 
       &[open] summary::before {
-        transform: rotate(90deg);
+        transform: rotate(45deg);
       }
 
       .options-content {

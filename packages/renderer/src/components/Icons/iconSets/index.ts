@@ -1,24 +1,12 @@
 /**
- * 图标集导入
- * 统一管理所有图标集的导入和导出
+ * Icon set exports.
  */
 
-import { materialIconSet } from './material';
-import { uiIconSet } from './ui';
+import { uiIconSet } from './lucide';
 import type { IconSet } from '../IconRegistry';
 
-/**
- * 所有可用的图标
- */
-export const availableIconSets: IconSet[] = [
-  materialIconSet,
-  uiIconSet,
-];
+export const availableIconSets: IconSet[] = [uiIconSet];
 
-/**
- * 默认图标
- */
-export const defaultIconSet = materialIconSet;
+export const defaultIconSet = uiIconSet;
 
-export { materialIconSet, uiIconSet };
-
+export { uiIconSet };

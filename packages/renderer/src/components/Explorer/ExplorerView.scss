@@ -1,61 +1,150 @@
-﻿/**
+/**
  * 资源管理器主容器样式
  * 负责资源管理器分区布局、卡片层级与滚动行为
  */
 
 .explorer-view {
-
-
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
+  min-height: 0;
   box-sizing: border-box;
-  padding: 8px 6px 10px;
   gap: 8px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+}
+
+.explorer-workspace-title {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  flex: 0 0 auto;
+  background-color: var(--ws-sideBar-background, var(--ws-editor-background, transparent));
+}
+
+.explorer-workspace-title-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-left: 0;
+}
+
+.explorer-workspace-title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ws-activityBar-inactiveForeground);
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+  z-index: 12;
+  pointer-events: auto;
+  user-select: none;
+
+  &:hover:not(.is-disabled),
+  &:focus-visible:not(.is-disabled) {
+    background: var(--ws-list-hoverBackground, var(--ws-list-hover-background));
+    color: var(--ws-activityBar-foreground);
+    outline: 1px solid var(--ws-focusBorder, var(--ws-button-background));
+    outline-offset: 0;
+  }
+
+  &.is-disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  &.is-active {
+    background: var(--ws-list-hoverBackground, var(--ws-list-hover-background));
+    color: var(--ws-activityBar-foreground);
+    outline: 1px solid var(--ws-focusBorder, var(--ws-button-background));
+    outline-offset: 0;
+  }
+
+  &.is-static {
+    cursor: default;
+  }
+}
+
+.explorer-view-content {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   position: relative;
 
-  .explorer-workspace-title {
-    margin: 0 4px;
-    padding: 0 4px;
-    min-height: 20px;
-    display: flex;
-    align-items: center;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.3px;
+  .custom-scrollbar-track {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 0;
   }
 
-  > .open-editors-section,
-  > .file-tree-section,
-  > .form-section,
-  > .accordion-section {
+  .custom-scrollbar-thumb {
+    border-radius: 0;
+    background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.45));
+    cursor: default;
+
+    &:hover {
+      background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.65));
+    }
+
+    &.is-dragging {
+      background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.45));
+      cursor: default;
+    }
+  }
+  
+  .custom-scrollbar-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 8px;
+  }
+
+  .custom-scrollbar-content > .open-editors-section,
+  .custom-scrollbar-content > .file-tree-section,
+  .custom-scrollbar-content > .form-section,
+  .custom-scrollbar-content > .accordion-section,
+  .custom-scrollbar-content > .outline-section {
     border: none;
     border-radius: 0;
-    // background-color: var(--explorer-surface-bg);
     overflow: hidden;
     min-width: 0;
-    contain: paint;
   }
 
-  > .open-editors-section,
-  > .form-section,
-  > .accordion-section {
+  .custom-scrollbar-content > .open-editors-section,
+  .custom-scrollbar-content > .form-section,
+  .custom-scrollbar-content > .accordion-section {
     flex: 0 0 auto;
   }
 
-  // 工作区目录按内容高度布局，不再撑满剩余空间
-  > .file-tree-section {
-    flex: 0 0 auto;
-    min-height: 22px;
+  .custom-scrollbar-content > .file-tree-section,
+  .custom-scrollbar-content > .outline-section {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
-  > .open-editors-section,
-  > .file-tree-section,
-  > .form-section {
+  .custom-scrollbar-content > .outline-section.outline-section--expanded {
+    height: 100%;
+  }
+
+  .custom-scrollbar-content > .open-editors-section,
+  .custom-scrollbar-content > .file-tree-section,
+  .custom-scrollbar-content > .form-section,
+  .custom-scrollbar-content > .outline-section {
     background-color: transparent;
   }
 }

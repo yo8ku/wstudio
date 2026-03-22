@@ -670,6 +670,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   }), []);
 
   const isPanelHorizontal = panelPosition === 'top' || panelPosition === 'bottom';
+  const isTerminalPanelOpen = isPanelVisible && panelActiveView === 'terminal';
 
   return (
     <IconThemeProvider>
@@ -680,11 +681,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         <BackgroundImageLayer />
 
         {/* 鏍囬鏍忥紙鍖呭惈鑿滃崟鏍忥級 */}
-        <div className='titleBar' style={{ flexShrink: 0, height: '32px', position: 'relative', zIndex: 1 }}>
+        <div
+          className='titleBar'
+          style={{ flexShrink: 0, height: '32px', position: 'relative', zIndex: 1100, overflow: 'visible' }}
+        >
           <TitleBar 
             onToggleSidebar={() => setIsSidebarVisible(!isSidebarVisible)}
             onToggleAIPanel={() => setIsAIChatVisible(!isAIChatVisible)}
             onTogglePanel={handleToggleTerminalPanel}
+            isSidebarOpen={isSidebarVisible}
+            isTerminalPanelOpen={isTerminalPanelOpen}
           />
         </div>
         

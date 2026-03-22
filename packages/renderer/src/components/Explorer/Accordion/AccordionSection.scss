@@ -176,12 +176,48 @@
       overflow: auto !important;
       
       // Firefox 滚动条样式
-      scrollbar-width: thin !important;
-      scrollbar-color: transparent transparent !important;
+      scrollbar-width: auto !important;
+      scrollbar-color: auto !important;
       
       // WebKit 滚动条样式
       &::-webkit-scrollbar {
         width: 10px !important;
+      }
+      &::-webkit-scrollbar-button,
+      &::-webkit-scrollbar-button:start,
+      &::-webkit-scrollbar-button:end,
+      &::-webkit-scrollbar-button:decrement,
+      &::-webkit-scrollbar-button:increment,
+      &::-webkit-scrollbar-button:vertical:start,
+      &::-webkit-scrollbar-button:vertical:end,
+      &::-webkit-scrollbar-button:horizontal:start,
+      &::-webkit-scrollbar-button:horizontal:end,
+      &::-webkit-scrollbar-button:single-button:vertical:decrement,
+      &::-webkit-scrollbar-button:single-button:vertical:increment,
+      &::-webkit-scrollbar-button:single-button:horizontal:decrement,
+      &::-webkit-scrollbar-button:single-button:horizontal:increment,
+      &::-webkit-scrollbar-button:vertical:start:decrement,
+      &::-webkit-scrollbar-button:vertical:end:increment,
+      &::-webkit-scrollbar-button:horizontal:start:decrement,
+      &::-webkit-scrollbar-button:horizontal:end:increment {
+        -webkit-appearance: none !important;
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        border: 0 !important;
+      }
+
+      &::-webkit-scrollbar-track-piece:start,
+      &::-webkit-scrollbar-track-piece:end,
+      &::-webkit-scrollbar-track-piece:vertical:start,
+      &::-webkit-scrollbar-track-piece:vertical:end,
+      &::-webkit-scrollbar-track-piece:horizontal:start,
+      &::-webkit-scrollbar-track-piece:horizontal:end {
+        background: transparent !important;
+        border: 0 !important;
+        margin: 0 !important;
       }
 
       &::-webkit-scrollbar-track {
@@ -211,12 +247,48 @@
       overflow: auto !important;
       
       // Firefox 滚动条样式
-      scrollbar-width: thin !important;
-      scrollbar-color: transparent transparent !important;
+      scrollbar-width: auto !important;
+      scrollbar-color: auto !important;
       
       // WebKit 滚动条样式
       &::-webkit-scrollbar {
         width: 10px !important;
+      }
+      &::-webkit-scrollbar-button,
+      &::-webkit-scrollbar-button:start,
+      &::-webkit-scrollbar-button:end,
+      &::-webkit-scrollbar-button:decrement,
+      &::-webkit-scrollbar-button:increment,
+      &::-webkit-scrollbar-button:vertical:start,
+      &::-webkit-scrollbar-button:vertical:end,
+      &::-webkit-scrollbar-button:horizontal:start,
+      &::-webkit-scrollbar-button:horizontal:end,
+      &::-webkit-scrollbar-button:single-button:vertical:decrement,
+      &::-webkit-scrollbar-button:single-button:vertical:increment,
+      &::-webkit-scrollbar-button:single-button:horizontal:decrement,
+      &::-webkit-scrollbar-button:single-button:horizontal:increment,
+      &::-webkit-scrollbar-button:vertical:start:decrement,
+      &::-webkit-scrollbar-button:vertical:end:increment,
+      &::-webkit-scrollbar-button:horizontal:start:decrement,
+      &::-webkit-scrollbar-button:horizontal:end:increment {
+        -webkit-appearance: none !important;
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        border: 0 !important;
+      }
+
+      &::-webkit-scrollbar-track-piece:start,
+      &::-webkit-scrollbar-track-piece:end,
+      &::-webkit-scrollbar-track-piece:vertical:start,
+      &::-webkit-scrollbar-track-piece:vertical:end,
+      &::-webkit-scrollbar-track-piece:horizontal:start,
+      &::-webkit-scrollbar-track-piece:horizontal:end {
+        background: transparent !important;
+        border: 0 !important;
+        margin: 0 !important;
       }
 
       &::-webkit-scrollbar-track {

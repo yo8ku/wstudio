@@ -116,6 +116,21 @@
       }
     }
   }
+
+  &-loading {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ws-editorWidget-foreground);
+    background-color: var(--ws-editor-background);
+
+    &-label {
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      opacity: 0.72;
+    }
+  }
 }
 
 .editor-area.is-tab-dragging {

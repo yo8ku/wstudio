@@ -531,6 +531,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
       >
         <CustomScrollbar
           className="form-content"
+          scrollbarWidth={10}
           style={{ height: `${contentHeight}px` }}
           onContextMenu={handleBlankAreaContextMenu}
         >

@@ -1,42 +1,43 @@
 /**
- * Monaco 代码块编辑器组件
- * 功能：在 CodeMirror 编辑器中嵌入 Monaco Editor 作为代码块编辑器
- * 描述：提供完整的代码编辑体验，包括语法高亮、自动补全、代码折叠等功能
+ * Monaco 浠ｇ爜鍧楃紪杈戝櫒缁勪欢
+ * 鍔熻兘锛氬湪 CodeMirror 缂栬緫鍣ㄤ腑宓屽叆 Monaco Editor 浣滀负浠ｇ爜鍧楃紪杈戝櫒
+ * 鎻忚堪锛氭彁渚涘畬鏁寸殑浠ｇ爜缂栬緫浣撻獙锛屽寘鎷娉曢珮浜€佽嚜鍔ㄨˉ鍏ㄣ€佷唬鐮佹姌鍙犵瓑鍔熻兘
  */
 
 import React, { useRef, useCallback, useState, useEffect } from 'react';
-import Editor, { OnMount, Monaco } from '@monaco-editor/react';
+import Editor from '@monaco-editor/react';
+import type { OnMount, Monaco } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { useThemeStore } from '../../../stores/themeStore';
-import { themeService } from '../../../services/ThemeService';
+import { applyStoredCodeBlockMonacoTheme, getCodeBlockMonacoThemeId } from './CodeBlockMonacoThemeAdapter';
 import './CodeBlockMonaco.scss';
 
 interface CodeBlockMonacoProps {
-  /** 初始代码内容 */
+  /** 鍒濆浠ｇ爜鍐呭 */
   code: string;
-  /** 编程语言 */
+  /** 缂栫▼璇█ */
   language: string;
-  /** 代码块主题 ID */
+  /** 浠ｇ爜鍧椾富棰?ID */
   theme?: string;
-  /** 代码变更回调 */
+  /** 浠ｇ爜鍙樻洿鍥炶皟 */
   onChange?: (value: string) => void;
-  /** 编辑器获得焦点回调 */
+  /** 缂栬緫鍣ㄨ幏寰楃劍鐐瑰洖璋?*/
   onFocus?: () => void;
-  /** 编辑器失去焦点回调 */
+  /** 缂栬緫鍣ㄥけ鍘荤劍鐐瑰洖璋?*/
   onBlur?: () => void;
-  /** 编辑器挂载回调 */
-  onEditorMount?: (editor: editor.IStandaloneCodeEditor) => void;
-  /** 是否只读 */
+  /** 缂栬緫鍣ㄦ寕杞藉洖璋?*/
+  onEditorMount?: (editor: editor.IStandaloneCodeEditor, monaco: Monaco) => void;
+  /** 鏄惁鍙 */
   readOnly?: boolean;
-  /** 最小高度 */
+  /** 鏈€灏忛珮搴?*/
   minHeight?: number;
-  /** 最大高度 */
+  /** 鏈€澶ч珮搴?*/
   maxHeight?: number;
-  /** 初始滚动位置 */
+  /** 鍒濆婊氬姩浣嶇疆 */
   initialScrollTop?: number;
 }
 
-/** Monaco 语言映射 */
+/** Monaco 璇█鏄犲皠 */
 const languageMap: Record<string, string> = {
   js: 'javascript',
   ts: 'typescript',
@@ -51,12 +52,12 @@ const languageMap: Record<string, string> = {
   text: 'plaintext'
 };
 
-/** 获取 Monaco 语言标识 */
+/** 鑾峰彇 Monaco 璇█鏍囪瘑 */
 const getMonacoLanguage = (lang: string): string => {
   return languageMap[lang] || lang || 'plaintext';
 };
 
-/** 计算编辑器高度 */
+/** 璁＄畻缂栬緫鍣ㄩ珮搴?*/
 const calculateHeight = (code: string, minHeight: number, maxHeight: number): number => {
   const lineCount = Math.max((code || '').split('\n').length, 1);
   const lineHeight = 19;
@@ -81,9 +82,9 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // 使用 ref 存储 initialScrollTop，确保在 onMount 回调中能获取到最新值
+  // 浣跨敤 ref 瀛樺偍 initialScrollTop锛岀‘淇濆湪 onMount 鍥炶皟涓兘鑾峰彇鍒版渶鏂板€?
   const initialScrollTopRef = useRef(initialScrollTop);
-  // 同步更新 ref
+  // 鍚屾鏇存柊 ref
   initialScrollTopRef.current = initialScrollTop;
   
   const [height, setHeight] = useState(() => calculateHeight(code, minHeight, 400));
@@ -91,90 +92,42 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
   const [isResizing, setIsResizing] = useState(false);
   const [currentBlockTheme, setCurrentBlockTheme] = useState(theme);
 
-  // 获取全局主题（作为默认值）
+  // 鑾峰彇鍏ㄥ眬涓婚锛堜綔涓洪粯璁ゅ€硷級
   const globalTheme = useThemeStore((state) => state.currentTheme);
 
-  // 获取 Monaco 主题 ID
+  // 鑾峰彇 Monaco 涓婚 ID
   const getMonacoThemeId = useCallback((): string => {
-    // 优先使用代码块独立主题
+    // 浼樺厛浣跨敤浠ｇ爜鍧楃嫭绔嬩富棰?
     if (currentBlockTheme) {
-      return `custom-${currentBlockTheme}`;
+      return getCodeBlockMonacoThemeId(currentBlockTheme);
     }
-    // 否则使用全局主题
+    // 鍚﹀垯浣跨敤鍏ㄥ眬涓婚
     if (globalTheme?.id) {
-      return `custom-${globalTheme.id}`;
+      return getCodeBlockMonacoThemeId(globalTheme.id);
     }
     return globalTheme?.type === 'light' ? 'vs' : 'vs-dark';
   }, [currentBlockTheme, globalTheme]);
 
-  // 代码块主题变化时更新编辑器
+  // 浠ｇ爜鍧椾富棰樺彉鍖栨椂鏇存柊缂栬緫鍣?
   useEffect(() => {
-    const applyTheme = async () => {
-      if (!monacoRef.current || !editorRef.current || !currentBlockTheme) return;
+    if (!monacoRef.current || !editorRef.current || !currentBlockTheme) {
+      return;
+    }
 
-      const themeId = `custom-${currentBlockTheme}`;
-      console.log('[CodeBlockMonaco] 切换主题:', themeId);
+    const themeId = getCodeBlockMonacoThemeId(currentBlockTheme);
+    console.log('[CodeBlockMonaco] 鍒囨崲涓婚:', themeId);
 
-      // 获取主题数据并注册到 Monaco
-      const themeData = await themeService.getTheme(currentBlockTheme);
-      if (themeData && monacoRef.current) {
-        // 转换主题颜色
-        const colors: Record<string, string> = {};
-        if (themeData.colors) {
-          Object.entries(themeData.colors).forEach(([key, value]) => {
-            if (typeof value === 'string') {
-              colors[key] = value;
-            }
-          });
-        }
-
-        // 转换 token 规则
-        const rules: editor.ITokenThemeRule[] = [];
-        if (themeData.tokenColors) {
-          themeData.tokenColors.forEach((token) => {
-            if (token.scope && token.settings) {
-              const scopes = Array.isArray(token.scope) ? token.scope : [token.scope];
-              scopes.forEach((scope) => {
-                const rule: editor.ITokenThemeRule = { token: scope };
-                if (token.settings.foreground) {
-                  rule.foreground = token.settings.foreground.replace('#', '');
-                }
-                if (token.settings.background) {
-                  rule.background = token.settings.background.replace('#', '');
-                }
-                if (token.settings.fontStyle) {
-                  rule.fontStyle = token.settings.fontStyle;
-                }
-                rules.push(rule);
-              });
-            }
-          });
-        }
-
-        // 注册主题
-        monacoRef.current.editor.defineTheme(themeId, {
-          base: themeData.type === 'light' ? 'vs' : 'vs-dark',
-          inherit: true,
-          rules,
-          colors
-        });
-
-        // 应用主题
-        monacoRef.current.editor.setTheme(themeId);
-      }
-    };
-
-    applyTheme();
+    void applyStoredCodeBlockMonacoTheme(currentBlockTheme, monacoRef.current.editor);
   }, [currentBlockTheme]);
 
-  // 外部 theme prop 变化时更新
+  // 澶栭儴 theme prop 鍙樺寲鏃舵洿鏂?
   useEffect(() => {
     if (theme !== undefined) {
       setCurrentBlockTheme(theme);
     }
   }, [theme]);
 
-  // 语言变化时更新 Monaco 编辑器语言
+  // 璇█鍙樺寲鏃舵洿鏂?Monaco 缂栬緫鍣ㄨ瑷€
   useEffect(() => {
     if (editorRef.current && monacoRef.current) {
       const model = editorRef.current.getModel();
@@ -185,17 +138,17 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
     }
   }, [language]);
 
-  // 编辑器挂载回调
+  // 缂栬緫鍣ㄦ寕杞藉洖璋?
   const handleEditorMount: OnMount = useCallback(
     (editorInstance, monaco) => {
       editorRef.current = editorInstance;
       monacoRef.current = monaco;
 
-      // 应用当前主题
+      // 搴旂敤褰撳墠涓婚
       const themeId = getMonacoThemeId();
       monaco.editor.setTheme(themeId);
 
-      // 监听焦点事件
+      // 鐩戝惉鐒︾偣浜嬩欢
       editorInstance.onDidFocusEditorText(() => {
         onFocus?.();
       });
@@ -204,42 +157,42 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
         onBlur?.();
       });
 
-      // 监听内容变化（非受控模式）
+      // 鐩戝惉鍐呭鍙樺寲锛堥潪鍙楁帶妯″紡锛?
       editorInstance.onDidChangeModelContent(() => {
         const value = editorInstance.getValue();
         onChange?.(value);
         
-        // 更新高度 - 限制最大高度为 400
+        // 鏇存柊楂樺害 - 闄愬埗鏈€澶ч珮搴︿负 400
         const contentHeight = editorInstance.getContentHeight();
         const newHeight = Math.min(Math.max(contentHeight, minHeight), 400);
         setHeight(newHeight);
         setNeedsScroll(contentHeight > newHeight);
       });
 
-      // 初始设置高度
+      // 鍒濆璁剧疆楂樺害
       const contentHeight = editorInstance.getContentHeight();
       const initialHeight = Math.min(Math.max(contentHeight, minHeight), 400);
       setHeight(initialHeight);
       setNeedsScroll(contentHeight > initialHeight);
       
-      // 恢复滚动位置 - 使用 ref 获取最新值
+      // 鎭㈠婊氬姩浣嶇疆 - 浣跨敤 ref 鑾峰彇鏈€鏂板€?
       const scrollTopToRestore = initialScrollTopRef.current;
-      console.log('[CodeBlockMonaco] 恢复滚动位置:', scrollTopToRestore);
+      console.log('[CodeBlockMonaco] 鎭㈠婊氬姩浣嶇疆:', scrollTopToRestore);
       if (scrollTopToRestore > 0) {
-        // 使用 setTimeout 确保 Monaco 编辑器完全初始化
+        // 浣跨敤 setTimeout 纭繚 Monaco 缂栬緫鍣ㄥ畬鍏ㄥ垵濮嬪寲
         setTimeout(() => {
           editorInstance.setScrollTop(scrollTopToRestore);
-          console.log('[CodeBlockMonaco] 设置滚动位置完成:', editorInstance.getScrollTop());
+          console.log('[CodeBlockMonaco] 璁剧疆婊氬姩浣嶇疆瀹屾垚:', editorInstance.getScrollTop());
         }, 100);
       }
       
-      // 回调编辑器实例
-      onEditorMount?.(editorInstance);
+      // 鍥炶皟缂栬緫鍣ㄥ疄渚?
+      onEditorMount?.(editorInstance, monaco);
     },
     [onFocus, onBlur, minHeight, onChange, getMonacoThemeId, onEditorMount]
   );
 
-  // 拖动调整高度
+  // 鎷栧姩璋冩暣楂樺害
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -254,7 +207,7 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
         const newHeight = Math.min(Math.max(startHeight + deltaY, minHeight), maxHeight);
         setHeight(newHeight);
 
-        // 更新滚动条状态
+        // 鏇存柊婊氬姩鏉＄姸鎬?
         if (editorRef.current) {
           const contentHeight = editorRef.current.getContentHeight();
           setNeedsScroll(contentHeight > newHeight);
@@ -273,20 +226,30 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
     [height, minHeight, maxHeight]
   );
 
-  // 使用原生 DOM 事件监听器处理键盘事件
+  // 浣跨敤鍘熺敓 DOM 浜嬩欢鐩戝惉鍣ㄥ鐞嗛敭鐩樹簨浠?
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // 捕获阶段：只拦截被 Electron 菜单劫持的快捷键
+    // 鎹曡幏闃舵锛氬彧鎷︽埅琚?Electron 鑿滃崟鍔寔鐨勫揩鎹烽敭
     const handleKeyDownCapture = (e: KeyboardEvent) => {
       const isCtrlOrMeta = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
 
-      // 只处理被 Electron 菜单劫持的快捷键
+      if (e.key === 'F1') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+
       if (!isCtrlOrMeta) return;
 
-      // 手动处理 Ctrl+Z 撤销
+      if (e.code === 'Space') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -296,7 +259,6 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
         return;
       }
 
-      // 手动处理 Ctrl+Shift+Z 或 Ctrl+Y 重做
       if ((key === 'z' && e.shiftKey) || key === 'y') {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -306,7 +268,6 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
         return;
       }
 
-      // 手动处理 Ctrl+A 全选
       if (key === 'a') {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -314,6 +275,11 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
           editorRef.current.trigger('keyboard', 'editor.action.selectAll', null);
         }
         return;
+      }
+
+      if (key === 'f' || key === 'h' || (key === 'p' && e.shiftKey)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
       }
     };
 
@@ -344,7 +310,17 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
             lineNumbers: 'on',
             lineNumbersMinChars: 4,
             glyphMargin: false,
-            folding: true,
+            folding: false,
+            codeLens: false,
+            lightbulb: { enabled: false },
+            hover: { enabled: false },
+            quickSuggestions: false,
+            suggestOnTriggerCharacters: false,
+            wordBasedSuggestions: false,
+            parameterHints: { enabled: false },
+            inlineSuggest: { enabled: false },
+            occurrencesHighlight: false,
+            selectionHighlight: false,
             wordWrap: 'on',
             automaticLayout: true,
             fontSize: 13,
@@ -366,7 +342,7 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
               alwaysConsumeMouseWheel: false
             }
           }}
-          loading={<div className="code-block-monaco-loading">加载中...</div>}
+          loading={<div className="code-block-monaco-loading">鍔犺浇涓?..</div>}
         />
       </div>
       <div className="code-block-monaco-resize-handle" onMouseDown={handleResizeStart}>
@@ -377,3 +353,4 @@ export const CodeBlockMonaco: React.FC<CodeBlockMonacoProps> = ({
 };
 
 export default CodeBlockMonaco;
+

@@ -19,6 +19,29 @@
     overflow: hidden;
   }
 
+  .cm-large-file-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 0 12px;
+    color: var(--ws-descriptionForeground);
+    background: var(--ws-editorWidget-background);
+    border-bottom: 1px solid var(--ws-panel-border);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .cm-large-file-notice-title {
+    color: var(--ws-foreground);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .cm-large-file-notice-text {
+    min-width: 0;
+  }
+
   // 编辑器容器
   .cm-editor-container {
     flex: 1;
@@ -102,6 +125,45 @@
     flex: 1;
     overflow-y: auto;
     padding: 8px 0;
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+
+    &::-webkit-scrollbar-button,
+    &::-webkit-scrollbar-button:start,
+    &::-webkit-scrollbar-button:end,
+    &::-webkit-scrollbar-button:decrement,
+    &::-webkit-scrollbar-button:increment,
+    &::-webkit-scrollbar-button:vertical:start,
+    &::-webkit-scrollbar-button:vertical:end,
+    &::-webkit-scrollbar-button:horizontal:start,
+    &::-webkit-scrollbar-button:horizontal:end,
+    &::-webkit-scrollbar-button:single-button:vertical:decrement,
+    &::-webkit-scrollbar-button:single-button:vertical:increment,
+    &::-webkit-scrollbar-button:single-button:horizontal:decrement,
+    &::-webkit-scrollbar-button:single-button:horizontal:increment,
+    &::-webkit-scrollbar-button:vertical:start:decrement,
+    &::-webkit-scrollbar-button:vertical:end:increment,
+    &::-webkit-scrollbar-button:horizontal:start:decrement,
+    &::-webkit-scrollbar-button:horizontal:end:increment {
+      -webkit-appearance: none;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      margin: 0 !important;
+      background: transparent !important;
+      border: 0 !important;
+    }
+
+    &::-webkit-scrollbar-track-piece:start,
+    &::-webkit-scrollbar-track-piece:end,
+    &::-webkit-scrollbar-track-piece:vertical:start,
+    &::-webkit-scrollbar-track-piece:vertical:end,
+    &::-webkit-scrollbar-track-piece:horizontal:start,
+    &::-webkit-scrollbar-track-piece:horizontal:end {
+      background: transparent !important;
+      border: 0 !important;
+      margin: 0 !important;
+    }
   }
 
   .cm-outline-list {
@@ -187,8 +249,6 @@
   .cm-editor {
     height: 100%;
     width: 100%;
-    max-width: 900px;
-    margin-top:8px;
     background-color: var(--ws-editor-background);
     color: var(--ws-editor-foreground);
     font-size: 14px;
@@ -200,10 +260,49 @@
 
   .cm-scroller {
     overflow: auto;
-    padding: 10px 20px 16px 60px;
+    padding: 10px 20px 16px 15px;
     box-sizing: border-box;
     max-width: 100%;
     min-width: 0;
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+
+    &::-webkit-scrollbar-button,
+    &::-webkit-scrollbar-button:start,
+    &::-webkit-scrollbar-button:end,
+    &::-webkit-scrollbar-button:decrement,
+    &::-webkit-scrollbar-button:increment,
+    &::-webkit-scrollbar-button:vertical:start,
+    &::-webkit-scrollbar-button:vertical:end,
+    &::-webkit-scrollbar-button:horizontal:start,
+    &::-webkit-scrollbar-button:horizontal:end,
+    &::-webkit-scrollbar-button:single-button:vertical:decrement,
+    &::-webkit-scrollbar-button:single-button:vertical:increment,
+    &::-webkit-scrollbar-button:single-button:horizontal:decrement,
+    &::-webkit-scrollbar-button:single-button:horizontal:increment,
+    &::-webkit-scrollbar-button:vertical:start:decrement,
+    &::-webkit-scrollbar-button:vertical:end:increment,
+    &::-webkit-scrollbar-button:horizontal:start:decrement,
+    &::-webkit-scrollbar-button:horizontal:end:increment {
+      -webkit-appearance: none;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      margin: 0 !important;
+      background: transparent !important;
+      border: 0 !important;
+    }
+
+    &::-webkit-scrollbar-track-piece:start,
+    &::-webkit-scrollbar-track-piece:end,
+    &::-webkit-scrollbar-track-piece:vertical:start,
+    &::-webkit-scrollbar-track-piece:vertical:end,
+    &::-webkit-scrollbar-track-piece:horizontal:start,
+    &::-webkit-scrollbar-track-piece:horizontal:end {
+      background: transparent !important;
+      border: 0 !important;
+      margin: 0 !important;
+    }
   }
 
   // 让 gutter 和内容一起居中
@@ -1027,12 +1126,14 @@
       }
 
       &.selected {
-        outline: 2px solid var(--ws-focusBorder);
-        outline-offset: 2px;
 
         .cm-image-toolbar {
           opacity: 1;
           pointer-events: auto; // 选中时启用点击
+        }
+
+        .cm-image-selection-frame {
+          opacity: 1;
         }
 
         .cm-image-resize-handle {
@@ -1041,11 +1142,21 @@
       }
     }
 
+    .cm-image-layout-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: visible;
+    }
+
     .cm-inline-image {
-      max-width: 100%;
+      max-width: none;
       border-radius: 4px;
       object-fit: contain;
       display: block;
+      flex-shrink: 0;
+      transform-origin: center center;
 
       // 当图片被隐藏时（链接/卡片模式），不占用空间
       &[style*='display: none'] {
@@ -1055,6 +1166,19 @@
     }
 
     // 图片工具栏（在图片上方）- 只在选中时显示
+    .cm-image-selection-frame {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 2px solid var(--ws-focusBorder);
+      border-radius: 6px;
+      box-sizing: border-box;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 2;
+    }
+
     .cm-image-toolbar {
       position: absolute;
       top: -40px;
@@ -1214,6 +1338,8 @@
       border-radius: 2px;
       cursor: se-resize;
       opacity: 0;
+      pointer-events: auto;
+      transform: translate(50%, 50%);
 
       &::before {
         content: '';

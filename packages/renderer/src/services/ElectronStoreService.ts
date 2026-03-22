@@ -95,7 +95,7 @@ interface StoreSchema {
   
   // 笔记编辑器设置
   'note-editor-settings': {
-    defaultEditor: 'monaco' | 'codemirror';
+    defaultEditor: 'codemirror';
     showEditorSwitch: boolean;
     autoSave: boolean;
     autoSaveInterval: number;

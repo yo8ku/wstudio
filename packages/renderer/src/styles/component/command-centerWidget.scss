@@ -1,3 +1,8 @@
-.command-center-widget{
-    background-color: var();//#00212b
+/**
+ * Legacy command center widget shim.
+ * 主样式位于 VSCodeCommandCenter.scss，这里仅保留最小兼容规则。
+ */
+
+.command-center-widget {
+  min-width: 0;
 }

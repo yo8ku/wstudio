@@ -1,15 +1,10 @@
 /**
- * EditorArea 模块导出
- * 功能：统一管理编辑器相关组件的导出
- * 描述：提供模块化的导出接口，便于其他模块引用
+ * EditorArea 组件导出
+ * 功能：统一导出编辑区复用组件和视图入口
  */
 
-export { MonacoContextMenu } from './MonacoContextMenu';
-export { useMonacoContextMenu } from './MonacoContextMenu/useMonacoContextMenu';
-export type { MonacoContextMenuProps } from './MonacoContextMenu/MonacoContextMenu';
-export { GhostTextWidget } from './GhostTextWidget';
-export { AIZoneWidget } from './AIZoneWidget/AIZoneWidget';
-export { CodeDecorationManager } from './CodeDecorationManager';
+export { GroupedContextMenu } from './GroupedContextMenu';
+export type { GroupedContextMenuProps, MenuGroup, MenuItem } from './GroupedContextMenu';
 export { getSendIconSvg, getCloseIconSvg } from './iconHelpers';
 export { TabBar } from './TabBar';
 export type { TabBarProps } from './TabBar';
@@ -21,9 +16,5 @@ export { DecompositionRulesView } from './DecompositionRulesView';
 export { PromptManagementView } from './PromptManagementView';
 export { AddFileMenu } from './AddFileMenu';
 export { Breadcrumb } from './Breadcrumb';
-
-// 主编辑器区域组件
 export { EditorArea } from './EditorArea/EditorArea';
 export type { EditorTab } from './EditorArea/EditorArea';
-export { EditorGroup } from './EditorGroup/EditorGroup';
-export { MonacoEditor } from './MonacoEditor/MonacoEditor';

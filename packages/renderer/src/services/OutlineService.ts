@@ -15,10 +15,22 @@ export class OutlineService {
       return [];
     }
 
-    switch (language) {
+    const normalizedLanguage = language.trim().toLowerCase();
+
+    switch (normalizedLanguage) {
       case 'markdown':
       case 'md':
         return this.parseMarkdown(content);
+
+      case 'plaintext':
+      case 'text': {
+        const markdownNodes = this.parseMarkdown(content);
+        if (markdownNodes.length > 0) {
+          return markdownNodes;
+        }
+
+        return this.parseGeneric(content, normalizedLanguage);
+      }
       
       case 'typescript':
       case 'typescriptreact':
@@ -46,9 +58,15 @@ export class OutlineService {
       case 'html':
         return this.parseHTML(content);
       
-      default:
+      default: {
         // 对于不支持的语言，尝试通用解析
-        return this.parseGeneric(content, language);
+        const genericNodes = this.parseGeneric(content, normalizedLanguage);
+        if (genericNodes.length > 0) {
+          return genericNodes;
+        }
+
+        return this.parseMarkdown(content);
+      }
     }
   }
 

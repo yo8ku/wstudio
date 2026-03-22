@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from '../../Icons/Icon';
 import { AccordionSection } from '../Accordion/AccordionSection';
 import { TimelineItem } from './TimelineItem';
 import { TimelineItem as TimelineItemType } from './types';
@@ -12,14 +13,10 @@ export interface TimelineSectionProps {
   onRefresh?: () => void;
   onSearch?: () => void;
   onFilter?: () => void;
-  showResizeHandle?: boolean; // 是否显示拖动手柄（默认为 true）
+  showResizeHandle?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
 }
 
-/**
- * 时间线面板
- * 显示文件的历史记录
- */
 export const TimelineSection: React.FC<TimelineSectionProps> = ({
   items,
   selectedItem,
@@ -36,7 +33,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({
   if (onPin) {
     actions.push({
       id: 'pin',
-      icon: '📌',
+      icon: <Icon name="star" size={16} />,
       tooltip: '固定到顶部',
       onClick: onPin,
     });
@@ -45,7 +42,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({
   if (onRefresh) {
     actions.push({
       id: 'refresh',
-      icon: '🔄',
+      icon: <Icon name="refresh" size={16} />,
       tooltip: '刷新',
       onClick: onRefresh,
     });
@@ -54,7 +51,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({
   if (onSearch) {
     actions.push({
       id: 'search',
-      icon: '🔍',
+      icon: <Icon name="search" size={16} />,
       tooltip: '搜索',
       onClick: onSearch,
     });
@@ -63,7 +60,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({
   if (onFilter) {
     actions.push({
       id: 'filter',
-      icon: '⋯',
+      icon: <Icon name="filter" size={16} />,
       tooltip: '筛选',
       onClick: onFilter,
     });
@@ -103,4 +100,3 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({
 };
 
 export default TimelineSection;
-

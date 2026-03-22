@@ -129,9 +129,7 @@ export const AIChatSettings: React.FC<AIChatSettingsProps> = ({
               >
                 <Icon name={localConfig.searchEngine} size={10} />
                 <span>{SEARCH_ENGINES[localConfig.searchEngine].displayName}</span>
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="dropdown-icon">
-                  <path d="M6 8L2 4h8z"/>
-                </svg>
+                <Icon name="chevron-down" size={12} className="dropdown-icon" />
               </button>
               
               {isSearchEngineMenuOpen && (

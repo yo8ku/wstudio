@@ -1,15 +1,14 @@
 /**
- * 表格工具栏组件
- * 功能：提供表格的常用操作入口，包括字段设置、筛选、排序、行高、填色、AI等
+ * Table toolbar component.
+ * Provides field settings, filtering, sorting, row height, fill color, and AI actions.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../../Icons/Icon';
 import type { TableColumn, ColumnType } from './types';
 import './TableToolbar.scss';
 
-/** 行高类型 */
 export type RowHeightType = 'low' | 'medium' | 'high' | 'extra-high';
 
 interface TableToolbarProps {
@@ -25,8 +24,14 @@ interface TableToolbarProps {
   onAI?: () => void;
 }
 
-/** 获取列类型对应的图标名称 */
-const getColumnTypeIcon = (type: ColumnType): string => {
+const ROW_HEIGHT_OPTIONS: Array<{ value: RowHeightType; label: string; icon: string }> = [
+  { value: 'low', label: '\u4f4e', icon: 'row-height-low' },
+  { value: 'medium', label: '\u4e2d\u7b49', icon: 'row-height-medium' },
+  { value: 'high', label: '\u9ad8', icon: 'row-height-high' },
+  { value: 'extra-high', label: '\u8d85\u9ad8', icon: 'row-height-extra-high' },
+];
+
+function getColumnTypeIcon(type: ColumnType): string {
   const iconMap: Record<ColumnType, string> = {
     text: 'type-icon',
     number: 'number-hash',
@@ -40,9 +45,9 @@ const getColumnTypeIcon = (type: ColumnType): string => {
     email: 'at-sign',
     password: 'eye-off',
   };
-  return iconMap[type] || 'type-icon';
-};
 
+  return iconMap[type] || 'type-icon';
+}
 
 export const TableToolbar: React.FC<TableToolbarProps> = ({
   columns = [],
@@ -65,7 +70,6 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const rowHeightMenuRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -76,6 +80,7 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
       ) {
         setShowFieldMenu(false);
       }
+
       if (
         rowHeightMenuRef.current &&
         !rowHeightMenuRef.current.contains(event.target as Node) &&
@@ -89,14 +94,13 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
     if (showFieldMenu || showRowHeightMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showFieldMenu, showRowHeightMenu]);
 
-  // 处理字段设置点击
   const handleFieldSettingsClick = () => {
-    console.log('[TableToolbar] handleFieldSettingsClick, columns:', columns.length);
     if (fieldSettingsRef.current) {
       const rect = fieldSettingsRef.current.getBoundingClientRect();
       setMenuPosition({
@@ -104,17 +108,16 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
         left: rect.left,
       });
     }
-    setShowFieldMenu(!showFieldMenu);
+
+    setShowFieldMenu((value) => !value);
     onFieldSettings?.();
   };
 
-  // 处理列可见性切换
   const handleToggleVisibility = (columnId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     onToggleColumnVisibility?.(columnId);
   };
 
-  // 处理行高点击
   const handleRowHeightClick = () => {
     if (rowHeightRef.current) {
       const rect = rowHeightRef.current.getBoundingClientRect();
@@ -123,27 +126,20 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
         left: rect.left,
       });
     }
-    setShowRowHeightMenu(!showRowHeightMenu);
-    setShowFieldMenu(false); // 关闭其他菜单
+
+    setShowRowHeightMenu((value) => !value);
+    setShowFieldMenu(false);
   };
 
-  // 处理行高选择
   const handleRowHeightSelect = (height: RowHeightType) => {
     onRowHeightChange?.(height);
     setShowRowHeightMenu(false);
   };
 
-  // 行高选项配置
-  const rowHeightOptions: { value: RowHeightType; label: string; icon: string }[] = [
-    { value: 'low', label: '低', icon: 'row-height-low' },
-    { value: 'medium', label: '中等', icon: 'row-height-medium' },
-    { value: 'high', label: '高', icon: 'row-height-high' },
-    { value: 'extra-high', label: '超高', icon: 'row-height-extra-high' },
-  ];
-
-  // 渲染行高菜单
   const renderRowHeightMenu = () => {
-    if (!showRowHeightMenu) return null;
+    if (!showRowHeightMenu) {
+      return null;
+    }
 
     return createPortal(
       <div
@@ -155,19 +151,19 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
           left: rowHeightMenuPosition.left,
         }}
       >
-        {rowHeightOptions.map((option) => (
+        {ROW_HEIGHT_OPTIONS.map((option) => (
           <div
             key={option.value}
             className={`row-height-menu-item ${rowHeight === option.value ? 'active' : ''}`}
             onClick={() => handleRowHeightSelect(option.value)}
           >
             <span className="row-height-icon">
-              <Icon name={option.icon} iconSet="ui" size={16} />
+              <Icon name={option.icon} size={16} />
             </span>
             <span className="row-height-label">{option.label}</span>
             {rowHeight === option.value && (
               <span className="row-height-check">
-                <Icon name="check" iconSet="ui" size={14} />
+                <Icon name="check" size={14} />
               </span>
             )}
           </div>
@@ -177,10 +173,10 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
     );
   };
 
-
-  // 渲染字段设置菜单
   const renderFieldMenu = () => {
-    if (!showFieldMenu || columns.length === 0) return null;
+    if (!showFieldMenu || columns.length === 0) {
+      return null;
+    }
 
     return createPortal(
       <div
@@ -192,11 +188,12 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
           left: menuPosition.left,
         }}
       >
-        <div className="field-settings-menu-header">字段设置</div>
+        <div className="field-settings-menu-header">{'\u5b57\u6bb5\u8bbe\u7f6e'}</div>
         <div className="field-settings-menu-list">
           {columns.map((column, index) => {
             const isHidden = hiddenColumns.has(column.id);
             const isFirstColumn = index === 0;
+
             return (
               <div
                 key={column.id}
@@ -206,45 +203,43 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
                   <Icon name={getColumnTypeIcon(column.type)} size={14} />
                 </span>
                 <span className="field-name">{column.name}</span>
-              <div className="field-actions">
-                {isFirstColumn ? (
-                  <>
-                    <span className="field-lock-icon" title="主键列">
-                      <Icon name="lock" size={14} />
-                    </span>
-                    <span
-                      className="field-action-icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // TODO: 更多操作
-                      }}
-                      title="更多"
-                    >
-                      <Icon name="cell-more" size={16} />
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span
-                      className="field-action-icon"
-                      onClick={(e) => handleToggleVisibility(column.id, e)}
-                      title={isHidden ? '显示列' : '隐藏列'}
-                    >
-                      <Icon name={isHidden ? 'eye-off' : 'eye'} iconSet="ui" size={14} />
-                    </span>
-                    <span
-                      className="field-action-icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // TODO: 更多操作
-                      }}
-                      title="更多"
-                    >
-                      <Icon name="cell-more" size={16} />
-                    </span>
-                  </>
-                )}
-              </div>
+                <div className="field-actions">
+                  {isFirstColumn ? (
+                    <>
+                      <span className="field-lock-icon" title={'\u4e3b\u952e\u5217'}>
+                        <Icon name="lock" size={14} />
+                      </span>
+                      <span
+                        className="field-action-icon"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                        title={'\u66f4\u591a'}
+                      >
+                        <Icon name="cell-more" size={16} />
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span
+                        className="field-action-icon"
+                        onClick={(event) => handleToggleVisibility(column.id, event)}
+                        title={isHidden ? '\u663e\u793a\u5217' : '\u9690\u85cf\u5217'}
+                      >
+                        <Icon name={isHidden ? 'eye-off' : 'eye'} size={14} />
+                      </span>
+                      <span
+                        className="field-action-icon"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                        title={'\u66f4\u591a'}
+                      >
+                        <Icon name="cell-more" size={16} />
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -262,36 +257,36 @@ export const TableToolbar: React.FC<TableToolbarProps> = ({
             ref={fieldSettingsRef}
             className={`toolbar-item ${showFieldMenu ? 'active' : ''}`}
             onClick={handleFieldSettingsClick}
-            title="字段设置"
+            title={'\u5b57\u6bb5\u8bbe\u7f6e'}
           >
-            <Icon name="gear" iconSet="ui" size={16} />
-            <span className="toolbar-item-label">字段设置</span>
+            <Icon name="gear" size={16} />
+            <span className="toolbar-item-label">{'\u5b57\u6bb5\u8bbe\u7f6e'}</span>
           </div>
-          <div className="toolbar-item" onClick={onFilter} title="筛选">
-            <i className="codicon codicon-filter" />
-            <span className="toolbar-item-label">筛选</span>
+          <div className="toolbar-item" onClick={onFilter} title={'\u7b5b\u9009'}>
+            <Icon name="filter" size={16} className="toolbar-icon" />
+            <span className="toolbar-item-label">{'\u7b5b\u9009'}</span>
           </div>
-          <div className="toolbar-item" onClick={onSort} title="排序">
-            <Icon name="sort-az" iconSet="ui" size={16} />
-            <span className="toolbar-item-label">排序</span>
+          <div className="toolbar-item" onClick={onSort} title={'\u6392\u5e8f'}>
+            <Icon name="sort-az" size={16} />
+            <span className="toolbar-item-label">{'\u6392\u5e8f'}</span>
           </div>
           <div
             ref={rowHeightRef}
             className={`toolbar-item ${showRowHeightMenu ? 'active' : ''}`}
             onClick={handleRowHeightClick}
-            title="行高"
+            title={'\u884c\u9ad8'}
           >
-            <Icon name={rowHeightOptions.find(opt => opt.value === rowHeight)?.icon || 'row-height-medium'} iconSet="ui" size={16} />
-            <span className="toolbar-item-label">行高</span>
+            <Icon name={ROW_HEIGHT_OPTIONS.find((option) => option.value === rowHeight)?.icon || 'row-height-medium'} size={16} />
+            <span className="toolbar-item-label">{'\u884c\u9ad8'}</span>
           </div>
-          <div className="toolbar-item" onClick={onFillColor} title="填色">
-            <Icon name="paint-bucket" iconSet="ui" size={16} />
-            <span className="toolbar-item-label">填色</span>
+          <div className="toolbar-item" onClick={onFillColor} title={'\u586b\u8272'}>
+            <Icon name="paint-bucket" size={16} />
+            <span className="toolbar-item-label">{'\u586b\u8272'}</span>
           </div>
         </div>
         <div className="table-toolbar-right">
           <div className="toolbar-item" onClick={onAI} title="AI">
-            <i className="codicon codicon-sparkle" style={{ fontSize: '18px' }} />
+            <Icon name="sparkles" size={18} className="toolbar-icon" />
           </div>
         </div>
       </div>

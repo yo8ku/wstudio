@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 export interface OutlineNode {
   id: string;
   name: string;
@@ -41,28 +43,7 @@ export enum OutlineSymbolKind {
 
 export interface OutlineAction {
   id: string;
-  icon: string;
+  icon: ReactNode;
   tooltip: string;
   onClick: () => void;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

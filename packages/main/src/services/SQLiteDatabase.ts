@@ -72,7 +72,9 @@ function toSqlValues(values: unknown[]): SqlValue[] {
 export class SQLiteDatabase {
   private SQL: SqlJsStatic | null = null;
   private db: Database | null = null;
-  private dbPath: string;
+  private readonly dbFileName: string;
+  private readonly customPath?: string;
+  private dbPath: string = '';
   private initialized: boolean = false;
   private initializing: Promise<void> | null = null;
   private transactionDepth: number = 0;
@@ -83,12 +85,25 @@ export class SQLiteDatabase {
    * @param customPath 自定义数据库文件路径（可选，默认使用用户数据目录）
    */
   constructor(dbFileName: string, customPath?: string) {
-    if (customPath) {
-      this.dbPath = path.join(customPath, dbFileName);
-    } else {
-      const userDataPath = app.getPath('userData');
-      this.dbPath = path.join(userDataPath, dbFileName);
+    this.dbFileName = dbFileName;
+    this.customPath = customPath;
+  }
+
+  private resolveUserDataPath(): string {
+    if (!app) {
+      throw new Error('[SQLiteDatabase] Electron app is unavailable before initialization');
     }
+
+    return app.getPath('userData');
+  }
+
+  private ensureDbPath(): void {
+    if (this.dbPath) {
+      return;
+    }
+
+    const basePath = this.customPath ?? this.resolveUserDataPath();
+    this.dbPath = path.join(basePath, this.dbFileName);
   }
 
   /**
@@ -108,6 +123,8 @@ export class SQLiteDatabase {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
+
+    this.ensureDbPath();
 
     try {
       // 初始化 SQL.js

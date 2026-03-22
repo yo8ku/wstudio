@@ -6,6 +6,8 @@
 import { ipcMain, shell, dialog, BrowserWindow } from 'electron';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import iconv from 'iconv-lite';
+import type { SettingsManager } from '../config/SettingsManager';
 import { workspaceVectorIndexService } from '../services/WorkspaceVectorIndexService';
 
 /** 文件过滤器类型 */
@@ -28,17 +30,197 @@ interface OpenDialogResult {
   filePaths: string[];
 }
 
+type TextFileEncoding = 'utf8' | 'utf8bom' | 'utf16le' | 'utf16be' | 'gbk';
+type FileSystemEncoding = TextFileEncoding | 'base64';
+
+const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf]);
+const UTF16LE_BOM = Buffer.from([0xff, 0xfe]);
+const UTF16BE_BOM = Buffer.from([0xfe, 0xff]);
+
+const normalizeTextEncoding = (
+  encoding: string | undefined,
+  fallback: TextFileEncoding,
+): TextFileEncoding => {
+  const normalized = encoding?.trim().toLowerCase().replace(/[-_]/g, '');
+
+  switch (normalized) {
+    case 'utf8':
+      return 'utf8';
+    case 'utf8bom':
+      return 'utf8bom';
+    case 'utf16':
+    case 'utf16le':
+      return 'utf16le';
+    case 'utf16be':
+      return 'utf16be';
+    case 'gbk':
+    case 'gb2312':
+    case 'gb18030':
+      return 'gbk';
+    default:
+      return fallback;
+  }
+};
+
+const normalizeFileSystemEncoding = (
+  encoding: string | undefined,
+  fallback: TextFileEncoding,
+): FileSystemEncoding => {
+  const normalized = encoding?.trim().toLowerCase();
+
+  if (normalized === 'base64') {
+    return 'base64';
+  }
+
+  return normalizeTextEncoding(encoding, fallback);
+};
+
+const stripByteOrderMark = (content: string): string => (
+  content.charCodeAt(0) === 0xfeff ? content.slice(1) : content
+);
+
+const detectBomEncoding = (buffer: Buffer): TextFileEncoding | null => {
+  if (buffer.length >= UTF8_BOM.length && buffer.subarray(0, UTF8_BOM.length).equals(UTF8_BOM)) {
+    return 'utf8bom';
+  }
+
+  if (buffer.length >= UTF16LE_BOM.length && buffer.subarray(0, UTF16LE_BOM.length).equals(UTF16LE_BOM)) {
+    return 'utf16le';
+  }
+
+  if (buffer.length >= UTF16BE_BOM.length && buffer.subarray(0, UTF16BE_BOM.length).equals(UTF16BE_BOM)) {
+    return 'utf16be';
+  }
+
+  return null;
+};
+
+const decodeTextBuffer = (buffer: Buffer, encoding: TextFileEncoding): string => {
+  switch (encoding) {
+    case 'utf8':
+    case 'utf8bom':
+      return stripByteOrderMark(iconv.decode(buffer, 'utf8'));
+    case 'utf16le':
+      return stripByteOrderMark(iconv.decode(buffer, 'utf16le'));
+    case 'utf16be':
+      return stripByteOrderMark(iconv.decode(buffer, 'utf16be'));
+    case 'gbk':
+      return iconv.decode(buffer, 'gbk');
+  }
+};
+
+const encodeTextContent = (content: string, encoding: TextFileEncoding): Buffer => {
+  switch (encoding) {
+    case 'utf8':
+      return iconv.encode(content, 'utf8');
+    case 'utf8bom':
+      return Buffer.concat([UTF8_BOM, iconv.encode(content, 'utf8')]);
+    case 'utf16le':
+      return Buffer.concat([UTF16LE_BOM, iconv.encode(content, 'utf16le')]);
+    case 'utf16be':
+      return Buffer.concat([UTF16BE_BOM, iconv.encode(content, 'utf16be')]);
+    case 'gbk':
+      return iconv.encode(content, 'gbk');
+  }
+};
+
+const getDefaultTextEncoding = (settingsManager: SettingsManager): TextFileEncoding => (
+  normalizeTextEncoding(settingsManager.get('files.encoding'), 'utf8')
+);
+
+const resolveReadEncoding = (
+  buffer: Buffer,
+  encoding: string | undefined,
+  settingsManager: SettingsManager,
+): TextFileEncoding => {
+  if (typeof encoding === 'string' && encoding.trim().length > 0) {
+    return normalizeTextEncoding(encoding, getDefaultTextEncoding(settingsManager));
+  }
+
+  return detectBomEncoding(buffer) ?? getDefaultTextEncoding(settingsManager);
+};
+
+const ensureFileAccessible = async (filePath: string): Promise<void> => {
+  try {
+    await fs.access(filePath);
+  } catch (error) {
+    console.error('[FileHandlers] 文件不存在:', filePath);
+    throw new Error(`文件不存在: ${filePath}`);
+  }
+};
+
+const readTextFile = async (
+  filePath: string,
+  encoding: string | undefined,
+  settingsManager: SettingsManager,
+): Promise<string> => {
+  await ensureFileAccessible(filePath);
+  const buffer = await fs.readFile(filePath);
+  const resolvedEncoding = resolveReadEncoding(buffer, encoding, settingsManager);
+  return decodeTextBuffer(buffer, resolvedEncoding);
+};
+
+const readFileByEncoding = async (
+  filePath: string,
+  encoding: string | undefined,
+  settingsManager: SettingsManager,
+): Promise<string> => {
+  await ensureFileAccessible(filePath);
+  const buffer = await fs.readFile(filePath);
+  const resolvedEncoding = normalizeFileSystemEncoding(encoding, getDefaultTextEncoding(settingsManager));
+
+  if (resolvedEncoding === 'base64') {
+    return buffer.toString('base64');
+  }
+
+  return decodeTextBuffer(buffer, resolveReadEncoding(buffer, encoding, settingsManager));
+};
+
+const ensureParentDirectory = async (filePath: string): Promise<void> => {
+  const dir = path.dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+};
+
+const writeTextFile = async (
+  filePath: string,
+  content: string,
+  encoding: string | undefined,
+  settingsManager: SettingsManager,
+): Promise<void> => {
+  await ensureParentDirectory(filePath);
+  const resolvedEncoding = normalizeTextEncoding(encoding, getDefaultTextEncoding(settingsManager));
+  await fs.writeFile(filePath, encodeTextContent(content, resolvedEncoding));
+};
+
+const writeFileByEncoding = async (
+  filePath: string,
+  content: string,
+  encoding: string | undefined,
+  settingsManager: SettingsManager,
+): Promise<void> => {
+  await ensureParentDirectory(filePath);
+  const resolvedEncoding = normalizeFileSystemEncoding(encoding, getDefaultTextEncoding(settingsManager));
+
+  if (resolvedEncoding === 'base64') {
+    await fs.writeFile(filePath, Buffer.from(content, 'base64'));
+    return;
+  }
+
+  await fs.writeFile(filePath, encodeTextContent(content, resolvedEncoding));
+};
+
 // 防止重复注册的标志
 let isRegistered = false;
 
 /**
  * 注册文件操作相关的 IPC 处理器
  */
-export function registerFileHandlers(): void {
+export function registerFileHandlers(settingsManager: SettingsManager): void {
   
   // 移除可能存在的旧处理器（防止热重载时重复注册）
   const handlersToRemove = [
-    'read-file', 'write-file', 'file-exists', 'file-stat', 'folder:rename', 'folder:delete', 'folder:reveal-in-explorer', 'delete-file', 'file:show-open-dialog', 'file:read-binary'
+    'read-file', 'write-file', 'file-exists', 'file-stat', 'folder:rename', 'folder:delete', 'folder:reveal-in-explorer', 'delete-file', 'file:show-open-dialog', 'file:read-binary',
+    'fs:read-file', 'fs:write-file', 'fs:exists'
   ];
   
   for (const handler of handlersToRemove) {
@@ -92,23 +274,20 @@ export function registerFileHandlers(): void {
   /**
    * 读取文件内容
    */
-  ipcMain.handle('read-file', async (event, filePath: string) => {
+  ipcMain.handle('read-file', async (_event, filePath: string, encoding?: string) => {
     try {
-      
-      // 检查文件是否存在
-      try {
-        await fs.access(filePath);
-      } catch (error) {
-        console.error('[FileHandlers] 文件不存在:', filePath);
-        throw new Error(`文件不存在: ${filePath}`);
-      }
-      
-      // 读取文件内容
-      const content = await fs.readFile(filePath, 'utf-8');
-      
-      return content;
+      return await readTextFile(filePath, encoding, settingsManager);
     } catch (error) {
       console.error('[FileHandlers] 读取文件失败:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('fs:read-file', async (_event, filePath: string, encoding?: string) => {
+    try {
+      return await readFileByEncoding(filePath, encoding, settingsManager);
+    } catch (error) {
+      console.error('[FileHandlers] 文件系统读取失败:', error);
       throw error;
     }
   });
@@ -116,16 +295,9 @@ export function registerFileHandlers(): void {
   /**
    * 写入文件内容
    */
-  ipcMain.handle('write-file', async (event, filePath: string, content: string) => {
+  ipcMain.handle('write-file', async (_event, filePath: string, content: string, encoding?: string) => {
     try {
-      
-      // 确保目录存在
-      const dir = path.dirname(filePath);
-      await fs.mkdir(dir, { recursive: true });
-      
-      // 写入文件内容
-      await fs.writeFile(filePath, content, 'utf-8');
-      
+      await writeTextFile(filePath, content, encoding, settingsManager);
       return { success: true };
     } catch (error) {
       console.error('[FileHandlers] 写入文件失败:', error);
@@ -133,17 +305,30 @@ export function registerFileHandlers(): void {
     }
   });
 
+  ipcMain.handle('fs:write-file', async (_event, filePath: string, content: string, encoding?: string) => {
+    try {
+      await writeFileByEncoding(filePath, content, encoding, settingsManager);
+      return { success: true };
+    } catch (error) {
+      console.error('[FileHandlers] 文件系统写入失败:', error);
+      throw error;
+    }
+  });
+
   /**
    * 检查文件是否存在
    */
-  ipcMain.handle('file-exists', async (event, filePath: string) => {
+  const handleFileExists = async (_event: Electron.IpcMainInvokeEvent, filePath: string) => {
     try {
       await fs.access(filePath);
       return true;
     } catch (error) {
       return false;
     }
-  });
+  };
+
+  ipcMain.handle('file-exists', handleFileExists);
+  ipcMain.handle('fs:exists', handleFileExists);
 
   /**
    * 获取文件信息

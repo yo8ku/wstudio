@@ -13,7 +13,7 @@
   max-height: 35px;
   flex-shrink: 0;
   position: relative;
-  z-index: 10; /* 确保在 ai-zone-border 上方 */
+  z-index: 10; /* 确保位于 AI 输入边框层之上 */
   user-select: none;
   overflow: hidden;
   background-color: var(--ws-editorGroupHeader-tabsBackground, var(--vscode-editorGroupHeader-tabsBackground, #252526));

@@ -19,8 +19,6 @@ export { EditorArea } from './EditorArea';
 export { TabBar } from './EditorArea';
 export type { TabBarProps } from './EditorArea';
 export { Breadcrumb } from './EditorArea';
-export { EditorGroup } from './EditorArea';
-export { MonacoEditor } from './EditorArea';
 
 export type { EditorTab } from './EditorArea/EditorArea/EditorArea';
 export type { ActivityBarItem } from './ActivityBar/ActivityBar';

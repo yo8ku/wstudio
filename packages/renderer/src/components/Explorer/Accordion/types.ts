@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react';
+
 export interface AccordionSectionProps {
   title: string;
-  icon?: string;
+  icon?: ReactNode;
   defaultExpanded?: boolean;
   actions?: AccordionAction[];
   children: React.ReactNode;
@@ -10,14 +12,13 @@ export interface AccordionSectionProps {
   minHeight?: number;
   maxHeight?: number;
   onHeightChange?: (height: number) => void;
-  flexGrow?: boolean; // 是否自动占据剩余空间（用于文件树）
-  showResizeHandle?: boolean; // 是否显示拖动手柄（默认为 true）
+  flexGrow?: boolean;
+  showResizeHandle?: boolean;
 }
 
 export interface AccordionAction {
   id: string;
-  icon: string;
+  icon: ReactNode;
   tooltip: string;
   onClick: () => void;
 }
-

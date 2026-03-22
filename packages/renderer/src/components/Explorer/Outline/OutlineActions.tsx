@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from '../../Icons/Icon';
 
 export interface OutlineActionsProps {
   onSort?: () => void;
@@ -16,10 +17,10 @@ export const OutlineActions: React.FC<OutlineActionsProps> = ({
       {onCollapse && (
         <div
           className="outline-action-button"
-          title="折叠所有"
+          title="折叠全部"
           onClick={onCollapse}
         >
-          <i className="codicon codicon-collapse-all" />
+          <Icon name="collapse-all" size={16} />
         </div>
       )}
       {onFilter && (
@@ -28,7 +29,7 @@ export const OutlineActions: React.FC<OutlineActionsProps> = ({
           title="筛选"
           onClick={onFilter}
         >
-          <i className="codicon codicon-filter" />
+          <Icon name="filter" size={16} />
         </div>
       )}
     </div>

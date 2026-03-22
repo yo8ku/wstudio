@@ -17,7 +17,9 @@
 }
 
 
-[data-theme-mode=dark] .command-center,
+[data-theme-mode=dark] .command-center{
+    border:1px solid rgb(129 129 129 / 7%)
+}
 // 菜单栏 菜单边框
 [data-theme-mode=dark] .titlebar-dropdown,
 [data-theme-mode=dark] .titlebar-submenu

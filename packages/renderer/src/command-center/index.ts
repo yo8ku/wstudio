@@ -6,7 +6,6 @@ export { VSCodeCommandCenter } from './VSCodeCommandCenter';
 export { IconThemeCommandProvider } from './IconThemeCommandProvider';
 export { ThemeCommandProvider } from './ThemeCommandProvider';
 export { MarkdownCommandProvider } from './MarkdownCommandProvider';
-export { MonacoMarkdownActions } from './MonacoMarkdownActions';
 export { FileCommandProvider } from './FileCommandProvider';
 export { AIConfigCommandProvider } from './AIConfigCommandProvider';
 export { ExtensionDevelopmentCommandProvider } from './ExtensionDevelopmentCommandProvider';

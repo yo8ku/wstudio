@@ -3,8 +3,12 @@ import { FileTreeSection } from './FileTree/FileTreeSection';
 import { TimelineSection } from './Timeline/TimelineSection';
 import { FormSection } from './Form';
 import { FileTreeNode } from './FileTree/types';
+import { OutlineSection } from './Outline/OutlineSection';
+import { OutlineNode as OutlineNodeType } from './Outline/types';
 import { TimelineItem } from './Timeline/types';
 import { ContextMenu, ContextMenuItem } from './Common/ContextMenu';
+import { LuChevronsDownUp, LuChevronsUpDown, LuDiscAlbum } from 'react-icons/lu';
+import { VscListUnordered } from 'react-icons/vsc';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -15,14 +19,26 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '../common/AlertDialog/AlertDialog';
+import { CustomScrollbar } from '../common/CustomScrollbar';
 import './ExplorerView.scss';
+
+type WorkspaceHeaderActionMode = 'collapse-all' | 'expand-all';
 
 export interface ExplorerViewProps {
   // 鏂囦欢鏍?
   rootName?: string;
   rootPath?: string;
   fileTreeNodes?: FileTreeNode[];
+  outlineNodes?: OutlineNodeType[];
+  selectedOutlineNode?: OutlineNodeType | null;
   selectedFilePath?: string;
+  fileTreeRevealRequest?: {
+    id: number;
+    path: string;
+  } | null;
+  workspaceHeaderActionMode?: WorkspaceHeaderActionMode;
+  canRevealCurrentFile?: boolean;
+  isOutlineViewActive?: boolean;
   
   // 鏃堕棿绾?
   timelineItems?: TimelineItem[];
@@ -37,7 +53,13 @@ export interface ExplorerViewProps {
   onNewFile?: () => void;
   onNewFolder?: () => void;
   onRefresh?: () => void;
+  onExpandAll?: () => void;
   onCollapseAll?: () => void;
+  onToggleOutlineView?: () => void;
+  onRevealCurrentFile?: () => void;
+  onOutlineNodeSelect?: (node: OutlineNodeType) => void;
+  onOutlineNodeToggle?: (node: OutlineNodeType) => void;
+  onCollapseOutline?: () => void;
   onCreateConfirm?: (node: FileTreeNode, name: string) => void;
   onCreateCancel?: (node: FileTreeNode) => void;
   onRename?: (node: FileTreeNode, newName: string) => void;
@@ -54,7 +76,13 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   rootName = 'MY-PROJECT',
   rootPath = '',
   fileTreeNodes = [],
+  outlineNodes = [],
+  selectedOutlineNode = null,
   selectedFilePath = '',
+  fileTreeRevealRequest = null,
+  workspaceHeaderActionMode = 'collapse-all',
+  canRevealCurrentFile = false,
+  isOutlineViewActive = false,
   timelineItems = [],
   onFileClick,
   onFileDoubleClick,
@@ -63,7 +91,13 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   onNewFile,
   onNewFolder,
   onRefresh,
+  onExpandAll,
   onCollapseAll,
+  onToggleOutlineView,
+  onRevealCurrentFile,
+  onOutlineNodeSelect,
+  onOutlineNodeToggle,
+  onCollapseOutline,
   onCreateConfirm,
   onCreateCancel,
   onRename,
@@ -71,8 +105,6 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   initialFormExpanded = false,
   onFormExpandedChange,
 }) => {
-  
-  const [selectedFile, setSelectedFile] = useState<FileTreeNode | null>(null);
   const [selectedTimelineItem, setSelectedTimelineItem] = useState<TimelineItem | null>(null);
   const [contextMenuState, setContextMenuState] = useState<{
     position: { x: number; y: number };
@@ -337,7 +369,6 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   // 澶勭悊鏂囦欢鐐瑰嚮
   const handleFileClick = (node: FileTreeNode) => {
     setContextMenuSelectionPath(null);
-    setSelectedFile(node);
     onFileClick?.(node);
   };
 
@@ -853,74 +884,224 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   // 鏃堕棿绾垮缁堟樉绀烘嫋鍔ㄦ墜鏌勶紙鍙鑷繁鏄睍寮€鐘舵€侊級
   // 鍥犱负瀹冧娇鐢?flexGrow + resizable 妯″紡锛屽簲璇ュ缁堝彲浠ヨ皟鏁撮珮搴?
   const canTimelineResize = true;
+  const showExpandAllAction = workspaceHeaderActionMode === 'expand-all';
+  const canHandleOutlineViewToggle = Boolean(onToggleOutlineView);
+  const canHandleWorkspaceHeaderAction =
+    !isOutlineViewActive && Boolean(onExpandAll || onCollapseAll);
+  const canHandleRevealCurrentFile =
+    !isOutlineViewActive && canRevealCurrentFile && Boolean(onRevealCurrentFile);
+  const outlineToggleTitle = isOutlineViewActive ? '资源管理器' : '大纲';
+  const workspaceHeaderActionTitle = showExpandAllAction ? '展开全部' : '折叠全部';
+  const revealCurrentFileTitle = '定位当前文件';
+  const handleOutlineViewToggleAction = (): void => {
+    if (!canHandleOutlineViewToggle) {
+      return;
+    }
+
+    onToggleOutlineView?.();
+  };
+  const handleRevealCurrentFileAction = (): void => {
+    if (!canHandleRevealCurrentFile) {
+      return;
+    }
+
+    onRevealCurrentFile?.();
+  };
+  const handleWorkspaceHeaderAction = (): void => {
+    if (!canHandleWorkspaceHeaderAction) {
+      return;
+    }
+
+    if (showExpandAllAction) {
+      if (onExpandAll) {
+        onExpandAll();
+        return;
+      }
+
+      onCollapseAll?.();
+      return;
+    }
+
+    if (onCollapseAll) {
+      onCollapseAll();
+      return;
+    }
+
+    onExpandAll?.();
+  };
+  const handleOutlineViewToggleKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+  ): void => {
+    if (!canHandleOutlineViewToggle || (event.key !== 'Enter' && event.key !== ' ')) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    handleOutlineViewToggleAction();
+  };
+  const handleRevealCurrentFileKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+  ): void => {
+    if (!canHandleRevealCurrentFile || (event.key !== 'Enter' && event.key !== ' ')) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    handleRevealCurrentFileAction();
+  };
+  const handleWorkspaceHeaderActionKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+  ): void => {
+    if (!canHandleWorkspaceHeaderAction || (event.key !== 'Enter' && event.key !== ' ')) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    handleWorkspaceHeaderAction();
+  };
 
   return (
     <div className="explorer-view">
-      {/* 鏂囦欢鏍?*/}
-      <div className="explorer-workspace-title">{'\u5DE5\u4F5C\u533A'}</div>
+      <div className="explorer-workspace-title">
+        <div className="explorer-workspace-title-actions">
+          <div
+            role="button"
+            tabIndex={canHandleOutlineViewToggle ? 0 : -1}
+            className={`explorer-workspace-title-icon${canHandleOutlineViewToggle ? '' : ' is-disabled'}${isOutlineViewActive ? ' is-active' : ''}`}
+            aria-disabled={!canHandleOutlineViewToggle}
+            aria-pressed={isOutlineViewActive}
+            onMouseDown={(event): void => {
+              event.stopPropagation();
+            }}
+            onClick={(): void => {
+              handleOutlineViewToggleAction();
+            }}
+            onKeyDown={handleOutlineViewToggleKeyDown}
+            title={outlineToggleTitle}
+            aria-label={outlineToggleTitle}
+          >
+            <VscListUnordered size={17} />
+          </div>
+          <div
+            role="button"
+            tabIndex={canHandleRevealCurrentFile ? 0 : -1}
+            className={`explorer-workspace-title-icon${canHandleRevealCurrentFile ? '' : ' is-disabled'}`}
+            aria-disabled={!canHandleRevealCurrentFile}
+            onMouseDown={(event): void => {
+              event.stopPropagation();
+            }}
+            onClick={(): void => {
+              handleRevealCurrentFileAction();
+            }}
+            onKeyDown={handleRevealCurrentFileKeyDown}
+            title={revealCurrentFileTitle}
+            aria-label={revealCurrentFileTitle}
+          >
+            <LuDiscAlbum size={16} />
+          </div>
+          <div
+            role="button"
+            tabIndex={canHandleWorkspaceHeaderAction ? 0 : -1}
+            className={`explorer-workspace-title-icon${canHandleWorkspaceHeaderAction ? '' : ' is-disabled'}`}
+            aria-disabled={!canHandleWorkspaceHeaderAction}
+            onMouseDown={(event): void => {
+              event.stopPropagation();
+            }}
+            onClick={(): void => {
+              handleWorkspaceHeaderAction();
+            }}
+            onKeyDown={handleWorkspaceHeaderActionKeyDown}
+            title={workspaceHeaderActionTitle}
+            aria-label={workspaceHeaderActionTitle}
+          >
+            {showExpandAllAction ? <LuChevronsUpDown size={16} /> : <LuChevronsDownUp size={16} />}
+          </div>
+        </div>
+      </div>
 
-      <FileTreeSection
-        rootName={rootName}
-        rootPath={rootPath}
-        nodes={fileTreeNodes}
-        selectedFilePath={selectedFilePath}
-        contextMenuSelectionPath={contextMenuSelectionPath || undefined}
-        callbacks={{
-          onFileClick: handleFileClick,
-          onFileDoubleClick: handleFileDoubleClick,
-          onFolderToggle: handleFolderToggle,
-          onContextMenu: handleFileContextMenu,
-          onCreateConfirm: onCreateConfirm,
-          onCreateCancel: onCreateCancel,
-          onRename: onRename,
-        }}
-        onNewFile={fileTreeNodes.length === 0 && !rootPath ? undefined : onNewFile}
-        onNewFolder={fileTreeNodes.length === 0 && !rootPath ? undefined : onNewFolder}
-        onRefresh={onRefresh}
-        onCollapseAll={onCollapseAll}
-        onExpandedChange={setIsFileTreeExpanded}
-        onBlankAreaClick={onBlankAreaClick}
-        onContainerContextMenu={handleTreeBackgroundContextMenu}
-      />
+      <CustomScrollbar className="explorer-view-content" scrollbarWidth={10}>
+        {isOutlineViewActive ? (
+          <OutlineSection
+            nodes={outlineNodes}
+            selectedNode={selectedOutlineNode}
+            defaultExpanded
+            onNodeSelect={(node): void => {
+              onOutlineNodeSelect?.(node);
+            }}
+            onNodeToggle={onOutlineNodeToggle}
+            onCollapse={onCollapseOutline}
+            showResizeHandle={false}
+          />
+        ) : (
+          <>
+            <FileTreeSection
+              rootName={rootName}
+              rootPath={rootPath}
+              nodes={fileTreeNodes}
+              selectedFilePath={selectedFilePath}
+              revealRequest={fileTreeRevealRequest}
+              contextMenuSelectionPath={contextMenuSelectionPath || undefined}
+              callbacks={{
+                onFileClick: handleFileClick,
+                onFileDoubleClick: handleFileDoubleClick,
+                onFolderToggle: handleFolderToggle,
+                onContextMenu: handleFileContextMenu,
+                onCreateConfirm: onCreateConfirm,
+                onCreateCancel: onCreateCancel,
+                onRename: onRename,
+              }}
+              onNewFile={fileTreeNodes.length === 0 && !rootPath ? undefined : onNewFile}
+              onNewFolder={fileTreeNodes.length === 0 && !rootPath ? undefined : onNewFolder}
+              onRefresh={onRefresh}
+              onExpandedChange={setIsFileTreeExpanded}
+              onBlankAreaClick={onBlankAreaClick}
+              onContainerContextMenu={handleTreeBackgroundContextMenu}
+            />
 
-      {/* 琛ㄥ崟 */}
-      <FormSection
-        forms={forms}
-        groups={formGroups}
-        selectedFormId={selectedFormId}
-        selectedGroupId={selectedGroupId}
-        onFormClick={handleFormClick}
-        onFormDoubleClick={handleFormDoubleClick}
-        onGroupClick={handleGroupClick}
-        onGroupToggle={handleGroupToggle}
-        onNewForm={handleNewForm}
-        onNewGroup={handleNewGroup}
-        onExpandedChange={(expanded) => {
-          setIsFormExpanded(expanded);
-          onFormExpandedChange?.(expanded);
-        }}
-        onOpenForm={handleOpenForm}
-        onOpenFormInNewTab={handleOpenFormInNewTab}
-        onRenameForm={handleRenameForm}
-        onDeleteForm={handleDeleteForm}
-        onRenameGroup={handleRenameGroup}
-        onDeleteGroup={handleDeleteGroup}
-      />
+            {/* 琛ㄥ崟 */}
+            <FormSection
+              forms={forms}
+              groups={formGroups}
+              selectedFormId={selectedFormId}
+              selectedGroupId={selectedGroupId}
+              onFormClick={handleFormClick}
+              onFormDoubleClick={handleFormDoubleClick}
+              onGroupClick={handleGroupClick}
+              onGroupToggle={handleGroupToggle}
+              onNewForm={handleNewForm}
+              onNewGroup={handleNewGroup}
+              onExpandedChange={(expanded) => {
+                setIsFormExpanded(expanded);
+                onFormExpandedChange?.(expanded);
+              }}
+              onOpenForm={handleOpenForm}
+              onOpenFormInNewTab={handleOpenFormInNewTab}
+              onRenameForm={handleRenameForm}
+              onDeleteForm={handleDeleteForm}
+              onRenameGroup={handleRenameGroup}
+              onDeleteGroup={handleDeleteGroup}
+            />
 
-      {/* 鏃堕棿绾?*/}
-      {timelineItems.length > 0 && (
-        <TimelineSection
-          items={timelineItems}
-          selectedItem={selectedTimelineItem}
-          onItemClick={handleTimelineItemClick}
-          onPin={() => console.log('Pin timeline')}
-          onRefresh={() => console.log('Refresh timeline')}
-          onSearch={() => console.log('Search timeline')}
-          onFilter={() => console.log('Filter timeline')}
-          showResizeHandle={canTimelineResize}
-          onExpandedChange={setIsTimelineExpanded}
-        />
-      )}
+            {/* 鏃堕棿绾?*/}
+            {timelineItems.length > 0 && (
+              <TimelineSection
+                items={timelineItems}
+                selectedItem={selectedTimelineItem}
+                onItemClick={handleTimelineItemClick}
+                onPin={() => console.log('Pin timeline')}
+                onRefresh={() => console.log('Refresh timeline')}
+                onSearch={() => console.log('Search timeline')}
+                onFilter={() => console.log('Filter timeline')}
+                showResizeHandle={canTimelineResize}
+                onExpandedChange={setIsTimelineExpanded}
+              />
+            )}
+          </>
+        )}
+      </CustomScrollbar>
 
       {contextMenuState && (
         <ContextMenu

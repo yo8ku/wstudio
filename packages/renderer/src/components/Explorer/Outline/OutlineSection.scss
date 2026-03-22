@@ -1,109 +1,136 @@
-// 大纲部分的外层容器
 .outline-section {
-  // 固定在底部，不占据额外空间
   display: flex;
   flex-direction: column;
-  flex: 0 0 auto; // 不伸缩，保持固定高度
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
-
-  // 展开状态：使用 CSS 变量设置高度
-  &.outline-section--expanded {
-    height: var(--outline-height, 300px);
-  }
-
-  // 折叠状态：自动高度
-  &.outline-section--collapsed {
-    height: auto;
-  }
-
-  // 确保 ExplorerSection 占满空间
-  .explorer-section-accordion {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    // border-top: 1px solid var(--ws-button-background);
-  }
-
-  // 为大纲内容设置最小高度
-  .explorer-section-content {
-    min-height: 120px !important; // 设置最小高度，确保有展开效果
-  }
 }
 
 .outline-content {
-  padding: 2px 0;
-  flex: 1 !important;
-  /* 占据剩余空间 */
-  min-height: 0 !important;
-  /* 允许flex正常工作 */
-  overflow: auto !important;
-  /* 内容可滚动 */
-  display: flex !important;
-  flex-direction: column !important;
-  height: 100% !important;
-  /* 确保占满高度 */
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 
-  .outline-empty {
-    padding: 12px 20px;
-    font-size: 13px;
-    font-style: italic;
+  &::-webkit-scrollbar-button,
+  &::-webkit-scrollbar-button:start,
+  &::-webkit-scrollbar-button:end,
+  &::-webkit-scrollbar-button:decrement,
+  &::-webkit-scrollbar-button:increment,
+  &::-webkit-scrollbar-button:vertical:start,
+  &::-webkit-scrollbar-button:vertical:end,
+  &::-webkit-scrollbar-button:horizontal:start,
+  &::-webkit-scrollbar-button:horizontal:end,
+  &::-webkit-scrollbar-button:single-button:vertical:decrement,
+  &::-webkit-scrollbar-button:single-button:vertical:increment,
+  &::-webkit-scrollbar-button:single-button:horizontal:decrement,
+  &::-webkit-scrollbar-button:single-button:horizontal:increment,
+  &::-webkit-scrollbar-button:vertical:start:decrement,
+  &::-webkit-scrollbar-button:vertical:end:increment,
+  &::-webkit-scrollbar-button:horizontal:start:decrement,
+  &::-webkit-scrollbar-button:horizontal:end:increment {
+    -webkit-appearance: none;
+    display: none;
+    width: 0;
+    height: 0;
+    margin: 0;
+    background: transparent;
+    border: 0;
   }
 
-  .outline-node {
-    user-select: none;
+  &::-webkit-scrollbar-track-piece:start,
+  &::-webkit-scrollbar-track-piece:end,
+  &::-webkit-scrollbar-track-piece:vertical:start,
+  &::-webkit-scrollbar-track-piece:vertical:end,
+  &::-webkit-scrollbar-track-piece:horizontal:start,
+  &::-webkit-scrollbar-track-piece:horizontal:end {
+    background: transparent;
+    border: 0;
+    margin: 0;
+  }
+}
 
+.outline-empty {
+  padding: 12px 20px;
+  font-size: 13px;
+  font-style: italic;
+}
 
-    .outline-node-content {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      padding: 1px 8px;
-      cursor: pointer;
-      min-height: 18px;
-      margin-top: 5px;
+.outline-node {
+  user-select: none;
+}
 
-      &:hover {
-        background: var(--ws-button-background);
-        color: var(--ws-button-secondaryForeground);
-      }
+.outline-children {
+  position: relative;
 
-      .outline-chevron {
-        font-size: 10px;
-        width: 12px;
-        display: inline-block;
-        flex-shrink: 0;
-      }
-
-      .outline-icon {
-        font-size: 12px;
-        line-height: 1;
-        flex-shrink: 0;
-      }
-
-      .outline-name {
-        flex: 1;
-        font-size: 13px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-    }
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: var(--ws-tree-indentGuidesStroke, rgba(85, 85, 85, 0.4));
+    pointer-events: none;
   }
 
-  .outline-actions {
-    display: flex;
-    gap: 4px;
-
-    .outline-action-button {
-      border: none;
-      cursor: pointer;
-      padding: 4px;
-      font-size: 16px;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 3px;
-    }
+  &[data-parent-level='0']::before {
+    left: 14px;
   }
+
+  &[data-parent-level='1']::before {
+    left: 26px;
+  }
+
+  &[data-parent-level='2']::before {
+    left: 38px;
+  }
+
+  &[data-parent-level='3']::before {
+    left: 50px;
+  }
+
+  &[data-parent-level='4']::before {
+    left: 62px;
+  }
+
+  &[data-parent-level='5']::before {
+    left: 74px;
+  }
+}
+
+.outline-node-content {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 8px;
+  cursor: default;
+  min-height: 18px;
+  margin-top: 5px;
+
+  &:hover {
+    background: var(--ws-button-background);
+    color: var(--ws-button-secondaryForeground);
+  }
+}
+
+.outline-chevron {
+  font-size: 10px;
+  width: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.outline-name {
+  flex: 1;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

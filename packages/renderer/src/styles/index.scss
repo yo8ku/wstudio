@@ -1,23 +1,23 @@
 /**
- * 全局样式入口文件
+ * 鍏ㄥ眬鏍峰紡鍏ュ彛鏂囦欢
  *
- * 设计原则：所有颜色通过 CSS 变量管理，变量值由主题插件控制
+ * 璁捐鍘熷垯锛氭墍鏈夐鑹查€氳繃 CSS 鍙橀噺绠＄悊锛屽彉閲忓€肩敱涓婚鎻掍欢鎺у埗
  */
 
-/* 编辑器 UI 组件样式 */
+/* 缂栬緫鍣?UI 缁勪欢鏍峰紡 */
 @use './_variables.scss';
 @use './_keyframe-animations.scss';
 
-/* 组件颜色样式管理（按组件拆分） */
+/* 缁勪欢棰滆壊鏍峰紡绠＄悊锛堟寜缁勪欢鎷嗗垎锛?*/
 @use './component/_index.scss';
 
-/* Toast 通知样式 */
+/* Toast 閫氱煡鏍峰紡 */
 @use './toast.css';
 
-/* Highlight.js 代码高亮样式 */
+/* Highlight.js 浠ｇ爜楂樹寒鏍峰紡 */
 @use './highlightjs.scss';
 
-/* ==================== 全局重置 ==================== */
+/* ==================== 鍏ㄥ眬閲嶇疆 ==================== */
 * {
   margin: 0;
   padding: 0;
@@ -62,7 +62,7 @@ body.window-resizing .ai-chat-panel-right-border,
 body.window-resizing .background-image-panel,
 body.window-resizing .titlebar-dropdown,
 body.window-resizing .dropdown-menu,
-body.window-resizing .monaco-context-menu {
+body.window-resizing .grouped-context-menu {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -70,19 +70,19 @@ body.window-resizing .monaco-context-menu {
 
 
 
-// 滑块条背景色
+// 婊戝潡鏉¤儗鏅壊
 body.background-image-enabled input[type="range"] {
   background: var(--ws-range-track-background, var(--ws-input-border, var(--ws-panel-border, #5e5e5e66)));
 }
 
-//滑块条背景色
+//婊戝潡鏉¤儗鏅壊
 body.background-image-enabled .bg-slider {
   background: var(--ws-range-track-background, var(--ws-input-border, var(--ws-panel-border, #5e5e5e66)));
 }
 
 
 
-// 资源管理器，右键菜单
+// 璧勬簮绠＄悊鍣紝鍙抽敭鑿滃崟
 body.background-image-enabled .explorer-context-menu {
   background-color: #14141494;
   backdrop-filter: blur(12px);
@@ -94,7 +94,7 @@ body.background-image-enabled .explorer-context-menu {
 
 
 
-//内联聊天 历史会话记录菜单
+//鍐呰仈鑱婂ぉ 鍘嗗彶浼氳瘽璁板綍鑿滃崟
 body.background-image-enabled .inline-chat-history-menu {
   // background-color: rgb(105 103 103 / 9%) !important;
   border: 1px solid rgb(139 139 139 / 22%) !important;
@@ -245,7 +245,7 @@ body.background-image-enabled .dropdown-menu {
   }
 }
 
-body.background-image-enabled .monaco-context-menu {
+body.background-image-enabled .grouped-context-menu {
   background-color: var(--ws-dropdown-background) !important;
   opacity: .85;
   backdrop-filter: blur(12px);
@@ -271,12 +271,12 @@ body.background-image-enabled .agent-menu>* {
 
 
 body.background-image-enabled .create-knowledge-dialog-overlay {
-  z-index: 100 !important; // 确保在背景图片启用时，对话框在最上层
+  z-index: 100 !important; // 纭繚鍦ㄨ儗鏅浘鐗囧惎鐢ㄦ椂锛屽璇濇鍦ㄦ渶涓婂眰
   position: fixed !important;
 
   .create-knowledge-dialog {
     position: relative;
-    z-index: 100; // 对话框内容在遮罩层之上
+    z-index: 100; // 瀵硅瘽妗嗗唴瀹瑰湪閬僵灞備箣涓?
   }
 }
 
@@ -316,7 +316,7 @@ body.background-image-enabled .panel-container>* {
 }
 
 
-//AI panle 聊天面板输入区域
+//AI panle 鑱婂ぉ闈㈡澘杈撳叆鍖哄煙
 
 [data-theme-mode='dark'] .ai-chat-panel-input-container {
   border-top: 1px solid rgba(105, 105, 105, 0.39);
@@ -331,7 +331,7 @@ body.background-image-enabled .panel-container>* {
 }
 
 
-//菜单
+//鑿滃崟
 [data-theme-mode=dark] .menu {
   background-color: var(--ws-dropdown-background);
 }
@@ -341,7 +341,7 @@ body.background-image-enabled .panel-container>* {
 
 
 
-//顶部菜单栏
+//椤堕儴鑿滃崟鏍?
 
 [data-theme-mode='dark'] .titleBar {
   // border-bottom: 1px solid rgb(91 91 91 / 32%);
@@ -390,11 +390,18 @@ body.background-image-enabled [data-theme-mode='dark'] .sidebar-header>* {
   border: 1px solid var(--ws-border-background);
 }
 
-/* ==================== 滚动条样�?==================== */
-/* 自定义滚动条（WebKit�?*/
+/* ==================== 婊氬姩鏉℃牱锟?==================== */
+/* 鑷畾涔夋粴鍔ㄦ潯锛圵ebKit锟?*/
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-track {
@@ -414,13 +421,13 @@ body.background-image-enabled [data-theme-mode='dark'] .sidebar-header>* {
   background: var(--scrollbar-track, transparent);
 }
 
-/* Firefox 滚动�?*/
+/* Firefox 婊氬姩锟?*/
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb, var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.45))) var(--scrollbar-track, transparent);
 }
 
-/* ==================== 侧边栏滚动条：默认隐藏，悬停显示 ==================== */
+/* ==================== 渚ц竟鏍忔粴鍔ㄦ潯锛氶粯璁ら殣钘忥紝鎮仠鏄剧ず ==================== */
 .sidebar-content {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -430,8 +437,45 @@ body.background-image-enabled [data-theme-mode='dark'] .sidebar-header>* {
   width: 10px;
 }
 
-/* ==================== 移除表单控件圆角 ==================== */
+/* ==================== 绉婚櫎琛ㄥ崟鎺т欢鍦嗚 ==================== */
 
+
+.sidebar-content::-webkit-scrollbar-button,
+.sidebar-content::-webkit-scrollbar-button:start,
+.sidebar-content::-webkit-scrollbar-button:end,
+.sidebar-content::-webkit-scrollbar-button:decrement,
+.sidebar-content::-webkit-scrollbar-button:increment,
+.sidebar-content::-webkit-scrollbar-button:vertical:start,
+.sidebar-content::-webkit-scrollbar-button:vertical:end,
+.sidebar-content::-webkit-scrollbar-button:horizontal:start,
+.sidebar-content::-webkit-scrollbar-button:horizontal:end,
+.sidebar-content::-webkit-scrollbar-button:single-button:vertical:decrement,
+.sidebar-content::-webkit-scrollbar-button:single-button:vertical:increment,
+.sidebar-content::-webkit-scrollbar-button:single-button:horizontal:decrement,
+.sidebar-content::-webkit-scrollbar-button:single-button:horizontal:increment,
+.sidebar-content::-webkit-scrollbar-button:vertical:start:decrement,
+.sidebar-content::-webkit-scrollbar-button:vertical:end:increment,
+.sidebar-content::-webkit-scrollbar-button:horizontal:start:decrement,
+.sidebar-content::-webkit-scrollbar-button:horizontal:end:increment {
+  -webkit-appearance: none !important;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.sidebar-content::-webkit-scrollbar-track-piece:start,
+.sidebar-content::-webkit-scrollbar-track-piece:end,
+.sidebar-content::-webkit-scrollbar-track-piece:vertical:start,
+.sidebar-content::-webkit-scrollbar-track-piece:vertical:end,
+.sidebar-content::-webkit-scrollbar-track-piece:horizontal:start,
+.sidebar-content::-webkit-scrollbar-track-piece:horizontal:end {
+  background: transparent !important;
+  border: 0 !important;
+  margin: 0 !important;
+}
 
 .sidebar-content::-webkit-scrollbar-track {
   background: transparent;
@@ -453,16 +497,16 @@ body.background-image-enabled [data-theme-mode='dark'] .sidebar-header>* {
   background: var(--scrollbar-thumb);
 }
 
-/* ==================== Monaco Editor 命令面板样式调整 ==================== */
+/* ==================== 嵌入式 Monaco 浮层样式调整 ==================== */
 /*
- * 调整 F1 命令面板位置，紧贴窗口标题栏下方
- * Monaco Editor 的命令面板默认使�?absolute 定位相对于编辑器容器
- * 需要改�?fixed 定位才能相对于整个窗�? * 类名: quick-input-widget, widgetId: editor.contrib.quickInputWidget
+ * 代码块内嵌 Monaco 时，部分浮层组件会默认相对编辑器容器定位。
+ * 这里将 quick-input-widget 提升为 fixed，避免在分栏和滚动容器内出现错位。
  */
+
 div[widgetid="editor.contrib.quickInputWidget"] {
   position: fixed !important;
   top: 32px !important;
-  /* 标题栏高*/
+  /* 鏍囬鏍忛珮*/
   left: 50% !important;
   transform: translateX(-50%) !important;
   background-color: var(--ws-editor-background);
@@ -470,7 +514,7 @@ div[widgetid="editor.contrib.quickInputWidget"] {
 
 }
 
-/* 命令面板内部容器也需要调*/
+/* 鍛戒护闈㈡澘鍐呴儴瀹瑰櫒涔熼渶瑕佽皟*/
 .quick-input-widget.show-file-icons,
 .quick-input-widget {
   position: relative !important;
@@ -479,7 +523,7 @@ div[widgetid="editor.contrib.quickInputWidget"] {
   transform: none !important;
 }
 
-/* ==================== 选择文本样式 ==================== */
+/* ==================== 閫夋嫨鏂囨湰鏍峰紡 ==================== */
 ::selection {
   background-color: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
 }
@@ -488,28 +532,24 @@ div[widgetid="editor.contrib.quickInputWidget"] {
   background-color: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
 }
 
-/* ProseMirror 编辑器选择样式 */
-.ProseMirror::selection,
-.ProseMirror *::selection,
-.tiptap::selection,
-.tiptap *::selection,
+/* ProseMirror 缂栬緫鍣ㄩ€夋嫨鏍峰紡 */
 .simple-editor::selection,
 .simple-editor *::selection {
   background-color: var(--ws-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
 }
 
-/* ==================== 禁用元素样式 ==================== */
+/* ==================== 绂佺敤鍏冪礌鏍峰紡 ==================== */
 :disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* ==================== 工具提示 ==================== */
+/* ==================== 宸ュ叿鎻愮ず ==================== */
 [title] {
   position: relative;
 }
 
-/* ==================== 拖拽样式 ==================== */
+/* ==================== 鎷栨嫿鏍峰紡 ==================== */
 .dragging {
   opacity: 0.5;
 }
@@ -520,8 +560,8 @@ div[widgetid="editor.contrib.quickInputWidget"] {
 
 
 
-/* ==================== Emoji Picker 滚动条样==================== */
-/* 针对 emoji-mart 组件的滚动条进行细化处理 */
+/* ==================== Emoji Picker 婊氬姩鏉℃牱==================== */
+/* 閽堝 emoji-mart 缁勪欢鐨勬粴鍔ㄦ潯杩涜缁嗗寲澶勭悊 */
 em-emoji-picker,
 em-emoji-picker *,
 em-emoji-picker .scroll,

@@ -1,0 +1,32 @@
+/**
+ * 通用分组上下文菜单颜色样式。
+ * 统一定义菜单背景、分隔线和悬浮态配色。
+ */
+
+.grouped-context-menu {
+  background-color: var(--ws-dropdown-background);
+  border-color: var(--ws-dropdown-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.grouped-context-menu-item:hover:not(.disabled) {
+  background-color: var(--ws-dropdown-hoverBackground);
+  color: var(--ws-dropdown-hoverForeground);
+}
+
+.grouped-context-menu-item.disabled {
+  opacity: 0.4;
+}
+
+.grouped-context-menu-separator {
+  background-color: var(--ws-menu-separatorBackground);
+  opacity: 0.3;
+}
+
+
+
+
+
+
+
+

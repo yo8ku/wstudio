@@ -5,8 +5,8 @@ import { getCachedModels, getModelConfig } from '../../../services/ModelCacheSer
 import { aiService } from '../../../services/ai/AIService';
 import { isModelEnabled } from '../../../services/ai';
 import { Select, type SelectGroup } from '../../common/Select/Select';
-import { buildLevel1MenuItems, buildLevel2MenuItems } from '../../Layout/EditorArea/AIZoneWidget/buildContextMenuItems';
-import { TipTapInput, type TipTapInputRef } from '../../Layout/EditorArea/AIZoneWidget/TipTapInput';
+import { buildLevel1MenuItems, buildLevel2MenuItems } from '../../Layout/EditorArea/AIInput/buildContextMenuItems';
+import { PromptInput, type PromptInputRef } from '../../Layout/EditorArea/AIInput/PromptInput';
 import type { AIRequestParams, AIResponse, StreamCallback } from '../../../types/aiProvider';
 import { getPromptTemplateById } from '../../../services/PromptTemplateService';
 import { knowledgeBaseService } from '../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
@@ -74,7 +74,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
   const [fileReferences, setFileReferences] = useState<Array<{ path: string; name: string }>>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<ReferenceItem[]>([]);
   const [forms, setForms] = useState<ReferenceItem[]>([]);
-  const tiptapInputRef = useRef<TipTapInputRef>(null);
+  const promptInputRef = useRef<PromptInputRef>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const modelTriggerRef = useRef<HTMLSpanElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -95,7 +95,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
     };
 
     void loadModels();
-    tiptapInputRef.current?.focus();
+    promptInputRef.current?.focus();
 
     const handleReload = () => void loadModels();
     window.addEventListener('ai-config-updated', handleReload);
@@ -137,8 +137,8 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
   };
 
   const insertPromptText = (text: string, replaceAtTrigger = false): void => {
-    tiptapInputRef.current?.insertText(text, replaceAtTrigger);
-    tiptapInputRef.current?.focus();
+    promptInputRef.current?.insertText(text, replaceAtTrigger);
+    promptInputRef.current?.focus();
   };
 
   const handleAtMenuSelect = async (value: string): Promise<void> => {
@@ -165,8 +165,8 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
       const filePath = response?.success && response.data ? response.data[index] || '' : '';
       if (filePath) {
         const fileName = filePath.split(/[/\\]/).pop() || filePath;
-        tiptapInputRef.current?.insertFileReference(filePath, fileName);
-        setFileReferences(tiptapInputRef.current?.getFileReferences() ?? []);
+        promptInputRef.current?.insertFileReference(filePath, fileName);
+        setFileReferences(promptInputRef.current?.getFileReferences() ?? []);
       }
       closeAtMenu();
       return;
@@ -175,8 +175,8 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
     if (value.startsWith('file-')) {
       const filePath = value.replace('file-', '');
       const fileName = filePath.split(/[/\\]/).pop() || filePath;
-      tiptapInputRef.current?.insertFileReference(filePath, fileName);
-      setFileReferences(tiptapInputRef.current?.getFileReferences() ?? []);
+      promptInputRef.current?.insertFileReference(filePath, fileName);
+      setFileReferences(promptInputRef.current?.getFileReferences() ?? []);
       closeAtMenu();
       return;
     }
@@ -273,8 +273,8 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
   const handleSend = async (): Promise<void> => {
     if (isLoading || !selectedModel) return;
 
-    const inputText = tiptapInputRef.current?.getText().trim() || '';
-    const currentFileReferences = tiptapInputRef.current?.getFileReferences() ?? fileReferences;
+    const inputText = promptInputRef.current?.getText().trim() || '';
+    const currentFileReferences = promptInputRef.current?.getFileReferences() ?? fileReferences;
     if (!inputText && currentFileReferences.length === 0 && knowledgeBases.length === 0 && forms.length === 0) return;
 
     const userMessageId = createId();
@@ -282,7 +282,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
     const selectionText = getSelectionText().trim();
     setMessages((currentMessages) => [...currentMessages, { id: userMessageId, role: 'user', content: inputText || '[context only]', timestamp: Date.now() }, { id: assistantMessageId, role: 'assistant', content: '', timestamp: Date.now(), isStreaming: true }]);
     setIsLoading(true);
-    tiptapInputRef.current?.clear();
+    promptInputRef.current?.clear();
     setFileReferences([]);
     setKnowledgeBases([]);
     setForms([]);
@@ -358,7 +358,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
   const handleAIAbilityClick = (type: 'polish' | 'expand' | 'shorten' | 'tone', tone?: string): void => {
     const selectionText = getSelectionText().trim();
     if (!selectionText) {
-      tiptapInputRef.current?.insertText('Please select some text first.');
+      promptInputRef.current?.insertText('Please select some text first.');
       return;
     }
     const prompts: Record<'polish' | 'expand' | 'shorten', string> = {
@@ -366,8 +366,8 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
       expand: `Please expand the following text:\n\n${selectionText}`,
       shorten: `Please shorten the following text:\n\n${selectionText}`,
     };
-    tiptapInputRef.current?.setText(type === 'tone' ? `Please rewrite the following text in a ${tone || 'professional'} tone:\n\n${selectionText}` : prompts[type]);
-    tiptapInputRef.current?.focus();
+    promptInputRef.current?.setText(type === 'tone' ? `Please rewrite the following text in a ${tone || 'professional'} tone:\n\n${selectionText}` : prompts[type]);
+    promptInputRef.current?.focus();
     setIsSparklesMenuOpen(false);
     setIsToneSubmenuOpen(false);
   };
@@ -392,7 +392,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
       </div>
       {messages.length > 0 && <div className="cm-inline-ai-messages">{messages.map((message) => <div key={message.id} className={`cm-inline-ai-message cm-inline-ai-message-${message.role}`}><div className="cm-inline-ai-message-content">{message.content || (message.isStreaming ? 'Thinking...' : '')}{message.isStreaming && <span className="cm-inline-ai-cursor" />}</div></div>)}<div ref={messagesEndRef} /></div>}
       <div className="cm-inline-ai-input-area">
-        <TipTapInput ref={tiptapInputRef} className="cm-inline-ai-tiptap-input" placeholder="Describe what you want AI to help with..." onSubmit={() => { void handleSend(); }} onEscape={onClose} onChange={() => setFileReferences(tiptapInputRef.current?.getFileReferences() ?? [])} onAtTrigger={() => { if (!isAtMenuOpen) { void loadLevel1Menu(); setIsAtMenuOpen(true); } }} onAtCancel={closeAtMenu} onFileReferencesChange={setFileReferences} isAtMenuOpen={isAtMenuOpen} onAtMenuNavigate={handleAtMenuNavigate} onAtMenuSelect={() => { void handleAtMenuSelectHighlighted(); }} onAtMenuBack={() => { void loadLevel1Menu(); }} />
+        <PromptInput ref={promptInputRef} className="cm-inline-ai-prompt-input" placeholder="Describe what you want AI to help with..." onSubmit={() => { void handleSend(); }} onEscape={onClose} onChange={() => setFileReferences(promptInputRef.current?.getFileReferences() ?? [])} onAtTrigger={() => { if (!isAtMenuOpen) { void loadLevel1Menu(); setIsAtMenuOpen(true); } }} onAtCancel={closeAtMenu} onFileReferencesChange={setFileReferences} isAtMenuOpen={isAtMenuOpen} onAtMenuNavigate={handleAtMenuNavigate} onAtMenuSelect={() => { void handleAtMenuSelectHighlighted(); }} onAtMenuBack={() => { void loadLevel1Menu(); }} />
         <div className="cm-inline-ai-toolbar">
           <div className={`cm-inline-ai-model-select ${isModelDropdownOpen ? 'open' : ''}`}>
             <span ref={modelTriggerRef} className="cm-inline-ai-model-trigger" onClick={() => { if (!isModelDropdownOpen) { const rect = modelTriggerRef.current?.getBoundingClientRect(); if (rect) setDropdownDirection(rect.bottom + 260 > window.innerHeight ? 'up' : 'down'); } setIsModelDropdownOpen((open) => !open); }}>{getModelDisplayName(selectedModel)}<Icon name="chevron-down" size={12} /></span>

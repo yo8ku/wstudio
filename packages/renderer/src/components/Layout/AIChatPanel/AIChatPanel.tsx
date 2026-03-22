@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AI 对话面板组件  - Note WStudio 2.0使用的是这个组件
  */
 
@@ -23,8 +23,8 @@ import { knowledgeBaseService } from '../Sidebar/KnowledgeBase/knowledgeBaseServ
 import { type KnowledgeItem } from '../Sidebar/KnowledgeBase/types';
 import { toastService } from '../../../services/ToastService';
 import { aiPanelContributionService } from '../../../services/AIPanelContributionService';
-import { getAIZoneSystemPromptAsync } from '../../../services/ai/SystemPrompt';
-import { TipTapInput, type TipTapInputRef } from '../EditorArea/AIZoneWidget/TipTapInput';
+import { getAssistantChatSystemPromptAsync } from '../../../services/ai/SystemPrompt';
+import { PromptInput, type PromptInputRef } from '../EditorArea/AIInput/PromptInput';
 import {
   EMPTY_AI_PANEL_CONTRIBUTION_SNAPSHOT,
   type AIPanelCommandContributionEntry,
@@ -55,6 +55,7 @@ import {
   getChatSessionTitleFromMessages,
   truncateChatSessionTitle,
 } from './chatSessionTitle';
+import { insertTextAtActiveCodeMirrorSelection } from '../../../lib/editor/activeCodeMirrorEditor';
 import './AIChatPanel.scss';
 
 interface Message {
@@ -2080,7 +2081,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器 ref
   const panelRef = useRef<HTMLDivElement>(null);
-  const tiptapRef = useRef<TipTapInputRef>(null);
+  const promptInputRef = useRef<PromptInputRef>(null);
   const contextButtonRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -2211,7 +2212,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     setIsContextMenuOpen(false);
     setSubMenuType('none');
     setSearchQuery('');
-    tiptapRef.current?.focus();
+    promptInputRef.current?.focus();
   }, []);
 
   const loadAIPanelContributions = useCallback(async () => {
@@ -2238,7 +2239,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   }, [isContextMenuOpen, loadAIPanelContributions]);
 
   const handleInsertSlashCommand = useCallback((insertText: string) => {
-    tiptapRef.current?.setText(insertText);
+    promptInputRef.current?.setText(insertText);
     setInput(insertText);
     closeSlashContextMenu();
   }, [closeSlashContextMenu]);
@@ -2836,40 +2837,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
   // 处理插入到文档
   const handleInsertToDocument = useCallback((text: string) => {
-    try {
-      // 获取全局 Monaco 编辑器实例
-      const editor = (window as unknown as { __monacoEditor?: { executeEdits: (source: string, edits: Array<{ range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }; text: string }>) => void; getPosition: () => { lineNumber: number; column: number } | null; focus: () => void } }).__monacoEditor;
-      
-      if (!editor) {
-        console.warn('[AIChatPanel] 没有找到活动的编辑器');
-        // TODO: 显示通知提示用户打开一个文档
-        return;
-      }
-
-      // 获取当前光标位置
-      const position = editor.getPosition();
-      if (!position) {
-        console.warn('[AIChatPanel] 无法获取光标位置');
-        return;
-      }
-
-      // 插入文本到光标位置
-      editor.executeEdits('ai-chat-panel', [{
-        range: {
-          startLineNumber: position.lineNumber,
-          startColumn: position.column,
-          endLineNumber: position.lineNumber,
-          endColumn: position.column
-        },
-        text: text
-      }]);
-
-      // 聚焦编辑器
-      editor.focus();
-
-      console.log('[AIChatPanel] 已插入文本到文档');
-    } catch (error) {
-      console.error('[AIChatPanel] 插入文本失败:', error);
+    if (!insertTextAtActiveCodeMirrorSelection(text)) {
+      console.warn('[AIChatPanel] 没有找到活动的编辑器');
     }
   }, []);
 
@@ -2898,7 +2867,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
     // 聚焦到输入框
     setTimeout(() => {
-      tiptapRef.current?.focus();
+      promptInputRef.current?.focus();
     }, 0);
 
     console.log('[AIChatPanel] Added text to chat input');
@@ -2923,7 +2892,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       });
 
       setTimeout(() => {
-        tiptapRef.current?.focus();
+        promptInputRef.current?.focus();
       }, 0);
     };
 
@@ -3743,7 +3712,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         model: selectedModel,
       };
       setMessages(prev => [...prev, userMessage, assistantMessage]);
-      tiptapRef.current?.clear();
+      promptInputRef.current?.clear();
       setInput('');
       setIsContextMenuOpen(false);
       setSubMenuType('none');
@@ -3753,7 +3722,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     // /clear: clear all messages
     if (/^\/clear\b/i.test(trimmedInput)) {
       setMessages([]);
-      tiptapRef.current?.clear();
+      promptInputRef.current?.clear();
       setInput('');
       setIsContextMenuOpen(false);
       setSubMenuType('none');
@@ -3791,7 +3760,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         };
         setMessages([...recentHistory, userMessage, compactMessage]);
       }
-      tiptapRef.current?.clear();
+      promptInputRef.current?.clear();
       setInput('');
       setIsContextMenuOpen(false);
       setSubMenuType('none');
@@ -3806,7 +3775,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         timestamp: new Date()
       };
       setMessages(prev => [...prev, userMessage]);
-      tiptapRef.current?.clear();
+      promptInputRef.current?.clear();
       setInput('');
       setIsLoading(true);
 
@@ -4170,7 +4139,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
         // 有上下文时加 system prompt
         if (contextText.length > 0) {
-          const systemPrompt = await getAIZoneSystemPromptAsync(false);
+          const systemPrompt = await getAssistantChatSystemPromptAsync(false);
           if (systemPrompt) chatMessages.push({ role: 'system', content: systemPrompt });
         }
 
@@ -5834,15 +5803,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('knowledge')}>
                         <span className="context-menu-item-text">知识库</span>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('form')}>
                         <span className="context-menu-item-text">表单</span>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <Icon name="chevron-right" size={12} />
                       </div>
                     </div>
 
@@ -5852,9 +5817,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => setSubMenuType('model')}>
                         <span className="context-menu-item-text">选择模型</span>
                         <span className="context-menu-item-current">{availableModels.find(m => m.modelId === selectedModel)?.displayName || formatModelDisplayName(selectedModel)}</span>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-switch" onClick={() => setIsDeepThinkingEnabled(!isDeepThinkingEnabled)}>
                         <span className="context-menu-item-text">思考</span>
@@ -5872,9 +5835,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       <div className="context-menu-group-title">技能</div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('skills')}>
                         <span className="context-menu-item-text">Skills</span>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <Icon name="chevron-right" size={12} />
                       </div>
                       {filteredAIPanelSkillContributions.map((item: AIPanelSkillContributionEntry) => (
                         <div
@@ -5898,29 +5859,21 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       )}
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('memory')}>
                         <span className="context-menu-item-text">记忆</span>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('decompositionRules')}>
                         <span className="context-menu-item-text">拆解规则</span>
                         {enabledDecompositionRules.length > 0 && <span className="context-menu-item-badge">{enabledDecompositionRules.length}</span>}
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('mcpServer')}>
                         <span className="context-menu-item-text">MCP server</span>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('writingRules')}>
                         <span className="context-menu-item-text">写作规则</span>
                         {enabledWritingRuleDocuments.length > 0 && <span className="context-menu-item-badge">{enabledWritingRuleDocuments.length}</span>}
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <Icon name="chevron-right" size={12} />
                       </div>
                     </div>
 
@@ -6049,10 +6002,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                 return [...prev, { name: file.name, path: file.path, type: file.type }];
                               });
                               // 插入内联 @tag
-                              tiptapRef.current?.insertFileReference(file.path, file.name);
+                              promptInputRef.current?.insertFileReference(file.path, file.name);
                               setSubMenuType('none');
                               setIsContextMenuOpen(false);
-                              tiptapRef.current?.focus();
+                              promptInputRef.current?.focus();
                             }}
                           >
                             <Icon name={file.type === 'directory' ? 'folder' : 'file'} size={14} />
@@ -6095,10 +6048,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                 return [...prev, { id: kb.id, title: kb.title }];
                               });
                               // 插入内联 @tag
-                              tiptapRef.current?.insertFileReference(`kb:${kb.id}`, kb.title);
+                              promptInputRef.current?.insertFileReference(`kb:${kb.id}`, kb.title);
                               setSubMenuType('none');
                               setIsContextMenuOpen(false);
-                              tiptapRef.current?.focus();
+                              promptInputRef.current?.focus();
                             }}
                           >
                             <Icon name="book" size={14} />
@@ -6141,10 +6094,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                 return [...prev, { id: form.id, name: form.name }];
                               });
                               // 插入内联 @tag
-                              tiptapRef.current?.insertFileReference(`form:${form.id}`, form.name);
+                              promptInputRef.current?.insertFileReference(`form:${form.id}`, form.name);
                               setSubMenuType('none');
                               setIsContextMenuOpen(false);
-                              tiptapRef.current?.focus();
+                              promptInputRef.current?.focus();
                             }}
                           >
                             <Icon name="table" size={14} />
@@ -6436,8 +6389,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
           {/* Input area */}
           <div className="input-area">
-            <TipTapInput
-              ref={tiptapRef}
+            <PromptInput
+              ref={promptInputRef}
               placeholder="输入消息，使用 @ 引用上下文..."
               onChange={(text) => setInput(text)}
               onSubmit={() => handleSend()}

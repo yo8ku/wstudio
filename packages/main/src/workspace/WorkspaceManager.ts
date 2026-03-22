@@ -17,7 +17,7 @@ interface WorkspaceConfig {
 
 export class WorkspaceManager {
   private store: Store<WorkspaceConfig>;
-  private workspaceDir: string;
+  private workspaceDir: string = '';
 
   constructor() {
     this.store = new Store<WorkspaceConfig>({
@@ -29,16 +29,31 @@ export class WorkspaceManager {
         lastOpened: '',
       },
     });
+  }
 
-    // 设置默认工作区目录为用户文档目录下的 NoteStudio
-    const userDataPath = app.getPath('documents');
-    this.workspaceDir = path.join(userDataPath, 'NoteStudio');
+  private resolveDocumentsPath(): string {
+    if (!app) {
+      throw new Error('[WorkspaceManager] Electron app is unavailable before initialization');
+    }
+
+    return app.getPath('documents');
+  }
+
+  private ensureWorkspaceDir(): void {
+    if (this.workspaceDir) {
+      return;
+    }
+
+    const documentsPath = this.resolveDocumentsPath();
+    this.workspaceDir = path.join(documentsPath, 'NoteStudio');
   }
 
   /**
    * 初始化工作区
    */
   async initialize(): Promise<void> {
+    this.ensureWorkspaceDir();
+
     const isInitialized = this.store.get('initialized');
 
     if (!isInitialized) {
@@ -168,6 +183,7 @@ Note Studio 是一个现代化的笔记应用，支持以下功能：
    * 获取工作区目录
    */
   getWorkspaceDir(): string {
+    this.ensureWorkspaceDir();
     return this.workspaceDir;
   }
 

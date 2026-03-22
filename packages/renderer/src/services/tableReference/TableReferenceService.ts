@@ -1,9 +1,8 @@
 /**
  * 表格引用服务
- * 功能：提供表格/表单引用功能，支持在编辑器中 @ 引用表格和列
- * 描述：用于 Monaco 和 CodeMirror 编辑器的表格引用自动补全
+ * 功能：提供表格和表单引用解析、格式化与查询能力
+ * 描述：服务于 CodeMirror 编辑器中的 @ 引用和列级补全
  */
-
 import type { TableColumn, TableRow } from '../../components/Layout/EditorArea/TableDesigner/types';
 
 /** 表单基础信息 */

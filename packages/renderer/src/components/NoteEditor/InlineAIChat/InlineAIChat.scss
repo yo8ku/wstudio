@@ -8,7 +8,7 @@
   flex-direction: column;
   background-color: var(--ws-editor-background);
   border: 1px solid var(--ws-border-background);
-  border-radius: 8px;
+  border-radius: 2px;
   margin: 8px 0;
   max-width: 100%;
   padding: 2px;
@@ -240,61 +240,54 @@
     padding: 8px 12px;
     border-top: 1px solid var(--ws-input-border);
 
-    // TipTap 输入框样式
-    .cm-inline-ai-tiptap-input {
+    // Prompt 输入框样式
+    .cm-inline-ai-prompt-input {
       width: 100%;
       min-height: 36px;
       max-height: 150px;
       overflow-y: auto;
+      display: flex;
+      flex-direction: column;
 
-      .tiptap-editor {
-        padding: 8px 10px;
+      .prompt-input-file-references {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding-bottom: 6px;
+      }
+
+      .prompt-input-editor {
         background-color: var(--ws-input-background);
-        border: 1px solid var(--ws-input-border);
-        border-radius: 6px;
         color: var(--ws-input-foreground);
         font-size: 13px;
         outline: none;
-        min-height: 36px;
 
-        &:focus {
+        &:focus-within {
           border-color: var(--ws-focusBorder);
         }
 
-        p {
-          margin: 0;
+        .cm-editor {
+          min-height: 36px;
+          background: transparent;
         }
 
         // 文件引用标签样式
-        .tiptap-file-reference {
-          display: inline-flex;
-          align-items: center;
-          padding: 1px 6px;
-          margin: 0 2px;
-          background-color: var(--ws-badge-background);
-          color: var(--ws-badge-foreground);
-          border-radius: 4px;
-          font-size: 12px;
-          vertical-align: baseline;
+        .cm-scroller {
+          overflow: auto;
         }
 
         // 占位符样式
-        &.tiptap-empty::before {
-          content: attr(data-placeholder);
+        .cm-content {
+          min-height: 36px;
+          padding: 8px 10px;
+        }
+
+        .cm-placeholder {
           color: var(--ws-input-placeholderForeground);
-          pointer-events: none;
-          position: absolute;
         }
       }
 
       // 占位符样式
-      .ProseMirror p.is-editor-empty:first-child::before {
-        content: attr(data-placeholder);
-        color: var(--ws-input-placeholderForeground);
-        pointer-events: none;
-        float: left;
-        height: 0;
-      }
     }
 
     .cm-inline-ai-input {

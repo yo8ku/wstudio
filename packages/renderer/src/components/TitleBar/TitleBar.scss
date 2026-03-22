@@ -4,7 +4,8 @@
   height: 2rem;
   user-select: none;
   position: relative;
-  z-index: 100; /* 确保在 ai-zone-border 上方 */
+  z-index: 100;
+  /* 确保位于 AI 输入边框层之上 */
 }
 
 .titlebar-drag-region {
@@ -48,7 +49,7 @@
   opacity: 1;
 }
 
-.titlebar-sidebar-toggle > span {
+.titlebar-sidebar-toggle>span {
   pointer-events: none;
 }
 
@@ -68,72 +69,62 @@
   display: flex;
   height: 100%;
   align-items: center;
+  gap: 10px;
+  padding-right: 0;
   -webkit-app-region: no-drag;
 }
 
-.titlebar-ai-button {
+.titlebar-control-group {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 5px;
-  border: none;
-  border-radius: 5px !important;
-  margin-right: 11px;
-  color: var(--ws-activityBar-inactiveForeground);
-  opacity: 0.6;
+  gap: 4px;
+}
+
+.titlebar-window-controls {
+  height: 100%;
+  gap: 0;
+}
+
+.titlebar-window-controls .titlebar-button {
+  height: 100%;
+  border-radius: 0;
+  width: 50px;
+  cursor: default;
+}
+
+
+.titlebar-ai-button{
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 3px;
   cursor: pointer;
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-  outline: none;
+  &:hover {
+    background-color: rgba(116, 116, 116, 0.274) !important;
+    color: var(--ws-activityBar-foreground);
+  }
 }
 
-.titlebar-ai-button:hover {
-  color: var(--ws-activityBar-foreground);
-  opacity: 1;
-}
-
-.titlebar-ai-button:active {
-  color: var(--ws-activityBar-foreground);
-  opacity: 1;
-}
-
+.titlebar-ai-button,
 .titlebar-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3rem;
-  height: 100%;
+  padding: 0;
   border: none;
-  color: var(--ws-activityBar-inactiveForeground);
-  opacity: 0.6;
+  border-radius: 5px;
   cursor: pointer;
-  border-radius: none;
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
 }
 
-.titlebar-button:hover {
-  color: var(--ws-activityBar-foreground);
-  opacity: 1;
+.titlebar-close:hover {
+  background-color: red !important;
+  color: #fff !important;
 }
-
-
-
-.titlebar-button:active {
-  color: var(--ws-activityBar-foreground);
-  opacity: 1;
-}
-
-
 
 
 .titlebar-button svg {
   pointer-events: none;
 }
 
-/* 菜单栏样式 */
 .titlebar-menu {
   display: flex;
   align-items: center;
@@ -163,6 +154,15 @@
   border-radius: 3px;
   outline: none;
   font-size: 13px;
+  color: var(--ws-menu-foreground);
+}
+
+.titlebar-menu-button:hover {
+  background: var(--ws-button-hoverBackground);
+}
+
+.titlebar-menu-button:active {
+  background: var(--ws-toolbar-active-background);
 }
 
 .titlebar-dropdown {
@@ -174,8 +174,8 @@
   border-radius: 4px;
   padding: 3px 5px;
   z-index: 100;
-
-
+  background-color: var(--ws-dropdown-background);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .titlebar-dropdown-item {
@@ -195,6 +195,13 @@
   white-space: nowrap;
   gap: 8px;
   font-size: 13px;
+  color: var(--ws-menu-foreground);
+}
+
+.titlebar-dropdown-item:hover,
+.titlebar-dropdown-item:active {
+  background: var(--ws-menu-selectionBackground);
+  color: var(--ws-menu-selectionForeground);
 }
 
 .menu-item-content {

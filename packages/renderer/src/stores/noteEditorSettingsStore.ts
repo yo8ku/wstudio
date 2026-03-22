@@ -6,7 +6,7 @@
 import { create } from 'zustand';
 import { electronStore } from '../services/ElectronStoreService';
 
-export type EditorType = 'monaco' | 'codemirror';
+export type EditorType = 'codemirror';
 
 interface NoteEditorSettings {
   defaultEditor: EditorType;
@@ -27,7 +27,7 @@ interface NoteEditorSettingsStore extends NoteEditorSettings {
 
 const DEFAULT_SETTINGS: NoteEditorSettings = {
   defaultEditor: 'codemirror',
-  showEditorSwitch: true,
+  showEditorSwitch: false,
   autoSave: true,
   autoSaveInterval: 3000,
 };
@@ -42,8 +42,8 @@ export const useNoteEditorSettingsStore = create<NoteEditorSettingsStore>((set, 
       const settings = await electronStore.get('note-editor-settings');
       if (settings) {
         set({
-          defaultEditor: settings.defaultEditor || DEFAULT_SETTINGS.defaultEditor,
-          showEditorSwitch: settings.showEditorSwitch ?? DEFAULT_SETTINGS.showEditorSwitch,
+          defaultEditor: DEFAULT_SETTINGS.defaultEditor,
+          showEditorSwitch: DEFAULT_SETTINGS.showEditorSwitch,
           autoSave: settings.autoSave ?? DEFAULT_SETTINGS.autoSave,
           autoSaveInterval: settings.autoSaveInterval || DEFAULT_SETTINGS.autoSaveInterval,
         });
@@ -55,13 +55,15 @@ export const useNoteEditorSettingsStore = create<NoteEditorSettingsStore>((set, 
     }
   },
 
-  setDefaultEditor: async (editor: EditorType) => {
-    set({ defaultEditor: editor });
+  setDefaultEditor: async (_editor: EditorType) => {
+    void _editor;
+    set({ defaultEditor: DEFAULT_SETTINGS.defaultEditor });
     await get().saveSettings();
   },
 
-  setShowEditorSwitch: async (show: boolean) => {
-    set({ showEditorSwitch: show });
+  setShowEditorSwitch: async (_show: boolean) => {
+    void _show;
+    set({ showEditorSwitch: DEFAULT_SETTINGS.showEditorSwitch });
     await get().saveSettings();
   },
 

@@ -53,16 +53,29 @@ export interface InlineChatQuery {
  */
 export class InlineChatHistoryDatabase {
   private db: Database | null = null;
-  private dbPath: string;
+  private dbPath: string = '';
   private SQL: any = null;
   private initialized: boolean = false;
   private initializing: Promise<void> | null = null;
 
-  constructor() {
-    // 数据库文件路径：用户数据目录/inline-chat-history.db
-    const userDataPath = app.getPath('userData');
+  constructor() {}
+
+  private resolveUserDataPath(): string {
+    if (!app) {
+      throw new Error('[InlineChatHistoryDatabase] Electron app is unavailable before initialization');
+    }
+
+    return app.getPath('userData');
+  }
+
+  private ensureDbPath(): void {
+    if (this.dbPath) {
+      return;
+    }
+
+    const userDataPath = this.resolveUserDataPath();
     this.dbPath = path.join(userDataPath, 'inline-chat-history.db');
-    console.log('[InlineChatHistoryDatabase] 数据库路径:', this.dbPath);
+    console.log('[InlineChatHistoryDatabase] ?????:', this.dbPath);
   }
 
   /**
@@ -84,7 +97,9 @@ export class InlineChatHistoryDatabase {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    
+
+    this.ensureDbPath();
+
     try {
       // 初始化 sql.js
       this.SQL = await initSqlJs({

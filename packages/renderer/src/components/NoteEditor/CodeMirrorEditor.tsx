@@ -1,10 +1,9 @@
-/**
- * CodeMirror 缂栬緫鍣ㄧ粍浠?
- * 鍔熻兘锛氬熀浜?CodeMirror 6 鐨?Markdown 缂栬緫鍣?
- * 鎻忚堪锛氭彁渚涙簮鐮佺骇鍒殑 Markdown 缂栬緫浣撻獙锛屾敮鎸佽娉曢珮浜€佸浘鐗囨嫋鎷姐€佸浘鐗囧唴鑱旀覆鏌撱€佸浘鐗囧ぇ灏忚皟鏁村拰鑳屾櫙鑹插潡
- * 鏀寔婧愮爜妯″紡鍜岄瑙堟ā寮忓垏鎹?
+﻿/**
+ * CodeMirror 缂傛牞绶崳銊х矋娴?
+ * 閸旂喕鍏橀敍姘唨娴?CodeMirror 6 閻?Markdown 缂傛牞绶崳?
+ * 閹诲繗鍫敍姘絹娓氭稒绨惍浣洪獓閸掝偆娈?Markdown 缂傛牞绶担鎾荤崣閿涘本鏁幐浣筋嚔濞夋洟鐝禍顔衡偓浣告禈閻楀洦瀚嬮幏濮愨偓浣告禈閻楀洤鍞撮懕鏃€瑕嗛弻鎾扁偓浣告禈閻楀洤銇囩亸蹇氱殶閺佹潙鎷伴懗灞炬珯閼规彃娼?
+ * 閺€顖涘瘮濠ф劗鐖滃Ο鈥崇础閸滃矂顣╃憴鍫熌佸蹇撳瀼閹?
  */
-
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { EditorState, StateField, RangeSet, StateEffect, Prec, RangeSetBuilder, Range } from '@codemirror/state';
 import { autocompletion, Completion, CompletionContext, startCompletion } from '@codemirror/autocomplete';
@@ -39,8 +38,14 @@ import { themeService } from '../../services/ThemeService';
 import { codeRunnerService } from '../../services/CodeRunnerService';
 import type { SupportedLanguage } from '../../services/CodeRunnerService';
 import type { LinkAnchorSuggestionItem, LinkTargetSuggestionItem } from '../../types/electron';
+import {
+  clearActiveCodeMirrorEditor,
+  getActiveCodeMirrorEditorMeta,
+  setActiveCodeMirrorEditor,
+} from '../../lib/editor/activeCodeMirrorEditor';
 import { openBidirectionalLinksPanel } from '../../utils/noteLinking';
 import { buildBidirectionalLinkText } from '../../utils/bidirectionalLink';
+import { toastService } from '../../services/ToastService';
 import './CodeMirrorEditor.scss';
 import './TableReferenceWidget/InlineTablePreview.scss';
 import './InlineAIChat/InlineAIChat.scss';
@@ -49,12 +54,27 @@ import hljs from 'highlight.js';
 import mermaid from 'mermaid';
 
 /**
- * 缂栬緫鍣ㄦā寮忕被鍨?
+ * 缂傛牞绶崳銊δ佸蹇曡閸?
  */
 export type EditorMode = 'source' | 'preview';
 
+const LARGE_FILE_CHARACTER_THRESHOLD = 250 * 1024;
+const LARGE_FILE_CHANGE_SYNC_DELAY_MS = 180;
+
+const formatLargeFileApproximateSize = (characterCount: number): string => {
+  if (characterCount >= 1024 * 1024) {
+    return `${(characterCount / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (characterCount >= 1024) {
+    return `${Math.round(characterCount / 1024)} KB`;
+  }
+
+  return `${characterCount} B`;
+};
+
 /**
- * 澶х翰椤圭被鍨?
+ * 婢堆呯堪妞ゅ湱琚崹?
  */
 interface OutlineItem {
   id: string;
@@ -65,7 +85,7 @@ interface OutlineItem {
 }
 
 /**
- * 鑹插潡澶х翰椤圭被鍨?
+ * 閼规彃娼℃径褏缈版い鍦閸?
  */
 interface ColorBlockItem {
   id: string;
@@ -81,16 +101,20 @@ export interface CodeMirrorEditorProps {
   placeholder?: string;
   editable?: boolean;
   autoFocus?: boolean;
-  /** 鍒濆妯″紡锛岄粯璁や负 source */
+  tabId?: string;
+  title?: string;
+  filePath?: string;
+  language?: string;
+  /** 閸掓繂顫愬Ο鈥崇础閿涘矂绮拋銈勮礋 source */
   initialMode?: EditorMode;
-  /** 鏄惁鏄剧ず澶х翰闈㈡澘锛岄粯璁や负 true */
+  /** 閺勵垰鎯侀弰鍓с仛婢堆呯堪闂堛垺婢橀敍宀勭帛鐠併倓璐?true */
   showOutline?: boolean;
-  /** 鏄惁鏄綋鍓嶆縺娲荤殑缂栬緫鍣?*/
+  /** 閺勵垰鎯侀弰顖氱秼閸撳秵绺哄ú鑽ゆ畱缂傛牞绶崳?*/
   isActive?: boolean;
 }
 
 /**
- * 瑙ｆ瀽鏂囨。涓殑鏍囬锛岀敓鎴愬ぇ绾?
+ * 鐟欙絾鐎介弬鍥ㄣ€傛稉顓犳畱閺嶅洭顣介敍宀€鏁撻幋鎰亣缁?
  */
 function parseOutline(doc: string): OutlineItem[] {
   const items: OutlineItem[] = [];
@@ -115,14 +139,14 @@ function parseOutline(doc: string): OutlineItem[] {
 }
 
 /**
- * 瑙ｆ瀽鏂囨。涓殑鑹插潡
+ * 鐟欙絾鐎介弬鍥ㄣ€傛稉顓犳畱閼规彃娼?
  */
 function parseColorBlocks(backgrounds: Map<number, string>, doc: string): ColorBlockItem[] {
   const items: ColorBlockItem[] = [];
   const lines = doc.split('\n');
   let position = 0;
 
-  // 鎸夎鍙峰垎缁勮繛缁殑鑹插潡
+  // 閹稿顢戦崣宄板瀻缂佸嫯绻涚紒顓犳畱閼规彃娼?
   const colorGroups: { startLine: number; endLine: number; color: string }[] = [];
   let currentGroup: { startLine: number; endLine: number; color: string } | null = null;
 
@@ -143,24 +167,24 @@ function parseColorBlocks(backgrounds: Map<number, string>, doc: string): ColorB
     colorGroups.push(currentGroup);
   }
 
-  // 涓烘瘡涓壊鍧楃粍鐢熸垚澶х翰椤?
+  // 娑撶儤鐦℃稉顏囧閸ф绮嶉悽鐔稿灇婢堆呯堪妞?
   colorGroups.forEach((group, index) => {
     const lineIndex = group.startLine - 1;
     if (lineIndex >= 0 && lineIndex < lines.length) {
-      // 璁＄畻浣嶇疆
+      // 鐠侊紕鐣绘担宥囩枂
       let pos = 0;
       for (let i = 0; i < lineIndex; i++) {
         pos += lines[i].length + 1;
       }
 
-      // 鑾峰彇绗竴琛屾枃鏈綔涓洪瑙?
+      // 閼惧嘲褰囩粭顑跨鐞涘本鏋冮張顑跨稊娑撴椽顣╃憴?
       const previewText = lines[lineIndex].substring(0, 30) + (lines[lineIndex].length > 30 ? '...' : '');
 
       items.push({
         id: `colorblock-${index}`,
         color: group.color,
         lineNumber: group.startLine,
-        text: previewText || `第${group.startLine} 行`,
+        text: previewText || `第 ${group.startLine} 行`,
         position: pos,
       });
     }
@@ -170,7 +194,7 @@ function parseColorBlocks(backgrounds: Map<number, string>, doc: string): ColorB
 }
 
 /**
- * Wikilink 鑷姩琛ュ叏鏃惰ˉ榻愰棴鍚堟嫭鍙凤紝閬垮厤閲嶅鎻掑叆 ]]
+ * Wikilink 閼奉亜濮╃悰銉ュ弿閺冩儼藟姒绘劙妫撮崥鍫熷閸欏嚖绱濋柆鍨帳闁插秴顦查幓鎺戝弳 ]]
  */
 function applyWikilinkCompletionText(
   view: EditorView,
@@ -187,14 +211,14 @@ function applyWikilinkCompletionText(
   });
 }
 
-// 瀛樺偍 EditorView 寮曠敤锛屼緵 Widget 浣跨敤
+// 鐎涙ê鍋?EditorView 瀵洜鏁ら敍灞肩返 Widget 娴ｈ法鏁?
 let globalEditorView: EditorView | null = null;
 
-// 褰撳墠閫変腑鐨勫浘鐗?src锛堢敤浜庡湪 Widget 閲嶅缓鍚庢仮澶嶉€変腑鐘舵€侊級
+// 瑜版挸澧犻柅澶夎厬閻ㄥ嫬娴橀悧?src閿涘牏鏁ゆ禍搴℃躬 Widget 闁插秴缂撻崥搴划婢跺秹鈧鑵戦悩鑸碘偓渚婄礆
 let selectedImageSrc: string | null = null;
 
 /**
- * 鑾峰彇琛岀殑缂╄繘绾у埆锛堢┖鏍兼暟锛?
+ * 閼惧嘲褰囩悰宀€娈戠紓鈺勭箻缁狙冨焼閿涘牏鈹栭弽鍏兼殶閿?
  */
 function getIndentLevel(line: string): number {
   const match = line.match(/^(\s*)/);
@@ -202,7 +226,7 @@ function getIndentLevel(line: string): number {
 }
 
 /**
- * 妫€娴嬭鏄惁涓烘爣棰?
+ * 濡偓濞村顢戦弰顖氭儊娑撶儤鐖ｆ０?
  */
 function getHeadingLevel(line: string): number {
   const match = line.match(/^(#{1,6})\s/);
@@ -210,22 +234,22 @@ function getHeadingLevel(line: string): number {
 }
 
 /**
- * 妫€娴嬭鏄惁涓哄垪琛ㄩ」锛堟湁搴忔垨鏃犲簭锛?
+ * 濡偓濞村顢戦弰顖氭儊娑撳搫鍨悰銊┿€嶉敍鍫熸箒鎼村繑鍨ㄩ弮鐘茬碍閿?
  */
 function isListItem(line: string): boolean {
   const trimmed = line.trimStart();
-  // 鏃犲簭鍒楄〃: - item, * item, + item
-  // 鏈夊簭鍒楄〃: 1. item, 2. item, etc.
+  // 閺冪姴绨崚妤勩€? - item, * item, + item
+  // 閺堝绨崚妤勩€? 1. item, 2. item, etc.
   return /^[-*+]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed);
 }
 
 /**
- * 璁＄畻鏍囬鎶樺彔鑼冨洿
- * 鏍囬鎶樺彔閫昏緫锛?
- * - 鍙湁鏍囬琛屽彲浠ユ姌鍙?
- * - 鎶樺彔鑼冨洿浠庢爣棰樿鏈熬鍒颁笅涓€涓悓绾ф垨鏇撮珮绾ф爣棰樹箣鍓?
- * - 鍙湁褰撴爣棰樻槸鏂囨。鏈€鍚庝竴琛岋紙鍚庨潰娌℃湁浠讳綍琛岋級鏃舵墠涓嶈兘鎶樺彔
- * - 鍙鍚庨潰鏈変换浣曡锛堝寘鎷┖琛岋級锛屽氨鍙互鎶樺彔
+ * 鐠侊紕鐣婚弽鍥暯閹舵ê褰旈懠鍐ㄦ纯
+ * 閺嶅洭顣介幎妯哄綌闁槒绶敍?
+ * - 閸欘亝婀侀弽鍥暯鐞涘苯褰叉禒銉﹀閸?
+ * - 閹舵ê褰旈懠鍐ㄦ纯娴犲孩鐖ｆ０妯款攽閺堫偄鐔崚棰佺瑓娑撯偓娑擃亜鎮撶痪褎鍨ㄩ弴鎾彯缁狙勭垼妫版ü绠ｉ崜?
+ * - 閸欘亝婀佽ぐ鎾寸垼妫版ɑ妲搁弬鍥ㄣ€傞張鈧崥搴濈鐞涘矉绱欓崥搴ㄦ桨濞屸剝婀佹禒璁崇秿鐞涘矉绱氶弮鑸靛娑撳秷鍏橀幎妯哄綌
+ * - 閸欘亣顩﹂崥搴ㄦ桨閺堝鎹㈡担鏇☆攽閿涘牆瀵橀幏顒傗敄鐞涘矉绱氶敍灞芥皑閸欘垯浜掗幎妯哄綌
  */
 function computeHeadingFoldRange(state: EditorState, lineStart: number): { from: number; to: number } | null {
   const doc = state.doc;
@@ -242,12 +266,12 @@ function computeHeadingFoldRange(state: EditorState, lineStart: number): { from:
     return null;
   }
 
-  // 濡傛灉鏄渶鍚庝竴琛岋紝涓嶈兘鎶樺彔锛堝悗闈㈡病鏈変换浣曡锛?
+  // 婵″倹鐏夐弰顖涙付閸氬簼绔寸悰宀嬬礉娑撳秷鍏橀幎妯哄綌閿涘牆鎮楅棃銏＄梾閺堝鎹㈡担鏇☆攽閿?
   if (line.number >= doc.lines) {
     return null;
   }
 
-  // 鏍囬鎶樺彔锛氭姌鍙犲埌涓嬩竴涓悓绾ф垨鏇撮珮绾ф爣棰樹箣鍓?
+  // 閺嶅洭顣介幎妯哄綌閿涙碍濮岄崣鐘插煂娑撳绔存稉顏勬倱缁狙勫灗閺囨挳鐝痪褎鐖ｆ０妯圭閸?
   let foldEnd = line.to;
   let hasAnyLine = false;
 
@@ -255,21 +279,21 @@ function computeHeadingFoldRange(state: EditorState, lineStart: number): { from:
     const nextLine = doc.line(i);
     const nextHeadingLevel = getHeadingLevel(nextLine.text);
 
-    // 閬囧埌鍚岀骇鎴栨洿楂樼骇鏍囬锛屽仠姝㈡姌鍙?
+    // 闁洤鍩岄崥宀€楠囬幋鏍ㄦ纯妤傛楠囬弽鍥暯閿涘苯浠犲銏″閸?
     if (nextHeadingLevel > 0 && nextHeadingLevel <= headingLevel) {
-      // 鎶樺彔鍒颁笂涓€琛屾湯灏撅紙濡傛灉鏈夊唴瀹圭殑璇濓級
+      // 閹舵ê褰旈崚棰佺瑐娑撯偓鐞涘本婀亸鎾呯礄婵″倹鐏夐張澶婂敶鐎瑰湱娈戠拠婵撶礆
       if (hasAnyLine && i > line.number + 1) {
         foldEnd = doc.line(i - 1).to;
       }
       break;
     }
 
-    // 鏍囪鏈変换浣曡锛堝寘鎷┖琛岋級
+    // 閺嶅洩顔囬張澶夋崲娴ｆ洝顢戦敍鍫濆瘶閹奉剛鈹栫悰宀嬬礆
     hasAnyLine = true;
     foldEnd = nextLine.to;
   }
 
-  // 鍙鏈変换浣曡涓旀姌鍙犺寖鍥存湁鏁堝氨杩斿洖
+  // 閸欘亣顩﹂張澶夋崲娴ｆ洝顢戞稉鏃€濮岄崣鐘哄瘱閸ュ瓨婀侀弫鍫濇皑鏉╂柨娲?
   if (hasAnyLine && foldEnd > line.to) {
     return { from: line.to, to: foldEnd };
   }
@@ -278,11 +302,11 @@ function computeHeadingFoldRange(state: EditorState, lineStart: number): { from:
 }
 
 /**
- * 璁＄畻鍒楄〃椤规姌鍙犺寖鍥达紙Obsidian 椋庢牸锛?
- * 閫昏緫锛?
- * 1. 褰撳墠琛屼笉鑳芥槸绌鸿
- * 2. 鍚庨潰蹇呴』鏈夌缉杩涘ぇ浜庡綋鍓嶈鐨勮锛堣烦杩囩┖琛屾鏌ワ級
- * 3. 鎶樺彔鑼冨洿鍖呭惈鎵€鏈夌缉杩涘ぇ浜庡綋鍓嶈鐨勮繛缁锛堝寘鎷腑闂寸殑绌鸿锛?
+ * 鐠侊紕鐣婚崚妤勩€冩い瑙勫閸欑姾瀵栭崶杈剧礄Obsidian 妞嬪孩鐗搁敍?
+ * 闁槒绶敍?
+ * 1. 瑜版挸澧犵悰灞肩瑝閼宠姤妲哥粚楦款攽
+ * 2. 閸氬酣娼拌箛鍛淬€忛張澶岀級鏉╂稑銇囨禍搴＄秼閸撳秷顢戦惃鍕攽閿涘牐鐑︽潻鍥┾敄鐞涘本顥呴弻銉礆
+ * 3. 閹舵ê褰旈懠鍐ㄦ纯閸栧懎鎯堥幍鈧張澶岀級鏉╂稑銇囨禍搴＄秼閸撳秷顢戦惃鍕箾缂侇叀顢戦敍鍫濆瘶閹奉兛鑵戦梻瀵告畱缁岄缚顢戦敍?
  */
 function computeListFoldRange(state: EditorState, lineStart: number): { from: number; to: number } | null {
   const doc = state.doc;
@@ -294,24 +318,24 @@ function computeListFoldRange(state: EditorState, lineStart: number): { from: nu
   const line = doc.lineAt(lineStart);
   const lineText = line.text;
   
-  // 鏍囬琛屼娇鐢ㄦ爣棰樻姌鍙?
+  // 閺嶅洭顣界悰灞煎▏閻劍鐖ｆ０妯诲閸?
   if (getHeadingLevel(lineText) > 0) {
     return null;
   }
   
-  // 绌鸿涓嶈兘鎶樺彔
+  // 缁岄缚顢戞稉宥堝厴閹舵ê褰?
   if (lineText.trim().length === 0) {
     return null;
   }
   
   const currentIndent = getIndentLevel(lineText);
   
-  // 妫€鏌ヤ笅涓€琛屾槸鍚﹀瓨鍦?
+  // 濡偓閺屻儰绗呮稉鈧悰灞炬Ц閸氾箑鐡ㄩ崷?
   if (line.number >= doc.lines) {
     return null;
   }
   
-  // 鏌ユ壘绗竴涓潪绌鸿锛屾鏌ュ叾缂╄繘鏄惁澶т簬褰撳墠琛?
+  // 閺屻儲澹樼粭顑跨娑擃亪娼粚楦款攽閿涘本顥呴弻銉ュ従缂傗晞绻橀弰顖氭儊婢堆傜艾瑜版挸澧犵悰?
   let hasChildIndent = false;
   let foldEnd = line.to;
   
@@ -319,7 +343,7 @@ function computeListFoldRange(state: EditorState, lineStart: number): { from: nu
     const checkLine = doc.line(i);
     const checkText = checkLine.text.trim();
     
-    // 绌鸿缁х画鍖呭惈鍦ㄦ姌鍙犺寖鍥村唴锛堝鏋滃凡缁忔壘鍒板瓙缂╄繘锛?
+    // 缁岄缚顢戠紒褏鐢婚崠鍛儓閸︺劍濮岄崣鐘哄瘱閸ユ潙鍞撮敍鍫濐洤閺嬫粌鍑＄紒蹇斿閸掓澘鐡欑紓鈺勭箻閿?
     if (checkText.length === 0) {
       if (hasChildIndent) {
         foldEnd = checkLine.to;
@@ -329,17 +353,17 @@ function computeListFoldRange(state: EditorState, lineStart: number): { from: nu
     
     const checkIndent = getIndentLevel(checkLine.text);
     
-    // 濡傛灉缂╄繘灏忎簬绛変簬褰撳墠琛岋紝鍋滄鎶樺彔
+    // 婵″倹鐏夌紓鈺勭箻鐏忓繋绨粵澶夌艾瑜版挸澧犵悰宀嬬礉閸嬫粍顒涢幎妯哄綌
     if (checkIndent <= currentIndent) {
       break;
     }
     
-    // 鎵惧埌浜嗙缉杩涘ぇ浜庡綋鍓嶈鐨勮
+    // 閹垫儳鍩屾禍鍡欑級鏉╂稑銇囨禍搴＄秼閸撳秷顢戦惃鍕攽
     hasChildIndent = true;
     foldEnd = checkLine.to;
   }
   
-  // 鍙湁鎵惧埌瀛愮缉杩涜鎵嶈繑鍥炴姌鍙犺寖鍥?
+  // 閸欘亝婀侀幍鎯у煂鐎涙劗缂夋潻娑滎攽閹靛秷绻戦崶鐐村閸欑姾瀵栭崶?
   if (hasChildIndent && foldEnd > line.to) {
     return { from: line.to, to: foldEnd };
   }
@@ -348,7 +372,7 @@ function computeListFoldRange(state: EditorState, lineStart: number): { from: nu
 }
 
 /**
- * 璁＄畻鎶樺彔鑼冨洿 - 鏀寔鏍囬鎶樺彔鍜屽垪琛ㄦ姌鍙狅紙Obsidian 椋庢牸锛?
+ * 鐠侊紕鐣婚幎妯哄綌閼煎啫娲?- 閺€顖涘瘮閺嶅洭顣介幎妯哄綌閸滃苯鍨悰銊﹀閸欑媴绱橭bsidian 妞嬪孩鐗搁敍?
  */
 function computeFoldRange(state: EditorState, lineStart: number, _lineEnd: number): { from: number; to: number } | null {
   const doc = state.doc;
@@ -360,24 +384,24 @@ function computeFoldRange(state: EditorState, lineStart: number, _lineEnd: numbe
   const line = doc.lineAt(lineStart);
   const headingLevel = getHeadingLevel(line.text);
   
-  // 鏍囬琛屼娇鐢ㄦ爣棰樻姌鍙?
+  // 閺嶅洭顣界悰灞煎▏閻劍鐖ｆ０妯诲閸?
   if (headingLevel > 0) {
     return computeHeadingFoldRange(state, lineStart);
   }
   
-  // 闈炴爣棰樿浣跨敤鍒楄〃鎶樺彔
+  // 闂堢偞鐖ｆ０妯款攽娴ｈ法鏁ら崚妤勩€冮幎妯哄綌
   return computeListFoldRange(state, lineStart);
 }
 
 /**
- * 鑷畾涔夋姌鍙犳湇鍔?- 鏀寔鏍囬鎶樺彔鍜屽垪琛ㄦ姌鍙?
+ * 閼奉亜鐣炬稊澶嬪閸欑姵婀囬崝?- 閺€顖涘瘮閺嶅洭顣介幎妯哄綌閸滃苯鍨悰銊﹀閸?
  */
 const customFoldService = foldService.of((state, lineStart, lineEnd) => {
   return computeFoldRange(state, lineStart, lineEnd);
 });
 
 /**
- * 鎶樺彔鍥炬爣 GutterMarker - 灞曞紑鐘舵€侊紙浠呯敤浜庢爣棰橈級
+ * 閹舵ê褰旈崶鐐垼 GutterMarker - 鐏炴洖绱戦悩鑸碘偓渚婄礄娴犲懐鏁ゆ禍搴㈢垼妫版﹫绱?
  */
 class FoldOpenMarker extends GutterMarker {
   toDOM(): HTMLElement {
@@ -389,7 +413,7 @@ class FoldOpenMarker extends GutterMarker {
 }
 
 /**
- * 鎶樺彔鍥炬爣 GutterMarker - 鎶樺彔鐘舵€侊紙浠呯敤浜庢爣棰橈級
+ * 閹舵ê褰旈崶鐐垼 GutterMarker - 閹舵ê褰旈悩鑸碘偓渚婄礄娴犲懐鏁ゆ禍搴㈢垼妫版﹫绱?
  */
 class FoldClosedMarker extends GutterMarker {
   toDOM(): HTMLElement {
@@ -404,7 +428,7 @@ const foldOpenMarker = new FoldOpenMarker();
 const foldClosedMarker = new FoldClosedMarker();
 
 /**
- * 鏋勫缓鏍囬鎶樺彔 Gutter 鏍囪锛堜粎鏍囬锛?
+ * 閺嬪嫬缂撻弽鍥暯閹舵ê褰?Gutter 閺嶅洩顔囬敍鍫滅矌閺嶅洭顣介敍?
  */
 function buildHeadingFoldMarkers(state: EditorState): RangeSet<GutterMarker> {
   const builder: { from: number; marker: GutterMarker }[] = [];
@@ -436,7 +460,7 @@ function buildHeadingFoldMarkers(state: EditorState): RangeSet<GutterMarker> {
 }
 
 /**
- * 鏍囬鎶樺彔 Gutter 鏍囪 StateField
+ * 閺嶅洭顣介幎妯哄綌 Gutter 閺嶅洩顔?StateField
  */
 const headingFoldMarkers = StateField.define<RangeSet<GutterMarker>>({
   create(state) {
@@ -452,7 +476,7 @@ const headingFoldMarkers = StateField.define<RangeSet<GutterMarker>>({
 });
 
 /**
- * 鏍囬鎶樺彔 Gutter
+ * 閺嶅洭顣介幎妯哄綌 Gutter
  */
 const headingFoldGutter = gutter({
   class: 'cm-foldGutter',
@@ -468,7 +492,7 @@ const headingFoldGutter = gutter({
         const foldRange = computeHeadingFoldRange(view.state, lineObj.from);
         if (!foldRange) return false;
 
-        // 楠岃瘉鎶樺彔鑼冨洿鏈夋晥鎬?
+        // 妤犲矁鐦夐幎妯哄綌閼煎啫娲块張澶嬫櫏閹?
         if (foldRange.from >= foldRange.to || foldRange.to > view.state.doc.length) {
           return false;
         }
@@ -479,23 +503,23 @@ const headingFoldGutter = gutter({
           existingFold = { from, to };
         });
 
-        // 浣跨敤 requestAnimationFrame 寤惰繜鎵ц锛岄伩鍏?markdown 瑙ｆ瀽鍣ㄧ殑鍐呴儴閿欒
+        // 娴ｈ法鏁?requestAnimationFrame 瀵ゆ儼绻滈幍褑顢戦敍宀勪缉閸?markdown 鐟欙絾鐎介崳銊ф畱閸愬懘鍎撮柨娆掝嚖
         requestAnimationFrame(() => {
           try {
-            // 閲嶆柊楠岃瘉鐘舵€侊紝纭繚缂栬緫鍣ㄤ粛鐒舵湁鏁?
+            // 闁插秵鏌婃宀冪槈閻樿埖鈧緤绱濈涵顔荤箽缂傛牞绶崳銊ょ矝閻掕埖婀侀弫?
             if (!view.dom || !view.dom.isConnected) return;
             
-            // 閲嶆柊璁＄畻鎶樺彔鑼冨洿锛屽洜涓虹姸鎬佸彲鑳藉凡缁忔敼鍙?
+            // 闁插秵鏌婄拋锛勭暬閹舵ê褰旈懠鍐ㄦ纯閿涘苯娲滄稉铏瑰Ц閹礁褰查懗钘夊嚒缂佸繑鏁奸崣?
             const currentFoldRange = computeHeadingFoldRange(view.state, lineObj.from);
             if (!currentFoldRange) return;
             
-            // 鍐嶆楠岃瘉鑼冨洿鏈夋晥鎬?
+            // 閸愬秵顐兼宀冪槈閼煎啫娲块張澶嬫櫏閹?
             if (currentFoldRange.from >= currentFoldRange.to || currentFoldRange.to > view.state.doc.length) {
               return;
             }
 
             if (existingFold) {
-              // 灞曞紑鏃讹紝楠岃瘉 existingFold 鑼冨洿浠嶇劧鏈夋晥
+              // 鐏炴洖绱戦弮璁圭礉妤犲矁鐦?existingFold 閼煎啫娲挎禒宥囧姧閺堝鏅?
               if (existingFold.from <= view.state.doc.length && existingFold.to <= view.state.doc.length) {
                 view.dispatch({ effects: unfoldEffect.of(existingFold) });
               }
@@ -517,9 +541,9 @@ const headingFoldGutter = gutter({
 });
 
 /**
- * 瀛愭姌鍙犲浘鏍?Widget锛堢粷瀵瑰畾浣嶏紝璺熼殢缂╄繘鍔ㄦ€佹洿鏂帮級
- * 鎵€鏈夊瓙鎶樺彔鍥炬爣閮戒娇鐢ㄧ粷瀵瑰畾浣嶏紝涓嶅崰鐢ㄦ枃鏈┖闂?
- * 閫氳繃 left 鍊兼潵璺熼殢缂╄繘浣嶇疆
+ * 鐎涙劖濮岄崣鐘叉禈閺?Widget閿涘牏绮风€电懓鐣炬担宥忕礉鐠虹喖娈㈢紓鈺勭箻閸斻劍鈧焦娲块弬甯礆
+ * 閹碘偓閺堝鐡欓幎妯哄綌閸ョ偓鐖ｉ柈鎴掑▏閻劎绮风€电懓鐣炬担宥忕礉娑撳秴宕伴悽銊︽瀮閺堫剛鈹栭梻?
+ * 闁俺绻?left 閸婂吋娼电捄鐔兼缂傗晞绻樻担宥囩枂
  */
 class ListFoldWidget extends WidgetType {
   constructor(
@@ -535,18 +559,18 @@ class ListFoldWidget extends WidgetType {
     const span = document.createElement('span');
     span.className = `cm-list-fold-marker ${this.isFolded ? 'cm-list-fold-marker-folded' : 'cm-list-fold-marker-open'}`;
 
-    // 鑾峰彇瀹為檯鐨勫瓧绗﹀搴?
+    // 閼惧嘲褰囩€圭偤妾惃鍕摟缁楋箑顔旀惔?
     const charWidth = view.defaultCharacterWidth;
 
-    // 鎵€鏈夊瓙鎶樺彔鍥炬爣閮戒娇鐢ㄧ粷瀵瑰畾浣?
-    // 鏍规嵁缂╄繘璁＄畻 left 浣嶇疆
-    // indent=0 鏃舵斁鍦?gutter 浣嶇疆锛坙eft: -24px锛?
-    // indent>0 鏃舵斁鍦ㄧ缉杩涚┖鏍肩殑宸﹁竟
+    // 閹碘偓閺堝鐡欓幎妯哄綌閸ョ偓鐖ｉ柈鎴掑▏閻劎绮风€电懓鐣炬担?
+    // 閺嶈宓佺紓鈺勭箻鐠侊紕鐣?left 娴ｅ秶鐤?
+    // indent=0 閺冭埖鏂侀崷?gutter 娴ｅ秶鐤嗛敍鍧檈ft: -24px閿?
+    // indent>0 閺冭埖鏂侀崷銊х級鏉╂稓鈹栭弽鑲╂畱瀹革箒绔?
     if (this.indent === 0) {
       span.style.left = '-24px';
     } else {
-      // 鎶樺彔鍥炬爣鏀惧湪缂╄繘绌烘牸涔嬪墠锛屽浘鏍囧搴?20px
-      // 缂╄繘浣嶇疆 = indent * charWidth锛屽浘鏍囧乏杈?= 缂╄繘浣嶇疆 - 鍥炬爣瀹藉害
+      // 閹舵ê褰旈崶鐐垼閺€鎯ф躬缂傗晞绻樼粚鐑樼壐娑斿澧犻敍灞芥禈閺嶅洤顔旀惔?20px
+      // 缂傗晞绻樻担宥囩枂 = indent * charWidth閿涘苯娴橀弽鍥т箯鏉?= 缂傗晞绻樻担宥囩枂 - 閸ョ偓鐖ｇ€硅棄瀹?
       const indentPos = this.indent * charWidth;
       span.style.left = `${indentPos - 20}px`;
     }
@@ -571,7 +595,7 @@ class ListFoldWidget extends WidgetType {
       const foldRange = computeListFoldRange(view.state, this.lineFrom);
       if (!foldRange) return;
 
-      // 楠岃瘉鎶樺彔鑼冨洿鏈夋晥鎬?
+      // 妤犲矁鐦夐幎妯哄綌閼煎啫娲块張澶嬫櫏閹?
       if (foldRange.from >= foldRange.to || foldRange.to > view.state.doc.length) {
         return;
       }
@@ -584,23 +608,23 @@ class ListFoldWidget extends WidgetType {
 
       const lineFrom = this.lineFrom;
 
-      // 浣跨敤 requestAnimationFrame 寤惰繜鎵ц锛岄伩鍏?markdown 瑙ｆ瀽鍣ㄧ殑鍐呴儴閿欒
+      // 娴ｈ法鏁?requestAnimationFrame 瀵ゆ儼绻滈幍褑顢戦敍宀勪缉閸?markdown 鐟欙絾鐎介崳銊ф畱閸愬懘鍎撮柨娆掝嚖
       requestAnimationFrame(() => {
         try {
-          // 閲嶆柊楠岃瘉鐘舵€侊紝纭繚缂栬緫鍣ㄤ粛鐒舵湁鏁?
+          // 闁插秵鏌婃宀冪槈閻樿埖鈧緤绱濈涵顔荤箽缂傛牞绶崳銊ょ矝閻掕埖婀侀弫?
           if (!view.dom || !view.dom.isConnected) return;
           
-          // 閲嶆柊璁＄畻鎶樺彔鑼冨洿锛屽洜涓虹姸鎬佸彲鑳藉凡缁忔敼鍙?
+          // 闁插秵鏌婄拋锛勭暬閹舵ê褰旈懠鍐ㄦ纯閿涘苯娲滄稉铏瑰Ц閹礁褰查懗钘夊嚒缂佸繑鏁奸崣?
           const currentFoldRange = computeListFoldRange(view.state, lineFrom);
           if (!currentFoldRange) return;
           
-          // 鍐嶆楠岃瘉鑼冨洿鏈夋晥鎬?
+          // 閸愬秵顐兼宀冪槈閼煎啫娲块張澶嬫櫏閹?
           if (currentFoldRange.from >= currentFoldRange.to || currentFoldRange.to > view.state.doc.length) {
             return;
           }
 
           if (existingFold) {
-            // 灞曞紑鏃讹紝楠岃瘉 existingFold 鑼冨洿浠嶇劧鏈夋晥
+            // 鐏炴洖绱戦弮璁圭礉妤犲矁鐦?existingFold 閼煎啫娲挎禒宥囧姧閺堝鏅?
             if (existingFold.from <= view.state.doc.length && existingFold.to <= view.state.doc.length) {
               view.dispatch({ effects: unfoldEffect.of(existingFold) });
             }
@@ -629,8 +653,8 @@ class ListFoldWidget extends WidgetType {
 }
 
 /**
- * 鏋勫缓瀛愭姌鍙犲唴鑱旇楗板櫒
- * 鎵€鏈夊浘鏍囬兘浣跨敤缁濆瀹氫綅锛屼笉鍗犵敤鏂囨湰绌洪棿
+ * 閺嬪嫬缂撶€涙劖濮岄崣鐘插敶閼辨棁顥婃鏉挎珤
+ * 閹碘偓閺堝娴橀弽鍥厴娴ｈ法鏁ょ紒婵嗩嚠鐎规矮缍呴敍灞肩瑝閸楃姷鏁ら弬鍥ㄦ拱缁屾椽妫?
  */
 function buildListFoldDecorations(state: EditorState): DecorationSet {
   const decorations: { from: number; decoration: Decoration }[] = [];
@@ -648,20 +672,20 @@ function buildListFoldDecorations(state: EditorState): DecorationSet {
     const line = doc.line(i);
     const lineText = line.text;
 
-    // 璺宠繃鏍囬琛?
+    // 鐠哄疇绻冮弽鍥暯鐞?
     if (getHeadingLevel(lineText) > 0) continue;
 
-    // 璺宠繃绌鸿
+    // 鐠哄疇绻冪粚楦款攽
     if (lineText.trim().length === 0) continue;
 
     const foldRange = computeListFoldRange(state, line.from);
     
-    // 鍙湁褰?foldRange 瀛樺湪鏃舵墠娣诲姞鎶樺彔鍥炬爣
+    // 閸欘亝婀佽ぐ?foldRange 鐎涙ê婀弮鑸靛濞ｈ濮為幎妯哄綌閸ョ偓鐖?
     if (foldRange) {
       const isFolded = foldedMap.has(line.to);
       const indent = getIndentLevel(lineText);
 
-      // 鍦ㄧ缉杩涗箣鍚庢彃鍏ユ姌鍙犲浘鏍囷紙鎴栬棣栵紝濡傛灉鏃犵缉杩涳級
+      // 閸︺劎缂夋潻娑楃閸氬孩褰冮崗銉﹀閸欑姴娴橀弽鍥风礄閹存牞顢戞＃鏍电礉婵″倹鐏夐弮鐘电級鏉╂冻绱?
       const insertPos = line.from + indent;
 
       decorations.push({
@@ -687,7 +711,7 @@ function buildListFoldDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 瀛愭姌鍙犲唴鑱旇楗板櫒 StateField
+ * 鐎涙劖濮岄崣鐘插敶閼辨棁顥婃鏉挎珤 StateField
  */
 const listFoldDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -706,43 +730,43 @@ const listFoldDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 搴忓彿楂樹寒瑁呴グ鍣?- 鍖归厤鍚勭鏍煎紡鐨勫簭鍙?
- * 涓鸿繖浜涘簭鍙锋坊鍔犱富棰橀鑹?
+ * 鎼村繐褰挎妯瑰瘨鐟佸懘銈伴崳?- 閸栧綊鍘ら崥鍕潚閺嶇厧绱￠惃鍕碍閸?
+ * 娑撻缚绻栨禍娑樼碍閸欓攱鍧婇崝鐘卞瘜妫版﹢顤侀懝?
  */
 const numberingMark = Decoration.mark({ class: 'cm-numbering' });
 
 /**
- * 鏋勫缓搴忓彿楂樹寒瑁呴グ鍣?
- * 鍖归厤琛岄锛堝彲鑳芥湁缂╄繘锛夌殑搴忓彿鏍煎紡锛?
- * - 鍗曚釜鏁板瓧鍔犵偣锛堝 1.銆?.銆?0.锛?
- * - 鏁板瓧.鏁板瓧 鎴栨洿澶氬眰绾э紙濡?4.2銆?.2.1銆?.2.1.1锛?
- * - 鍗曚釜澶у啓瀛楁瘝鍔犵偣锛堝 A.銆丅.銆丆.锛?
- * - 鍗曚釜灏忓啓瀛楁瘝鍔犵偣锛堝 a.銆乥.銆乧.锛?
- * - 瀛楁瘝+鏁板瓧鍔犵偣锛堝 A1.銆丄100.銆丅2.锛?
- * - 涓枃鏁板瓧搴忓彿锛堝 涓€銆佷簩銆佷笁銆侊級
- * - 鍦嗙偣鏃犲簭鍒楄〃锛堝 鈥級
+ * 閺嬪嫬缂撴惔蹇撳娇妤傛ü瀵掔憗鍛淬偘閸?
+ * 閸栧綊鍘ょ悰宀勵浕閿涘牆褰查懗鑺ユ箒缂傗晞绻橀敍澶屾畱鎼村繐褰块弽鐓庣础閿?
+ * - 閸楁洑閲滈弫鏉跨摟閸旂姷鍋ｉ敍鍫濐洤 1.閵?.閵?0.閿?
+ * - 閺佹澘鐡?閺佹澘鐡?閹存牗娲挎径姘湴缁狙嶇礄婵?4.2閵?.2.1閵?.2.1.1閿?
+ * - 閸楁洑閲滄径褍鍟撶€涙鐦濋崝鐘靛仯閿涘牆顩?A.閵嗕竻.閵嗕竼.閿?
+ * - 閸楁洑閲滅亸蹇撳晸鐎涙鐦濋崝鐘靛仯閿涘牆顩?a.閵嗕攻.閵嗕恭.閿?
+ * - 鐎涙鐦?閺佹澘鐡ч崝鐘靛仯閿涘牆顩?A1.閵嗕竸100.閵嗕竻2.閿?
+ * - 娑擃厽鏋冮弫鏉跨摟鎼村繐褰块敍鍫濐洤 娑撯偓閵嗕椒绨╅妴浣风瑏閵嗕緤绱?
+ * - 閸﹀棛鍋ｉ弮鐘茬碍閸掓銆冮敍鍫濐洤 閳ヮ澁绱?
  */
 function buildNumberingDecorations(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number }[] = [];
   const doc = state.doc;
 
-  // 鍖归厤搴忓彿鏍煎紡锛?
-  // 1. 鍗曚釜鏁板瓧鍔犵偣锛堝 1.銆?.銆?0.銆?00.锛?
-  // 2. 鏁板瓧.鏁板瓧 鎴栨洿澶氬眰绾э紙濡?4.2銆?.2.1銆?.2.1.1锛?
-  // 3. 鍗曚釜瀛楁瘝鍔犵偣锛堝 A.銆丅.銆乤.銆乥.锛?
-  // 4. 瀛楁瘝+鏁板瓧鍔犵偣锛堝 A1.銆丄100.銆丅2.锛?
-  // 5. 涓枃鏁板瓧搴忓彿锛堝 涓€銆佷簩銆佷笁銆佸崄銆佺櫨锛?
-  // 6. 鍦嗙偣鏃犲簭鍒楄〃锛堝 鈥級
-  // 搴忓彿蹇呴』鍦ㄨ棣栵紙鍙兘鏈夌缉杩涚┖鏍硷級锛屽悗闈㈣窡绌烘牸鎴栧叾浠栧唴瀹?
-  const numberingRegex = /^(\s*)(\d+\.|[A-Za-z]\.|[A-Za-z]\d{1,3}\.|[一二三四五六七八九十百千万零]+、|\d+(?:\.\d+)+)\s/;
+  // 閸栧綊鍘ゆ惔蹇撳娇閺嶇厧绱￠敍?
+  // 1. 閸楁洑閲滈弫鏉跨摟閸旂姷鍋ｉ敍鍫濐洤 1.閵?.閵?0.閵?00.閿?
+  // 2. 閺佹澘鐡?閺佹澘鐡?閹存牗娲挎径姘湴缁狙嶇礄婵?4.2閵?.2.1閵?.2.1.1閿?
+  // 3. 閸楁洑閲滅€涙鐦濋崝鐘靛仯閿涘牆顩?A.閵嗕竻.閵嗕工.閵嗕攻.閿?
+  // 4. 鐎涙鐦?閺佹澘鐡ч崝鐘靛仯閿涘牆顩?A1.閵嗕竸100.閵嗕竻2.閿?
+  // 5. 娑擃厽鏋冮弫鏉跨摟鎼村繐褰块敍鍫濐洤 娑撯偓閵嗕椒绨╅妴浣风瑏閵嗕礁宕勯妴浣烘閿?
+  // 6. 閸﹀棛鍋ｉ弮鐘茬碍閸掓銆冮敍鍫濐洤 閳ヮ澁绱?
+  // 鎼村繐褰胯箛鍛淬€忛崷銊攽妫ｆ牭绱欓崣顖濆厴閺堝缂夋潻娑氣敄閺嶇》绱氶敍灞芥倵闂堛垼绐＄粚鐑樼壐閹存牕鍙炬禒鏍у敶鐎?
+  const numberingRegex = /^(\s*)(\d+\.|[A-Za-z]\.|[A-Za-z]\d{1,3}\.|(?:[一二三四五六七八九十百千万零两]+、?|\d+(?:\.\d+)+))\s/;
   
-  // 寰呭姙娓呭崟姝ｅ垯锛氳烦杩?鈥?[ ] 鎴?鈥?[x] 鏍煎紡
+  // 瀵板懎濮欏〒鍛礋濮濓絽鍨敍姘崇儲鏉?閳?[ ] 閹?閳?[x] 閺嶇厧绱?
   const todoRegex = /^[\t ]*[-*+•]\s\[[ xX]\](\s|$)/;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     
-    // 璺宠繃寰呭姙娓呭崟琛?
+    // 鐠哄疇绻冨鍛濞撳懎宕熺悰?
     if (todoRegex.test(line.text)) {
       continue;
     }
@@ -764,7 +788,7 @@ function buildNumberingDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 搴忓彿楂樹寒 StateField
+ * 鎼村繐褰挎妯瑰瘨 StateField
  */
 const numberingDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -780,11 +804,11 @@ const numberingDecorations = StateField.define<DecorationSet>({
 });
 
 // ============================================================================
-// 鏂囨湰棰滆壊绯荤粺 - 绾?StateField + Decoration 鏂规锛堜笉浣跨敤姝ｅ垯锛?
+// 閺傚洦婀版０婊嗗缁崵绮?- 缁?StateField + Decoration 閺傝顢嶉敍鍫滅瑝娴ｈ法鏁ゅ锝呭灟閿?
 // ============================================================================
 
 /**
- * 棰滆壊鏍囪鏁版嵁缁撴瀯
+ * 妫版粏澹婇弽鍥唶閺佺増宓佺紒鎾寸€?
  */
 interface ColorMark {
   from: number;
@@ -794,18 +818,18 @@ interface ColorMark {
 }
 
 /**
- * 娣诲姞/鏇存柊棰滆壊鐨?StateEffect
+ * 濞ｈ濮?閺囧瓨鏌婃０婊嗗閻?StateEffect
  */
 const addColorEffect = StateEffect.define<ColorMark>();
 
 /**
- * 娓呴櫎棰滆壊鐨?StateEffect
+ * 濞撳懘娅庢０婊嗗閻?StateEffect
  */
 const clearColorEffect = StateEffect.define<{ from: number; to: number }>();
 
 /**
- * 棰滆壊鏍囪 StateField
- * 瀛樺偍鎵€鏈夋枃鏈鑹蹭俊鎭紝涓嶄緷璧栨枃妗ｄ腑鐨?HTML 鏍囩
+ * 妫版粏澹婇弽鍥唶 StateField
+ * 鐎涙ê鍋嶉幍鈧張澶嬫瀮閺堫剟顤侀懝韫繆閹垽绱濇稉宥勭贩鐠ф牗鏋冨锝勮厬閻?HTML 閺嶅洨顒?
  */
 const colorMarksField = StateField.define<ColorMark[]>({
   create() {
@@ -814,14 +838,14 @@ const colorMarksField = StateField.define<ColorMark[]>({
   update(marks, tr) {
     let newMarks = marks;
 
-    // 澶勭悊鏂囨。鍙樺寲 - 鏇存柊鎵€鏈夋爣璁扮殑浣嶇疆
+    // 婢跺嫮鎮婇弬鍥ㄣ€傞崣妯哄 - 閺囧瓨鏌婇幍鈧張澶嬬垼鐠佹壆娈戞担宥囩枂
     if (tr.docChanged) {
       newMarks = marks
         .map(mark => {
-          // 浣跨敤 mapPos 鏇存柊浣嶇疆
+          // 娴ｈ法鏁?mapPos 閺囧瓨鏌婃担宥囩枂
           const newFrom = tr.changes.mapPos(mark.from, 1);
           const newTo = tr.changes.mapPos(mark.to, -1);
-          // 濡傛灉鑼冨洿鏃犳晥锛堣鍒犻櫎锛夛紝杩斿洖 null
+          // 婵″倹鐏夐懠鍐ㄦ纯閺冪姵鏅ラ敍鍫ｎ潶閸掔娀娅庨敍澶涚礉鏉╂柨娲?null
           if (newFrom >= newTo) {
             return null;
           }
@@ -830,24 +854,24 @@ const colorMarksField = StateField.define<ColorMark[]>({
         .filter((mark): mark is ColorMark => mark !== null);
     }
 
-    // 澶勭悊棰滆壊鏁堟灉
+    // 婢跺嫮鎮婃０婊嗗閺佸牊鐏?
     for (const effect of tr.effects) {
       if (effect.is(addColorEffect)) {
         const newMark = effect.value;
-        // 鏌ユ壘鎵€鏈夐噸鍙犵殑鏍囪
+        // 閺屻儲澹橀幍鈧張澶愬櫢閸欑姷娈戦弽鍥唶
         const overlappingMarks = newMarks.filter(
           m => !(m.to <= newMark.from || m.from >= newMark.to)
         );
 
         if (overlappingMarks.length > 0) {
-          // 绉婚櫎鎵€鏈夐噸鍙犵殑鏍囪
+          // 缁夊娅庨幍鈧張澶愬櫢閸欑姷娈戦弽鍥唶
           newMarks = newMarks.filter(
             m => m.to <= newMark.from || m.from >= newMark.to
           );
 
-          // 澶勭悊姣忎釜閲嶅彔鏍囪锛屽彲鑳介渶瑕佸垎鍓?
+          // 婢跺嫮鎮婂В蹇庨嚋闁插秴褰旈弽鍥唶閿涘苯褰查懗浠嬫付鐟曚礁鍨庨崜?
           for (const existing of overlappingMarks) {
-            // 濡傛灉鏃ф爣璁板湪鏂版爣璁颁箣鍓嶆湁閮ㄥ垎
+            // 婵″倹鐏夐弮褎鐖ｇ拋鏉挎躬閺傜増鐖ｇ拋棰佺閸撳秵婀侀柈銊ュ瀻
             if (existing.from < newMark.from) {
               newMarks.push({
                 from: existing.from,
@@ -856,7 +880,7 @@ const colorMarksField = StateField.define<ColorMark[]>({
                 textColor: existing.textColor,
               });
             }
-            // 濡傛灉鏃ф爣璁板湪鏂版爣璁颁箣鍚庢湁閮ㄥ垎
+            // 婵″倹鐏夐弮褎鐖ｇ拋鏉挎躬閺傜増鐖ｇ拋棰佺閸氬孩婀侀柈銊ュ瀻
             if (existing.to > newMark.to) {
               newMarks.push({
                 from: newMark.to,
@@ -867,7 +891,7 @@ const colorMarksField = StateField.define<ColorMark[]>({
             }
           }
 
-          // 鍚堝苟棰滆壊锛氭柊鏍囪浣跨敤鏂伴鑹诧紝淇濈暀鏃ф爣璁颁腑鏈瑕嗙洊鐨勯鑹?
+          // 閸氬牆鑻熸０婊嗗閿涙碍鏌婇弽鍥唶娴ｈ法鏁ら弬浼搭杹閼硅绱濇穱婵堟殌閺冄勭垼鐠侀鑵戦張顏囶潶鐟曞棛娲婇惃鍕杹閼?
           const firstOverlap = overlappingMarks[0];
           const merged: ColorMark = {
             from: newMark.from,
@@ -877,12 +901,12 @@ const colorMarksField = StateField.define<ColorMark[]>({
           };
           newMarks.push(merged);
         } else {
-          // 娣诲姞鏂版爣璁?
+          // 濞ｈ濮為弬鐗堢垼鐠?
           newMarks = [...newMarks, newMark];
         }
       } else if (effect.is(clearColorEffect)) {
         const { from, to } = effect.value;
-        // 绉婚櫎鑼冨洿鍐呯殑鏍囪
+        // 缁夊娅庨懠鍐ㄦ纯閸愬懐娈戦弽鍥唶
         newMarks = newMarks.filter(m => m.to <= from || m.from >= to);
       }
     }
@@ -892,7 +916,7 @@ const colorMarksField = StateField.define<ColorMark[]>({
 });
 
 /**
- * 棰勮鑼冨洿鏁版嵁 - 鐢ㄤ簬鍦ㄩ瑙堟椂鏆傛椂闅愯棌宸叉湁鑳屾櫙鑹?
+ * 妫板嫯顫嶉懠鍐ㄦ纯閺佺増宓?- 閻劋绨崷銊╊暕鐟欏牊妞傞弳鍌涙闂呮劘妫屽鍙夋箒閼冲本娅欓懝?
  */
 interface PreviewRange {
   from: number;
@@ -901,12 +925,12 @@ interface PreviewRange {
 }
 
 /**
- * 璁剧疆棰勮鑼冨洿鐨?StateEffect
+ * 鐠佸墽鐤嗘０鍕潔閼煎啫娲块惃?StateEffect
  */
 const setPreviewRangeEffect = StateEffect.define<PreviewRange | null>();
 
 /**
- * 棰勮鑼冨洿 StateField
+ * 妫板嫯顫嶉懠鍐ㄦ纯 StateField
  */
 const previewRangeField = StateField.define<PreviewRange | null>({
   create() {
@@ -923,9 +947,9 @@ const previewRangeField = StateField.define<PreviewRange | null>({
 });
 
 /**
- * 浠?ColorMark 鏁扮粍鐢熸垚 DecorationSet
- * @param marks 棰滆壊鏍囪鏁扮粍
- * @param previewRange 棰勮鑼冨洿锛堝鏋滄湁锛屽垯鍦ㄨ鑼冨洿鍐呴殣钘忓搴旂被鍨嬬殑棰滆壊锛?
+ * 娴?ColorMark 閺佹壆绮嶉悽鐔稿灇 DecorationSet
+ * @param marks 妫版粏澹婇弽鍥唶閺佹壆绮?
+ * @param previewRange 妫板嫯顫嶉懠鍐ㄦ纯閿涘牆顩ч弸婊勬箒閿涘苯鍨崷銊嚉閼煎啫娲块崘鍛存閽樺繐顕惔鏃傝閸ㄥ娈戞０婊嗗閿?
  */
 function buildColorDecorations(
   marks: ColorMark[],
@@ -934,15 +958,15 @@ function buildColorDecorations(
   const decorations: Range<Decoration>[] = [];
 
   for (const mark of marks) {
-    // 妫€鏌ユ槸鍚︿笌棰勮鑼冨洿閲嶅彔
+    // 濡偓閺屻儲妲搁崥锔跨瑢妫板嫯顫嶉懠鍐ㄦ纯闁插秴褰?
     const overlapsPreview =
       previewRange &&
       !(mark.to <= previewRange.from || mark.from >= previewRange.to);
 
     if (overlapsPreview && previewRange) {
-      // 闇€瑕佸垎鍓叉爣璁帮細棰勮鑼冨洿鍐呴殣钘忓搴旈鑹诧紝鑼冨洿澶栦繚鎸佸師鏍?
+      // 闂団偓鐟曚礁鍨庨崜鍙夌垼鐠佸府绱版０鍕潔閼煎啫娲块崘鍛存閽樺繐顕惔鏃堫杹閼硅绱濋懠鍐ㄦ纯婢舵牔绻氶幐浣稿斧閺?
       
-      // 1. 棰勮鑼冨洿涔嬪墠鐨勯儴鍒嗭紙淇濇寔鍘熸牱锛?
+      // 1. 妫板嫯顫嶉懠鍐ㄦ纯娑斿澧犻惃鍕劥閸掑棴绱欐穱婵囧瘮閸樼喐鐗遍敍?
       if (mark.from < previewRange.from) {
         const styleAttrs: string[] = [];
         if (mark.bgColor) {
@@ -964,12 +988,12 @@ function buildColorDecorations(
         }
       }
 
-      // 2. 棰勮鑼冨洿鍐呯殑閮ㄥ垎锛堥殣钘忓搴旂被鍨嬬殑棰滆壊锛?
+      // 2. 妫板嫯顫嶉懠鍐ㄦ纯閸愬懐娈戦柈銊ュ瀻閿涘牓娈ｉ挊蹇擃嚠鎼存梻琚崹瀣畱妫版粏澹婇敍?
       const overlapFrom = Math.max(mark.from, previewRange.from);
       const overlapTo = Math.min(mark.to, previewRange.to);
       if (overlapFrom < overlapTo) {
         const styleAttrs: string[] = [];
-        // 鍙繚鐣欎笉琚瑙堢殑棰滆壊绫诲瀷
+        // 閸欘亙绻氶悾娆庣瑝鐞氼偊顣╃憴鍫㈡畱妫版粏澹婄猾璇茬€?
         if (mark.bgColor && previewRange.type !== 'background-color') {
           styleAttrs.push(`background-color: ${mark.bgColor}`);
           styleAttrs.push('border-radius: 3px');
@@ -989,7 +1013,7 @@ function buildColorDecorations(
         }
       }
 
-      // 3. 棰勮鑼冨洿涔嬪悗鐨勯儴鍒嗭紙淇濇寔鍘熸牱锛?
+      // 3. 妫板嫯顫嶉懠鍐ㄦ纯娑斿鎮楅惃鍕劥閸掑棴绱欐穱婵囧瘮閸樼喐鐗遍敍?
       if (mark.to > previewRange.to) {
         const styleAttrs: string[] = [];
         if (mark.bgColor) {
@@ -1011,7 +1035,7 @@ function buildColorDecorations(
         }
       }
     } else {
-      // 涓嶄笌棰勮鑼冨洿閲嶅彔锛屾甯告樉绀?
+      // 娑撳秳绗屾０鍕潔閼煎啫娲块柌宥呭綌閿涘本顒滅敮鍛婃▔缁€?
       const styleAttrs: string[] = [];
       if (mark.bgColor) {
         styleAttrs.push(`background-color: ${mark.bgColor}`);
@@ -1034,22 +1058,22 @@ function buildColorDecorations(
     }
   }
 
-  // 鎸変綅缃帓搴?
+  // 閹稿缍呯純顔藉笓鎼?
   decorations.sort((a, b) => a.from - b.from);
 
   return Decoration.set(decorations);
 }
 
 /**
- * 棰滆壊瑁呴グ鍣?StateField
- * 浠?colorMarksField 鐢熸垚瑁呴グ鍣?
+ * 妫版粏澹婄憗鍛淬偘閸?StateField
+ * 娴?colorMarksField 閻㈢喐鍨氱憗鍛淬偘閸?
  */
 const colorDecorationsField = StateField.define<DecorationSet>({
   create(state) {
     return buildColorDecorations(state.field(colorMarksField), null);
   },
   update(decorations, tr) {
-    // 濡傛灉鏈夐鑹茬浉鍏崇殑鏁堟灉銆佹枃妗ｅ彉鍖栨垨棰勮鑼冨洿鍙樺寲锛岄噸鏂版瀯寤鸿楗板櫒
+    // 婵″倹鐏夐張澶愵杹閼硅尙娴夐崗宕囨畱閺佸牊鐏夐妴浣规瀮濡楋絽褰夐崠鏍ㄥ灗妫板嫯顫嶉懠鍐ㄦ纯閸欐ê瀵查敍宀勫櫢閺傜増鐎楦款棅妤楁澘娅?
     const hasColorEffect = tr.effects.some(
       e => e.is(addColorEffect) || e.is(clearColorEffect) || e.is(setPreviewRangeEffect)
     );
@@ -1063,25 +1087,25 @@ const colorDecorationsField = StateField.define<DecorationSet>({
 });
 
 /**
- * 鍒╃敤璇硶鏍戝垽鏂綅缃槸鍚﹀湪 Markdown 鏍囪鍐咃紙鏍囬銆佸垪琛ㄦ爣璁扮瓑锛?
- * 杩欎簺浣嶇疆涓嶅簲璇ュ簲鐢ㄩ鑹?
+ * 閸掆晝鏁ょ拠顓熺《閺嶆垵鍨介弬顓濈秴缂冾喗妲搁崥锕€婀?Markdown 閺嶅洩顔囬崘鍜冪礄閺嶅洭顣介妴浣稿灙鐞涖劍鐖ｇ拋鎵搼閿?
+ * 鏉╂瑤绨烘担宥囩枂娑撳秴绨茬拠銉ョ安閻劑顤侀懝?
  */
 function isInMarkdownSyntax(state: EditorState, pos: number): boolean {
   const tree = syntaxTree(state);
   let node = tree.resolveInner(pos, 1);
 
-  // 閬嶅巻鑺傜偣鍙婂叾鐖惰妭鐐?
+  // 闁秴宸婚懞鍌滃仯閸欏﹤鍙鹃悥鎯板Ν閻?
   while (node) {
     const name = node.type.name;
-    // 妫€鏌ユ槸鍚︽槸 Markdown 璇硶鏍囪
+    // 濡偓閺屻儲妲搁崥锔芥Ц Markdown 鐠囶厽纭堕弽鍥唶
     if (
-      name === 'HeaderMark' ||      // # ## ### 绛?
-      name === 'ListMark' ||        // - * + 1. 绛?
+      name === 'HeaderMark' ||      // # ## ### 缁?
+      name === 'ListMark' ||        // - * + 1. 缁?
       name === 'QuoteMark' ||       // >
       name === 'CodeMark' ||        // ` ```
       name === 'EmphasisMark' ||    // * _ ** __
       name === 'LinkMark' ||        // [ ] ( )
-      name === 'URL'                // 閾炬帴 URL
+      name === 'URL'                // 闁剧偓甯?URL
     ) {
       return true;
     }
@@ -1093,39 +1117,39 @@ function isInMarkdownSyntax(state: EditorState, pos: number): boolean {
 }
 
 /**
- * 鑾峰彇琛岄鐨?Markdown 鏍囪缁撴潫浣嶇疆
- * 杩斿洖鍐呭寮€濮嬬殑浣嶇疆锛堣烦杩囨爣棰樼鍙枫€佸垪琛ㄦ爣璁扮瓑锛?
- * 鏀寔澶氱搴忓彿鏍煎紡锛?
- * - 鏍囧噯 Markdown锛? ## - * + 1. 绛?
- * - 澶氱骇鏁板瓧锛?.1銆?.2.1銆?.1 绛?
- * - 瀛楁瘝搴忓彿锛欰. B. a. b. A1. B2. 绛?
- * - 瀛楁瘝+鏁板瓧娣峰悎锛欰1銆丅2銆丄1.1 绛?
- * - 涓枃搴忓彿锛氫竴銆佷簩銆佷笁銆佺瓑
- * - 鏀寔浠绘剰缂╄繘锛堢┖鏍兼垨 TAB锛?
+ * 閼惧嘲褰囩悰宀勵浕閻?Markdown 閺嶅洩顔囩紒鎾存将娴ｅ秶鐤?
+ * 鏉╂柨娲栭崘鍛啇瀵偓婵娈戞担宥囩枂閿涘牐鐑︽潻鍥ㄧ垼妫版顑侀崣鏋偓浣稿灙鐞涖劍鐖ｇ拋鎵搼閿?
+ * 閺€顖涘瘮婢舵氨顫掓惔蹇撳娇閺嶇厧绱￠敍?
+ * - 閺嶅洤鍣?Markdown閿? ## - * + 1. 缁?
+ * - 婢舵氨楠囬弫鏉跨摟閿?.1閵?.2.1閵?.1 缁?
+ * - 鐎涙鐦濇惔蹇撳娇閿涙. B. a. b. A1. B2. 缁?
+ * - 鐎涙鐦?閺佹澘鐡уǎ宄版値閿涙1閵嗕竻2閵嗕竸1.1 缁?
+ * - 娑擃厽鏋冩惔蹇撳娇閿涙矮绔撮妴浣风癌閵嗕椒绗侀妴浣虹搼
+ * - 閺€顖涘瘮娴犵粯鍓扮紓鈺勭箻閿涘牏鈹栭弽鍏煎灗 TAB閿?
  */
 function getContentStartPos(state: EditorState, lineFrom: number): number {
   const line = state.doc.lineAt(lineFrom);
   const tree = syntaxTree(state);
   const lineText = line.text;
 
-  // 浠庤棣栧紑濮嬫煡鎵?
+  // 娴犲氦顢戞＃鏍х磻婵鐓￠幍?
   let contentStart = line.from;
 
-  // 鍏堢敤璇硶鏍戞娴嬫爣鍑?Markdown 鏍囪
-  // 澧炲姞妫€娴嬭寖鍥翠互鏀寔娣卞害缂╄繘
+  // 閸忓牏鏁ょ拠顓熺《閺嶆垶顥呭ù瀣垼閸?Markdown 閺嶅洩顔?
+  // 婢х偛濮炲Λ鈧ù瀣瘱閸ョ繝浜掗弨顖涘瘮濞ｅ崬瀹崇紓鈺勭箻
   tree.iterate({
     from: line.from,
     to: line.to,
     enter(node) {
-      // 濡傛灉鏄爣璁拌妭鐐?
+      // 婵″倹鐏夐弰顖涚垼鐠佹媽濡悙?
       if (
         node.type.name === 'HeaderMark' ||
         node.type.name === 'ListMark' ||
         node.type.name === 'QuoteMark'
       ) {
-        // 鍐呭浠庢爣璁板悗闈㈠紑濮?
+        // 閸愬懎顔愭禒搴㈢垼鐠佹澘鎮楅棃銏犵磻婵?
         contentStart = Math.max(contentStart, node.to);
-        // 璺宠繃鏍囪鍚庣殑绌烘牸
+        // 鐠哄疇绻冮弽鍥唶閸氬海娈戠粚鐑樼壐
         const text = state.doc.sliceString(node.to, Math.min(node.to + 2, line.to));
         if (text.startsWith(' ')) {
           contentStart = node.to + 1;
@@ -1134,24 +1158,24 @@ function getContentStartPos(state: EditorState, lineFrom: number): number {
     },
   });
 
-  // 棰濆妫€娴嬪悇绉嶅簭鍙锋牸寮忥紙璇硶鏍戝彲鑳戒笉璇嗗埆锛?
-  // 浣跨敤 [\t ]* 鏄庣‘鍖归厤 TAB 鍜岀┖鏍?
+  // 妫版繂顦诲Λ鈧ù瀣倗缁夊秴绨崣閿嬬壐瀵骏绱欑拠顓熺《閺嶆垵褰查懗鎴掔瑝鐠囧棗鍩嗛敍?
+  // 娴ｈ法鏁?[\t ]* 閺勫海鈥橀崠褰掑帳 TAB 閸滃瞼鈹栭弽?
   const listPatterns = [
-    // 澶氱骇鏁板瓧搴忓彿锛?.1銆?.2.1銆?.1.2 绛夛紙鏀寔浠绘剰缂╄繘锛?
+    // 婢舵氨楠囬弫鏉跨摟鎼村繐褰块敍?.1閵?.2.1閵?.1.2 缁涘绱欓弨顖涘瘮娴犵粯鍓扮紓鈺勭箻閿?
     /^([\t ]*)((\d+\.)+\d*\s+)/,
-    // 鍗曚釜鏁板瓧搴忓彿锛?. 2. 10. 绛夛紙鏀寔浠绘剰缂╄繘锛?
+    // 閸楁洑閲滈弫鏉跨摟鎼村繐褰块敍?. 2. 10. 缁涘绱欓弨顖涘瘮娴犵粯鍓扮紓鈺勭箻閿?
     /^([\t ]*)(\d+\.\s+)/,
-    // 瀛楁瘝+鏁板瓧+澶氱骇锛欰1.1銆丅2.3 绛?
+    // 鐎涙鐦?閺佹澘鐡?婢舵氨楠囬敍娆?.1閵嗕竻2.3 缁?
     /^([\t ]*)([A-Za-z]\d+(?:\.\d+)*\.?\s+)/,
-    // 瀛楁瘝+鏁板瓧搴忓彿锛欰1銆丅2銆丄1.銆丅2. 绛?
+    // 鐎涙鐦?閺佹澘鐡ф惔蹇撳娇閿涙1閵嗕竻2閵嗕竸1.閵嗕竻2. 缁?
     /^([\t ]*)([A-Za-z]\d+\.?\s+)/,
-    // 鍗曞瓧姣嶅簭鍙凤細A. B. a. b. 绛?
+    // 閸楁洖鐡уВ宥呯碍閸欏嚖绱癆. B. a. b. 缁?
     /^([\t ]*)([A-Za-z]\.\s+)/,
-    // 涓枃搴忓彿锛氫竴銆佷簩銆佷笁銆佺瓑
-    /^([\t ]*)([一二三四五六七八九十百千万零]+、\s*)/,
-    // 鏃犲簭鍒楄〃绗﹀彿锛? * + 鈥?
+    // 娑擃厽鏋冩惔蹇撳娇閿涙矮绔撮妴浣风癌閵嗕椒绗侀妴浣虹搼
+    /^([\t ]*)([一二三四五六七八九十百千万零两]+、?\s*)/,
+    // 閺冪姴绨崚妤勩€冪粭锕€褰块敍? * + 閳?
     /^([\t ]*)([-*+•]\s+)/,
-    // 鏍囬绗﹀彿锛? ## ### 绛?
+    // 閺嶅洭顣界粭锕€褰块敍? ## ### 缁?
     /^([\t ]*)(#{1,6}\s+)/,
   ];
 
@@ -1160,7 +1184,7 @@ function getContentStartPos(state: EditorState, lineFrom: number): number {
     if (match) {
       const matchEnd = line.from + match[0].length;
       contentStart = Math.max(contentStart, matchEnd);
-      break; // 鍖归厤鍒颁竴涓氨鍋滄
+      break; // 閸栧綊鍘ら崚棰佺娑擃亜姘ㄩ崑婊勵剾
     }
   }
 
@@ -1168,7 +1192,7 @@ function getContentStartPos(state: EditorState, lineFrom: number): number {
 }
 
 /**
- * 璺宠繃鏂囨湰棣栧熬鐨勭┖鐧藉瓧绗︼紝杩斿洖瀹為檯鍐呭鐨勮寖鍥?
+ * 鐠哄疇绻冮弬鍥ㄦ拱妫ｆ牕鐔惃鍕敄閻ц棄鐡х粭锔肩礉鏉╂柨娲栫€圭偤妾崘鍛啇閻ㄥ嫯瀵栭崶?
  */
 function trimTextRange(
   state: EditorState,
@@ -1177,7 +1201,7 @@ function trimTextRange(
 ): { from: number; to: number } {
   const text = state.sliceDoc(from, to);
   
-  // 璁＄畻鍓嶅绌虹櫧
+  // 鐠侊紕鐣婚崜宥咁嚤缁岃櫣娅?
   let leadingSpaces = 0;
   for (let i = 0; i < text.length; i++) {
     if (text[i] === ' ' || text[i] === '\t') {
@@ -1187,7 +1211,7 @@ function trimTextRange(
     }
   }
   
-  // 璁＄畻灏鹃儴绌虹櫧
+  // 鐠侊紕鐣荤亸楣冨劥缁岃櫣娅?
   let trailingSpaces = 0;
   for (let i = text.length - 1; i >= leadingSpaces; i--) {
     if (text[i] === ' ' || text[i] === '\t') {
@@ -1204,10 +1228,10 @@ function trimTextRange(
 }
 
 /**
- * 搴旂敤棰滆壊鏍峰紡鍒伴€変腑鏂囨湰锛堢函 StateField 鏂规锛?
- * @param view EditorView 瀹炰緥
- * @param styleType 鏍峰紡绫诲瀷锛?color' 鎴?'background-color'
- * @param newColor 鏂扮殑棰滆壊鍊?
+ * 鎼存梻鏁ゆ０婊嗗閺嶅嘲绱￠崚浼粹偓澶夎厬閺傚洦婀伴敍鍫㈠嚱 StateField 閺傝顢嶉敍?
+ * @param view EditorView 鐎圭偘绶?
+ * @param styleType 閺嶅嘲绱＄猾璇茬€烽敍?color' 閹?'background-color'
+ * @param newColor 閺傛壆娈戞０婊嗗閸?
  */
 function applyColorStyle(
   view: EditorView,
@@ -1219,7 +1243,7 @@ function applyColorStyle(
   let targetTo: number;
 
   if (from === to) {
-    // 娌℃湁閫変腑鏂囨湰锛岄€変腑鏁磋鍐呭锛堣烦杩?Markdown 鏍囪锛?
+    // 濞屸剝婀侀柅澶夎厬閺傚洦婀伴敍宀勨偓澶夎厬閺佺顢戦崘鍛啇閿涘牐鐑︽潻?Markdown 閺嶅洩顔囬敍?
     const line = view.state.doc.lineAt(from);
     targetFrom = getContentStartPos(view.state, line.from);
     targetTo = line.to;
@@ -1227,7 +1251,7 @@ function applyColorStyle(
     targetFrom = from;
     targetTo = to;
 
-    // 妫€鏌ラ€夊尯璧峰浣嶇疆鏄惁鍦?Markdown 鏍囪鍐?
+    // 濡偓閺屻儵鈧灏挧宄邦潗娴ｅ秶鐤嗛弰顖氭儊閸?Markdown 閺嶅洩顔囬崘?
     const startLine = view.state.doc.lineAt(from);
     const contentStart = getContentStartPos(view.state, startLine.from);
     if (targetFrom < contentStart) {
@@ -1235,22 +1259,22 @@ function applyColorStyle(
     }
   }
 
-  // 璺宠繃棣栧熬绌虹櫧
+  // 鐠哄疇绻冩＃鏍х啲缁岃櫣娅?
   const trimmed = trimTextRange(view.state, targetFrom, targetTo);
   targetFrom = trimmed.from;
   targetTo = trimmed.to;
 
-  // 濡傛灉鑼冨洿鏃犳晥锛岀洿鎺ヨ繑鍥?
+  // 婵″倹鐏夐懠鍐ㄦ纯閺冪姵鏅ラ敍宀€娲块幒銉ㄧ箲閸?
   if (targetFrom >= targetTo) {
     return;
   }
 
-  // 妫€鏌ユ槸鍚﹀寘鍚琛?
+  // 濡偓閺屻儲妲搁崥锕€瀵橀崥顐㈩樋鐞?
   const targetText = view.state.sliceDoc(targetFrom, targetTo);
   const hasMultipleLines = targetText.includes('\n');
 
   if (hasMultipleLines) {
-    // 澶氳澶勭悊锛氬姣忎竴琛屽垎鍒簲鐢ㄩ鑹?
+    // 婢舵俺顢戞径鍕倞閿涙艾顕В蹇庣鐞涘苯鍨庨崚顐㈢安閻劑顤侀懝?
     const doc = view.state.doc;
     const startLine = doc.lineAt(targetFrom);
     const endLine = doc.lineAt(targetTo);
@@ -1261,38 +1285,38 @@ function applyColorStyle(
       let lineFrom = line.from;
       let lineTo = line.to;
 
-      // 濡傛灉鏄涓€琛岋紝浠庨€変腑浣嶇疆寮€濮?
+      // 婵″倹鐏夐弰顖滎儑娑撯偓鐞涘矉绱濇禒搴ㄢ偓澶夎厬娴ｅ秶鐤嗗鈧慨?
       if (lineNum === startLine.number) {
         lineFrom = Math.max(targetFrom, line.from);
       }
-      // 濡傛灉鏄渶鍚庝竴琛岋紝鍒伴€変腑浣嶇疆缁撴潫
+      // 婵″倹鐏夐弰顖涙付閸氬簼绔寸悰宀嬬礉閸掍即鈧鑵戞担宥囩枂缂佹挻娼?
       if (lineNum === endLine.number) {
         lineTo = Math.min(targetTo, line.to);
       }
 
-      // 璺宠繃 Markdown 鏍囪
+      // 鐠哄疇绻?Markdown 閺嶅洩顔?
       const contentStart = getContentStartPos(view.state, line.from);
       if (lineFrom < contentStart) {
         lineFrom = contentStart;
       }
 
-      // 璺宠繃棣栧熬绌虹櫧
+      // 鐠哄疇绻冩＃鏍х啲缁岃櫣娅?
       const lineTrimmed = trimTextRange(view.state, lineFrom, lineTo);
       lineFrom = lineTrimmed.from;
       lineTo = lineTrimmed.to;
 
-      // 濡傛灉杩欎竴琛屾病鏈夊唴瀹癸紝璺宠繃
+      // 婵″倹鐏夋潻娆庣鐞涘本鐥呴張澶婂敶鐎圭櫢绱濈捄瀹犵箖
       if (lineFrom >= lineTo) {
         continue;
       }
 
-      // 鏌ユ壘宸叉湁鐨勯鑹叉爣璁帮紙鏌ユ壘涓庢柊鑼冨洿閲嶅彔鐨勬墍鏈夋爣璁帮紝鍚堝苟瀹冧滑鐨勯鑹诧級
+      // 閺屻儲澹樺鍙夋箒閻ㄥ嫰顤侀懝鍙夌垼鐠佸府绱欓弻銉﹀娑撳孩鏌婇懠鍐ㄦ纯闁插秴褰旈惃鍕閺堝鐖ｇ拋甯礉閸氬牆鑻熺€瑰啩婊戦惃鍕杹閼硅绱?
       const existingMarks = view.state.field(colorMarksField);
       const overlappingMarks = existingMarks.filter(
         m => !(m.to <= lineFrom || m.from >= lineTo)
       );
 
-      // 浠庢墍鏈夐噸鍙犳爣璁颁腑鏀堕泦棰滆壊
+      // 娴犲孩澧嶉張澶愬櫢閸欑姵鐖ｇ拋棰佽厬閺€鍫曟肠妫版粏澹?
       let existingBgColor: string | undefined;
       let existingTextColor: string | undefined;
       for (const m of overlappingMarks) {
@@ -1304,7 +1328,7 @@ function applyColorStyle(
         }
       }
 
-      // 鍒涘缓鏂扮殑棰滆壊鏍囪
+      // 閸掓稑缂撻弬鎵畱妫版粏澹婇弽鍥唶
       const newMark: ColorMark = {
         from: lineFrom,
         to: lineTo,
@@ -1321,14 +1345,14 @@ function applyColorStyle(
     return;
   }
 
-  // 鍗曡澶勭悊
-  // 鏌ユ壘宸叉湁鐨勯鑹叉爣璁帮紙鏌ユ壘涓庢柊鑼冨洿閲嶅彔鐨勬墍鏈夋爣璁帮紝鍚堝苟瀹冧滑鐨勯鑹诧級
+  // 閸楁洝顢戞径鍕倞
+  // 閺屻儲澹樺鍙夋箒閻ㄥ嫰顤侀懝鍙夌垼鐠佸府绱欓弻銉﹀娑撳孩鏌婇懠鍐ㄦ纯闁插秴褰旈惃鍕閺堝鐖ｇ拋甯礉閸氬牆鑻熺€瑰啩婊戦惃鍕杹閼硅绱?
   const existingMarks = view.state.field(colorMarksField);
   const overlappingMarks = existingMarks.filter(
     m => !(m.to <= targetFrom || m.from >= targetTo)
   );
 
-  // 浠庢墍鏈夐噸鍙犳爣璁颁腑鏀堕泦棰滆壊
+  // 娴犲孩澧嶉張澶愬櫢閸欑姵鐖ｇ拋棰佽厬閺€鍫曟肠妫版粏澹?
   let existingBgColor: string | undefined;
   let existingTextColor: string | undefined;
   for (const m of overlappingMarks) {
@@ -1340,7 +1364,7 @@ function applyColorStyle(
     }
   }
 
-  // 鍒涘缓鏂扮殑棰滆壊鏍囪
+  // 閸掓稑缂撻弬鎵畱妫版粏澹婇弽鍥唶
   const newMark: ColorMark = {
     from: targetFrom,
     to: targetTo,
@@ -1354,10 +1378,10 @@ function applyColorStyle(
 }
 
 /**
- * 鑾峰彇褰撳墠閫変腑鏂囨湰鐨勭幇鏈夐鑹?
- * @param view EditorView 瀹炰緥
- * @param styleType 鏍峰紡绫诲瀷锛?color' 鎴?'background-color'
- * @returns 鐜版湁棰滆壊鍊硷紝濡傛灉娌℃湁鍒欒繑鍥?undefined
+ * 閼惧嘲褰囪ぐ鎾冲闁鑵戦弬鍥ㄦ拱閻ㄥ嫮骞囬張澶愵杹閼?
+ * @param view EditorView 鐎圭偘绶?
+ * @param styleType 閺嶅嘲绱＄猾璇茬€烽敍?color' 閹?'background-color'
+ * @returns 閻滅増婀佹０婊嗗閸婄》绱濇俊鍌涚亯濞屸剝婀侀崚娆掔箲閸?undefined
  */
 function getExistingColor(
   view: EditorView,
@@ -1366,7 +1390,7 @@ function getExistingColor(
   const { from, to } = view.state.selection.main;
   const marks = view.state.field(colorMarksField);
 
-  // 鏌ユ壘鍖呭惈閫夊尯鐨勯鑹叉爣璁?
+  // 閺屻儲澹橀崠鍛儓闁灏惃鍕杹閼瑰弶鐖ｇ拋?
   const mark = marks.find(m => m.from <= from && m.to >= to);
 
   if (mark) {
@@ -1377,7 +1401,7 @@ function getExistingColor(
 }
 
 /**
- * 棰滆壊棰勮 StateEffect - 鐢ㄤ簬鏇存柊棰勮瑁呴グ鍣?
+ * 妫版粏澹婃０鍕潔 StateEffect - 閻劋绨弴瀛樻煀妫板嫯顫嶇憗鍛淬偘閸?
  */
 interface ColorPreviewData {
   type: 'color' | 'background-color';
@@ -1389,8 +1413,8 @@ interface ColorPreviewData {
 const setColorPreviewEffect = StateEffect.define<ColorPreviewData | null>();
 
 /**
- * 棰滆壊棰勮瑁呴グ鍣?StateField
- * 鐢ㄤ簬鍦ㄦ嫋鍔ㄩ鑹查€夋嫨鍣ㄦ椂鏄剧ず涓存椂棰勮鏁堟灉
+ * 妫版粏澹婃０鍕潔鐟佸懘銈伴崳?StateField
+ * 閻劋绨崷銊﹀珛閸斻劑顤侀懝鏌モ偓澶嬪閸ｃ劍妞傞弰鍓с仛娑撳瓨妞傛０鍕潔閺佸牊鐏?
  */
 const colorPreviewDecorations = StateField.define<DecorationSet>({
   create() {
@@ -1421,8 +1445,8 @@ const colorPreviewDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 缂╄繘绾?Widget - 鏄剧ず缂╄繘灞傜骇鐨勫瀭鐩寸嚎
- * 鍙樉绀轰竴鏉＄缉杩涚嚎锛屼笌鐖剁骇鎶樺彔鍥炬爣瀵归綈
+ * 缂傗晞绻樼痪?Widget - 閺勫墽銇氱紓鈺勭箻鐏炲倻楠囬惃鍕€惄瀵稿殠
+ * 閸欘亝妯夌粈杞扮閺夛紕缂夋潻娑氬殠閿涘奔绗岄悥鍓侀獓閹舵ê褰旈崶鐐垼鐎靛綊缍?
  */
 class IndentGuideWidget extends WidgetType {
   constructor(readonly indentLevel: number, readonly hasFoldIcon: boolean = false) {
@@ -1433,28 +1457,28 @@ class IndentGuideWidget extends WidgetType {
     const container = document.createElement('span');
     container.className = 'cm-indent-guides';
     
-    // 鑾峰彇涓婚缂╄繘绾块鑹?
+    // 閼惧嘲褰囨稉濠氼暯缂傗晞绻樼痪鍧楊杹閼?
     const themeColor = getComputedStyle(document.documentElement)
       .getPropertyValue('--ws-mirrorIndentGuide-background')
       .trim();
     
-    // 妫€娴嬫槸鍚︽槸鏆楄壊涓婚
+    // 濡偓濞村妲搁崥锔芥Ц閺嗘澹婃稉濠氼暯
     const isDarkTheme = document.body.classList.contains('ws-theme-dark') ||
       document.documentElement.getAttribute('data-theme') === 'dark';
     
-    // 纭畾鏈€缁堥鑹?
+    // 绾喖鐣鹃張鈧紒鍫ヮ杹閼?
     let finalColor: string;
     if (themeColor) {
-      // 妫€娴嬮鑹叉槸鍚﹀凡鍖呭惈閫忔槑搴?
+      // 濡偓濞村顤侀懝鍙夋Ц閸氾箑鍑￠崠鍛儓闁繑妲戞惔?
       const hasAlpha = themeColor.includes('rgba') || 
         themeColor.includes('hsla') ||
         (themeColor.startsWith('#') && themeColor.length === 9);
       
       if (hasAlpha) {
-        // 宸叉湁閫忔槑搴︼紝鐩存帴浣跨敤涓婚棰滆壊
+        // 瀹稿弶婀侀柅蹇旀鎼达讣绱濋惄瀛樺复娴ｈ法鏁ゆ稉濠氼暯妫版粏澹?
         finalColor = themeColor;
       } else {
-        // 娌℃湁閫忔槑搴︼紝灏濊瘯瑙ｆ瀽 RGB 鍊煎苟娣诲姞 0.6 閫忔槑搴?
+        // 濞屸剝婀侀柅蹇旀鎼达讣绱濈亸婵婄槸鐟欙絾鐎?RGB 閸婄厧鑻熷ǎ璇插 0.6 闁繑妲戞惔?
         const rgbMatch = themeColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
         const hexMatch = themeColor.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
         const shortHexMatch = themeColor.match(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/);
@@ -1472,33 +1496,33 @@ class IndentGuideWidget extends WidgetType {
           const b = parseInt(shortHexMatch[3] + shortHexMatch[3], 16);
           finalColor = `rgba(${r}, ${g}, ${b}, 0.6)`;
         } else {
-          // 鏃犳硶瑙ｆ瀽锛屼娇鐢ㄩ粯璁ら鑹?
+          // 閺冪姵纭剁憴锝嗙€介敍灞煎▏閻劑绮拋銈夘杹閼?
           finalColor = isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)';
         }
       }
     } else {
-      // 娌℃湁涓婚棰滆壊锛屼娇鐢ㄩ粯璁ら鑹?
+      // 濞屸剝婀佹稉濠氼暯妫版粏澹婇敍灞煎▏閻劑绮拋銈夘杹閼?
       finalColor = isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)';
     }
     
-    // 鍙垱寤轰竴鏉＄缉杩涚嚎锛屼綅缃笌鐖剁骇鎶樺彔鍥炬爣瀵归綈
-    // 鎶樺彔鍥炬爣浣嶇疆璁＄畻锛堟潵鑷?ListFoldWidget锛夛細
-    // - indent=0 鏃讹細left = -24px
-    // - indent>0 鏃讹細left = (indent - 1) * 8 - 8
-    // 鎶樺彔鍥炬爣瀹藉害 20px锛屼腑蹇冨湪 left + 10
+    // 閸欘亜鍨卞杞扮閺夛紕缂夋潻娑氬殠閿涘奔缍呯純顔荤瑢閻栧墎楠囬幎妯哄綌閸ョ偓鐖ｇ€靛綊缍?
+    // 閹舵ê褰旈崶鐐垼娴ｅ秶鐤嗙拋锛勭暬閿涘牊娼甸懛?ListFoldWidget閿涘绱?
+    // - indent=0 閺冭绱發eft = -24px
+    // - indent>0 閺冭绱發eft = (indent - 1) * 8 - 8
+    // 閹舵ê褰旈崶鐐垼鐎硅棄瀹?20px閿涘奔鑵戣箛鍐ㄦ躬 left + 10
     // 
-    // 褰撳墠琛岀殑 indentLevel 琛ㄧず缂╄繘绾у埆锛堟瘡绾?2 绌烘牸锛?
-    // 鐖剁骇鐨勭缉杩涚骇鍒?= indentLevel - 1
-    // 鐖剁骇鐨勭┖鏍兼暟 = (indentLevel - 1) * 2
+    // 瑜版挸澧犵悰宀€娈?indentLevel 鐞涖劎銇氱紓鈺勭箻缁狙冨焼閿涘牊鐦＄痪?2 缁岀儤鐗搁敍?
+    // 閻栧墎楠囬惃鍕級鏉╂稓楠囬崚?= indentLevel - 1
+    // 閻栧墎楠囬惃鍕敄閺嶅吋鏆?= (indentLevel - 1) * 2
     if (this.indentLevel >= 1) {
       const guide = document.createElement('span');
       guide.className = 'cm-indent-guide cm-indent-guide-single';
       
-      // 鐖剁骇鐨勭┖鏍兼暟
+      // 閻栧墎楠囬惃鍕敄閺嶅吋鏆?
       const parentSpaces = (this.indentLevel - 1) * 2;
-      // 鐖剁骇鎶樺彔鍥炬爣鐨?left 浣嶇疆
+      // 閻栧墎楠囬幎妯哄綌閸ョ偓鐖ｉ惃?left 娴ｅ秶鐤?
       const foldIconLeft = parentSpaces > 0 ? (parentSpaces - 1) * 8 - 8 : -24;
-      // 缂╄繘绾夸綅缃?= 鎶樺彔鍥炬爣宸﹁竟 + 5px锛堟姌鍙犲浘鏍囦腑蹇冨亸宸︿竴鐐癸級
+      // 缂傗晞绻樼痪澶哥秴缂?= 閹舵ê褰旈崶鐐垼瀹革箒绔?+ 5px閿涘牊濮岄崣鐘叉禈閺嶅洣鑵戣箛鍐ㄤ焊瀹革缚绔撮悙鐧哥礆
       const leftPos = foldIconLeft + 5;
       
       guide.style.left = `${leftPos}px`;
@@ -1512,7 +1536,7 @@ class IndentGuideWidget extends WidgetType {
   }
 
   eq(_other: IndentGuideWidget): boolean {
-    // 寮哄埗閲嶆柊娓叉煋浠ュ簲鐢ㄦ柊鐨勪綅缃绠?
+    // 瀵搫鍩楅柌宥嗘煀濞撳弶鐓嬫禒銉ョ安閻劍鏌婇惃鍕秴缂冾喛顓哥粻?
     return false;
   }
 
@@ -1522,29 +1546,29 @@ class IndentGuideWidget extends WidgetType {
 }
 
 /**
- * 鏋勫缓缂╄繘绾胯楗板櫒
- * 瑙勫垯锛氭渶灏戠缉杩?涓┖鏍硷紙鎴?涓猼ab锛夋墠鏄剧ず缂╄繘绾?
+ * 閺嬪嫬缂撶紓鈺勭箻缁捐儻顥婃鏉挎珤
+ * 鐟欏嫬鍨敍姘付鐏忔垹缂夋潻?娑擃亞鈹栭弽纭风礄閹?娑撶尲ab閿涘澧犻弰鍓с仛缂傗晞绻樼痪?
  */
 function buildIndentGuideDecorations(state: EditorState): DecorationSet {
   const decorations: { from: number; decoration: Decoration }[] = [];
   
   try {
     const doc = state.doc;
-    const TAB_SIZE = 2; // 1涓猼ab = 2涓┖鏍硷紙涓庣紪杈戝櫒 indentUnit 涓€鑷达級
+    const TAB_SIZE = 2; // 1娑撶尲ab = 2娑擃亞鈹栭弽纭风礄娑撳海绱潏鎴濇珤 indentUnit 娑撯偓閼疯揪绱?
 
     for (let i = 1; i <= doc.lines; i++) {
       const line = doc.line(i);
       const lineText = line.text;
       
-      // 璺宠繃鏍囬琛?
+      // 鐠哄疇绻冮弽鍥暯鐞?
       if (getHeadingLevel(lineText) > 0) continue;
       
-      // 璁＄畻缂╄繘绾у埆锛堟瘡2涓┖鏍兼垨1涓猼ab涓轰竴绾э級
+      // 鐠侊紕鐣荤紓鈺勭箻缁狙冨焼閿涘牊鐦?娑擃亞鈹栭弽鍏煎灗1娑撶尲ab娑撹桨绔寸痪褝绱?
       let indent = getIndentLevel(lineText);
       
-      // 濡傛灉鏄┖琛岋紝鏍规嵁涓婁笅鏂囩‘瀹氱缉杩涚骇鍒?
+      // 婵″倹鐏夐弰顖溾敄鐞涘矉绱濋弽瑙勫祦娑撳﹣绗呴弬鍥┾€樼€规氨缂夋潻娑氶獓閸?
       if (lineText.trim().length === 0) {
-        // 鍚戜笂鏌ユ壘鏈€杩戠殑闈炵┖琛屾潵纭畾涓婁笅鏂囩缉杩?
+        // 閸氭垳绗傞弻銉﹀閺堚偓鏉╂垹娈戦棃鐐碘敄鐞涘本娼电涵顔肩暰娑撳﹣绗呴弬鍥╃級鏉?
         for (let j = i - 1; j >= 1; j--) {
           const prevLine = doc.line(j);
           if (prevLine.text.trim().length > 0) {
@@ -1556,10 +1580,10 @@ function buildIndentGuideDecorations(state: EditorState): DecorationSet {
       
       const indentLevel = Math.floor(indent / TAB_SIZE);
       
-      // 妫€娴嬭琛屾槸鍚︽湁瀛愭姌鍙犲浘鏍囷紙闈炴爣棰樿涓旀湁瀛愮缉杩涘唴瀹癸級
+      // 濡偓濞村顕氱悰灞炬Ц閸氾附婀佺€涙劖濮岄崣鐘叉禈閺嶅浄绱欓棃鐐寸垼妫版顢戞稉鏃€婀佺€涙劗缂夋潻娑樺敶鐎圭櫢绱?
       const hasFoldIcon = computeListFoldRange(state, line.from) !== null;
       
-      // 鍙鏈夌缉杩涘氨鍒涘缓缂╄繘绾匡紙indentLevel >= 1锛?
+      // 閸欘亣顩﹂張澶岀級鏉╂稑姘ㄩ崚娑樼紦缂傗晞绻樼痪鍖＄礄indentLevel >= 1閿?
       if (indentLevel >= 1) {
         decorations.push({
           from: line.from,
@@ -1584,7 +1608,7 @@ function buildIndentGuideDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 缂╄繘绾胯楗板櫒 StateField
+ * 缂傗晞绻樼痪鑳棅妤楁澘娅?StateField
  */
 const indentGuideDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -1600,27 +1624,27 @@ const indentGuideDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 鏌ユ壘鍖呭惈褰撳墠琛岀殑鎶樺彔缁勶紙鐖惰 + 鎵€鏈夊瓙琛?+ 绌鸿锛?
- * 鐖惰鏄缉杩涙瘮褰撳墠琛屽皯鐨勬渶杩戦潪绌鸿
- * 杩斿洖 { parentLine: 鐖惰鍙? childLines: 瀛愯鍙锋暟缁勶紙鍖呭惈绌鸿锛?} 鎴?null
+ * 閺屻儲澹橀崠鍛儓瑜版挸澧犵悰宀€娈戦幎妯哄綌缂佸嫸绱欓悥鎯邦攽 + 閹碘偓閺堝鐡欑悰?+ 缁岄缚顢戦敍?
+ * 閻栨儼顢戦弰顖滅級鏉╂稒鐦ぐ鎾冲鐞涘苯鐨惃鍕付鏉╂垿娼粚楦款攽
+ * 鏉╂柨娲?{ parentLine: 閻栨儼顢戦崣? childLines: 鐎涙劘顢戦崣閿嬫殶缂佸嫸绱欓崠鍛儓缁岄缚顢戦敍?} 閹?null
  */
 function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: number; childLines: number[] } | null {
   const currentLine = state.doc.line(lineNumber);
   let currentIndent = getIndentLevel(currentLine.text);
   const totalLines = state.doc.lines;
   
-  // 鏍囬琛屼笉鍙備笌鎶樺彔缁?
+  // 閺嶅洭顣界悰灞肩瑝閸欏倷绗岄幎妯哄綌缂?
   if (getHeadingLevel(currentLine.text) > 0) return null;
   
-  // 濡傛灉鏄┖琛岋紝灏濊瘯鏍规嵁涓婁笅鏂囩‘瀹氱缉杩涚骇鍒?
+  // 婵″倹鐏夐弰顖溾敄鐞涘矉绱濈亸婵婄槸閺嶈宓佹稉濠佺瑓閺傚洨鈥樼€规氨缂夋潻娑氶獓閸?
   if (currentLine.text.trim().length === 0) {
-    // 鍚戜笂鏌ユ壘鏈€杩戠殑闈炵┖琛屾潵纭畾涓婁笅鏂?
+    // 閸氭垳绗傞弻銉﹀閺堚偓鏉╂垹娈戦棃鐐碘敄鐞涘本娼电涵顔肩暰娑撳﹣绗呴弬?
     let contextIndent = -1;
     let contextIsHeading = false;
     for (let i = lineNumber - 1; i >= 1; i--) {
       const line = state.doc.line(i);
       if (line.text.trim().length > 0) {
-        // 濡傛灉涓婁笅鏂囨槸鏍囬琛岋紝涓嶆樉绀虹缉杩涚嚎
+        // 婵″倹鐏夋稉濠佺瑓閺傚洦妲搁弽鍥暯鐞涘矉绱濇稉宥嗘▔缁€铏圭級鏉╂稓鍤?
         if (getHeadingLevel(line.text) > 0) {
           contextIsHeading = true;
         }
@@ -1631,12 +1655,12 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     
     if (contextIndent < 0 || contextIsHeading) return null;
     
-    // 浣跨敤涓婁笅鏂囩缉杩涗綔涓哄綋鍓嶇缉杩?
+    // 娴ｈ法鏁ゆ稉濠佺瑓閺傚洨缂夋潻娑楃稊娑撳搫缍嬮崜宥囩級鏉?
     currentIndent = contextIndent;
   }
   
-  // 鎯呭喌1锛氬綋鍓嶈鏄埗琛岋紙鏈夊瓙琛岋級
-  // 鍚戜笅鏌ユ壘鏄惁鏈夌缉杩涙瘮褰撳墠琛屽鐨勮
+  // 閹懎鍠?閿涙艾缍嬮崜宥堫攽閺勵垳鍩楃悰宀嬬礄閺堝鐡欑悰宀嬬礆
+  // 閸氭垳绗呴弻銉﹀閺勵垰鎯侀張澶岀級鏉╂稒鐦ぐ鎾冲鐞涘苯顦块惃鍕攽
   const childLines: number[] = [];
   let hasRealChild = false;
   
@@ -1644,18 +1668,18 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     const line = state.doc.line(i);
     const lineIndent = getIndentLevel(line.text);
     
-    // 绌鸿涔熸敹闆嗭紙濡傛灉鍦ㄥ瓙琛屽尯鍩熷唴锛?
+    // 缁岄缚顢戞稊鐔告暪闂嗗棴绱欐俊鍌涚亯閸︺劌鐡欑悰灞藉隘閸╃喎鍞撮敍?
     if (line.text.trim().length === 0) {
       childLines.push(i);
       continue;
     }
     
-    // 濡傛灉缂╄繘灏忎簬绛変簬褰撳墠琛岋紝璇存槑宸茬粡绂诲紑浜嗗瓙琛屽尯鍩?
+    // 婵″倹鐏夌紓鈺勭箻鐏忓繋绨粵澶夌艾瑜版挸澧犵悰宀嬬礉鐠囧瓨妲戝鑼病缁傝绱戞禍鍡楃摍鐞涘苯灏崺?
     if (lineIndent <= currentIndent) {
       break;
     }
     
-    // 鏀堕泦鎵€鏈夌缉杩涙瘮褰撳墠琛屽鐨勮浣滀负瀛愯
+    // 閺€鍫曟肠閹碘偓閺堝缂夋潻娑欑槷瑜版挸澧犵悰灞筋樋閻ㄥ嫯顢戞担婊€璐熺€涙劘顢?
     childLines.push(i);
     hasRealChild = true;
   }
@@ -1664,8 +1688,8 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     return { parentLine: lineNumber, childLines };
   }
   
-  // 鎯呭喌2锛氬綋鍓嶈鏄瓙琛岋紝闇€瑕佹壘鍒扮埗琛?
-  // 鐖惰鏄缉杩涙瘮褰撳墠琛屽皯鐨勬渶杩戦潪绌鸿锛堜笖涓嶆槸鏍囬琛岋級
+  // 閹懎鍠?閿涙艾缍嬮崜宥堫攽閺勵垰鐡欑悰宀嬬礉闂団偓鐟曚焦澹橀崚鎵煑鐞?
+  // 閻栨儼顢戦弰顖滅級鏉╂稒鐦ぐ鎾冲鐞涘苯鐨惃鍕付鏉╂垿娼粚楦款攽閿涘牅绗栨稉宥嗘Ц閺嶅洭顣界悰宀嬬礆
   if (currentIndent <= 0) return null;
   
   let parentLine: number | null = null;
@@ -1677,10 +1701,10 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     
     if (line.text.trim().length === 0) continue;
     
-    // 璺宠繃鏍囬琛岋紝鏍囬琛屼笉鑳戒綔涓烘姌鍙犵粍鐨勭埗琛?
+    // 鐠哄疇绻冮弽鍥暯鐞涘矉绱濋弽鍥暯鐞涘奔绗夐懗鎴掔稊娑撶儤濮岄崣鐘电矋閻ㄥ嫮鍩楃悰?
     if (getHeadingLevel(line.text) > 0) continue;
     
-    // 鎵惧埌缂╄繘姣斿綋鍓嶈灏戠殑琛屼綔涓虹埗琛?
+    // 閹垫儳鍩岀紓鈺勭箻濮ｆ柨缍嬮崜宥堫攽鐏忔垹娈戠悰灞肩稊娑撹櫣鍩楃悰?
     if (lineIndent < currentIndent) {
       parentLine = i;
       parentIndent = lineIndent;
@@ -1690,8 +1714,8 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
   
   if (parentLine === null) return null;
   
-  // 楠岃瘉鐖惰鏄惁鐪熺殑鏈夊瓙琛岋紙鍗虫湁鎶樺彔鍔熻兘锛?
-  // 妫€鏌ョ埗琛屼笅闈㈡槸鍚︽湁缂╄繘鏇村鐨勯潪绌鸿
+  // 妤犲矁鐦夐悥鎯邦攽閺勵垰鎯侀惇鐔烘畱閺堝鐡欑悰宀嬬礄閸楄櫕婀侀幎妯哄綌閸旂喕鍏橀敍?
+  // 濡偓閺屻儳鍩楃悰灞肩瑓闂堛垺妲搁崥锔芥箒缂傗晞绻橀弴鏉戭樋閻ㄥ嫰娼粚楦款攽
   let parentHasRealChildren = false;
   for (let i = parentLine + 1; i <= totalLines; i++) {
     const line = state.doc.line(i);
@@ -1701,43 +1725,43 @@ function findFoldGroup(state: EditorState, lineNumber: number): { parentLine: nu
     
     if (lineIndent <= parentIndent) break;
     
-    // 鎵惧埌浜嗙缉杩涙洿澶氱殑闈炵┖琛岋紝璇存槑鐖惰鏈夊瓙琛?
+    // 閹垫儳鍩屾禍鍡欑級鏉╂稒娲挎径姘辨畱闂堢偟鈹栫悰宀嬬礉鐠囧瓨妲戦悥鎯邦攽閺堝鐡欑悰?
     parentHasRealChildren = true;
     break;
   }
   
   if (!parentHasRealChildren) return null;
   
-  // 鎵惧埌鐖惰鍚庯紝鏀堕泦鎵€鏈夊瓙琛屽拰绌鸿
+  // 閹垫儳鍩岄悥鎯邦攽閸氬函绱濋弨鍫曟肠閹碘偓閺堝鐡欑悰灞芥嫲缁岄缚顢?
   const allChildLines: number[] = [];
   for (let i = parentLine + 1; i <= totalLines; i++) {
     const line = state.doc.line(i);
     const lineIndent = getIndentLevel(line.text);
     
-    // 绌鸿涔熸敹闆?
+    // 缁岄缚顢戞稊鐔告暪闂?
     if (line.text.trim().length === 0) {
       allChildLines.push(i);
       continue;
     }
     
-    // 濡傛灉缂╄繘灏忎簬绛変簬鐖惰锛岃鏄庡凡缁忕寮€浜嗗瓙琛屽尯鍩?
+    // 婵″倹鐏夌紓鈺勭箻鐏忓繋绨粵澶夌艾閻栨儼顢戦敍宀冾嚛閺勫骸鍑＄紒蹇曨瀲瀵偓娴滃棗鐡欑悰灞藉隘閸?
     if (lineIndent <= parentIndent) {
       break;
     }
     
-    // 鏀堕泦鎵€鏈夌缉杩涙瘮鐖惰澶氱殑琛?
+    // 閺€鍫曟肠閹碘偓閺堝缂夋潻娑欑槷閻栨儼顢戞径姘辨畱鐞?
     allChildLines.push(i);
   }
   
   return { parentLine, childLines: allChildLines };
 }
 
-// 鎶樺彔缁勯珮浜殑琛岃楗板櫒
+// 閹舵ê褰旂紒鍕彯娴滎喚娈戠悰宀冾棅妤楁澘娅?
 const foldParentHighlight = Decoration.line({ class: 'cm-fold-parent-highlighted' });
 
 /**
- * 鎶樺彔缁勭缉杩涚嚎 Widget
- * 浣跨敤 parentIndent 鍦?toDOM 涓姩鎬佽绠椾綅缃?
+ * 閹舵ê褰旂紒鍕級鏉╂稓鍤?Widget
+ * 娴ｈ法鏁?parentIndent 閸?toDOM 娑擃厼濮╅幀浣筋吀缁犳ぞ缍呯純?
  */
 class FoldIndentLineWidget extends WidgetType {
   constructor(readonly parentIndent: number) {
@@ -1748,16 +1772,16 @@ class FoldIndentLineWidget extends WidgetType {
     const line = document.createElement('span');
     line.className = 'cm-fold-indent-line';
 
-    // 鑾峰彇瀹為檯鐨勫瓧绗﹀搴?
+    // 閼惧嘲褰囩€圭偤妾惃鍕摟缁楋箑顔旀惔?
     const charWidth = view.defaultCharacterWidth;
 
-    // 璁＄畻缂╄繘绾夸綅缃紙涓庣埗绾ф姌鍙犲浘鏍囧榻愶級
-    // 鎶樺彔鍥炬爣浣嶇疆锛歱arentIndent > 0 ? parentIndent * charWidth - 20 : -24
-    // 缂╄繘绾垮簲璇ュ湪鎶樺彔鍥炬爣涓績浣嶇疆锛堝浘鏍囧搴?20px锛屼腑蹇冨湪 +10锛?
+    // 鐠侊紕鐣荤紓鈺勭箻缁惧じ缍呯純顕嗙礄娑撳海鍩楃痪褎濮岄崣鐘叉禈閺嶅洤顕鎰剁礆
+    // 閹舵ê褰旈崶鐐垼娴ｅ秶鐤嗛敍姝盿rentIndent > 0 ? parentIndent * charWidth - 20 : -24
+    // 缂傗晞绻樼痪鍨安鐠囥儱婀幎妯哄綌閸ョ偓鐖ｆ稉顓炵妇娴ｅ秶鐤嗛敍鍫濇禈閺嶅洤顔旀惔?20px閿涘奔鑵戣箛鍐ㄦ躬 +10閿?
     let linePos: number;
     if (this.parentIndent > 0) {
       const foldIconLeft = this.parentIndent * charWidth - 20;
-      linePos = foldIconLeft + 10; // 鎶樺彔鍥炬爣涓績
+      linePos = foldIconLeft + 10; // 閹舵ê褰旈崶鐐垼娑擃厼绺?
     } else {
       linePos = -24 + 10; // -14px
     }
@@ -1775,7 +1799,7 @@ class FoldIndentLineWidget extends WidgetType {
   }
 }
 
-// 鍒涘缓甯︽湁鐖剁骇缂╄繘淇℃伅鐨勫瓙琛岄珮浜楗板櫒
+// 閸掓稑缂撶敮锔芥箒閻栧墎楠囩紓鈺勭箻娣団剝浼呴惃鍕摍鐞涘矂鐝禍顔款棅妤楁澘娅?
 function createFoldChildDecorations(parentIndent: number): Decoration[] {
   return [
     Decoration.line({ class: 'cm-fold-child-highlighted' }),
@@ -1787,30 +1811,30 @@ function createFoldChildDecorations(parentIndent: number): Decoration[] {
 }
 
 /**
- * 鏋勫缓鎶樺彔缁勯珮浜楗板櫒
+ * 閺嬪嫬缂撻幎妯哄綌缂佸嫰鐝禍顔款棅妤楁澘娅?
  */
 function buildFoldGroupDecorations(state: EditorState): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   
-  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
+  // 閼惧嘲褰囪ぐ鎾冲閸忓鐖ｉ幍鈧崷銊攽
   const selection = state.selection;
   const cursorLine = state.doc.lineAt(selection.main.head).number;
   
-  // 鏌ユ壘鎶樺彔缁?
+  // 閺屻儲澹橀幎妯哄綌缂?
   const foldGroup = findFoldGroup(state, cursorLine);
   
   if (foldGroup) {
-    // 鑾峰彇鐖惰鐨勭缉杩涳紙绌烘牸鏁帮級
+    // 閼惧嘲褰囬悥鎯邦攽閻ㄥ嫮缂夋潻娑崇礄缁岀儤鐗搁弫甯礆
     const parentLineObj = state.doc.line(foldGroup.parentLine);
     const parentIndent = getIndentLevel(parentLineObj.text);
     
-    // 鏀堕泦鎵€鏈夐渶瑕侀珮浜殑琛岋紝鎸変綅缃帓搴?
+    // 閺€鍫曟肠閹碘偓閺堝娓剁憰渚€鐝禍顔炬畱鐞涘矉绱濋幐澶夌秴缂冾喗甯撴惔?
     const allLines: { from: number; decoration: Decoration }[] = [];
     
-    // 鐖惰楂樹寒
+    // 閻栨儼顢戞妯瑰瘨
     allLines.push({ from: parentLineObj.from, decoration: foldParentHighlight });
     
-    // 瀛愯楂樹寒锛堝甫鏈夌缉杩涚嚎 Widget锛?
+    // 鐎涙劘顢戞妯瑰瘨閿涘牆鐢張澶岀級鏉╂稓鍤?Widget閿?
     for (const childLineNum of foldGroup.childLines) {
       const childLineObj = state.doc.line(childLineNum);
       const childDecorations = createFoldChildDecorations(parentIndent);
@@ -1819,10 +1843,10 @@ function buildFoldGroupDecorations(state: EditorState): DecorationSet {
       }
     }
     
-    // 鎸変綅缃帓搴?
+    // 閹稿缍呯純顔藉笓鎼?
     allLines.sort((a, b) => a.from - b.from);
     
-    // 娣诲姞鍒?builder
+    // 濞ｈ濮為崚?builder
     for (const item of allLines) {
       builder.add(item.from, item.from, item.decoration);
     }
@@ -1832,14 +1856,14 @@ function buildFoldGroupDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 鎶樺彔缁勯珮浜?StateField
+ * 閹舵ê褰旂紒鍕彯娴?StateField
  */
 const foldGroupHighlightField = StateField.define<DecorationSet>({
   create(state) {
     return buildFoldGroupDecorations(state);
   },
   update(decorations, tr) {
-    // 閫夋嫨鍙樺寲鎴栨枃妗ｅ彉鍖栨椂閲嶆柊璁＄畻
+    // 闁瀚ㄩ崣妯哄閹存牗鏋冨锝呭綁閸栨牗妞傞柌宥嗘煀鐠侊紕鐣?
     if (tr.selection || tr.docChanged) {
       return buildFoldGroupDecorations(tr.state);
     }
@@ -1849,34 +1873,34 @@ const foldGroupHighlightField = StateField.define<DecorationSet>({
 });
 
 /**
- * 鑷畾涔?Markdown 璇硶楂樹寒鏍峰紡
- * 瑕嗙洊榛樿楂樹寒锛岃鏈夊簭鍒楄〃鏁板瓧绛変娇鐢ㄤ富棰橀厤鑹?
+ * 閼奉亜鐣炬稊?Markdown 鐠囶厽纭舵妯瑰瘨閺嶅嘲绱?
+ * 鐟曞棛娲婃妯款吇妤傛ü瀵掗敍宀冾唨閺堝绨崚妤勩€冮弫鏉跨摟缁涘濞囬悽銊ゅ瘜妫版﹢鍘ら懝?
  */
 const customHighlightStyle = HighlightStyle.define([
-  // 鏈夊簭鍒楄〃鏁板瓧鏍囪锛堝 1. 2. 3.锛?
+  // 閺堝绨崚妤勩€冮弫鏉跨摟閺嶅洩顔囬敍鍫濐洤 1. 2. 3.閿?
   { tag: tags.processingInstruction, color: 'var(--ws-textLink-foreground)' },
-  // 鏍囬
+  // 閺嶅洭顣?
   { tag: tags.heading, color: 'var(--ws-textLink-foreground)', fontWeight: '700' },
-  // 寮鸿皟
+  // 瀵缚鐨?
   { tag: tags.emphasis, fontStyle: 'italic' },
   { tag: tags.strong, fontWeight: '700' },
-  // 閾炬帴
+  // 闁剧偓甯?
   { tag: tags.link, color: 'var(--ws-textLink-foreground)' },
   { tag: tags.url, color: 'var(--ws-textLink-foreground)' },
-  // 寮曠敤
+  // 瀵洜鏁?
   { tag: tags.quote, color: 'var(--ws-descriptionForeground)', fontStyle: 'italic' },
-  // 浠ｇ爜 - 浣跨敤鏅€氭枃鏈鑹诧紝閬垮厤缂╄繘瓒呰繃4绌烘牸鏃堕鑹插彉鍖?
+  // 娴狅絿鐖?- 娴ｈ法鏁ら弲顕€鈧碍鏋冮張顒勵杹閼硅绱濋柆鍨帳缂傗晞绻樼搾鍛扮箖4缁岀儤鐗搁弮鍫曨杹閼规彃褰夐崠?
   { tag: tags.monospace, color: 'inherit' },
-  // 娉ㄩ噴
+  // 濞夈劑鍣?
   { tag: tags.comment, color: 'var(--ws-descriptionForeground)' },
-  // 鍏冧俊鎭紙濡?> 寮曠敤鏍囪锛?
+  // 閸忓啩淇婇幁顖ょ礄婵?> 瀵洜鏁ら弽鍥唶閿?
   { tag: tags.meta, color: 'var(--ws-textLink-foreground)' },
 ]);
 
 /**
- * 鑷畾涔夊洖杞﹂敭澶勭悊 - 鏅鸿兘寮曠敤鍧楁崲琛?
- * 1. 鍦ㄥ紩鐢ㄨ鏈熬鎸夊洖杞︽椂锛岃嚜鍔ㄦ坊鍔?> 鍒版柊琛岋紙淇濇寔缂╄繘锛?
- * 2. 濡傛灉褰撳墠琛屽彧鏈?> 锛堟病鏈夊叾浠栧唴瀹癸級锛屾寜鍥炶溅鏃跺垹闄?> 骞堕€€鍑哄紩鐢ㄦā寮?
+ * 閼奉亜鐣炬稊澶婃礀鏉烇箓鏁径鍕倞 - 閺呴缚鍏樺鏇犳暏閸ф宕茬悰?
+ * 1. 閸︺劌绱╅悽銊攽閺堫偄鐔幐澶婃礀鏉烇附妞傞敍宀冨殰閸斻劍鍧婇崝?> 閸掔増鏌婄悰宀嬬礄娣囨繃瀵旂紓鈺勭箻閿?
+ * 2. 婵″倹鐏夎ぐ鎾冲鐞涘苯褰ч張?> 閿涘牊鐥呴張澶婂従娴犳牕鍞寸€圭櫢绱氶敍灞惧瘻閸ョ偠婧呴弮璺哄灩闂?> 楠炲爼鈧偓閸戝搫绱╅悽銊δ佸?
  */
 function handleBlockquoteEnter(view: EditorView): boolean {
   const { state } = view;
@@ -1886,29 +1910,29 @@ function handleBlockquoteEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
   
-  // 妫€鏌ユ槸鍚︽槸寮曠敤琛?- 鏀寔琛岄鏈夌┖鏍肩殑鎯呭喌锛圱AB 缂╄繘锛?
+  // 濡偓閺屻儲妲搁崥锔芥Ц瀵洜鏁ょ悰?- 閺€顖涘瘮鐞涘矂顩婚張澶屸敄閺嶈偐娈戦幆鍛枌閿涘湵AB 缂傗晞绻橀敍?
   const blockquoteMatch = lineText.match(/^(\s*)(>+)(\s*)/);
   if (!blockquoteMatch) {
-    return false; // 涓嶆槸寮曠敤琛岋紝浣跨敤榛樿琛屼负
+    return false; // 娑撳秵妲稿鏇犳暏鐞涘矉绱濇担璺ㄦ暏姒涙顓荤悰灞艰礋
   }
   
-  const indent = blockquoteMatch[1]; // 缂╄繘绌烘牸
-  const markers = blockquoteMatch[2]; // > 绗﹀彿
-  const spaces = blockquoteMatch[3]; // > 鍚庨潰鐨勭┖鏍?
+  const indent = blockquoteMatch[1]; // 缂傗晞绻樼粚鐑樼壐
+  const markers = blockquoteMatch[2]; // > 缁楋箑褰?
+  const spaces = blockquoteMatch[3]; // > 閸氬酣娼伴惃鍕敄閺?
   const prefixLength = indent.length + markers.length + spaces.length;
   const content = lineText.slice(prefixLength);
   
-  // 濡傛灉寮曠敤琛屽彧鏈?> 娌℃湁鍐呭锛堟垨鍙湁绌烘牸锛夛紝鍒犻櫎 > 鏍囪骞堕€€鍑哄紩鐢ㄦā寮?
+  // 婵″倹鐏夊鏇犳暏鐞涘苯褰ч張?> 濞屸剝婀侀崘鍛啇閿涘牊鍨ㄩ崣顏呮箒缁岀儤鐗搁敍澶涚礉閸掔娀娅?> 閺嶅洩顔囬獮鍫曗偓鈧崙鍝勭穿閻劍膩瀵?
   if (content.trim() === '') {
-    // 鍒犻櫎褰撳墠琛岀殑 > 鏍囪锛屽苟鍦ㄥ墠闈㈡彃鍏ョ┖琛屾潵鏂紑寮曠敤鍧?
+    // 閸掔娀娅庤ぐ鎾冲鐞涘瞼娈?> 閺嶅洩顔囬敍灞借嫙閸︺劌澧犻棃銏″絻閸忋儳鈹栫悰灞炬降閺傤厼绱戝鏇犳暏閸?
     if (line.from > 0) {
-      // 涓嶆槸绗竴琛岋細鍒犻櫎褰撳墠琛岋紙鍖呮嫭鍓嶉潰鐨勬崲琛岀锛夛紝鐒跺悗鎻掑叆涓や釜鎹㈣绗?
+      // 娑撳秵妲哥粭顑跨鐞涘矉绱伴崚鐘绘珟瑜版挸澧犵悰宀嬬礄閸栧懏瀚崜宥夋桨閻ㄥ嫭宕茬悰宀€顑侀敍澶涚礉閻掕泛鎮楅幓鎺戝弳娑撱倓閲滈幑銏ｎ攽缁?
       view.dispatch({
         changes: { from: line.from - 1, to: line.to, insert: '\n\n' },
         selection: { anchor: line.from + 1 },
       });
     } else {
-      // 绗竴琛岋細鐩存帴鍒犻櫎 > 鏍囪
+      // 缁楊兛绔寸悰宀嬬窗閻╁瓨甯撮崚鐘绘珟 > 閺嶅洩顔?
       view.dispatch({
         changes: { from: line.from, to: line.to, insert: '' },
         selection: { anchor: line.from },
@@ -1917,7 +1941,7 @@ function handleBlockquoteEnter(view: EditorView): boolean {
     return true;
   }
   
-  // 鍦ㄥ紩鐢ㄨ鏈熬鎸夊洖杞︼紝鑷姩娣诲姞缂╄繘 + > 鍒版柊琛?
+  // 閸︺劌绱╅悽銊攽閺堫偄鐔幐澶婃礀鏉烇讣绱濋懛顏勫З濞ｈ濮炵紓鈺勭箻 + > 閸掔増鏌婄悰?
   const level = markers.length;
   const newPrefix = indent + '>'.repeat(level) + ' ';
   
@@ -1930,10 +1954,10 @@ function handleBlockquoteEnter(view: EditorView): boolean {
 }
 
 /**
- * 鑷畾涔夊洖杞﹂敭澶勭悊 - 鏅鸿兘寰呭姙娓呭崟鎹㈣
- * 1. 鍦ㄥ緟鍔炴竻鍗曡鏈熬鎸夊洖杞︽椂锛岃嚜鍔ㄦ坊鍔犲緟鍔炴竻鍗曟爣璁板埌鏂拌
- * 2. 濡傛灉褰撳墠琛屽彧鏈夊緟鍔炴竻鍗曟爣璁版病鏈夊唴瀹癸紝鎸夊洖杞︽椂鍒犻櫎鏍囪骞堕€€鍑哄緟鍔炴竻鍗曟ā寮?
- * 鏀寔 - [ ] 鏍煎紡
+ * 閼奉亜鐣炬稊澶婃礀鏉烇箓鏁径鍕倞 - 閺呴缚鍏樺鍛濞撳懎宕熼幑銏ｎ攽
+ * 1. 閸︺劌绶熼崝鐐寸閸楁洝顢戦張顐㈢啲閹稿娲栨潪锔芥閿涘矁鍤滈崝銊﹀潑閸旂姴绶熼崝鐐寸閸楁洘鐖ｇ拋鏉垮煂閺傛媽顢?
+ * 2. 婵″倹鐏夎ぐ鎾冲鐞涘苯褰ч張澶婄窡閸旂偞绔婚崡鏇熺垼鐠佺増鐥呴張澶婂敶鐎圭櫢绱濋幐澶婃礀鏉烇附妞傞崚鐘绘珟閺嶅洩顔囬獮鍫曗偓鈧崙鍝勭窡閸旂偞绔婚崡鏇熌佸?
+ * 閺€顖涘瘮 - [ ] 閺嶇厧绱?
  */
 function handleTodoListEnter(view: EditorView): boolean {
   const { state } = view;
@@ -1943,19 +1967,19 @@ function handleTodoListEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
 
-  // 妫€鏌ユ槸鍚︽槸寰呭姙娓呭崟琛岋紙鏀寔 - [ ] 鎴?- [x] 鎴?鈥?[ ] 鎴?鈥?[x] 鏍煎紡锛?
+  // 濡偓閺屻儲妲搁崥锔芥Ц瀵板懎濮欏〒鍛礋鐞涘矉绱欓弨顖涘瘮 - [ ] 閹?- [x] 閹?閳?[ ] 閹?閳?[x] 閺嶇厧绱￠敍?
   const todoMatch = lineText.match(/^(\s*)([-*+•])\s\[[ xX]\]\s?/);
   if (!todoMatch) {
-    return false; // 涓嶆槸寰呭姙娓呭崟琛岋紝浣跨敤榛樿琛屼负
+    return false; // 娑撳秵妲稿鍛濞撳懎宕熺悰宀嬬礉娴ｈ法鏁ゆ妯款吇鐞涘奔璐?
   }
 
   const indent = todoMatch[1];
-  // 濮嬬粓浣跨敤 - 浣滀负寰呭姙娓呭崟鏍囪
+  // 婵绮撴担璺ㄦ暏 - 娴ｆ粈璐熷鍛濞撳懎宕熼弽鍥唶
   const prefix = indent + '- [ ] ';
   const matchedPrefix = todoMatch[0];
   const content = lineText.slice(matchedPrefix.length).trim();
 
-  // 濡傛灉寰呭姙娓呭崟琛屽彧鏈夋爣璁版病鏈夊唴瀹癸紝鍒犻櫎鏍囪骞堕€€鍑哄緟鍔炴竻鍗曟ā寮?
+  // 婵″倹鐏夊鍛濞撳懎宕熺悰灞藉涧閺堝鐖ｇ拋鐗堢梾閺堝鍞寸€圭櫢绱濋崚鐘绘珟閺嶅洩顔囬獮鍫曗偓鈧崙鍝勭窡閸旂偞绔婚崡鏇熌佸?
   if (content === '') {
     view.dispatch({
       changes: { from: line.from, to: line.to, insert: indent },
@@ -1964,7 +1988,7 @@ function handleTodoListEnter(view: EditorView): boolean {
     return true;
   }
 
-  // 鍦ㄥ緟鍔炴竻鍗曡鏈熬鎸夊洖杞︼紝鑷姩娣诲姞寰呭姙娓呭崟鏍囪鍒版柊琛?
+  // 閸︺劌绶熼崝鐐寸閸楁洝顢戦張顐㈢啲閹稿娲栨潪锔肩礉閼奉亜濮╁ǎ璇插瀵板懎濮欏〒鍛礋閺嶅洩顔囬崚鐗堟煀鐞?
   view.dispatch({
     changes: { from: head, insert: '\n' + prefix },
     selection: { anchor: head + 1 + prefix.length },
@@ -1974,10 +1998,10 @@ function handleTodoListEnter(view: EditorView): boolean {
 }
 
 /**
- * 鑷畾涔夊洖杞﹂敭澶勭悊 - 鏅鸿兘鏃犲簭鍒楄〃鎹㈣
- * 1. 鍦ㄥ垪琛ㄨ鏈熬鎸夊洖杞︽椂锛岃嚜鍔ㄦ坊鍔犲垪琛ㄦ爣璁板埌鏂拌
- * 2. 濡傛灉褰撳墠琛屽彧鏈夊垪琛ㄦ爣璁版病鏈夊唴瀹癸紝鎸夊洖杞︽椂鍒犻櫎鏍囪骞堕€€鍑哄垪琛ㄦā寮?
- * 鏀寔 -銆?銆?銆佲€?浣滀负鍒楄〃鏍囪
+ * 閼奉亜鐣炬稊澶婃礀鏉烇箓鏁径鍕倞 - 閺呴缚鍏橀弮鐘茬碍閸掓銆冮幑銏ｎ攽
+ * 1. 閸︺劌鍨悰銊攽閺堫偄鐔幐澶婃礀鏉烇附妞傞敍宀冨殰閸斻劍鍧婇崝鐘插灙鐞涖劍鐖ｇ拋鏉垮煂閺傛媽顢?
+ * 2. 婵″倹鐏夎ぐ鎾冲鐞涘苯褰ч張澶婂灙鐞涖劍鐖ｇ拋鐗堢梾閺堝鍞寸€圭櫢绱濋幐澶婃礀鏉烇附妞傞崚鐘绘珟閺嶅洩顔囬獮鍫曗偓鈧崙鍝勫灙鐞涖劍膩瀵?
+ * 閺€顖涘瘮 -閵?閵?閵嗕讲鈧?娴ｆ粈璐熼崚妤勩€冮弽鍥唶
  */
 function handleListEnter(view: EditorView): boolean {
   const { state } = view;
@@ -1987,10 +2011,10 @@ function handleListEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
 
-  // 妫€鏌ユ槸鍚︽槸鏃犲簭鍒楄〃琛岋紙鏀寔 -銆?銆?銆佲€?浣滀负鏍囪锛?
+  // 濡偓閺屻儲妲搁崥锔芥Ц閺冪姴绨崚妤勩€冪悰宀嬬礄閺€顖涘瘮 -閵?閵?閵嗕讲鈧?娴ｆ粈璐熼弽鍥唶閿?
   const listMatch = lineText.match(/^(\s*)([-*+•])\s/);
   if (!listMatch) {
-    return false; // 涓嶆槸鍒楄〃琛岋紝浣跨敤榛樿琛屼负
+    return false; // 娑撳秵妲搁崚妤勩€冪悰宀嬬礉娴ｈ法鏁ゆ妯款吇鐞涘奔璐?
   }
 
   const indent = listMatch[1];
@@ -1998,7 +2022,7 @@ function handleListEnter(view: EditorView): boolean {
   const prefix = indent + marker + ' ';
   const content = lineText.slice(prefix.length).trim();
 
-  // 濡傛灉鍒楄〃琛屽彧鏈夋爣璁版病鏈夊唴瀹癸紝鍒犻櫎鏍囪骞堕€€鍑哄垪琛ㄦā寮?
+  // 婵″倹鐏夐崚妤勩€冪悰灞藉涧閺堝鐖ｇ拋鐗堢梾閺堝鍞寸€圭櫢绱濋崚鐘绘珟閺嶅洩顔囬獮鍫曗偓鈧崙鍝勫灙鐞涖劍膩瀵?
   if (content === '') {
     view.dispatch({
       changes: { from: line.from, to: line.to, insert: indent },
@@ -2007,7 +2031,7 @@ function handleListEnter(view: EditorView): boolean {
     return true;
   }
 
-  // 鍦ㄥ垪琛ㄨ鏈熬鎸夊洖杞︼紝鑷姩娣诲姞鍒楄〃鏍囪鍒版柊琛?
+  // 閸︺劌鍨悰銊攽閺堫偄鐔幐澶婃礀鏉烇讣绱濋懛顏勫З濞ｈ濮為崚妤勩€冮弽鍥唶閸掔増鏌婄悰?
   view.dispatch({
     changes: { from: head, insert: '\n' + prefix },
     selection: { anchor: head + 1 + prefix.length },
@@ -2017,7 +2041,7 @@ function handleListEnter(view: EditorView): boolean {
 }
 
 /**
- * 鑾峰彇涓嬩竴涓瓧姣嶅簭鍙?
+ * 閼惧嘲褰囨稉瀣╃娑擃亜鐡уВ宥呯碍閸?
  * A -> B, Z -> AA, AA -> AB, AZ -> BA
  */
 function getNextLetter(letter: string): string {
@@ -2025,7 +2049,7 @@ function getNextLetter(letter: string): string {
   const base = isUpper ? 'A'.charCodeAt(0) : 'a'.charCodeAt(0);
   const chars = letter.toUpperCase().split('');
 
-  // 浠庢渶鍚庝竴涓瓧绗﹀紑濮嬭繘浣?
+  // 娴犲孩娓堕崥搴濈娑擃亜鐡х粭锕€绱戞慨瀣箻娴?
   let carry = true;
   for (let i = chars.length - 1; i >= 0 && carry; i--) {
     const code = chars[i].charCodeAt(0) - 'A'.charCodeAt(0);
@@ -2046,9 +2070,9 @@ function getNextLetter(letter: string): string {
 }
 
 /**
- * 鑷畾涔夊洖杞﹂敭澶勭悊 - 鏅鸿兘瀛楁瘝搴忓彿鎹㈣
- * 1. 鍦ㄥ瓧姣嶅簭鍙疯鏈熬鎸夊洖杞︽椂锛岃嚜鍔ㄦ坊鍔犱笅涓€涓瓧姣嶅簭鍙峰埌鏂拌
- * 2. 濡傛灉褰撳墠琛屽彧鏈夊瓧姣嶅簭鍙锋病鏈夊唴瀹癸紝鎸夊洖杞︽椂鍒犻櫎搴忓彿骞堕€€鍑哄簭鍙锋ā寮?
+ * 閼奉亜鐣炬稊澶婃礀鏉烇箓鏁径鍕倞 - 閺呴缚鍏樼€涙鐦濇惔蹇撳娇閹广垼顢?
+ * 1. 閸︺劌鐡уВ宥呯碍閸欑柉顢戦張顐㈢啲閹稿娲栨潪锔芥閿涘矁鍤滈崝銊﹀潑閸旂姳绗呮稉鈧稉顏勭摟濮ｅ秴绨崣宄板煂閺傛媽顢?
+ * 2. 婵″倹鐏夎ぐ鎾冲鐞涘苯褰ч張澶婄摟濮ｅ秴绨崣閿嬬梾閺堝鍞寸€圭櫢绱濋幐澶婃礀鏉烇附妞傞崚鐘绘珟鎼村繐褰块獮鍫曗偓鈧崙鍝勭碍閸欓攱膩瀵?
  */
 function handleLetterListEnter(view: EditorView): boolean {
   const { state } = view;
@@ -2058,10 +2082,10 @@ function handleLetterListEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
 
-  // 妫€鏌ユ槸鍚︽槸瀛楁瘝搴忓彿琛岋紙濡?A. B. a. b.锛?
+  // 濡偓閺屻儲妲搁崥锔芥Ц鐎涙鐦濇惔蹇撳娇鐞涘矉绱欐俊?A. B. a. b.閿?
   const letterMatch = lineText.match(/^(\s*)([A-Za-z])\.(\s)/);
   if (!letterMatch) {
-    return false; // 涓嶆槸瀛楁瘝搴忓彿琛岋紝浣跨敤榛樿琛屼负
+    return false; // 娑撳秵妲哥€涙鐦濇惔蹇撳娇鐞涘矉绱濇担璺ㄦ暏姒涙顓荤悰灞艰礋
   }
 
   const indent = letterMatch[1];
@@ -2070,7 +2094,7 @@ function handleLetterListEnter(view: EditorView): boolean {
   const prefix = indent + letter + '.' + space;
   const content = lineText.slice(prefix.length).trim();
 
-  // 濡傛灉搴忓彿琛屽彧鏈夋爣璁版病鏈夊唴瀹癸紝鍒犻櫎鏍囪骞堕€€鍑哄簭鍙锋ā寮?
+  // 婵″倹鐏夋惔蹇撳娇鐞涘苯褰ч張澶嬬垼鐠佺増鐥呴張澶婂敶鐎圭櫢绱濋崚鐘绘珟閺嶅洩顔囬獮鍫曗偓鈧崙鍝勭碍閸欓攱膩瀵?
   if (content === '') {
     view.dispatch({
       changes: { from: line.from, to: line.to, insert: indent },
@@ -2079,7 +2103,7 @@ function handleLetterListEnter(view: EditorView): boolean {
     return true;
   }
 
-  // 鍦ㄥ簭鍙疯鏈熬鎸夊洖杞︼紝鑷姩娣诲姞涓嬩竴涓瓧姣嶅簭鍙峰埌鏂拌
+  // 閸︺劌绨崣鐤攽閺堫偄鐔幐澶婃礀鏉烇讣绱濋懛顏勫З濞ｈ濮炴稉瀣╃娑擃亜鐡уВ宥呯碍閸欏嘲鍩岄弬鎷岊攽
   const nextLetter = getNextLetter(letter);
   const newPrefix = indent + nextLetter + '. ';
 
@@ -2092,8 +2116,8 @@ function handleLetterListEnter(view: EditorView): boolean {
 }
 
 /**
- * 鑷畾涔夊洖杞﹂敭澶勭悊 - 淇濇寔缂╄繘
- * 鍦ㄦ湁缂╄繘鐨勮鎸夊洖杞︽椂锛屾柊琛屼繚鎸佺浉鍚岀殑缂╄繘
+ * 閼奉亜鐣炬稊澶婃礀鏉烇箓鏁径鍕倞 - 娣囨繃瀵旂紓鈺勭箻
+ * 閸︺劍婀佺紓鈺勭箻閻ㄥ嫯顢戦幐澶婃礀鏉烇附妞傞敍灞炬煀鐞涘奔绻氶幐浣烘祲閸氬瞼娈戠紓鈺勭箻
  */
 function handleIndentedEnter(view: EditorView): boolean {
   const { state } = view;
@@ -2103,15 +2127,15 @@ function handleIndentedEnter(view: EditorView): boolean {
   const line = state.doc.lineAt(head);
   const lineText = line.text;
   
-  // 鑾峰彇褰撳墠琛岀殑缂╄繘
+  // 閼惧嘲褰囪ぐ鎾冲鐞涘瞼娈戠紓鈺勭箻
   const indentMatch = lineText.match(/^(\s+)/);
   if (!indentMatch) {
-    return false; // 娌℃湁缂╄繘锛屼娇鐢ㄩ粯璁よ涓?
+    return false; // 濞屸剝婀佺紓鈺勭箻閿涘奔濞囬悽銊╃帛鐠併倛顢戞稉?
   }
   
   const indent = indentMatch[1];
   
-  // 鍦ㄥ綋鍓嶄綅缃彃鍏ユ崲琛屽拰缂╄繘
+  // 閸︺劌缍嬮崜宥勭秴缂冾喗褰冮崗銉﹀床鐞涘苯鎷扮紓鈺勭箻
   view.dispatch({
     changes: { from: head, insert: '\n' + indent },
     selection: { anchor: head + 1 + indent.length },
@@ -2121,80 +2145,80 @@ function handleIndentedEnter(view: EditorView): boolean {
 }
 
 /**
- * 鑷畾涔?TAB 閿鐞?- 妫€娴?TAB 缂╄繘鍚庢槸鍚︿細瀵艰嚧鍐呭瓒呭嚭缂栬緫鍣ㄥ搴?
- * 濡傛灉 TAB 缂╄繘鍚庤瀹藉害瓒呭嚭缂栬緫鍣ㄥ搴︼紝鍒欑姝?TAB
+ * 閼奉亜鐣炬稊?TAB 闁款喖顦╅悶?- 濡偓濞?TAB 缂傗晞绻橀崥搴㈡Ц閸氾缚绱扮€佃壈鍤ч崘鍛啇鐡掑懎鍤紓鏍帆閸ｃ劌顔旀惔?
+ * 婵″倹鐏?TAB 缂傗晞绻橀崥搴ゎ攽鐎硅棄瀹崇搾鍛毉缂傛牞绶崳銊ヮ啍鎼达讣绱濋崚娆戭洣濮?TAB
  */
 function handleTabBoundary(view: EditorView): boolean {
   const { state } = view;
   const { selection } = state;
   
-  // 鑾峰彇缂栬緫鍣ㄥ彲鐢ㄥ搴?
+  // 閼惧嘲褰囩紓鏍帆閸ｃ劌褰查悽銊ヮ啍鎼?
   const contentElement = view.dom.querySelector('.cm-content');
   const editorWidth = contentElement?.clientWidth || 800;
-  const charWidth = 8; // 浼扮畻姣忎釜瀛楃瀹藉害锛堢瓑瀹藉瓧浣擄級
-  const tabWidth = 2 * charWidth; // TAB = 2 绌烘牸
-  const maxChars = Math.floor((editorWidth - 40) / charWidth); // 鐣欏嚭涓€浜涜竟璺?
+  const charWidth = 8; // 娴兼壆鐣诲В蹇庨嚋鐎涙顑佺€硅棄瀹抽敍鍫㈢搼鐎硅棄鐡ф担鎿勭礆
+  const tabWidth = 2 * charWidth; // TAB = 2 缁岀儤鐗?
+  const maxChars = Math.floor((editorWidth - 40) / charWidth); // 閻ｆ瑥鍤稉鈧禍娑滅珶鐠?
   
-  // 妫€鏌ラ€夊尯娑夊強鐨勬墍鏈夎
+  // 濡偓閺屻儵鈧灏☉澶婂挤閻ㄥ嫭澧嶉張澶庮攽
   const startLine = state.doc.lineAt(selection.main.from);
   const endLine = state.doc.lineAt(selection.main.to);
   
   for (let i = startLine.number; i <= endLine.number; i++) {
     const line = state.doc.line(i);
-    // 璁＄畻 TAB 鍚庣殑琛岄暱搴︼紙TAB = 2 绌烘牸锛?
+    // 鐠侊紕鐣?TAB 閸氬海娈戠悰宀勬毐鎼达讣绱橳AB = 2 缁岀儤鐗搁敍?
     const newLength = line.text.length + 2;
     if (newLength > maxChars) {
-      // 浼氬鑷存崲琛岋紝绂佹 TAB
+      // 娴兼艾顕遍懛瀛樺床鐞涘矉绱濈粋浣诡剾 TAB
       return true;
     }
   }
   
-  // 鍏佽 TAB锛屼娇鐢ㄩ粯璁よ涓?
+  // 閸忎浇顔?TAB閿涘奔濞囬悽銊╃帛鐠併倛顢戞稉?
   return false;
 }
 
 /**
- * 鑷畾涔?Ctrl+X 澶勭悊 - 鍓垏鏁磋鍚庝繚鎸佸厜鏍囧湪缂╄繘浣嶇疆
- * 褰撳壀鍒囨暣琛岋紙鏃犻€夊尯锛夋椂锛?
- * - 濡傛灉涓嬮潰杩樻湁琛岋紝鍏夋爣鐣欏湪涓嬩竴琛岀殑缂╄繘浣嶇疆
- * - 濡傛灉鏄渶鍚庝竴琛岋紝鍏夋爣绉诲埌涓婁竴琛岀殑缂╄繘浣嶇疆
+ * 閼奉亜鐣炬稊?Ctrl+X 婢跺嫮鎮?- 閸擃亜鍨忛弫纾嬵攽閸氬簼绻氶幐浣稿帨閺嶅洤婀紓鈺勭箻娴ｅ秶鐤?
+ * 瑜版挸澹€閸掑洦鏆ｇ悰宀嬬礄閺冪娀鈧灏敍澶嬫閿?
+ * - 婵″倹鐏夋稉瀣桨鏉╂ɑ婀佺悰宀嬬礉閸忓鐖ｉ悾娆忔躬娑撳绔寸悰宀€娈戠紓鈺勭箻娴ｅ秶鐤?
+ * - 婵″倹鐏夐弰顖涙付閸氬簼绔寸悰宀嬬礉閸忓鐖ｇ粔璇插煂娑撳﹣绔寸悰宀€娈戠紓鈺勭箻娴ｅ秶鐤?
  */
 function handleCutLine(view: EditorView): boolean {
   const { state } = view;
   const { selection } = state;
 
-  // 鍙鐞嗘棤閫夊尯鐨勬儏鍐碉紙鍓垏鏁磋锛?
+  // 閸欘亜顦╅悶鍡樻￥闁灏惃鍕剰閸愮绱欓崜顏勫瀼閺佺顢戦敍?
   if (!selection.main.empty) {
-    return false; // 鏈夐€夊尯锛屼娇鐢ㄩ粯璁よ涓?
+    return false; // 閺堝鈧灏敍灞煎▏閻劑绮拋銈堫攽娑?
   }
 
   const line = state.doc.lineAt(selection.main.head);
   const lineText = line.text;
 
-  // 澶嶅埗褰撳墠琛屽唴瀹瑰埌鍓创鏉匡紙鍖呭惈鎹㈣绗︼級
+  // 婢跺秴鍩楄ぐ鎾冲鐞涘苯鍞寸€圭懓鍩岄崜顏囧垱閺夊尅绱欓崠鍛儓閹广垼顢戠粭锔肩礆
   const textToCopy = lineText + '\n';
   navigator.clipboard.writeText(textToCopy);
 
-  // 璁＄畻鍒犻櫎鑼冨洿鍜屽厜鏍囦綅缃?
+  // 鐠侊紕鐣婚崚鐘绘珟閼煎啫娲块崪灞藉帨閺嶅洣缍呯純?
   let deleteFrom = line.from;
   let deleteTo = line.to;
   let newCursorPos = line.from;
 
   if (line.number < state.doc.lines) {
-    // 涓嶆槸鏈€鍚庝竴琛岋細鍒犻櫎褰撳墠琛岋紙鍖呭惈鎹㈣绗︼級锛屽厜鏍囩暀鍦ㄤ笅涓€琛岀殑缂╄繘浣嶇疆
+    // 娑撳秵妲搁張鈧崥搴濈鐞涘矉绱伴崚鐘绘珟瑜版挸澧犵悰宀嬬礄閸栧懎鎯堥幑銏ｎ攽缁楋讣绱氶敍灞藉帨閺嶅洨鏆€閸︺劋绗呮稉鈧悰宀€娈戠紓鈺勭箻娴ｅ秶鐤?
     deleteTo = line.to + 1;
     const nextLine = state.doc.line(line.number + 1);
     const nextIndent = getIndentLevel(nextLine.text);
-    // 鍒犻櫎鍚庯紝涓嬩竴琛屼細鍙樻垚褰撳墠浣嶇疆锛屽厜鏍囨斁鍦ㄧ缉杩涗綅缃?
+    // 閸掔娀娅庨崥搴礉娑撳绔寸悰灞肩窗閸欐ɑ鍨氳ぐ鎾冲娴ｅ秶鐤嗛敍灞藉帨閺嶅洦鏂侀崷銊х級鏉╂稐缍呯純?
     newCursorPos = line.from + Math.min(nextIndent, nextLine.text.length);
   } else if (line.number > 1) {
-    // 鏄渶鍚庝竴琛屼笖涓嶆槸绗竴琛岋細鍒犻櫎鍓嶉潰鐨勬崲琛岀锛屽厜鏍囩Щ鍒颁笂涓€琛屾湯灏?
+    // 閺勵垱娓堕崥搴濈鐞涘奔绗栨稉宥嗘Ц缁楊兛绔寸悰宀嬬窗閸掔娀娅庨崜宥夋桨閻ㄥ嫭宕茬悰宀€顑侀敍灞藉帨閺嶅洨些閸掗绗傛稉鈧悰灞炬汞鐏?
     deleteFrom = line.from - 1;
     const prevLine = state.doc.line(line.number - 1);
     newCursorPos = prevLine.to;
   }
 
-  // 鎵ц鍒犻櫎
+  // 閹笛嗩攽閸掔娀娅?
   view.dispatch({
     changes: { from: deleteFrom, to: deleteTo },
     selection: { anchor: newCursorPos },
@@ -2204,34 +2228,34 @@ function handleCutLine(view: EditorView): boolean {
 }
 
 /**
- * 鑷畾涔?Ctrl+- 澶勭悊 - 鍑忓皯鍏夋爣琛屾垨閫変腑琛岀殑缂╄繘
- * 姣忔鍑忓皯 2 涓┖鏍硷紙1 涓?TAB 鍗曚綅锛?
- * 杈圭晫妫€鏌ワ細
- * - 鍗曡鏃讹細濡傛灉褰撳墠琛岀缉杩?< TAB_SIZE锛屼笉鍏佽鍑忓皯
- * - 澶氳鏃讹細濡傛灉浠讳綍闈炵┖琛岀缉杩?< TAB_SIZE锛屼笉鍏佽鍑忓皯
+ * 閼奉亜鐣炬稊?Ctrl+- 婢跺嫮鎮?- 閸戝繐鐨崗澶嬬垼鐞涘本鍨ㄩ柅澶夎厬鐞涘瞼娈戠紓鈺勭箻
+ * 濮ｅ繑顐奸崙蹇撶毌 2 娑擃亞鈹栭弽纭风礄1 娑?TAB 閸楁洑缍呴敍?
+ * 鏉堝湱鏅Λ鈧弻銉窗
+ * - 閸楁洝顢戦弮璁圭窗婵″倹鐏夎ぐ鎾冲鐞涘瞼缂夋潻?< TAB_SIZE閿涘奔绗夐崗浣筋啅閸戝繐鐨?
+ * - 婢舵俺顢戦弮璁圭窗婵″倹鐏夋禒璁崇秿闂堢偟鈹栫悰宀€缂夋潻?< TAB_SIZE閿涘奔绗夐崗浣筋啅閸戝繐鐨?
  */
 function handleDecreaseIndent(view: EditorView): boolean {
   const { state } = view;
   const { selection } = state;
   const TAB_SIZE = 2;
 
-  // 鑾峰彇閫夊尯娑夊強鐨勬墍鏈夎锛堟棤閫夊尯鏃舵槸鍏夋爣鎵€鍦ㄨ锛?
+  // 閼惧嘲褰囬柅澶婂隘濞戝寮烽惃鍕閺堝顢戦敍鍫熸￥闁灏弮鑸垫Ц閸忓鐖ｉ幍鈧崷銊攽閿?
   const startLine = state.doc.lineAt(selection.main.from);
   const endLine = state.doc.lineAt(selection.main.to);
   const isSingleLine = startLine.number === endLine.number;
 
   if (isSingleLine) {
-    // 鍗曡妯″紡锛氬彧澶勭悊褰撳墠琛?
+    // 閸楁洝顢戝Ο鈥崇础閿涙艾褰ф径鍕倞瑜版挸澧犵悰?
     const line = startLine;
     const lineText = line.text;
     const indent = getIndentLevel(lineText);
 
-    // 濡傛灉娌℃湁缂╄繘锛屼笉鍋氫换浣曟敼鍙?
+    // 婵″倹鐏夊▽鈩冩箒缂傗晞绻橀敍灞肩瑝閸嬫矮鎹㈡担鏇熸暭閸?
     if (indent < TAB_SIZE) {
       return true;
     }
 
-    // 鍑忓皯缂╄繘
+    // 閸戝繐鐨紓鈺勭箻
     const reduceAmount = Math.min(indent, TAB_SIZE);
     view.dispatch({
       changes: { from: line.from, to: line.from + reduceAmount, insert: '' },
@@ -2240,18 +2264,18 @@ function handleDecreaseIndent(view: EditorView): boolean {
     return true;
   }
 
-  // 澶氳妯″紡锛氭鏌ユ墍鏈夎鐨勬渶灏忕缉杩?
+  // 婢舵俺顢戝Ο鈥崇础閿涙碍顥呴弻銉﹀閺堝顢戦惃鍕付鐏忓繒缂夋潻?
   let minIndent = Infinity;
   for (let i = startLine.number; i <= endLine.number; i++) {
     const line = state.doc.line(i);
     const lineText = line.text;
-    // 璺宠繃绌鸿
+    // 鐠哄疇绻冪粚楦款攽
     if (lineText.trim().length === 0) continue;
     const indent = getIndentLevel(lineText);
     minIndent = Math.min(minIndent, indent);
   }
 
-  // 濡傛灉鏈€灏忕缉杩涘皬浜?TAB_SIZE锛屼笉鍏佽鍑忓皯
+  // 婵″倹鐏夐張鈧亸蹇曠級鏉╂稑鐨禍?TAB_SIZE閿涘奔绗夐崗浣筋啅閸戝繐鐨?
   if (minIndent < TAB_SIZE) {
     return true;
   }
@@ -2263,10 +2287,10 @@ function handleDecreaseIndent(view: EditorView): boolean {
     const lineText = line.text;
     const indent = getIndentLevel(lineText);
 
-    // 濡傛灉娌℃湁缂╄繘鎴栨槸绌鸿锛岃烦杩?
+    // 婵″倹鐏夊▽鈩冩箒缂傗晞绻橀幋鏍ㄦЦ缁岄缚顢戦敍宀冪儲鏉?
     if (indent === 0 || lineText.trim().length === 0) continue;
 
-    // 鍑忓皯鐨勭┖鏍兼暟
+    // 閸戝繐鐨惃鍕敄閺嶅吋鏆?
     const reduceAmount = Math.min(indent, TAB_SIZE);
     changes.push({
       from: line.from,
@@ -2282,11 +2306,28 @@ function handleDecreaseIndent(view: EditorView): boolean {
   return true;
 }
 
+function triggerEditorSave(): boolean {
+  const saveHandler = (globalThis as { readonly __editorSaveFile?: (() => void) | undefined }).__editorSaveFile;
+
+  if (saveHandler) {
+    saveHandler();
+    return true;
+  }
+
+  window.dispatchEvent(new Event('save-file'));
+  return true;
+}
+
 /**
- * 鑷畾涔夐敭鐩樻槧灏?- 浣跨敤鏈€楂樹紭鍏堢骇纭繚鍦ㄦ墍鏈夊叾浠栧鐞嗕箣鍓嶆墽琛?
+ * 閼奉亜鐣炬稊澶愭暛閻╂ɑ妲х亸?- 娴ｈ法鏁ら張鈧妯圭喘閸忓牏楠囩涵顔荤箽閸︺劍澧嶉張澶婂従娴犳牕顦╅悶鍡曠閸撳秵澧界悰?
  */
 const customKeymap = Prec.highest(
   keymap.of([
+    {
+      key: 'Mod-s',
+      preventDefault: true,
+      run: () => triggerEditorSave(),
+    },
     {
       key: 'Backspace',
       run: (view) => {
@@ -2294,24 +2335,24 @@ const customKeymap = Prec.highest(
         const { selection } = state;
         const { head } = selection.main;
         
-        // 濡傛灉鏈夐€夊尯锛屼娇鐢ㄩ粯璁よ涓?
+        // 婵″倹鐏夐張澶愨偓澶婂隘閿涘奔濞囬悽銊╃帛鐠併倛顢戞稉?
         if (!selection.main.empty) {
           return false;
         }
 
-        // 妫€鏌ュ厜鏍囧墠闈㈡槸鍚︽槸瑙嗛璇硶
+        // 濡偓閺屻儱鍘滈弽鍥у闂堛垺妲搁崥锔芥Ц鐟欏棝顣剁拠顓熺《
         const doc = state.doc.toString();
         const videoRegex = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
         let match;
         while ((match = videoRegex.exec(doc)) !== null) {
           const videoEnd = match.index + match[0].length;
-          // 濡傛灉鍏夋爣绱ч偦瑙嗛璇硶鍚庨潰
+          // 婵″倹鐏夐崗澶嬬垼缁毖囧仸鐟欏棝顣剁拠顓熺《閸氬酣娼?
           if (head === videoEnd) {
-            // 妫€鏌ユ槸鍚︽槸瑙嗛閾炬帴
+            // 濡偓閺屻儲妲搁崥锔芥Ц鐟欏棝顣堕柧鐐复
             const url = match[2];
             const videoInfo = parseVideoUrl(url);
             if (videoInfo) {
-              // 鍒犻櫎鏁翠釜瑙嗛璇硶
+              // 閸掔娀娅庨弫缈犻嚋鐟欏棝顣剁拠顓熺《
               view.dispatch({
                 changes: { from: match.index, to: videoEnd },
                 selection: { anchor: match.index },
@@ -2321,15 +2362,15 @@ const customKeymap = Prec.highest(
           }
         }
         
-        // 鑾峰彇褰撳墠琛?
+        // 閼惧嘲褰囪ぐ鎾冲鐞?
         const line = state.doc.lineAt(head);
         const text = line.text;
         const cursorOffset = head - line.from;
         
-        // 妫€鏌ユ槸鍚︽槸寰呭姙娓呭崟琛?
-        const todoMatch = text.match(/^([\t ]*)([-*+鈥)\s\[([ xX])\](\s|$)/);
+        // 濡偓閺屻儲妲搁崥锔芥Ц瀵板懎濮欏〒鍛礋鐞?
+        const todoMatch = text.match(/^([\t ]*)([-*+閳ヮ晝)\s\[([ xX])\](\s|$)/);
         if (!todoMatch) {
-          return false; // 涓嶆槸寰呭姙娓呭崟锛屼娇鐢ㄩ粯璁よ涓?
+          return false; // 娑撳秵妲稿鍛濞撳懎宕熼敍灞煎▏閻劑绮拋銈堫攽娑?
         }
         
         const bracketIndex = text.indexOf('[');
@@ -2337,16 +2378,16 @@ const customKeymap = Prec.highest(
           return false;
         }
         
-        // 璁＄畻澶嶉€夋鍖哄煙缁撴潫浣嶇疆锛堝寘鎷?] 鍚庨潰鐨勭┖鏍硷級
-        const checkboxEndOffset = bracketIndex + 4; // [ ] 鍔犵┖鏍煎叡4涓瓧绗?
+        // 鐠侊紕鐣绘径宥夆偓澶嬵攱閸栧搫鐓欑紒鎾存将娴ｅ秶鐤嗛敍鍫濆瘶閹?] 閸氬酣娼伴惃鍕敄閺嶇》绱?
+        const checkboxEndOffset = bracketIndex + 4; // [ ] 閸旂姷鈹栭弽鐓庡彙4娑擃亜鐡х粭?
         
-        // 濡傛灉鍏夋爣鍦ㄥ閫夋鍖哄煙鍚庨潰锛堝唴瀹瑰尯鍩燂級锛屾甯稿垹闄や竴涓瓧绗?
+        // 婵″倹鐏夐崗澶嬬垼閸︺劌顦查柅澶嬵攱閸栧搫鐓欓崥搴ㄦ桨閿涘牆鍞寸€圭懓灏崺鐕傜礆閿涘本顒滅敮绋垮灩闂勩倓绔存稉顏勭摟缁?
         if (cursorOffset > checkboxEndOffset) {
-          // 浣跨敤榛樿琛屼负鍒犻櫎涓€涓瓧绗?
+          // 娴ｈ法鏁ゆ妯款吇鐞涘奔璐熼崚鐘绘珟娑撯偓娑擃亜鐡х粭?
           return false;
         }
         
-        // 濡傛灉鍏夋爣鍦ㄥ閫夋鍖哄煙鍐呮垨绱ч偦澶嶉€夋鍚庨潰锛屾甯稿垹闄や竴涓瓧绗?
+        // 婵″倹鐏夐崗澶嬬垼閸︺劌顦查柅澶嬵攱閸栧搫鐓欓崘鍛灗缁毖囧仸婢跺秹鈧顢嬮崥搴ㄦ桨閿涘本顒滅敮绋垮灩闂勩倓绔存稉顏勭摟缁?
         if (cursorOffset > 0) {
           view.dispatch({
             changes: { from: head - 1, to: head },
@@ -2361,79 +2402,79 @@ const customKeymap = Prec.highest(
     {
       key: 'Enter',
       run: (view) => {
-        // 鍏堝皾璇曞鐞嗗紩鐢ㄥ潡
+        // 閸忓牆鐨剧拠鏇烆槱閻炲棗绱╅悽銊ユ健
         if (handleBlockquoteEnter(view)) {
           return true;
         }
-        // 灏濊瘯澶勭悊寰呭姙娓呭崟锛堜紭鍏堜簬鏅€氭棤搴忓垪琛級
+        // 鐏忔繆鐦径鍕倞瀵板懎濮欏〒鍛礋閿涘牅绱崗鍫滅艾閺咁噣鈧碍妫ゆ惔蹇撳灙鐞涱煉绱?
         if (handleTodoListEnter(view)) {
           return true;
         }
-        // 鍐嶅皾璇曞鐞嗘棤搴忓垪琛?
+        // 閸愬秴鐨剧拠鏇烆槱閻炲棙妫ゆ惔蹇撳灙鐞?
         if (handleListEnter(view)) {
           return true;
         }
-        // 灏濊瘯澶勭悊瀛楁瘝搴忓彿鍒楄〃
+        // 鐏忔繆鐦径鍕倞鐎涙鐦濇惔蹇撳娇閸掓銆?
         if (handleLetterListEnter(view)) {
           return true;
         }
-        // 鏈€鍚庡鐞嗘櫘閫氱缉杩涜锛屼繚鎸佺缉杩?
+        // 閺堚偓閸氬骸顦╅悶鍡樻珮闁氨缂夋潻娑滎攽閿涘奔绻氶幐浣虹級鏉?
         if (handleIndentedEnter(view)) {
           return true;
         }
-        // 浣跨敤榛樿琛屼负
+        // 娴ｈ法鏁ゆ妯款吇鐞涘奔璐?
         return false;
       },
     },
     {
       key: 'Tab',
       run: (view) => {
-        // 妫€鏌?TAB 鏄惁浼氬鑷村唴瀹硅秴鍑虹紪杈戝櫒瀹藉害
+        // 濡偓閺?TAB 閺勵垰鎯佹导姘嚤閼锋潙鍞寸€圭绉撮崙铏圭椽鏉堟垵娅掔€硅棄瀹?
         if (handleTabBoundary(view)) {
-          return true; // 绂佹 TAB
+          return true; // 缁備焦顒?TAB
         }
-        // 浣跨敤榛樿琛屼负
+        // 娴ｈ法鏁ゆ妯款吇鐞涘奔璐?
         return false;
       },
     },
     {
       key: 'Mod-x',
       run: (view) => {
-        // 鑷畾涔夊壀鍒囨暣琛岃涓猴紝淇濇寔鍏夋爣鍦ㄧ缉杩涗綅缃?
+        // 閼奉亜鐣炬稊澶婂閸掑洦鏆ｇ悰宀冾攽娑撶尨绱濇穱婵囧瘮閸忓鐖ｉ崷銊х級鏉╂稐缍呯純?
         return handleCutLine(view);
       },
     },
     {
       key: 'Mod--',
       run: (view) => {
-        // 鍑忓皯閫変腑琛岀殑缂╄繘
+        // 閸戝繐鐨柅澶夎厬鐞涘瞼娈戠紓鈺勭箻
         return handleDecreaseIndent(view);
       },
     },
     {
       key: ' ',
       run: (view) => {
-        // 妫€鏌ユ槸鍚﹂渶瑕佸皢 "- " 杞崲涓?"鈥?"
+        // 濡偓閺屻儲妲搁崥锕傛付鐟曚礁鐨?"- " 鏉烆剚宕叉稉?"閳?"
         const { state } = view;
         const { selection } = state;
         const { head } = selection.main;
 
-        // 鑾峰彇褰撳墠琛?
+        // 閼惧嘲褰囪ぐ鎾冲鐞?
         const line = state.doc.lineAt(head);
         const textBeforeCursor = line.text.slice(0, head - line.from);
         const textAfterCursor = line.text.slice(head - line.from);
 
-        // 妫€鏌ユ槸鍚︽槸寰呭姙娓呭崟鏍煎紡 "- [ ]" 鎴?"鈥?[ ]" 鍚庨潰杈撳叆绌烘牸
-        // 鐢变簬 ] 鍚庨潰鏈韩灏辨湁绌烘牸锛屾墍浠ヤ笉闇€瑕佹彃鍏ョ┖鏍硷紝鍙渶瑕佺Щ鍔ㄥ厜鏍囧埌绌烘牸鍚庨潰
-        if (/^[\t ]*[-鈥\s\[[ xX]\]$/.test(textBeforeCursor)) {
-          // 妫€鏌ュ厜鏍囧悗闈㈡槸鍚﹀凡缁忔湁绌烘牸
+        // 濡偓閺屻儲妲搁崥锔芥Ц瀵板懎濮欏〒鍛礋閺嶇厧绱?"- [ ]" 閹?"閳?[ ]" 閸氬酣娼版潏鎾冲弳缁岀儤鐗?
+        // 閻㈠彉绨?] 閸氬酣娼伴張顒冮煩鐏忚鲸婀佺粚鐑樼壐閿涘本澧嶆禒銉ょ瑝闂団偓鐟曚焦褰冮崗銉р敄閺嶇》绱濋崣顏堟付鐟曚胶些閸斻劌鍘滈弽鍥у煂缁岀儤鐗搁崥搴ㄦ桨
+        if (/^[\t ]*[-閳ヮ晝\s\[[ xX]\]$/.test(textBeforeCursor)) {
+          // 濡偓閺屻儱鍘滈弽鍥ф倵闂堛垺妲搁崥锕€鍑＄紒蹇旀箒缁岀儤鐗?
           if (textAfterCursor.startsWith(' ')) {
-            // 宸茬粡鏈夌┖鏍硷紝鍙Щ鍔ㄥ厜鏍?
+            // 瀹歌尙绮￠張澶屸敄閺嶇》绱濋崣顏喰╅崝銊ュ帨閺?
             view.dispatch({
               selection: { anchor: head + 1 },
             });
           } else {
-            // 娌℃湁绌烘牸锛屾彃鍏ョ┖鏍?
+            // 濞屸剝婀佺粚鐑樼壐閿涘本褰冮崗銉р敄閺?
             view.dispatch({
               changes: { from: head, insert: ' ' },
               selection: { anchor: head + 1 },
@@ -2442,46 +2483,46 @@ const customKeymap = Prec.highest(
           return true;
         }
 
-        // 妫€鏌ユ槸鍚﹀尮閰?"缂╄繘 + -" 鐨勬ā寮?
+        // 濡偓閺屻儲妲搁崥锕€灏柊?"缂傗晞绻?+ -" 閻ㄥ嫭膩瀵?
         if (/^\s*-$/.test(textBeforeCursor)) {
-          // 妫€鏌ュ厜鏍囧悗闈㈡槸鍚︽槸寰呭姙娓呭崟鏍煎紡 [ ] 鎴?[x]
-          // 濡傛灉鏄紝涓嶆浛鎹?- 涓?鈥紝璁╁緟鍔炴竻鍗曡В鏋愬櫒澶勭悊
+          // 濡偓閺屻儱鍘滈弽鍥ф倵闂堛垺妲搁崥锔芥Ц瀵板懎濮欏〒鍛礋閺嶇厧绱?[ ] 閹?[x]
+          // 婵″倹鐏夐弰顖ょ礉娑撳秵娴涢幑?- 娑?閳ヮ澁绱濈拋鈺佺窡閸旂偞绔婚崡鏇⌒掗弸鎰珤婢跺嫮鎮?
           if (/^\s*\[[ xX]\]/.test(textAfterCursor)) {
-            return false; // 浣跨敤榛樿琛屼负锛屼笉鏇挎崲
+            return false; // 娴ｈ法鏁ゆ妯款吇鐞涘奔璐熼敍灞肩瑝閺囨寧宕?
           }
           
           const dashPos = head - 1;
-          // 鏇挎崲 "-" 涓?"鈥? 骞舵彃鍏ョ┖鏍?
+          // 閺囨寧宕?"-" 娑?"閳? 楠炶埖褰冮崗銉р敄閺?
           view.dispatch({
-            changes: { from: dashPos, to: head, insert: '鈥?' },
+            changes: { from: dashPos, to: head, insert: '閳?' },
             selection: { anchor: dashPos + 2 },
           });
           return true;
         }
 
-        // 浣跨敤榛樿琛屼负
+        // 娴ｈ法鏁ゆ妯款吇鐞涘奔璐?
         return false;
       },
     },
     {
       key: ']',
       run: (view) => {
-        // 妫€鏌ユ槸鍚﹂渶瑕佸皢 "鈥?[ " 杞崲涓?"- [ ]"锛堝緟鍔炴竻鍗曟牸寮忥級
+        // 濡偓閺屻儲妲搁崥锕傛付鐟曚礁鐨?"閳?[ " 鏉烆剚宕叉稉?"- [ ]"閿涘牆绶熼崝鐐寸閸楁洘鐗稿蹇ョ礆
         const { state } = view;
         const { selection } = state;
         const { head } = selection.main;
 
-        // 鑾峰彇褰撳墠琛?
+        // 閼惧嘲褰囪ぐ鎾冲鐞?
         const line = state.doc.lineAt(head);
         const textBeforeCursor = line.text.slice(0, head - line.from);
 
-        // 妫€鏌ユ槸鍚﹀尮閰?"- [ " 鎴?"- [x" 鎴?"鈥?[ " 鎴?"鈥?[x" 鐨勬ā寮?
+        // 濡偓閺屻儲妲搁崥锕€灏柊?"- [ " 閹?"- [x" 閹?"閳?[ " 閹?"閳?[x" 閻ㄥ嫭膩瀵?
         const todoMatch = textBeforeCursor.match(/^(\s*)([-*+•])\s\[[ xX]$/);
         if (todoMatch) {
           const indent = todoMatch[1];
           const marker = todoMatch[2];
           
-          // 濡傛灉鏄?鈥紝鏇挎崲涓?-
+          // 婵″倹鐏夐弰?閳ヮ澁绱濋弴鎸庡床娑?-
           if (marker === '•') {
             const bulletPos = line.from + indent.length;
             view.dispatch({
@@ -2494,7 +2535,7 @@ const customKeymap = Prec.highest(
             return true;
           }
           
-          // 濡傛灉宸茬粡鏄?-锛屽彧鎻掑叆 ]
+          // 婵″倹鐏夊鑼病閺?-閿涘苯褰ч幓鎺戝弳 ]
           view.dispatch({
             changes: { from: head, insert: ']' },
             selection: { anchor: head + 1 },
@@ -2502,12 +2543,12 @@ const customKeymap = Prec.highest(
           return true;
         }
 
-        // 浣跨敤榛樿琛屼负
+        // 娴ｈ法鏁ゆ妯款吇鐞涘奔璐?
         return false;
       },
     },
     {
-      // Ctrl+I 鎴?Cmd+I 鎵撳紑鍐呰仈 AI 鑱婂ぉ
+      // Ctrl+I 閹?Cmd+I 閹垫挸绱戦崘鍛颁粓 AI 閼卞﹤銇?
       key: 'Mod-i',
       run: (view) => {
         if (isInlineAIChatOpen(view)) {
@@ -2522,16 +2563,16 @@ const customKeymap = Prec.highest(
 );
 
 /**
- * 妫€娴?URL 鏄惁涓哄浘鐗囬摼鎺?
+ * 濡偓濞?URL 閺勵垰鎯佹稉鍝勬禈閻楀洭鎽奸幒?
  */
 function isImageUrl(url: string): boolean {
   const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
-  const lowerUrl = url.toLowerCase();
-  return imageExtensions.some(ext => lowerUrl.includes(ext));
+  const lowerUrl = url.toLowerCase().split(/[?#]/)[0];
+  return imageExtensions.some(ext => lowerUrl.endsWith(ext));
 }
 
 /**
- * 鍦ㄦ寚瀹氫綅缃彃鍏ユ枃鏈?
+ * 閸︺劍瀵氱€规矮缍呯純顔藉絻閸忋儲鏋冮張?
  */
 function insertTextAtPosition(view: EditorView, pos: number, text: string): void {
   view.dispatch({
@@ -2541,29 +2582,303 @@ function insertTextAtPosition(view: EditorView, pos: number, text: string): void
 }
 
 /**
- * 澶勭悊鍥剧墖鏂囦欢锛岃浆鎹负 base64 骞舵彃鍏?Markdown 鍥剧墖璇硶锛堝甫灏哄锛?
+ * Persist image attachments to disk instead of writing data URLs.
  */
-function handleImageFile(file: File, view: EditorView, pos: number): void {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const base64 = e.target?.result as string;
-    if (base64) {
-      // 鍔犺浇鍥剧墖鑾峰彇鍘熷灏哄锛岃缃负 25%
-      const img = new Image();
-      img.onload = () => {
-        const width = Math.round(img.naturalWidth * 0.25);
-        const height = Math.round(img.naturalHeight * 0.25);
-        const markdownImage = `\n![${file.name}|${width}x${height}](${base64})\n`;
-        insertTextAtPosition(view, pos, markdownImage);
+async function handleImageFile(
+  file: File,
+  view: EditorView,
+  pos: number,
+  noteFilePath: string | undefined,
+): Promise<void> {
+  await insertPersistedImageFile(file, view, pos, noteFilePath);
+}
+
+const IMAGE_MIME_EXTENSION_MAP: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+  'image/bmp': '.bmp',
+  'image/x-icon': '.ico',
+  'image/vnd.microsoft.icon': '.ico',
+};
+
+const isWindowsAbsolutePath = (value: string): boolean => /^[A-Za-z]:[\\/]/.test(value);
+
+const isUnixAbsolutePath = (value: string): boolean =>
+  value.startsWith('/') && !value.startsWith('//');
+
+const isUncPath = (value: string): boolean => value.startsWith('\\\\');
+
+const isRealFileSystemPath = (value: string | undefined): value is string => {
+  if (!value) {
+    return false;
+  }
+
+  return isWindowsAbsolutePath(value) || isUnixAbsolutePath(value) || isUncPath(value);
+};
+
+const normalizePathSeparators = (value: string): string => value.replace(/\\/g, '/');
+
+const getDirectoryPath = (value: string): string | null => {
+  const normalized = normalizePathSeparators(value);
+  const lastSlashIndex = normalized.lastIndexOf('/');
+  if (lastSlashIndex < 0) {
+    return null;
+  }
+
+  if (lastSlashIndex === 0) {
+    return '/';
+  }
+
+  return normalized.slice(0, lastSlashIndex);
+};
+
+const getPathBaseName = (value: string): string => {
+  const normalized = normalizePathSeparators(value);
+  const segments = normalized.split('/').filter(Boolean);
+  return segments[segments.length - 1] || value;
+};
+
+const getPathStem = (value: string): string => {
+  const fileName = getPathBaseName(value);
+  const lastDotIndex = fileName.lastIndexOf('.');
+  return lastDotIndex > 0 ? fileName.slice(0, lastDotIndex) : fileName;
+};
+
+const joinFilePath = (directoryPath: string, fileName: string): string => {
+  const normalizedDirectoryPath = normalizePathSeparators(directoryPath).replace(/\/+$/, '');
+  return `${normalizedDirectoryPath}/${fileName}`;
+};
+
+const sanitizeAttachmentName = (value: string): string => {
+  const normalized = value
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^\.+/, '')
+    .replace(/\.+$/, '');
+
+  return normalized || 'image';
+};
+
+const getImageExtension = (file: File): string => {
+  const originalName = file.name.trim();
+  const lastDotIndex = originalName.lastIndexOf('.');
+  if (lastDotIndex > 0 && lastDotIndex < originalName.length - 1) {
+    return originalName.slice(lastDotIndex).toLowerCase();
+  }
+
+  return IMAGE_MIME_EXTENSION_MAP[file.type.toLowerCase()] || '.png';
+};
+
+const buildTimestampToken = (): string =>
+  new Date().toISOString().replace(/[-:TZ.]/g, '');
+
+const toLocalFileUrl = (filePath: string): string => {
+  if (filePath.startsWith('local-file://')) {
+    return filePath;
+  }
+
+  if (filePath.startsWith('file:///')) {
+    return filePath.replace('file:///', 'local-file:///');
+  }
+
+  if (filePath.startsWith('file://')) {
+    return filePath.replace('file://', 'local-file://');
+  }
+
+  const normalizedPath = normalizePathSeparators(filePath);
+  if (isWindowsAbsolutePath(normalizedPath)) {
+    const pathParts = normalizedPath.split('/');
+    const encodedParts = pathParts.map((part, index) => {
+      if (index === 0 && /^[A-Za-z]:$/.test(part)) {
+        return part;
+      }
+
+      return encodeURIComponent(part);
+    });
+
+    return `local-file:///${encodedParts.join('/')}`;
+  }
+
+  if (isUnixAbsolutePath(normalizedPath)) {
+    const pathParts = normalizedPath.split('/');
+    const encodedParts = pathParts.map((part) => encodeURIComponent(part));
+    return `local-file:///${encodedParts.join('/')}`;
+  }
+
+  return filePath;
+};
+
+const getRenderableImageSource = (rawSource: string): string => {
+  if (rawSource.startsWith('data:') || rawSource.startsWith('blob:')) {
+    return rawSource;
+  }
+
+  if (/^https?:\/\//i.test(rawSource)) {
+    return rawSource;
+  }
+
+  if (rawSource.startsWith('local-file://') || rawSource.startsWith('file://')) {
+    return toLocalFileUrl(rawSource);
+  }
+
+  if (isRealFileSystemPath(rawSource)) {
+    return toLocalFileUrl(rawSource);
+  }
+
+  return rawSource;
+};
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+};
+
+const loadImageSizeFromObjectUrl = (objectUrl: string): Promise<{ width: number; height: number }> => (
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      resolve({
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+    };
+    image.onerror = () => reject(new Error('无法读取图片尺寸。'));
+    image.src = objectUrl;
+  })
+);
+
+const loadImageSizeFromFile = async (file: File): Promise<{ width: number; height: number }> => {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const size = {
+        width: bitmap.width,
+        height: bitmap.height,
       };
-      img.src = base64;
+      bitmap.close();
+
+      if (size.width > 0 && size.height > 0) {
+        return size;
+      }
+    } catch {
+      // Fall back to DOM image loading for formats createImageBitmap cannot decode.
     }
-  };
-  reader.readAsDataURL(file);
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    return await loadImageSizeFromObjectUrl(objectUrl);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+};
+
+const canvasToBlob = (canvas: HTMLCanvasElement, mimeType: string): Promise<Blob> => (
+  new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+        return;
+      }
+
+      reject(new Error('无法生成裁剪后的图片数据。'));
+    }, mimeType);
+  })
+);
+
+const createAttachmentFilePath = async (
+  noteFilePath: string,
+  preferredName: string,
+  extension: string,
+): Promise<string> => {
+  const noteDirectoryPath = getDirectoryPath(noteFilePath);
+  if (!noteDirectoryPath) {
+    throw new Error('当前文件路径无效，无法保存图片。');
+  }
+
+  const attachmentDirectoryPath = joinFilePath(noteDirectoryPath, 'assets');
+  const noteStem = sanitizeAttachmentName(getPathStem(noteFilePath));
+  const safePreferredName = sanitizeAttachmentName(preferredName);
+  const baseName = safePreferredName || noteStem || 'image';
+  const timestampToken = buildTimestampToken();
+
+  let attempt = 0;
+  while (attempt < 100) {
+    const suffix = attempt === 0 ? '' : `-${attempt + 1}`;
+    const fileName = `${noteStem}-${baseName}-${timestampToken}${suffix}${extension}`;
+    const targetFilePath = joinFilePath(attachmentDirectoryPath, fileName);
+    const exists = await window.electronAPI?.fs?.exists?.(targetFilePath);
+    if (!exists) {
+      return targetFilePath;
+    }
+
+    attempt += 1;
+  }
+
+  throw new Error('生成图片文件名失败，请重试。');
+};
+
+const persistImageBlobToNoteAssets = async (
+  noteFilePath: string,
+  blob: Blob,
+  preferredName: string,
+  extension: string,
+): Promise<string> => {
+  const targetFilePath = await createAttachmentFilePath(noteFilePath, preferredName, extension);
+  const arrayBuffer = await blob.arrayBuffer();
+  const base64Content = arrayBufferToBase64(arrayBuffer);
+  const writeResult = await window.electronAPI?.fs?.writeFile?.(targetFilePath, base64Content, 'base64');
+  if (!writeResult?.success) {
+    throw new Error('图片写入失败。');
+  }
+
+  return targetFilePath;
+};
+
+async function insertPersistedImageFile(
+  file: File,
+  view: EditorView,
+  pos: number,
+  noteFilePath: string | undefined,
+): Promise<void> {
+  if (!isRealFileSystemPath(noteFilePath)) {
+    throw new Error('请先将当前笔记保存到磁盘后再插入图片。');
+  }
+
+  const { width: naturalWidth, height: naturalHeight } = await loadImageSizeFromFile(file);
+  const imageExtension = getImageExtension(file);
+  const originalName = file.name.trim();
+  const attachmentBaseName = sanitizeAttachmentName(
+    originalName ? getPathStem(originalName) : 'image'
+  );
+  const savedImagePath = await persistImageBlobToNoteAssets(
+    noteFilePath,
+    file,
+    attachmentBaseName,
+    imageExtension,
+  );
+  const width = Math.max(1, Math.round(naturalWidth * 0.25));
+  const height = Math.max(1, Math.round(naturalHeight * 0.25));
+  const altText = originalName || `${attachmentBaseName}${imageExtension}`;
+  const markdownImage = `\n![${altText}|${width}x${height}](${savedImagePath})\n`;
+  insertTextAtPosition(view, pos, markdownImage);
 }
 
 /**
- * 澶勭悊鍥剧墖 URL锛屾彃鍏?Markdown 鍥剧墖璇硶
+ * 婢跺嫮鎮婇崶鍓у URL閿涘本褰冮崗?Markdown 閸ュ墽澧栫拠顓熺《
  */
 function handleImageUrl(url: string, view: EditorView, pos: number): void {
   const fileName = url.split('/').pop() || 'image';
@@ -2572,29 +2887,37 @@ function handleImageUrl(url: string, view: EditorView, pos: number): void {
 }
 
 /**
- * 瑙ｆ瀽鍥剧墖 alt 鏂囨湰涓殑灏哄淇℃伅
- * 鏍煎紡: alt|widthxheight 鎴?alt|width
+ * 鐟欙絾鐎介崶鍓у alt 閺傚洦婀版稉顓犳畱鐏忓搫顕穱鈩冧紖
+ * 閺嶇厧绱? alt|widthxheight|r90|center|style:card
  */
-function parseImageSize(alt: string): { alt: string; width?: number; height?: number } {
-  const sizeMatch = alt.match(/^(.+?)\|(\d+)(?:x(\d+))?$/);
-  if (sizeMatch) {
+function parseImageSize(alt: string): { width?: number; height?: number } {
+  const parts = alt.split('|');
+  for (const part of parts) {
+    const sizeMatch = part.match(/^(\d+)(?:x(\d+))?$/);
+    if (!sizeMatch) {
+      continue;
+    }
+
     return {
-      alt: sizeMatch[1],
-      width: parseInt(sizeMatch[2], 10),
-      height: sizeMatch[3] ? parseInt(sizeMatch[3], 10) : undefined,
+      width: parseInt(sizeMatch[1], 10),
+      height: sizeMatch[2] ? parseInt(sizeMatch[2], 10) : undefined,
     };
   }
-  return { alt };
+
+  return {};
 }
 
 /**
- * 鍥剧墖 Widget 绫?- 鐢ㄤ簬鍦ㄧ紪杈戝櫒涓覆鏌撳彲璋冩暣澶у皬鐨勫浘鐗?
+ * 閸ュ墽澧?Widget 缁?- 閻劋绨崷銊х椽鏉堟垵娅掓稉顓熻閺屾挸褰茬拫鍐╂殻婢堆冪毈閻ㄥ嫬娴橀悧?
  */
 class ResizableImageWidget extends WidgetType {
   private rotation: number = 0;
   private align: 'left' | 'center' | 'right' = 'left';
   private displayStyle: 'default' | 'link' | 'card' = 'default';
   private documentClickHandler: ((e: MouseEvent) => void) | null = null;
+  private cleanupCallbacks: Array<() => void> = [];
+  private currentWidth: number | undefined;
+  private currentHeight: number | undefined;
 
   constructor(
     readonly src: string,
@@ -2606,12 +2929,14 @@ class ResizableImageWidget extends WidgetType {
     readonly originalMatch: string
   ) {
     super();
-    // 瑙ｆ瀽 alt 涓殑鏃嬭浆銆佸榻愬拰鏄剧ず鏍峰紡淇℃伅
+    this.currentWidth = width;
+    this.currentHeight = height;
+    // 鐟欙絾鐎?alt 娑擃厾娈戦弮瀣祮閵嗕礁顕鎰嫲閺勫墽銇氶弽宄扮础娣団剝浼?
     this.parseAltAttributes();
   }
 
   private parseAltAttributes(): void {
-    // 鏍煎紡: alt|widthxheight|r90|center|style:link
+    // 閺嶇厧绱? alt|widthxheight|r90|center|style:link
     const parts = this.alt.split('|');
     for (const part of parts) {
       if (part.startsWith('r') && !isNaN(parseInt(part.slice(1)))) {
@@ -2628,7 +2953,7 @@ class ResizableImageWidget extends WidgetType {
   }
 
   private getCleanAlt(): string {
-    // 绉婚櫎灏哄銆佹棆杞€佸榻愩€佹牱寮忎俊鎭紝鍙繚鐣欏師濮?alt
+    // 缁夊娅庣亸鍝勵嚟閵嗕焦妫嗘潪顑锯偓浣割嚠姒绘劑鈧焦鐗卞蹇庝繆閹垽绱濋崣顏冪箽閻ｆ瑥甯慨?alt
     const parts = this.alt.split('|');
     const cleanParts = parts.filter(part => {
       if (/^\d+x\d+$/.test(part)) return false;
@@ -2643,54 +2968,184 @@ class ResizableImageWidget extends WidgetType {
 
   private getFileName(): string {
     try {
-      const url = new URL(this.src);
-      const pathname = url.pathname;
+      const url = new URL(getRenderableImageSource(this.src));
+      const pathname = decodeURIComponent(url.pathname);
       return pathname.split('/').pop() || this.src;
     } catch {
-      return this.src.split('/').pop() || this.src;
+      const normalizedPath = normalizePathSeparators(this.src);
+      return normalizedPath.split('/').pop() || this.src;
     }
+  }
+
+  private buildAltText(caption?: string): string {
+    let newAlt = caption || this.getCleanAlt() || 'image';
+
+    if (this.currentWidth) {
+      if (this.currentHeight) {
+        newAlt += `|${this.currentWidth}x${this.currentHeight}`;
+      } else {
+        newAlt += `|${this.currentWidth}`;
+      }
+    }
+
+    if (this.rotation) {
+      newAlt += `|r${this.rotation}`;
+    }
+
+    if (this.align !== 'left') {
+      newAlt += `|${this.align}`;
+    }
+
+    if (this.displayStyle !== 'default') {
+      newAlt += `|style:${this.displayStyle}`;
+    }
+
+    return newAlt;
+  }
+
+  private getBaseImageSize(img: HTMLImageElement): { width: number; height: number } | null {
+    const naturalWidth = img.naturalWidth;
+    const naturalHeight = img.naturalHeight;
+
+    if (this.currentWidth && this.currentHeight) {
+      return {
+        width: this.currentWidth,
+        height: this.currentHeight,
+      };
+    }
+
+    if (!naturalWidth || !naturalHeight) {
+      if (this.currentWidth && this.currentHeight) {
+        return {
+          width: this.currentWidth,
+          height: this.currentHeight,
+        };
+      }
+      return null;
+    }
+
+    if (this.currentWidth) {
+      return {
+        width: this.currentWidth,
+        height: Math.max(1, Math.round((this.currentWidth * naturalHeight) / naturalWidth)),
+      };
+    }
+
+    if (this.currentHeight) {
+      return {
+        width: Math.max(1, Math.round((this.currentHeight * naturalWidth) / naturalHeight)),
+        height: this.currentHeight,
+      };
+    }
+
+    return {
+      width: naturalWidth,
+      height: naturalHeight,
+    };
+  }
+
+  private getRenderedImageMetrics(
+    wrapper: HTMLElement,
+    img: HTMLImageElement
+  ): { imageWidth: number; imageHeight: number; frameWidth: number; frameHeight: number } | null {
+    const baseSize = this.getBaseImageSize(img);
+    if (!baseSize) {
+      return null;
+    }
+
+    const normalizedRotation = ((this.rotation % 360) + 360) % 360;
+    const isQuarterTurn = normalizedRotation === 90 || normalizedRotation === 270;
+    const baseFrameWidth = isQuarterTurn ? baseSize.height : baseSize.width;
+    const availableWidth = wrapper.clientWidth > 0 ? wrapper.clientWidth : baseFrameWidth;
+    const scale = Math.min(1, availableWidth / Math.max(1, baseFrameWidth));
+    const imageWidth = Math.max(1, Math.round(baseSize.width * scale));
+    const imageHeight = Math.max(1, Math.round(baseSize.height * scale));
+
+    return {
+      imageWidth,
+      imageHeight,
+      frameWidth: isQuarterTurn ? imageHeight : imageWidth,
+      frameHeight: isQuarterTurn ? imageWidth : imageHeight,
+    };
+  }
+
+  private syncImageLayout(
+    wrapper: HTMLElement,
+    layoutBox: HTMLElement,
+    selectionFrame: HTMLElement,
+    img: HTMLImageElement
+  ): void {
+    if (this.displayStyle !== 'default') {
+      layoutBox.style.display = 'none';
+      layoutBox.style.width = '';
+      layoutBox.style.height = '';
+      selectionFrame.style.display = 'none';
+      selectionFrame.style.width = '';
+      selectionFrame.style.height = '';
+      return;
+    }
+
+    const metrics = this.getRenderedImageMetrics(wrapper, img);
+    if (!metrics) {
+      return;
+    }
+
+    img.style.width = `${metrics.imageWidth}px`;
+    img.style.height = `${metrics.imageHeight}px`;
+    layoutBox.style.display = 'flex';
+    layoutBox.style.width = `${metrics.frameWidth}px`;
+    layoutBox.style.height = `${metrics.frameHeight}px`;
+    selectionFrame.style.display = '';
+    selectionFrame.style.width = `${metrics.frameWidth}px`;
+    selectionFrame.style.height = `${metrics.frameHeight}px`;
   }
 
   toDOM(): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-image-widget';
     
-    // 璁剧疆瀵归綈鏂瑰紡
+    // 鐠佸墽鐤嗙€靛綊缍堥弬鐟扮础
     wrapper.setAttribute('data-align', this.align);
 
     const container = document.createElement('div');
     container.className = 'cm-image-container';
 
+    const layoutBox = document.createElement('div');
+    layoutBox.className = 'cm-image-layout-box';
+
     const img = document.createElement('img');
-    img.src = this.src;
+    img.src = getRenderableImageSource(this.src);
     img.alt = this.getCleanAlt();
     img.className = 'cm-inline-image';
-    if (this.width) img.style.width = `${this.width}px`;
-    // 涓嶈缃浐瀹氶珮搴︼紝璁╁浘鐗囦繚鎸佸師濮嬪楂樻瘮
+    if (this.currentWidth) img.style.width = `${this.currentWidth}px`;
+    // 娑撳秷顔曠純顔兼祼鐎规岸鐝惔锔肩礉鐠佲晛娴橀悧鍥︾箽閹镐礁甯慨瀣啍妤傛ɑ鐦?
     if (this.rotation) img.style.transform = `rotate(${this.rotation}deg)`;
 
-    // 鍒涘缓宸ュ叿鏍忥紙鍦ㄥ浘鐗囦笂鏂癸級
+    // 閸掓稑缂撳銉ュ徔閺嶅骏绱欓崷銊ユ禈閻楀洣绗傞弬鐧哥礆
     const toolbar = document.createElement('div');
     toolbar.className = 'cm-image-toolbar';
 
-    // 鏃嬭浆鎸夐挳
+    const selectionFrame = document.createElement('div');
+    selectionFrame.className = 'cm-image-selection-frame';
+
+    // 閺冨娴嗛幐澶愭尦
     const rotateBtn = document.createElement('div');
     rotateBtn.className = 'cm-image-toolbar-btn';
-    rotateBtn.title = '鏃嬭浆';
+    rotateBtn.title = '旋转';
     rotateBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>`;
     rotateBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.rotateImage(img);
+      this.rotateImage(wrapper, layoutBox, selectionFrame, img);
     });
 
-    // 灏哄涓嬫媺鑿滃崟
+    // 鐏忓搫顕稉瀣閼挎粌宕?
     const sizeDropdown = document.createElement('div');
     sizeDropdown.className = 'cm-image-toolbar-dropdown';
     
     const sizeBtn = document.createElement('div');
     sizeBtn.className = 'cm-image-toolbar-btn';
-    sizeBtn.title = '灏哄';
+    sizeBtn.title = '调整大小';
     sizeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h18"/></svg>`;
     
     const sizeMenu = document.createElement('div');
@@ -2711,7 +3166,7 @@ class ResizableImageWidget extends WidgetType {
       item.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.resizeImagePercent(img, option.value);
+        this.resizeImagePercent(wrapper, layoutBox, selectionFrame, img, option.value);
         sizeMenu.style.display = 'none';
       });
       sizeMenu.appendChild(item);
@@ -2720,7 +3175,7 @@ class ResizableImageWidget extends WidgetType {
     sizeBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 鍏抽棴鍏朵粬鑿滃崟
+      // 閸忔娊妫撮崗鏈电铂閼挎粌宕?
       document.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
         if (menu !== sizeMenu) (menu as HTMLElement).style.display = 'none';
       });
@@ -2730,13 +3185,13 @@ class ResizableImageWidget extends WidgetType {
     sizeDropdown.appendChild(sizeBtn);
     sizeDropdown.appendChild(sizeMenu);
 
-    // 瀵归綈涓嬫媺鑿滃崟
+    // 鐎靛綊缍堟稉瀣閼挎粌宕?
     const alignDropdown = document.createElement('div');
     alignDropdown.className = 'cm-image-toolbar-dropdown';
     
     const alignBtn = document.createElement('div');
     alignBtn.className = 'cm-image-toolbar-btn';
-    alignBtn.title = '瀵归綈鏂瑰紡';
+    alignBtn.title = '对齐方式';
     alignBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>`;
     
     const alignMenu = document.createElement('div');
@@ -2758,7 +3213,7 @@ class ResizableImageWidget extends WidgetType {
         e.stopPropagation();
         this.setAlignment(wrapper, option.value as 'left' | 'center' | 'right');
         alignMenu.style.display = 'none';
-        // 鏇存柊鑿滃崟椤圭殑 active 鐘舵€?
+        // 閺囧瓨鏌婇懣婊冨礋妞ゅ湱娈?active 閻樿埖鈧?
         alignMenu.querySelectorAll('.cm-image-toolbar-menu-item').forEach(el => el.classList.remove('active'));
         item.classList.add('active');
       });
@@ -2768,7 +3223,7 @@ class ResizableImageWidget extends WidgetType {
     alignBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 鍏抽棴鍏朵粬鑿滃崟
+      // 閸忔娊妫撮崗鏈电铂閼挎粌宕?
       document.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
         if (menu !== alignMenu) (menu as HTMLElement).style.display = 'none';
       });
@@ -2778,13 +3233,13 @@ class ResizableImageWidget extends WidgetType {
     alignDropdown.appendChild(alignBtn);
     alignDropdown.appendChild(alignMenu);
 
-    // 鎻忚堪鎸夐挳
+    // 閹诲繗鍫幐澶愭尦
     const captionBtn = document.createElement('div');
     captionBtn.className = `cm-image-toolbar-btn ${this.getCleanAlt() !== 'image' ? 'active' : ''}`;
-    captionBtn.title = '娣诲姞鎻忚堪';
+    captionBtn.title = '编辑说明';
     captionBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6.1H3"/><path d="M21 12.1H3"/><path d="M15.1 18H3"/></svg>`;
     
-    // 鎻忚堪杈撳叆瀹瑰櫒
+    // 閹诲繗鍫潏鎾冲弳鐎圭懓娅?
     const captionContainer = document.createElement('div');
     captionContainer.className = 'cm-image-caption-container';
     captionContainer.style.display = 'none';
@@ -2792,7 +3247,7 @@ class ResizableImageWidget extends WidgetType {
     const captionInput = document.createElement('input');
     captionInput.type = 'text';
     captionInput.className = 'cm-image-caption-input';
-    captionInput.placeholder = '娣诲姞鍥剧墖鎻忚堪...';
+    captionInput.placeholder = '输入图片说明...';
     captionInput.value = this.getCleanAlt() !== 'image' ? this.getCleanAlt() : '';
     
     captionInput.addEventListener('keydown', (e) => {
@@ -2816,7 +3271,7 @@ class ResizableImageWidget extends WidgetType {
     captionBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 鍏抽棴鍏朵粬鑿滃崟
+      // 閸忔娊妫撮崗鏈电铂閼挎粌宕?
       document.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
         (menu as HTMLElement).style.display = 'none';
       });
@@ -2827,13 +3282,13 @@ class ResizableImageWidget extends WidgetType {
       }
     });
 
-    // 鏄剧ず鏍峰紡涓嬫媺鑿滃崟
+    // 閺勫墽銇氶弽宄扮础娑撳濯洪懣婊冨礋
     const styleDropdown = document.createElement('div');
     styleDropdown.className = 'cm-image-toolbar-dropdown';
     
     const styleBtn = document.createElement('div');
     styleBtn.className = 'cm-image-toolbar-btn';
-    styleBtn.title = '鏄剧ず鏍峰紡';
+    styleBtn.title = '显示样式';
     styleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
     
     const styleMenu = document.createElement('div');
@@ -2841,9 +3296,9 @@ class ResizableImageWidget extends WidgetType {
     styleMenu.style.display = 'none';
     
     const styleOptions = [
-      { label: '榛樿', value: 'default', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>` },
-      { label: '閾炬帴', value: 'link', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>` },
-      { label: '鍗＄墖', value: 'card', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="15" x2="21" y2="15"/></svg>` },
+      { label: '默认', value: 'default', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>` },
+      { label: '链接', value: 'link', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>` },
+      { label: '卡片', value: 'card', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="15" x2="21" y2="15"/></svg>` },
     ];
     
     styleOptions.forEach(option => {
@@ -2853,9 +3308,16 @@ class ResizableImageWidget extends WidgetType {
       item.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.setDisplayStyle(wrapper, container, img, option.value as 'default' | 'link' | 'card');
+        this.setDisplayStyle(
+          wrapper,
+          container,
+          layoutBox,
+          img,
+          selectionFrame,
+          option.value as 'default' | 'link' | 'card'
+        );
         styleMenu.style.display = 'none';
-        // 鏇存柊鑿滃崟椤圭殑 active 鐘舵€?
+        // 閺囧瓨鏌婇懣婊冨礋妞ゅ湱娈?active 閻樿埖鈧?
         styleMenu.querySelectorAll('.cm-image-toolbar-menu-item').forEach(el => el.classList.remove('active'));
         item.classList.add('active');
       });
@@ -2865,7 +3327,7 @@ class ResizableImageWidget extends WidgetType {
     styleBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 鍏抽棴鍏朵粬鑿滃崟
+      // 閸忔娊妫撮崗鏈电铂閼挎粌宕?
       document.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
         if (menu !== styleMenu) (menu as HTMLElement).style.display = 'none';
       });
@@ -2875,10 +3337,10 @@ class ResizableImageWidget extends WidgetType {
     styleDropdown.appendChild(styleBtn);
     styleDropdown.appendChild(styleMenu);
 
-    // 瑁佸壀鎸夐挳
+    // 鐟佷礁澹€閹稿鎸?
     const cropBtn = document.createElement('div');
     cropBtn.className = 'cm-image-toolbar-btn';
-    cropBtn.title = '瑁佸壀';
+    cropBtn.title = '裁剪';
     cropBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/></svg>`;
     cropBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2886,14 +3348,14 @@ class ResizableImageWidget extends WidgetType {
       this.showCropDialog(img);
     });
 
-    // 鍒嗛殧绾?
+    // 閸掑棝娈х痪?
     const divider = document.createElement('div');
     divider.className = 'cm-image-toolbar-divider';
 
-    // 鍏ㄥ睆鎸夐挳
+    // 閸忋劌鐫嗛幐澶愭尦
     const fullscreenBtn = document.createElement('div');
     fullscreenBtn.className = 'cm-image-toolbar-btn';
-    fullscreenBtn.title = '鍏ㄥ睆鏌ョ湅';
+    fullscreenBtn.title = '全屏查看';
     fullscreenBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
     fullscreenBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2901,10 +3363,10 @@ class ResizableImageWidget extends WidgetType {
       this.showFullscreen(img.src);
     });
 
-    // 鍒犻櫎鎸夐挳
+    // 閸掔娀娅庨幐澶愭尦
     const deleteBtn = document.createElement('div');
     deleteBtn.className = 'cm-image-toolbar-btn cm-image-toolbar-btn-danger';
-    deleteBtn.title = '鍒犻櫎鍥剧墖';
+    deleteBtn.title = '删除图片';
     deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
     deleteBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2922,39 +3384,40 @@ class ResizableImageWidget extends WidgetType {
     toolbar.appendChild(fullscreenBtn);
     toolbar.appendChild(deleteBtn);
 
-    // 鍒涘缓璋冩暣澶у皬鐨勬墜鏌?
+    // 閸掓稑缂撶拫鍐╂殻婢堆冪毈閻ㄥ嫭澧滈弻?
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'cm-image-resize-handle';
+    selectionFrame.appendChild(resizeHandle);
 
-    // 鐐瑰嚮鍥剧墖閫変腑锛堜娇鐢?mousedown 纭繚绗竴鏃堕棿鍝嶅簲锛?
+    // 閻愮懓鍤崶鍓у闁鑵戦敍鍫滃▏閻?mousedown 绾喕绻氱粭顑跨閺冨爼妫块崫宥呯安閿?
     container.addEventListener('mousedown', (e) => {
       e.stopPropagation();
-      // 绉婚櫎鍏朵粬鍥剧墖鐨勯€変腑鐘舵€?
+      // 缁夊娅庨崗鏈电铂閸ュ墽澧栭惃鍕偓澶夎厬閻樿埖鈧?
       document.querySelectorAll('.cm-image-container.selected').forEach(el => {
         if (el !== container) el.classList.remove('selected');
       });
       container.classList.add('selected');
-      // 璁板綍閫変腑鐨勫浘鐗?src
+      // 鐠佹澘缍嶉柅澶夎厬閻ㄥ嫬娴橀悧?src
       selectedImageSrc = this.src;
     });
 
-    // 宸ュ叿鏍忕偣鍑绘椂闃绘鍐掓场锛屼繚鎸侀€変腑鐘舵€?
+    // 瀹搞儱鍙块弽蹇曞仯閸戠粯妞傞梼缁橆剾閸愭帗鍦洪敍灞肩箽閹镐線鈧鑵戦悩鑸碘偓?
     toolbar.addEventListener('mousedown', (e) => {
       e.stopPropagation();
     });
 
-    // 鐐瑰嚮鍏朵粬鍦版柟鍙栨秷閫変腑鍜屽叧闂彍鍗?
+    // 閻愮懓鍤崗鏈电铂閸︾増鏌熼崣鏍ㄧХ闁鑵戦崪灞藉彠闂傤叀褰嶉崡?
     this.documentClickHandler = (e: MouseEvent) => {
       const target = e.target as Node;
-      // 濡傛灉鐐瑰嚮鍦?container 鎴?toolbar 鍐咃紝涓嶅彇娑堥€変腑
+      // 婵″倹鐏夐悙鐟板毊閸?container 閹?toolbar 閸愬拑绱濇稉宥呭絿濞戝牓鈧鑵?
       if (!container.contains(target) && !toolbar.contains(target)) {
         container.classList.remove('selected');
-        // 娓呴櫎閫変腑鐨勫浘鐗?src
+        // 濞撳懘娅庨柅澶夎厬閻ㄥ嫬娴橀悧?src
         if (selectedImageSrc === this.src) {
           selectedImageSrc = null;
         }
       }
-      // 鍏抽棴鎵€鏈夎彍鍗曪紙闄ら潪鐐瑰嚮鍦ㄨ彍鍗曞唴锛?
+      // 閸忔娊妫撮幍鈧張澶庡綅閸楁洩绱欓梽銈夋姜閻愮懓鍤崷銊ㄥ綅閸楁洖鍞撮敍?
       if (!toolbar.contains(target)) {
         toolbar.querySelectorAll('.cm-image-toolbar-menu').forEach(menu => {
           (menu as HTMLElement).style.display = 'none';
@@ -2964,25 +3427,51 @@ class ResizableImageWidget extends WidgetType {
     
     document.addEventListener('mousedown', this.documentClickHandler);
 
-    container.appendChild(img);
+    layoutBox.appendChild(img);
+    container.appendChild(layoutBox);
+    container.appendChild(selectionFrame);
     container.appendChild(toolbar);
     container.appendChild(captionContainer);
-    container.appendChild(resizeHandle);
     wrapper.appendChild(container);
 
-    // 濡傛灉杩欎釜鍥剧墖涔嬪墠琚€変腑锛屾仮澶嶉€変腑鐘舵€?
+    // 婵″倹鐏夋潻娆庨嚋閸ュ墽澧栨稊瀣鐞氼偊鈧鑵戦敍灞句划婢跺秹鈧鑵戦悩鑸碘偓?
     if (selectedImageSrc === this.src) {
       container.classList.add('selected');
     }
 
-    // 娣诲姞璋冩暣澶у皬鐨勪簨浠跺鐞?
-    this.setupResizeHandler(resizeHandle, img, container);
+    // 濞ｈ濮炵拫鍐╂殻婢堆冪毈閻ㄥ嫪绨ㄦ禒璺侯槱閻?
+    this.setupResizeHandler(wrapper, layoutBox, resizeHandle, img, selectionFrame, container);
 
-    // 濡傛灉鍒濆鏄剧ず鏍峰紡涓嶆槸榛樿锛岀洿鎺ュ簲鐢ㄥ搴旀牱寮?
+    const syncSelectionFrameLayout = () => {
+      this.syncImageLayout(wrapper, layoutBox, selectionFrame, img);
+    };
+
+    if (img.complete) {
+      requestAnimationFrame(syncSelectionFrameLayout);
+    } else {
+      img.addEventListener('load', syncSelectionFrameLayout, { once: true });
+    }
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => {
+        this.syncImageLayout(wrapper, layoutBox, selectionFrame, img);
+      });
+      resizeObserver.observe(wrapper);
+      this.cleanupCallbacks.push(() => {
+        resizeObserver.disconnect();
+      });
+    } else {
+      window.addEventListener('resize', syncSelectionFrameLayout);
+      this.cleanupCallbacks.push(() => {
+        window.removeEventListener('resize', syncSelectionFrameLayout);
+      });
+    }
+
+    // 婵″倹鐏夐崚婵嗩潗閺勫墽銇氶弽宄扮础娑撳秵妲告妯款吇閿涘瞼娲块幒銉ョ安閻劌顕惔鏃€鐗卞?
     if (this.displayStyle !== 'default') {
       wrapper.setAttribute('data-style', this.displayStyle);
-      img.style.display = 'none';
-      resizeHandle.style.display = 'none';
+      layoutBox.style.display = 'none';
+      selectionFrame.style.display = 'none';
       
       if (this.displayStyle === 'link') {
         const linkDisplay = document.createElement('div');
@@ -3000,11 +3489,11 @@ class ResizableImageWidget extends WidgetType {
         cardDisplay.className = 'cm-image-card-display';
         cardDisplay.innerHTML = `
           <div class="cm-image-card-preview">
-            <img src="${this.src}" alt="${this.getCleanAlt()}" />
+            <img src="${getRenderableImageSource(this.src)}" alt="${this.getCleanAlt()}" />
           </div>
           <div class="cm-image-card-info">
             <span class="cm-image-card-name">${this.getCleanAlt() !== 'image' ? this.getCleanAlt() : this.getFileName()}</span>
-            <span class="cm-image-card-type">鍥剧墖</span>
+            <span class="cm-image-card-type">图片</span>
           </div>
         `;
         container.insertBefore(cardDisplay, toolbar);
@@ -3014,19 +3503,32 @@ class ResizableImageWidget extends WidgetType {
     return wrapper;
   }
 
-  private rotateImage(img: HTMLImageElement): void {
+  private rotateImage(
+    wrapper: HTMLElement,
+    layoutBox: HTMLElement,
+    selectionFrame: HTMLElement,
+    img: HTMLImageElement
+  ): void {
     this.rotation = (this.rotation + 90) % 360;
     img.style.transform = this.rotation ? `rotate(${this.rotation}deg)` : '';
+    this.syncImageLayout(wrapper, layoutBox, selectionFrame, img);
     this.updateImageAttributes();
   }
 
-  private resizeImagePercent(img: HTMLImageElement, percent: number): void {
+  private resizeImagePercent(
+    wrapper: HTMLElement,
+    layoutBox: HTMLElement,
+    selectionFrame: HTMLElement,
+    img: HTMLImageElement,
+    percent: number
+  ): void {
     const naturalWidth = img.naturalWidth;
     const naturalHeight = img.naturalHeight;
     const newWidth = Math.round(naturalWidth * percent);
     const newHeight = Math.round(naturalHeight * percent);
-    img.style.width = `${newWidth}px`;
-    img.style.height = `${newHeight}px`;
+    this.currentWidth = newWidth;
+    this.currentHeight = newHeight;
+    this.syncImageLayout(wrapper, layoutBox, selectionFrame, img);
     this.updateImageSize(newWidth, newHeight);
   }
 
@@ -3040,27 +3542,9 @@ class ResizableImageWidget extends WidgetType {
     const view = globalEditorView;
     if (!view) return;
 
-    // 鏋勫缓鏂扮殑 alt 灞炴€?
-    let newAlt = caption || 'image';
-    
-    // 娣诲姞灏哄
-    if (this.width && this.height) {
-      newAlt += `|${this.width}x${this.height}`;
-    }
-    
-    // 娣诲姞鏃嬭浆
-    if (this.rotation) {
-      newAlt += `|r${this.rotation}`;
-    }
-    
-    // 娣诲姞瀵归綈
-    if (this.align !== 'left') {
-      newAlt += `|${this.align}`;
-    }
+    const newMarkdown = `![${this.buildAltText(caption || 'image')}](${this.src})`;
 
-    const newMarkdown = `![${newAlt}](${this.src})`;
-
-    // 鏌ユ壘骞舵浛鎹㈠師濮嬪浘鐗囪娉?
+    // 閺屻儲澹橀獮鑸垫禌閹广垹甯慨瀣禈閻楀洩顕㈠▔?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3086,33 +3570,9 @@ class ResizableImageWidget extends WidgetType {
     const view = globalEditorView;
     if (!view) return;
 
-    // 鏋勫缓鏂扮殑 alt 灞炴€?
-    const cleanAlt = this.getCleanAlt();
-    let newAlt = cleanAlt;
-    
-    // 娣诲姞灏哄
-    if (this.width && this.height) {
-      newAlt += `|${this.width}x${this.height}`;
-    }
-    
-    // 娣诲姞鏃嬭浆
-    if (this.rotation) {
-      newAlt += `|r${this.rotation}`;
-    }
-    
-    // 娣诲姞瀵归綈
-    if (this.align !== 'left') {
-      newAlt += `|${this.align}`;
-    }
+    const newMarkdown = `![${this.buildAltText()}](${this.src})`;
 
-    // 娣诲姞鏄剧ず鏍峰紡
-    if (this.displayStyle !== 'default') {
-      newAlt += `|style:${this.displayStyle}`;
-    }
-
-    const newMarkdown = `![${newAlt}](${this.src})`;
-
-    // 鏌ユ壘骞舵浛鎹㈠師濮嬪浘鐗囪娉?
+    // 閺屻儲澹橀獮鑸垫禌閹广垹甯慨瀣禈閻楀洩顕㈠▔?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3137,31 +3597,33 @@ class ResizableImageWidget extends WidgetType {
   private setDisplayStyle(
     wrapper: HTMLElement,
     container: HTMLElement,
+    layoutBox: HTMLElement,
     img: HTMLImageElement,
+    selectionFrame: HTMLElement,
     style: 'default' | 'link' | 'card'
   ): void {
     this.displayStyle = style;
     wrapper.setAttribute('data-style', style);
     
-    // 绉婚櫎鏃х殑鏄剧ず鍐呭
+    // 缁夊娅庨弮褏娈戦弰鍓с仛閸愬懎顔?
     const oldLinkDisplay = container.querySelector('.cm-image-link-display');
     const oldCardDisplay = container.querySelector('.cm-image-card-display');
     if (oldLinkDisplay) oldLinkDisplay.remove();
     if (oldCardDisplay) oldCardDisplay.remove();
     
-    // 鑾峰彇宸ュ叿鏍忓拰璋冩暣鎵嬫焺鐨勫紩鐢?
-    const toolbar = container.querySelector('.cm-image-toolbar');
+    // 閼惧嘲褰囧銉ュ徔閺嶅繐鎷扮拫鍐╂殻閹靛鐒洪惃鍕穿閻?
     const resizeHandle = container.querySelector('.cm-image-resize-handle');
     
-    // 鏍规嵁鏍峰紡鏄剧ず/闅愯棌鍥剧墖
+    // 閺嶈宓侀弽宄扮础閺勫墽銇?闂呮劘妫岄崶鍓у
     if (style === 'default') {
+      layoutBox.style.display = 'flex';
       img.style.display = 'block';
-      // 鏄剧ず璋冩暣鎵嬫焺
       if (resizeHandle) (resizeHandle as HTMLElement).style.display = '';
+      this.syncImageLayout(wrapper, layoutBox, selectionFrame, img);
     } else if (style === 'link') {
-      img.style.display = 'none';
-      // 闅愯棌璋冩暣鎵嬫焺
+      layoutBox.style.display = 'none';
       if (resizeHandle) (resizeHandle as HTMLElement).style.display = 'none';
+      selectionFrame.style.display = 'none';
       
       const linkDisplay = document.createElement('div');
       linkDisplay.className = 'cm-image-link-display';
@@ -3172,33 +3634,33 @@ class ResizableImageWidget extends WidgetType {
         </svg>
         <span class="cm-image-link-text">${this.getCleanAlt() !== 'image' ? this.getCleanAlt() : this.getFileName()}</span>
       `;
-      // 鎻掑叆鍒板浘鐗囦箣鍚?
-      img.insertAdjacentElement('afterend', linkDisplay);
+      // 閹绘帒鍙嗛崚鏉挎禈閻楀洣绠ｉ崥?
+      layoutBox.insertAdjacentElement('afterend', linkDisplay);
     } else if (style === 'card') {
-      img.style.display = 'none';
-      // 闅愯棌璋冩暣鎵嬫焺
+      layoutBox.style.display = 'none';
       if (resizeHandle) (resizeHandle as HTMLElement).style.display = 'none';
+      selectionFrame.style.display = 'none';
       
       const cardDisplay = document.createElement('div');
       cardDisplay.className = 'cm-image-card-display';
       cardDisplay.innerHTML = `
         <div class="cm-image-card-preview">
-          <img src="${this.src}" alt="${this.getCleanAlt()}" />
+          <img src="${getRenderableImageSource(this.src)}" alt="${this.getCleanAlt()}" />
         </div>
         <div class="cm-image-card-info">
           <span class="cm-image-card-name">${this.getCleanAlt() !== 'image' ? this.getCleanAlt() : this.getFileName()}</span>
-          <span class="cm-image-card-type">鍥剧墖</span>
+          <span class="cm-image-card-type">图片</span>
         </div>
       `;
-      // 鎻掑叆鍒板浘鐗囦箣鍚?
-      img.insertAdjacentElement('afterend', cardDisplay);
+      // 閹绘帒鍙嗛崚鏉挎禈閻楀洣绠ｉ崥?
+      layoutBox.insertAdjacentElement('afterend', cardDisplay);
     }
     
     this.updateImageAttributes();
   }
 
   private showCropDialog(img: HTMLImageElement): void {
-    // 鍒涘缓瑁佸壀瀵硅瘽妗?
+    // 閸掓稑缂撶憗浣稿鐎电鐦藉?
     const overlay = document.createElement('div');
     overlay.className = 'cm-image-crop-overlay';
     
@@ -3207,19 +3669,19 @@ class ResizableImageWidget extends WidgetType {
     
     const title = document.createElement('div');
     title.className = 'cm-image-crop-title';
-    title.textContent = '瑁佸壀鍥剧墖';
+    title.textContent = '裁剪图片';
     
     const cropContainer = document.createElement('div');
     cropContainer.className = 'cm-image-crop-container';
     
     const cropImg = document.createElement('img');
-    cropImg.src = this.src;
+    cropImg.src = getRenderableImageSource(this.src);
     cropImg.className = 'cm-image-crop-img';
     
     const cropBox = document.createElement('div');
     cropBox.className = 'cm-image-crop-box';
     
-    // 瑁佸壀妗嗙殑鍥涗釜瑙?
+    // 鐟佷礁澹€濡楀棛娈戦崶娑楅嚋鐟?
     const handles = ['nw', 'ne', 'sw', 'se'];
     handles.forEach(pos => {
       const handle = document.createElement('div');
@@ -3230,22 +3692,22 @@ class ResizableImageWidget extends WidgetType {
     cropContainer.appendChild(cropImg);
     cropContainer.appendChild(cropBox);
     
-    // 鎸夐挳鍖哄煙
+    // 閹稿鎸抽崠鍝勭厵
     const buttons = document.createElement('div');
     buttons.className = 'cm-image-crop-buttons';
     
     const cancelBtn = document.createElement('div');
     cancelBtn.className = 'cm-image-crop-btn';
-    cancelBtn.textContent = '鍙栨秷';
+    cancelBtn.textContent = '取消';
     cancelBtn.addEventListener('click', () => {
       overlay.remove();
     });
     
     const confirmBtn = document.createElement('div');
     confirmBtn.className = 'cm-image-crop-btn cm-image-crop-btn-primary';
-    confirmBtn.textContent = '纭畾';
+    confirmBtn.textContent = '确认';
     confirmBtn.addEventListener('click', () => {
-      // 鑾峰彇瑁佸壀鍖哄煙骞跺簲鐢?
+      // 閼惧嘲褰囩憗浣稿閸栧搫鐓欓獮璺虹安閻?
       this.applyCrop(cropImg, cropBox, img);
       overlay.remove();
     });
@@ -3258,7 +3720,7 @@ class ResizableImageWidget extends WidgetType {
     dialog.appendChild(buttons);
     overlay.appendChild(dialog);
     
-    // ESC 鍏抽棴
+    // ESC 閸忔娊妫?
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         overlay.remove();
@@ -3267,7 +3729,7 @@ class ResizableImageWidget extends WidgetType {
     };
     document.addEventListener('keydown', handleKeyDown);
     
-    // 鐐瑰嚮閬僵鍏抽棴
+    // 閻愮懓鍤柆顔惧兊閸忔娊妫?
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
         overlay.remove();
@@ -3276,7 +3738,7 @@ class ResizableImageWidget extends WidgetType {
     
     document.body.appendChild(overlay);
     
-    // 鍒濆鍖栬鍓鎷栨嫿
+    // 閸掓繂顫愰崠鏍梿閸擃亝顢嬮幏鏍ㄥ
     this.setupCropBoxDrag(cropBox, cropImg);
   }
 
@@ -3312,8 +3774,8 @@ class ResizableImageWidget extends WidgetType {
     });
   }
 
-  private applyCrop(cropImg: HTMLImageElement, cropBox: HTMLElement, targetImg: HTMLImageElement): void {
-    // 璁＄畻瑁佸壀姣斾緥
+  private async applyCrop(cropImg: HTMLImageElement, cropBox: HTMLElement, targetImg: HTMLImageElement): Promise<void> {
+    // 鐠侊紕鐣荤憗浣稿濮ｆ柧绶?
     const scaleX = cropImg.naturalWidth / cropImg.offsetWidth;
     const scaleY = cropImg.naturalHeight / cropImg.offsetHeight;
     
@@ -3322,7 +3784,7 @@ class ResizableImageWidget extends WidgetType {
     const cropWidth = cropBox.offsetWidth * scaleX;
     const cropHeight = cropBox.offsetHeight * scaleY;
     
-    // 浣跨敤 Canvas 瑁佸壀鍥剧墖
+    // 娴ｈ法鏁?Canvas 鐟佷礁澹€閸ュ墽澧?
     const canvas = document.createElement('canvas');
     canvas.width = cropWidth;
     canvas.height = cropHeight;
@@ -3331,38 +3793,41 @@ class ResizableImageWidget extends WidgetType {
     
     ctx.drawImage(cropImg, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
     
-    // 杞崲涓?base64
-    const croppedSrc = canvas.toDataURL('image/png');
+    // 鏉烆剚宕叉稉?base64
+    const activeEditorMeta = getActiveCodeMirrorEditorMeta();
+    const activeEditorPath = activeEditorMeta.path ?? undefined;
+    if (!isRealFileSystemPath(activeEditorPath)) {
+      toastService.error('请先将当前笔记保存到磁盘后再裁剪图片。');
+      return;
+    }
     
-    // 鏇存柊鍥剧墖
-    targetImg.src = croppedSrc;
+    // 閺囧瓨鏌婇崶鍓у
+    try {
+      const croppedBlob = await canvasToBlob(canvas, 'image/png');
     
-    // 鏇存柊 Markdown
-    this.updateImageSrc(croppedSrc);
+    // 閺囧瓨鏌?Markdown
+      const sourceBaseName = sanitizeAttachmentName(getPathStem(this.getFileName()));
+      const savedImagePath = await persistImageBlobToNoteAssets(
+        activeEditorPath,
+        croppedBlob,
+        `${sourceBaseName}-crop`,
+        '.png',
+      );
+      targetImg.src = getRenderableImageSource(savedImagePath);
+      this.updateImageSrc(savedImagePath);
+    } catch (error) {
+      console.error('[CodeMirrorEditor] 鍥剧墖瑁佸壀淇濆瓨澶辫触:', error);
+      toastService.error('鍥剧墖瑁佸壀澶辫触');
+    }
   }
 
   private updateImageSrc(newSrc: string): void {
     const view = globalEditorView;
     if (!view) return;
 
-    // 鏋勫缓鏂扮殑 Markdown
-    let newAlt = this.getCleanAlt();
-    if (this.width && this.height) {
-      newAlt += `|${this.width}x${this.height}`;
-    }
-    if (this.rotation) {
-      newAlt += `|r${this.rotation}`;
-    }
-    if (this.align !== 'left') {
-      newAlt += `|${this.align}`;
-    }
-    if (this.displayStyle !== 'default') {
-      newAlt += `|style:${this.displayStyle}`;
-    }
+    const newMarkdown = `![${this.buildAltText()}](${newSrc})`;
 
-    const newMarkdown = `![${newAlt}](${newSrc})`;
-
-    // 鏌ユ壘骞舵浛鎹㈠師濮嬪浘鐗囪娉?
+    // 閺屻儲澹橀獮鑸垫禌閹广垹甯慨瀣禈閻楀洩顕㈠▔?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3385,7 +3850,7 @@ class ResizableImageWidget extends WidgetType {
   }
 
   private showFullscreen(src: string): void {
-    // 鍒涘缓鍏ㄥ睆閬僵
+    // 閸掓稑缂撻崗銊ョ潌闁喚鍍?
     const overlay = document.createElement('div');
     overlay.className = 'cm-image-fullscreen-overlay';
 
@@ -3393,7 +3858,7 @@ class ResizableImageWidget extends WidgetType {
     fullImg.src = src;
     fullImg.className = 'cm-image-fullscreen-img';
 
-    // 鍏抽棴鎸夐挳
+    // 閸忔娊妫撮幐澶愭尦
     const closeBtn = document.createElement('div');
     closeBtn.className = 'cm-image-fullscreen-close';
     closeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
@@ -3401,14 +3866,14 @@ class ResizableImageWidget extends WidgetType {
       overlay.remove();
     });
 
-    // 鐐瑰嚮閬僵鍏抽棴
+    // 閻愮懓鍤柆顔惧兊閸忔娊妫?
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
         overlay.remove();
       }
     });
 
-    // ESC 閿叧闂?
+    // ESC 闁款喖鍙ч梻?
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         overlay.remove();
@@ -3426,7 +3891,7 @@ class ResizableImageWidget extends WidgetType {
     const view = globalEditorView;
     if (!view) return;
 
-    // 鏌ユ壘骞跺垹闄ゅ浘鐗囪娉?
+    // 閺屻儲澹橀獮璺哄灩闂勩倕娴橀悧鍥嚔濞?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3437,7 +3902,7 @@ class ResizableImageWidget extends WidgetType {
       if (match[2] === this.src) {
         targetFrom = match.index;
         targetTo = match.index + match[0].length;
-        // 妫€鏌ュ墠鍚庢槸鍚︽湁鎹㈣绗︼紝涓€骞跺垹闄?
+        // 濡偓閺屻儱澧犻崥搴㈡Ц閸氾附婀侀幑銏ｎ攽缁楋讣绱濇稉鈧獮璺哄灩闂?
         if (targetFrom > 0 && doc[targetFrom - 1] === '\n') {
           targetFrom--;
         }
@@ -3455,7 +3920,14 @@ class ResizableImageWidget extends WidgetType {
     }
   }
 
-  private setupResizeHandler(handle: HTMLElement, img: HTMLImageElement, container: HTMLElement): void {
+  private setupResizeHandler(
+    wrapper: HTMLElement,
+    layoutBox: HTMLElement,
+    handle: HTMLElement,
+    img: HTMLImageElement,
+    selectionFrame: HTMLElement,
+    container: HTMLElement
+  ): void {
     let startX = 0;
     let startWidth = 0;
     let startHeight = 0;
@@ -3481,8 +3953,9 @@ class ResizableImageWidget extends WidgetType {
       const newWidth = Math.max(50, startWidth + deltaX);
       const newHeight = Math.round(newWidth / aspectRatio);
 
-      img.style.width = `${newWidth}px`;
-      img.style.height = `${newHeight}px`;
+      this.currentWidth = newWidth;
+      this.currentHeight = newHeight;
+      this.syncImageLayout(wrapper, layoutBox, selectionFrame, img);
     };
 
     const onMouseUp = () => {
@@ -3490,12 +3963,13 @@ class ResizableImageWidget extends WidgetType {
       document.removeEventListener('mouseup', onMouseUp);
 
       container.classList.remove('resizing');
+      this.syncImageLayout(wrapper, layoutBox, selectionFrame, img);
 
-      // 鑾峰彇鏈€缁堝昂瀵?
+      // 閼惧嘲褰囬張鈧紒鍫濇槀鐎?
       const finalWidth = img.offsetWidth;
       const finalHeight = img.offsetHeight;
 
-      // 鏇存柊 Markdown 涓殑鍥剧墖灏哄
+      // 閺囧瓨鏌?Markdown 娑擃厾娈戦崶鍓у鐏忓搫顕?
       this.updateImageSize(finalWidth, finalHeight);
     };
 
@@ -3506,11 +3980,12 @@ class ResizableImageWidget extends WidgetType {
     const view = globalEditorView;
     if (!view) return;
 
-    // 鏋勫缓鏂扮殑 Markdown 鍥剧墖璇硶
-    const newAlt = `${this.alt}|${width}x${height}`;
-    const newMarkdown = `![${newAlt}](${this.src})`;
+    this.currentWidth = width;
+    this.currentHeight = height;
 
-    // 鏌ユ壘骞舵浛鎹㈠師濮嬪浘鐗囪娉?
+    const newMarkdown = `![${this.buildAltText()}](${this.src})`;
+
+    // 閺屻儲澹橀獮鑸垫禌閹广垹甯慨瀣禈閻楀洩顕㈠▔?
     const doc = view.state.doc.toString();
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -3548,20 +4023,25 @@ class ResizableImageWidget extends WidgetType {
   }
 
   destroy(): void {
-    // 娓呯悊浜嬩欢鐩戝惉鍣?
+    // 濞撳懐鎮婃禍瀣╂閻╂垵鎯夐崳?
     if (this.documentClickHandler) {
       document.removeEventListener('mousedown', this.documentClickHandler);
       this.documentClickHandler = null;
     }
+
+    for (const cleanup of this.cleanupCallbacks) {
+      cleanup();
+    }
+    this.cleanupCallbacks = [];
   }
 }
 
 /**
- * 瑙ｆ瀽鏂囨。涓殑鍥剧墖璇硶骞跺垱寤鸿楗板櫒
+ * 鐟欙絾鐎介弬鍥ㄣ€傛稉顓犳畱閸ュ墽澧栫拠顓熺《楠炶泛鍨卞楦款棅妤楁澘娅?
  */
 function parseImages(doc: string): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
-  // 鍖归厤 Markdown 鍥剧墖璇硶: ![alt](src) 鎴?![alt|widthxheight](src)
+  // 閸栧綊鍘?Markdown 閸ュ墽澧栫拠顓熺《: ![alt](src) 閹?![alt|widthxheight](src)
   const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   let match;
 
@@ -3571,46 +4051,55 @@ function parseImages(doc: string): DecorationSet {
     const from = match.index;
     const to = from + match[0].length;
 
-    // 璺宠繃瑙嗛閾炬帴锛岃瑙嗛瑁呴グ鍣ㄥ鐞?
+    // 鐠哄疇绻冪憴鍡涱暥闁剧偓甯撮敍宀冾唨鐟欏棝顣剁憗鍛淬偘閸ｃ劌顦╅悶?
     if (isVideoUrl(src)) {
       continue;
     }
 
-    // 瑙ｆ瀽灏哄淇℃伅
-    const { alt, width, height } = parseImageSize(rawAlt);
+    // 鐟欙絾鐎界亸鍝勵嚟娣団剝浼?
+    const { width, height } = parseImageSize(rawAlt);
 
-    // 闅愯棌鍘熷鍥剧墖璇硶鏂囨湰
+    // 闂呮劘妫岄崢鐔奉潗閸ュ墽澧栫拠顓熺《閺傚洦婀?
     decorations.push({
       from,
       to,
       decoration: Decoration.replace({
-        widget: new ResizableImageWidget(src, alt, width, height, from, to, match[0]),
+        widget: new ResizableImageWidget(src, rawAlt, width, height, from, to, match[0]),
       }),
     });
   }
 
-  // 鎸変綅缃帓搴?
+  // 閹稿缍呯純顔藉笓鎼?
   decorations.sort((a, b) => a.from - b.from);
 
   return RangeSet.of(decorations.map(d => d.decoration.range(d.from, d.to)));
 }
 
 /**
- * 妫€鏌?URL 鏄惁涓鸿棰戦摼鎺?
+ * 濡偓閺?URL 閺勵垰鎯佹稉楦款潒妫版垿鎽奸幒?
  */
 function isVideoUrl(url: string): boolean {
-  // B绔?
+  const lowerUrl = url.toLowerCase();
+  const pathOnlyUrl = lowerUrl.split(/[?#]/)[0];
+  const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v'];
+
+  if (isImageUrl(pathOnlyUrl)) {
+    return false;
+  }
+
+  // B缁?
   if (/bilibili\.com\/video\/(BV[\w]+|av\d+)/i.test(url)) return true;
   if (/b23\.tv\//i.test(url)) return true;
   // YouTube
   if (/(?:youtube\.com\/watch\?v=|youtu\.be\/)/i.test(url)) return true;
-  // 浼橀叿
+  // 娴兼﹢鍙?
   if (/youku\.com\/v_show\/id_/i.test(url)) return true;
-  return false;
+  if (videoExtensions.some(ext => pathOnlyUrl.endsWith(ext))) return true;
+  return /^https?:\/\//i.test(url);
 }
 
 /**
- * 鍥剧墖瑁呴グ鍣?StateField
+ * 閸ュ墽澧栫憗鍛淬偘閸?StateField
  */
 const imageDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -3626,16 +4115,16 @@ const imageDecorations = StateField.define<DecorationSet>({
 });
 
 // ============================================================================
-// 瑙嗛宓屽叆娓叉煋绯荤粺
+// 鐟欏棝顣跺畵灞藉弳濞撳弶鐓嬬化鑽ょ埠
 // ============================================================================
 
 /**
- * 瑙嗛骞冲彴绫诲瀷
+ * 鐟欏棝顣堕獮鍐插酱缁鐎?
  */
 type VideoPlatform = 'bilibili' | 'youtube' | 'youku' | 'qq' | 'iqiyi' | 'xigua' | 'douyin' | 'local' | 'other';
 
 /**
- * 瑙嗛淇℃伅缁撴瀯
+ * 鐟欏棝顣舵穱鈩冧紖缂佹挻鐎?
  */
 interface VideoInfo {
   platform: VideoPlatform;
@@ -3644,13 +4133,13 @@ interface VideoInfo {
 }
 
 /**
- * 瑙ｆ瀽瑙嗛閾炬帴锛岃浆鎹负宓屽叆閾炬帴
+ * 鐟欙絾鐎界憴鍡涱暥闁剧偓甯撮敍宀冩祮閹诡澀璐熷畵灞藉弳闁剧偓甯?
  */
 function parseVideoUrl(url: string): VideoInfo | null {
-  console.log('[parseVideoUrl] 瑙ｆ瀽瑙嗛閾炬帴:', url);
+  console.log('[parseVideoUrl] 鐟欙絾鐎界憴鍡涱暥闁剧偓甯?', url);
   
-  // B绔欓摼鎺ヨВ鏋?
-  // 鏀寔鏍煎紡: 
+  // B缁旀瑩鎽奸幒銉ㄐ掗弸?
+  // 閺€顖涘瘮閺嶇厧绱? 
   // - https://www.bilibili.com/video/BVxxxxxxx
   // - https://b23.tv/xxxxxxx
   // - https://www.bilibili.com/video/avxxxxxxx
@@ -3664,18 +4153,18 @@ function parseVideoUrl(url: string): VideoInfo | null {
     return { platform: 'bilibili', embedUrl, originalUrl: url };
   }
 
-  // B绔欑煭閾炬帴
+  // B缁旀瑧鐓柧鐐复
   const b23Match = url.match(/b23\.tv\/([\w]+)/i);
   if (b23Match) {
-    // 鐭摼鎺ラ渶瑕侀噸瀹氬悜锛屾殏鏃朵娇鐢ㄥ師閾炬帴
+    // 閻參鎽奸幒銉╂付鐟曚線鍣哥€规艾鎮滈敍灞炬畯閺冩湹濞囬悽銊ュ斧闁剧偓甯?
     return { platform: 'bilibili', embedUrl: url, originalUrl: url };
   }
 
-  // YouTube 閾炬帴瑙ｆ瀽
-  // 鏀寔鏍煎紡:
+  // YouTube 闁剧偓甯寸憴锝嗙€?
+  // 閺€顖涘瘮閺嶇厧绱?
   // - https://www.youtube.com/watch?v=xxxxxxx
   // - https://youtu.be/xxxxxxx
-  // 浣跨敤 youtube-nocookie.com 闅愮澧炲己妯″紡锛岄伩鍏嶅祵鍏ラ檺鍒?
+  // 娴ｈ法鏁?youtube-nocookie.com 闂呮劗顫嗘晶鐐插繁濡€崇础閿涘矂浼╅崗宥呯サ閸忋儵妾洪崚?
   const youtubeMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/i);
   if (youtubeMatch) {
     const videoId = youtubeMatch[1];
@@ -3683,8 +4172,8 @@ function parseVideoUrl(url: string): VideoInfo | null {
     return { platform: 'youtube', embedUrl, originalUrl: url };
   }
 
-  // 浼橀叿閾炬帴瑙ｆ瀽
-  // 鏀寔鏍煎紡: https://v.youku.com/v_show/id_xxxxxxx.html
+  // 娴兼﹢鍙块柧鐐复鐟欙絾鐎?
+  // 閺€顖涘瘮閺嶇厧绱? https://v.youku.com/v_show/id_xxxxxxx.html
   const youkuMatch = url.match(/youku\.com\/v_show\/id_([\w=]+)/i);
   if (youkuMatch) {
     const videoId = youkuMatch[1];
@@ -3692,68 +4181,78 @@ function parseVideoUrl(url: string): VideoInfo | null {
     return { platform: 'youku', embedUrl, originalUrl: url };
   }
 
-  // 鑵捐瑙嗛閾炬帴瑙ｆ瀽
-  // 鏀寔鏍煎紡: https://v.qq.com/x/cover/xxx/xxx.html
+  // 閼垫崘顔嗙憴鍡涱暥闁剧偓甯寸憴锝嗙€?
+  // 閺€顖涘瘮閺嶇厧绱? https://v.qq.com/x/cover/xxx/xxx.html
   const qqMatch = url.match(/v\.qq\.com/i);
   if (qqMatch) {
     return { platform: 'qq', embedUrl: url, originalUrl: url };
   }
 
-  // 鐖卞鑹洪摼鎺ヨВ鏋?
-  // 鏀寔鏍煎紡: https://www.iqiyi.com/v_xxx.html
+  // 閻栧崬顨岄懝娲懠閹恒儴袙閺?
+  // 閺€顖涘瘮閺嶇厧绱? https://www.iqiyi.com/v_xxx.html
   const iqiyiMatch = url.match(/iqiyi\.com/i);
   if (iqiyiMatch) {
     return { platform: 'iqiyi', embedUrl: url, originalUrl: url };
   }
 
-  // 瑗跨摐瑙嗛閾炬帴瑙ｆ瀽
-  // 鏀寔鏍煎紡: https://www.ixigua.com/xxx
+  // 鐟楄法鎽愮憴鍡涱暥闁剧偓甯寸憴锝嗙€?
+  // 閺€顖涘瘮閺嶇厧绱? https://www.ixigua.com/xxx
   const xiguaMatch = url.match(/ixigua\.com/i);
   if (xiguaMatch) {
     return { platform: 'xigua', embedUrl: url, originalUrl: url };
   }
 
-  // 鎶栭煶閾炬帴瑙ｆ瀽
-  // 鏀寔鏍煎紡: https://www.douyin.com/video/xxx
+  // 閹舵牠鐓堕柧鐐复鐟欙絾鐎?
+  // 閺€顖涘瘮閺嶇厧绱? https://www.douyin.com/video/xxx
   const douyinMatch = url.match(/douyin\.com/i);
   if (douyinMatch) {
     return { platform: 'douyin', embedUrl: url, originalUrl: url };
   }
 
-  // 鏈湴瑙嗛鏂囦欢
-  // 鏀寔鏍煎紡: file:///path/to/video.mp4 鎴?C:\path\to\video.mp4 鎴?/path/to/video.mp4
-  const localVideoExtensions = /\.(mp4|webm|ogg|mov|avi|mkv)$/i;
-  // 鍏堣В鐮?URL 缂栫爜鐨勮矾寰?
+  // 閺堫剙婀寸憴鍡涱暥閺傚洣娆?
+  // 閺€顖涘瘮閺嶇厧绱? file:///path/to/video.mp4 閹?C:\path\to\video.mp4 閹?/path/to/video.mp4
+  const localVideoExtensions = /\.(mp4|webm|ogg|mov|avi|mkv|m4v)$/i;
+  // 閸忓牐袙閻?URL 缂傛牜鐖滈惃鍕熅瀵?
   let decodedUrl = url;
   try {
     decodedUrl = decodeURIComponent(url);
   } catch {
-    // 瑙ｇ爜澶辫触鍒欎娇鐢ㄥ師濮?URL
+    // 鐟欙絿鐖滄径杈Е閸掓瑤濞囬悽銊ュ斧婵?URL
   }
-  console.log('[parseVideoUrl] 妫€鏌ユ湰鍦拌棰? url:', url, 'decodedUrl:', decodedUrl);
-  console.log('[parseVideoUrl] file:// 鍖归厤:', url.match(/^file:\/\//i));
-  console.log('[parseVideoUrl] Windows璺緞鍖归厤:', url.match(/^[A-Za-z]:[\\\/]/));
-  console.log('[parseVideoUrl] 鎵╁睍鍚嶅尮閰?', localVideoExtensions.test(decodedUrl));
-  // 妫€鏌ユ槸鍚︿负鏈湴瑙嗛璺緞
-  const isLocalPath = 
-    url.match(/^file:\/\//i) || 
-    decodedUrl.match(/^file:\/\//i) || 
-    url.match(/^[A-Za-z]:[\\\/]/) ||  // Windows 璺緞: C:\ 鎴?C:/
-    decodedUrl.match(/^[A-Za-z]:[\\\/]/) ||
-    (url.startsWith('/') && localVideoExtensions.test(decodedUrl));
+  console.log('[parseVideoUrl] 濡偓閺屻儲婀伴崷鎷岊潒妫? url:', url, 'decodedUrl:', decodedUrl);
+  console.log('[parseVideoUrl] file:// 閸栧綊鍘?', url.match(/^file:\/\//i));
+  console.log('[parseVideoUrl] Windows鐠侯垰绶為崠褰掑帳:', url.match(/^[A-Za-z]:[\\\/]/));
+  console.log('[parseVideoUrl] 閹碘晛鐫嶉崥宥呭爱闁?', localVideoExtensions.test(decodedUrl));
+  // 濡偓閺屻儲妲搁崥锔胯礋閺堫剙婀寸憴鍡涱暥鐠侯垰绶?
+  const hasLocalVideoExtension = localVideoExtensions.test(decodedUrl.split(/[?#]/)[0]);
+  const isLocalPath =
+    hasLocalVideoExtension && (
+      url.match(/^local-file:\/\//i) ||
+      decodedUrl.match(/^local-file:\/\//i) ||
+      url.match(/^file:\/\//i) ||
+      decodedUrl.match(/^file:\/\//i) ||
+      url.match(/^[A-Za-z]:[\\\/]/) ||
+      decodedUrl.match(/^[A-Za-z]:[\\\/]/) ||
+      url.startsWith('/') ||
+      decodedUrl.startsWith('/')
+    );
   
   if (isLocalPath) {
-    console.log('[parseVideoUrl] 检测到本地视频路径:', url);
+    console.log('[parseVideoUrl] 妫€娴嬪埌鏈湴瑙嗛璺緞:', url);
     return { platform: 'local', embedUrl: url, originalUrl: url };
   }
-  // 涔熸敮鎸佷笉甯﹀崗璁殑鏈湴璺緞锛堟湁瑙嗛鎵╁睍鍚嶄笖涓嶆槸 http/https锛?
-  if (localVideoExtensions.test(decodedUrl) && !url.match(/^https?:\/\//i)) {
-    console.log('[parseVideoUrl] 璇嗗埆涓烘湰鍦拌棰?鏃犲崗璁?');
+  // 娑旂喐鏁幐浣风瑝鐢箑宕楃拋顔炬畱閺堫剙婀寸捄顖氱窞閿涘牊婀佺憴鍡涱暥閹碘晛鐫嶉崥宥勭瑬娑撳秵妲?http/https閿?
+  if (hasLocalVideoExtension && !url.match(/^https?:\/\//i)) {
+    console.log('[parseVideoUrl] 鐠囧棗鍩嗘稉鐑樻拱閸︽媽顫嬫０?閺冪姴宕楃拋?');
     return { platform: 'local', embedUrl: url, originalUrl: url };
   }
 
-  // 閫氱敤瑙嗛閾炬帴 - 鏀寔浠绘剰 http/https 閾炬帴
-  // 浣跨敤澧炲己鍨嬫祻瑙堝櫒鍙互鐩存帴鍔犺浇浠绘剰缃戦〉
+  // 闁氨鏁ょ憴鍡涱暥闁剧偓甯?- 閺€顖涘瘮娴犵粯鍓?http/https 闁剧偓甯?
+  // 娴ｈ法鏁ゆ晶鐐插繁閸ㄥ绁荤憴鍫濇珤閸欘垯浜掗惄瀛樺复閸旂姾娴囨禒缁樺壈缂冩垿銆?
+  if (isImageUrl(decodedUrl)) {
+    return null;
+  }
+
   if (url.match(/^https?:\/\//i)) {
     return { platform: 'other', embedUrl: url, originalUrl: url };
   }
@@ -3762,10 +4261,10 @@ function parseVideoUrl(url: string): VideoInfo | null {
 }
 
 // ============================================================================
-// Mermaid 鍥捐〃娓叉煋绯荤粺
+// Mermaid 閸ユ崘銆冨〒鍙夌厠缁崵绮?
 // ============================================================================
 
-// 鍒濆鍖?Mermaid
+// 閸掓繂顫愰崠?Mermaid
 let mermaidInitialized = false;
 const initMermaid = () => {
   if (mermaidInitialized) return;
@@ -3784,11 +4283,11 @@ const initMermaid = () => {
   mermaidInitialized = true;
 };
 
-// Mermaid Widget DOM 缂撳瓨
+// Mermaid Widget DOM 缂傛挸鐡?
 const mermaidWidgetDomCache = new WeakMap<MermaidWidget, HTMLElement>();
 
 /**
- * Mermaid 鍥捐〃 Widget 绫?
+ * Mermaid 閸ユ崘銆?Widget 缁?
  */
 class MermaidWidget extends WidgetType {
   private code: string;
@@ -3808,7 +4307,7 @@ class MermaidWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    // 妫€鏌ョ紦瀛?
+    // 濡偓閺屻儳绱︾€?
     if (this.domElement) {
       return this.domElement;
     }
@@ -3824,30 +4323,30 @@ class MermaidWidget extends WidgetType {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-mermaid-widget';
 
-    // 宸ュ叿鏍?
+    // 瀹搞儱鍙块弽?
     const toolbar = document.createElement('div');
     toolbar.className = 'cm-mermaid-toolbar';
 
-    // 宸︿晶锛氭爣棰?
+    // 瀹革缚鏅堕敍姘垼妫?
     const toolbarLeft = document.createElement('div');
     toolbarLeft.className = 'cm-mermaid-toolbar-left';
 
-    // 鏍囬鏄剧ず
+    // 閺嶅洭顣介弰鍓с仛
     const title = document.createElement('span');
     title.className = 'cm-mermaid-title';
     title.textContent = '流程图';
 
-    // 鏍囬缂栬緫杈撳叆妗?
+    // 閺嶅洭顣界紓鏍帆鏉堟挸鍙嗗?
     const titleInput = document.createElement('input');
     titleInput.type = 'text';
     titleInput.className = 'cm-mermaid-title-input';
     titleInput.value = '流程图';
     titleInput.style.display = 'none';
 
-    // 缂栬緫鐘舵€?
+    // 缂傛牞绶悩鑸碘偓?
     let isEditing = false;
 
-    // 杩涘叆缂栬緫妯″紡
+    // 鏉╂稑鍙嗙紓鏍帆濡€崇础
     const enterEditMode = () => {
       isEditing = true;
       title.style.display = 'none';
@@ -3857,7 +4356,7 @@ class MermaidWidget extends WidgetType {
       titleInput.select();
     };
 
-    // 閫€鍑虹紪杈戞ā寮?
+    // 闁偓閸戣櫣绱潏鎴災佸?
     const exitEditMode = (save: boolean) => {
       if (!isEditing) return;
       isEditing = false;
@@ -3868,7 +4367,7 @@ class MermaidWidget extends WidgetType {
       }
     };
 
-    // 杈撳叆妗嗕簨浠?
+    // 鏉堟挸鍙嗗鍡曠皑娴?
     titleInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') {
@@ -3889,72 +4388,72 @@ class MermaidWidget extends WidgetType {
     toolbarLeft.appendChild(title);
     toolbarLeft.appendChild(titleInput);
 
-    // 鍙充晶锛氬伐鍏锋爮鎸夐挳
+    // 閸欏厖鏅堕敍姘紣閸忛攱鐖幐澶愭尦
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'cm-mermaid-toolbar-right';
 
-    // 缂栬緫鎸夐挳
+    // 缂傛牞绶幐澶愭尦
     const editBtn = document.createElement('span');
     editBtn.className = 'cm-mermaid-toolbar-btn';
-    editBtn.title = '缂栬緫';
+    editBtn.title = '编辑';
     editBtn.innerHTML = `<svg viewBox="0 0 32 32" fill="currentColor" width="16" height="16"><path d="M2 26h28v2H2z"></path><path d="M25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10l3.6 3.6l-10 10H6z"></path></svg>`;
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       enterEditMode();
     });
 
-    // 鍗＄墖鎸夐挳
+    // 閸楋紕澧栭幐澶愭尦
     const cardBtn = document.createElement('span');
     cardBtn.className = 'cm-mermaid-toolbar-btn';
-    cardBtn.title = '鍗＄墖';
+    cardBtn.title = '卡片';
     cardBtn.innerHTML = `<svg viewBox="0 0 1024 1024" fill="currentColor" width="16" height="16"><path d="M341.333333 106.666667a128 128 0 0 1 128 128v106.666666a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666z m0 85.333333h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L192 234.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L234.666667 384h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L384 341.333333v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L341.333333 192z m0 362.666667a128 128 0 0 1 128 128v106.666666a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666z m0 85.333333h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L192 682.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L234.666667 832h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L384 789.333333v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L341.333333 640z m576-298.666667a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666a128 128 0 0 1 128 128v106.666666z m-85.333333 0v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L789.333333 192h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L640 234.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L682.666667 384h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L832 341.333333z m-42.666667 213.333334a128 128 0 0 1 128 128v106.666666a128 128 0 0 1-128 128h-106.666666a128 128 0 0 1-128-128v-106.666666a128 128 0 0 1 128-128h106.666666z m0 85.333333h-106.666666a42.666667 42.666667 0 0 0-42.56 39.466667L640 682.666667v106.666666a42.666667 42.666667 0 0 0 39.466667 42.56L682.666667 832h106.666666a42.666667 42.666667 0 0 0 42.56-39.466667L832 789.333333v-106.666666a42.666667 42.666667 0 0 0-39.466667-42.56L789.333333 640z" /></svg>`;
     cardBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 瀹炵幇鍗＄墖瑙嗗浘鍔熻兘
-      console.log('鍒囨崲鍗＄墖瑙嗗浘');
+      // TODO: 鐎圭偟骞囬崡锛勫鐟欏棗娴橀崝鐔诲厴
+      console.log('卡片视图功能待实现');
     });
 
-    // 璁捐鎸夐挳
+    // 鐠佹崘顓搁幐澶愭尦
     const designBtn = document.createElement('span');
     designBtn.className = 'cm-mermaid-toolbar-btn';
-    designBtn.title = '璁捐';
+    designBtn.title = '设计';
     designBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></svg>`;
     designBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 瀹炵幇璁捐鍔熻兘
-      console.log('鎵撳紑璁捐瑙嗗浘');
+      // TODO: 鐎圭偟骞囩拋鎹愵吀閸旂喕鍏?
+      console.log('设计布局功能待实现');
     });
 
-    // 涓婚鎸夐挳
+    // 娑撳顣介幐澶愭尦
     const themeBtn = document.createElement('span');
     themeBtn.className = 'cm-mermaid-toolbar-btn';
-    themeBtn.title = '涓婚';
+    themeBtn.title = '主题';
     themeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>`;
     themeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 瀹炵幇涓婚鍒囨崲鍔熻兘
-      console.log('鍒囨崲涓婚');
+      // TODO: 鐎圭偟骞囨稉濠氼暯閸掑洦宕查崝鐔诲厴
+      console.log('閸掑洦宕叉稉濠氼暯');
     });
 
-    // 浠ｇ爜鎸夐挳
+    // 娴狅絿鐖滈幐澶愭尦
     const codeBtn = document.createElement('span');
     codeBtn.className = 'cm-mermaid-toolbar-btn';
-    codeBtn.title = '浠ｇ爜';
+    codeBtn.title = '源码';
     codeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>`;
     codeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 瀹炵幇鏌ョ湅浠ｇ爜鍔熻兘
-      console.log('鏌ョ湅浠ｇ爜');
+      // TODO: 鐎圭偟骞囬弻銉ф箙娴狅絿鐖滈崝鐔诲厴
+      console.log('閺屻儳婀呮禒锝囩垳');
     });
 
-    // 鎵╁ぇ鎸夐挳
+    // 閹碘晛銇囬幐澶愭尦
     const expandBtn = document.createElement('span');
     expandBtn.className = 'cm-mermaid-toolbar-btn';
-    expandBtn.title = '鎵╁ぇ';
+    expandBtn.title = '打开设计器';
     expandBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/></svg>`;
     expandBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // 鎵撳紑娴佺▼鍥捐璁″櫒鏍囩椤?
+      // 閹垫挸绱戝ù浣衡柤閸ユ崘顔曠拋鈥虫珤閺嶅洨顒锋い?
       window.dispatchEvent(new CustomEvent('open-mermaid-designer', {
         detail: {
           code: this.code,
@@ -3963,14 +4462,14 @@ class MermaidWidget extends WidgetType {
       }));
     });
 
-    // 鍒犻櫎鎸夐挳
+    // 閸掔娀娅庨幐澶愭尦
     const deleteBtn = document.createElement('span');
     deleteBtn.className = 'cm-mermaid-toolbar-btn cm-mermaid-toolbar-btn-danger';
-    deleteBtn.title = '鍒犻櫎';
+    deleteBtn.title = '删除';
     deleteBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 7v4a.5.5 0 0 0 1 0V7a.5.5 0 0 0-1 0zM9 6.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V7a.5.5 0 0 1 .5-.5zM10 4h3a.5.5 0 0 1 0 1h-.553l-.752 6.776A2.5 2.5 0 0 1 9.21 14H6.79a2.5 2.5 0 0 1-2.485-2.224L3.552 5H3a.5.5 0 0 1 0-1h3a2 2 0 1 1 4 0zM8 3a1 1 0 0 0-1 1h2a1 1 0 0 0-1-1zM4.559 5l.74 6.666A1.5 1.5 0 0 0 6.79 13h2.42a1.5 1.5 0 0 0 1.49-1.334L11.442 5H4.56z" fill="currentColor"/></svg>`;
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // 鍒犻櫎 Mermaid 浠ｇ爜鍧?
+      // 閸掔娀娅?Mermaid 娴狅絿鐖滈崸?
       if (globalEditorView) {
         globalEditorView.dispatch({
           changes: { from: this.from, to: this.to, insert: '' }
@@ -3990,15 +4489,15 @@ class MermaidWidget extends WidgetType {
     toolbar.appendChild(toolbarRight);
     wrapper.appendChild(toolbar);
 
-    // 鍐呭鍖哄煙锛堝寘鍚乏渚у伐鍏锋爮鍜屽浘琛級
+    // 閸愬懎顔愰崠鍝勭厵閿涘牆瀵橀崥顐箯娓氀冧紣閸忛攱鐖崪灞芥禈鐞涱煉绱?
     const content = document.createElement('div');
     content.className = 'cm-mermaid-content';
 
-    // 宸︿晶鍨傜洿宸ュ叿鏍?
+    // 瀹革缚鏅堕崹鍌滄纯瀹搞儱鍙块弽?
     const sideToolbar = document.createElement('div');
     sideToolbar.className = 'cm-mermaid-side-toolbar';
 
-    // 鎷栨嫿鐘舵€?
+    // 閹锋牗瀚块悩鑸碘偓?
     let isDragMode = false;
     let isDragging = false;
     let startX = 0;
@@ -4006,22 +4505,22 @@ class MermaidWidget extends WidgetType {
     let translateX = 0;
     let translateY = 0;
 
-    // 缂╂斁鐘舵€?
+    // 缂傗晜鏂侀悩鑸碘偓?
     let scale = 1;
     const minScale = 0.2;
     const maxScale = 2;
     const scaleStep = 0.25;
 
-    // 鏇存柊鍙樻崲
+    // 閺囧瓨鏌婇崣妯诲床
     const updateTransform = () => {
       svgWrapper.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
       zoomLabel.textContent = `${Math.round(scale * 100)}%`;
     };
 
-    // 鎷栨嫿鎸夐挳
+    // 閹锋牗瀚块幐澶愭尦
     const dragBtn = document.createElement('span');
     dragBtn.className = 'cm-mermaid-side-btn';
-    dragBtn.title = '鎷栨嫿';
+    dragBtn.title = '拖拽模式';
     dragBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`;
     dragBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -4030,19 +4529,19 @@ class MermaidWidget extends WidgetType {
       container.classList.toggle('cm-mermaid-drag-mode', isDragMode);
     });
 
-    // 鐧惧垎姣旀樉绀?
+    // 閻ф儳鍨庡В鏃€妯夌粈?
     const zoomLabel = document.createElement('span');
     zoomLabel.className = 'cm-mermaid-zoom-label';
     zoomLabel.textContent = '100%';
 
-    // 缂╂斁鑿滃崟
+    // 缂傗晜鏂侀懣婊冨礋
     const zoomPresets = [20, 50, 75, 100, 150, 200];
     let zoomMenu: HTMLElement | null = null;
 
     const showZoomMenu = (e: MouseEvent) => {
       e.stopPropagation();
       
-      // 濡傛灉鑿滃崟宸插瓨鍦紝鍏堢Щ闄?
+      // 婵″倹鐏夐懣婊冨礋瀹告彃鐡ㄩ崷顭掔礉閸忓牏些闂?
       if (zoomMenu) {
         zoomMenu.remove();
         zoomMenu = null;
@@ -4071,7 +4570,7 @@ class MermaidWidget extends WidgetType {
         zoomMenu!.appendChild(item);
       });
 
-      // 瀹氫綅鑿滃崟
+      // 鐎规矮缍呴懣婊冨礋
       const rect = zoomLabel.getBoundingClientRect();
       zoomMenu.style.position = 'fixed';
       zoomMenu.style.left = `${rect.right + 4}px`;
@@ -4079,7 +4578,7 @@ class MermaidWidget extends WidgetType {
 
       document.body.appendChild(zoomMenu);
 
-      // 鐐瑰嚮鍏朵粬鍦版柟鍏抽棴鑿滃崟
+      // 閻愮懓鍤崗鏈电铂閸︾増鏌熼崗鎶芥４閼挎粌宕?
       const closeMenu = (ev: MouseEvent) => {
         if (zoomMenu && !zoomMenu.contains(ev.target as Node)) {
           zoomMenu.remove();
@@ -4092,14 +4591,14 @@ class MermaidWidget extends WidgetType {
 
     zoomLabel.addEventListener('click', showZoomMenu);
 
-    // 鍥捐〃鍐呭鍖呰鍣紙鐢ㄤ簬鍙樻崲锛? 鎻愬墠澹版槑
+    // 閸ユ崘銆冮崘鍛啇閸栧懓顥婇崳顭掔礄閻劋绨崣妯诲床閿? 閹绘劕澧犳竟鐗堟
     const svgWrapper = document.createElement('div');
     svgWrapper.className = 'cm-mermaid-svg-wrapper';
 
-    // 鏀惧ぇ鎸夐挳
+    // 閺€鎯с亣閹稿鎸?
     const zoomInBtn = document.createElement('span');
     zoomInBtn.className = 'cm-mermaid-side-btn';
-    zoomInBtn.title = '鏀惧ぇ';
+    zoomInBtn.title = '放大';
     zoomInBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`;
     zoomInBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -4109,10 +4608,10 @@ class MermaidWidget extends WidgetType {
       }
     });
 
-    // 缂╁皬鎸夐挳
+    // 缂傗晛鐨幐澶愭尦
     const zoomOutBtn = document.createElement('span');
     zoomOutBtn.className = 'cm-mermaid-side-btn';
-    zoomOutBtn.title = '缂╁皬';
+    zoomOutBtn.title = '缩小';
     zoomOutBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>`;
     zoomOutBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -4122,18 +4621,18 @@ class MermaidWidget extends WidgetType {
       }
     });
 
-    // 绱犳潗搴撴寜閽?
+    // 缁辩姵娼楁惔鎾村瘻闁?
     const materialBtn = document.createElement('span');
     materialBtn.className = 'cm-mermaid-side-btn';
     materialBtn.title = '素材库';
     materialBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3"/><path d="M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4"/><path d="M5 21h14"/></svg>`;
     materialBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 鎵撳紑绱犳潗搴撻潰鏉?
-      console.log('素材库功能待实现');
+      // TODO: 閹垫挸绱戠槐鐘虫綏鎼存捇娼伴弶?
+      console.log('绱犳潗搴撳姛鑳藉緟瀹炵幇');
     });
 
-    // 鍒嗛殧绾?
+    // 閸掑棝娈х痪?
     const divider = document.createElement('div');
     divider.className = 'cm-mermaid-side-divider';
 
@@ -4144,11 +4643,11 @@ class MermaidWidget extends WidgetType {
     sideToolbar.appendChild(zoomLabel);
     sideToolbar.appendChild(zoomInBtn);
 
-    // 鍥捐〃瀹瑰櫒
+    // 閸ユ崘銆冪€圭懓娅?
     const container = document.createElement('div');
     container.className = 'cm-mermaid-container';
 
-    // 鎷栨嫿浜嬩欢澶勭悊
+    // 閹锋牗瀚挎禍瀣╂婢跺嫮鎮?
     const handleMouseDown = (e: MouseEvent) => {
       if (!isDragMode) return;
       isDragging = true;
@@ -4174,13 +4673,13 @@ class MermaidWidget extends WidgetType {
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
 
-    // 娓叉煋 Mermaid 鍥捐〃
+    // 濞撳弶鐓?Mermaid 閸ユ崘銆?
     const id = `mermaid-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     
     mermaid.render(id, this.code).then(({ svg }) => {
       svgWrapper.innerHTML = svg;
     }).catch((error: Error) => {
-      svgWrapper.innerHTML = `<div class="cm-mermaid-error">Mermaid 娓叉煋閿欒: ${error.message}</div>`;
+      svgWrapper.innerHTML = `<div class="cm-mermaid-error">Mermaid 渲染失败: ${error.message}</div>`;
     });
 
     container.appendChild(svgWrapper);
@@ -4188,7 +4687,7 @@ class MermaidWidget extends WidgetType {
     content.appendChild(container);
     wrapper.appendChild(content);
 
-    // 搴曢儴鎷栧姩鎵嬫焺
+    // 鎼存洟鍎撮幏鏍уЗ閹靛鐒?
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'cm-mermaid-resize-handle';
     
@@ -4196,7 +4695,7 @@ class MermaidWidget extends WidgetType {
     resizeBar.className = 'cm-mermaid-resize-bar';
     resizeHandle.appendChild(resizeBar);
 
-    // 楂樺害璋冩暣鐘舵€?
+    // 妤傛ê瀹崇拫鍐╂殻閻樿埖鈧?
     let isResizing = false;
     let startResizeY = 0;
     let startHeight = 0;
@@ -4234,7 +4733,7 @@ class MermaidWidget extends WidgetType {
 
     wrapper.appendChild(resizeHandle);
 
-    // 闃绘浜嬩欢鍐掓场
+    // 闂冪粯顒涙禍瀣╂閸愭帗鍦?
     wrapper.addEventListener('mousedown', (e) => e.stopPropagation());
 
     this.domElement = wrapper;
@@ -4253,11 +4752,11 @@ class MermaidWidget extends WidgetType {
 }
 
 /**
- * 瑙ｆ瀽鏂囨。涓殑 Mermaid 浠ｇ爜鍧?
+ * 鐟欙絾鐎介弬鍥ㄣ€傛稉顓犳畱 Mermaid 娴狅絿鐖滈崸?
  */
 function parseMermaidBlocks(doc: string): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
-  // 鍖归厤 ```mermaid ... ``` 浠ｇ爜鍧?
+  // 閸栧綊鍘?```mermaid ... ``` 娴狅絿鐖滈崸?
   const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
   let match;
 
@@ -4282,7 +4781,7 @@ function parseMermaidBlocks(doc: string): DecorationSet {
 }
 
 /**
- * 鑾峰彇 Mermaid 浠ｇ爜鍧楃鍚?
+ * 閼惧嘲褰?Mermaid 娴狅絿鐖滈崸妤冾劮閸?
  */
 function getMermaidSignature(doc: string): string {
   const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
@@ -4295,7 +4794,7 @@ function getMermaidSignature(doc: string): string {
 }
 
 /**
- * Mermaid 瑁呴グ鍣?StateField
+ * Mermaid 鐟佸懘銈伴崳?StateField
  */
 const mermaidDecorations = StateField.define<{ decorations: DecorationSet; signature: string }>({
   create(state) {
@@ -4337,15 +4836,15 @@ const mermaidDecorations = StateField.define<{ decorations: DecorationSet; signa
 });
 
 // ============================================================================
-// 瑙嗛娓叉煋绯荤粺
+// 鐟欏棝顣跺〒鍙夌厠缁崵绮?
 // ============================================================================
 
-// 瑙嗛 Widget DOM 缂撳瓨锛屼娇鐢?WeakMap 灏?widget 瀹炰緥涓?DOM 鍏冪礌鍏宠仈
+// 鐟欏棝顣?Widget DOM 缂傛挸鐡ㄩ敍灞煎▏閻?WeakMap 鐏?widget 鐎圭偘绶ユ稉?DOM 閸忓啰绀岄崗瀹犱粓
 const videoWidgetDomCache = new WeakMap<VideoWidget, HTMLElement>();
 
 /**
- * 瑙嗛 Widget 绫?- 鐢ㄤ簬鍦ㄧ紪杈戝櫒涓覆鏌撹棰戞挱鏀惧櫒
- * 浣跨敤 Electron webview 鏍囩缁曡繃 CSP 闄愬埗
+ * 鐟欏棝顣?Widget 缁?- 閻劋绨崷銊х椽鏉堟垵娅掓稉顓熻閺屾捁顫嬫０鎴炴尡閺€鎯ф珤
+ * 娴ｈ法鏁?Electron webview 閺嶅洨顒风紒鏇＄箖 CSP 闂勬劕鍩?
  */
 class VideoWidget extends WidgetType {
   private displayMode: 'embed' | 'card' | 'link' = 'embed';
@@ -4359,12 +4858,12 @@ class VideoWidget extends WidgetType {
     readonly originalMatch: string
   ) {
     super();
-    // 瑙ｆ瀽 alt 涓殑鏄剧ず妯″紡
+    // 鐟欙絾鐎?alt 娑擃厾娈戦弰鍓с仛濡€崇础
     this.parseDisplayMode();
   }
 
   private parseDisplayMode(): void {
-    // 鏍煎紡: 鏍囬|mode:card
+    // 閺嶇厧绱? 閺嶅洭顣絴mode:card
     const parts = this.alt.split('|');
     for (const part of parts) {
       if (part.startsWith('mode:')) {
@@ -4377,16 +4876,16 @@ class VideoWidget extends WidgetType {
   }
 
   private getCleanTitle(): string {
-    // 绉婚櫎妯″紡淇℃伅锛屽彧淇濈暀鏍囬
+    // 缁夊娅庡Ο鈥崇础娣団剝浼呴敍灞藉涧娣囨繄鏆€閺嶅洭顣?
     const parts = this.alt.split('|');
     const cleanParts = parts.filter(part => !part.startsWith('mode:'));
-    return cleanParts.join('|') || '瑙嗛';
+    return cleanParts.join('|') || '视频';
   }
 
   toDOM(): HTMLElement {
-    // 濡傛灉宸叉湁 DOM 鍏冪礌锛岀洿鎺ヨ繑鍥烇紙閬垮厤閲嶅鍒涘缓锛?
+    // 婵″倹鐏夊鍙夋箒 DOM 閸忓啰绀岄敍宀€娲块幒銉ㄧ箲閸ョ儑绱欓柆鍨帳闁插秴顦查崚娑樼紦閿?
     if (this.domElement) {
-      // 鏇存柊鏍囬锛堝彲鑳藉凡鏇存敼锛?
+      // 閺囧瓨鏌婇弽鍥暯閿涘牆褰查懗钘夊嚒閺囧瓨鏁奸敍?
       const titleEl = this.domElement.querySelector('.cm-video-title');
       if (titleEl) {
         titleEl.textContent = this.getCleanTitle();
@@ -4394,7 +4893,7 @@ class VideoWidget extends WidgetType {
       return this.domElement;
     }
 
-    // 妫€鏌?WeakMap 缂撳瓨
+    // 濡偓閺?WeakMap 缂傛挸鐡?
     const cached = videoWidgetDomCache.get(this);
     if (cached) {
       this.domElement = cached;
@@ -4404,7 +4903,7 @@ class VideoWidget extends WidgetType {
     const wrapper = document.createElement('div');
     wrapper.className = `cm-video-widget cm-video-mode-${this.displayMode}`;
 
-    // 宸ュ叿鏍?
+    // 瀹搞儱鍙块弽?
     const toolbar = document.createElement('div');
     toolbar.className = 'cm-video-toolbar';
 
@@ -4415,19 +4914,19 @@ class VideoWidget extends WidgetType {
     platformBadge.className = 'cm-video-platform-badge';
     platformBadge.textContent = this.getPlatformName();
 
-    // 鏍囬鏄剧ず鍏冪礌
+    // 閺嶅洭顣介弰鍓с仛閸忓啰绀?
     const title = document.createElement('span');
     title.className = 'cm-video-title';
     title.textContent = this.getCleanTitle();
 
-    // 鏍囬缂栬緫杈撳叆妗嗭紙榛樿闅愯棌锛?
+    // 閺嶅洭顣界紓鏍帆鏉堟挸鍙嗗鍡礄姒涙顓婚梾鎰閿?
     const titleInput = document.createElement('input');
     titleInput.className = 'cm-video-title-input';
     titleInput.type = 'text';
     titleInput.value = this.getCleanTitle();
     titleInput.style.display = 'none';
 
-    // 闃绘杈撳叆妗嗕簨浠跺啋娉?
+    // 闂冪粯顒涙潏鎾冲弳濡楀棔绨ㄦ禒璺哄晪濞?
     titleInput.addEventListener('mousedown', (e) => e.stopPropagation());
     titleInput.addEventListener('mouseup', (e) => e.stopPropagation());
     titleInput.addEventListener('click', (e) => e.stopPropagation());
@@ -4435,12 +4934,12 @@ class VideoWidget extends WidgetType {
       e.stopPropagation();
       if (e.key === 'Enter') {
         e.preventDefault();
-        // 淇濆瓨鏍囬
-        const newTitle = titleInput.value.trim() || '瑙嗛';
+        // 娣囨繂鐡ㄩ弽鍥暯
+        const newTitle = titleInput.value.trim() || '视频';
         title.textContent = newTitle;
         titleInput.style.display = 'none';
         title.style.display = '';
-        // 瑙﹀彂鏍囬鏇存柊浜嬩欢
+        // 鐟欙箑褰傞弽鍥暯閺囧瓨鏌婃禍瀣╂
         const event = new CustomEvent('video-title-change', {
           detail: {
             from: this.from,
@@ -4453,7 +4952,7 @@ class VideoWidget extends WidgetType {
         window.dispatchEvent(event);
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        // 鍙栨秷缂栬緫
+        // 閸欐牗绉风紓鏍帆
         titleInput.value = this.getCleanTitle();
         titleInput.style.display = 'none';
         title.style.display = '';
@@ -4462,12 +4961,12 @@ class VideoWidget extends WidgetType {
     titleInput.addEventListener('keyup', (e) => e.stopPropagation());
     titleInput.addEventListener('keypress', (e) => e.stopPropagation());
     titleInput.addEventListener('blur', () => {
-      // 澶辩劍鏃朵繚瀛?
-      const newTitle = titleInput.value.trim() || '瑙嗛';
+      // 婢惰京鍔嶉弮鏈电箽鐎?
+      const newTitle = titleInput.value.trim() || '视频';
       title.textContent = newTitle;
       titleInput.style.display = 'none';
       title.style.display = '';
-      // 瑙﹀彂鏍囬鏇存柊浜嬩欢
+      // 鐟欙箑褰傞弽鍥暯閺囧瓨鏌婃禍瀣╂
       const event = new CustomEvent('video-title-change', {
         detail: {
           from: this.from,
@@ -4487,26 +4986,26 @@ class VideoWidget extends WidgetType {
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'cm-video-toolbar-right';
 
-    // 缂栬緫鎸夐挳
+    // 缂傛牞绶幐澶愭尦
     const editBtn = document.createElement('span');
     editBtn.className = 'cm-video-toolbar-btn';
-    editBtn.title = '缂栬緫';
+    editBtn.title = '编辑';
     editBtn.innerHTML = `<svg viewBox="0 0 32 32" width="14" height="14" fill="currentColor"><path d="M2 26h28v2H2z"></path><path d="M25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"></path></svg>`;
     editBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 鍒囨崲鍒扮紪杈戞ā寮?
+      // 閸掑洦宕查崚鎵椽鏉堟垶膩瀵?
       title.style.display = 'none';
       titleInput.style.display = '';
-      titleInput.value = title.textContent || '瑙嗛';
+      titleInput.value = title.textContent || '视频';
       titleInput.focus();
       titleInput.select();
     });
 
-    // 鍗＄墖妯″紡鎸夐挳
+    // 閸楋紕澧栧Ο鈥崇础閹稿鎸?
     const cardBtn = document.createElement('span');
     cardBtn.className = `cm-video-toolbar-btn ${this.displayMode === 'card' ? 'active' : ''}`;
-    cardBtn.title = '鍗＄墖';
+    cardBtn.title = '卡片';
     cardBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h18"/><rect width="18" height="12" x="3" y="6" rx="2"/><path d="M3 22h18"/></svg>`;
     cardBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -4514,10 +5013,10 @@ class VideoWidget extends WidgetType {
       this.changeDisplayMode('card');
     });
 
-    // 閾炬帴妯″紡鎸夐挳
+    // 闁剧偓甯村Ο鈥崇础閹稿鎸?
     const linkBtn = document.createElement('span');
     linkBtn.className = `cm-video-toolbar-btn ${this.displayMode === 'link' ? 'active' : ''}`;
-    linkBtn.title = '閾炬帴';
+    linkBtn.title = '链接';
     linkBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>`;
     linkBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -4525,10 +5024,10 @@ class VideoWidget extends WidgetType {
       this.changeDisplayMode('link');
     });
 
-    // 瑙嗛宓屽叆妯″紡鎸夐挳
+    // 鐟欏棝顣跺畵灞藉弳濡€崇础閹稿鎸?
     const embedBtn = document.createElement('span');
     embedBtn.className = `cm-video-toolbar-btn ${this.displayMode === 'embed' ? 'active' : ''}`;
-    embedBtn.title = '瑙嗛';
+    embedBtn.title = '嵌入';
     embedBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21.25 13a.75.75 0 0 1 .743.648l.007.102v5a3.25 3.25 0 0 1-3.066 3.245L18.75 22h-4.668c.536-.385.973-.9 1.265-1.499l3.403-.001a1.75 1.75 0 0 0 1.744-1.607l.006-.143v-5a.75.75 0 0 1 .75-.75zm-9.5-4A3.25 3.25 0 0 1 15 12.25v6.5A3.25 3.25 0 0 1 11.75 22h-6.5A3.25 3.25 0 0 1 2 18.75v-6.5A3.25 3.25 0 0 1 5.25 9h6.5zm0 1.5h-6.5a1.75 1.75 0 0 0-1.75 1.75v6.5c0 .966.783 1.75 1.75 1.75h6.5a1.75 1.75 0 0 0 1.75-1.75v-6.5a1.75 1.75 0 0 0-1.75-1.75zM6.06 13.103a.5.5 0 0 1 .596-.236l.082.036l3.956 2.158a.5.5 0 0 1 .075.828l-.075.05l-3.956 2.158a.5.5 0 0 1-.731-.35L6 17.658v-4.315a.5.5 0 0 1 .061-.24zM18.75 2a3.25 3.25 0 0 1 3.245 3.066L22 5.25v5a.75.75 0 0 1-1.493.102l-.007-.102v-5a1.75 1.75 0 0 0-1.607-1.744L18.75 3.5h-5a.75.75 0 0 1-.102-1.493L13.75 2h5zm-8.5 0a.75.75 0 0 1 .102 1.493l-.102.007h-5a1.75 1.75 0 0 0-1.744 1.606L3.5 5.25v3.402c-.6.292-1.115.73-1.5 1.266V5.25a3.25 3.25 0 0 1 3.065-3.245L5.25 2h5z"/></svg>`;
     embedBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -4536,10 +5035,10 @@ class VideoWidget extends WidgetType {
       this.changeDisplayMode('embed');
     });
 
-    // 鍦ㄦ祻瑙堝櫒涓墦寮€鎸夐挳
+    // 閸︺劍绁荤憴鍫濇珤娑擃厽澧﹀鈧幐澶愭尦
     const openBtn = document.createElement('span');
     openBtn.className = 'cm-video-toolbar-btn';
-    openBtn.title = '鍦ㄦ祻瑙堝櫒涓墦寮€';
+    openBtn.title = '在浏览器中打开';
     openBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
     openBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -4547,15 +5046,15 @@ class VideoWidget extends WidgetType {
       window.open(this.videoInfo.originalUrl, '_blank');
     });
 
-    // 鏇村鑿滃崟鎸夐挳
+    // 閺囨潙顦块懣婊冨礋閹稿鎸?
     const moreBtn = document.createElement('span');
     moreBtn.className = 'cm-video-toolbar-btn';
-    moreBtn.title = '鏇村';
+    moreBtn.title = '更多';
     moreBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`;
     moreBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 鏄剧ず鏇村鑿滃崟
+      // 閺勫墽銇氶弴鏉戭樋閼挎粌宕?
       this.showMoreMenu(moreBtn, wrapper);
     });
 
@@ -4570,9 +5069,9 @@ class VideoWidget extends WidgetType {
 
     wrapper.appendChild(toolbar);
 
-    // 鏍规嵁鏄剧ず妯″紡娓叉煋鍐呭
+    // 閺嶈宓侀弰鍓с仛濡€崇础濞撳弶鐓嬮崘鍛啇
     if (this.displayMode === 'embed') {
-      // 鏈湴瑙嗛浣跨敤 HTML5 video 鏍囩
+      // 閺堫剙婀寸憴鍡涱暥娴ｈ法鏁?HTML5 video 閺嶅洨顒?
       if (this.videoInfo.platform === 'local') {
         const localContainer = document.createElement('div');
         localContainer.className = 'cm-video-local-player';
@@ -4580,22 +5079,22 @@ class VideoWidget extends WidgetType {
         const video = document.createElement('video');
         video.className = 'cm-video-local-video';
         
-        // 灏嗘湰鍦版枃浠惰矾寰勮浆鎹负 local-file:// 鍗忚
+        // 鐏忓棙婀伴崷鐗堟瀮娴犳儼鐭惧鍕祮閹诡澀璐?local-file:// 閸楀繗顔?
         let videoSrc = this.videoInfo.originalUrl;
-        console.log('[VideoWidget] 鏈湴瑙嗛鍘熷璺緞:', videoSrc);
+        console.log('[VideoWidget] 閺堫剙婀寸憴鍡涱暥閸樼喎顫愮捄顖氱窞:', videoSrc);
         if (videoSrc.startsWith('file:///')) {
-          // file:/// 杞崲涓?local-file:///
+          // file:/// 鏉烆剚宕叉稉?local-file:///
           videoSrc = videoSrc.replace('file:///', 'local-file:///');
         } else if (videoSrc.startsWith('file://')) {
-          // file:// 杞崲涓?local-file://
+          // file:// 鏉烆剚宕叉稉?local-file://
           videoSrc = videoSrc.replace('file://', 'local-file://');
         } else if (!videoSrc.startsWith('local-file://')) {
-          // Windows 璺緞杞崲: C:\path\to\video.mp4 -> local-file:///C:/path/to/video.mp4
-          // 闇€瑕佸璺緞杩涜 URL 缂栫爜锛堜絾淇濈暀鏂滄潬鍜屽啋鍙凤級
+          // Windows 鐠侯垰绶炴潪顒佸床: C:\path\to\video.mp4 -> local-file:///C:/path/to/video.mp4
+          // 闂団偓鐟曚礁顕捄顖氱窞鏉╂稖顢?URL 缂傛牜鐖滈敍鍫滅稻娣囨繄鏆€閺傛粍娼崪灞藉晪閸欏嚖绱?
           const normalizedPath = videoSrc.replace(/\\/g, '/');
           const parts = normalizedPath.split('/');
           const encodedParts = parts.map((part, index) => {
-            // 绗竴閮ㄥ垎鏄洏绗︼紙濡?C:锛夛紝涓嶇紪鐮?
+            // 缁楊兛绔撮柈銊ュ瀻閺勵垳娲忕粭锔肩礄婵?C:閿涘绱濇稉宥囩椽閻?
             if (index === 0 && /^[A-Za-z]:$/.test(part)) {
               return part;
             }
@@ -4603,66 +5102,66 @@ class VideoWidget extends WidgetType {
           });
           videoSrc = 'local-file:///' + encodedParts.join('/');
         }
-        console.log('[VideoWidget] 鏈湴瑙嗛杞崲鍚庤矾寰?', videoSrc);
+        console.log('[VideoWidget] 閺堫剙婀寸憴鍡涱暥鏉烆剚宕查崥搴ょ熅瀵?', videoSrc);
         video.src = videoSrc;
         video.controls = true;
         video.preload = 'metadata';
 
-        // 娣诲姞閿欒澶勭悊
+        // 濞ｈ濮為柨娆掝嚖婢跺嫮鎮?
         video.addEventListener('error', (e) => {
-          console.error('[VideoWidget] 瑙嗛鍔犺浇閿欒:', e, video.error);
+          console.error('[VideoWidget] 鐟欏棝顣堕崝鐘烘祰闁挎瑨顕?', e, video.error);
         });
 
-        // 闃绘浜嬩欢鍐掓场
+        // 闂冪粯顒涙禍瀣╂閸愭帗鍦?
         video.addEventListener('mousedown', (e) => e.stopPropagation());
         video.addEventListener('click', (e) => e.stopPropagation());
 
         localContainer.appendChild(video);
         wrapper.appendChild(localContainer);
       } else {
-        // 澧炲己鍨嬪唴宓屾祻瑙堝櫒
+        // 婢х偛宸遍崹瀣敶瀹撳本绁荤憴鍫濇珤
         const browserContainer = document.createElement('div');
         browserContainer.className = 'cm-video-browser';
 
-      // 娴忚鍣ㄥ鑸爮
+      // 濞村繗顫嶉崳銊ヮ嚤閼割亝鐖?
       const browserNav = document.createElement('div');
       browserNav.className = 'cm-video-browser-nav';
 
-      // 鍚庨€€鎸夐挳
+      // 閸氬酣鈧偓閹稿鎸?
       const backBtn = document.createElement('span');
       backBtn.className = 'cm-video-browser-btn';
-      backBtn.title = '鍚庨€€';
+      backBtn.title = '后退';
       backBtn.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M5.928 7.976l4.357 4.357-.618.62L5 8.284v-.618L9.667 3l.618.619-4.357 4.357z"/></svg>`;
 
-      // 鍓嶈繘鎸夐挳
+      // 閸撳秷绻橀幐澶愭尦
       const forwardBtn = document.createElement('span');
       forwardBtn.className = 'cm-video-browser-btn';
-      forwardBtn.title = '鍓嶈繘';
+      forwardBtn.title = '前进';
       forwardBtn.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/></svg>`;
 
-      // 鍒锋柊鎸夐挳
+      // 閸掗攱鏌婇幐澶愭尦
       const refreshBtn = document.createElement('span');
       refreshBtn.className = 'cm-video-browser-btn';
-      refreshBtn.title = '鍒锋柊';
+      refreshBtn.title = '刷新';
       refreshBtn.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M5.56253 2.51577C6.22874 2.18616 6.96524 2 7.74856 2C9.08973 2 10.347 2.54555 11.2554 3.45393C11.6244 3.82283 11.9297 4.25217 12.1575 4.72382L12.1575 3L13.1575 3V6.74856L9.40897 6.74856V5.74856H11.3161C11.1284 5.27466 10.8435 4.84603 10.4839 4.48638C9.78661 3.78908 8.81981 3.35862 7.74856 3.35862C7.14565 3.35862 6.58195 3.50551 6.08841 3.76641L5.56253 2.51577ZM4.34253 10.2516C4.13064 9.77756 4.01561 9.25774 4.01561 8.71143C4.01561 7.64018 4.44607 6.67338 5.14337 5.97609L6.20399 7.03671C5.71713 7.52357 5.42142 8.18538 5.42142 8.91703C5.42142 9.35023 5.51636 9.76027 5.68652 10.1272L4.34253 10.2516ZM8.03663 12.7916C8.6395 12.632 9.19129 12.3302 9.65221 11.9204L10.7128 12.981C10.0466 13.5904 9.23861 14.0316 8.35253 14.2405L8.03663 12.7916ZM4.15743 6L6.84257 6L6.84257 7L4.93542 7C5.123 7.47391 5.40791 7.90253 5.76756 8.26218C6.46485 8.95948 7.43165 9.38994 8.5029 9.38994C9.10581 9.38994 9.66951 9.24305 10.1631 8.98215L10.6889 10.2328C10.0227 10.5624 9.28622 10.7486 8.5029 10.7486C7.16173 10.7486 5.90447 10.203 4.99609 9.29467C4.62719 8.92577 4.32189 8.49643 4.09412 8.02478L4.09411 9.74856L3.09411 9.74856L3.09412 6L4.15743 6Z"/></svg>`;
 
-      // 鍦板潃鏍?
+      // 閸︽澘娼冮弽?
       const addressBar = document.createElement('input');
       addressBar.className = 'cm-video-browser-address';
       addressBar.type = 'text';
       addressBar.value = this.videoInfo.originalUrl;
       addressBar.spellcheck = false;
 
-      // 闃绘鍦板潃鏍忛紶鏍囦簨浠跺啋娉★紝闃叉瑙﹀彂缂栬緫鍣ㄩ€夋嫨
+      // 闂冪粯顒涢崷鏉挎絻閺嶅繘绱堕弽鍥︾皑娴犺泛鍟嬪▔鈽呯礉闂冨弶顒涚憴锕€褰傜紓鏍帆閸ｃ劑鈧瀚?
       addressBar.addEventListener('mousedown', (e) => e.stopPropagation());
       addressBar.addEventListener('mouseup', (e) => e.stopPropagation());
       addressBar.addEventListener('click', (e) => e.stopPropagation());
       addressBar.addEventListener('dblclick', (e) => e.stopPropagation());
 
-      // 闃绘閿洏浜嬩欢鍐掓场锛岄槻姝?CodeMirror 鎷︽埅蹇嵎閿?
+      // 闂冪粯顒涢柨顔炬磸娴滃娆㈤崘鎺撳満閿涘矂妲诲?CodeMirror 閹凤附鍩呰箛顐ｅ祹闁?
       addressBar.addEventListener('keydown', (e) => {
         e.stopPropagation();
-        // 鍥炶溅璺宠浆
+        // 閸ョ偠婧呯捄瀹犳祮
         if (e.key === 'Enter') {
           e.preventDefault();
           let url = addressBar.value.trim();
@@ -4680,10 +5179,10 @@ class VideoWidget extends WidgetType {
       addressBar.addEventListener('keyup', (e) => e.stopPropagation());
       addressBar.addEventListener('keypress', (e) => e.stopPropagation());
 
-      // 鍦ㄥ閮ㄦ祻瑙堝櫒鎵撳紑
+      // 閸︺劌顦婚柈銊︾セ鐟欏牆娅掗幍鎾崇磻
       const externalBtn = document.createElement('span');
       externalBtn.className = 'cm-video-browser-btn';
-      externalBtn.title = '鍦ㄦ祻瑙堝櫒涓墦寮€';
+      externalBtn.title = '在浏览器中打开';
       externalBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
 
       browserNav.appendChild(backBtn);
@@ -4692,14 +5191,14 @@ class VideoWidget extends WidgetType {
       browserNav.appendChild(addressBar);
       browserNav.appendChild(externalBtn);
 
-      // 鍔犺浇杩涘害鏉?
+      // 閸旂姾娴囨潻娑樺閺?
       const progressBar = document.createElement('div');
       progressBar.className = 'cm-video-browser-progress';
       const progressInner = document.createElement('div');
       progressInner.className = 'cm-video-browser-progress-inner';
       progressBar.appendChild(progressInner);
 
-      // Webview 瀹瑰櫒
+      // Webview 鐎圭懓娅?
       const webviewContainer = document.createElement('div');
       webviewContainer.className = 'cm-video-browser-content';
 
@@ -4709,7 +5208,7 @@ class VideoWidget extends WidgetType {
       webview.setAttribute('allowpopups', 'true');
       webview.setAttribute('partition', 'persist:video');
 
-      // 缁戝畾瀵艰埅浜嬩欢
+      // 缂佹垵鐣剧€佃壈鍩呮禍瀣╂
       webview.addEventListener('did-start-loading', () => {
         progressBar.classList.add('loading');
       });
@@ -4732,7 +5231,7 @@ class VideoWidget extends WidgetType {
         }
       });
 
-      // 缁戝畾鎸夐挳浜嬩欢
+      // 缂佹垵鐣鹃幐澶愭尦娴滃娆?
       backBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -4779,7 +5278,7 @@ class VideoWidget extends WidgetType {
       wrapper.appendChild(browserContainer);
       }
     } else if (this.displayMode === 'card') {
-      // 鍗＄墖妯″紡 - 鏄剧ず缂╃暐鍥惧拰淇℃伅
+      // 閸楋紕澧栧Ο鈥崇础 - 閺勫墽銇氱紓鈺冩殣閸ユ儳鎷版穱鈩冧紖
       const cardContainer = document.createElement('div');
       cardContainer.className = 'cm-video-card';
       cardContainer.addEventListener('click', () => {
@@ -4807,9 +5306,9 @@ class VideoWidget extends WidgetType {
       cardContainer.appendChild(cardInfo);
       wrapper.appendChild(cardContainer);
     }
-    // link 妯″紡涓嶆樉绀洪澶栧唴瀹癸紝鍙樉绀哄伐鍏锋爮
+    // link 濡€崇础娑撳秵妯夌粈娲杺婢舵牕鍞寸€圭櫢绱濋崣顏呮▔缁€鍝勪紣閸忛攱鐖?
 
-    // 瀛樺叆缂撳瓨
+    // 鐎涙ê鍙嗙紓鎾崇摠
     this.domElement = wrapper;
     videoWidgetDomCache.set(this, wrapper);
 
@@ -4817,23 +5316,23 @@ class VideoWidget extends WidgetType {
   }
 
   private showMoreMenu(anchorEl: HTMLElement, wrapperEl: HTMLElement): void {
-    // 绉婚櫎宸插瓨鍦ㄧ殑鑿滃崟
+    // 缁夊娅庡鎻掔摠閸︺劎娈戦懣婊冨礋
     const existingMenu = document.querySelector('.cm-video-more-menu');
     if (existingMenu) {
       existingMenu.remove();
     }
 
-    // 鍒涘缓鑿滃崟
+    // 閸掓稑缂撻懣婊冨礋
     const menu = document.createElement('div');
     menu.className = 'cm-video-more-menu';
 
     const menuItems = [
-      { label: '鏈湴瑙嗛', action: 'local-video' },
-      { label: '鍦ㄦ祻瑙堝櫒涓墦寮€', action: 'open-external' },
-      { label: '鎷疯礉鍘熷閾炬帴', action: 'copy-url' },
-      { label: '鎷疯礉鍖哄潡閾炬帴', action: 'copy-block' },
-      { label: '绉诲姩鍒?..', action: 'move-to' },
-      { label: '鍒犻櫎', action: 'delete', danger: true },
+      { label: '本地视频', action: 'local-video' },
+      { label: '在浏览器中打开', action: 'open-external' },
+      { label: '复制原始链接', action: 'copy-url' },
+      { label: '复制视频块', action: 'copy-block' },
+      { label: '移动到...', action: 'move-to' },
+      { label: '删除', action: 'delete', danger: true },
     ];
 
     menuItems.forEach(item => {
@@ -4849,24 +5348,24 @@ class VideoWidget extends WidgetType {
       menu.appendChild(menuItem);
     });
 
-    // 鍏堟坊鍔犲埌 DOM 浠ヨ幏鍙栬彍鍗曢珮搴?
+    // 閸忓牊鍧婇崝鐘插煂 DOM 娴犮儴骞忛崣鏍綅閸楁洟鐝惔?
     menu.style.position = 'fixed';
     menu.style.visibility = 'hidden';
     document.body.appendChild(menu);
 
-    // 瀹氫綅鑿滃崟
+    // 鐎规矮缍呴懣婊冨礋
     const rect = anchorEl.getBoundingClientRect();
     const menuHeight = menu.offsetHeight;
     const viewportHeight = window.innerHeight;
 
-    // 妫€鏌ユ槸鍚︿細瓒呭嚭搴曢儴
+    // 濡偓閺屻儲妲搁崥锔跨窗鐡掑懎鍤惔鏇㈠劥
     let top = rect.bottom + 4;
     if (top + menuHeight > viewportHeight - 10) {
-      // 鍚戜笂鏄剧ず
+      // 閸氭垳绗傞弰鍓с仛
       top = rect.top - menuHeight - 4;
     }
 
-    // 妫€鏌ュ乏渚т綅缃?
+    // 濡偓閺屻儱涔忔笟褌缍呯純?
     let left = rect.right - 140;
     if (left < 10) {
       left = 10;
@@ -4876,7 +5375,7 @@ class VideoWidget extends WidgetType {
     menu.style.left = `${left}px`;
     menu.style.visibility = 'visible';
 
-    // 鐐瑰嚮澶栭儴鍏抽棴鑿滃崟
+    // 閻愮懓鍤径鏍劥閸忔娊妫撮懣婊冨礋
     const closeMenu = (e: MouseEvent) => {
       if (!menu.contains(e.target as Node)) {
         menu.remove();
@@ -4891,7 +5390,7 @@ class VideoWidget extends WidgetType {
   private handleMenuAction(action: string): void {
     switch (action) {
       case 'local-video':
-        // 瑙﹀彂鏈湴瑙嗛閫夋嫨浜嬩欢
+        // 鐟欙箑褰傞張顒€婀寸憴鍡涱暥闁瀚ㄦ禍瀣╂
         window.dispatchEvent(new CustomEvent('video-select-local', {
           detail: { from: this.from, to: this.to, title: this.getCleanTitle() },
         }));
@@ -4906,13 +5405,13 @@ class VideoWidget extends WidgetType {
         navigator.clipboard.writeText(this.originalMatch);
         break;
       case 'move-to':
-        // 瑙﹀彂绉诲姩浜嬩欢
+        // 鐟欙箑褰傜粔璇插З娴滃娆?
         window.dispatchEvent(new CustomEvent('video-move-to', {
           detail: { from: this.from, to: this.to, content: this.originalMatch },
         }));
         break;
       case 'delete':
-        // 瑙﹀彂鍒犻櫎浜嬩欢
+        // 鐟欙箑褰傞崚鐘绘珟娴滃娆?
         window.dispatchEvent(new CustomEvent('video-delete', {
           detail: { from: this.from, to: this.to },
         }));
@@ -4921,7 +5420,7 @@ class VideoWidget extends WidgetType {
   }
 
   private changeDisplayMode(mode: 'embed' | 'card' | 'link'): void {
-    // 閫氳繃鑷畾涔変簨浠堕€氱煡缂栬緫鍣ㄦ洿鏂版枃妗?
+    // 闁俺绻冮懛顏勭暰娑斿绨ㄦ禒鍫曗偓姘辩叀缂傛牞绶崳銊︽纯閺傜増鏋冨?
     const event = new CustomEvent('video-display-mode-change', {
       detail: {
         from: this.from,
@@ -4938,19 +5437,19 @@ class VideoWidget extends WidgetType {
     switch (this.videoInfo.platform) {
       case 'bilibili': return 'B站';
       case 'youtube': return 'YouTube';
-      case 'youku': return '优酷';
-      case 'qq': return '腾讯视频';
+      case 'youku': return '浼橀叿';
+      case 'qq': return '鑵捐瑙嗛';
       case 'iqiyi': return '爱奇艺';
-      case 'xigua': return '西瓜视频';
-      case 'douyin': return '鎶栭煶';
-      case 'local': return '鏈湴';
-      case 'other': return '缃戦〉';
-      default: return '瑙嗛';
+      case 'xigua': return '瑗跨摐瑙嗛';
+      case 'douyin': return '抖音';
+      case 'local': return '本地';
+      case 'other': return '其他';
+      default: return '视频';
     }
   }
 
   eq(other: VideoWidget): boolean {
-    // 鍙瘮杈冭棰戝唴瀹癸紝涓嶆瘮杈冧綅缃紝閬垮厤鏂囨。鍙樺寲鏃堕噸寤?widget
+    // 閸欘亝鐦潏鍐潒妫版垵鍞寸€圭櫢绱濇稉宥嗙槷鏉堝啩缍呯純顕嗙礉闁灝鍘ら弬鍥ㄣ€傞崣妯哄閺冨爼鍣稿?widget
     return (
       other.videoInfo.originalUrl === this.videoInfo.originalUrl &&
       other.displayMode === this.displayMode
@@ -4963,14 +5462,14 @@ class VideoWidget extends WidgetType {
 }
 
 /**
- * 瑙ｆ瀽鏂囨。涓殑瑙嗛璇硶骞跺垱寤鸿楗板櫒
- * 瑙嗛璇硶: ![瑙嗛](瑙嗛閾炬帴)
- * 鍙湁褰撻摼鎺ユ槸鏀寔鐨勮棰戝钩鍙版椂鎵嶆覆鏌撲负瑙嗛鎾斁鍣?
+ * 鐟欙絾鐎介弬鍥ㄣ€傛稉顓犳畱鐟欏棝顣剁拠顓熺《楠炶泛鍨卞楦款棅妤楁澘娅?
+ * 鐟欏棝顣剁拠顓熺《: ![鐟欏棝顣禲(鐟欏棝顣堕柧鐐复)
+ * 閸欘亝婀佽ぐ鎾绘懠閹恒儲妲搁弨顖涘瘮閻ㄥ嫯顫嬫０鎴濋挬閸欑増妞傞幍宥嗚閺屾挷璐熺憴鍡涱暥閹绢厽鏂侀崳?
  */
 function parseVideos(doc: string): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
-  // 鍖归厤 Markdown 鍥剧墖璇硶锛屾敮鎸?http/https 閾炬帴鍜屾湰鍦版枃浠惰矾寰?
-  // 鏈湴璺緞鏍煎紡: C:\path\to\file.mp4 鎴?file:///path/to/file.mp4
+  // 閸栧綊鍘?Markdown 閸ュ墽澧栫拠顓熺《閿涘本鏁幐?http/https 闁剧偓甯撮崪灞炬拱閸︾増鏋冩禒鎯扮熅瀵?
+  // 閺堫剙婀寸捄顖氱窞閺嶇厧绱? C:\path\to\file.mp4 閹?file:///path/to/file.mp4
   const videoRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   let match;
 
@@ -4980,7 +5479,7 @@ function parseVideos(doc: string): DecorationSet {
     const from = match.index;
     const to = from + match[0].length;
 
-    // 灏濊瘯瑙ｆ瀽涓鸿棰戦摼鎺?
+    // 鐏忔繆鐦憴锝嗙€芥稉楦款潒妫版垿鎽奸幒?
     const videoInfo = parseVideoUrl(url);
     if (videoInfo) {
       decorations.push({
@@ -4993,14 +5492,14 @@ function parseVideos(doc: string): DecorationSet {
     }
   }
 
-  // 鎸変綅缃帓搴?
+  // 閹稿缍呯純顔藉笓鎼?
   decorations.sort((a, b) => a.from - b.from);
 
   return RangeSet.of(decorations.map(d => d.decoration.range(d.from, d.to)));
 }
 
 /**
- * 鎻愬彇鏂囨。涓墍鏈夎棰戦摼鎺ョ殑绛惧悕锛堢敤浜庢瘮杈冩槸鍚﹂渶瑕侀噸鏂拌В鏋愶級
+ * 閹绘劕褰囬弬鍥ㄣ€傛稉顓熷閺堝顫嬫０鎴︽懠閹恒儳娈戠粵鎯ф倳閿涘牏鏁ゆ禍搴㈢槷鏉堝啯妲搁崥锕傛付鐟曚線鍣搁弬鎷屝掗弸鎰剁礆
  */
 function getVideoSignature(doc: string): string {
   const videoRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -5017,8 +5516,8 @@ function getVideoSignature(doc: string): string {
 }
 
 /**
- * 瑙嗛瑁呴グ鍣?StateField
- * 浼樺寲锛氬彧鍦ㄨ棰戝唴瀹瑰彉鍖栨椂鎵嶉噸鏂拌В鏋愶紝閬垮厤棰戠箒閲嶅缓 webview
+ * 鐟欏棝顣剁憗鍛淬偘閸?StateField
+ * 娴兼ê瀵查敍姘涧閸︺劏顫嬫０鎴濆敶鐎圭懓褰夐崠鏍ㄦ閹靛秹鍣搁弬鎷屝掗弸鎰剁礉闁灝鍘ゆ０鎴犵畳闁插秴缂?webview
  */
 const videoDecorations = StateField.define<{ decorations: DecorationSet; signature: string }>({
   create(state) {
@@ -5029,7 +5528,7 @@ const videoDecorations = StateField.define<{ decorations: DecorationSet; signatu
     };
   },
   update(value, tr) {
-    // 濡傛灉鏂囨。娌℃湁鍙樺寲锛岀洿鎺ヨ繑鍥炲師鍊?
+    // 婵″倹鐏夐弬鍥ㄣ€傚▽鈩冩箒閸欐ê瀵查敍宀€娲块幒銉ㄧ箲閸ョ偛甯崐?
     if (!tr.docChanged) {
       return value;
     }
@@ -5037,7 +5536,7 @@ const videoDecorations = StateField.define<{ decorations: DecorationSet; signatu
     const newDoc = tr.newDoc.toString();
     const newSignature = getVideoSignature(newDoc);
 
-    // 鍙湁瑙嗛鍐呭鍙樺寲鏃舵墠閲嶆柊瑙ｆ瀽
+    // 閸欘亝婀佺憴鍡涱暥閸愬懎顔愰崣妯哄閺冭埖澧犻柌宥嗘煀鐟欙絾鐎?
     if (newSignature !== value.signature) {
       return {
         decorations: parseVideos(newDoc),
@@ -5045,8 +5544,8 @@ const videoDecorations = StateField.define<{ decorations: DecorationSet; signatu
       };
     }
 
-    // 瑙嗛鍐呭鏈彉鍖栵紝灏濊瘯鏄犲皠浣嶇疆
-    // 濡傛灉鏄犲皠澶辫触锛堣楗板櫒鏁伴噺涓?浣嗙鍚嶄笉涓虹┖锛夛紝閲嶆柊瑙ｆ瀽
+    // 鐟欏棝顣堕崘鍛啇閺堫亜褰夐崠鏍电礉鐏忔繆鐦弰鐘茬殸娴ｅ秶鐤?
+    // 婵″倹鐏夐弰鐘茬殸婢惰精瑙﹂敍鍫ｎ棅妤楁澘娅掗弫浼村櫤娑?娴ｅ棛顒烽崥宥勭瑝娑撹櫣鈹栭敍澶涚礉闁插秵鏌婄憴锝嗙€?
     const mappedDecorations = value.decorations.map(tr.changes);
     if (mappedDecorations.size === 0 && newSignature !== '') {
       return {
@@ -5064,11 +5563,11 @@ const videoDecorations = StateField.define<{ decorations: DecorationSet; signatu
 });
 
 // ============================================================================
-// Markdown 琛ㄦ牸娓叉煋绯荤粺
+// Markdown 鐞涖劍鐗稿〒鍙夌厠缁崵绮?
 // ============================================================================
 
 /**
- * 琛ㄦ牸鏁版嵁缁撴瀯
+ * 鐞涖劍鐗搁弫鐗堝祦缂佹挻鐎?
  */
 interface TableData {
   headers: string[];
@@ -5079,7 +5578,7 @@ interface TableData {
 }
 
 /**
- * 瑙ｆ瀽 Markdown 琛ㄦ牸
+ * 鐟欙絾鐎?Markdown 鐞涖劍鐗?
  */
 function parseMarkdownTable(doc: string): TableData[] {
   const tables: TableData[] = [];
@@ -5091,57 +5590,57 @@ function parseMarkdownTable(doc: string): TableData[] {
     const line = lines[i];
     const lineStart = position;
 
-    // 妫€娴嬭〃鏍煎ご閮ㄨ锛堝寘鍚?| 鐨勮锛?
+    // 濡偓濞村銆冮弽鐓庛仈闁劏顢戦敍鍫濆瘶閸?| 閻ㄥ嫯顢戦敍?
     if (line.includes('|') && i + 1 < lines.length) {
       const nextLine = lines[i + 1];
       
-      // 妫€娴嬪垎闅旇锛堝寘鍚?--- 鍜?|锛?
+      // 濡偓濞村鍨庨梾鏃囶攽閿涘牆瀵橀崥?--- 閸?|閿?
       if (/^\|?\s*:?-+:?\s*\|/.test(nextLine) || /\|\s*:?-+:?\s*\|?$/.test(nextLine)) {
-        // 瑙ｆ瀽琛ㄥご
+        // 鐟欙絾鐎界悰銊ャ仈
         const headers = parseTableRow(line);
         
         if (headers.length > 0) {
-          // 瑙ｆ瀽瀵归綈鏂瑰紡
+          // 鐟欙絾鐎界€靛綊缍堥弬鐟扮础
           const alignments = parseAlignments(nextLine, headers.length);
           
-          // 瑙ｆ瀽鏁版嵁琛?
+          // 鐟欙絾鐎介弫鐗堝祦鐞?
           const rows: string[][] = [];
           let j = i + 2;
-          // 璁＄畻琛ㄦ牸缁撴潫浣嶇疆锛堝寘鍚〃澶磋鍜屽垎闅旇鍙婂叾鎹㈣绗︼級
+          // 鐠侊紕鐣荤悰銊︾壐缂佹挻娼担宥囩枂閿涘牆瀵橀崥顐ャ€冩径纾嬵攽閸滃苯鍨庨梾鏃囶攽閸欏﹤鍙鹃幑銏ｎ攽缁楋讣绱?
           let lastLineEnd = lineStart + line.length + 1 + nextLine.length;
           
           while (j < lines.length) {
             const dataLine = lines[j];
             
-            // 妫€娴嬫槸鍚︽槸鏂拌〃鏍肩殑寮€濮嬶紙涓嬩竴琛屾槸鍒嗛殧琛岋級
+            // 濡偓濞村妲搁崥锔芥Ц閺傛媽銆冮弽鑲╂畱瀵偓婵绱欐稉瀣╃鐞涘本妲搁崚鍡涙鐞涘矉绱?
             if (j + 1 < lines.length) {
               const potentialSeparator = lines[j + 1];
               if (/^\|?\s*:?-+:?\s*\|/.test(potentialSeparator) || /\|\s*:?-+:?\s*\|?$/.test(potentialSeparator)) {
-                // 杩欐槸鏂拌〃鏍肩殑琛ㄥご锛岀粨鏉熷綋鍓嶈〃鏍?
+                // 鏉╂瑦妲搁弬鎷屻€冮弽鑲╂畱鐞涖劌銇旈敍宀€绮ㄩ弶鐔风秼閸撳秷銆冮弽?
                 break;
               }
             }
             
-            // 妫€娴嬫槸鍚﹁繕鏄〃鏍艰锛堝繀椤诲寘鍚?| 涓斾笉鏄┖琛岋級
+            // 濡偓濞村妲搁崥锕佺箷閺勵垵銆冮弽鑹邦攽閿涘牆绻€妞よ瀵橀崥?| 娑撴柧绗夐弰顖溾敄鐞涘矉绱?
             if (!dataLine.includes('|') || dataLine.trim() === '') {
               break;
             }
             const rowData = parseTableRow(dataLine);
-            // 濡傛灉瑙ｆ瀽鍑虹殑鏁版嵁涓虹┖锛岃烦杩囷紙浣嗗厑璁告墍鏈夊崟鍏冩牸涓虹┖瀛楃涓茬殑琛岋級
+            // 婵″倹鐏夌憴锝嗙€介崙铏规畱閺佺増宓佹稉铏光敄閿涘矁鐑︽潻鍥风礄娴ｅ棗鍘戠拋鍛婂閺堝宕熼崗鍐╃壐娑撹櫣鈹栫€涙顑佹稉鑼畱鐞涘矉绱?
             if (rowData.length === 0) {
               break;
             }
-            // 纭繚琛屾暟鎹笌琛ㄥご鍒楁暟涓€鑷?
+            // 绾喕绻氱悰灞炬殶閹诡喕绗岀悰銊ャ仈閸掓鏆熸稉鈧懛?
             while (rowData.length < headers.length) {
               rowData.push('');
             }
             rows.push(rowData.slice(0, headers.length));
-            // 鏇存柊鏈€鍚庝竴琛岀殑缁撴潫浣嶇疆锛堝姞涓婂墠涓€琛岀殑鎹㈣绗﹀拰褰撳墠琛岀殑闀垮害锛?
+            // 閺囧瓨鏌婇張鈧崥搴濈鐞涘瞼娈戠紒鎾存将娴ｅ秶鐤嗛敍鍫濆娑撳﹤澧犳稉鈧悰宀€娈戦幑銏ｎ攽缁楋箑鎷拌ぐ鎾冲鐞涘瞼娈戦梹鍨閿?
             lastLineEnd += 1 + dataLine.length;
             j++;
           }
           
-          // 娣诲姞琛ㄦ牸锛堝厑璁告病鏈夋暟鎹鐨勮〃鏍硷級
+          // 濞ｈ濮炵悰銊︾壐閿涘牆鍘戠拋鍛婄梾閺堝鏆熼幑顔款攽閻ㄥ嫯銆冮弽纭风礆
           tables.push({
             headers,
             alignments,
@@ -5150,7 +5649,7 @@ function parseMarkdownTable(doc: string): TableData[] {
             to: lastLineEnd,
           });
           
-          // 璺宠繃宸插鐞嗙殑琛?
+          // 鐠哄疇绻冨鎻掝槱閻炲棛娈戠悰?
           position = lastLineEnd + (j < lines.length ? 1 : 0);
           i = j;
           continue;
@@ -5166,10 +5665,10 @@ function parseMarkdownTable(doc: string): TableData[] {
 }
 
 /**
- * 瑙ｆ瀽琛ㄦ牸琛?
+ * 鐟欙絾鐎界悰銊︾壐鐞?
  */
 function parseTableRow(line: string): string[] {
-  // 绉婚櫎棣栧熬鐨?|
+  // 缁夊娅庢＃鏍х啲閻?|
   let trimmed = line.trim();
   if (trimmed.startsWith('|')) {
     trimmed = trimmed.slice(1);
@@ -5178,12 +5677,12 @@ function parseTableRow(line: string): string[] {
     trimmed = trimmed.slice(0, -1);
   }
   
-  // 鎸?| 鍒嗗壊骞舵竻鐞嗙┖鏍?
+  // 閹?| 閸掑棗澹婇獮鑸电閻炲棛鈹栭弽?
   return trimmed.split('|').map(cell => cell.trim());
 }
 
 /**
- * 瑙ｆ瀽瀵归綈鏂瑰紡
+ * 鐟欙絾鐎界€靛綊缍堥弬鐟扮础
  */
 function parseAlignments(line: string, columnCount: number): ('left' | 'center' | 'right')[] {
   const alignments: ('left' | 'center' | 'right')[] = [];
@@ -5206,7 +5705,7 @@ function parseAlignments(line: string, columnCount: number): ('left' | 'center' 
 }
 
 /**
- * 琛ㄦ牸 Widget 绫?- 鐢ㄤ簬鍦ㄧ紪杈戝櫒涓覆鏌撳彲瑙嗗寲琛ㄦ牸
+ * 鐞涖劍鐗?Widget 缁?- 閻劋绨崷銊х椽鏉堟垵娅掓稉顓熻閺屾挸褰茬憴鍡楀鐞涖劍鐗?
  */
 class TableWidget extends WidgetType {
   constructor(
@@ -5219,11 +5718,11 @@ class TableWidget extends WidgetType {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-table-widget';
     
-    // 鍒涘缓宸ュ叿鏍?
+    // 閸掓稑缂撳銉ュ徔閺?
     const toolbar = document.createElement('div');
     toolbar.className = 'cm-table-toolbar';
     
-    // 宸︿晶锛氭暟鎹簱鍚嶇О鍜屾坊鍔犳寜閽?
+    // 瀹革缚鏅堕敍姘殶閹诡喖绨遍崥宥囆為崪灞惧潑閸旂姵瀵滈柦?
     const toolbarLeft = document.createElement('div');
     toolbarLeft.className = 'cm-table-toolbar-left';
     
@@ -5238,8 +5737,8 @@ class TableWidget extends WidgetType {
     addBtn.textContent = '+';
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // 鍦ㄥ綋鍓嶈〃鏍煎悗鎻掑叆鏂拌〃鏍兼ā鏉?
-      const newTableTemplate = '\n\n| 鍒?1 | 鍒?2 |\n| --- | --- |\n|  |  |\n';
+      // 閸︺劌缍嬮崜宥堛€冮弽鐓庢倵閹绘帒鍙嗛弬鎷屻€冮弽鍏寄侀弶?
+      const newTableTemplate = '\n\n| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n';
       view.dispatch({
         changes: { from: this.tableData.to, insert: newTableTemplate },
       });
@@ -5248,7 +5747,7 @@ class TableWidget extends WidgetType {
     
     toolbar.appendChild(toolbarLeft);
     
-    // 鍙充晶锛氱瓫閫夈€佹帓搴忋€佺獥鍙ｆ樉绀恒€佸垹闄?
+    // 閸欏厖鏅堕敍姘辩摣闁鈧焦甯撴惔蹇嬧偓浣虹崶閸欙絾妯夌粈鎭掆偓浣稿灩闂?
     const toolbarRight = document.createElement('div');
     toolbarRight.className = 'cm-table-toolbar-right';
     
@@ -5258,41 +5757,41 @@ class TableWidget extends WidgetType {
     filterBtn.textContent = '筛选';
     filterBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 瀹炵幇绛涢€夊姛鑳?
+      // TODO: 鐎圭偟骞囩粵娑⑩偓澶婂閼?
     });
     toolbarRight.appendChild(filterBtn);
     
     const sortBtn = document.createElement('span');
     sortBtn.className = 'cm-table-toolbar-btn';
-    sortBtn.title = '鎺掑簭';
-    sortBtn.textContent = '鎺掑簭';
+    sortBtn.title = '排序';
+    sortBtn.textContent = '排序';
     sortBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 瀹炵幇鎺掑簭鍔熻兘
+      // TODO: 鐎圭偟骞囬幒鎺戠碍閸旂喕鍏?
     });
     toolbarRight.appendChild(sortBtn);
     
     const expandBtn = document.createElement('span');
     expandBtn.className = 'cm-table-toolbar-btn';
-    expandBtn.title = '绐楀彛鏄剧ず';
-    expandBtn.textContent = '绐楀彛';
+    expandBtn.title = '展开视图';
+    expandBtn.textContent = '展开';
     expandBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // TODO: 瀹炵幇绐楀彛鏄剧ず鍔熻兘
+      // TODO: 鐎圭偟骞囩粣妤€褰涢弰鍓с仛閸旂喕鍏?
     });
     toolbarRight.appendChild(expandBtn);
     
     const deleteBtn = document.createElement('span');
     deleteBtn.className = 'cm-table-toolbar-btn cm-table-toolbar-btn-danger';
-    deleteBtn.title = '鍒犻櫎琛ㄦ牸';
-    deleteBtn.textContent = '鍒犻櫎';
+    deleteBtn.title = '删除表格';
+    deleteBtn.textContent = '删除';
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // 鍒犻櫎琛ㄦ牸锛堝寘鎷墠鍚庡彲鑳界殑绌鸿锛?
+      // 閸掔娀娅庣悰銊︾壐閿涘牆瀵橀幏顒€澧犻崥搴″讲閼崇晫娈戠粚楦款攽閿?
       let deleteFrom = this.tableData.from;
       let deleteTo = this.tableData.to;
       
-      // 妫€鏌ヨ〃鏍煎悗鏄惁鏈夋崲琛岀锛屼竴骞跺垹闄?
+      // 濡偓閺屻儴銆冮弽鐓庢倵閺勵垰鎯侀張澶嬪床鐞涘瞼顑侀敍灞肩楠炶泛鍨归梽?
       const docLength = view.state.doc.length;
       if (deleteTo < docLength) {
         const afterChar = view.state.doc.sliceString(deleteTo, deleteTo + 1);
@@ -5310,14 +5809,14 @@ class TableWidget extends WidgetType {
     toolbar.appendChild(toolbarRight);
     wrapper.appendChild(toolbar);
     
-    // 鍒涘缓婊氬姩瀹瑰櫒
+    // 閸掓稑缂撳姘З鐎圭懓娅?
     const scrollContainer = document.createElement('div');
     scrollContainer.className = 'cm-table-scroll-container';
     
     const table = document.createElement('table');
     table.className = 'cm-markdown-table';
     
-    // 鍒涘缓琛ㄥご
+    // 閸掓稑缂撶悰銊ャ仈
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     
@@ -5331,10 +5830,10 @@ class TableWidget extends WidgetType {
     thead.appendChild(headerRow);
     table.appendChild(thead);
     
-    // 鍒涘缓琛ㄤ綋
+    // 閸掓稑缂撶悰銊ょ秼
     const tbody = document.createElement('tbody');
     
-    console.log('[TableWidget] 娓叉煋鏁版嵁琛?', this.tableData.rows);
+    console.log('[TableWidget] 濞撳弶鐓嬮弫鐗堝祦鐞?', this.tableData.rows);
     
     this.tableData.rows.forEach((row) => {
       const tr = document.createElement('tr');
@@ -5353,7 +5852,7 @@ class TableWidget extends WidgetType {
     scrollContainer.appendChild(table);
     wrapper.appendChild(scrollContainer);
     
-    // 鐐瑰嚮琛ㄦ牸鏃惰烦杞埌婧愮爜浣嶇疆
+    // 閻愮懓鍤悰銊︾壐閺冩儼鐑︽潪顒€鍩屽┃鎰垳娴ｅ秶鐤?
     wrapper.addEventListener('click', () => {
       view.dispatch({
         selection: { anchor: this.tableData.from },
@@ -5379,13 +5878,13 @@ class TableWidget extends WidgetType {
 }
 
 /**
- * 瑙ｆ瀽鏂囨。涓殑琛ㄦ牸骞跺垱寤鸿楗板櫒
+ * 鐟欙絾鐎介弬鍥ㄣ€傛稉顓犳畱鐞涖劍鐗搁獮璺哄灡瀵ら缚顥婃鏉挎珤
  */
 function parseTableDecorations(doc: string): DecorationSet {
   const tables = parseMarkdownTable(doc);
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
 
-  console.log('[parseTableDecorations] 瑙ｆ瀽鍒扮殑琛ㄦ牸:', tables.map(t => ({
+  console.log('[parseTableDecorations] 鐟欙絾鐎介崚鎵畱鐞涖劍鐗?', tables.map(t => ({
     headers: t.headers,
     rows: t.rows,
     from: t.from,
@@ -5403,14 +5902,14 @@ function parseTableDecorations(doc: string): DecorationSet {
     });
   }
 
-  // 鎸変綅缃帓搴?
+  // 閹稿缍呯純顔藉笓鎼?
   decorations.sort((a, b) => a.from - b.from);
 
   return RangeSet.of(decorations.map(d => d.decoration.range(d.from, d.to)));
 }
 
 /**
- * 琛ㄦ牸瑁呴グ鍣?StateField
+ * 鐞涖劍鐗哥憗鍛淬偘閸?StateField
  */
 const tableDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -5426,7 +5925,7 @@ const tableDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 瑙ｆ瀽鏂囨。涓殑鏍囬骞跺垱寤鸿瑁呴グ鍣?
+ * 鐟欙絾鐎介弬鍥ㄣ€傛稉顓犳畱閺嶅洭顣介獮璺哄灡瀵ら缚顢戠憗鍛淬偘閸?
  */
 function parseHeadings(state: EditorState): DecorationSet {
   const decorations: { from: number; decoration: Decoration }[] = [];
@@ -5453,7 +5952,7 @@ function parseHeadings(state: EditorState): DecorationSet {
 }
 
 /**
- * 鏍囬瑁呴グ鍣?StateField - 涓烘爣棰樿娣诲姞涓嶅悓鐨勫瓧浣撳ぇ灏?
+ * 閺嶅洭顣界憗鍛淬偘閸?StateField - 娑撶儤鐖ｆ０妯款攽濞ｈ濮炴稉宥呮倱閻ㄥ嫬鐡ф担鎾炽亣鐏?
  */
 const headingDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -5469,7 +5968,7 @@ const headingDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 鏃犲簭鍒楄〃鍦嗙偣 Widget - 灏?- * + 鏇挎崲涓哄渾鐐瑰浘鏍?
+ * 閺冪姴绨崚妤勩€冮崷鍡欏仯 Widget - 鐏?- * + 閺囨寧宕叉稉鍝勬妇閻愮懓娴橀弽?
  */
 class BulletWidget extends WidgetType {
   constructor(readonly indent: number) {
@@ -5493,39 +5992,39 @@ class BulletWidget extends WidgetType {
 }
 
 /**
- * 瑙ｆ瀽鏃犲簭鍒楄〃骞跺垱寤鸿楗板櫒
- * 灏?- * + 鏇挎崲涓哄渾鐐瑰浘鏍?
+ * 鐟欙絾鐎介弮鐘茬碍閸掓銆冮獮璺哄灡瀵ら缚顥婃鏉挎珤
+ * 鐏?- * + 閺囨寧宕叉稉鍝勬妇閻愮懓娴橀弽?
  */
 function parseUnorderedList(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
   const doc = state.doc;
   
-  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
+  // 閼惧嘲褰囪ぐ鎾冲閸忓鐖ｉ幍鈧崷銊攽
   const cursorLine = state.selection.main.head;
   const currentLineNumber = doc.lineAt(cursorLine).number;
   
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
-    // 鍖归厤鏃犲簭鍒楄〃鏍囪锛? * + 锛堝墠闈㈠彲浠ユ湁缂╄繘绌烘牸锛?
+    // 閸栧綊鍘ら弮鐘茬碍閸掓銆冮弽鍥唶閿? * + 閿涘牆澧犻棃銏犲讲娴犮儲婀佺紓鈺勭箻缁岀儤鐗搁敍?
     const match = line.text.match(/^(\s*)([-*+])\s/);
     if (match) {
-      // 璺宠繃寰呭姙娓呭崟锛? [ ] 鎴?- [x]锛? 鍦ㄦ鏌ュ厜鏍囦綅缃箣鍓嶅厛妫€鏌?
-      // 鍖归厤鏍煎紡锛氬彲閫夌缉杩?+ 鍒楄〃鏍囪 + 绌烘牸 + [ ] 鎴?[x]锛堝悗闈㈠彲浠ユ湁绌烘牸鎴栧埌琛屽熬锛?
+      // 鐠哄疇绻冨鍛濞撳懎宕熼敍? [ ] 閹?- [x]閿? 閸︺劍顥呴弻銉ュ帨閺嶅洣缍呯純顔荤閸撳秴鍘涘Λ鈧弻?
+      // 閸栧綊鍘ら弽鐓庣础閿涙艾褰查柅澶岀級鏉?+ 閸掓銆冮弽鍥唶 + 缁岀儤鐗?+ [ ] 閹?[x]閿涘牆鎮楅棃銏犲讲娴犮儲婀佺粚鐑樼壐閹存牕鍩岀悰灞界啲閿?
       const isTodo = /^[\t ]*[-*+]\s\[[ xX]\](\s|$)/.test(line.text);
       if (isTodo) {
         continue;
       }
       
-      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屼笉鏇挎崲鏍囪
+      // 婵″倹鐏夐崗澶嬬垼閸︺劌缍嬮崜宥堫攽閿涘奔绗夐弴鎸庡床閺嶅洩顔?
       if (i === currentLineNumber) {
         continue;
       }
       
       const indent = match[1].length;
       const markerStart = line.from + indent;
-      const markerEnd = markerStart + 1; // 鍙浛鎹?- * + 绗﹀彿
+      const markerEnd = markerStart + 1; // 閸欘亝娴涢幑?- * + 缁楋箑褰?
       
-      // 闅愯棌鍘熷鏍囪
+      // 闂呮劘妫岄崢鐔奉潗閺嶅洩顔?
       decorations.push({
         from: markerStart,
         to: markerEnd,
@@ -5543,39 +6042,39 @@ function parseUnorderedList(state: EditorState): DecorationSet {
 }
 
 /**
- * 瑙ｆ瀽绮椾綋鏂囨湰骞跺垱寤鸿楗板櫒
- * 鍖归厤 **text** 鎴?__text__ 鏍煎紡
+ * 鐟欙絾鐎界划妞剧秼閺傚洦婀伴獮璺哄灡瀵ら缚顥婃鏉挎珤
+ * 閸栧綊鍘?**text** 閹?__text__ 閺嶇厧绱?
  */
 function parseBoldText(state: EditorState): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
 
-  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
+  // 閼惧嘲褰囪ぐ鎾冲閸忓鐖ｉ幍鈧崷銊攽
   const cursorLine = doc.lineAt(state.selection.main.head).number;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text;
 
-    // 鍖归厤 **text** 鎴?__text__
+    // 閸栧綊鍘?**text** 閹?__text__
     const boldRegex = /(\*\*|__)([^*_]+)\1/g;
     let match;
 
     while ((match = boldRegex.exec(text)) !== null) {
       const from = line.from + match.index;
       const to = from + match[0].length;
-      const markerLength = match[1].length; // ** 鎴?__
+      const markerLength = match[1].length; // ** 閹?__
       const contentFrom = from + markerLength;
       const contentTo = to - markerLength;
 
-      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屾樉绀哄師濮嬭娉?
+      // 婵″倹鐏夐崗澶嬬垼閸︺劌缍嬮崜宥堫攽閿涘本妯夌粈鍝勫斧婵顕㈠▔?
       if (i === cursorLine) {
-        // 鍙负鍐呭娣诲姞绮椾綋鏍峰紡锛屼笉闅愯棌鏍囪
+        // 閸欘亙璐熼崘鍛啇濞ｈ濮炵划妞剧秼閺嶅嘲绱￠敍灞肩瑝闂呮劘妫岄弽鍥唶
         decorations.push(
           Decoration.mark({ class: 'cm-strong' }).range(contentFrom, contentTo)
         );
       } else {
-        // 闅愯棌鍓嶅悗鐨?** 鎴?__
+        // 闂呮劘妫岄崜宥呮倵閻?** 閹?__
         decorations.push(
           Decoration.mark({ class: 'cm-hidden-syntax' }).range(from, contentFrom)
         );
@@ -5593,7 +6092,7 @@ function parseBoldText(state: EditorState): DecorationSet {
 }
 
 /**
- * 绮椾綋瑁呴グ鍣?StateField
+ * 缁ぞ缍嬬憗鍛淬偘閸?StateField
  */
 const boldDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -5609,22 +6108,22 @@ const boldDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 瑙ｆ瀽鏂滀綋鏂囨湰骞跺垱寤鸿楗板櫒
- * 鍖归厤 *text* 鎴?_text_ 鏍煎紡锛堜絾涓嶅尮閰?** 鎴?__锛?
+ * 鐟欙絾鐎介弬婊€缍嬮弬鍥ㄦ拱楠炶泛鍨卞楦款棅妤楁澘娅?
+ * 閸栧綊鍘?*text* 閹?_text_ 閺嶇厧绱￠敍鍫滅稻娑撳秴灏柊?** 閹?__閿?
  */
 function parseItalicText(state: EditorState): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
 
-  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
+  // 閼惧嘲褰囪ぐ鎾冲閸忓鐖ｉ幍鈧崷銊攽
   const cursorLine = doc.lineAt(state.selection.main.head).number;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text;
 
-    // 鍖归厤 *text* 鎴?_text_锛堜絾涓嶅尮閰?** 鎴?__锛?
-    // 浣跨敤璐熷悜鍓嶇灮鍜岃礋鍚戝悗鐬荤‘淇濅笉鍖归厤绮椾綋
+    // 閸栧綊鍘?*text* 閹?_text_閿涘牅绲炬稉宥呭爱闁?** 閹?__閿?
+    // 娴ｈ法鏁ょ拹鐔锋倻閸撳秶鐏崪宀冪閸氭垵鎮楅惉鑽も€樻穱婵呯瑝閸栧綊鍘ょ划妞剧秼
     const italicRegex = /(?<!\*)\*(?!\*)([^*]+)\*(?!\*)|(?<!_)_(?!_)([^_]+)_(?!_)/g;
     let match;
 
@@ -5635,13 +6134,13 @@ function parseItalicText(state: EditorState): DecorationSet {
       const contentFrom = from + 1;
       const contentTo = to - 1;
 
-      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屾樉绀哄師濮嬭娉?
+      // 婵″倹鐏夐崗澶嬬垼閸︺劌缍嬮崜宥堫攽閿涘本妯夌粈鍝勫斧婵顕㈠▔?
       if (i === cursorLine) {
         decorations.push(
           Decoration.mark({ class: 'cm-em' }).range(contentFrom, contentTo)
         );
       } else {
-        // 闅愯棌鍓嶅悗鐨?* 鎴?_
+        // 闂呮劘妫岄崜宥呮倵閻?* 閹?_
         decorations.push(
           Decoration.mark({ class: 'cm-hidden-syntax' }).range(from, contentFrom)
         );
@@ -5659,7 +6158,7 @@ function parseItalicText(state: EditorState): DecorationSet {
 }
 
 /**
- * 鏂滀綋瑁呴グ鍣?StateField
+ * 閺傛粈缍嬬憗鍛淬偘閸?StateField
  */
 const italicDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -5675,14 +6174,14 @@ const italicDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 鏃犲簭鍒楄〃瑁呴グ鍣?StateField - 灏?- * + 鏇挎崲涓哄渾鐐?
+ * 閺冪姴绨崚妤勩€冪憗鍛淬偘閸?StateField - 鐏?- * + 閺囨寧宕叉稉鍝勬妇閻?
  */
 const unorderedListDecorations = StateField.define<DecorationSet>({
   create(state) {
     return parseUnorderedList(state);
   },
   update(decorations, tr) {
-    // 鏂囨。鍙樺寲鎴栧厜鏍囦綅缃彉鍖栨椂閮介渶瑕佹洿鏂?
+    // 閺傚洦銆傞崣妯哄閹存牕鍘滈弽鍥︾秴缂冾喖褰夐崠鏍ㄦ闁粙娓剁憰浣规纯閺?
     if (tr.docChanged || tr.selection) {
       return parseUnorderedList(tr.state);
     }
@@ -5692,7 +6191,7 @@ const unorderedListDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 寰呭姙娓呭崟澶嶉€夋 Widget - 灏?[ ] 鎴?[x] 鏇挎崲涓哄彲鐐瑰嚮鐨勫閫夋
+ * 瀵板懎濮欏〒鍛礋婢跺秹鈧顢?Widget - 鐏?[ ] 閹?[x] 閺囨寧宕叉稉鍝勫讲閻愮懓鍤惃鍕槻闁顢?
  */
 class CheckboxWidget extends WidgetType {
   constructor(
@@ -5710,17 +6209,17 @@ class CheckboxWidget extends WidgetType {
     checkbox.setAttribute('role', 'checkbox');
     checkbox.setAttribute('aria-checked', this.checked ? 'true' : 'false');
     
-    // 鐐瑰嚮鍒囨崲鐘舵€?
+    // 閻愮懓鍤崚鍥ㄥ床閻樿埖鈧?
     checkbox.addEventListener('mousedown', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // 鏇挎崲鏃朵繚鐣欏悗闈㈢殑绌烘牸
+      // 閺囨寧宕查弮鏈电箽閻ｆ瑥鎮楅棃銏㈡畱缁岀儤鐗?
       const newText = this.checked ? '[ ] ' : '[x] ';
-      // 淇濆瓨褰撳墠閫夋嫨浣嶇疆
+      // 娣囨繂鐡ㄨぐ鎾冲闁瀚ㄦ担宥囩枂
       const currentSelection = this.view.state.selection;
       this.view.dispatch({
         changes: { from: this.pos, to: this.pos + this.length, insert: newText },
-        // 鎭㈠鍘熸潵鐨勯€夋嫨浣嶇疆
+        // 閹垹顦查崢鐔告降閻ㄥ嫰鈧瀚ㄦ担宥囩枂
         selection: currentSelection
       });
     });
@@ -5733,33 +6232,33 @@ class CheckboxWidget extends WidgetType {
   }
 
   ignoreEvent(event: Event): boolean {
-    // 鍙鐞?mousedown 浜嬩欢锛屽拷鐣ュ叾浠栦簨浠?
+    // 閸欘亜顦╅悶?mousedown 娴滃娆㈤敍灞芥嫹閻ｃ儱鍙炬禒鏍︾皑娴?
     return event.type !== 'mousedown';
   }
 }
 
 /**
- * 瑙ｆ瀽寰呭姙娓呭崟骞跺垱寤哄閫夋瑁呴グ鍣?
- * 鍖归厤鏍煎紡锛? [ ] 鎴?- [x] 鎴?鈥?[ ] 鎴?鈥?[x] 鎴?1. [ ] 鎴?1. [x]锛堝悗闈㈠彲浠ユ湁绌烘牸鎴栧埌琛屽熬锛?
+ * 鐟欙絾鐎藉鍛濞撳懎宕熼獮璺哄灡瀵ゅ搫顦查柅澶嬵攱鐟佸懘銈伴崳?
+ * 閸栧綊鍘ら弽鐓庣础閿? [ ] 閹?- [x] 閹?閳?[ ] 閹?閳?[x] 閹?1. [ ] 閹?1. [x]閿涘牆鎮楅棃銏犲讲娴犮儲婀佺粚鐑樼壐閹存牕鍩岀悰灞界啲閿?
  */
 function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
   
-  // 鑾峰彇褰撳墠鍏夋爣浣嶇疆
+  // 閼惧嘲褰囪ぐ鎾冲閸忓鐖ｆ担宥囩枂
   const cursorPos = state.selection.main.head;
   const cursorLine = doc.lineAt(cursorPos);
   const cursorLineNumber = cursorLine.number;
-  const cursorOffset = cursorPos - cursorLine.from; // 鍏夋爣鍦ㄨ鍐呯殑鍋忕Щ
+  const cursorOffset = cursorPos - cursorLine.from; // 閸忓鐖ｉ崷銊攽閸愬懐娈戦崑蹇曅?
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text;
     
-    // 鍖归厤寰呭姙娓呭崟锛?
-    // 1. 鏃犲簭鍒楄〃鏍煎紡锛? [ ] 鎴?- [x] 鎴?鈥?[ ] 鎴?鈥?[x]
-    // 2. 鏈夊簭鍒楄〃鏍煎紡锛?. [ ] 鎴?1. [x]
-    const unorderedMatch = text.match(/^([\t ]*)([-*+鈥)\s\[([ xX])\](\s|$)/);
+    // 閸栧綊鍘ゅ鍛濞撳懎宕熼敍?
+    // 1. 閺冪姴绨崚妤勩€冮弽鐓庣础閿? [ ] 閹?- [x] 閹?閳?[ ] 閹?閳?[x]
+    // 2. 閺堝绨崚妤勩€冮弽鐓庣础閿?. [ ] 閹?1. [x]
+    const unorderedMatch = text.match(/^([\t ]*)([-*+閳ヮ晝)\s\[([ xX])\](\s|$)/);
     const orderedMatch = text.match(/^([\t ]*)(\d+\.)\s\[([ xX])\](\s|$)/);
     
     const todoMatch = unorderedMatch || orderedMatch;
@@ -5770,16 +6269,16 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
     const marker = todoMatch[2];
     const isChecked = todoMatch[3].toLowerCase() === 'x';
     
-    // 鎵惧埌 [ 鐨勪綅缃?
+    // 閹垫儳鍩?[ 閻ㄥ嫪缍呯純?
     const bracketIndex = text.indexOf('[');
     if (bracketIndex === -1) continue;
     
-    // 璁＄畻 ] 鍚庨潰绌烘牸鐨勪綅缃紙鍦ㄨ鍐呯殑鍋忕Щ锛?
-    const checkboxEndOffset = bracketIndex + 4; // [ ] 鍔犵┖鏍煎叡4涓瓧绗?
+    // 鐠侊紕鐣?] 閸氬酣娼扮粚鐑樼壐閻ㄥ嫪缍呯純顕嗙礄閸︺劏顢戦崘鍛畱閸嬪繒些閿?
+    const checkboxEndOffset = bracketIndex + 4; // [ ] 閸旂姷鈹栭弽鐓庡彙4娑擃亜鐡х粭?
     
-    // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屼笖鍏夋爣浣嶇疆鍦ㄥ閫夋鍖哄煙鍐呮垨绱ч偦澶嶉€夋鍚庨潰锛屼笉鏄剧ず澶嶉€夋
+    // 婵″倹鐏夐崗澶嬬垼閸︺劌缍嬮崜宥堫攽閿涘奔绗栭崗澶嬬垼娴ｅ秶鐤嗛崷銊ヮ槻闁顢嬮崠鍝勭厵閸愬懏鍨ㄧ槐褔鍋︽径宥夆偓澶嬵攱閸氬酣娼伴敍灞肩瑝閺勫墽銇氭径宥夆偓澶嬵攱
     if (i === cursorLineNumber && cursorOffset <= checkboxEndOffset) {
-      // 濡傛灉鏄棤搴忓垪琛ㄤ笖鏍囪鏄?鈥紝鏇挎崲涓?- 鏄剧ず
+      // 婵″倹鐏夐弰顖涙￥鎼村繐鍨悰銊ょ瑬閺嶅洩顔囬弰?閳ヮ澁绱濋弴鎸庡床娑?- 閺勫墽銇?
       if (!isOrderedList && marker === '•') {
         const markerStart = line.from + indent;
         const markerEnd = markerStart + 1;
@@ -5796,9 +6295,9 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
         );
       }
       
-      // 濡傛灉宸插畬鎴愶紝浠嶇劧娣诲姞鍒犻櫎绾挎牱寮?
+      // 婵″倹鐏夊鎻掔暚閹存劧绱濇禒宥囧姧濞ｈ濮為崚鐘绘珟缁炬寧鐗卞?
       if (isChecked) {
-        const contentStart = line.from + bracketIndex + 4; // [ ] 鍚庨潰鐨勫唴瀹瑰紑濮嬩綅缃?
+        const contentStart = line.from + bracketIndex + 4; // [ ] 閸氬酣娼伴惃鍕敶鐎圭懓绱戞慨瀣╃秴缂?
         if (contentStart < line.to) {
           decorations.push(
             Decoration.mark({ class: 'cm-todo-completed' }).range(contentStart, line.to)
@@ -5809,10 +6308,10 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
     }
     
     const checkboxStart = line.from + bracketIndex;
-    // 鏇挎崲 [ ] 鎴?[x] 浠ュ強鍚庨潰鐨勭┖鏍硷紙鍏?涓瓧绗︼級
+    // 閺囨寧宕?[ ] 閹?[x] 娴犮儱寮烽崥搴ㄦ桨閻ㄥ嫮鈹栭弽纭风礄閸?娑擃亜鐡х粭锔肩礆
     const checkboxEnd = checkboxStart + 4;
     
-    // 濡傛灉鏄棤搴忓垪琛紝鏇挎崲鍒楄〃鏍囪涓哄渾鐐?
+    // 婵″倹鐏夐弰顖涙￥鎼村繐鍨悰顭掔礉閺囨寧宕查崚妤勩€冮弽鍥唶娑撳搫娓鹃悙?
     if (!isOrderedList) {
       const markerStart = line.from + indent;
       const markerEnd = markerStart + 1;
@@ -5823,14 +6322,14 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
       );
     }
     
-    // 鏇挎崲 [ ] 鎴?[x] 鍙婂悗闈㈢殑绌烘牸涓哄閫夋
+    // 閺囨寧宕?[ ] 閹?[x] 閸欏﹤鎮楅棃銏㈡畱缁岀儤鐗告稉鍝勵槻闁顢?
     decorations.push(
       Decoration.replace({
         widget: new CheckboxWidget(isChecked, checkboxStart, 4, view),
       }).range(checkboxStart, checkboxEnd)
     );
     
-    // 濡傛灉宸插畬鎴愶紝涓哄唴瀹规坊鍔犲垹闄ょ嚎鏍峰紡
+    // 婵″倹鐏夊鎻掔暚閹存劧绱濇稉鍝勫敶鐎硅鍧婇崝鐘插灩闂勩倗鍤庨弽宄扮础
     if (isChecked) {
       const contentStart = checkboxEnd;
       if (contentStart < line.to) {
@@ -5841,13 +6340,13 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
     }
   }
 
-  // 鎸変綅缃帓搴忚楗板櫒
+  // 閹稿缍呯純顔藉笓鎼村繗顥婃鏉挎珤
   decorations.sort((a, b) => a.from - b.from);
   return Decoration.set(decorations, true);
 }
 
 /**
- * 寰呭姙娓呭崟瑁呴グ鍣?ViewPlugin
+ * 瀵板懎濮欏〒鍛礋鐟佸懘銈伴崳?ViewPlugin
  */
 const todoListPlugin = ViewPlugin.fromClass(
   class {
@@ -5869,7 +6368,7 @@ const todoListPlugin = ViewPlugin.fromClass(
 );
 
 /**
- * 寮曠敤鍧楃珫绾?Widget - 鍦ㄨ棣栨樉绀虹珫绾?
+ * 瀵洜鏁ら崸妤冪彨缁?Widget - 閸︺劏顢戞＃鏍ㄦ▔缁€铏圭彨缁?
  */
 class BlockquoteBarWidget extends WidgetType {
   constructor(readonly level: number) {
@@ -5879,7 +6378,7 @@ class BlockquoteBarWidget extends WidgetType {
   toDOM(): HTMLElement {
     const span = document.createElement('span');
     span.className = 'cm-blockquote-bar-container';
-    // 鏍规嵁寮曠敤灞傜骇鏄剧ず澶氭潯绔栫嚎
+    // 閺嶈宓佸鏇犳暏鐏炲倻楠囬弰鍓с仛婢舵碍娼粩鏍殠
     for (let i = 0; i < this.level; i++) {
       const bar = document.createElement('span');
       bar.className = 'cm-blockquote-bar';
@@ -5898,7 +6397,7 @@ class BlockquoteBarWidget extends WidgetType {
 }
 
 /**
- * 寮曠敤鍧?> 绗﹀彿 Widget - 鏍规嵁閫変腑鐘舵€佹樉绀?闅愯棌
+ * 瀵洜鏁ら崸?> 缁楋箑褰?Widget - 閺嶈宓侀柅澶夎厬閻樿埖鈧焦妯夌粈?闂呮劘妫?
  */
 class BlockquoteMarkerWidget extends WidgetType {
   constructor(
@@ -5911,7 +6410,7 @@ class BlockquoteMarkerWidget extends WidgetType {
   toDOM(): HTMLElement {
     const span = document.createElement('span');
     span.className = 'cm-blockquote-marker-widget';
-    // 濮嬬粓鏄剧ず > 绗﹀彿鍔犱竴涓┖鏍硷紝纭繚瀵归綈
+    // 婵绮撻弰鍓с仛 > 缁楋箑褰块崝鐘辩娑擃亞鈹栭弽纭风礉绾喕绻氱€靛綊缍?
     span.textContent = this.markers + ' ';
     if (!this.visible) {
       span.style.color = 'transparent';
@@ -5929,33 +6428,33 @@ class BlockquoteMarkerWidget extends WidgetType {
 }
 
 /**
- * 瑙ｆ瀽寮曠敤鍧楀苟鍒涘缓瑁呴グ鍣?
- * 鍦ㄨ棣栨坊鍔犵珫绾匡紝鏍规嵁鍏夋爣浣嶇疆鏄剧ず/闅愯棌 > 绗﹀彿
- * 娣诲姞琛岀骇瑁呴グ鍣ㄧ‘淇濆紩鐢ㄥ潡鍐呭濮嬬粓鏄剧ず鏂滀綋
+ * 鐟欙絾鐎藉鏇犳暏閸ф鑻熼崚娑樼紦鐟佸懘銈伴崳?
+ * 閸︺劏顢戞＃鏍ㄥ潑閸旂姷鐝痪鍖＄礉閺嶈宓侀崗澶嬬垼娴ｅ秶鐤嗛弰鍓с仛/闂呮劘妫?> 缁楋箑褰?
+ * 濞ｈ濮炵悰宀€楠囩憗鍛淬偘閸ｃ劎鈥樻穱婵嗙穿閻劌娼￠崘鍛啇婵绮撻弰鍓с仛閺傛粈缍?
  */
 function parseBlockquote(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
   const doc = state.doc;
   
-  // 鑾峰彇閫夊尯鑼冨洿
+  // 閼惧嘲褰囬柅澶婂隘閼煎啫娲?
   const selection = state.selection.main;
   const selectionStartLine = doc.lineAt(selection.from).number;
   const selectionEndLine = doc.lineAt(selection.to).number;
   
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
-    // 鍖归厤寮曠敤鍧楁爣璁帮細鏀寔琛岄鏈夌┖鏍肩殑鎯呭喌锛圱AB 缂╄繘锛夛紝鍖呮嫭 > 鍚庨潰鐨勭┖鏍?
+    // 閸栧綊鍘ゅ鏇犳暏閸ф鐖ｇ拋甯窗閺€顖涘瘮鐞涘矂顩婚張澶屸敄閺嶈偐娈戦幆鍛枌閿涘湵AB 缂傗晞绻橀敍澶涚礉閸栧懏瀚?> 閸氬酣娼伴惃鍕敄閺?
     const match = line.text.match(/^(\s*)(>+)(\s?)/);
     if (match) {
-      const indent = match[1].length; // 缂╄繘绌烘牸鏁?
-      const level = match[2].length; // 寮曠敤灞傜骇
-      const markers = match[2]; // > 鎴?>> 绛?
-      const space = match[3] || ''; // > 鍚庨潰鐨勭┖鏍硷紙鍙兘娌℃湁锛?
+      const indent = match[1].length; // 缂傗晞绻樼粚鐑樼壐閺?
+      const level = match[2].length; // 瀵洜鏁ょ仦鍌滈獓
+      const markers = match[2]; // > 閹?>> 缁?
+      const space = match[3] || ''; // > 閸氬酣娼伴惃鍕敄閺嶇》绱欓崣顖濆厴濞屸剝婀侀敍?
       
-      // 鍒ゆ柇鏄惁鏄剧ず > 绗﹀彿锛氬厜鏍囧湪褰撳墠琛屾垨閫夊尯鍖呭惈褰撳墠琛?
+      // 閸掋倖鏌囬弰顖氭儊閺勫墽銇?> 缁楋箑褰块敍姘帨閺嶅洤婀ぐ鎾冲鐞涘本鍨ㄩ柅澶婂隘閸栧懎鎯堣ぐ鎾冲鐞?
       const isInSelection = i >= selectionStartLine && i <= selectionEndLine;
       
-      // 娣诲姞琛岀骇瑁呴グ鍣紝纭繚寮曠敤鍧楄濮嬬粓鏄剧ず鏂滀綋
+      // 濞ｈ濮炵悰宀€楠囩憗鍛淬偘閸ｎ煉绱濈涵顔荤箽瀵洜鏁ら崸妤勵攽婵绮撻弰鍓с仛閺傛粈缍?
       decorations.push({
         from: line.from,
         to: line.from,
@@ -5964,18 +6463,18 @@ function parseBlockquote(state: EditorState): DecorationSet {
         }),
       });
       
-      // 鍦?> 绗﹀彿浣嶇疆娣诲姞绔栫嚎 Widget锛堣€冭檻缂╄繘锛?
+      // 閸?> 缁楋箑褰挎担宥囩枂濞ｈ濮炵粩鏍殠 Widget閿涘牐鈧啳妾荤紓鈺勭箻閿?
       decorations.push({
         from: line.from + indent,
         to: line.from + indent,
         decoration: Decoration.widget({
           widget: new BlockquoteBarWidget(level),
-          side: -1, // 鍦ㄤ綅缃乏渚ф樉绀?
+          side: -1, // 閸︺劋缍呯純顔间箯娓氀勬▔缁€?
         }),
       });
       
-      // 浣跨敤 replace 瑁呴グ鍣ㄦ浛鎹?> 绗﹀彿鍜岀┖鏍间负 Widget
-      // Widget 濮嬬粓鏄剧ず "> "锛堝甫绌烘牸锛夛紝纭繚瀵归綈
+      // 娴ｈ法鏁?replace 鐟佸懘銈伴崳銊︽禌閹?> 缁楋箑褰块崪宀€鈹栭弽闂磋礋 Widget
+      // Widget 婵绮撻弰鍓с仛 "> "閿涘牆鐢粚鐑樼壐閿涘绱濈涵顔荤箽鐎靛綊缍?
       decorations.push({
         from: line.from + indent,
         to: line.from + indent + markers.length + space.length,
@@ -5993,14 +6492,14 @@ function parseBlockquote(state: EditorState): DecorationSet {
 }
 
 /**
- * 寮曠敤鍧楄楗板櫒 StateField - 灏?> 鏇挎崲涓虹珫绾?
+ * 瀵洜鏁ら崸妤勵棅妤楁澘娅?StateField - 鐏?> 閺囨寧宕叉稉铏圭彨缁?
  */
 const blockquoteDecorations = StateField.define<DecorationSet>({
   create(state) {
     return parseBlockquote(state);
   },
   update(decorations, tr) {
-    // 鏂囨。鍙樺寲鎴栧厜鏍囦綅缃彉鍖栨椂閮介渶瑕佹洿鏂?
+    // 閺傚洦銆傞崣妯哄閹存牕鍘滈弽鍥︾秴缂冾喖褰夐崠鏍ㄦ闁粙娓剁憰浣规纯閺?
     if (tr.docChanged || tr.selection) {
       return parseBlockquote(tr.state);
     }
@@ -6010,7 +6509,7 @@ const blockquoteDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 鏀寔鐨勭紪绋嬭瑷€鍒楄〃
+ * 閺€顖涘瘮閻ㄥ嫮绱粙瀣嚔鐟封偓閸掓銆?
  */
 const SUPPORTED_LANGUAGES = [
   'javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'csharp', 'go', 'rust',
@@ -6020,7 +6519,7 @@ const SUPPORTED_LANGUAGES = [
 ];
 
 /**
- * 浠ｇ爜琛岄珮浜?Widget - 浣跨敤 highlight.js 娓叉煋鍗曡浠ｇ爜
+ * 娴狅絿鐖滅悰宀勭彯娴?Widget - 娴ｈ法鏁?highlight.js 濞撳弶鐓嬮崡鏇☆攽娴狅絿鐖?
  */
 class CodeLineWidget extends WidgetType {
   constructor(
@@ -6049,13 +6548,13 @@ class CodeLineWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
-    // 蹇界暐浜嬩欢锛岄槻姝㈢偣鍑讳唬鐮佸唴瀹规椂杩涘叆鍘熷鏂囨湰鐘舵€?
+    // 韫囩晫鏆愭禍瀣╂閿涘矂妲诲銏㈠仯閸戣鍞惍浣稿敶鐎硅妞傛潻娑樺弳閸樼喎顫愰弬鍥ㄦ拱閻樿埖鈧?
     return true;
   }
 }
 
 /**
- * 琛屽唴浠ｇ爜楂樹寒 Widget - 浣跨敤 highlight.js 鑷姩妫€娴嬭瑷€骞堕珮浜?
+ * 鐞涘苯鍞存禒锝囩垳妤傛ü瀵?Widget - 娴ｈ法鏁?highlight.js 閼奉亜濮╁Λ鈧ù瀣嚔鐟封偓楠炲爼鐝禍?
  */
 class InlineCodeWidget extends WidgetType {
   constructor(readonly code: string) {
@@ -6066,7 +6565,7 @@ class InlineCodeWidget extends WidgetType {
     const span = document.createElement('span');
     span.className = 'cm-code-highlighted cm-inline-code';
     
-    // 浣跨敤 highlight.js 鑷姩妫€娴嬭瑷€
+    // 娴ｈ法鏁?highlight.js 閼奉亜濮╁Λ鈧ù瀣嚔鐟封偓
     const result = hljs.highlightAuto(this.code);
     span.innerHTML = result.value;
     
@@ -6083,7 +6582,7 @@ class InlineCodeWidget extends WidgetType {
 }
 
 /**
- * 浠ｇ爜鍧椾俊鎭帴鍙?
+ * 娴狅絿鐖滈崸妞句繆閹垱甯撮崣?
  */
 interface CodeBlockInfo {
   startLine: number;
@@ -6096,7 +6595,7 @@ interface CodeBlockInfo {
 }
 
 /**
- * 瑙ｆ瀽鏂囨。涓殑浠ｇ爜鍧?
+ * 鐟欙絾鐎介弬鍥ㄣ€傛稉顓犳畱娴狅絿鐖滈崸?
  */
 function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
   const blocks: CodeBlockInfo[] = [];
@@ -6112,13 +6611,13 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
     const line = doc.line(i);
     const text = line.text;
 
-    // 鍖归厤 ```language // name 鏍煎紡锛堝紑濮嬫爣璁帮級
+    // 閸栧綊鍘?```language // name 閺嶇厧绱￠敍鍫濈磻婵鐖ｇ拋甯礆
     const startMatch = text.match(/^```(\w*)(\s*\/\/\s*(.*))?$/);
-    // 鍖归厤缁撴潫鏍囪 ```锛堝彲鑳芥湁绌烘牸锛?
+    // 閸栧綊鍘ょ紒鎾存将閺嶅洩顔?```閿涘牆褰查懗鑺ユ箒缁岀儤鐗搁敍?
     const isEndMark = /^```\s*$/.test(text);
 
     if (!inCodeBlock && startMatch) {
-      // 浠ｇ爜鍧楀紑濮?
+      // 娴狅絿鐖滈崸妤€绱戞慨?
       inCodeBlock = true;
       startLine = i;
       language = startMatch[1] || '';
@@ -6126,7 +6625,7 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
       codeLines = [];
       blockFrom = line.from;
     } else if (inCodeBlock && isEndMark) {
-      // 浠ｇ爜鍧楃粨鏉?
+      // 娴狅絿鐖滈崸妤冪波閺?
       blocks.push({
         startLine,
         endLine: i,
@@ -6138,7 +6637,7 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
       });
       inCodeBlock = false;
     } else if (inCodeBlock) {
-      // 浠ｇ爜鍧楀唴瀹?
+      // 娴狅絿鐖滈崸妤€鍞寸€?
       codeLines.push(text);
     }
   }
@@ -6146,7 +6645,7 @@ function parseCodeBlocks(state: EditorState): CodeBlockInfo[] {
   return blocks;
 }
 
-/** 浠ｇ爜鍧楄緭鍑虹姸鎬佸瓨鍌紙鎸変唬鐮佸潡浣嶇疆绱㈠紩锛?*/
+/** 娴狅絿鐖滈崸妤勭翻閸戣櫣濮搁幀浣哥摠閸岊煉绱欓幐澶夊敩閻礁娼℃担宥囩枂缁便垹绱╅敍?*/
 interface CodeBlockOutputState {
   content: string;
   isError: boolean;
@@ -6155,7 +6654,7 @@ interface CodeBlockOutputState {
 const codeBlockOutputStates = new Map<number, CodeBlockOutputState>();
 
 /**
- * 瀹屾暣浠ｇ爜鍧?Widget - 灏嗘暣涓唬鐮佸潡娓叉煋涓轰竴涓崱鐗囩粍浠?
+ * 鐎瑰本鏆ｆ禒锝囩垳閸?Widget - 鐏忓棙鏆ｆ稉顏冨敩閻礁娼″〒鍙夌厠娑撹桨绔存稉顏勫幢閻楀洨绮嶆禒?
  */
 class CodeBlockWidget extends WidgetType {
   private monacoContainer: HTMLElement | null = null;
@@ -6175,7 +6674,7 @@ class CodeBlockWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     this.viewRef = view;
     
-    // 浠?Store 鎭㈠鐘舵€?
+    // 娴?Store 閹垹顦查悩鑸碘偓?
     const savedState = useCodeBlockStore.getState().getBlockState(this.block.language, this.block.code);
     this.isCollapsed = savedState.isCollapsed;
     
@@ -6183,24 +6682,24 @@ class CodeBlockWidget extends WidgetType {
     container.className = 'cm-code-block-widget';
     this.containerElement = container;
 
-    // 浠ｇ爜鍖哄煙锛堝甫琛屽彿锛? 鍏堝垱寤轰互鑾峰彇 monacoContainer 寮曠敤
+    // 娴狅絿鐖滈崠鍝勭厵閿涘牆鐢悰灞藉娇閿? 閸忓牆鍨卞杞颁簰閼惧嘲褰?monacoContainer 瀵洜鏁?
     const codeArea = this.createCodeArea(view);
     this.codeAreaElement = codeArea;
 
-    // 澶撮儴 - 鍚庡垱寤轰互渚胯闂?monacoContainer
+    // 婢舵挳鍎?- 閸氬骸鍨卞杞颁簰娓氳儻顔栭梻?monacoContainer
     const header = this.createHeader(view);
     this.headerElement = header;
     container.appendChild(header);
 
-    // 浠ｇ爜鍖哄煙锛堝甫琛屽彿锛?
+    // 娴狅絿鐖滈崠鍝勭厵閿涘牆鐢悰灞藉娇閿?
     container.appendChild(codeArea);
     
-    // 鎭㈠鎶樺彔鐘舵€?
+    // 閹垹顦查幎妯哄綌閻樿埖鈧?
     if (this.isCollapsed) {
       container.classList.add('collapsed');
       if (this.collapseBtnElement) {
         this.collapseBtnElement.style.transform = 'rotate(0deg)';
-        this.collapseBtnElement.title = '灞曞紑';
+        this.collapseBtnElement.title = '展开代码';
       }
       if (this.codeAreaElement) {
         this.codeAreaElement.style.display = 'none';
@@ -6214,31 +6713,31 @@ class CodeBlockWidget extends WidgetType {
     const header = document.createElement('div');
     header.className = 'cm-code-block-header';
 
-    // 宸︿晶鍖哄煙锛氭姌鍙犵澶?+ 鍚嶇О杈撳叆妗?
+    // 瀹革缚鏅堕崠鍝勭厵閿涙碍濮岄崣鐘殿唲婢?+ 閸氬秶袨鏉堟挸鍙嗗?
     const leftSection = document.createElement('div');
     leftSection.className = 'cm-code-block-header-left';
 
-    // 鎶樺彔绠ご
+    // 閹舵ê褰旂粻顓炪仈
     const collapseBtn = document.createElement('span');
     collapseBtn.className = 'cm-code-block-collapse-btn';
     collapseBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4V4z"/></svg>';
     collapseBtn.style.transform = 'rotate(90deg)';
-    collapseBtn.title = '鎶樺彔';
+    collapseBtn.title = '折叠代码';
     this.collapseBtnElement = collapseBtn;
 
-    // 鎶樺彔鐐瑰嚮浜嬩欢
+    // 閹舵ê褰旈悙鐟板毊娴滃娆?
     collapseBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.toggleCollapse();
     });
 
-    // 鍚嶇О杈撳叆妗?
+    // 閸氬秶袨鏉堟挸鍙嗗?
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.className = 'cm-code-block-name-input';
-    nameInput.placeholder = '璇疯緭鍏ヤ唬鐮佸潡鍚嶇О';
+    nameInput.placeholder = '输入代码块名称（可选）';
     
-    // 浠?Store 鎭㈠鍚嶇О锛屽鏋滄病鏈夊垯浣跨敤鏂囨。涓殑鍚嶇О
+    // 娴?Store 閹垹顦查崥宥囆為敍灞筋洤閺嬫粍鐥呴張澶婂灟娴ｈ法鏁ら弬鍥ㄣ€傛稉顓犳畱閸氬秶袨
     const savedState = useCodeBlockStore.getState().getBlockState(this.block.language, this.block.code);
     const displayName = savedState.name || this.block.customName;
     nameInput.value = displayName;
@@ -6248,12 +6747,12 @@ class CodeBlockWidget extends WidgetType {
     nameInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
       
-      // 澶勭悊琚?Electron 鑿滃崟鎷︽埅鐨勫揩鎹烽敭
+      // 婢跺嫮鎮婄悮?Electron 閼挎粌宕熼幏锔藉焻閻ㄥ嫬鎻╅幑鐑芥暛
       const isCtrlOrMeta = e.ctrlKey || e.metaKey;
       if (isCtrlOrMeta) {
         const key = e.key.toLowerCase();
         if (key === 'x' || key === 'c' || key === 'v' || key === 'a' || key === 'z') {
-          // 闃绘浜嬩欢鍐掓场鍜岄粯璁よ涓?
+          // 闂冪粯顒涙禍瀣╂閸愭帗鍦洪崪宀勭帛鐠併倛顢戞稉?
           e.stopImmediatePropagation();
           e.preventDefault();
           
@@ -6263,26 +6762,26 @@ class CodeBlockWidget extends WidgetType {
           const selectedText = input.value.substring(start, end);
           
           if (key === 'x' && selectedText) {
-            // 鍓垏锛氬鍒堕€変腑鏂囨湰鍒板壀璐存澘锛岀劧鍚庡垹闄?
+            // 閸擃亜鍨忛敍姘槻閸掑爼鈧鑵戦弬鍥ㄦ拱閸掓澘澹€鐠愬瓨婢橀敍宀€鍔ч崥搴″灩闂?
             navigator.clipboard.writeText(selectedText).then(() => {
               input.value = input.value.substring(0, start) + input.value.substring(end);
               input.setSelectionRange(start, start);
             });
           } else if (key === 'c' && selectedText) {
-            // 澶嶅埗锛氬鍒堕€変腑鏂囨湰鍒板壀璐存澘
+            // 婢跺秴鍩楅敍姘槻閸掑爼鈧鑵戦弬鍥ㄦ拱閸掓澘澹€鐠愬瓨婢?
             navigator.clipboard.writeText(selectedText);
           } else if (key === 'v') {
-            // 绮樿创锛氫粠鍓创鏉胯鍙栧苟鎻掑叆
+            // 缁鍒涢敍姘矤閸擃亣鍒涢弶鑳嚢閸欐牕鑻熼幓鎺戝弳
             navigator.clipboard.readText().then((text) => {
               input.value = input.value.substring(0, start) + text + input.value.substring(end);
               const newPos = start + text.length;
               input.setSelectionRange(newPos, newPos);
             });
           } else if (key === 'a') {
-            // 鍏ㄩ€?
+            // 閸忋劑鈧?
             input.select();
           } else if (key === 'z') {
-            // 鎾ら攢 - 浣跨敤 execCommand 鍥犱负娌℃湁鍏朵粬鏂瑰紡
+            // 閹俱倝鏀?- 娴ｈ法鏁?execCommand 閸ョ姳璐熷▽鈩冩箒閸忔湹绮弬鐟扮础
             document.execCommand('undo');
           }
           return;
@@ -6294,9 +6793,9 @@ class CodeBlockWidget extends WidgetType {
       }
     }, true);
     nameInput.addEventListener('blur', () => {
-      // 鍙湁褰撳悕绉扮湡姝ｆ敼鍙樻椂鎵嶄繚瀛樺埌 Store
-      // 涓嶈Е鍙戞枃妗ｆ洿鏂帮紝閬垮厤 CodeMirror 鍐呴儴閿欒
-      // 鍚嶇О浼氬湪鏂囨。淇濆瓨鏃跺悓姝ュ埌鏂囦欢鍐呭
+      // 閸欘亝婀佽ぐ鎾虫倳缁夋壆婀″锝嗘暭閸欐ɑ妞傞幍宥勭箽鐎涙ê鍩?Store
+      // 娑撳秷袝閸欐垶鏋冨锝嗘纯閺傚府绱濋柆鍨帳 CodeMirror 閸愬懘鍎撮柨娆掝嚖
+      // 閸氬秶袨娴兼艾婀弬鍥ㄣ€傛穱婵嗙摠閺冭泛鎮撳銉ュ煂閺傚洣娆㈤崘鍛啇
       const newName = nameInput.value;
       if (newName !== originalName) {
         useCodeBlockStore.getState().setBlockName(this.block.language, this.block.code, this.block.from, newName);
@@ -6306,22 +6805,22 @@ class CodeBlockWidget extends WidgetType {
     leftSection.appendChild(collapseBtn);
     leftSection.appendChild(nameInput);
 
-    // 鍙充晶鍖哄煙
+    // 閸欏厖鏅堕崠鍝勭厵
     const rightSection = document.createElement('div');
     rightSection.className = 'cm-code-block-header-right';
 
-    // 浠?Store 鎭㈠璇█锛堝鏋滄湁淇濆瓨鐨勮瘽锛?
+    // 娴?Store 閹垹顦茬拠顓♀枅閿涘牆顩ч弸婊勬箒娣囨繂鐡ㄩ惃鍕樈閿?
     const savedLangState = useCodeBlockStore.getState().getBlockState(this.block.language, this.block.code);
     const displayLanguage = savedLangState.language !== 'plaintext' ? savedLangState.language : (this.block.language || 'plaintext');
 
-    // 璇█閫夋嫨
-    const langDropdown = this.createDropdown(view, displayLanguage, SUPPORTED_LANGUAGES, (lang) => this.updateLanguage(view, lang), '鎼滅储璇█...');
+    // 鐠囶叀鈻堥柅澶嬪
+    const langDropdown = this.createDropdown(view, displayLanguage, SUPPORTED_LANGUAGES, (lang) => this.updateLanguage(view, lang), '选择语言...');
 
-    // 鍒嗛殧绗?
+    // 閸掑棝娈х粭?
     const divider1 = document.createElement('span');
     divider1.className = 'cm-code-block-divider';
 
-    // 涓婚閫夋嫨 - 鍙洿鏂板綋鍓嶄唬鐮佸潡涓婚
+    // 娑撳顣介柅澶嬪 - 閸欘亝娲块弬鏉跨秼閸撳秳鍞惍浣告健娑撳顣?
     const { themeList, currentTheme } = useThemeStore.getState();
     const themeNames = themeList.map((t) => t.name || t.id);
     const currentThemeName = currentTheme?.name || currentTheme?.id || 'vs-dark';
@@ -6332,17 +6831,17 @@ class CodeBlockWidget extends WidgetType {
       async (themeName) => {
         const theme = themeList.find((t) => t.name === themeName || t.id === themeName);
         if (theme && this.monacoContainer) {
-          // 鏇存柊 Monaco 缂栬緫鍣ㄤ富棰?
+          // 閺囧瓨鏌?Monaco 缂傛牞绶崳銊ゅ瘜妫?
           updateMonacoTheme(this.monacoContainer, theme.id);
 
-          // 鑾峰彇涓婚棰滆壊骞舵洿鏂版牱寮?
+          // 閼惧嘲褰囨稉濠氼暯妫版粏澹婇獮鑸垫纯閺傜増鐗卞?
           const themeData = await themeService.getTheme(theme.id);
           if (themeData) {
             const bgColor = themeData.colors['editor.background'] || themeData.colors['editorWidget.background'];
             const borderColor = themeData.colors['panel.border'] || themeData.colors['editorWidget.border'];
             const fgColor = themeData.colors['editor.foreground'] || themeData.colors['foreground'];
 
-            // 鏇存柊澶撮儴鏍峰紡
+            // 閺囧瓨鏌婃径鎾劥閺嶅嘲绱?
             if (this.headerElement) {
               if (bgColor) {
                 this.headerElement.style.backgroundColor = bgColor;
@@ -6354,7 +6853,7 @@ class CodeBlockWidget extends WidgetType {
                 this.headerElement.style.color = fgColor;
               }
 
-              // 鏇存柊澶撮儴鍐呮墍鏈変笅鎷夋瑙﹀彂鍣ㄧ殑鏍峰紡
+              // 閺囧瓨鏌婃径鎾劥閸愬懏澧嶉張澶夌瑓閹峰顢嬬憴锕€褰傞崳銊ф畱閺嶅嘲绱?
               const dropdownTriggers = this.headerElement.querySelectorAll('.cm-code-block-dropdown-trigger');
               dropdownTriggers.forEach((trigger) => {
                 if (bgColor) {
@@ -6368,7 +6867,7 @@ class CodeBlockWidget extends WidgetType {
                 }
               });
 
-              // 鏇存柊澶撮儴鍐呮墍鏈夋寜閽殑鏍峰紡
+              // 閺囧瓨鏌婃径鎾劥閸愬懏澧嶉張澶嬪瘻闁筋喚娈戦弽宄扮础
               const actionBtns = this.headerElement.querySelectorAll('.cm-code-block-action-btn');
               actionBtns.forEach((btn) => {
                 if (fgColor) {
@@ -6376,7 +6875,7 @@ class CodeBlockWidget extends WidgetType {
                 }
               });
 
-              // 鏇存柊鍒嗛殧绗︽牱寮?
+              // 閺囧瓨鏌婇崚鍡涙缁楋附鐗卞?
               const dividers = this.headerElement.querySelectorAll('.cm-code-block-divider');
               dividers.forEach((divider) => {
                 if (borderColor) {
@@ -6385,12 +6884,12 @@ class CodeBlockWidget extends WidgetType {
               });
             }
 
-            // 鏇存柊鏁翠釜瀹瑰櫒鐨勮竟妗?
+            // 閺囧瓨鏌婇弫缈犻嚋鐎圭懓娅掗惃鍕珶濡?
             if (this.containerElement && borderColor) {
               this.containerElement.style.borderColor = borderColor;
             }
 
-            // 鏇存柊杈撳嚭闈㈡澘鏍峰紡
+            // 閺囧瓨鏌婃潏鎾冲毉闂堛垺婢橀弽宄扮础
             if (this.outputPanelElement) {
               if (bgColor) {
                 this.outputPanelElement.style.backgroundColor = bgColor;
@@ -6418,41 +6917,41 @@ class CodeBlockWidget extends WidgetType {
             }
           }
           
-          // 淇濆瓨涓婚鍒?Store
+          // 娣囨繂鐡ㄦ稉濠氼暯閸?Store
           useCodeBlockStore.getState().setBlockTheme(this.block.language, this.block.code, theme.id);
         }
       },
-      '鎼滅储涓婚...'
+      '选择主题...'
     );
 
-    // 鍒嗛殧绗?
+    // 閸掑棝娈х粭?
     const divider2 = document.createElement('span');
     divider2.className = 'cm-code-block-divider';
 
-    // 澶嶅埗鎸夐挳
+    // 婢跺秴鍩楅幐澶愭尦
     const copyBtn = document.createElement('span');
     copyBtn.className = 'cm-code-block-action-btn';
-    copyBtn.title = '澶嶅埗浠ｇ爜';
+    copyBtn.title = '复制代码';
     copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z"/><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1"/></svg>';
     copyBtn.addEventListener('click', () => navigator.clipboard.writeText(this.block.code));
 
-    // 杩愯鎸夐挳
+    // 鏉╂劘顢戦幐澶愭尦
     const runBtn = document.createElement('span');
     runBtn.className = 'cm-code-block-action-btn';
-    runBtn.title = '杩愯浠ｇ爜';
+    runBtn.title = '运行代码';
     runBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"/><circle cx="12" cy="12" r="10"/></svg>';
     runBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.runCode();
     });
 
-    // 鏇村鑿滃崟
+    // 閺囨潙顦块懣婊冨礋
     const moreBtn = document.createElement('span');
     moreBtn.className = 'cm-code-block-action-btn';
-    moreBtn.title = '鏇村鎿嶄綔';
+    moreBtn.title = '更多操作';
     moreBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>';
 
-    // 鍒犻櫎鎸夐挳
+    // 閸掔娀娅庨幐澶愭尦
     const deleteBtn = document.createElement('span');
     deleteBtn.className = 'cm-code-block-action-btn cm-code-block-delete-btn';
     deleteBtn.title = '删除代码块';
@@ -6480,13 +6979,13 @@ class CodeBlockWidget extends WidgetType {
     const codeArea = document.createElement('div');
     codeArea.className = 'cm-code-block-content';
 
-    // 绂佺敤浠ｇ爜鍧楀尯鍩熺殑鍙抽敭鑿滃崟
+    // 缁備胶鏁ゆ禒锝囩垳閸ф灏崺鐔烘畱閸欐娊鏁懣婊冨礋
     codeArea.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
     });
 
-    // 闃绘閿洏浜嬩欢鍐掓场鍒?CodeMirror
+    // 闂冪粯顒涢柨顔炬磸娴滃娆㈤崘鎺撳満閸?CodeMirror
     codeArea.addEventListener('keydown', (e) => {
       e.stopPropagation();
     }, false);
@@ -6495,18 +6994,18 @@ class CodeBlockWidget extends WidgetType {
     const lang = this.block.language || 'plaintext';
     const initialCode = this.block.code || '';
 
-    // Monaco Editor 瀹瑰櫒
+    // Monaco Editor 鐎圭懓娅?
     const monacoContainer = document.createElement('div');
     monacoContainer.className = 'cm-code-block-monaco-container';
     this.monacoContainer = monacoContainer;
 
-    // 鏇存柊婧愮爜鏍囪
+    // 閺囧瓨鏌婂┃鎰垳閺嶅洩顔?
     let isUpdating = false;
 
     const updateSource = (newCode: string) => {
       if (isUpdating) return;
 
-      // 楠岃瘉缂栬緫鍣ㄦ槸鍚︿粛鐒舵湁鏁?
+      // 妤犲矁鐦夌紓鏍帆閸ｃ劍妲搁崥锔跨矝閻掕埖婀侀弫?
       if (!view.dom || !view.dom.isConnected) {
         return;
       }
@@ -6516,7 +7015,7 @@ class CodeBlockWidget extends WidgetType {
       try {
         const docLength = view.state.doc.length;
 
-        // 楠岃瘉璧峰浣嶇疆鏄惁鏈夋晥
+        // 妤犲矁鐦夌挧宄邦潗娴ｅ秶鐤嗛弰顖氭儊閺堝鏅?
         if (blockInfo.from >= docLength) {
           isUpdating = false;
           return;
@@ -6524,13 +7023,13 @@ class CodeBlockWidget extends WidgetType {
 
         const startLine = view.state.doc.lineAt(blockInfo.from);
 
-        // 楠岃瘉璧峰琛屾槸鍚︿粛鐒舵槸浠ｇ爜鍧楀紑濮嬫爣璁?
+        // 妤犲矁鐦夌挧宄邦潗鐞涘本妲搁崥锔跨矝閻掕埖妲告禒锝囩垳閸ф绱戞慨瀣垼鐠?
         if (!startLine.text.startsWith('```')) {
           isUpdating = false;
           return;
         }
 
-        // 浠庤捣濮嬭寮€濮嬶紝鏌ユ壘浠ｇ爜鍧楃殑瀹為檯缁撴潫浣嶇疆
+        // 娴犲氦鎹ｆ慨瀣攽瀵偓婵绱濋弻銉﹀娴狅絿鐖滈崸妤冩畱鐎圭偤妾紒鎾存将娴ｅ秶鐤?
         let endLineNum = startLine.number + 1;
         let endPos = startLine.to;
         const totalLines = view.state.doc.lines;
@@ -6544,7 +7043,7 @@ class CodeBlockWidget extends WidgetType {
           endLineNum++;
         }
 
-        // 鏋勫缓鏂扮殑浠ｇ爜鍧楁枃鏈?
+        // 閺嬪嫬缂撻弬鎵畱娴狅絿鐖滈崸妤佹瀮閺?
         const langLine = startLine.text;
         const newCodeBlock = langLine + '\n' + newCode + '\n```';
 
@@ -6554,12 +7053,12 @@ class CodeBlockWidget extends WidgetType {
 
         isUpdating = false;
       } catch (e) {
-        console.error('鏇存柊浠ｇ爜鍧楀け璐?', e);
+        console.error('閺囧瓨鏌婃禒锝囩垳閸ф銇戠拹?', e);
         isUpdating = false;
       }
     };
 
-    // 寤惰繜娓叉煋 Monaco锛岄伩鍏嶉樆濉?
+    // 瀵ゆ儼绻滃〒鍙夌厠 Monaco閿涘矂浼╅崗宥夋▎婵?
     let pendingCode: string | null = null;
     const blockLanguage = this.block.language;
     const blockCode = this.block.code;
@@ -6567,33 +7066,33 @@ class CodeBlockWidget extends WidgetType {
     requestAnimationFrame(() => {
       if (!monacoContainer.isConnected) return;
 
-      // 浠?Store 鑾峰彇淇濆瓨鐨勭姸鎬侊紙鍖呮嫭婊氬姩浣嶇疆锛?
+      // 娴?Store 閼惧嘲褰囨穱婵嗙摠閻ㄥ嫮濮搁幀渚婄礄閸栧懏瀚姘З娴ｅ秶鐤嗛敍?
       const savedState = useCodeBlockStore.getState().getBlockState(blockLanguage, blockCode);
-      console.log('[CodeMirrorEditor] 浠?Store 鑾峰彇婊氬姩浣嶇疆:', savedState.scrollTop);
+      console.log('[CodeMirrorEditor] 娴?Store 閼惧嘲褰囧姘З娴ｅ秶鐤?', savedState.scrollTop);
 
       renderMonacoToElement(monacoContainer, {
         code: initialCode,
         language: lang,
         onChange: (value: string) => {
-          // 鍙褰曟渶鏂扮殑浠ｇ爜锛屼笉绔嬪嵆鏇存柊婧愮爜
+          // 閸欘亣顔囪ぐ鏇熸付閺傛壆娈戞禒锝囩垳閿涘奔绗夌粩瀣祮閺囧瓨鏌婂┃鎰垳
           pendingCode = value;
         },
         onFocus: () => {
-          // 闃绘 CodeMirror 鑾峰彇鐒︾偣
+          // 闂冪粯顒?CodeMirror 閼惧嘲褰囬悞锔惧仯
         },
         onBlur: () => {
-          // 澶卞幓鐒︾偣鏃舵墠鏇存柊婧愮爜
+          // 婢跺崬骞撻悞锔惧仯閺冭埖澧犻弴瀛樻煀濠ф劗鐖?
           if (pendingCode !== null && pendingCode !== initialCode) {
             const codeToUpdate = pendingCode;
             pendingCode = null;
-            // 浣跨敤 setTimeout 纭繚鍦?CodeMirror 瀹屾垚褰撳墠鏇存柊鍚庡啀鎵ц
+            // 娴ｈ法鏁?setTimeout 绾喕绻氶崷?CodeMirror 鐎瑰本鍨氳ぐ鎾冲閺囧瓨鏌婇崥搴″晙閹笛嗩攽
             setTimeout(() => {
-              // 鍐嶆楠岃瘉缂栬緫鍣ㄦ槸鍚︽湁鏁?
+              // 閸愬秵顐兼宀冪槈缂傛牞绶崳銊︽Ц閸氾附婀侀弫?
               if (view.dom && view.dom.isConnected) {
                 try {
                   updateSource(codeToUpdate);
                 } catch (e) {
-                  console.warn('鏇存柊浠ｇ爜鍧楀け璐ワ紝鍙兘鏄紪杈戝櫒鐘舵€佸凡鏀瑰彉:', e);
+                  console.warn('閺囧瓨鏌婃禒锝囩垳閸ф銇戠拹銉礉閸欘垵鍏橀弰顖滅椽鏉堟垵娅掗悩鑸碘偓浣稿嚒閺€鐟板綁:', e);
                 }
               }
             }, 50);
@@ -6602,7 +7101,7 @@ class CodeBlockWidget extends WidgetType {
           }
         },
         onEditorMount: (editorInstance) => {
-          // 鐩戝惉婊氬姩浜嬩欢锛屽疄鏃朵繚瀛樻粴鍔ㄤ綅缃埌 Store
+          // 閻╂垵鎯夊姘З娴滃娆㈤敍灞界杽閺冩湹绻氱€涙ɑ绮撮崝銊ょ秴缂冾喖鍩?Store
           editorInstance.onDidScrollChange(() => {
             const scrollTop = editorInstance.getScrollTop();
             useCodeBlockStore.getState().setBlockScrollPosition(blockLanguage, blockCode, scrollTop, null);
@@ -6613,10 +7112,10 @@ class CodeBlockWidget extends WidgetType {
         initialScrollTop: savedState.scrollTop
       });
       
-      // 浠?Store 鎭㈠涓婚
+      // 娴?Store 閹垹顦叉稉濠氼暯
       if (savedState.themeId && monacoContainer) {
         updateMonacoTheme(monacoContainer, savedState.themeId);
-        // 鍚屾椂鏇存柊澶撮儴鏍峰紡
+        // 閸氬本妞傞弴瀛樻煀婢舵挳鍎撮弽宄扮础
         this.applyThemeToHeader(savedState.themeId);
       }
     });
@@ -6630,7 +7129,7 @@ class CodeBlockWidget extends WidgetType {
     const container = document.createElement('div');
     container.className = 'cm-code-block-dropdown';
 
-    // 璺熻釜褰撳墠閫変腑鐨勫€?
+    // 鐠虹喕閲滆ぐ鎾冲闁鑵戦惃鍕偓?
     let selectedValue = currentValue;
 
     const trigger = document.createElement('div');
@@ -6647,7 +7146,7 @@ class CodeBlockWidget extends WidgetType {
     trigger.appendChild(text);
     trigger.appendChild(arrow);
 
-    // 灏嗚彍鍗曟覆鏌撳埌 body 灞傜骇锛岄伩鍏嶈鐖跺厓绱犺鍓?
+    // 鐏忓棜褰嶉崡鏇熻閺屾挸鍩?body 鐏炲倻楠囬敍宀勪缉閸忓秷顫﹂悥璺哄帗缁辩姾顥嗛崜?
     const menu = document.createElement('div');
     menu.className = 'cm-code-block-dropdown-menu cm-code-block-dropdown-portal';
     menu.style.display = 'none';
@@ -6689,14 +7188,14 @@ class CodeBlockWidget extends WidgetType {
     menu.appendChild(list);
     searchInput.addEventListener('input', () => renderList(searchInput.value));
 
-    // 鏇存柊鑿滃崟浣嶇疆
+    // 閺囧瓨鏌婇懣婊冨礋娴ｅ秶鐤?
     const updateMenuPosition = () => {
       const rect = trigger.getBoundingClientRect();
       menu.style.top = `${rect.bottom + 4}px`;
       menu.style.left = `${rect.right - menu.offsetWidth}px`;
     };
 
-    // 闅愯棌鑿滃崟
+    // 闂呮劘妫岄懣婊冨礋
     const hideMenu = () => {
       menu.style.display = 'none';
       container.classList.remove('open');
@@ -6705,7 +7204,7 @@ class CodeBlockWidget extends WidgetType {
       }
     };
 
-    // 鏄剧ず鑿滃崟
+    // 閺勫墽銇氶懣婊冨礋
     const showMenu = () => {
       document.body.appendChild(menu);
       menu.style.display = 'block';
@@ -6735,24 +7234,24 @@ class CodeBlockWidget extends WidgetType {
 
     document.addEventListener('mousedown', handleClickOutside);
 
-    // 婊氬姩鏃舵洿鏂拌彍鍗曚綅缃垨鍏抽棴
+    // 濠婃艾濮╅弮鑸垫纯閺傛媽褰嶉崡鏇氱秴缂冾喗鍨ㄩ崗鎶芥４
     const handleScroll = (e: Event) => {
       if (menu.style.display !== 'none') {
-        // 妫€鏌ヨЕ鍙戝櫒鏄惁浠嶅湪瑙嗗彛鍐?
+        // 濡偓閺屻儴袝閸欐垵娅掗弰顖氭儊娴犲秴婀憴鍡楀經閸?
         const rect = trigger.getBoundingClientRect();
         const isInViewport = rect.top >= 0 && rect.bottom <= window.innerHeight;
 
         if (isInViewport) {
-          // 鏇存柊鑿滃崟浣嶇疆
+          // 閺囧瓨鏌婇懣婊冨礋娴ｅ秶鐤?
           updateMenuPosition();
         } else {
-          // 瑙﹀彂鍣ㄤ笉鍦ㄨ鍙ｅ唴锛屽叧闂彍鍗?
+          // 鐟欙箑褰傞崳銊ょ瑝閸︺劏顫嬮崣锝呭敶閿涘苯鍙ч梻顓″綅閸?
           hideMenu();
         }
       }
     };
 
-    // 鐩戝惉鎵€鏈夋粴鍔ㄤ簨浠讹紙鍖呮嫭缂栬緫鍣ㄥ唴閮ㄦ粴鍔級
+    // 閻╂垵鎯夐幍鈧張澶嬬泊閸斻劋绨ㄦ禒璁圭礄閸栧懏瀚紓鏍帆閸ｃ劌鍞撮柈銊︾泊閸旑煉绱?
     document.addEventListener('scroll', handleScroll, true);
     window.addEventListener('resize', handleScroll);
 
@@ -6761,20 +7260,20 @@ class CodeBlockWidget extends WidgetType {
   }
 
   updateLanguage(_view: EditorView, newLang: string): void {
-    // 鏇存柊 Store 涓殑璇█鐘舵€?
+    // 閺囧瓨鏌?Store 娑擃厾娈戠拠顓♀枅閻樿埖鈧?
     useCodeBlockStore.getState().setBlockLanguage(this.block.language, this.block.code, newLang);
     
-    // 鏇存柊 Monaco 缂栬緫鍣ㄧ殑璇█鏄剧ず
+    // 閺囧瓨鏌?Monaco 缂傛牞绶崳銊ф畱鐠囶叀鈻堥弰鍓с仛
     if (this.monacoContainer) {
       updateMonacoLanguage(this.monacoContainer, newLang);
     }
   }
 
-  // 鍒囨崲鎶樺彔鐘舵€?
+  // 閸掑洦宕查幎妯哄綌閻樿埖鈧?
   toggleCollapse(): void {
     this.isCollapsed = !this.isCollapsed;
     
-    // 淇濆瓨鎶樺彔鐘舵€佸埌 Store
+    // 娣囨繂鐡ㄩ幎妯哄綌閻樿埖鈧礁鍩?Store
     useCodeBlockStore.getState().setBlockCollapsed(this.block.language, this.block.code, this.isCollapsed);
     
     const blockKey = this.block.from;
@@ -6782,28 +7281,28 @@ class CodeBlockWidget extends WidgetType {
 
     if (this.codeAreaElement && this.collapseBtnElement) {
       if (this.isCollapsed) {
-        // 鎶樺彔锛氶殣钘忎唬鐮佸尯鍩熷拰杈撳嚭闈㈡澘
+        // 閹舵ê褰旈敍姘舵閽樺繋鍞惍浣稿隘閸╃喎鎷版潏鎾冲毉闂堛垺婢?
         this.codeAreaElement.style.display = 'none';
         if (this.outputPanelElement) {
           this.outputPanelElement.style.display = 'none';
         }
         this.collapseBtnElement.style.transform = 'rotate(0deg)';
-        this.collapseBtnElement.title = '灞曞紑';
+        this.collapseBtnElement.title = '展开代码';
         this.containerElement?.classList.add('collapsed');
       } else {
-        // 灞曞紑锛氭樉绀轰唬鐮佸尯鍩燂紝濡傛灉鏈夎緭鍑轰笖鏈鍏抽棴鍒欐樉绀鸿緭鍑洪潰鏉?
+        // 鐏炴洖绱戦敍姘▔缁€杞板敩閻礁灏崺鐕傜礉婵″倹鐏夐張澶庣翻閸戣桨绗栭張顏囶潶閸忔娊妫撮崚娆愭▔缁€楦跨翻閸戞椽娼伴弶?
         this.codeAreaElement.style.display = 'block';
         if (this.outputPanelElement && savedState && !savedState.isClosed) {
           this.outputPanelElement.style.display = 'block';
         }
         this.collapseBtnElement.style.transform = 'rotate(90deg)';
-        this.collapseBtnElement.title = '鎶樺彔';
+        this.collapseBtnElement.title = '折叠代码';
         this.containerElement?.classList.remove('collapsed');
       }
     }
   }
 
-  // 搴旂敤涓婚鍒板ご閮ㄦ牱寮?
+  // 鎼存梻鏁ゆ稉濠氼暯閸掓澘銇旈柈銊︾壉瀵?
   async applyThemeToHeader(themeId: string): Promise<void> {
     const themeData = await themeService.getTheme(themeId);
     if (!themeData) return;
@@ -6812,7 +7311,7 @@ class CodeBlockWidget extends WidgetType {
     const borderColor = themeData.colors['panel.border'] || themeData.colors['editorWidget.border'];
     const fgColor = themeData.colors['editor.foreground'] || themeData.colors['foreground'];
 
-    // 鏇存柊澶撮儴鏍峰紡
+    // 閺囧瓨鏌婃径鎾劥閺嶅嘲绱?
     if (this.headerElement) {
       if (bgColor) {
         this.headerElement.style.backgroundColor = bgColor;
@@ -6824,7 +7323,7 @@ class CodeBlockWidget extends WidgetType {
         this.headerElement.style.color = fgColor;
       }
 
-      // 鏇存柊澶撮儴鍐呮墍鏈変笅鎷夋瑙﹀彂鍣ㄧ殑鏍峰紡
+      // 閺囧瓨鏌婃径鎾劥閸愬懏澧嶉張澶夌瑓閹峰顢嬬憴锕€褰傞崳銊ф畱閺嶅嘲绱?
       const dropdownTriggers = this.headerElement.querySelectorAll('.cm-code-block-dropdown-trigger');
       dropdownTriggers.forEach((trigger) => {
         if (bgColor) {
@@ -6838,7 +7337,7 @@ class CodeBlockWidget extends WidgetType {
         }
       });
 
-      // 鏇存柊澶撮儴鍐呮墍鏈夋寜閽殑鏍峰紡
+      // 閺囧瓨鏌婃径鎾劥閸愬懏澧嶉張澶嬪瘻闁筋喚娈戦弽宄扮础
       const actionBtns = this.headerElement.querySelectorAll('.cm-code-block-action-btn');
       actionBtns.forEach((btn) => {
         if (fgColor) {
@@ -6846,7 +7345,7 @@ class CodeBlockWidget extends WidgetType {
         }
       });
 
-      // 鏇存柊鍒嗛殧绗︽牱寮?
+      // 閺囧瓨鏌婇崚鍡涙缁楋附鐗卞?
       const dividers = this.headerElement.querySelectorAll('.cm-code-block-divider');
       dividers.forEach((divider) => {
         if (borderColor) {
@@ -6855,12 +7354,12 @@ class CodeBlockWidget extends WidgetType {
       });
     }
 
-    // 鏇存柊鏁翠釜瀹瑰櫒鐨勮竟妗?
+    // 閺囧瓨鏌婇弫缈犻嚋鐎圭懓娅掗惃鍕珶濡?
     if (this.containerElement && borderColor) {
       this.containerElement.style.borderColor = borderColor;
     }
 
-    // 鏇存柊杈撳嚭闈㈡澘鏍峰紡
+    // 閺囧瓨鏌婃潏鎾冲毉闂堛垺婢橀弽宄扮础
     if (this.outputPanelElement) {
       if (bgColor) {
         this.outputPanelElement.style.backgroundColor = bgColor;
@@ -6888,40 +7387,40 @@ class CodeBlockWidget extends WidgetType {
     }
   }
 
-  // 鍒犻櫎浠ｇ爜鍧?
+  // 閸掔娀娅庢禒锝囩垳閸?
   deleteCodeBlock(view: EditorView): void {
     try {
       if (!view.dom || !view.dom.isConnected) return;
       if (this.block.from > view.state.doc.length) return;
 
-      // 鍒犻櫎鏁翠釜浠ｇ爜鍧楋紙浠庡紑濮嬫爣璁板埌缁撴潫鏍囪锛?
+      // 閸掔娀娅庨弫缈犻嚋娴狅絿鐖滈崸妤嬬礄娴犲骸绱戞慨瀣垼鐠佹澘鍩岀紒鎾存将閺嶅洩顔囬敍?
       view.dispatch({
         changes: { from: this.block.from, to: this.block.to }
       });
     } catch (e) {
-      console.error('鍒犻櫎浠ｇ爜鍧楀け璐?', e);
+      console.error('閸掔娀娅庢禒锝囩垳閸ф銇戠拹?', e);
     }
   }
 
-  // 杩愯浠ｇ爜
+  // 鏉╂劘顢戞禒锝囩垳
   async runCode(): Promise<void> {
     const language = this.block.language || 'plaintext';
     
-    // 妫€鏌ヨ瑷€鏄惁鏀寔杩愯
+    // 濡偓閺屻儴顕㈢懛鈧弰顖氭儊閺€顖涘瘮鏉╂劘顢?
     if (!codeRunnerService.isSupportedLanguage(language)) {
-      this.showOutput(`涓嶆敮鎸佽繍琛?${language} 浠ｇ爜`, true);
+      this.showOutput(`暂不支持 ${language} 代码运行`, true);
       return;
     }
 
-    // 鑾峰彇褰撳墠浠ｇ爜
+    // 閼惧嘲褰囪ぐ鎾冲娴狅絿鐖?
     const code = this.block.code;
     if (!code.trim()) {
-      this.showOutput('浠ｇ爜涓虹┖', true);
+      this.showOutput('代码为空', true);
       return;
     }
 
-    // 鏄剧ず杩愯涓姸鎬?
-    this.showOutput('杩愯涓?..', false, true);
+    // 閺勫墽銇氭潻鎰攽娑擃厾濮搁幀?
+    this.showOutput('运行中...', false, true);
 
     try {
       const result = await codeRunnerService.runCode({
@@ -6931,10 +7430,10 @@ class CodeBlockWidget extends WidgetType {
       });
 
       if (result.success) {
-        const output = result.stdout || '(鏃犺緭鍑?';
+        const output = result.stdout || '(无输出)';
         this.showOutput(output, false);
       } else {
-        const errorMsg = result.error || result.stderr || '鎵ц澶辫触';
+        const errorMsg = result.error || result.stderr || '运行失败';
         this.showOutput(errorMsg, true);
       }
     } catch (error) {
@@ -6943,17 +7442,17 @@ class CodeBlockWidget extends WidgetType {
     }
   }
 
-  // 鏄剧ず杈撳嚭闈㈡澘
+  // 閺勫墽銇氭潏鎾冲毉闂堛垺婢?
   private showOutput(content: string, isError: boolean, isLoading = false): void {
     if (!this.containerElement) return;
 
     const blockKey = this.block.from;
     const savedState = codeBlockOutputStates.get(blockKey);
 
-    // 濡傛灉鐢ㄦ埛宸插叧闂緭鍑洪潰鏉夸笖涓嶆槸鏂扮殑杩愯璇锋眰锛坙oading锛夛紝鍒欎笉鏄剧ず
+    // 婵″倹鐏夐悽銊﹀煕瀹告彃鍙ч梻顓＄翻閸戞椽娼伴弶澶哥瑬娑撳秵妲搁弬鎵畱鏉╂劘顢戠拠閿嬬湴閿涘潤oading閿涘绱濋崚娆庣瑝閺勫墽銇?
     if (savedState?.isClosed && !isLoading) return;
 
-    // 鏂扮殑杩愯璇锋眰鏃堕噸缃叧闂姸鎬?
+    // 閺傛壆娈戞潻鎰攽鐠囬攱鐪伴弮鍫曞櫢缂冾喖鍙ч梻顓犲Ц閹?
     if (isLoading) {
       codeBlockOutputStates.set(blockKey, {
         content: '',
@@ -6962,7 +7461,7 @@ class CodeBlockWidget extends WidgetType {
       });
     }
 
-    // 淇濆瓨杈撳嚭鍐呭锛堥潪 loading 鐘舵€佹椂锛?
+    // 娣囨繂鐡ㄦ潏鎾冲毉閸愬懎顔愰敍鍫ユ姜 loading 閻樿埖鈧焦妞傞敍?
     if (!isLoading) {
       codeBlockOutputStates.set(blockKey, {
         content,
@@ -6971,7 +7470,7 @@ class CodeBlockWidget extends WidgetType {
       });
     }
 
-    // 鏌ユ壘鎴栧垱寤鸿緭鍑洪潰鏉?
+    // 閺屻儲澹橀幋鏍у灡瀵ら缚绶崙娲桨閺?
     let outputPanel = this.containerElement.querySelector('.cm-code-block-output') as HTMLElement;
     
     if (!outputPanel) {
@@ -6981,10 +7480,10 @@ class CodeBlockWidget extends WidgetType {
     }
     this.outputPanelElement = outputPanel;
 
-    // 娓呯┖骞惰缃唴瀹?
+    // 濞撳懐鈹栭獮鎯邦啎缂冾喖鍞寸€?
     outputPanel.innerHTML = '';
     
-    // 杈撳嚭澶撮儴
+    // 鏉堟挸鍤径鎾劥
     const header = document.createElement('div');
     header.className = 'cm-code-block-output-header';
     
@@ -7008,7 +7507,7 @@ class CodeBlockWidget extends WidgetType {
     header.appendChild(closeBtn);
     outputPanel.appendChild(header);
     
-    // 杈撳嚭鍐呭
+    // 鏉堟挸鍤崘鍛啇
     const contentEl = document.createElement('pre');
     contentEl.className = 'cm-code-block-output-content';
     if (isError) {
@@ -7021,9 +7520,9 @@ class CodeBlockWidget extends WidgetType {
     outputPanel.appendChild(contentEl);
   }
 
-  // Widget 閿€姣佹椂淇濆瓨婊氬姩浣嶇疆
+  // Widget 闁库偓濮ｄ焦妞傛穱婵嗙摠濠婃艾濮╂担宥囩枂
   destroy(): void {
-    // 淇濆瓨 Monaco 缂栬緫鍣ㄧ殑婊氬姩浣嶇疆鍒?Store
+    // 娣囨繂鐡?Monaco 缂傛牞绶崳銊ф畱濠婃艾濮╂担宥囩枂閸?Store
     if (this.monacoContainer) {
       const scrollPosition = getMonacoScrollPosition(this.monacoContainer);
       if (scrollPosition) {
@@ -7034,14 +7533,14 @@ class CodeBlockWidget extends WidgetType {
           null
         );
       }
-      // 鍗歌浇 Monaco 缂栬緫鍣?
+      // 閸楁瓕娴?Monaco 缂傛牞绶崳?
       unmountMonacoFromElement(this.monacoContainer);
     }
   }
 
   eq(other: CodeBlockWidget): boolean {
-    // 涓嶆瘮杈?from 浣嶇疆锛屽洜涓哄湪浠ｇ爜鍧椾笂鏂规彃鍏ュ唴瀹规椂浣嶇疆浼氬彉鍖?
-    // 鍙瘮杈冭瑷€鍜屼唬鐮佸唴瀹癸紝杩欐牱鍙互閬垮厤浣嶇疆鍙樺寲瀵艰嚧鐨?Widget 閲嶅缓
+    // 娑撳秵鐦潏?from 娴ｅ秶鐤嗛敍灞芥礈娑撳搫婀禒锝囩垳閸фぞ绗傞弬瑙勫絻閸忋儱鍞寸€硅妞傛担宥囩枂娴兼艾褰夐崠?
+    // 閸欘亝鐦潏鍐嚔鐟封偓閸滃奔鍞惍浣稿敶鐎圭櫢绱濇潻娆愮壉閸欘垯浜掗柆鍨帳娴ｅ秶鐤嗛崣妯哄鐎佃壈鍤ч惃?Widget 闁插秴缂?
     return (
       this.block.language === other.block.language &&
       this.block.code === other.block.code
@@ -7054,7 +7553,7 @@ class CodeBlockWidget extends WidgetType {
 }
 
 /**
- * 瑙ｆ瀽浠ｇ爜鍧楀苟鍒涘缓瑁呴グ鍣?
+ * 鐟欙絾鐎芥禒锝囩垳閸ф鑻熼崚娑樼紦鐟佸懘銈伴崳?
  */
 function parseCodeBlockDecorations(state: EditorState): DecorationSet {
   const blocks = parseCodeBlocks(state);
@@ -7076,7 +7575,7 @@ function parseCodeBlockDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * 浠ｇ爜鍧楄楗板櫒 StateField
+ * 娴狅絿鐖滈崸妤勵棅妤楁澘娅?StateField
  */
 const codeBlockDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -7092,7 +7591,7 @@ const codeBlockDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 鍒嗗壊绾?Widget - 灏?--- 鎴?*** 鎴?___ 娓叉煋涓烘按骞冲垎鍓茬嚎
+ * 閸掑棗澹婄痪?Widget - 鐏?--- 閹?*** 閹?___ 濞撳弶鐓嬫稉鐑樻寜楠炲啿鍨庨崜鑼殠
  */
 class HorizontalRuleWidget extends WidgetType {
   toDOM(): HTMLElement {
@@ -7113,28 +7612,28 @@ class HorizontalRuleWidget extends WidgetType {
 }
 
 /**
- * 瑙ｆ瀽鍒嗗壊绾垮苟鍒涘缓瑁呴グ鍣?
- * 鍖归厤鐙珛琛岀殑 ---銆?**銆乢__ 锛堣嚦灏?涓瓧绗︼級
+ * 鐟欙絾鐎介崚鍡楀缁惧灝鑻熼崚娑樼紦鐟佸懘銈伴崳?
+ * 閸栧綊鍘ら悪顒傜彌鐞涘瞼娈?---閵?**閵嗕耿__ 閿涘牐鍤︾亸?娑擃亜鐡х粭锔肩礆
  */
 function parseHorizontalRules(state: EditorState): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
 
-  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
+  // 閼惧嘲褰囪ぐ鎾冲閸忓鐖ｉ幍鈧崷銊攽
   const cursorLine = doc.lineAt(state.selection.main.head).number;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text.trim();
 
-    // 鍖归厤 ---銆?**銆乢__ 锛堣嚦灏?涓浉鍚屽瓧绗︼紝鍙互鏈夌┖鏍硷級
+    // 閸栧綊鍘?---閵?**閵嗕耿__ 閿涘牐鍤︾亸?娑擃亞娴夐崥灞界摟缁楋讣绱濋崣顖欎簰閺堝鈹栭弽纭风礆
     if (/^[-]{3,}$|^[*]{3,}$|^[_]{3,}$/.test(text)) {
-      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶈锛屾樉绀哄師濮嬫枃鏈?
+      // 婵″倹鐏夐崗澶嬬垼閸︺劌缍嬮崜宥堫攽閿涘本妯夌粈鍝勫斧婵鏋冮張?
       if (i === cursorLine) {
         continue;
       }
 
-      // 鐢?Widget 鏇挎崲鏁磋鍐呭
+      // 閻?Widget 閺囨寧宕查弫纾嬵攽閸愬懎顔?
       decorations.push(
         Decoration.replace({
           widget: new HorizontalRuleWidget(),
@@ -7147,7 +7646,7 @@ function parseHorizontalRules(state: EditorState): DecorationSet {
 }
 
 /**
- * 鍒嗗壊绾胯楗板櫒 StateField
+ * 閸掑棗澹婄痪鑳棅妤楁澘娅?StateField
  */
 const horizontalRuleDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -7163,15 +7662,15 @@ const horizontalRuleDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 瑙ｆ瀽鏍囬璇硶骞跺垱寤洪殣钘忚楗板櫒锛堟簮鐮佹ā寮忎笅鐨勬墍瑙佸嵆鎵€寰楋級
- * 褰撳厜鏍囦笉鍦ㄦ爣棰樿鏃讹紝闅愯棌 # 绗﹀彿
- * 濡傛灉鏍囬琛屾病鏈夊唴瀹癸紙鍙湁 # 绗﹀彿锛夛紝涓嶉殣钘?
+ * 鐟欙絾鐎介弽鍥暯鐠囶厽纭堕獮璺哄灡瀵ゆ椽娈ｉ挊蹇氼棅妤楁澘娅掗敍鍫熺爱閻焦膩瀵繋绗呴惃鍕鐟欎礁宓嗛幍鈧妤嬬礆
+ * 瑜版挸鍘滈弽鍥︾瑝閸︺劍鐖ｆ０妯款攽閺冭绱濋梾鎰 # 缁楋箑褰?
+ * 婵″倹鐏夐弽鍥暯鐞涘本鐥呴張澶婂敶鐎圭櫢绱欓崣顏呮箒 # 缁楋箑褰块敍澶涚礉娑撳秹娈ｉ挊?
  */
 function parseHeadingSyntaxHide(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
   const doc = state.doc;
   
-  // 鑾峰彇褰撳墠鍏夋爣鎵€鍦ㄨ
+  // 閼惧嘲褰囪ぐ鎾冲閸忓鐖ｉ幍鈧崷銊攽
   const cursorLine = state.selection.main.head;
   const currentLineNumber = doc.lineAt(cursorLine).number;
   
@@ -7179,20 +7678,20 @@ function parseHeadingSyntaxHide(state: EditorState): DecorationSet {
     const line = doc.line(i);
     const match = line.text.match(/^(#{1,6})\s/);
     if (match) {
-      // 濡傛灉鍏夋爣鍦ㄥ綋鍓嶆爣棰樿锛屼笉闅愯棌 # 绗﹀彿
+      // 婵″倹鐏夐崗澶嬬垼閸︺劌缍嬮崜宥嗙垼妫版顢戦敍灞肩瑝闂呮劘妫?# 缁楋箑褰?
       if (i === currentLineNumber) {
         continue;
       }
       
-      // 濡傛灉鏍囬琛屾病鏈夊唴瀹癸紙鍙湁 # 绗﹀彿鍜岀┖鏍硷級锛屼笉闅愯棌
+      // 婵″倹鐏夐弽鍥暯鐞涘本鐥呴張澶婂敶鐎圭櫢绱欓崣顏呮箒 # 缁楋箑褰块崪宀€鈹栭弽纭风礆閿涘奔绗夐梾鎰
       const content = line.text.slice(match[0].length);
       if (content.trim().length === 0) {
         continue;
       }
       
-      // 闅愯棌 # 绗﹀彿鍜屽悗闈㈢殑绌烘牸
+      // 闂呮劘妫?# 缁楋箑褰块崪灞芥倵闂堛垻娈戠粚鐑樼壐
       const from = line.from;
-      const to = from + match[1].length + 1; // 鍖呮嫭绌烘牸
+      const to = from + match[1].length + 1; // 閸栧懏瀚粚鐑樼壐
       decorations.push({
         from,
         to,
@@ -7208,14 +7707,14 @@ function parseHeadingSyntaxHide(state: EditorState): DecorationSet {
 }
 
 /**
- * 鏍囬璇硶闅愯棌瑁呴グ鍣?StateField锛堟簮鐮佹ā寮忎笅鐨勬墍瑙佸嵆鎵€寰楋級
+ * 閺嶅洭顣界拠顓熺《闂呮劘妫岀憗鍛淬偘閸?StateField閿涘牊绨惍浣鼓佸蹇庣瑓閻ㄥ嫭澧嶇憴浣稿祮閹碘偓瀵版绱?
  */
 const headingSyntaxHideDecorations = StateField.define<DecorationSet>({
   create(state) {
     return parseHeadingSyntaxHide(state);
   },
   update(decorations, tr) {
-    // 鏂囨。鍙樺寲鎴栧厜鏍囦綅缃彉鍖栨椂閮介渶瑕佹洿鏂?
+    // 閺傚洦銆傞崣妯哄閹存牕鍘滈弽鍥︾秴缂冾喖褰夐崠鏍ㄦ闁粙娓剁憰浣规纯閺?
     if (tr.docChanged || tr.selection) {
       return parseHeadingSyntaxHide(tr.state);
     }
@@ -7225,7 +7724,7 @@ const headingSyntaxHideDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 瑙ｆ瀽琛屽唴浠ｇ爜骞跺垱寤洪珮浜楗板櫒锛堟簮鐮佹ā寮忥級
+ * 鐟欙絾鐎界悰灞藉敶娴狅絿鐖滈獮璺哄灡瀵ゆ椽鐝禍顔款棅妤楁澘娅掗敍鍫熺爱閻焦膩瀵骏绱?
  */
 function parseInlineCodeHighlight(state: EditorState): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
@@ -7233,7 +7732,7 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
   const docLength = doc.length;
   const cursorPos = state.selection.main.head;
   
-  // 鍖归厤琛屽唴浠ｇ爜 `code`
+  // 匹配行内代码片段，例如 `code`
   const codeRegex = /`([^`\n]+)`/g;
   let match;
   
@@ -7241,10 +7740,10 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
     const startFrom = match.index;
     const endTo = startFrom + match[0].length;
     
-    // 杈圭晫妫€鏌?
+    // 鏉堝湱鏅Λ鈧弻?
     if (endTo > docLength) continue;
     
-    // 璺宠繃浠ｇ爜鍧楃殑 ``` 鏍囪
+    // 鐠哄疇绻冩禒锝囩垳閸ф娈?``` 閺嶅洩顔?
     if (startFrom > 0 && doc[startFrom - 1] === '`') continue;
     if (endTo < docLength && doc[endTo] === '`') continue;
     
@@ -7254,21 +7753,21 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
     const endFrom = contentTo;
     const codeContent = match[1];
     
-    // 濡傛灉鍏夋爣鍦ㄨ繖涓鍐呬唬鐮佽寖鍥村唴锛屾樉绀哄師濮嬭娉?
+    // 婵″倹鐏夐崗澶嬬垼閸︺劏绻栨稉顏囶攽閸愬懍鍞惍浣藉瘱閸ユ潙鍞撮敍灞炬▔缁€鍝勫斧婵顕㈠▔?
     if (cursorPos >= startFrom && cursorPos <= endTo) {
       continue;
     }
     
-    // 纭繚鑼冨洿鏈夋晥
+    // 绾喕绻氶懠鍐ㄦ纯閺堝鏅?
     if (contentFrom >= contentTo) continue;
     
-    // 闅愯棌鍓嶉潰鐨?`
+    // 闂呮劘妫岄崜宥夋桨閻?`
     decorations.push({
       from: startFrom,
       to: startTo,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
-    // 鐢?Widget 鏇挎崲浠ｇ爜鍐呭浠ュ疄鐜拌娉曢珮浜?
+    // 閻?Widget 閺囨寧宕叉禒锝囩垳閸愬懎顔愭禒銉ョ杽閻滄媽顕㈠▔鏇㈢彯娴?
     decorations.push({
       from: contentFrom,
       to: contentTo,
@@ -7276,7 +7775,7 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
         widget: new InlineCodeWidget(codeContent)
       }),
     });
-    // 闅愯棌鍚庨潰鐨?`
+    // 闂呮劘妫岄崥搴ㄦ桨閻?`
     decorations.push({
       from: endFrom,
       to: endTo,
@@ -7284,7 +7783,7 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
     });
   }
   
-  // 鎸変綅缃帓搴?
+  // 閹稿缍呯純顔藉笓鎼?
   decorations.sort((a, b) => a.from - b.from);
   
   return RangeSet.of(
@@ -7294,7 +7793,7 @@ function parseInlineCodeHighlight(state: EditorState): DecorationSet {
 }
 
 /**
- * 琛屽唴浠ｇ爜楂樹寒瑁呴グ鍣?StateField锛堟簮鐮佹ā寮忥級
+ * 鐞涘苯鍞存禒锝囩垳妤傛ü瀵掔憗鍛淬偘閸?StateField閿涘牊绨惍浣鼓佸蹇ョ礆
  */
 const inlineCodeHighlightDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -7310,18 +7809,18 @@ const inlineCodeHighlightDecorations = StateField.define<DecorationSet>({
 });
 
 /**
- * 瑙ｆ瀽 Markdown 璇硶骞跺垱寤洪殣钘忚楗板櫒锛堥瑙堟ā寮忥級
+ * 鐟欙絾鐎?Markdown 鐠囶厽纭堕獮璺哄灡瀵ゆ椽娈ｉ挊蹇氼棅妤楁澘娅掗敍鍫ヮ暕鐟欏牊膩瀵骏绱?
  */
 function parseMarkdownSyntax(doc: string): DecorationSet {
   const decorations: { from: number; to: number; decoration: Decoration }[] = [];
   
-  // 闅愯棌鏍囬鐨?# 绗﹀彿
+  // 闂呮劘妫岄弽鍥暯閻?# 缁楋箑褰?
   const headingRegex = /^(#{1,6})\s/gm;
   let match;
   
   while ((match = headingRegex.exec(doc)) !== null) {
     const from = match.index;
-    const to = from + match[1].length + 1; // 鍖呮嫭绌烘牸
+    const to = from + match[1].length + 1; // 閸栧懏瀚粚鐑樼壐
     decorations.push({
       from,
       to,
@@ -7329,7 +7828,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 闅愯棌绮椾綋鐨?** 鎴?__
+  // 闂呮劘妫岀划妞剧秼閻?** 閹?__
   const boldRegex = /(\*\*|__)([^*_]+)(\*\*|__)/g;
   while ((match = boldRegex.exec(doc)) !== null) {
     const startFrom = match.index;
@@ -7349,7 +7848,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 闅愯棌鏂滀綋鐨?* 鎴?_锛堝崟涓級
+  // 闂呮劘妫岄弬婊€缍嬮惃?* 閹?_閿涘牆宕熸稉顏庣礆
   const italicRegex = /(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)|(?<!_)_(?!_)([^_]+)(?<!_)_(?!_)/g;
   while ((match = italicRegex.exec(doc)) !== null) {
     const startFrom = match.index;
@@ -7369,7 +7868,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 闅愯棌鍒犻櫎绾跨殑 ~~ 骞舵坊鍔犲垹闄ょ嚎鏍峰紡
+  // 闂呮劘妫岄崚鐘绘珟缁捐法娈?~~ 楠炶埖鍧婇崝鐘插灩闂勩倗鍤庨弽宄扮础
   const strikeRegex = /~~([^~]+)~~/g;
   while ((match = strikeRegex.exec(doc)) !== null) {
     const startFrom = match.index;
@@ -7379,19 +7878,19 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     const endFrom = contentTo;
     const endTo = startFrom + match[0].length;
     
-    // 闅愯棌鍓嶉潰鐨?~~
+    // 闂呮劘妫岄崜宥夋桨閻?~~
     decorations.push({
       from: startFrom,
       to: startTo,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
-    // 缁欎腑闂村唴瀹规坊鍔犲垹闄ょ嚎鏍峰紡
+    // 缂佹瑤鑵戦梻鏉戝敶鐎硅鍧婇崝鐘插灩闂勩倗鍤庨弽宄扮础
     decorations.push({
       from: contentFrom,
       to: contentTo,
       decoration: Decoration.mark({ class: 'cm-strikethrough' }),
     });
-    // 闅愯棌鍚庨潰鐨?~~
+    // 闂呮劘妫岄崥搴ㄦ桨閻?~~
     decorations.push({
       from: endFrom,
       to: endTo,
@@ -7399,7 +7898,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 闅愯棌琛屽唴浠ｇ爜鐨?` 骞舵坊鍔犺娉曢珮浜?
+  // 闂呮劘妫岀悰灞藉敶娴狅絿鐖滈惃?` 楠炶埖鍧婇崝鐘侯嚔濞夋洟鐝禍?
   const codeRegex = /`([^`]+)`/g;
   while ((match = codeRegex.exec(doc)) !== null) {
     const startFrom = match.index;
@@ -7410,13 +7909,13 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     const endTo = startFrom + match[0].length;
     const codeContent = match[1];
     
-    // 闅愯棌鍓嶉潰鐨?`
+    // 闂呮劘妫岄崜宥夋桨閻?`
     decorations.push({
       from: startFrom,
       to: startTo,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
-    // 鐢?Widget 鏇挎崲浠ｇ爜鍐呭浠ュ疄鐜拌娉曢珮浜?
+    // 閻?Widget 閺囨寧宕叉禒锝囩垳閸愬懎顔愭禒銉ョ杽閻滄媽顕㈠▔鏇㈢彯娴?
     decorations.push({
       from: contentFrom,
       to: contentTo,
@@ -7424,7 +7923,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
         widget: new InlineCodeWidget(codeContent)
       }),
     });
-    // 闅愯棌鍚庨潰鐨?`
+    // 闂呮劘妫岄崥搴ㄦ桨閻?`
     decorations.push({
       from: endFrom,
       to: endTo,
@@ -7432,7 +7931,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 闅愯棌閾炬帴璇硶 [text](url) 涓殑 []() 閮ㄥ垎锛屽彧鏄剧ず鏂囨湰
+  // 闂呮劘妫岄柧鐐复鐠囶厽纭?[text](url) 娑擃厾娈?[]() 闁劌鍨庨敍灞藉涧閺勫墽銇氶弬鍥ㄦ拱
   const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
   while ((match = linkRegex.exec(doc)) !== null) {
     const fullMatch = match[0];
@@ -7442,13 +7941,13 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     const startParen = startBracket + 1 + text.length;
     const endParen = startBracket + fullMatch.length;
     
-    // 闅愯棌 [
+    // 闂呮劘妫?[
     decorations.push({
       from: startBracket,
       to: endBracket,
       decoration: Decoration.mark({ class: 'cm-hidden-syntax' }),
     });
-    // 闅愯棌 ](url)
+    // 闂呮劘妫?](url)
     decorations.push({
       from: startParen,
       to: endParen,
@@ -7456,7 +7955,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
     });
   }
   
-  // 鎸変綅缃帓搴忓苟鍘婚噸
+  // 閹稿缍呯純顔藉笓鎼村繐鑻熼崢濠氬櫢
   decorations.sort((a, b) => a.from - b.from);
   
   return RangeSet.of(
@@ -7466,7 +7965,7 @@ function parseMarkdownSyntax(doc: string): DecorationSet {
 }
 
 /**
- * Markdown 璇硶闅愯棌瑁呴グ鍣?StateField锛堥瑙堟ā寮忥級
+ * Markdown 鐠囶厽纭堕梾鎰鐟佸懘銈伴崳?StateField閿涘牓顣╃憴鍫熌佸蹇ョ礆
  */
 const markdownHideDecorations = StateField.define<DecorationSet>({
   create(state) {
@@ -7510,13 +8009,18 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
   onChange,
   editable = true,
   autoFocus = false,
+  tabId,
+  title,
+  filePath,
+  language,
   initialMode = 'source',
-  showOutline = true,
+  showOutline = false,
   isActive = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const isInternalChange = useRef(false);
+  const lastOutlineSnapshotRef = useRef<string>('');
   const [mode, setMode] = useState<EditorMode>(initialMode);
   const [outline, setOutline] = useState<OutlineItem[]>([]);
   const [colorBlocks, setColorBlocks] = useState<ColorBlockItem[]>([]);
@@ -7524,30 +8028,33 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
   const [outlineWidth, setOutlineWidth] = useState(300);
   const [isOutlineCollapsed, setIsOutlineCollapsed] = useState(false);
   const isResizingOutline = useRef(false);
+  const pendingLargeFileSyncTimerRef = useRef<number | null>(null);
+  const isLargeFileMode = content.length >= LARGE_FILE_CHARACTER_THRESHOLD;
+  const largeFileSummary = formatLargeFileApproximateSize(content.length);
 
-  // 涓婁笅鏂囪彍鍗曠姸鎬?
+  // 娑撳﹣绗呴弬鍥綅閸楁洜濮搁幀?
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
     y: number;
   }>({ visible: false, x: 0, y: 0 });
 
-  // 瑙嗛閾炬帴杈撳叆鐘舵€?
+  // 鐟欏棝顣堕柧鐐复鏉堟挸鍙嗛悩鑸碘偓?
   const [videoLinkInput, setVideoLinkInput] = useState<{
     visible: boolean;
     x: number;
     y: number;
   }>({ visible: false, x: 0, y: 0 });
 
-  // @ 寮曠敤鑿滃崟鐘舵€?
+  // @ 瀵洜鏁ら懣婊冨礋閻樿埖鈧?
   const [atReferenceMenu, setAtReferenceMenu] = useState<{
     visible: boolean;
     position: { top: number; left: number };
     searchQuery: string;
-    triggerPos: number; // @ 绗﹀彿鍦ㄦ枃妗ｄ腑鐨勪綅缃?
+    triggerPos: number; // @ 缁楋箑褰块崷銊︽瀮濡楋絼鑵戦惃鍕秴缂?
   }>({ visible: false, position: { top: 0, left: 0 }, searchQuery: '', triggerPos: 0 });
 
-  // 棰滆壊棰勮鐘舵€?
+  // 妫版粏澹婃０鍕潔閻樿埖鈧?
   const [colorPreview, setColorPreview] = useState<{
     type: 'color' | 'background-color' | null;
     color: string;
@@ -7555,22 +8062,87 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     to: number;
   } | null>(null);
 
-  // 淇濆瓨鎵撳紑棰滆壊閫夋嫨鍣ㄦ椂鐨勯€夊尯鑼冨洿
+  // 娣囨繂鐡ㄩ幍鎾崇磻妫版粏澹婇柅澶嬪閸ｃ劍妞傞惃鍕偓澶婂隘閼煎啫娲?
   const colorPickerSelectionRef = useRef<{ from: number; to: number } | null>(null);
+  const onChangeRef = useRef<CodeMirrorEditorProps['onChange']>(onChange);
+  const emitEditorContentChangedRef = useRef<((nextContent: string) => void) | null>(null);
+  const emitEditorContentChanged = useCallback((nextContent: string): void => {
+    if (!isActive) {
+      return;
+    }
 
-  // 鍏抽棴涓婁笅鏂囪彍鍗?
-  const closeContextMenu = useCallback(() => {
-    setContextMenu({ visible: false, x: 0, y: 0 });
-    setColorPreview(null); // 鍏抽棴鑿滃崟鏃舵竻闄ら瑙?
-    colorPickerSelectionRef.current = null; // 娓呴櫎淇濆瓨鐨勯€夊尯
+    const nextPath = filePath ?? '';
+    const nextLanguage = language ?? '';
+    const nextSnapshot = `${nextPath}\u0000${nextLanguage}\u0000${nextContent}`;
+    if (lastOutlineSnapshotRef.current === nextSnapshot) {
+      return;
+    }
+
+    lastOutlineSnapshotRef.current = nextSnapshot;
+    window.dispatchEvent(new CustomEvent('editor:content-changed', {
+      detail: {
+        content: nextContent,
+        language: nextLanguage,
+        path: nextPath,
+      },
+    }));
+  }, [filePath, isActive, language]);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    emitEditorContentChangedRef.current = emitEditorContentChanged;
+  }, [emitEditorContentChanged]);
+
+  const clearPendingLargeFileSync = useCallback(() => {
+    if (pendingLargeFileSyncTimerRef.current !== null) {
+      window.clearTimeout(pendingLargeFileSyncTimerRef.current);
+      pendingLargeFileSyncTimerRef.current = null;
+    }
   }, []);
 
-  // 鍏抽棴 @ 寮曠敤鑿滃崟
+  const flushPendingLargeFileSync = useCallback(() => {
+    clearPendingLargeFileSync();
+
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+
+    const nextContent = applyPendingUpdatesToContent(view.state.doc.toString());
+    const handleChange = onChangeRef.current;
+    if (handleChange && !isInternalChange.current) {
+      handleChange(nextContent);
+    }
+    emitEditorContentChangedRef.current?.(nextContent);
+  }, [clearPendingLargeFileSync]);
+
+  const schedulePendingLargeFileSync = useCallback(() => {
+    if (!isLargeFileMode || isInternalChange.current) {
+      return;
+    }
+
+    clearPendingLargeFileSync();
+    pendingLargeFileSyncTimerRef.current = window.setTimeout(() => {
+      pendingLargeFileSyncTimerRef.current = null;
+      flushPendingLargeFileSync();
+    }, LARGE_FILE_CHANGE_SYNC_DELAY_MS);
+  }, [clearPendingLargeFileSync, flushPendingLargeFileSync, isLargeFileMode]);
+
+  // 閸忔娊妫存稉濠佺瑓閺傚洩褰嶉崡?
+  const closeContextMenu = useCallback(() => {
+    setContextMenu({ visible: false, x: 0, y: 0 });
+    setColorPreview(null); // 閸忔娊妫撮懣婊冨礋閺冭埖绔婚梽銈夘暕鐟?
+    colorPickerSelectionRef.current = null; // 濞撳懘娅庢穱婵嗙摠閻ㄥ嫰鈧灏?
+  }, []);
+
+  // 閸忔娊妫?@ 瀵洜鏁ら懣婊冨礋
   const closeAtReferenceMenu = useCallback(() => {
     setAtReferenceMenu(prev => ({ ...prev, visible: false }));
   }, []);
 
-  // Wikilink 鑷姩琛ュ叏
+  // Wikilink 閼奉亜濮╃悰銉ュ弿
   const wikilinkCompletionSource = useCallback(async (context: CompletionContext) => {
     const textBeforeCursor = context.state.doc.sliceString(Math.max(0, context.pos - 200), context.pos);
 
@@ -7588,7 +8160,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
         from: context.pos - anchorMatch[2].length,
         options: (anchors || []).map((anchor): Completion => ({
           label: anchor.reference,
-          detail: `${anchor.kind === 'heading' ? '标题' : '块'} · 第${anchor.line} 行`,
+          detail: `${anchor.kind === 'heading' ? '标题' : '块'} · 第 ${anchor.line} 行`,
           type: anchor.kind === 'heading' ? 'property' : 'keyword',
           info: anchor.preview,
           apply: (view, completion, from, to) => {
@@ -7613,9 +8185,9 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       from: context.pos - linkMatch[1].length,
       options: (targets || []).map((target): Completion => ({
         label: target.title,
-        detail: target.path || '绗旇',
+        detail: target.path || '未保存路径',
         type: 'file',
-        info: target.aliases.length > 0 ? `鍒悕锛?{target.aliases.join('銆?)}` : undefined,
+        info: target.aliases.length > 0 ? `别名: ${target.aliases.join('、')}` : undefined,
         apply: (view, completion, from, to) => {
           const preferredReference = query.includes('/') || query.includes('\\')
             ? (target.path || target.title)
@@ -7627,38 +8199,38 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     };
   }, []);
 
-  // 澶勭悊琛ㄥ崟閫夋嫨
+  // 婢跺嫮鎮婄悰銊ュ礋闁瀚?
   const handleFormSelect = useCallback((form: FormInfo) => {
     const view = viewRef.current;
     if (!view) return;
 
-    // 鐢熸垚寮曠敤鏂囨湰
+    // 閻㈢喐鍨氬鏇犳暏閺傚洦婀?
     const referenceText = tableReferenceService.formatReference('form', form.id, form.name);
     
-    // 鏇挎崲 @ 鍙婂叾鍚庨潰鐨勬悳绱㈡枃鏈?
+    // 閺囨寧宕?@ 閸欏﹤鍙鹃崥搴ㄦ桨閻ㄥ嫭鎮崇槐銏℃瀮閺?
     const { triggerPos, searchQuery } = atReferenceMenu;
     const replaceFrom = triggerPos;
-    const replaceTo = triggerPos + 1 + searchQuery.length; // @ + 鎼滅储鏂囨湰
+    const replaceTo = triggerPos + 1 + searchQuery.length; // @ + 閹兼粎鍌ㄩ弬鍥ㄦ拱
 
     view.dispatch({
       changes: { from: replaceFrom, to: replaceTo, insert: referenceText },
       selection: { anchor: replaceFrom + referenceText.length },
     });
 
-    // 鍏抽棴鑿滃崟
+    // 閸忔娊妫撮懣婊冨礋
     closeAtReferenceMenu();
     
-    // 鑱氱劍缂栬緫鍣?
+    // 閼辨氨鍔嶇紓鏍帆閸?
     view.focus();
   }, [atReferenceMenu, closeAtReferenceMenu]);
 
-  // 棰滆壊棰勮鏁堟灉
+  // 妫版粏澹婃０鍕潔閺佸牊鐏?
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
 
     if (colorPreview && colorPreview.type) {
-      // 鍚屾椂璁剧疆棰勮瑁呴グ鍣ㄥ拰棰勮鑼冨洿锛堢敤浜庨殣钘忓凡鏈夐鑹诧級
+      // 閸氬本妞傜拋鍓х枂妫板嫯顫嶇憗鍛淬偘閸ｃ劌鎷版０鍕潔閼煎啫娲块敍鍫㈡暏娴滃酣娈ｉ挊蹇撳嚒閺堝顤侀懝璇х礆
       view.dispatch({
         effects: [
           setColorPreviewEffect.of({
@@ -7675,7 +8247,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
         ],
       });
     } else {
-      // 娓呴櫎棰勮鍜岄瑙堣寖鍥?
+      // 濞撳懘娅庢０鍕潔閸滃矂顣╃憴鍫ｅ瘱閸?
       view.dispatch({
         effects: [
           setColorPreviewEffect.of(null),
@@ -7685,7 +8257,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     }
   }, [colorPreview]);
 
-  // 涓婁笅鏂囪彍鍗曢」
+  // 娑撳﹣绗呴弬鍥綅閸楁洟銆?
   const getContextMenuItems = useCallback((): ContextMenuItem[] => {
     const view = viewRef.current;
     const selection = view?.state.selection.main;
@@ -7721,7 +8293,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           if (view) {
             const { from, to } = view.state.selection.main;
             const selectedText = view.state.sliceDoc(from, to);
-            const linkText = selectedText || '链接文本';
+              const linkText = selectedText || '链接文本';
             view.dispatch({
               changes: { from, to, insert: `[${linkText}](url)` },
             });
@@ -7742,7 +8314,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `**${selectedText || '粗体文本'}**` },
+                  changes: { from, to, insert: `**${selectedText || '加粗文本'}**` },
                 });
               }
             },
@@ -7782,7 +8354,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const { from, to } = view.state.selection.main;
                 const selectedText = view.state.sliceDoc(from, to);
                 view.dispatch({
-                  changes: { from, to, insert: `\`${selectedText || '代码'}\`` },
+                  changes: { from, to, insert: `\`${selectedText || '浠ｇ爜'}\`` },
                 });
               }
             },
@@ -7808,7 +8380,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const { from, to } = view.state.selection.main;
                 if (from === to) return;
                 const selectedText = view.state.sliceDoc(from, to);
-                // 娓呴櫎甯歌鏍煎紡鏍囪锛?*绮椾綋**銆?鏂滀綋*銆亊~鍒犻櫎绾縹~銆?=楂樹寒==銆乣浠ｇ爜`銆?鍏紡$
+                // 濞撳懘娅庣敮姝岊潌閺嶇厧绱￠弽鍥唶閿?*缁ぞ缍?*閵?閺傛粈缍?閵嗕簥~閸掔娀娅庣痪绺箏閵?=妤傛ü瀵?=閵嗕梗娴狅絿鐖渀閵?閸忣剙绱?
                 const cleanText = selectedText
                   .replace(/\*\*(.+?)\*\*/g, '$1')
                   .replace(/\*(.+?)\*/g, '$1')
@@ -7841,7 +8413,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-sky',
-            label: '天蓝',
+        label: '天蓝',
             color: 'rgba(56, 189, 248, 0.25)',
             action: () => {
               if (view) {
@@ -7851,7 +8423,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-cyan',
-            label: '青色',
+        label: '青色',
             color: 'rgba(34, 211, 238, 0.25)',
             action: () => {
               if (view) {
@@ -7861,7 +8433,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-teal',
-            label: '蓝绿',
+        label: '蓝绿',
             color: 'rgba(45, 212, 191, 0.25)',
             action: () => {
               if (view) {
@@ -7871,7 +8443,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-indigo',
-            label: '靛蓝',
+        label: '靛蓝',
             color: 'rgba(129, 140, 248, 0.3)',
             action: () => {
               if (view) {
@@ -7895,7 +8467,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             isCustomColor: true,
             onCustomColorPreview: (color: string) => {
               if (view) {
-                // 绗竴娆¤皟鐢ㄦ椂淇濆瓨閫夊尯
+                // 缁楊兛绔村▎陇鐨熼悽銊︽娣囨繂鐡ㄩ柅澶婂隘
                 if (!colorPickerSelectionRef.current) {
                   const { from, to } = view.state.selection.main;
                   if (from === to) {
@@ -7905,7 +8477,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                     colorPickerSelectionRef.current = { from, to };
                   }
                 }
-                // 浣跨敤淇濆瓨鐨勯€夊尯
+                // 娴ｈ法鏁ゆ穱婵嗙摠閻ㄥ嫰鈧灏?
                 const { from, to } = colorPickerSelectionRef.current;
                 setColorPreview({
                   type: 'background-color',
@@ -7919,7 +8491,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               setColorPreview(null);
               if (view && colorPickerSelectionRef.current) {
                 const { from, to } = colorPickerSelectionRef.current;
-                // 鎭㈠閫夊尯
+                // 閹垹顦查柅澶婂隘
                 view.dispatch({
                   selection: { anchor: from, head: to },
                 });
@@ -7928,7 +8500,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               colorPickerSelectionRef.current = null;
             },
             onCustomColorCancel: () => {
-              // 鍙栨秷鏃舵竻闄ら瑙?
+              // 閸欐牗绉烽弮鑸电闂勩倝顣╃憴?
               setColorPreview(null);
               colorPickerSelectionRef.current = null;
             },
@@ -7936,7 +8508,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'color-sep', label: '', separator: true },
           {
             id: 'text-red',
-            label: '红色文字',
+        label: '红色文字',
             color: '#ff0000',
             action: () => {
               if (view) {
@@ -7946,7 +8518,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-orange',
-            label: '橙色文字',
+        label: '橙色文字',
             color: '#ff8000',
             action: () => {
               if (view) {
@@ -7956,7 +8528,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-green',
-            label: '绿色文字',
+        label: '绿色文字',
             color: '#00cc00',
             action: () => {
               if (view) {
@@ -7966,7 +8538,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-blue',
-            label: '蓝色文字',
+        label: '蓝色文字',
             color: '#0066ff',
             action: () => {
               if (view) {
@@ -7976,7 +8548,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-purple',
-            label: '紫色文字',
+        label: '紫色文字',
             color: '#9900ff',
             action: () => {
               if (view) {
@@ -7986,11 +8558,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-custom',
-            label: '自定义文本颜色',
+            label: '自定义文字颜色',
             isCustomColor: true,
             onCustomColorPreview: (color: string) => {
               if (view) {
-                // 绗竴娆¤皟鐢ㄦ椂淇濆瓨閫夊尯
+                // 缁楊兛绔村▎陇鐨熼悽銊︽娣囨繂鐡ㄩ柅澶婂隘
                 if (!colorPickerSelectionRef.current) {
                   const { from, to } = view.state.selection.main;
                   if (from === to) {
@@ -8000,7 +8572,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                     colorPickerSelectionRef.current = { from, to };
                   }
                 }
-                // 浣跨敤淇濆瓨鐨勯€夊尯
+                // 娴ｈ法鏁ゆ穱婵嗙摠閻ㄥ嫰鈧灏?
                 const { from, to } = colorPickerSelectionRef.current;
                 setColorPreview({
                   type: 'color',
@@ -8014,7 +8586,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               setColorPreview(null);
               if (view && colorPickerSelectionRef.current) {
                 const { from, to } = colorPickerSelectionRef.current;
-                // 鎭㈠閫夊尯
+                // 閹垹顦查柅澶婂隘
                 view.dispatch({
                   selection: { anchor: from, head: to },
                 });
@@ -8023,7 +8595,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
               colorPickerSelectionRef.current = null;
             },
             onCustomColorCancel: () => {
-              // 鍙栨秷鏃舵竻闄ら瑙?
+              // 閸欐牗绉烽弮鑸电闂勩倝顣╃憴?
               setColorPreview(null);
               colorPickerSelectionRef.current = null;
             },
@@ -8181,18 +8753,18 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
                 const line = view.state.doc.lineAt(from);
                 const text = line.text;
                 
-                // 妫€鏌ユ槸鍚︽槸鏈夊簭鍒楄〃琛岋紙濡?1. 2. 绛夛級
+                // 濡偓閺屻儲妲搁崥锔芥Ц閺堝绨崚妤勩€冪悰宀嬬礄婵?1. 2. 缁涘绱?
                 const orderedMatch = text.match(/^(\s*)(\d+\.)\s*/);
                 if (orderedMatch) {
-                  // 鍦ㄦ湁搴忓垪琛ㄥ悗闈㈡坊鍔犲緟鍔炴竻鍗曟牸寮?
-                  const prefix = orderedMatch[0]; // 鍖呮嫭缂╄繘銆佹暟瀛楀拰鐐瑰悗鐨勭┖鏍?
+                  // 閸︺劍婀佹惔蹇撳灙鐞涖劌鎮楅棃銏″潑閸旂姴绶熼崝鐐寸閸楁洘鐗稿?
+                  const prefix = orderedMatch[0]; // 閸栧懏瀚紓鈺勭箻閵嗕焦鏆熺€涙鎷伴悙鐟版倵閻ㄥ嫮鈹栭弽?
                   const insertPos = line.from + prefix.length;
                   view.dispatch({
                     changes: { from: insertPos, insert: '[ ] ' },
                     selection: { anchor: insertPos + 4 },
                   });
                 } else {
-                  // 鏅€氳锛屽湪琛岄鎻掑叆寰呭姙娓呭崟
+                  // 閺咁噣鈧俺顢戦敍灞芥躬鐞涘矂顩婚幓鎺戝弳瀵板懎濮欏〒鍛礋
                   view.dispatch({
                     changes: { from: line.from, insert: '- [ ] ' },
                     selection: { anchor: line.from + 6 },
@@ -8263,7 +8835,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             id: 'video-link',
             label: '视频链接',
             action: () => {
-              // 鑾峰彇鍏夋爣浣嶇疆鐨勫睆骞曞潗鏍?
+              // 閼惧嘲褰囬崗澶嬬垼娴ｅ秶鐤嗛惃鍕潌楠炴洖娼楅弽?
               if (view) {
                 const { from } = view.state.selection.main;
                 const coords = view.coordsAtPos(from);
@@ -8281,7 +8853,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             id: 'database',
             label: '数据库视图',
             action: () => {
-              // 鎵撳紑鏁版嵁搴撹璁″櫒鏍囩椤?
+              // 閹垫挸绱戦弫鐗堝祦鎼存捁顔曠拋鈥虫珤閺嶅洨顒锋い?
               window.dispatchEvent(new CustomEvent('open-database-view'));
             },
           },
@@ -8312,7 +8884,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             id: 'local-audio',
             label: '本地音频',
             action: () => {
-              // TODO: 瀹炵幇鏈湴闊抽鎻掑叆
+              // TODO: 鐎圭偟骞囬張顒€婀撮棅鎶筋暥閹绘帒鍙?
               console.log('本地音频功能待实现');
             },
           },
@@ -8320,7 +8892,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             id: 'local-file',
             label: '本地文件',
             action: () => {
-              // TODO: 瀹炵幇鏈湴鏂囦欢鎻掑叆
+              // TODO: 鐎圭偟骞囬張顒€婀撮弬鍥︽閹绘帒鍙?
               console.log('本地文件功能待实现');
             },
           },
@@ -8334,7 +8906,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             id: 'canvas',
             label: '画布',
             action: () => {
-              // TODO: 瀹炵幇鐢绘澘鍔熻兘
+              // TODO: 鐎圭偟骞囬悽缁樻緲閸旂喕鍏?
               console.log('画布功能待实现');
             },
           },
@@ -8342,7 +8914,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
             id: 'mindmap',
             label: '思维导图',
             action: () => {
-              // TODO: 瀹炵幇鎬濈淮瀵煎浘鍔熻兘
+              // TODO: 鐎圭偟骞囬幀婵堟樊鐎电厧娴橀崝鐔诲厴
               console.log('思维导图功能待实现');
             },
           },
@@ -8441,19 +9013,25 @@ sequenceDiagram
     ];
   }, []);
 
-  // 鏇存柊澶х翰
+  // 閺囧瓨鏌婃径褏缈?
   const updateOutline = useCallback(() => {
+    if (!showOutline || isLargeFileMode) {
+      setOutline([]);
+      setColorBlocks([]);
+      return;
+    }
+
     const view = viewRef.current;
     if (!view) return;
 
     const doc = view.state.doc.toString();
     setOutline(parseOutline(doc));
 
-    // 鑹插潡淇℃伅宸茬Щ鑷充笂涓嬫枃鑿滃崟
+    // 閼规彃娼℃穱鈩冧紖瀹歌尙些閼峰厖绗傛稉瀣瀮閼挎粌宕?
     setColorBlocks([]);
-  }, []);
+  }, [isLargeFileMode, showOutline]);
 
-  // 璺宠浆鍒版寚瀹氫綅缃?
+  // 鐠哄疇娴嗛崚鐗堝瘹鐎规矮缍呯純?
   const scrollToPosition = useCallback((position: number) => {
     const view = viewRef.current;
     if (!view) return;
@@ -8489,7 +9067,7 @@ sequenceDiagram
     };
   }, [isActive, scrollToPosition]);
 
-  // 澶х翰闈㈡澘鎷栧姩璋冩暣瀹藉害
+  // 婢堆呯堪闂堛垺婢橀幏鏍уЗ鐠嬪啯鏆ｇ€硅棄瀹?
   const handleOutlineResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isResizingOutline.current = true;
@@ -8513,7 +9091,7 @@ sequenceDiagram
     document.addEventListener('mouseup', handleMouseUp);
   }, [outlineWidth]);
 
-  // 澶勭悊鎷栨嫿浜嬩欢
+  // 婢跺嫮鎮婇幏鏍ㄥ娴滃娆?
   const handleDrop = useCallback((event: DragEvent) => {
     const view = viewRef.current;
     if (!view || !editable) return;
@@ -8521,7 +9099,7 @@ sequenceDiagram
     const dataTransfer = event.dataTransfer;
     if (!dataTransfer) return;
 
-    // 澶勭悊鎷栨斁鐨勬枃浠?
+    // 婢跺嫮鎮婇幏鏍ㄦ杹閻ㄥ嫭鏋冩禒?
     if (dataTransfer.files?.length) {
       const files = Array.from(dataTransfer.files);
       const imageFiles = files.filter(file => file.type.startsWith('image/'));
@@ -8530,18 +9108,21 @@ sequenceDiagram
         event.preventDefault();
         event.stopPropagation();
 
-        // 鑾峰彇鎷栨斁浣嶇疆
+        // 閼惧嘲褰囬幏鏍ㄦ杹娴ｅ秶鐤?
         const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
         const insertPos = pos ?? view.state.selection.main.head;
 
-        imageFiles.forEach(file => {
-          handleImageFile(file, view, insertPos);
+        imageFiles.forEach((file) => {
+          void handleImageFile(file, view, insertPos, filePath).catch((error: Error) => {
+            console.error('[CodeMirrorEditor] 鎷栨嫿鍥剧墖淇濆瓨澶辫触:', error);
+            toastService.error(error.message || '鍥剧墖鎻掑叆澶辫触');
+          });
         });
         return;
       }
     }
 
-    // 澶勭悊鎷栨斁鐨勫浘鐗?URL
+    // 婢跺嫮鎮婇幏鏍ㄦ杹閻ㄥ嫬娴橀悧?URL
     const url = dataTransfer.getData('text/uri-list') || dataTransfer.getData('text/plain') || '';
 
     if (url && isImageUrl(url)) {
@@ -8555,7 +9136,7 @@ sequenceDiagram
     }
   }, [editable]);
 
-  // 澶勭悊绮樿创浜嬩欢
+  // 婢跺嫮鎮婄划妯垮垱娴滃娆?
   const handlePaste = useCallback((event: ClipboardEvent) => {
     const view = viewRef.current;
     if (!view || !editable) return;
@@ -8572,40 +9153,54 @@ sequenceDiagram
         const file = item.getAsFile();
         if (file) {
           const pos = view.state.selection.main.head;
-          handleImageFile(file, view, pos);
+          void handleImageFile(file, view, pos, filePath).catch((error: Error) => {
+            console.error('[CodeMirrorEditor] 绮樿创鍥剧墖淇濆瓨澶辫触:', error);
+            toastService.error(error.message || '鍥剧墖鎻掑叆澶辫触');
+          });
         }
         return;
       }
     }
-  }, [editable]);
+  }, [editable, filePath]);
 
-  // 鍒涘缓缂栬緫鍣?
+  // 閸掓稑缂撶紓鏍帆閸?
   useEffect(() => {
     if (!containerRef.current) return;
 
     const updateListener = EditorView.updateListener.of((update) => {
-      if (update.docChanged && onChange && !isInternalChange.current) {
-        // 鑾峰彇鏂囨。鍐呭骞跺簲鐢ㄥ緟鍚屾鐨勪唬鐮佸潡鍚嶇О鏇存柊
-        let newContent = update.state.doc.toString();
-        newContent = applyPendingUpdatesToContent(newContent);
-        onChange(newContent);
+      if (update.docChanged && isLargeFileMode) {
+        schedulePendingLargeFileSync();
+        setAtReferenceMenu(prev => (
+          prev.visible
+            ? { ...prev, visible: false }
+            : prev
+        ));
+        return;
       }
 
-      // 妫€娴?@ 寮曠敤杈撳叆
+      if (update.docChanged && onChangeRef.current && !isInternalChange.current) {
+        // 閼惧嘲褰囬弬鍥ㄣ€傞崘鍛啇楠炶泛绨查悽銊ョ窡閸氬本顒為惃鍕敩閻礁娼￠崥宥囆為弴瀛樻煀
+        let newContent = update.state.doc.toString();
+        newContent = applyPendingUpdatesToContent(newContent);
+        onChangeRef.current(newContent);
+      }
+
+      // 濡偓濞?@ 瀵洜鏁ゆ潏鎾冲弳
       if (update.docChanged) {
         const { state } = update;
         const pos = state.selection.main.head;
         const line = state.doc.lineAt(pos);
         const textBefore = line.text.slice(0, pos - line.from);
         
-        // 妫€鏌ユ槸鍚﹁緭鍏ヤ簡 @ 鎴栬€呮鍦ㄨ緭鍏?@ 鍚庣殑鍐呭
+        // 濡偓閺屻儲妲搁崥锕佺翻閸忋儰绨?@ 閹存牞鈧懏顒滈崷銊ㄧ翻閸?@ 閸氬海娈戦崘鍛啇
+        emitEditorContentChangedRef.current?.(update.state.doc.toString());
         const atMatch = textBefore.match(/@([^\s@]*)$/);
         
         if (atMatch) {
-          // 鑾峰彇鍏夋爣浣嶇疆鐨勫睆骞曞潗鏍?
+          // 閼惧嘲褰囬崗澶嬬垼娴ｅ秶鐤嗛惃鍕潌楠炴洖娼楅弽?
           const coords = update.view.coordsAtPos(pos);
           if (coords) {
-            const triggerPos = pos - atMatch[1].length - 1; // @ 绗﹀彿鐨勪綅缃?
+            const triggerPos = pos - atMatch[1].length - 1; // @ 缁楋箑褰块惃鍕秴缂?
             setAtReferenceMenu({
               visible: true,
               position: {
@@ -8617,7 +9212,7 @@ sequenceDiagram
             });
           }
         } else if (atReferenceMenu.visible) {
-          // 濡傛灉娌℃湁鍖归厤鍒?@ 妯″紡锛屽叧闂彍鍗?          setAtReferenceMenu(prev => ({ ...prev, visible: false }));
+          // 婵″倹鐏夊▽鈩冩箒閸栧綊鍘ら崚?@ 濡€崇础閿涘苯鍙ч梻顓″綅閸?          setAtReferenceMenu(prev => ({ ...prev, visible: false }));
         }
 
         if (/\[\[[^\]|]*$/.test(textBefore) || /\[\[[^\]|#]+\#[^\]|]*$/.test(textBefore)) {
@@ -8626,8 +9221,8 @@ sequenceDiagram
       }
     });
 
-    // 鏍规嵁妯″紡鍐冲畾鏄惁浣跨敤棰勮瑁呴グ鍣?
-    const extensions = [
+    // 閺嶈宓佸Ο鈥崇础閸愬啿鐣鹃弰顖氭儊娴ｈ法鏁ゆ０鍕潔鐟佸懘銈伴崳?
+    let extensions = [
       highlightActiveLine(),
       history(),
       markdown(),
@@ -8637,12 +9232,12 @@ sequenceDiagram
         override: [wikilinkCompletionSource]
       }),
       syntaxHighlighting(customHighlightStyle),
-      indentUnit.of('  '), // 2 绌烘牸缂╄繘
-      customKeymap, // 鑷畾涔夐敭鐩樻槧灏勬斁鍦ㄩ粯璁ら敭鐩樻槧灏勪箣鍓嶏紝纭繚浼樺厛澶勭悊
+      indentUnit.of('  '), // 2 缁岀儤鐗哥紓鈺勭箻
+      customKeymap, // 閼奉亜鐣炬稊澶愭暛閻╂ɑ妲х亸鍕杹閸︺劑绮拋銈夋暛閻╂ɑ妲х亸鍕閸撳稄绱濈涵顔荤箽娴兼ê鍘涙径鍕倞
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       updateListener,
-      mermaidDecorations, // Mermaid 鍥捐〃瑁呴グ鍣?
-      videoDecorations, // 瑙嗛瑁呴グ鍣ㄦ斁鍦ㄥ浘鐗囦箣鍓嶏紝浼樺厛鍖归厤瑙嗛閾炬帴
+      mermaidDecorations, // Mermaid 閸ユ崘銆冪憗鍛淬偘閸?
+      videoDecorations, // 鐟欏棝顣剁憗鍛淬偘閸ｃ劍鏂侀崷銊ユ禈閻楀洣绠ｉ崜宥忕礉娴兼ê鍘涢崠褰掑帳鐟欏棝顣堕柧鐐复
       imageDecorations,
       tableDecorations,
       headingDecorations,
@@ -8653,25 +9248,25 @@ sequenceDiagram
       blockquoteDecorations,
       horizontalRuleDecorations,
       codeBlockDecorations,
-      // 缂╄繘绾?
+      // 缂傗晞绻樼痪?
       indentGuideDecorations,
-      // 搴忓彿楂樹寒锛堝 4.2銆?.2.1銆?.2.1.1锛?
+      // 鎼村繐褰挎妯瑰瘨閿涘牆顩?4.2閵?.2.1閵?.2.1.1閿?
       numberingDecorations,
-      // 鏂囨湰棰滆壊绯荤粺 - 绾?StateField + Decoration 鏂规
+      // 閺傚洦婀版０婊嗗缁崵绮?- 缁?StateField + Decoration 閺傝顢?
       colorMarksField,
       previewRangeField,
       Prec.highest(colorDecorationsField),
-      // 棰滆壊棰勮瑁呴グ鍣?
+      // 妫版粏澹婃０鍕潔鐟佸懘銈伴崳?
       colorPreviewDecorations,
-      // 鎶樺彔缁勯珮浜紙鍏夋爣閫変腑鏃舵樉绀虹埗绾х殑鎶樺彔鍥炬爣鍜屽瓙琛岀殑缂╄繘绾匡級
+      // 閹舵ê褰旂紒鍕彯娴滎噯绱欓崗澶嬬垼闁鑵戦弮鑸垫▔缁€铏瑰煑缁狙呮畱閹舵ê褰旈崶鐐垼閸滃苯鐡欑悰宀€娈戠紓鈺勭箻缁惧尅绱?
       foldGroupHighlightField,
-      // 鎶樺彔鍔熻兘锛堜笉浣跨敤 customFoldService锛岄伩鍏嶄笌 markdown 瑙ｆ瀽鍣ㄥ啿绐侊級
+      // 閹舵ê褰旈崝鐔诲厴閿涘牅绗夋担璺ㄦ暏 customFoldService閿涘矂浼╅崗宥勭瑢 markdown 鐟欙絾鐎介崳銊ュ暱缁愪緤绱?
       headingFoldMarkers,
       headingFoldGutter,
       listFoldDecorations,
-      // 鍐呰仈 AI 鑱婂ぉ
+      // 閸愬懓浠?AI 閼卞﹤銇?
       inlineAIChatField,
-      // 琛ㄦ牸寮曠敤鍐呰仈棰勮
+      // 鐞涖劍鐗稿鏇犳暏閸愬懓浠堟０鍕潔
       ...createTableReferenceExtension(),
       codeFolding({
         placeholderDOM: (_view, onclick) => {
@@ -8679,7 +9274,7 @@ sequenceDiagram
           span.className = 'cm-foldPlaceholder';
           span.textContent = '...';
 
-          span.title = '鐐瑰嚮灞曞紑';
+          span.title = '点击展开折叠内容';
           span.onclick = onclick;
           return span;
         },
@@ -8705,13 +9300,39 @@ sequenceDiagram
       }),
     ];
 
-    // 棰勮妯″紡娣诲姞闅愯棌 Markdown 璇硶鐨勮楗板櫒
-    if (mode === 'preview') {
+    // 妫板嫯顫嶅Ο鈥崇础濞ｈ濮為梾鎰 Markdown 鐠囶厽纭堕惃鍕棅妤楁澘娅?
+    if (isLargeFileMode) {
+      extensions = [
+        highlightActiveLine(),
+        history(),
+        indentUnit.of('  '),
+        customKeymap,
+        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        updateListener,
+        EditorState.readOnly.of(!editable),
+        EditorView.theme({
+          '&': {
+            height: '100%'
+          },
+          '.cm-scroller': {
+            overflow: 'auto'
+          },
+          '.cm-content': {
+            caretColor: 'var(--ws-editor-foreground)'
+          },
+          '&.cm-focused .cm-cursor': {
+            borderLeftColor: 'var(--ws-editor-foreground)',
+          },
+        }),
+      ];
+    }
+
+    if (!isLargeFileMode && mode === 'preview') {
       extensions.push(markdownHideDecorations);
-    } else {
-      // 婧愮爜妯″紡娣诲姞鏍囬璇硶闅愯棌瑁呴グ鍣紙鎵€瑙佸嵆鎵€寰楋級
+    } else if (!isLargeFileMode) {
+      // 濠ф劗鐖滃Ο鈥崇础濞ｈ濮為弽鍥暯鐠囶厽纭堕梾鎰鐟佸懘銈伴崳顭掔礄閹碘偓鐟欎礁宓嗛幍鈧妤嬬礆
       extensions.push(headingSyntaxHideDecorations);
-      // 婧愮爜妯″紡娣诲姞琛屽唴浠ｇ爜楂樹寒瑁呴グ鍣?
+      // 濠ф劗鐖滃Ο鈥崇础濞ｈ濮炵悰灞藉敶娴狅絿鐖滄妯瑰瘨鐟佸懘銈伴崳?
       extensions.push(inlineCodeHighlightDecorations);
     }
 
@@ -8726,42 +9347,44 @@ sequenceDiagram
     });
 
     viewRef.current = view;
-    globalEditorView = view;
 
     sanitizeCodeMirrorLineFontFamily(view.dom);
-    const cmLineFontObserver = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'attributes' && mutation.target instanceof Element) {
-          if (isCodeMirrorLineElement(mutation.target)) {
-            removeCodeMirrorLineFontFamily(mutation.target);
+    let cmLineFontObserver: MutationObserver | null = null;
+    if (!isLargeFileMode) {
+      cmLineFontObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === 'attributes' && mutation.target instanceof Element) {
+            if (isCodeMirrorLineElement(mutation.target)) {
+              removeCodeMirrorLineFontFamily(mutation.target);
+            }
+            continue;
           }
-          continue;
+
+          if (mutation.type === 'childList') {
+            mutation.addedNodes.forEach((node) => {
+              if (!(node instanceof Element)) {
+                return;
+              }
+
+              if (isCodeMirrorLineElement(node)) {
+                removeCodeMirrorLineFontFamily(node);
+              }
+
+              sanitizeCodeMirrorLineFontFamily(node);
+            });
+          }
         }
+      });
 
-        if (mutation.type === 'childList') {
-          mutation.addedNodes.forEach((node) => {
-            if (!(node instanceof Element)) {
-              return;
-            }
+      cmLineFontObserver.observe(view.dom, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['style', 'class']
+      });
+    }
 
-            if (isCodeMirrorLineElement(node)) {
-              removeCodeMirrorLineFontFamily(node);
-            }
-
-            sanitizeCodeMirrorLineFontFamily(node);
-          });
-        }
-      }
-    });
-
-    cmLineFontObserver.observe(view.dom, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ['style', 'class']
-    });
-
-    // 鍒濆鍖栧ぇ绾?
+    // 閸掓繂顫愰崠鏍с亣缁?
     updateOutline();
 
     if (autoFocus) {
@@ -8769,22 +9392,98 @@ sequenceDiagram
     }
 
     return () => {
-      cmLineFontObserver.disconnect();
+      flushPendingLargeFileSync();
+      cmLineFontObserver?.disconnect();
       view.destroy();
       viewRef.current = null;
-      globalEditorView = null;
     };
-  }, [editable, mode, updateOutline, wikilinkCompletionSource]);
+  }, [
+    autoFocus,
+    editable,
+    flushPendingLargeFileSync,
+    isLargeFileMode,
+    mode,
+    schedulePendingLargeFileSync,
+    updateOutline,
+    wikilinkCompletionSource,
+  ]);
 
-  // 娉ㄦ剰锛氫唬鐮佸潡鍚嶇О鐨勫悓姝ュ凡绉昏嚦鏂囨。淇濆瓨鏃跺鐞?
-  // 杩欐牱鍙互閬垮厤鍦?Widget 鏇存柊杩囩▼涓Е鍙?CodeMirror 鍐呴儴閿欒
+  useEffect(() => {
+    if (!isActive) {
+      flushPendingLargeFileSync();
+    }
+  }, [flushPendingLargeFileSync, isActive]);
 
-  // 鐩戝惉瑙嗛鏍囬鍜屾樉绀烘ā寮忓彉鍖栦簨浠?
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+
+    if (!isActive) {
+      if (globalEditorView === view) {
+        globalEditorView = null;
+      }
+      clearActiveCodeMirrorEditor(view);
+      return;
+    }
+
+    globalEditorView = view;
+    setActiveCodeMirrorEditor(view, {
+      tabId,
+      title,
+      path: filePath,
+      language,
+    });
+
+    return () => {
+      if (globalEditorView === view) {
+        globalEditorView = null;
+      }
+      clearActiveCodeMirrorEditor(view);
+    };
+  }, [filePath, isActive, language, tabId, title]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+
+    const handleFocusIn = () => {
+      globalEditorView = view;
+      setActiveCodeMirrorEditor(view, {
+        tabId,
+        title,
+        path: filePath,
+        language,
+      });
+    };
+
+    view.dom.addEventListener('focusin', handleFocusIn);
+
+    return () => {
+      view.dom.removeEventListener('focusin', handleFocusIn);
+    };
+  }, [filePath, language, tabId, title]);
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+
+    emitEditorContentChanged(view.state.doc.toString());
+  }, [content, emitEditorContentChanged]);
+
+  // 濞夈劍鍓伴敍姘敩閻礁娼￠崥宥囆為惃鍕倱濮濄儱鍑＄粔鏄忓殾閺傚洦銆傛穱婵嗙摠閺冭泛顦╅悶?
+  // 鏉╂瑦鐗遍崣顖欎簰闁灝鍘ら崷?Widget 閺囧瓨鏌婃潻鍥┾柤娑擃叀袝閸?CodeMirror 閸愬懘鍎撮柨娆掝嚖
+
+  // 閻╂垵鎯夌憴鍡涱暥閺嶅洭顣介崪灞炬▔缁€鐑樐佸蹇撳綁閸栨牔绨ㄦ禒?
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
 
-    // 浠ｇ爜鍧楀悕绉板彉鍖栧鐞?
+    // 娴狅絿鐖滈崸妤€鎮曠粔鏉垮綁閸栨牕顦╅悶?
     const handleCodeBlockNameChange = (event: Event) => {
       const customEvent = event as CustomEvent<{
         language: string;
@@ -8793,18 +9492,18 @@ sequenceDiagram
       }>;
       const { language, oldName, newName } = customEvent.detail;
       
-      // 浣跨敤 setTimeout 寤惰繜鎵ц锛岀‘淇濆湪 CodeMirror 瀹屾垚褰撳墠鏇存柊鍛ㄦ湡鍚庡啀鎵ц
+      // 娴ｈ法鏁?setTimeout 瀵ゆ儼绻滈幍褑顢戦敍宀€鈥樻穱婵嗘躬 CodeMirror 鐎瑰本鍨氳ぐ鎾冲閺囧瓨鏌婇崨銊︽埂閸氬骸鍟€閹笛嗩攽
       setTimeout(() => {
         const currentView = viewRef.current;
         if (!currentView || !currentView.dom || !currentView.dom.isConnected) return;
         
-        // 鍦ㄦ枃妗ｄ腑鏌ユ壘鍖归厤鐨勪唬鐮佸潡寮€濮嬭骞舵洿鏂?
+        // 閸︺劍鏋冨锝勮厬閺屻儲澹橀崠褰掑帳閻ㄥ嫪鍞惍浣告健瀵偓婵顢戦獮鑸垫纯閺?
         const doc = currentView.state.doc;
         for (let i = 1; i <= doc.lines; i++) {
           const line = doc.line(i);
           const lineText = line.text;
           
-          // 鍖归厤 ```language // oldName 鏍煎紡
+          // 閸栧綊鍘?```language // oldName 閺嶇厧绱?
           const oldPattern = oldName 
             ? new RegExp(`^\`\`\`${language}\\s*\\/\\/\\s*${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
             : new RegExp(`^\`\`\`${language}$`);
@@ -8826,7 +9525,7 @@ sequenceDiagram
       }, 50);
     };
 
-    // 瑙嗛鏍囬鍙樺寲澶勭悊
+    // 鐟欏棝顣堕弽鍥暯閸欐ê瀵叉径鍕倞
     const handleVideoTitleChange = (event: Event) => {
       const customEvent = event as CustomEvent<{
         from: number;
@@ -8843,7 +9542,7 @@ sequenceDiagram
       });
     };
 
-    // 瑙嗛鏄剧ず妯″紡鍙樺寲澶勭悊
+    // 鐟欏棝顣堕弰鍓с仛濡€崇础閸欐ê瀵叉径鍕倞
     const handleVideoModeChange = (event: Event) => {
       const customEvent = event as CustomEvent<{
         from: number;
@@ -8860,7 +9559,7 @@ sequenceDiagram
       });
     };
 
-    // 瑙嗛鍒犻櫎澶勭悊
+    // 鐟欏棝顣堕崚鐘绘珟婢跺嫮鎮?
     const handleVideoDelete = (event: Event) => {
       const customEvent = event as CustomEvent<{ from: number; to: number }>;
       const { from, to } = customEvent.detail;
@@ -8869,19 +9568,19 @@ sequenceDiagram
       });
     };
 
-    // 鏈湴瑙嗛閫夋嫨澶勭悊
+    // 閺堫剙婀寸憴鍡涱暥闁瀚ㄦ径鍕倞
     const handleVideoSelectLocal = async (event: Event) => {
       const customEvent = event as CustomEvent<{ from: number; to: number; title: string }>;
       const { from, to, title } = customEvent.detail;
       
-      // 璋冪敤 Electron 鎵撳紑鏂囦欢瀵硅瘽妗?
+      // 鐠嬪啰鏁?Electron 閹垫挸绱戦弬鍥︽鐎电鐦藉?
       const result = await window.electron?.video?.open();
-      console.log('[handleVideoSelectLocal] 閫夋嫨缁撴灉:', result);
+      console.log('[handleVideoSelectLocal] 闁瀚ㄧ紒鎾寸亯:', result);
       if (result && result.success && result.data?.path) {
         const filePath = result.data.path;
-        console.log('[handleVideoSelectLocal] 鏂囦欢璺緞:', filePath);
+        console.log('[handleVideoSelectLocal] 閺傚洣娆㈢捄顖氱窞:', filePath);
         const newMarkdown = `![${title}](${filePath})`;
-        console.log('[handleVideoSelectLocal] 鎻掑叆 markdown:', newMarkdown);
+        console.log('[handleVideoSelectLocal] 閹绘帒鍙?markdown:', newMarkdown);
         view.dispatch({
           changes: { from, to, insert: newMarkdown },
         });
@@ -8903,22 +9602,22 @@ sequenceDiagram
     };
   }, []);
 
-  // 鍐呭鍙樺寲鏃舵洿鏂板ぇ绾?
+  // 閸愬懎顔愰崣妯哄閺冭埖娲块弬鏉裤亣缁?
   useEffect(() => {
     updateOutline();
   }, [content, updateOutline]);
 
-  // 缁戝畾鎷栨嫿鍜岀矘璐翠簨浠?
+  // 缂佹垵鐣鹃幏鏍ㄥ閸滃瞼鐭樼拹缈犵皑娴?
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // 闃绘榛樿鎷栨嫿琛屼负
+    // 闂冪粯顒涙妯款吇閹锋牗瀚跨悰灞艰礋
     const handleDragOver = (event: DragEvent) => {
       event.preventDefault();
     };
 
-    // 鍙抽敭鑿滃崟澶勭悊
+    // 閸欐娊鏁懣婊冨礋婢跺嫮鎮?
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
       setContextMenu({
@@ -8941,7 +9640,7 @@ sequenceDiagram
     };
   }, [handleDrop, handlePaste]);
 
-  // 鍚屾澶栭儴 content 鍙樺寲
+  // 閸氬本顒炴径鏍劥 content 閸欐ê瀵?
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -8960,7 +9659,7 @@ sequenceDiagram
     }
   }, [content]);
 
-  // 鐩戝惉妯″紡鍒囨崲浜嬩欢锛堟潵鑷?TabBar 鏇村鎿嶄綔鑿滃崟锛?
+  // 閻╂垵鎯夊Ο鈥崇础閸掑洦宕叉禍瀣╂閿涘牊娼甸懛?TabBar 閺囨潙顦块幙宥勭稊閼挎粌宕熼敍?
   useEffect(() => {
     const handleModeChange = (event: CustomEvent<EditorMode>) => {
       setMode(event.detail);
@@ -8972,18 +9671,18 @@ sequenceDiagram
     };
   }, []);
 
-  // 鐩戝惉鎻掑叆鏁版嵁搴撹〃鏍间簨浠?
+  // 閻╂垵鎯夐幓鎺戝弳閺佺増宓佹惔鎾广€冮弽闂寸皑娴?
   useEffect(() => {
     const handleInsertDatabaseTable = (event: Event) => {
       const customEvent = event as CustomEvent<{ markdown: string; focusEditor?: boolean; handled?: boolean }>;
       
-      // 濡傛灉浜嬩欢宸茶澶勭悊锛岃烦杩?
+      // 婵″倹鐏夋禍瀣╂瀹歌尪顫︽径鍕倞閿涘矁鐑︽潻?
       if (customEvent.detail?.handled) return;
       
       const { markdown } = customEvent.detail;
       
       if (viewRef.current && markdown) {
-        // 鏍囪浜嬩欢宸插鐞嗭紝闃叉鍏朵粬缂栬緫鍣ㄩ噸澶嶅鐞?
+        // 閺嶅洩顔囨禍瀣╂瀹告彃顦╅悶鍡礉闂冨弶顒涢崗鏈电铂缂傛牞绶崳銊╁櫢婢跺秴顦╅悶?
         customEvent.detail.handled = true;
         
         const { from } = viewRef.current.state.selection.main;
@@ -9002,7 +9701,15 @@ sequenceDiagram
   }, []);
 
   return (
-    <div className={`codemirror-editor ${mode === 'preview' ? 'preview-mode' : 'source-mode'}`}>
+    <div className={`codemirror-editor ${mode === 'preview' ? 'preview-mode' : 'source-mode'} ${isLargeFileMode ? 'large-file-mode' : ''}`}>
+      {isLargeFileMode && (
+        <div className="cm-large-file-notice">
+          <span className="cm-large-file-notice-title">大文件模式</span>
+          <span className="cm-large-file-notice-text">
+            当前文档约 {largeFileSummary}，已关闭语法增强、嵌入预览、自动补全和自动换行，以减少卡顿。
+          </span>
+        </div>
+      )}
       <div className="cm-main-content">
         <div className="cm-editor-container" ref={containerRef} />
         {showOutline && (
@@ -9023,13 +9730,13 @@ sequenceDiagram
                     className={`cm-outline-tab ${outlineTab === 'headings' ? 'active' : ''}`}
                     onClick={() => setOutlineTab('headings')}
                   >
-                    澶х翰
+                    大纲
                   </div>
                   <div
                     className={`cm-outline-tab ${outlineTab === 'colors' ? 'active' : ''}`}
                     onClick={() => setOutlineTab('colors')}
                   >
-                    鑹插潡
+                    色块
                   </div>
                   <div className="cm-outline-tab-spacer" />
                 </>
@@ -9047,7 +9754,7 @@ sequenceDiagram
                 {outlineTab === 'headings' && (
                   <div className="cm-outline-list">
                     {outline.length === 0 ? (
-                      <div className="cm-outline-empty">鏆傛棤鏍囬</div>
+                      <div className="cm-outline-empty">暂无大纲</div>
                     ) : (
                       outline.map(item => (
                         <div
@@ -9065,14 +9772,14 @@ sequenceDiagram
                 {outlineTab === 'colors' && (
                   <div className="cm-outline-list">
                     {colorBlocks.length === 0 ? (
-                      <div className="cm-outline-empty">鏆傛棤鑹插潡</div>
+                      <div className="cm-outline-empty">暂无色块</div>
                     ) : (
                       colorBlocks.map(item => (
                         <div
                           key={item.id}
                           className="cm-outline-item cm-color-block-item"
                           onClick={() => scrollToPosition(item.position)}
-                          title={`第${item.lineNumber} 行`}
+                           title={`第 ${item.lineNumber} 行`}
                         >
                           <span
                             className="cm-color-indicator"

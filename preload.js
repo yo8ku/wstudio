@@ -227,18 +227,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ai: {
     fetch: (url, options) => ipcRenderer.invoke('ai:fetch', url, options)
   },
-  
+
   // 事件监听 API
   on: (channel, callback) => {
     const subscription = (event, ...args) => callback(...args);
     ipcRenderer.on(channel, subscription);
     return () => ipcRenderer.removeListener(channel, subscription);
   },
-  
+  off: (channel, callback) => {
+    ipcRenderer.removeListener(channel, callback);
+  },
+
   // 设置相关 API
   settings: {
     getAll: () => ipcRenderer.invoke('settings:get-all'),
     get: (key) => ipcRenderer.invoke('settings:get', key),
+    set: (key, value, target) => ipcRenderer.invoke('settings:update', key, value, target),
     update: (key, value, target) => ipcRenderer.invoke('settings:update', key, value, target),
     updateMany: (updates, target) => ipcRenderer.invoke('settings:update-many', updates, target),
     reset: (key) => ipcRenderer.invoke('settings:reset', key),
@@ -248,28 +252,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     export: () => ipcRenderer.invoke('settings:export'),
     getDefaults: () => ipcRenderer.invoke('settings:get-defaults')
   },
-  
+
   // 文件系统 API
   fs: {
     readFile: (filePath, encoding) => ipcRenderer.invoke('fs:read-file', filePath, encoding),
     writeFile: (filePath, content, encoding) => ipcRenderer.invoke('fs:write-file', filePath, content, encoding),
     exists: (filePath) => ipcRenderer.invoke('fs:exists', filePath)
   },
-  
-  // AI API 请求代理
-  ai: {
-    fetch: (url, options) => ipcRenderer.invoke('ai:fetch', url, options)
-  },
-  
-  // 内置AI服务 API（独立于用户AI配置）
+
+  // 内置 AI 服务 API
   builtinAI: {
     getModels: () => ipcRenderer.invoke('builtin-ai:get-models'),
     refreshModels: () => ipcRenderer.invoke('builtin-ai:refresh-models'),
     updateUserModels: (models) => ipcRenderer.invoke('builtin-ai:update-user-models', models),
     updateUserModelConfigs: (configs) => ipcRenderer.invoke('builtin-ai:update-user-model-configs', configs)
   },
-  
-  // 聊天历史 API（SQLite）
+
+  // 聊天历史 API
   chatHistory: {
     init: () => ipcRenderer.invoke('chat-history:init'),
     createSession: (session) => ipcRenderer.invoke('chat-history:create-session', session),
@@ -281,25 +280,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearAll: () => ipcRenderer.invoke('chat-history:clear-all')
   },
 
-  // 常用片段配置 API
-  
-  // 系统信息
-  platform: process.platform,
   version: process.versions.electron,
-  
+
   // 窗口控制 API
   minimizeWindow: () => ipcRenderer.send('minimize-window'),
-  maximizeWindow: () => ipcRenderer.send('maximize-window'),
+  maximizeWindow: () => ipcRenderer.invoke('window:toggle-maximize'),
   closeWindow: () => ipcRenderer.send('close-window'),
-  
-  // 窗口焦点状态监听
+  isWindowMaximized: () => ipcRenderer.invoke('window:is-maximized'),
+
+  // 窗口状态监听
   onWindowFocus: (callback) => {
     ipcRenderer.on('window-focus', () => callback(true));
   },
   onWindowBlur: (callback) => {
     ipcRenderer.on('window-blur', () => callback(false));
   },
-  
+  onWindowMaximizedStateChanged: (callback) => {
+    ipcRenderer.on('window-maximized-state-changed', (_event, isMaximized) => callback(isMaximized));
+  },
+
   // 打开视频文件对话框
   openVideoFile: async () => {
     const result = await ipcRenderer.invoke('video:open');

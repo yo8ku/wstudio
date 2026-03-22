@@ -8,11 +8,6 @@
   border-bottom-color: var(--ws-editorGroupHeader-tabsBorder);
 }
 
-.titlebar-button{
-  &:hover{
-    
-  }
-}
 
 .tab-bar-scroll-container {
   &::-webkit-scrollbar-track {
@@ -55,24 +50,6 @@
 
   &-border-top {
     background-color: var(--ws-tab-activeBorderTop);
-  }
-
-  &-close {
-    &:hover {
-      background-color: red;
-    }
-
-    &:active {
-    }
-  }
-}
-
-.tab-bar-action-btn {
-  &:hover {
-  }
-
-  &:active {
-    background-color: var(--ws-toolbar-active-background);
   }
 }
 

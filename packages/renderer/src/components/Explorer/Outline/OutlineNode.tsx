@@ -1,10 +1,11 @@
 import React from 'react';
-import { OutlineNode as OutlineNodeType, OutlineSymbolKind } from './types';
+import { Icon } from '../../Icons/Icon';
+import { OutlineNode as OutlineNodeType } from './types';
 
 export interface OutlineNodeProps {
   node: OutlineNodeType;
   level?: number;
-  selected?: boolean;
+  selectedNodeId?: string;
   onSelect: (node: OutlineNodeType) => void;
   onToggle?: (node: OutlineNodeType) => void;
 }
@@ -12,44 +13,12 @@ export interface OutlineNodeProps {
 export const OutlineNode: React.FC<OutlineNodeProps> = ({
   node,
   level = 0,
-  selected = false,
+  selectedNodeId,
   onSelect,
   onToggle,
 }) => {
   const hasChildren = node.children && node.children.length > 0;
-
-  const getIcon = (kind: OutlineSymbolKind): string => {
-    switch (kind) {
-      case OutlineSymbolKind.Class:
-        return 'codicon-symbol-class';
-      case OutlineSymbolKind.Interface:
-        return 'codicon-symbol-interface';
-      case OutlineSymbolKind.Method:
-        return 'codicon-symbol-method';
-      case OutlineSymbolKind.Function:
-        return 'codicon-symbol-function';
-      case OutlineSymbolKind.Property:
-        return 'codicon-symbol-property';
-      case OutlineSymbolKind.Field:
-        return 'codicon-symbol-field';
-      case OutlineSymbolKind.Variable:
-        return 'codicon-symbol-variable';
-      case OutlineSymbolKind.Constant:
-        return 'codicon-symbol-constant';
-      case OutlineSymbolKind.Enum:
-        return 'codicon-symbol-enum';
-      case OutlineSymbolKind.Constructor:
-        return 'codicon-symbol-constructor';
-      case OutlineSymbolKind.String:
-        return 'codicon-symbol-string';
-      case OutlineSymbolKind.Key:
-        return 'codicon-symbol-key';
-      case OutlineSymbolKind.TypeParameter:
-        return 'codicon-symbol-type-parameter';
-      default:
-        return 'codicon-symbol-misc';
-    }
-  };
+  const isSelected = selectedNodeId === node.id;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -66,28 +35,31 @@ export const OutlineNode: React.FC<OutlineNodeProps> = ({
   return (
     <div className="outline-node">
       <div
-        className={`outline-node-content ${selected ? 'selected' : ''}`}
+        className={`outline-node-content ${isSelected ? 'selected' : ''}`}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleClick}
       >
-        {hasChildren && (
-          <i
-            className={`outline-chevron codicon ${node.expanded ? 'codicon-chevron-down' : 'codicon-chevron-right'}`}
+        {hasChildren ? (
+          <Icon
+            name={node.expanded ? 'chevron-down' : 'chevron-right'}
+            size={12}
+            className="outline-chevron"
             onClick={handleToggle}
           />
+        ) : (
+          <span className="outline-chevron" />
         )}
-        {!hasChildren && <span className="outline-chevron" />}
-        <i className={`outline-icon codicon ${getIcon(node.kind)}`} />
         <span className="outline-name">{node.name}</span>
       </div>
 
       {hasChildren && node.expanded && (
-        <div className="outline-children">
+        <div className="outline-children" data-parent-level={level}>
           {node.children!.map((child) => (
             <OutlineNode
               key={child.id}
               node={child}
               level={level + 1}
+              selectedNodeId={selectedNodeId}
               onSelect={onSelect}
               onToggle={onToggle}
             />

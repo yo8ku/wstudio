@@ -1,170 +1,152 @@
-/**
- * 组件颜色样式索引文件
- * 功能：统一导入所有组件的颜色样式，只负责颜色配置，不涉及任何布局。
+﻿/**
+ * 缂佸嫪娆㈡０婊嗗閺嶅嘲绱＄槐銏犵穿閺傚洣娆? * 閸旂喕鍏橀敍姘辩埠娑撯偓鐎电厧鍙嗛幍鈧張澶岀矋娴犲墎娈戞０婊嗗閺嶅嘲绱￠敍灞藉涧鐠愮喕鐭楁０婊嗗闁板秶鐤嗛敍灞肩瑝濞戝寮锋禒璁崇秿鐢啫鐪妴?
  */
 
 
-// 全局菜单
+// 閸忋劌鐪懣婊冨礋
 @use './Menu.scss';
 
 @use './Border.scss';
 
 
-//扩展管理
+//閹碘晛鐫嶇粻锛勬倞
 
-// VSCodeCommandCenter 命令中心
+// VSCodeCommandCenter 閸涙垝鎶ゆ稉顓炵妇
 @use './command-centerWidget.scss';
 @use './VSCodeCommandCenter.scss';
 
-//资源管理器 list
+//鐠у嫭绨粻锛勬倞閸?list
 @use "./ExplorerSection.scss";
 
 @use './AIConfigView.scss';
 
-//手风琴
+//閹靛顥撻悶?
 @use './Accordion.scss';
 
-//卡片
-@use './Card.scss';
+//閸楋紕澧?@use './Card.scss';
 
-//扩展窗口
+//閹碘晛鐫嶇粣妤€褰?
 
-
-//内联聊天
-@use './ai-zone-widget.scss';
-
-// TitleBar 标题栏
-@use './TitleBar.scss';
+//閸愬懓浠堥懕濠傘亯
+@use './ai-input.scss';
 
 // MenuBar 
 @use './MenuBar.scss';
 
-// ActivityBar 活动栏
+// ActivityBar 濞茶濮╅弽?
 @use './ActivityBar.scss';
 
-// Sidebar 侧边栏
+// Sidebar 娓氀嗙珶閺?
 @use './Sidebar.scss';
 
-// StatusBar 状态栏
-@use './StatusBar.scss';
+// StatusBar 閻樿埖鈧焦鐖?@use './StatusBar.scss';
 
-// TabBar 标签栏
+// TabBar 閺嶅洨顒烽弽?
 @use './TabBar.scss';
 
-// EditorArea 编辑器区域
+// EditorArea 缂傛牞绶崳銊ュ隘閸?
 @use './EditorArea.scss';
 
-// MonacoEditor 编辑器
-@use './MonacoEditor.scss';
+// CodeBlockMonacoTheme 浠ｇ爜鍧?Monaco 鍏变韩涓婚
+@use './CodeBlockMonacoTheme.scss';
 
-// Breadcrumb 面包屑
+// Breadcrumb 闂堛垹瀵樼仦?
 @use './Breadcrumb.scss';
 
-// Panel 面板
-@use './Panel.scss';
+// Panel 闂堛垺婢?@use './Panel.scss';
 
-// RightSidebar 右侧边栏
+// RightSidebar 閸欏厖鏅舵潏瑙勭埉
 
-// RightActivityBar 右侧活动栏
+// RightActivityBar 閸欏厖鏅跺ú璇插З閺?
 
-// Explorer 资源管理器
+// Explorer 鐠у嫭绨粻锛勬倞閸?
 @use './Explorer.scss';
 
 @use './ExploreTreeFile.scss';
 
-// FileTree 文件树
+// FileTree 閺傚洣娆㈤弽?
 @use './FileTree.scss';
 
-// Outline 大纲
+// Outline 婢堆呯堪
 @use './Outline.scss';
 
-// OpenEditors 打开的编辑器
-@use './OpenEditors.scss';
+// OpenEditors 閹垫挸绱戦惃鍕椽鏉堟垵娅?@use './OpenEditors.scss';
 
-// TreeView 通用树视图
+// TreeView 闁氨鏁ら弽鎴ｎ潒閸?
 @use './TreeView.scss';
 
-// Search 搜索
-@use './Search.scss';
+// Search 閹兼粎鍌?@use './Search.scss';
 
-// SearchBox 通用搜索框
+// SearchBox 闁氨鏁ら幖婊呭偍濡?
 @use './SearchBox.scss';
 
-// Settings 设置
-@use './Settings.scss';
+// Settings 鐠佸墽鐤?@use './Settings.scss';
 
-// SettingsContent 设置内容
+// SettingsContent 鐠佸墽鐤嗛崘鍛啇
 @use './SettingsContent.scss';
 
-// AIConfig AI配置
-@use './AIConfig.scss';
+// AIConfig AI闁板秶鐤?@use './AIConfig.scss';
 
-// AIChatPanel AI聊天面板
+// AIChatPanel AI閼卞﹤銇夐棃銏℃緲
 @use './AIChatPanel.scss';
 
-// AIModel AI模型
-@use './AIModel.scss';
+// AIModel AI濡€崇€?@use './AIModel.scss';
 
-// KnowledgeBase 知识库
+// KnowledgeBase 閻儴鐦戞惔?
 @use './KnowledgeBase.scss';
 
-// ImportNoteDialog 导入笔记对话框
+// ImportNoteDialog 鐎电厧鍙嗙粭鏃囶唶鐎电鐦藉?
 @use './ImportNoteDialog.scss';
 
-// Extensions 扩展
+// Extensions 閹碘晛鐫?
+// ThemesTabContent 娑撳顣介弽鍥╊劮閸愬懎顔?@use './ThemesTabContent.scss';
 
-// ThemesTabContent 主题标签内容
-@use './ThemesTabContent.scss';
-
-// TimelinePanel 时间线面板
+// TimelinePanel 閺冨爼妫跨痪鍧楁桨閺?
 @use './TimelinePanel.scss';
 
-// TerminalPanel 终端面板
+// TerminalPanel 缂佸牏顏棃銏℃緲
 @use './TerminalPanel.scss';
 
 
-// ResizeHandle 调整大小手柄
+// ResizeHandle 鐠嬪啯鏆ｆ径褍鐨幍瀣労
 @use './ResizeHandle.scss';
 
-// Tooltip 工具提示
+// Tooltip 瀹搞儱鍙块幓鎰仛
 @use './Tooltip.scss';
 
-// Button 按钮（通用）
+// Button 閹稿鎸抽敍鍫モ偓姘辨暏閿?
 @use './Button.scss';
 
-// Input 输入框（通用）
+// Input 鏉堟挸鍙嗗鍡礄闁氨鏁ら敍?
 @use './Input.scss';
 
-// Select 选择框（通用）
+// Select 闁瀚ㄥ鍡礄闁氨鏁ら敍?
 @use './Select.scss';
 
-// Checkbox 复选框（通用）
+// Checkbox 婢跺秹鈧顢嬮敍鍫モ偓姘辨暏閿?
 @use './Checkbox.scss';
 
-// Scrollbar 滚动条
+// Scrollbar 濠婃艾濮╅弶?
 @use './Scrollbar.scss';
 
-// MonacoContextMenu Monaco右键菜单
-@use './MonacoContextMenu.scss';
+// GroupedContextMenu 鍒嗙粍涓婁笅鏂囪彍鍗?@use './GroupedContextMenu.scss';
 
-// AIRewriteWidget AI改写组件
-@use './AIRewriteWidget.scss';
 
-// ActivityBarContextMenu 活动栏右键菜单
+// ActivityBarContextMenu 濞茶濮╅弽蹇撳礁闁款喛褰嶉崡?
 @use './ActivityBarContextMenu.scss';
 
-// AddFileMenu 添加文件菜单
-@use './AddFileMenu.scss';
+// AddFileMenu 濞ｈ濮為弬鍥︽閼挎粌宕?@use './AddFileMenu.scss';
 
-// SidebarHeaderMenu 侧边栏头部菜单
+// SidebarHeaderMenu 娓氀嗙珶閺嶅繐銇旈柈銊ㄥ綅閸?
 @use './SidebarHeaderMenu.scss';
 
-// AIProviderIcon AI提供商图标
+// AIProviderIcon AI閹绘劒绶甸崯鍡楁禈閺?
 @use './AIProviderIcon.scss';
 
-// Message 消息提示
+// Message 濞戝牊浼呴幓鎰仛
 @use './Message.scss';
 
 
-// Selection 选中样式
+// Selection 闁鑵戦弽宄扮础
 @use './Selection.scss';
+

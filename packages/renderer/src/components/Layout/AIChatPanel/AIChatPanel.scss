@@ -1115,41 +1115,57 @@
   }
 }
 
-// TipTap 输入框样式（替换 textarea）
+// Prompt 输入框样式（替换 textarea）
 .input-area {
-  .tiptap-input-wrapper {
+  .prompt-input-wrapper {
     width: 100%;
     min-height: 60px;
     max-height: 200px;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 
     &.disabled {
       opacity: 0.5;
       pointer-events: none;
     }
 
-    .tiptap-editor {
+    .prompt-input-file-references {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 0 0 8px;
+    }
+
+    .prompt-input-editor {
       font-size: 13px;
       line-height: 1.5;
       outline: none;
       word-break: break-word;
+      min-height: 60px;
 
-      p {
-        margin: 0;
+      .cm-editor {
+        min-height: 60px;
+        background: transparent;
       }
 
-      &.tiptap-empty::before {
-        content: attr(data-placeholder);
-        float: left;
+      .cm-scroller {
+        overflow: auto;
+      }
+
+      .cm-content {
+        min-height: 60px;
+      }
+
+      .cm-placeholder {
         color: var(--ws-input-placeholder-foreground, rgba(128, 128, 128, 0.7));
         pointer-events: none;
-        height: 0;
       }
     }
   }
 
   // 内联 @tag 样式
-  .tiptap-file-reference {
+  .prompt-file-reference {
     display: inline-flex;
     align-items: center;
     padding: 1px 6px;

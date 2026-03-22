@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "lib": ["ES2020"],
+    "types": ["node"],
+    "paths": {
+      "@note-studio/extension-api": ["../../packages/extension-api/src/index.ts"]
+    }
+  },
+  "include": ["host-src/**/*.ts"]
+}

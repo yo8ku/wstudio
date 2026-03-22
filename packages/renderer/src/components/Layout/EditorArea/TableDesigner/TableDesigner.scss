@@ -630,60 +630,6 @@
   pointer-events: none; // 让点击事件穿透到 td
 }
 
-// Tiptap 单元格编辑器样式
-.cell-tiptap-wrapper {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 35px;
-  padding: 0;
-  margin: 0;
-  box-sizing: border-box;
-  cursor: default;
-  overflow: hidden;
-
-  &.editing {
-    cursor: text;
-    
-    .cell-tiptap-editor {
-      background: var(--ws-input-background);
-    }
-  }
-
-  .tiptap {
-    height: 100%;
-    padding: 0 10px;
-    margin: 0;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: var(--ws-editor-foreground);
-    font-size: 13px;
-    line-height: 35px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-
-    p {
-      margin: 0;
-      padding: 0;
-      line-height: 35px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    &.cell-tiptap-empty p::before {
-      content: attr(data-placeholder);
-      color: var(--ws-input-placeholder-foreground);
-      pointer-events: none;
-      float: left;
-      height: 0;
-    }
-  }
-}
-
 // 浮动单元格编辑器样式
 .floating-cell-editor {
   box-sizing: border-box;
@@ -2180,14 +2126,6 @@ thead .row-selector-cell {
     }
   }
 
-  .cell-tiptap-editor .tiptap {
-    line-height: 27px;
-
-    p {
-      line-height: 27px;
-    }
-  }
-
   .cell-checkbox-wrapper {
     margin-top: 4px;
   }
@@ -2233,14 +2171,6 @@ thead .row-selector-cell {
     }
   }
 
-  .cell-tiptap-editor .tiptap {
-    line-height: 47px;
-
-    p {
-      line-height: 47px;
-    }
-  }
-
   .cell-checkbox-wrapper {
     margin-top: 14px;
   }
@@ -2271,14 +2201,6 @@ thead .row-selector-cell {
     .floating-cell-input {
       height: 48px;
       line-height: 48px;
-    }
-  }
-
-  .cell-tiptap-editor .tiptap {
-    line-height: 63px;
-
-    p {
-      line-height: 63px;
     }
   }
 

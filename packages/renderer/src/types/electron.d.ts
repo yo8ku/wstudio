@@ -41,6 +41,7 @@ export interface ElectronAPI {
   settings?: {
     getAll: () => Promise<APIResponse<Record<string, unknown>>>;
     get: (key: string) => Promise<APIResponse<unknown>>;
+    set: (key: string, value: unknown, target?: 'user' | 'workspace') => Promise<APIResponse>;
     update: (key: string, value: unknown, target?: 'user' | 'workspace') => Promise<APIResponse>;
     updateMany: (updates: Record<string, unknown>, target?: 'user' | 'workspace') => Promise<APIResponse>;
     reset: (key?: string) => Promise<APIResponse>;
@@ -79,6 +80,7 @@ export interface ElectronAPI {
   // 缁愭褰涢悞锔惧仯閻樿埖鈧胶娲冮崥?
   onWindowFocus?: (callback: (focused: boolean) => void) => void;
   onWindowBlur?: (callback: (focused: boolean) => void) => void;
+  onWindowMaximizedStateChanged?: (callback: (isMaximized: boolean) => void) => void;
   
   // 閹垫挸绱戠憴鍡涱暥閺傚洣娆㈢€电鐦藉?
   openVideoFile?: () => Promise<{ canceled: boolean; filePath?: string }>;
@@ -102,8 +104,9 @@ export interface ElectronAPI {
   off?: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
   version: string;
   minimizeWindow: () => void;
-  maximizeWindow: () => void;
+  maximizeWindow: () => Promise<boolean>;
   closeWindow: () => void;
+  isWindowMaximized: () => Promise<boolean>;
   toggleDevTools?: () => void;
 }
 
@@ -705,5 +708,4 @@ export interface NoteSystemAPI {
     get: (id: string) => Promise<TemplateItem | null>;
   };
 }
-
 

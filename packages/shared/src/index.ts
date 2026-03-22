@@ -11,7 +11,9 @@ export * from './types/embeddings';
 export * from './types/json';
 export * from './types/extension';
 export * from './types/workbench-background';
+export * from './block-editor';
 export * from './protocols/ExtensionHostProtocol';
+export * from './protocols/PluginBlockEditorBridgeProtocol';
 export * from './protocols/PluginEditorBridgeProtocol';
 
 // 显式导出主题相关常量，确保构建工具能正确识别

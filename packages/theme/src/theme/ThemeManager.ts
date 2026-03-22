@@ -4,13 +4,33 @@
  */
 
 import { EventEmitter } from '@note-studio/shared';
-import * as monaco from 'monaco-editor';
 import type { ITheme, IThemeColors, ITokenColors, IThemeEvents } from './types';
+
+export interface MonacoThemeTokenRule {
+  token: string;
+  foreground?: string;
+  background?: string;
+  fontStyle?: string;
+}
+
+export interface MonacoStandaloneThemeData {
+  base: 'vs' | 'vs-dark' | 'hc-black';
+  inherit: boolean;
+  rules: MonacoThemeTokenRule[];
+  colors: Record<string, string>;
+}
+
+export interface MonacoThemeApi {
+  editor: {
+    defineTheme: (themeId: string, themeData: MonacoStandaloneThemeData) => void;
+    setTheme: (themeId: string) => void;
+  };
+}
 
 export class ThemeManager extends EventEmitter<IThemeEvents> {
   private themes: Map<string, ITheme> = new Map();
   private currentTheme: ITheme | null = null;
-  private monacoInstance: typeof monaco | null = null;
+  private monacoInstance: MonacoThemeApi | null = null;
 
   constructor() {
     super();
@@ -19,7 +39,7 @@ export class ThemeManager extends EventEmitter<IThemeEvents> {
   /**
    * 初始化 Monaco Editor
    */
-  public async initializeMonaco(monacoInstance: typeof monaco): Promise<void> {
+  public async initializeMonaco(monacoInstance: MonacoThemeApi): Promise<void> {
     this.monacoInstance = monacoInstance;
     
     // 加载内置主题
@@ -99,7 +119,7 @@ export class ThemeManager extends EventEmitter<IThemeEvents> {
   /**
    * 转换为 Monaco 主题格式
    */
-  private convertToMonacoTheme(theme: ITheme): monaco.editor.IStandaloneThemeData {
+  private convertToMonacoTheme(theme: ITheme): MonacoStandaloneThemeData {
     return {
       base: this.getMonacoBase(theme.type),
       inherit: true,
@@ -127,8 +147,8 @@ export class ThemeManager extends EventEmitter<IThemeEvents> {
   /**
    * 转换 token 规则
    */
-  private convertTokenRules(tokenColors: ITokenColors[]): monaco.editor.ITokenThemeRule[] {
-    const rules: monaco.editor.ITokenThemeRule[] = [];
+  private convertTokenRules(tokenColors: ITokenColors[]): MonacoThemeTokenRule[] {
+    const rules: MonacoThemeTokenRule[] = [];
 
     for (const token of tokenColors) {
       const scopes = Array.isArray(token.scope) ? token.scope : [token.scope];
@@ -136,7 +156,7 @@ export class ThemeManager extends EventEmitter<IThemeEvents> {
       for (const scope of scopes) {
         if (!scope) continue;
 
-        const rule: monaco.editor.ITokenThemeRule = {
+        const rule: MonacoThemeTokenRule = {
           token: scope,
         };
 

@@ -1,8 +1,16 @@
-/**
+﻿/**
  * Window title bar and menu.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import {
+  VscChromeMaximize,
+  VscChromeRestore,
+  VscLayoutPanel,
+  VscLayoutPanelOff,
+  VscLayoutSidebarLeft,
+  VscLayoutSidebarLeftOff
+} from 'react-icons/vsc';
 import { Icon } from '../Icons';
 import './TitleBar.scss';
 
@@ -10,6 +18,8 @@ interface TitleBarProps {
   onToggleSidebar?: () => void;
   onToggleAIPanel?: () => void;
   onTogglePanel?: () => void;
+  isSidebarOpen?: boolean;
+  isTerminalPanelOpen?: boolean;
 }
 
 interface MenuItem {
@@ -26,15 +36,30 @@ interface MenuConfig {
   items: MenuItem[];
 }
 
+type TitleBarControl = 'ai-assistant' | 'sidebar' | 'terminal' | 'minimize' | 'maximize' | 'close';
+
+const TITLEBAR_ICON_SIZE = 16;
+
 export const TitleBar: React.FC<TitleBarProps> = ({
   onToggleSidebar,
   onToggleAIPanel,
-  onTogglePanel
+  onTogglePanel,
+  isSidebarOpen = false,
+  isTerminalPanelOpen = false
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [openSubmenus, setOpenSubmenus] = useState<string[]>([]);
   const [isWindowActive, setIsWindowActive] = useState<boolean>(true);
+  const [isWindowMaximized, setIsWindowMaximized] = useState<boolean>(false);
+  const [hoveredControl, setHoveredControl] = useState<TitleBarControl | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const syncWindowMaximizedState = async (): Promise<void> => {
+    const isMaximized = await window.electronAPI?.isWindowMaximized?.();
+    if (typeof isMaximized === 'boolean') {
+      setIsWindowMaximized(isMaximized);
+    }
+  };
 
   useEffect(() => {
     if (window.electronAPI?.onWindowFocus) {
@@ -46,16 +71,75 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     }
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    const handleWindowResize = (): void => {
+      if (!isMounted) {
+        return;
+      }
+      void syncWindowMaximizedState();
+    };
+
+    void syncWindowMaximizedState();
+    window.addEventListener('resize', handleWindowResize);
+
+    if (window.electronAPI?.onWindowMaximizedStateChanged) {
+      window.electronAPI.onWindowMaximizedStateChanged((isMaximized) => {
+        if (isMounted) {
+          setIsWindowMaximized(isMaximized);
+        }
+      });
+    }
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('resize', handleWindowResize);
+    };
+  }, []);
+
   const handleMinimize = (): void => {
     window.electronAPI?.minimizeWindow();
   };
 
-  const handleMaximize = (): void => {
-    window.electronAPI?.maximizeWindow();
+  const handleMaximize = async (): Promise<void> => {
+    const isMaximized = await window.electronAPI?.maximizeWindow?.();
+    if (typeof isMaximized === 'boolean') {
+      setIsWindowMaximized(isMaximized);
+      return;
+    }
+
+    window.setTimeout(() => {
+      void syncWindowMaximizedState();
+    }, 80);
   };
 
   const handleClose = (): void => {
     window.electronAPI?.closeWindow();
+  };
+
+  const handleControlMouseLeave = (): void => {
+    setHoveredControl(null);
+  };
+
+  const getTitleBarControlStyle = (control: TitleBarControl): React.CSSProperties => {
+    if (hoveredControl !== control) {
+      return {
+        backgroundColor: 'transparent',
+        color: 'var(--ws-activityBar-inactiveForeground)'
+      };
+    }
+
+    if (control === 'close') {
+      return {
+        backgroundColor: 'var(--titlebar-close-hover)',
+        color: 'var(--titlebar-fg)'
+      };
+    }
+
+    return {
+      backgroundColor: 'var(--titlebar-hover)',
+      color: 'var(--ws-activityBar-foreground)'
+    };
   };
 
   const handleNewFile = (): void => {
@@ -119,7 +203,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             { label: '无最近文件' },
             { separator: true },
             { label: '更多...' },
-            { label: '清除最近打开的...' }
+            { label: '清除最近打开的文件...' }
           ]
         },
         { separator: true },
@@ -307,47 +391,89 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         </div>
       </div>
 
-      <div className="titlebar-title">Note WStudio</div>
+      
 
       <div className="titlebar-controls">
-        <div
-          className="titlebar-ai-button"
-          onClick={onToggleAIPanel}
-          title="AI 助手 (Ctrl+Shift+A)"
-        >
-          <Icon name="ai-assistant" size={16} />
+        <div className="titlebar-control-group titlebar-utility-controls">
+          <div
+            className="titlebar-ai-button"
+            onClick={onToggleAIPanel}
+            onMouseEnter={() => setHoveredControl('ai-assistant')}
+            onMouseLeave={handleControlMouseLeave}
+            style={getTitleBarControlStyle('ai-assistant')}
+            title="AI助手"
+          >
+            <Icon name="ai-assistant" size={TITLEBAR_ICON_SIZE} />
+          </div>
+
+          <div
+            className="titlebar-ai-button"
+            onClick={onToggleSidebar}
+            onMouseEnter={() => setHoveredControl('sidebar')}
+            onMouseLeave={handleControlMouseLeave}
+            style={getTitleBarControlStyle('sidebar')}
+            title="侧边栏"
+          >
+            {isSidebarOpen ? (
+              <VscLayoutSidebarLeft size={TITLEBAR_ICON_SIZE} />
+            ) : (
+              <VscLayoutSidebarLeftOff size={TITLEBAR_ICON_SIZE} />
+            )}
+          </div>
+
+          <div
+            className="titlebar-ai-button"
+            onClick={onTogglePanel}
+            onMouseEnter={() => setHoveredControl('terminal')}
+            onMouseLeave={handleControlMouseLeave}
+            style={getTitleBarControlStyle('terminal')}
+            title="终端"
+          >
+            {isTerminalPanelOpen ? (
+              <VscLayoutPanel size={TITLEBAR_ICON_SIZE} />
+            ) : (
+              <VscLayoutPanelOff size={TITLEBAR_ICON_SIZE} />
+            )}
+          </div>
         </div>
 
-        <div
-          className="titlebar-ai-button"
-          onClick={onTogglePanel}
-          title="终端"
-        >
-          <Icon name="terminal" size={16} />
-        </div>
+        <div className="titlebar-control-group titlebar-window-controls">
+          <div
+            className="titlebar-button titlebar-minimize"
+            onClick={handleMinimize}
+            onMouseEnter={() => setHoveredControl('minimize')}
+            onMouseLeave={handleControlMouseLeave}
+            style={getTitleBarControlStyle('minimize')}
+            title="最小化"
+          >
+            <Icon name="minimize" size={TITLEBAR_ICON_SIZE} />
+          </div>
 
-        <div
-          className="titlebar-button titlebar-minimize"
-          onClick={handleMinimize}
-          aria-label="最小化"
-        >
-          <Icon name="minimize" size={10} />
-        </div>
+          <div
+            className="titlebar-button titlebar-maximize"
+            onClick={handleMaximize}
+            onMouseEnter={() => setHoveredControl('maximize')}
+            onMouseLeave={handleControlMouseLeave}
+            style={getTitleBarControlStyle('maximize')}
+            title={isWindowMaximized ? '还原' : '最大化'}
+          >
+            {isWindowMaximized ? (
+              <VscChromeRestore size={16} />
+            ) : (
+              <VscChromeMaximize size={16} />
+            )}
+          </div>
 
-        <div
-          className="titlebar-button titlebar-maximize"
-          onClick={handleMaximize}
-          aria-label="最大化"
-        >
-          <Icon name="maximize" size={10} />
-        </div>
-
-        <div
-          className="titlebar-button titlebar-close"
-          onClick={handleClose}
-          aria-label="关闭"
-        >
-          <Icon name="close-window" size={10} />
+          <div
+            className="titlebar-button titlebar-close"
+            onClick={handleClose}
+            onMouseEnter={() => setHoveredControl('close')}
+            onMouseLeave={handleControlMouseLeave}
+            style={getTitleBarControlStyle('close')}
+            title="关闭"
+          >
+            <Icon name="x" size={TITLEBAR_ICON_SIZE} />
+          </div>
         </div>
       </div>
     </div>

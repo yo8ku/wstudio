@@ -13,7 +13,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as jsonc from 'jsonc-parser';
 import { TabBar } from '../TabBar';
 import { Breadcrumb } from '../Breadcrumb';
-import { EditorGroup } from '../EditorGroup';
 import { SettingsView } from '../../../Settings/SettingsView';
 import { MarkdownPreview } from '../../../Editor/MarkdownPreview';
 import { KnowledgeBaseView } from '../KnowledgeBaseView';
@@ -57,6 +56,7 @@ export interface EditorTab {
   isDirty: boolean;
   language?: string;
   content?: string;
+  isContentLoading?: boolean;
   type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat' | 'terminal' | 'extension';
   isPreview?: boolean;  // 閺傛澘顤冮敍姘Ц閸氾缚璐熸０鍕潔濡€崇础閿涘牆宕熼崙缁樺ⅵ瀵偓閿?
   sourceTabId?: string;  // 閺傛澘顤冮敍姘额暕鐟欏牊鐖ｇ粵楣冦€夐崗瀹犱粓閻ㄥ嫭绨弬鍥︽閺嶅洨顒锋い绀桪
@@ -259,6 +259,9 @@ const resolveLastOpenedPath = (result: LastOpenedRestoreResult | undefined): str
   return normalizedPath || null;
 };
 
+const isFileTabPendingContent = (tab: EditorTab): boolean =>
+  tab.type === 'file' && tab.isContentLoading === true;
+
 const pushTabIdToHistory = (history: string[], tabId: string): string[] =>
   [...history.filter(id => id !== tabId), tabId];
 
@@ -328,8 +331,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   // 鐠虹喕閲滈崫顏冪昂闁板秶鐤嗛弽鍥╊劮妞ゅ灚婀侀張顏冪箽鐎涙娈戦弴瀛樻暭
   const [unsavedConfigTabs, setUnsavedConfigTabs] = useState<Set<string>>(new Set());
 
-  // 缂傛牞绶崳銊ц閸ㄥ濮搁幀渚婄窗'monaco' | 'codemirror'
-  const [editorType, setEditorType] = useState<'monaco' | 'codemirror'>('monaco');
   const editorGroupsRef = useRef<HTMLDivElement | null>(null);
   const previousTabsLengthRef = useRef<number>(0);
   const previousActiveTabIdRef = useRef<string | null>(null);
@@ -1172,6 +1173,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         content?: string; 
         name?: string; 
         language?: string;
+        activateIfExists?: boolean;
         isPreview?: boolean;  // 閺傛澘顤冮敍姘Ц閸氾缚璐熸０鍕潔濡€崇础
         lineNumber?: number;  // 閺傛澘顤冮敍姘愁洣鐎规矮缍呴惃鍕攽閸?
         column?: number;      // 閺傛澘顤冮敍姘愁洣鐎规矮缍呴惃鍕灙閸?
@@ -1182,7 +1184,16 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       
       if (customEvent.detail) {
         // 娴ｈ法鏁ら懛顏勭暰娑斿绨ㄦ禒鏈佃厬閻ㄥ嫭鏋冩禒鑸垫殶閹?
-        const { path, content, name, language, isPreview = false, lineNumber, column } = customEvent.detail;
+        const {
+          path,
+          content,
+          name,
+          language,
+          activateIfExists = true,
+          isPreview = false,
+          lineNumber,
+          column,
+        } = customEvent.detail;
         
         console.log('[EditorArea] Opening file:', {
           path,
@@ -1208,16 +1219,18 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         const existingPane = paneSnapshots.find(pane => pane.tabs.some(tab => tab.path === path));
         if (existingPane) {
           const existingTab = existingPane.tabs.find(tab => tab.path === path)!;
-          existingPane.setActive(existingTab.id);
-          setFocusedPaneId(existingPane.paneId);
-          if (existingPane.paneId.startsWith('right-')) {
-            setIsSplitView(true);
-          }
-          if (existingPane.paneId === 'left-bottom') {
-            setLeftVerticalSplit(true);
-          }
-          if (existingPane.paneId === 'right-bottom') {
-            setRightVerticalSplit(true);
+          if (activateIfExists) {
+            existingPane.setActive(existingTab.id);
+            setFocusedPaneId(existingPane.paneId);
+            if (existingPane.paneId.startsWith('right-')) {
+              setIsSplitView(true);
+            }
+            if (existingPane.paneId === 'left-bottom') {
+              setLeftVerticalSplit(true);
+            }
+            if (existingPane.paneId === 'right-bottom') {
+              setRightVerticalSplit(true);
+            }
           }
           if (!isPreview && existingTab.isPreview) {
             existingPane.setTabs(prev => prev.map(tab =>
@@ -1226,14 +1239,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     ...tab,
                     isPreview: false,
                     content: content !== undefined ? content : tab.content,
-                    language: language || tab.language
+                    language: language || tab.language,
+                    isContentLoading: content === undefined ? tab.isContentLoading : false,
                   }
                 : tab
             ));
           } else if (content !== undefined) {
             existingPane.setTabs(prev => prev.map(tab =>
               tab.id === existingTab.id
-                ? { ...tab, content, language: language || tab.language }
+                ? { ...tab, content, language: language || tab.language, isContentLoading: false }
                 : tab
             ));
           }
@@ -1247,7 +1261,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           
           if (existingTab) {
             // 鐠佸墽鐤嗘稉鐑樻た閸斻劍鐖ｇ粵?
-            setTimeout(() => setActiveTabId(existingTab.id), 0);
+            if (activateIfExists) {
+              setTimeout(() => setActiveTabId(existingTab.id), 0);
+            }
             
             // 婵″倹鐏夐弰顖氬蓟閸戠粯澧﹀鈧敍鍫ユ姜妫板嫯顫嶉敍澶涚礉鐏忓棝顣╃憴鍫熺垼缁涙崘娴嗘稉鍝勬祼鐎规碍鐖ｇ粵?
             // 閸氬本妞傞弴瀛樻煀閺嶅洨顒烽惃鍕敶鐎圭櫢绱欐俊鍌涚亯閹绘劒绶垫禍鍡礆
@@ -1258,7 +1274,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       ...tab, 
                       isPreview: false,
                       content: content !== undefined ? content : tab.content,
-                      language: language || tab.language
+                      language: language || tab.language,
+                      isContentLoading: content === undefined ? tab.isContentLoading : false,
                     } 
                   : tab
               );
@@ -1269,7 +1286,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   ? { 
                       ...tab, 
                       content: content,
-                      language: language || tab.language
+                      language: language || tab.language,
+                      isContentLoading: false,
                     } 
                   : tab
               );
@@ -1292,7 +1310,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   path: path || '',
                   isDirty: false,
                   language: language || 'plaintext',
-                  content: content || '',
+                  content: content ?? '',
+                  isContentLoading: content === undefined,
                   type: 'file' as const,
                   isPreview: true
                 } : tab
@@ -1307,7 +1326,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             path: path || '',
             isDirty: false,
             language: language || 'plaintext',
-            content: content || '',
+            content: content ?? '',
+            isContentLoading: content === undefined,
             type: 'file',
             isPreview: isPreview
           };
@@ -1857,22 +1877,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     };
     window.addEventListener('close-all-editors', handleCloseAllEditors);
 
-    // 閻╂垵鎯夐崚鍥ㄥ床缂傛牞绶崳銊ц閸ㄥ绨ㄦ禒?
-    const handleToggleEditorType = () => {
-      setEditorType(prev => {
-        if (prev === 'monaco') return 'codemirror';
-        return 'monaco';
-      });
-    };
-    window.addEventListener('toggle-editor-type', handleToggleEditorType);
-
-    // 閻╂垵鎯夌拋鍓х枂缂傛牞绶崳銊ц閸ㄥ绨ㄦ禒?
-    const handleSetEditorType = (event: Event) => {
-      const customEvent = event as CustomEvent<'monaco' | 'codemirror'>;
-      setEditorType(customEvent.detail);
-    };
-    window.addEventListener('set-editor-type', handleSetEditorType as EventListener);
-    
     return () => {
       window.removeEventListener('open-file', handleOpenFile as EventListener);
       window.removeEventListener('editor:replace-active-tab-content', handleReplaceActiveTabContent as EventListener);
@@ -1889,8 +1893,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
       window.removeEventListener('editor:update-active-tab-title', handleUpdateActiveTabTitle as EventListener);
       window.removeEventListener('close-all-editors', handleCloseAllEditors);
-      window.removeEventListener('toggle-editor-type', handleToggleEditorType);
-      window.removeEventListener('set-editor-type', handleSetEditorType as EventListener);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -3853,6 +3855,62 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     return <div className={`editor-area-drop-indicator ${dropIndicator.placement}`} />;
   };
 
+  const getCodeMirrorContent = (tab: EditorTab): string => {
+    const rawContent = tab.content || '';
+    return isHtmlContent(rawContent) ? htmlToMarkdown(rawContent) : rawContent;
+  };
+
+  const renderFileTabEditor = (
+    tab: EditorTab,
+    isActive: boolean,
+    options?: {
+      emitImmediateContentChange?: boolean;
+      clearDiffPreview?: boolean;
+    },
+  ): React.ReactNode => {
+    if (isFileTabPendingContent(tab)) {
+      return (
+        <div className="editor-area-loading">
+          <div className="editor-area-loading-label">正在加载文件内容...</div>
+        </div>
+      );
+    }
+
+    const { emitImmediateContentChange = false, clearDiffPreview = false } = options ?? {};
+
+    return (
+      <CodeMirrorEditor
+        content={getCodeMirrorContent(tab)}
+        onChange={(markdownContent) => {
+          updateTabInAllPanes(tab.id, current => ({
+            ...current,
+            content: markdownContent,
+            isDirty: true,
+            isPreview: false,
+            isContentLoading: false,
+            ...(clearDiffPreview ? { diffPreview: undefined } : {}),
+          }));
+
+          if (emitImmediateContentChange && isActive) {
+            window.dispatchEvent(new CustomEvent('editor:content-changed', {
+              detail: {
+                content: markdownContent,
+                language: tab.language || 'plaintext',
+                path: tab.path
+              }
+            }));
+          }
+        }}
+        editable={true}
+        isActive={isActive}
+        tabId={tab.id}
+        title={tab.title}
+        filePath={tab.path}
+        language={tab.language}
+      />
+    );
+  };
+
   return (
     <div className={`editor-area ${draggingTab ? 'is-tab-dragging' : ''} ${className}`}>
       {/* 缂傛牞绶崳銊х矋鐎圭懓娅?- 閺€顖涘瘮閸掑棗鐫?*/}
@@ -3874,7 +3932,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             <TabBar
               tabs={tabs}
               activeTabId={activeTabId}
-              editorType={editorType}
               onTabClick={handleTabClick}
               onTabClose={handleTabClose}
               dragGroupId="left-top"
@@ -4019,60 +4076,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     />
                   )}
                   
-                  {tab.type === 'file' && editorType === 'monaco' && (
-                    <EditorGroup
-                      file={tab}
-                      onContentChange={(content) => {
-                        console.log('[EditorArea] Monaco content change, hasNewlines:', content.includes('\n'));
-                        updateFileTabContent(tab.id, content);
-
-                        // 婵″倹鐏夐弰顖氱秼閸撳秵妞块崝銊︾垼缁涢箖銆夐敍宀冃曢崣鎴濄亣缁惧弶娲块弬棰佺皑娴?
-                        if (tab.id === activeTabId) {
-                          window.dispatchEvent(new CustomEvent('editor:content-changed', {
-                            detail: {
-                              content: content,
-                              language: tab.language || 'plaintext',
-                              path: tab.path
-                            }
-                          }));
-                        }
-                      }}
-                      onCompositionStateChange={(isComposing, content) => {
-                        handleFileTabCompositionStateChange(tab.id, isComposing, content);
-                      }}
-                    />
-                  )}
-                  
-                  {tab.type === 'file' && editorType === 'codemirror' && (
-                    <CodeMirrorEditor
-                      content={(() => {
-                        const rawContent = tab.content || '';
-                        // CodeMirror 娴ｈ法鏁?Markdown 濠ф劗鐖?
-                        const isHtml = isHtmlContent(rawContent);
-                        return isHtml ? htmlToMarkdown(rawContent) : rawContent;
-                      })()}
-                      onChange={(markdownContent) => {
-                        updateTabInAllPanes(tab.id, current => ({
-                          ...current,
-                          content: markdownContent,
-                          isDirty: true,
-                          isPreview: false
-                        }));
-
-                        // 婵″倹鐏夐弰顖氱秼閸撳秵妞块崝銊︾垼缁涢箖銆夐敍宀冃曢崣鎴濄亣缁惧弶娲块弬棰佺皑娴?
-                        if (tab.id === activeTabId) {
-                          window.dispatchEvent(new CustomEvent('editor:content-changed', {
-                            detail: {
-                              content: markdownContent,
-                              language: tab.language || 'plaintext',
-                              path: tab.path
-                            }
-                          }));
-                        }
-                      }}
-                      editable={true}
-                      isActive={tab.id === activeTabId}
-                    />
+                  {tab.type === 'file' && (
+                    renderFileTabEditor(tab, tab.id === activeTabId, { emitImmediateContentChange: true })
                   )}
                 </div>
               );
@@ -4099,7 +4104,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   <TabBar
                     tabs={leftBottomTabs}
                     activeTabId={leftBottomActiveTabId}
-                    editorType={editorType}
                     onTabClick={handleLeftBottomTabClick}
                     onTabClose={handleLeftBottomTabClose}
                     dragGroupId="left-bottom"
@@ -4150,36 +4154,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                           />
                         )}
 
-                        {tab.type === 'file' && editorType === 'monaco' && (
-                          <EditorGroup
-                            file={tab}
-                            onContentChange={(content) => {
-                              updateFileTabContent(tab.id, content);
-                            }}
-                            onCompositionStateChange={(isComposing, content) => {
-                              handleFileTabCompositionStateChange(tab.id, isComposing, content);
-                            }}
-                          />
-                        )}
-
-                        {tab.type === 'file' && editorType === 'codemirror' && (
-                          <CodeMirrorEditor
-                            content={(() => {
-                              const rawContent = tab.content || '';
-                              const isHtml = isHtmlContent(rawContent);
-                              return isHtml ? htmlToMarkdown(rawContent) : rawContent;
-                            })()}
-                            onChange={(markdownContent) => {
-                              updateTabInAllPanes(tab.id, current => ({
-                                ...current,
-                                content: markdownContent,
-                                isDirty: true,
-                                isPreview: false
-                              }));
-                            }}
-                            editable={true}
-                            isActive={isActive}
-                          />
+                        {tab.type === 'file' && (
+                          renderFileTabEditor(tab, isActive)
                         )}
                       </div>
                     );
@@ -4235,7 +4211,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   <TabBar
                     tabs={[extraTab]}
                     activeTabId={extraTab.id}
-                    editorType={editorType}
                     onTabClick={() => handleExtraRightPaneTabClick(sourceLocated.paneId, sourceTab.id)}
                     onTabClose={() => closeExtraRightSplitPane(pane.id)}
                     onSplitToDirection={(_, direction) => handleExtraRightPaneSplitToDirection(sourceTab.id, direction)}
@@ -4250,35 +4225,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   <Breadcrumb path={sourceTab.path} />
 
                   <div className="editor-area-content">
-                    {editorType === 'monaco' ? (
-                      <EditorGroup
-                        file={extraTab}
-                        onContentChange={(content) => {
-                          updateFileTabContent(sourceTab.id, content, { clearDiffPreview: true });
-                        }}
-                        onCompositionStateChange={(isComposing, content) => {
-                          handleFileTabCompositionStateChange(sourceTab.id, isComposing, content, { clearDiffPreview: true });
-                        }}
-                      />
-                    ) : (
-                      <CodeMirrorEditor
-                        content={(() => {
-                          const rawContent = sourceTab.content || '';
-                          const isHtml = isHtmlContent(rawContent);
-                          return isHtml ? htmlToMarkdown(rawContent) : rawContent;
-                        })()}
-                        onChange={(markdownContent) => {
-                          updateTabInAllPanes(sourceTab.id, current => ({
-                            ...current,
-                            content: markdownContent,
-                            isDirty: true,
-                            isPreview: false
-                          }));
-                        }}
-                        editable={true}
-                        isActive={true}
-                      />
-                    )}
+                    {renderFileTabEditor(sourceTab, true)}
                   </div>
                 </div>
               </div>
@@ -4313,7 +4260,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               <TabBar
                 tabs={rightTabs}
                 activeTabId={rightActiveTabId}
-                editorType={editorType}
                 onTabClick={handleRightTabClick}
                 onTabClose={handleRightTabClose}
                 dragGroupId="right-top"
@@ -4438,15 +4384,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     )}
                     
                     {tab.type === 'file' && (
-                      <EditorGroup
-                        file={tab}
-                        onContentChange={(content) => {
-                          updateFileTabContent(tab.id, content, { clearDiffPreview: true });
-                        }}
-                        onCompositionStateChange={(isComposing, content) => {
-                          handleFileTabCompositionStateChange(tab.id, isComposing, content, { clearDiffPreview: true });
-                        }}
-                      />
+                      renderFileTabEditor(tab, isActive, { clearDiffPreview: true })
                     )}
                   </div>
                 );
@@ -4473,7 +4411,6 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     <TabBar
                       tabs={rightBottomTabs}
                       activeTabId={rightBottomActiveTabId}
-                      editorType={editorType}
                       onTabClick={handleRightBottomTabClick}
                       onTabClose={handleRightBottomTabClose}
                       dragGroupId="right-bottom"
@@ -4524,37 +4461,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                             />
                           )}
 
-                          {tab.type === 'file' && editorType === 'monaco' && (
-                            <EditorGroup
-                              file={tab}
-                              onContentChange={(content) => {
-                                updateFileTabContent(tab.id, content, { clearDiffPreview: true });
-                              }}
-                              onCompositionStateChange={(isComposing, content) => {
-                                handleFileTabCompositionStateChange(tab.id, isComposing, content, { clearDiffPreview: true });
-                              }}
-                            />
-                          )}
-
-                          {tab.type === 'file' && editorType === 'codemirror' && (
-                            <CodeMirrorEditor
-                              content={(() => {
-                                const rawContent = tab.content || '';
-                                const isHtml = isHtmlContent(rawContent);
-                                return isHtml ? htmlToMarkdown(rawContent) : rawContent;
-                              })()}
-                              onChange={(markdownContent) => {
-                                updateTabInAllPanes(tab.id, current => ({
-                                  ...current,
-                                  content: markdownContent,
-                                  isDirty: true,
-                                  isPreview: false,
-                                  diffPreview: undefined,
-                                }));
-                              }}
-                              editable={true}
-                              isActive={isActive}
-                            />
+                          {tab.type === 'file' && (
+                            renderFileTabEditor(tab, isActive, { clearDiffPreview: true })
                           )}
                         </div>
                       );

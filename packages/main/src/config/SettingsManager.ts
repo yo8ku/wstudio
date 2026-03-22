@@ -79,15 +79,28 @@ const DEFAULT_SETTINGS: SettingsSchema = {
 export class SettingsManager extends EventEmitter {
   private settings: Partial<SettingsSchema> = {};
   private pluginSettings: PluginSettingsMap = {}; // 瀛樺偍鎻掍欢閰嶇疆锛堜笉鍦?SettingsSchema 涓殑閿級
-  private settingsPath: string;
-  private userSettingsPath: string;
+  private settingsPath: string = '';
+  private userSettingsPath: string = '';
   private workspaceSettingsPath: string | null = null;
 
   constructor() {
     super();
-    
-    // 鐢ㄦ埛璁剧疆璺緞
-    const userDataPath = app.getPath('userData');
+  }
+
+  private resolveUserDataPath(): string {
+    if (!app) {
+      throw new Error('[SettingsManager] Electron app is unavailable before initialization');
+    }
+
+    return app.getPath('userData');
+  }
+
+  private ensureSettingsPaths(): void {
+    if (this.settingsPath && this.userSettingsPath) {
+      return;
+    }
+
+    const userDataPath = this.resolveUserDataPath();
     this.settingsPath = path.join(userDataPath, 'User');
     this.userSettingsPath = path.join(this.settingsPath, 'settings.json');
   }
@@ -96,6 +109,8 @@ export class SettingsManager extends EventEmitter {
    * 鍒濆鍖栬缃鐞嗗櫒
    */
   async initialize(): Promise<void> {
+    this.ensureSettingsPaths();
+
     try {
       
       // 纭繚璁剧疆鐩綍瀛樺湪

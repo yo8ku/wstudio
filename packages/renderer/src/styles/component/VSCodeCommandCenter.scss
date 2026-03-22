@@ -1,49 +1,215 @@
 /**
- * CommandCenter 命令中心颜色样式
- * 功能：定义命令中心的颜色主题
+ * CommandCenter 命令中心样式。
+ * 功能：提供 F1 命令中心的悬浮布局、列表结构和主题颜色。
  */
 
 .command-center {
-  background-color: var(--ws-commandCenter-background, var(--ws-editor-background));
-  border-color: var(--ws-commandCenter-border);
-  color: var(--ws-commandCenter-foreground);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-}
+  position: fixed;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999999;
+  width: min(640px, calc(100vw - 24px));
+  pointer-events: none;
+  color: var(--ws-quickInput-foreground, var(--ws-editor-foreground));
 
+  * {
+    box-sizing: border-box;
+  }
 
-[data-theme-mode=dark] .command-center {
-  background-color: var(--ws-commandCenter-background, var(--ws-editor-background,#313131));
-}
+  .command-center-widget {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    max-height: min(50vh, 560px);
+    overflow: hidden;
+    pointer-events: all;
+    background-color: var(--ws-commandCenter-background, var(--ws-editor-background));
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.36);
+  }
 
-[data-theme-mode=dark] .command-center-item.selected {
-    background-color: var(--ws-quickInputList-focusBackground,#aa3b3bbb);
-}
+  .command-center-header {
+    padding: 8px;
+  }
 
+  .command-center-input-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 6px;
+    background-color: var(--ws-quickInput-background, transparent);
+  }
 
-[data-theme-mode=light] .command-center {
-  background-color: var(--ws-commandCenter-background, var(--ws-editor-background,#313131));
-}
+  .command-center-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ws-descriptionForeground, var(--ws-editor-foreground));
+  }
 
-.command-center-list {
-  // background-color: var(--ws-quickInput-background);
-  // color: var(--ws-quickInput-foreground);
-}
+  .command-center-input {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+    padding: 6px 0;
+    outline: none !important;
+    background: transparent;
+    box-shadow: none !important;
+    color: inherit;
+    font-size: 13px;
+    line-height: 20px;
+  }
 
-.command-center-item {
-  color: var(--ws-quickInput-foreground);
-}
+  .command-center-input::placeholder {
+    color: var(--ws-input-placeholderForeground, var(--ws-descriptionForeground, rgba(255, 255, 255, 0.5)));
+    opacity: 1;
+  }
 
-.command-center-item:hover {
-  background-color: var(--ws-quickInputList-focusBackground);
-  color: var(--ws-quickInputList-focusForeground);
-}
+  .command-center-list-container {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 4px 0 6px;
+  }
 
-.command-center-item.selected {
-  background-color: var(--ws-quickInputList-focusBackground,#aa3b3bbb);
-  color: var(--ws-quickInputList-focusForeground);
-}
+  .command-center-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 0 8px;
+  }
 
+  .command-item-separator {
+    position: relative;
+    height: 1px;
+    margin: 6px 12px;
+    background-color: var(--ws-commandCenter-border, var(--ws-panel-border, rgba(128, 128, 128, 0.25)));
 
-[data-theme-mode=light] .command-item-separator{
-  border: 1px solid rgb(129 129 129 / 28%)
+    &[data-label]::after {
+      content: attr(data-label);
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      padding-left: 8px;
+      background-color: var(--ws-commandCenter-background, var(--ws-editor-background));
+      color: var(--ws-descriptionForeground, var(--ws-editor-foreground));
+      font-size: 11px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+  }
+
+  .command-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--ws-quickInput-foreground, var(--ws-editor-foreground));
+    background: transparent;
+
+    &:hover {
+      background-color: var(--ws-quickInputList-focusBackground, rgba(128, 128, 128, 0.18));
+      color: var(--ws-quickInputList-focusForeground, var(--ws-editor-foreground));
+    }
+
+    &.selected {
+      background-color: var(--ws-quickInputList-focusBackground, rgba(128, 128, 128, 0.22));
+      color: var(--ws-quickInputList-focusForeground, var(--ws-editor-foreground));
+    }
+  }
+
+  .command-item-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .command-item-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .command-item-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    line-height: 16px;
+  }
+
+  .command-item-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .command-item-recent-badge {
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--ws-descriptionForeground, var(--ws-editor-foreground));
+    white-space: nowrap;
+  }
+
+  .command-item-keybinding {
+    flex-shrink: 0;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1.1;
+    color: var(--ws-descriptionForeground, var(--ws-editor-foreground));
+    background-color: var(--ws-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+  }
+
+  .command-item-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 36px 20px;
+    color: var(--ws-descriptionForeground, var(--ws-editor-foreground));
+  }
+
+  .empty-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background-color: var(--ws-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+  }
+
+  .empty-text {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .command-center-status-bar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 12px 6px;
+    border-top: 1px solid var(--ws-commandCenter-border, var(--ws-panel-border, rgba(128, 128, 128, 0.2)));
+    color: var(--ws-descriptionForeground, var(--ws-editor-foreground));
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .command-center-list-container::-webkit-scrollbar {
+    width: 10px;
+  }
 }

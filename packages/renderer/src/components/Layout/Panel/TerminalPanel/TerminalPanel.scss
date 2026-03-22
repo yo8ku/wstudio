@@ -187,12 +187,12 @@
       .xterm-viewport {
         background: var(--ws-panel-background) !important;
         overflow-y: auto !important;
-        scrollbar-width: thin;
-        scrollbar-color: transparent transparent;
+        scrollbar-width: none;
         box-sizing: border-box;
 
         &::-webkit-scrollbar {
-          width: 14px;
+          width: 0 !important;
+          height: 0 !important;
           background: transparent;
         }
 

@@ -349,7 +349,9 @@ export const Panel: React.FC<PanelProps> = ({
             onMouseEnter={() => setShowMoveSubmenu(true)}
           >
             <span>面板移动</span>
-            <span className='panel-terminal-context-menu-arrow'>▸</span>
+            <span className='panel-terminal-context-menu-arrow'>
+              <Icon name='chevron-right' size={12} />
+            </span>
             {showMoveSubmenu && (
               <div
                 ref={moveSubmenuRef}

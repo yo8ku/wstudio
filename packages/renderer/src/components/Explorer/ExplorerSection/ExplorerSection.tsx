@@ -1,6 +1,6 @@
-﻿/**
- * Explorer Section 组件
- * 统一资源管理器分区标题、折叠行为与操作按钮。
+/**
+ * Explorer section container.
+ * Handles section header rendering, expand state, and action buttons.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -11,7 +11,7 @@ export interface ActionButton {
   id: string;
   icon: React.ReactNode;
   tooltip?: string;
-  onClick: (event?: React.MouseEvent<HTMLButtonElement>) => void;
+  onClick: () => void;
   disabled?: boolean;
 }
 
@@ -53,11 +53,24 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
   }, []);
 
   const handleToggle = () => {
-    const newExpanded = !isExpanded;
+    const nextExpanded = !isExpanded;
     if (!isControlled) {
-      setInternalExpanded(newExpanded);
+      setInternalExpanded(nextExpanded);
     }
-    onExpandChange?.(newExpanded);
+    onExpandChange?.(nextExpanded);
+  };
+
+  const handleActionKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+    action: ActionButton,
+  ): void => {
+    if (action.disabled || (event.key !== 'Enter' && event.key !== ' ')) {
+      return;
+    }
+
+    event.stopPropagation();
+    event.preventDefault();
+    action.onClick();
   };
 
   return (
@@ -75,13 +88,19 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
             onClick={handleToggle}
           >
             <span className="explorer-section-toggle-icon">
-              {useFolderIdleIcon && <i className="codicon codicon-folder explorer-section-folder-icon" />}
-              {useFormIdleIcon && <Icon name="table-properties" size={16} className="explorer-section-form-icon" />}
-              {useEditorsIdleIcon && <i className="codicon codicon-files explorer-section-editors-icon" />}
-              <i
-                className={`codicon ${
-                  isExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'
-                } explorer-section-chevron`}
+              {useFolderIdleIcon && (
+                <Icon name="folder" size={16} className="explorer-section-folder-icon" />
+              )}
+              {useFormIdleIcon && (
+                <Icon name="table-properties" size={16} className="explorer-section-form-icon" />
+              )}
+              {useEditorsIdleIcon && (
+                <Icon name="files-folder" size={16} className="explorer-section-editors-icon" />
+              )}
+              <Icon
+                name={isExpanded ? 'chevron-down' : 'chevron-right'}
+                size={16}
+                className="explorer-section-chevron"
               />
             </span>
             {icon && <span className="explorer-section-icon">{icon}</span>}
@@ -96,26 +115,29 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
           {actions.length > 0 && (
             <div className="explorer-section-actions">
               {actions.map((action) => (
-                <button
+                <div
                   key={action.id}
-                  className="explorer-action-button"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
+                  role="button"
+                  tabIndex={action.disabled ? -1 : 0}
+                  className={`explorer-action-button${action.disabled ? ' is-disabled' : ''}`}
+                  aria-disabled={action.disabled}
+                  onMouseDown={(event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
                   }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
                     if (!action.disabled) {
-                      action.onClick(e);
+                      action.onClick();
                     }
                   }}
-                  disabled={action.disabled}
+                  onKeyDown={(event) => handleActionKeyDown(event, action)}
                   title={action.tooltip}
                   aria-label={action.tooltip}
                 >
                   {action.icon}
-                </button>
+                </div>
               ))}
             </div>
           )}

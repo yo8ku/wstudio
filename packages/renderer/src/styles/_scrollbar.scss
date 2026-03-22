@@ -18,6 +18,13 @@ $scrollbar-thumb-active-color: var(--ws-scrollbarSlider-activeBackground, rgba(1
     width: $scrollbar-width;
   }
 
+  &::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
+  }
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
@@ -52,6 +59,13 @@ $scrollbar-thumb-active-color: var(--ws-scrollbarSlider-activeBackground, rgba(1
   // WebKit 滚动条样式 - 默认透明
   &::-webkit-scrollbar {
     width: $scrollbar-width !important;
+  }
+
+  &::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
   }
 
   &::-webkit-scrollbar-track {

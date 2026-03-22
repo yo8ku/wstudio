@@ -17,8 +17,13 @@ export const ChevronRightIcon: React.FC<IconProps> = ({ className, style }) => (
     viewBox="0 0 24 24" 
     className={className}
     style={style}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
   >
-    <path d="M8.59 16.59L13.17 12L8.59 7.41L10 6l6 6l-6 6l-1.41-1.41z" fill="currentColor" />
+    <path d="m10 7 5 5-5 5" />
   </svg>
 );
 
@@ -30,8 +35,13 @@ export const ChevronDownIcon: React.FC<IconProps> = ({ className, style }) => (
     viewBox="0 0 24 24" 
     className={className}
     style={style}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
   >
-    <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6l-6-6l1.41-1.41z" fill="currentColor" />
+    <path d="m7 10 5 5 5-5" />
   </svg>
 );
 

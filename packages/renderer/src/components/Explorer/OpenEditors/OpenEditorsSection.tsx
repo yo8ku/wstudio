@@ -1,9 +1,9 @@
-﻿/**
- * 打开的编辑器分区组件
- * 显示当前打开的编辑器列表，并提供保存全部、关闭全部等操作。
+/**
+ * Open editors section.
  */
 
 import React from 'react';
+import { Icon } from '../../Icons/Icon';
 import ExplorerSection from '../ExplorerSection/ExplorerSection';
 import { EditorGroup } from './EditorGroup';
 import { EditorItemProps } from './EditorItem';
@@ -20,10 +20,6 @@ export interface OpenEditorsSectionProps {
   onHide?: () => void;
 }
 
-/**
- * 打开的编辑器面板
- * 负责展示并管理当前会话中的已打开编辑器。
- */
 export const OpenEditorsSection: React.FC<OpenEditorsSectionProps> = ({
   editors,
   onEditorClick,
@@ -37,7 +33,7 @@ export const OpenEditorsSection: React.FC<OpenEditorsSectionProps> = ({
   if (onSaveAll) {
     actions.push({
       id: 'save-all',
-      icon: <i className="codicon codicon-save-all" />,
+      icon: <Icon name="save-all" size={16} />,
       tooltip: '全部保存',
       onClick: onSaveAll,
     });
@@ -46,7 +42,7 @@ export const OpenEditorsSection: React.FC<OpenEditorsSectionProps> = ({
   if (onCloseAll) {
     actions.push({
       id: 'close-all',
-      icon: <i className="codicon codicon-close-all" />,
+      icon: <Icon name="close-all" size={16} />,
       tooltip: '全部关闭',
       onClick: onCloseAll,
     });
@@ -55,7 +51,7 @@ export const OpenEditorsSection: React.FC<OpenEditorsSectionProps> = ({
   if (onHide) {
     actions.push({
       id: 'hide-open-editors',
-      icon: <i className="codicon codicon-close" />,
+      icon: <Icon name="close" size={16} />,
       tooltip: '隐藏已打开',
       onClick: onHide,
     });

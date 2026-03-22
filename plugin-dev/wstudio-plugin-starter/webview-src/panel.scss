@@ -1,0 +1,182 @@
+/* Tailwind-powered webview styles for the WStudio plugin starter. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", sans-serif;
+  --starter-bg: #0f1722;
+  --starter-panel: rgba(19, 30, 43, 0.92);
+  --starter-panel-strong: rgba(27, 40, 57, 0.98);
+  --starter-border: rgba(140, 176, 221, 0.18);
+  --starter-text: #ecf3ff;
+  --starter-muted: #9eb1cf;
+  --starter-accent: #4d96ff;
+  --starter-accent-strong: #2d74dd;
+  --starter-shadow: 0 18px 40px rgba(0, 0, 0, 0.26);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply m-0 min-h-screen;
+    background:
+      radial-gradient(circle at top left, rgba(77, 150, 255, 0.18), transparent 36%),
+      linear-gradient(180deg, #111a27 0%, var(--starter-bg) 100%);
+    color: var(--starter-text);
+  }
+
+  code {
+    @apply rounded-md px-1;
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+  }
+}
+
+@layer components {
+  .starter-app {
+    @apply grid min-h-screen gap-4 p-5;
+  }
+
+  .starter-app--fallback {
+    @apply content-start;
+  }
+
+  .starter-card {
+    @apply border;
+    border-color: var(--starter-border);
+    border-radius: 18px;
+    background: linear-gradient(180deg, var(--starter-panel-strong), var(--starter-panel));
+    box-shadow: var(--starter-shadow);
+  }
+
+  .starter-hero {
+    @apply grid items-center p-5;
+    gap: 18px;
+    grid-template-columns: 92px 1fr;
+  }
+
+  .starter-hero__badge {
+    @apply block;
+    width: 92px;
+    height: 92px;
+  }
+
+  .starter-hero__content,
+  .starter-section,
+  .starter-log-panel {
+    color: var(--starter-text);
+  }
+
+  .starter-kicker {
+    @apply mb-2 mt-0 text-xs uppercase;
+    color: var(--starter-muted);
+    letter-spacing: 0.14em;
+  }
+
+  .starter-title {
+    @apply mt-0 text-3xl;
+    margin-bottom: 10px;
+    line-height: 1.1;
+  }
+
+  .starter-description,
+  .starter-section__body {
+    @apply m-0;
+    color: var(--starter-muted);
+    line-height: 1.6;
+  }
+
+  .starter-grid {
+    @apply grid gap-4;
+    padding: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .starter-section__title {
+    @apply mb-2 mt-0 text-base;
+  }
+
+  .starter-actions {
+    @apply flex flex-wrap gap-3;
+    padding: 18px;
+  }
+
+  .starter-action {
+    @apply inline-flex min-h-10 cursor-pointer select-none items-center justify-center rounded-full text-white;
+    background: linear-gradient(180deg, var(--starter-accent), var(--starter-accent-strong));
+    padding: 0 18px;
+    transition: transform 120ms ease, opacity 120ms ease;
+  }
+
+  .starter-action:hover,
+  .starter-action:focus-visible {
+    @apply outline-none;
+    transform: translateY(-1px);
+    opacity: 0.96;
+  }
+
+  .starter-action--secondary {
+    @apply border;
+    border-color: var(--starter-border);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .starter-pill-row {
+    @apply mt-3 flex flex-wrap gap-2;
+  }
+
+  .starter-pill {
+    @apply inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium uppercase;
+    border-color: rgba(140, 176, 221, 0.24);
+    background: rgba(255, 255, 255, 0.06);
+    color: #dbe8ff;
+    letter-spacing: 0.12em;
+  }
+
+  .starter-log-panel {
+    padding: 18px;
+  }
+
+  .starter-log {
+    @apply mt-3 grid gap-3;
+  }
+
+  .starter-log__entry {
+    @apply rounded-2xl;
+    background: rgba(7, 11, 18, 0.78);
+    padding: 14px;
+  }
+
+  .starter-log__direction {
+    @apply mb-2 mt-0 text-xs uppercase;
+    color: var(--starter-muted);
+    letter-spacing: 0.08em;
+  }
+
+  .starter-log__payload {
+    @apply m-0 whitespace-pre-wrap break-words;
+    color: #dbe8ff;
+    overflow: auto;
+    line-height: 1.5;
+  }
+}
+
+@media (max-width: 640px) {
+  .starter-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .starter-hero__badge {
+    width: 72px;
+    height: 72px;
+  }
+
+  .starter-title {
+    @apply text-2xl;
+  }
+}

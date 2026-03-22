@@ -2,7 +2,8 @@
  * Electron 濠电偞鍨堕幐璇参ｉ幒鏃€宕叉俊顖濆亹閻瑩鎮楅敐搴濈凹闁稿孩鐟╅弻娑㈠棘鐠囨彃顬夐梺鍝勵儏閸熸挳寮?
  */
 
-const { app, BrowserWindow, ipcMain, protocol, dialog, session, shell, Menu, globalShortcut, systemPreferences } = require('electron');
+const electron = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, shell, Menu, globalShortcut, systemPreferences } = electron;
 const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
@@ -54,22 +55,7 @@ const logIconPath = path.join(__dirname, 'log', 'log.png');
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
 const DEV_SERVER_MAX_RETRIES = 8;
 const DEV_SERVER_RETRY_DELAY_MS = 750;
-if (!fs.existsSync(logIconPath)) {
-  console.warn('[Electron] 闂佸湱鍘ч悺銊ヮ潖婵犳艾鏋侀柕鍫濐槸閻愬﹪鏌ｉ幇闈涘闁搞劌銈搁弻锟犲醇椤愶紕鍑规繝銏ｎ潐閿曘垹鐣峰杈ㄦ殰妞ゆ柨澧介ˇ顔戒繆椤愶絾绶查悗姘煎灦椤㈡﹢宕妷锕€纾銈嗙墬濮樸劎绮?', logIconPath);
-}
-
-// 濠殿喗甯楃粙鎺椻€﹂崼銉晣濠电姵鑹剧憴锔姐亜閺嶃劎鐭嬮柡鍡楃箳閻ヮ亪顢樿閸樺憡绻涢崱鎰伈鐎规洘绻堥幃鈺呮倻閳轰椒澹曢梺缁樻礀閸婅崵绮堟径鎰拺妞ゆ巻鍋撻柣蹇旂箞瀹?Windows frameless 缂傚倷鐒﹂崝鏍€冮崨鑸汗婵炴垯鍨洪弲?resize 闂備礁鎼崯鍐测枖濞戙垹鍚规い鎾卞灪閸嬫繂霉閻撳寒鍤熼柟鏋姂楠炴牜鈧稒蓱缁€澶愭寠閻斿吋鍋ㄦい鏍ф缁夌數鈧?
-// 濠电姷顣介埀顒€鍟块埀顒€鐏濋妴鎺楀醇閺囩偟顔婇梺鍦劋閹搁箖宕ｉ埀?GPU 闂備胶顭堢换鎺楀储瑜旈、娆撳箛閻楀牃鎷诲銈嗘磵閸嬫挻銇勯敐鍕煓闁轰礁绉舵禒锕傛寠婢跺寒鍞归梻鍌欑贰閸嬪懏绌遍搹瑙勫床闁告劦鍠楅崑婵囥亜閺嶃劌鍤柡鍡樻閺屾稑鈻庨幇鎯扳偓鍧楁煕閿濆懏鎯堟い鏇秮瀹曨偊宕熼銈呭箑闂備胶顭堢换鎴炵箾婵犲伣娑㈠箻椤旇姤娅?
-if (process.env.NOTE_STUDIO_DISABLE_HARDWARE_ACCELERATION === 'true') {
-  app.disableHardwareAcceleration();
-  console.log('[Electron] Hardware acceleration disabled via env flag.');
-} else {
-  console.log('[Electron] Hardware acceleration remains enabled.');
-}
-
-// 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞濞寸姴顑嗛崵濠冦亜韫囨挸顏柡鍡樻緲閳藉寮▎鐐﹂悗瑙勬礃椤ㄥ牓骞忕€ｎ噮鏁婇柡鍕箳椤︿即姊虹紒姗嗘畽妞ゎ偄顦…鍥醇閵夈儳顢呴棅顐㈡处閸戝綊宕幘顔界叆婵炴垶顭囨晶鏇犵磼閻戔晛浜惧┑锛勫亼閸婃盯顢氳閿?app.whenReady 濠电偞鍨堕弻銊╊敄閸涱喗娅犻柣妯虹仛鐎氼剟鏌涢幇鍏哥凹闁哄棗绻橀弻?
-// 闂佸搫顦弲婊堟偡閿曞倹鍋?local-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑欐綑缁犮儳鈧箍鍎遍悧鍡涘储閹绢喗鐓?<video>闂?audio>闂?img> 缂傚倷鐒︾粙鎴λ囨导瀛樺亯闁挎繂娲ㄦす鎶芥煕濞嗗秴鍔ラ柛姗嗗墯閹便劌鈹戦幘璺哄煂闂佺粯鐗為崺鏍箯閸涱垱宕夐柕濠忛檮濞?
-protocol.registerSchemesAsPrivileged([
+const privilegedSchemes = [
   {
     scheme: 'local-file',
     privileges: {
@@ -100,8 +86,33 @@ protocol.registerSchemesAsPrivileged([
       bypassCSP: false
     }
   }
-]);
-console.log('[Electron] Custom protocols registered.');
+];
+
+function getProtocolModule() {
+  return electron.protocol || session?.defaultSession?.protocol || null;
+}
+if (!fs.existsSync(logIconPath)) {
+  console.warn('[Electron] 闂佸湱鍘ч悺銊ヮ潖婵犳艾鏋侀柕鍫濐槸閻愬﹪鏌ｉ幇闈涘闁搞劌銈搁弻锟犲醇椤愶紕鍑规繝銏ｎ潐閿曘垹鐣峰杈ㄦ殰妞ゆ柨澧介ˇ顔戒繆椤愶絾绶查悗姘煎灦椤㈡﹢宕妷锕€纾銈嗙墬濮樸劎绮?', logIconPath);
+}
+
+// 濠殿喗甯楃粙鎺椻€﹂崼銉晣濠电姵鑹剧憴锔姐亜閺嶃劎鐭嬮柡鍡楃箳閻ヮ亪顢樿閸樺憡绻涢崱鎰伈鐎规洘绻堥幃鈺呮倻閳轰椒澹曢梺缁樻礀閸婅崵绮堟径鎰拺妞ゆ巻鍋撻柣蹇旂箞瀹?Windows frameless 缂傚倷鐒﹂崝鏍€冮崨鑸汗婵炴垯鍨洪弲?resize 闂備礁鎼崯鍐测枖濞戙垹鍚规い鎾卞灪閸嬫繂霉閻撳寒鍤熼柟鏋姂楠炴牜鈧稒蓱缁€澶愭寠閻斿吋鍋ㄦい鏍ф缁夌數鈧?
+// 濠电姷顣介埀顒€鍟块埀顒€鐏濋妴鎺楀醇閺囩偟顔婇梺鍦劋閹搁箖宕ｉ埀?GPU 闂備胶顭堢换鎺楀储瑜旈、娆撳箛閻楀牃鎷诲銈嗘磵閸嬫挻銇勯敐鍕煓闁轰礁绉舵禒锕傛寠婢跺寒鍞归梻鍌欑贰閸嬪懏绌遍搹瑙勫床闁告劦鍠楅崑婵囥亜閺嶃劌鍤柡鍡樻閺屾稑鈻庨幇鎯扳偓鍧楁煕閿濆懏鎯堟い鏇秮瀹曨偊宕熼銈呭箑闂備胶顭堢换鎴炵箾婵犲伣娑㈠箻椤旇姤娅?
+if (process.env.NOTE_STUDIO_DISABLE_HARDWARE_ACCELERATION === 'true') {
+  app.disableHardwareAcceleration();
+  console.log('[Electron] Hardware acceleration disabled via env flag.');
+} else {
+  console.log('[Electron] Hardware acceleration remains enabled.');
+}
+
+// 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞濞寸姴顑嗛崵濠冦亜韫囨挸顏柡鍡樻緲閳藉寮▎鐐﹂悗瑙勬礃椤ㄥ牓骞忕€ｎ噮鏁婇柡鍕箳椤︿即姊虹紒姗嗘畽妞ゎ偄顦…鍥醇閵夈儳顢呴棅顐㈡处閸戝綊宕幘顔界叆婵炴垶顭囨晶鏇犵磼閻戔晛浜惧┑锛勫亼閸婃盯顢氳閿?app.whenReady 濠电偞鍨堕弻銊╊敄閸涱喗娅犻柣妯虹仛鐎氼剟鏌涢幇鍏哥凹闁哄棗绻橀弻?
+// 闂佸搫顦弲婊堟偡閿曞倹鍋?local-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑欐綑缁犮儳鈧箍鍎遍悧鍡涘储閹绢喗鐓?<video>闂?audio>闂?img> 缂傚倷鐒︾粙鎴λ囨导瀛樺亯闁挎繂娲ㄦす鎶芥煕濞嗗秴鍔ラ柛姗嗗墯閹便劌鈹戦幘璺哄煂闂佺粯鐗為崺鏍箯閸涱垱宕夐柕濠忛檮濞?
+const bootstrapProtocol = getProtocolModule();
+if (bootstrapProtocol && typeof bootstrapProtocol.registerSchemesAsPrivileged === 'function') {
+  bootstrapProtocol.registerSchemesAsPrivileged(privilegedSchemes);
+  console.log('[Electron] Custom protocols registered.');
+} else {
+  console.warn('[Electron] Protocol privilege registration is unavailable during bootstrap.');
+}
 
 let mainWindow;
 let terminalService = null;
@@ -392,6 +403,10 @@ function createWindow(backgroundColor = '#1e1e1e') {
   });
   
   // 闂備胶鍎甸弲婊堝垂閻㈢绠氬璺虹灱閻滅粯淇婇妶鍌氫壕閻熸粎澧楅惄顖炲箖閻愮儤鏅滈柟顖嗗倸瀵查梻浣告啞閻燂箓鏁嬮柣?
+  const syncWindowMaximizedState = () => {
+    createdWindow.webContents.send('window-maximized-state-changed', createdWindow.isMaximized());
+  };
+
   createdWindow.on('focus', () => {
     mainWindow = createdWindow;
     pluginEditorBridge.setMainWindow(createdWindow);
@@ -401,10 +416,14 @@ function createWindow(backgroundColor = '#1e1e1e') {
   createdWindow.on('blur', () => {
     createdWindow.webContents.send('window-blur');
   });
+
+  createdWindow.on('maximize', syncWindowMaximizedState);
+  createdWindow.on('unmaximize', syncWindowMaximizedState);
   
   // 缂傚倷鐒﹂崝鏍€冮崨鑸汗婵炴垯鍨圭粈澶愭煟濡厧鍔嬬紒浣峰嵆閹鎮烽悧鍫熸嫳闂佹悶鍔嶅畝绋跨暦閵夛附鍎熼柨婵嗘閺嗙姵绻濋姀锝嗙【閻庢凹鍣ｉ獮?
   createdWindow.webContents.on('did-finish-load', () => {
     console.log('[Electron] Renderer did-finish-load.');
+    syncWindowMaximizedState();
     // 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥ┑鍫熸櫩in-process:ready 濠电偛鐡ㄧ划宀勵敄閸曨偀鏋庨柕蹇嬪€栭弲?initializeExtensions 闂佽娴烽幊鎾诲嫉椤掑嫬鍨傛慨妯挎硾鐟欙箓骞栫划鍏夊亾瀹曞洤鐭濋梻鍌欑贰閸嬪倻娆㈤妶鍥潟婵犻潧娲ㄩ埢鏃傗偓骞垮劚閹冲繘鐓鍕骇闁冲搫鍊婚幊鍥煕閿濆洤鍘寸€规洩缍侀獮瀣敍濞戞﹩浼?
   });
 
@@ -445,8 +464,8 @@ app.whenReady().then(async () => {
   // 闂備胶顭堢换瀣归崶顒夋晩闊洦绋掗弲?jsdelivr CDN 闂備礁鎲″缁樻叏閹灐?Monaco Editor 闂備胶鍘ч悺銊у枈瀹ュ拑鑰?
   // frame-src 闂備胶顭堢换瀣归崶顒夋晩闊洦绋戠粈澶愭煟濡厧鍔嬬紒浣峰嵆閹嘲鈻庤箛鏃戞＆濡炪倧绲介悥濂告偘椤曗偓瀹曟﹢骞撻幒妤€褰欓梻浣圭湽閸斿瞼鈧凹鍓涚划濠囨偨缁嬭法顦ч梺闈涱檧闂勫嫮浜搁敓鐘崇厸闁逞屽墴楠炲棜顦抽柣婵勫€濋弻銊モ槈濡崵顔囩紓鍌欑劍濮婂綊鎮烽敐澶婄劦妞ゆ垼娉曢悿鍣妘Tube闂備線娼уΛ鏂款渻閹烘梹顫曟い鎾卞灪閻撯偓闂佸憡鍨崐妤冪矆?
   const cspHeader = process.env.NODE_ENV === 'development'
-    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';"
-    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';";
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; worker-src 'self' blob: http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';"
+    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';";
   
   // 闂備胶鎳撻崵鏍⒔閸曨垰鏄ラ柛娑欐綑缁犮儵鏌嶈閸撶喎顕ｉ崹顐㈢窞濠电姴鍟崕銉╂煙閻撳海鎽犻柡灞诲姂閹崇喖鎮㈤棃鐐叉捣閹风娀骞撻幒婵囧 CSP 闂?
   defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -724,14 +743,19 @@ app.whenReady().then(async () => {
   };
   
   // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞?local-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑樼摠閸嬨劑鏌曟繛鍨偓妤呮嚌妤ｅ啯鐓曢柡鍐ㄥ€搁瀷濠电偞娼欏ú顓烆嚕閻㈠壊鏁嗛柍褜鍓欓敃銏ゅ箻椤斿吋顥濋梺鎼炲劵闂勫嫰顢?
-  protocol.registerFileProtocol('local-file', handleFileProtocol('local-file'));
+  const protocolModule = getProtocolModule();
+  if (!protocolModule || typeof protocolModule.registerFileProtocol !== 'function') {
+    throw new Error('[Electron] Protocol registration API is unavailable.');
+  }
+
+  protocolModule.registerFileProtocol('local-file', handleFileProtocol('local-file'));
   // console.log('[Electron]  local-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞弾閸熷懘鏌涘▎蹇ｆЧ闁哄棗鐗撻弻?);
   
   // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞?vscode-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞枟婵瓨绻濇繛鎯т壕闁荤姵鍔楅崰鎰嚗閸曨垰鐐婇柍鍝勫€瑰▓銏ゆ⒑閹稿海鈽夐柣妤€妫濆畷銉р偓锝庡厴閸嬫挾娑甸崪浣圭秷濠碘槅鍋掗崑濠囧箖瑜斿畷濂告偄鐏忎焦瀵橀梺璇茬箳閸嬬偛煤閳哄啯顫?
-  protocol.registerFileProtocol('vscode-file', handleFileProtocol('vscode-file'));
+  protocolModule.registerFileProtocol('vscode-file', handleFileProtocol('vscode-file'));
   // console.log('[Electron]  vscode-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞弾閸熷懘鏌涘▎蹇ｆЧ闁哄棗鐗撻弻?);
 
-  protocol.registerFileProtocol('wstudio-extension', handleExtensionAssetProtocol);
+  protocolModule.registerFileProtocol('wstudio-extension', handleExtensionAssetProtocol);
   
   // 闂?闂備胶顭堢换鎰版偋閸℃稑鍨傞柛顭戝亝閸欏繘鎮楅敐搴濈盎妞ゆ泦鍥ㄧ厵缁剧増蓱濞呭懘鏌ｉ銏⑿ら柛鏍ㄧ墵閹筹繝濡堕崶褏鍘烽梻浣瑰缁嬫垿鎮ф繝鍥ф瀬闁绘劕鎼粈鍐倶閻愭潙鍔ゆい锝嗙叀閺?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶褔妫峰銈庡幗鐢偟绮?
   // 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥ鍡楀缂佺姵鍨甸—鍐Χ閸偄娈┑鐘亾妞ゅ繐鐗嗙粈鍡樼箾閹寸儐鐒界紒鎲嬪缁辨帡骞囬褎鐣堕悷婊呭缁嬫帞绮欐繝鍕ㄥ亾閿濆簼绨绘い銈呮噺缁绘稒寰勯崼婵嗩瀳闂?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶褔妫峰銈庡幗鐢偟绮堟径鎰厱婵ê澧介悾閬嶆煕椤垵鐏犻柕鍡樺浮瀹曪絾寰勭仦钘夎劘闂佸搫顦弲婊呯矙閹捐鐓濋柛蹇曞帶椤曡鲸鎱ㄥ鍡楀箺闁哄棭浜弻?"No handler registered" 闂傚倷鐒︾€笛囨偡閵娾晩鏁?
@@ -1634,9 +1658,30 @@ ipcMain.on('maximize-window', () => {
   }
 });
 
+ipcMain.handle('window:toggle-maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) {
+    return false;
+  }
+
+  const nextIsMaximized = !win.isMaximized();
+  if (nextIsMaximized) {
+    win.maximize();
+  } else {
+    win.unmaximize();
+  }
+
+  return nextIsMaximized;
+});
+
 ipcMain.on('close-window', () => {
   const win = BrowserWindow.getFocusedWindow();
   if (win) win.close();
+});
+
+ipcMain.handle('window:is-maximized', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return win ? win.isMaximized() : false;
 });
 
 ipcMain.handle('window:create-new-instance', async () => {

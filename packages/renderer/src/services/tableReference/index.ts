@@ -1,6 +1,6 @@
 /**
  * 表格引用服务导出
- * 功能：导出表格引用相关的服务和类型
+ * 功能：导出表格引用解析与 CodeMirror 自动补全能力
  */
 
 export {
@@ -17,10 +17,4 @@ export type {
   ParsedReference,
 } from './TableReferenceService';
 
-export {
-  createMonacoTableReferenceProvider,
-  registerMonacoTableReferenceProvider,
-  createCodeMirrorTableReferenceExtension,
-  resetCompletionState,
-  setSelectedForm,
-} from './TableReferenceCompletionProvider';
+export { createCodeMirrorTableReferenceExtension } from './TableReferenceCompletionProvider';

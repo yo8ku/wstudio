@@ -842,7 +842,7 @@ export class TerminalSession {
     previousButtonIcon.setAttribute('stroke-width', '1.5');
     previousButtonIcon.setAttribute('stroke-linecap', 'round');
     previousButtonIcon.setAttribute('stroke-linejoin', 'round');
-    previousButtonIcon.setAttribute('class', 'lucide lucide-arrow-up-icon lucide-arrow-up');
+    previousButtonIcon.setAttribute('class', 'terminal-compact-icon terminal-compact-icon--up');
     tuneCompactOptionIcon(previousButtonIcon);
     const previousButtonArrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     previousButtonArrow.setAttribute('d', 'm5 12 7-7 7 7');
@@ -860,7 +860,7 @@ export class TerminalSession {
     nextButtonIcon.setAttribute('stroke-width', '1.5');
     nextButtonIcon.setAttribute('stroke-linecap', 'round');
     nextButtonIcon.setAttribute('stroke-linejoin', 'round');
-    nextButtonIcon.setAttribute('class', 'lucide lucide-arrow-down-icon lucide-arrow-down');
+    nextButtonIcon.setAttribute('class', 'terminal-compact-icon terminal-compact-icon--down');
     tuneCompactOptionIcon(nextButtonIcon);
     const nextButtonLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     nextButtonLine.setAttribute('d', 'M12 5v14');
@@ -2363,3 +2363,4 @@ export class TerminalSession {
     return this.terminal;
   }
 }
+

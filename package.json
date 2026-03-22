@@ -19,7 +19,7 @@
     "postinstall": "pnpm run rebuild:native",
     "dev": "concurrently \"pnpm dev:renderer\" \"pnpm dev:electron\"",
     "dev:renderer": "vite --config packages/renderer/vite.config.ts",
-    "dev:electron": "wait-on http-get://127.0.0.1:5173/@vite/client && cross-env NODE_ENV=development electron .",
+    "dev:electron": "wait-on http-get://127.0.0.1:5173/@vite/client && node tools/scripts/run-electron-dev.cjs",
     "plugin:create": "node tools/scripts/create-extension.cjs",
     "plugin:validate": "pnpm --filter @note-studio/shared build && pnpm --filter @note-studio/extension-runtime build && node tools/scripts/validate-extension.cjs",
     "plugin:pack": "pnpm --filter @note-studio/shared build && pnpm --filter @note-studio/extension-runtime build && node tools/scripts/package-extension.cjs",

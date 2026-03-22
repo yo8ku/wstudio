@@ -1,6 +1,6 @@
 /**
- * 表格工具栏样式
- * 功能：定义表格工具栏的布局和样式
+ * 琛ㄦ牸宸ュ叿鏍忔牱寮?
+ * 鍔熻兘锛氬畾涔夎〃鏍煎伐鍏锋爮鐨勫竷灞€鍜屾牱寮?
  */
 
 .table-toolbar {
@@ -42,8 +42,8 @@
       cursor: not-allowed;
     }
 
-    .codicon {
-      font-size: 16px;
+    .toolbar-icon {
+      display: inline-flex;
     }
 
     .toolbar-item-label {
@@ -52,7 +52,7 @@
   }
 }
 
-// 字段设置菜单样式
+// 瀛楁璁剧疆鑿滃崟鏍峰紡
 .field-settings-menu {
   z-index: 10000;
   min-width: 200px;
@@ -153,7 +153,7 @@
   box-shadow: 0 0 30px rgb(0 0 0 / 24%);
 }
 
-// 行高菜单样式
+// 琛岄珮鑿滃崟鏍峰紡
 .row-height-menu {
   z-index: 10000;
   min-width: 120px;
@@ -212,3 +212,4 @@
   border: 1px solid #8f8f8f47;
   box-shadow: 0 0 30px rgb(0 0 0 / 24%);
 }
+

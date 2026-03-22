@@ -42,18 +42,22 @@
 }
 
 .file-tree-content {
+  .custom-scrollbar-content {
+    background-color: var(--ws-sideBar-background, var(--ws-editor-background, transparent));
+  }
+
   .tree-view {
     display: flex;
     flex-direction: column;
     width: 100%;
-    gap: 1px;
+    gap: 0;
+    background-color: var(--ws-sideBar-background, var(--ws-editor-background, transparent));
   }
 
   .file-tree-empty {
     margin: 0 6px;
     padding: 10px;
     font-size: 12px;
-    font-style: italic;
     border-radius: 6px;
     color: var(--ws-descriptionForeground, var(--ws-disabledForeground, var(--ws-list-deemphasizedForeground)));
     background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
@@ -72,16 +76,18 @@
     align-items: center;
     gap: 2px;
     padding: 0 8px 0 0;
-    cursor: pointer;
+    cursor: default;
     min-height: 22px;
     height: 22px;
-    margin: 2px 0px;
+    margin: 0;
     border: none;
     position: relative;
     box-sizing: border-box;
+    background-color: var(--ws-sideBar-background, var(--ws-editor-background, transparent));
+    background-clip: padding-box;
 
     .file-tree-chevron {
-      font-size: 14px;
+      font-size: 15px;
       width: 15px;
       display: inline-block;
       flex-shrink: 0;
@@ -95,7 +101,7 @@
 
     .file-tree-name {
       flex: 1;
-      font-size: 13px;
+      font-size: 12px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -109,7 +115,7 @@
 
       .inline-input {
         flex: 1;
-        font-size: 13px;
+        font-size: 12px;
         padding: 0 4px;
         outline: none;
         height: 20px;
@@ -118,7 +124,14 @@
     }
 
     &.context-menu-active {
-      box-shadow: inset 0 0 0 1px var(--ws-focusBorder, var(--ws-button-background));
+      box-shadow: none;
+      background-color: var(--ws-list-hoverBackground, var(--ws-list-hover-background, rgba(127, 127, 127, 0.16)));
+      color: var(--ws-list-hoverForeground, var(--ws-list-foreground));
+    }
+
+    &.context-menu-active.selected {
+      background-color: var(--ws-list-inactiveSelectionBackground, var(--ws-list-activeSelectionBackground));
+      color: var(--ws-list-inactiveSelectionForeground, var(--ws-list-activeSelectionForeground));
     }
 
     &:not(.selected):not(.creating):not(.editing):hover {
@@ -155,7 +168,8 @@
       width: 1px;
       background-color: var(--ws-tree-indentGuidesStroke, rgba(85, 85, 85, 0.4));
       pointer-events: none;
-      opacity: 0;
+      opacity: 1;
+      z-index: 2;
     }
 
     &[data-parent-depth="0"]::before {
@@ -182,46 +196,7 @@
       left: 76px;
     }
 
-    .file-tree-node:last-child {
-      .file-tree-node-content::after {
-        content: '';
-        position: absolute;
-        top: 50%;
-        width: 1px;
-        height: 50%;
-        background-color: var(--ws-editor-background, #1e1e1e);
-        pointer-events: none;
-        z-index: 1;
-        opacity: 0;
-      }
-
-      .file-tree-node-content[data-depth="2"]::after {
-        left: 40px;
-      }
-
-      .file-tree-node-content[data-depth="3"]::after {
-        left: 52px;
-      }
-
-      .file-tree-node-content[data-depth="4"]::after {
-        left: 64px;
-      }
-
-      .file-tree-node-content[data-depth="5"]::after {
-        left: 76px;
-      }
-
-      .file-tree-node-content[data-depth="6"]::after {
-        left: 88px;
-      }
-    }
   }
 }
 
-.file-tree-content:hover {
-  .file-tree-children::before,
-  .file-tree-node:last-child .file-tree-node-content::after {
-    opacity: 1;
-  }
-}
 

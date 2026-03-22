@@ -3,21 +3,131 @@
  * 功能：集成资源管理器，包括打开的编辑器、文件树、大�?
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { EditorView } from '@codemirror/view';
 import { ExplorerView } from '../../../Explorer';
-import type { FileTreeNode } from '../../../Explorer';
+import type { FileTreeNode, OutlineNode as ExplorerOutlineNode } from '../../../Explorer';
 import { electronStore } from '../../../../services/ElectronStoreService';
+import { OutlineService } from '../../../../services/OutlineService';
 import { useExplorerStore } from '../../../../stores/explorerStore';
 import { modal } from '../../../../stores/modalStore';
 import { toastService } from '../../../../services/ToastService';
+import {
+  getActiveCodeMirrorEditorContent,
+  getActiveCodeMirrorEditorMeta,
+  getActiveCodeMirrorEditorView,
+} from '../../../../lib/editor/activeCodeMirrorEditor';
+import { getEditorLanguageForNote } from '../../../../utils/noteLinking';
+
+interface FileSystemTreeEntry {
+  name: string;
+  path: string;
+  type: string;
+  children?: FileSystemTreeEntry[];
+}
+
+const findOutlineNodeById = (
+  nodes: ExplorerOutlineNode[],
+  targetId: string,
+): ExplorerOutlineNode | null => {
+  for (const node of nodes) {
+    if (node.id === targetId) {
+      return node;
+    }
+
+    if (node.children && node.children.length > 0) {
+      const childNode = findOutlineNodeById(node.children, targetId);
+      if (childNode) {
+        return childNode;
+      }
+    }
+  }
+
+  return null;
+};
+
+const toggleOutlineNodeExpansion = (
+  nodes: ExplorerOutlineNode[],
+  targetId: string,
+): ExplorerOutlineNode[] => (
+  nodes.map((node) => {
+    if (node.id === targetId) {
+      return {
+        ...node,
+        expanded: !node.expanded,
+      };
+    }
+
+    if (node.children && node.children.length > 0) {
+      return {
+        ...node,
+        children: toggleOutlineNodeExpansion(node.children, targetId),
+      };
+    }
+
+    return node;
+  })
+);
+
+const collapseOutlineNodes = (nodes: ExplorerOutlineNode[]): ExplorerOutlineNode[] => (
+  nodes.map((node) => ({
+    ...node,
+    expanded: false,
+    children: node.children ? collapseOutlineNodes(node.children) : node.children,
+  }))
+);
+
+const collectOutlineExpansionState = (
+  nodes: ExplorerOutlineNode[],
+  expansionState: Map<string, boolean> = new Map<string, boolean>(),
+): Map<string, boolean> => {
+  for (const node of nodes) {
+    expansionState.set(node.id, Boolean(node.expanded));
+    if (node.children && node.children.length > 0) {
+      collectOutlineExpansionState(node.children, expansionState);
+    }
+  }
+
+  return expansionState;
+};
+
+const applyOutlineExpansionState = (
+  nodes: ExplorerOutlineNode[],
+  expansionState: Map<string, boolean>,
+): ExplorerOutlineNode[] => (
+  nodes.map((node) => ({
+    ...node,
+    expanded: expansionState.get(node.id) ?? node.expanded,
+    children: node.children
+      ? applyOutlineExpansionState(node.children, expansionState)
+      : node.children,
+  }))
+);
 
 export const FileExplorer: React.FC = () => {
+  const normalizePath = (value: string): string => value.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+  const convertTreeEntryToNode = (
+    item: FileSystemTreeEntry,
+    depth: number,
+    expandDirectories: boolean = false,
+  ): FileTreeNode => ({
+    name: item.name,
+    path: item.path,
+    isDirectory: item.type === 'directory',
+    isExpanded: item.type === 'directory' ? expandDirectories : false,
+    depth,
+    children: item.children?.map((child) => convertTreeEntryToNode(child, depth + 1, expandDirectories)) || [],
+  });
   // �?store 获取文件树数�?
   const { 
     fileTreeData: storeFileTreeData, 
     workspacePath: storeWorkspacePath,
+    selectedOutlineNode,
+    isOutlineExpanded,
     setFileTreeData,
-    setWorkspacePath
+    setWorkspacePath,
+    setSelectedOutlineNode,
+    setOutlineExpanded,
   } = useExplorerStore();
   
   // 文件树状�?- 优先使用 store 中的数据
@@ -26,10 +136,51 @@ export const FileExplorer: React.FC = () => {
   const [rootFolderPath, setRootFolderPath] = useState<string>(storeWorkspacePath);
   const [rootFolderName, setRootFolderName] = useState<string>('');
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
+  const [currentActiveFilePath, setCurrentActiveFilePath] = useState<string>('');
+  const [fileTreeRevealRequest, setFileTreeRevealRequest] = useState<{ id: number; path: string } | null>(null);
+  const [outlineNodes, setOutlineNodes] = useState<ExplorerOutlineNode[]>([]);
+  const outlineNodesRef = useRef<ExplorerOutlineNode[]>([]);
+  const fileTreeRevealRequestIdRef = useRef<number>(0);
   
   // 内联编辑状�?- 使用 ref 避免闭包陷阱
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
   const isInlineEditingRef = useRef<boolean>(false);
+  const workspaceHeaderActionMode = useMemo<'collapse-all' | 'expand-all'>(() => {
+    const collectExpandState = (
+      nodes: FileTreeNode[],
+    ): { hasDirectory: boolean; hasExpandedDirectory: boolean } => {
+      let hasDirectory = false;
+      let hasExpandedDirectory = false;
+
+      for (const node of nodes) {
+        if (node.isDirectory) {
+          hasDirectory = true;
+          if (node.isExpanded) {
+            hasExpandedDirectory = true;
+          }
+        }
+
+        if (node.children && node.children.length > 0) {
+          const childState = collectExpandState(node.children);
+          hasDirectory = hasDirectory || childState.hasDirectory;
+          hasExpandedDirectory = hasExpandedDirectory || childState.hasExpandedDirectory;
+        }
+
+        if (hasDirectory && hasExpandedDirectory) {
+          break;
+        }
+      }
+
+      return { hasDirectory, hasExpandedDirectory };
+    };
+
+    const expandState = collectExpandState(fileTree);
+    if (expandState.hasDirectory && !expandState.hasExpandedDirectory) {
+      return 'expand-all';
+    }
+
+    return 'collapse-all';
+  }, [fileTree]);
   
   // 同步 fileTree �?ref �?store
   useEffect(() => {
@@ -37,8 +188,77 @@ export const FileExplorer: React.FC = () => {
     // 使用 useEffect 同步�?store，避免在渲染期间更新
     setFileTreeData(fileTree);
   }, [fileTree, setFileTreeData]);
+
+  useEffect(() => {
+    outlineNodesRef.current = outlineNodes;
+  }, [outlineNodes]);
   // 表单区域展开状态（持久化）
   const [initialFormExpanded, setInitialFormExpanded] = useState<boolean>(false);
+
+  const updateOutlineState = useCallback((
+    content: string,
+    language: string,
+    path: string,
+  ): void => {
+    const resolvedPath = path || currentActiveFilePath;
+    const normalizedLanguage = language.trim().toLowerCase();
+    const fallbackLanguage = resolvedPath
+      ? getEditorLanguageForNote({ path: resolvedPath, title: '' })
+      : '';
+    const resolvedLanguage = (
+      normalizedLanguage && normalizedLanguage !== 'plaintext'
+    )
+      ? normalizedLanguage
+      : fallbackLanguage || normalizedLanguage;
+    const parsedOutlineNodes = OutlineService.parseOutline(content, resolvedLanguage);
+    const nextOutlineNodes = applyOutlineExpansionState(
+      parsedOutlineNodes,
+      collectOutlineExpansionState(outlineNodesRef.current),
+    );
+    const shouldPreserveSelectedNode = Boolean(selectedOutlineNode)
+      && resolvedPath === currentActiveFilePath;
+    const nextSelectedOutlineNode = shouldPreserveSelectedNode && selectedOutlineNode
+      ? findOutlineNodeById(nextOutlineNodes, selectedOutlineNode.id)
+      : null;
+
+    outlineNodesRef.current = nextOutlineNodes;
+    setOutlineNodes(nextOutlineNodes);
+    setSelectedOutlineNode(nextSelectedOutlineNode);
+    if (resolvedPath) {
+      setCurrentActiveFilePath(resolvedPath);
+    }
+  }, [currentActiveFilePath, selectedOutlineNode, setSelectedOutlineNode]);
+
+  const syncOutlineFromActiveEditor = useCallback((): boolean => {
+    const activeEditorView = getActiveCodeMirrorEditorView();
+    if (!activeEditorView) {
+      return false;
+    }
+
+    const activeEditorMeta = getActiveCodeMirrorEditorMeta();
+    updateOutlineState(
+      getActiveCodeMirrorEditorContent(),
+      activeEditorMeta.language ?? '',
+      activeEditorMeta.path ?? currentActiveFilePath,
+    );
+
+    return true;
+  }, [currentActiveFilePath, updateOutlineState]);
+
+  const scheduleOutlineSync = useCallback((attempt: number = 0): void => {
+    const runSync = (nextAttempt: number): void => {
+      const delay = nextAttempt === 0 ? 0 : 16;
+      window.setTimeout(() => {
+        const didSync = syncOutlineFromActiveEditor();
+        if (!didSync && nextAttempt < 4) {
+          runSync(nextAttempt + 1);
+        }
+      }, delay);
+    };
+
+    runSync(attempt);
+  }, [syncOutlineFromActiveEditor]);
+
 
   // 辅助函数：根据路径查找节�?
   const findNodeByPath = useCallback((path: string | null | undefined): FileTreeNode | null => {
@@ -347,6 +567,99 @@ export const FileExplorer: React.FC = () => {
     loadWorkspace();
   }, [loadFileTree, storeFileTreeData, storeWorkspacePath]);
 
+  const revealPathInFileTree = useCallback(async (targetPath: string) => {
+    if (!rootFolderPath || !targetPath) {
+      return;
+    }
+
+    const normalizedRootFolderPath = normalizePath(rootFolderPath);
+    const normalizedTargetPath = normalizePath(targetPath);
+    const isPathInsideWorkspace =
+      normalizedTargetPath === normalizedRootFolderPath ||
+      normalizedTargetPath.startsWith(`${normalizedRootFolderPath}/`);
+
+    if (!isPathInsideWorkspace) {
+      return;
+    }
+
+    const expandNodesToTarget = async (
+      nodes: FileTreeNode[],
+    ): Promise<{ nextNodes: FileTreeNode[]; found: boolean }> => {
+      const nextNodes: FileTreeNode[] = [];
+      let found = false;
+
+      for (const node of nodes) {
+        const normalizedNodePath = normalizePath(node.path);
+
+        if (!node.isDirectory) {
+          if (normalizedNodePath === normalizedTargetPath) {
+            found = true;
+          }
+
+          nextNodes.push(node);
+          continue;
+        }
+
+        const isTargetNode = normalizedNodePath === normalizedTargetPath;
+        const isAncestorNode = normalizedTargetPath.startsWith(`${normalizedNodePath}/`);
+
+        if (!isTargetNode && !isAncestorNode) {
+          nextNodes.push(node);
+          continue;
+        }
+
+        let nextChildren = node.children || [];
+
+        if (isAncestorNode && nextChildren.length === 0) {
+          try {
+            const expandResult = await window.electron?.folder?.expand(node.path, rootFolderPath);
+            if (expandResult?.success && expandResult.data) {
+              nextChildren = expandResult.data.map((item: FileSystemTreeEntry) =>
+                convertTreeEntryToNode(item, (node.depth || 0) + 1),
+              );
+            }
+          } catch (error) {
+            console.error('[FileExplorer] Failed to reveal current file.', error);
+          }
+        }
+
+        let foundInChildren = false;
+        if (nextChildren.length > 0) {
+          const childResult = await expandNodesToTarget(nextChildren);
+          nextChildren = childResult.nextNodes;
+          foundInChildren = childResult.found;
+        }
+
+        nextNodes.push({
+          ...node,
+          isExpanded: isTargetNode ? node.isExpanded : true,
+          children: nextChildren,
+        });
+
+        if (isTargetNode || foundInChildren) {
+          found = true;
+        }
+      }
+
+      return { nextNodes, found };
+    };
+
+    const revealResult = await expandNodesToTarget(fileTreeRef.current);
+
+    if (revealResult.found) {
+      fileTreeRef.current = revealResult.nextNodes;
+      setFileTree(revealResult.nextNodes);
+    }
+
+    setSelectedFilePath(targetPath);
+    setCurrentActiveFilePath(targetPath);
+    fileTreeRevealRequestIdRef.current += 1;
+    setFileTreeRevealRequest({
+      id: fileTreeRevealRequestIdRef.current,
+      path: targetPath,
+    });
+  }, [rootFolderPath]);
+
   // 处理文件夹展开/折叠
   const handleFolderToggle = useCallback(async (node: FileTreeNode) => {
     if (!node.isDirectory) return;
@@ -420,12 +733,29 @@ export const FileExplorer: React.FC = () => {
   const handleFileClick = useCallback(async (node: FileTreeNode) => {
     // 设置选中状态（文件和文件夹都可以被选中�?
     setSelectedFilePath(node.path);
+    if (!node.isDirectory) {
+      setCurrentActiveFilePath(node.path);
+    }
     
     // 如果是文件，则打开文件
     if (!node.isDirectory) {
       console.log('[FileExplorer] 单击打开文件:', node.path);
       
       try {
+        const fallbackLanguage = getEditorLanguageForNote({
+          path: node.path,
+          title: node.name,
+        });
+
+        window.dispatchEvent(new CustomEvent('open-file', {
+          detail: {
+            path: node.path,
+            name: node.name,
+            language: fallbackLanguage,
+            isPreview: false,
+          }
+        }));
+
         const result = await window.electron?.file?.read(node.path);
         
         if (result?.success && result.data) {
@@ -435,7 +765,9 @@ export const FileExplorer: React.FC = () => {
               path: result.data.path || node.path,
               name: result.data.name || node.name,
               content: result.data.content,
-              language: result.data.language
+              language: result.data.language || fallbackLanguage,
+              activateIfExists: false,
+              isPreview: false
             }
           }));
         } else {
@@ -450,8 +782,12 @@ export const FileExplorer: React.FC = () => {
   }, []);
 
   // 处理文件双击
-  const handleFileDoubleClick = useCallback(async (node: FileTreeNode) => {
+  const handleFileDoubleClick = useCallback((node: FileTreeNode) => {
     if (!node.isDirectory) {
+      setCurrentActiveFilePath(node.path);
+      console.log('[FileExplorer] 鍙屽嚮鏂囦欢锛屽拷鐣ラ噸澶嶈鍙栵細', node.path);
+      return;
+      /*
       try {
         console.log('[FileExplorer] 双击打开文件:', node.path);
         const result = await window.electron?.file?.read(node.path);
@@ -471,7 +807,7 @@ export const FileExplorer: React.FC = () => {
         }
       } catch (error) {
         console.error('[FileExplorer] 读取文件出错:', error);
-      }
+      */
     }
   }, []);
 
@@ -486,8 +822,17 @@ export const FileExplorer: React.FC = () => {
     const handleTabSwitch = (event: Event) => {
       const customEvent = event as CustomEvent<{ path: string }>;
       if (customEvent.detail?.path) {
-        // 同步更新文件树的选中状态
+        if (
+          customEvent.detail.path === selectedFilePath
+          && customEvent.detail.path === currentActiveFilePath
+        ) {
+          return;
+        }
+
         setSelectedFilePath(customEvent.detail.path);
+        setCurrentActiveFilePath(customEvent.detail.path);
+        setSelectedOutlineNode(null);
+        scheduleOutlineSync();
         console.log('[FileExplorer] 标签页切换，更新文件树选中状�?', customEvent.detail.path);
       }
     };
@@ -497,15 +842,23 @@ export const FileExplorer: React.FC = () => {
     return () => {
       window.removeEventListener('tab-switched', handleTabSwitch as EventListener);
     };
-  }, []);
+  }, [currentActiveFilePath, scheduleOutlineSync, selectedFilePath, setSelectedOutlineNode]);
 
   // 监听编辑器活动文件变化事件（用于标签页切换）
   useEffect(() => {
     const handleActiveFileChange = (event: Event) => {
       const customEvent = event as CustomEvent<{ path: string }>;
       if (customEvent.detail?.path) {
-        // 同步更新文件树的选中状�?
+        if (
+          customEvent.detail.path === selectedFilePath
+          && customEvent.detail.path === currentActiveFilePath
+        ) {
+          return;
+        }
+
         setSelectedFilePath(customEvent.detail.path);
+        setCurrentActiveFilePath(customEvent.detail.path);
+        scheduleOutlineSync();
         console.log('[FileExplorer] 活动文件变化，更新文件树选中状�?', customEvent.detail.path);
       }
     };
@@ -515,7 +868,39 @@ export const FileExplorer: React.FC = () => {
     return () => {
       window.removeEventListener('editor-active-file-change', handleActiveFileChange as EventListener);
     };
-  }, []);
+  }, [currentActiveFilePath, scheduleOutlineSync, selectedFilePath]);
+
+  useEffect(() => {
+    if (!selectedFilePath || selectedFilePath === rootFolderPath) {
+      return;
+    }
+
+    const selectedNode = findNodeByPath(selectedFilePath);
+    if (selectedNode?.isDirectory) {
+      return;
+    }
+
+    setCurrentActiveFilePath((currentPath) => (
+      currentPath === selectedFilePath ? currentPath : selectedFilePath
+    ));
+  }, [findNodeByPath, rootFolderPath, selectedFilePath, fileTree]);
+
+  useEffect(() => {
+    const handleFileTreeReveal = (event: Event) => {
+      const customEvent = event as CustomEvent<{ path: string }>;
+      if (!customEvent.detail?.path) {
+        return;
+      }
+
+      void revealPathInFileTree(customEvent.detail.path);
+    };
+
+    window.addEventListener('file-tree-reveal', handleFileTreeReveal as EventListener);
+
+    return () => {
+      window.removeEventListener('file-tree-reveal', handleFileTreeReveal as EventListener);
+    };
+  }, [revealPathInFileTree]);
 
   // 监听编辑器内容变化，更新大纲
   useEffect(() => {
@@ -527,14 +912,13 @@ export const FileExplorer: React.FC = () => {
       }>;
       
       const { content, language, path } = customEvent.detail;
-      
       console.log('[FileExplorer] 收到大纲更新事件:', {
         contentLength: content?.length || 0,
         language,
         path,
         hasContent: !!content && !!content.trim()
       });
-      
+      updateOutlineState(content, language, path);
     };
 
     window.addEventListener('editor:content-changed', handleContentChanged as EventListener);
@@ -542,7 +926,19 @@ export const FileExplorer: React.FC = () => {
     return () => {
       window.removeEventListener('editor:content-changed', handleContentChanged as EventListener);
     };
-  }, []);
+  }, [updateOutlineState]);
+
+  useEffect(() => {
+    scheduleOutlineSync();
+  }, [scheduleOutlineSync]);
+
+  useEffect(() => {
+    if (!isOutlineExpanded) {
+      return;
+    }
+
+    scheduleOutlineSync();
+  }, [isOutlineExpanded, scheduleOutlineSync]);
 
   // 在指定文件夹中添加创建节�?
   // 移除任何正在创建的临时节�?
@@ -746,11 +1142,138 @@ export const FileExplorer: React.FC = () => {
     };
     setFileTree(prevTree => {
       const newTree = collapseTree(prevTree);
+      fileTreeRef.current = newTree;
       return newTree;
     });
   }, [setFileTreeData]);
 
   // 开始重命名（设置节点为编辑状态）
+  const handleExpandAll = useCallback(async () => {
+    if (!rootFolderPath) {
+      return;
+    }
+
+    console.log('[FileExplorer] 全部展开');
+
+    const convertToFileTreeNode = (item: FileSystemTreeEntry, depth: number): FileTreeNode => ({
+      name: item.name,
+      path: item.path,
+      isDirectory: item.type === 'directory',
+      isExpanded: item.type === 'directory',
+      depth,
+      children: item.children?.map((child) => convertToFileTreeNode(child, depth + 1)) || []
+    });
+
+    const expandNodesRecursively = async (nodes: FileTreeNode[]): Promise<FileTreeNode[]> => {
+      const expandedNodes: FileTreeNode[] = [];
+
+      for (const node of nodes) {
+        if (!node.isDirectory) {
+          expandedNodes.push(node);
+          continue;
+        }
+
+        let nextChildren = node.children || [];
+
+        if (nextChildren.length === 0) {
+          try {
+            const expandResult = await window.electron?.folder?.expand(node.path, rootFolderPath);
+            if (expandResult?.success && expandResult.data) {
+              nextChildren = expandResult.data.map((item: FileSystemTreeEntry) =>
+                convertToFileTreeNode(item, (node.depth || 0) + 1),
+              );
+            }
+          } catch (error) {
+            console.error('[FileExplorer] 展开全部时加载子目录失败:', node.path, error);
+          }
+        }
+
+        const expandedChildren = await expandNodesRecursively(nextChildren);
+        expandedNodes.push({
+          ...node,
+          isExpanded: true,
+          children: expandedChildren
+        });
+      }
+
+      return expandedNodes;
+    };
+
+    const expandedTree = await expandNodesRecursively(fileTreeRef.current);
+    fileTreeRef.current = expandedTree;
+    setFileTree(expandedTree);
+  }, [rootFolderPath]);
+
+  const revealCurrentFilePath = useMemo(() => {
+    const selectedNode = findNodeByPath(selectedFilePath);
+    if (selectedFilePath && (!selectedNode || !selectedNode.isDirectory)) {
+      return selectedFilePath;
+    }
+
+    return currentActiveFilePath;
+  }, [currentActiveFilePath, findNodeByPath, selectedFilePath, fileTree]);
+
+  const handleRevealCurrentFile = useCallback(() => {
+    if (!revealCurrentFilePath) {
+      return;
+    }
+
+    void revealPathInFileTree(revealCurrentFilePath);
+  }, [revealCurrentFilePath, revealPathInFileTree]);
+
+  const handleToggleOutlineView = useCallback(() => {
+    const nextExpanded = !isOutlineExpanded;
+    setOutlineExpanded(nextExpanded);
+    if (nextExpanded) {
+      scheduleOutlineSync();
+    }
+  }, [isOutlineExpanded, scheduleOutlineSync, setOutlineExpanded]);
+
+  const handleOutlineNodeSelect = useCallback((node: ExplorerOutlineNode) => {
+    setSelectedOutlineNode(node);
+
+    const view = getActiveCodeMirrorEditorView();
+    const activeEditorMeta = getActiveCodeMirrorEditorMeta();
+    if (!view) {
+      return;
+    }
+
+    if (activeEditorMeta.path && currentActiveFilePath && activeEditorMeta.path !== currentActiveFilePath) {
+      return;
+    }
+
+    const targetLineNumber = Math.max(node.range.start.line, 1);
+    if (targetLineNumber > view.state.doc.lines) {
+      return;
+    }
+
+    const targetLine = view.state.doc.line(targetLineNumber);
+    const targetOffset = Math.max(node.range.start.character, 0);
+    const targetPosition = Math.min(targetLine.from + targetOffset, targetLine.to);
+
+    view.dispatch({
+      selection: { anchor: targetPosition },
+      effects: EditorView.scrollIntoView(targetPosition, { y: 'center' }),
+    });
+    view.focus();
+  }, [currentActiveFilePath, setSelectedOutlineNode]);
+
+  const handleOutlineNodeToggle = useCallback((node: ExplorerOutlineNode) => {
+    setOutlineNodes((currentNodes) => {
+      const nextNodes = toggleOutlineNodeExpansion(currentNodes, node.id);
+      outlineNodesRef.current = nextNodes;
+      return nextNodes;
+    });
+  }, []);
+
+  const handleOutlineCollapse = useCallback(() => {
+    setOutlineNodes((currentNodes) => {
+      const nextNodes = collapseOutlineNodes(currentNodes);
+      outlineNodesRef.current = nextNodes;
+      return nextNodes;
+    });
+  }, []);
+
   const startRename = useCallback((targetPath: string) => {
     if (isInlineEditingRef.current) {
       console.log('[FileExplorer] 正在内联编辑，忽略重命名');
@@ -1058,7 +1581,13 @@ export const FileExplorer: React.FC = () => {
         rootName={rootFolderName}
         rootPath={rootFolderPath}
         fileTreeNodes={fileTree}
+        outlineNodes={outlineNodes}
+        selectedOutlineNode={selectedOutlineNode}
         selectedFilePath={selectedFilePath}
+        fileTreeRevealRequest={fileTreeRevealRequest}
+        workspaceHeaderActionMode={workspaceHeaderActionMode}
+        canRevealCurrentFile={Boolean(revealCurrentFilePath)}
+        isOutlineViewActive={isOutlineExpanded}
         onFileClick={handleFileClick}
         onFileDoubleClick={handleFileDoubleClick}
         onFolderToggle={handleFolderToggle}
@@ -1070,7 +1599,13 @@ export const FileExplorer: React.FC = () => {
             refreshFileTree(rootFolderPath);
           }
         }}
+        onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
+        onToggleOutlineView={handleToggleOutlineView}
+        onRevealCurrentFile={handleRevealCurrentFile}
+        onOutlineNodeSelect={handleOutlineNodeSelect}
+        onOutlineNodeToggle={handleOutlineNodeToggle}
+        onCollapseOutline={handleOutlineCollapse}
         onCreateConfirm={handleCreateConfirm}
         onCreateCancel={handleCreateCancel}
         onRename={handleRename}
@@ -1087,4 +1622,4 @@ export const FileExplorer: React.FC = () => {
     </>
   );
 };
-
+

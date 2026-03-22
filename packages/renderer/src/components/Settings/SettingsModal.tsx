@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { SettingsEditor } from '../Editor/SettingsEditor';
+import { SettingsView } from './SettingsView';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -50,7 +50,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           maxHeight: '90vh',
         }}
       >
-        <SettingsEditor onClose={onClose} />
+        <SettingsView />
       </div>
     </div>
   );

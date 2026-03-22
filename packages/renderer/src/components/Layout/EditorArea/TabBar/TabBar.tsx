@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 鏍囩鏍忕粍浠?
  * 鍔熻兘锛氱紪杈戝櫒鏍囩椤电鐞嗭紝鏍囩鏍忚璁?
  * 鎻忚堪锛氭彁渚涙枃浠舵爣绛惧垏鎹€佸叧闂€佹偓鍋滄晥鏋滅瓑鍔熻兘
@@ -8,8 +8,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { WorkbenchNoteMenuContext } from '@note-studio/shared';
 import { EditorTab } from '../EditorArea';
 import { Icon } from '../../../Icons/Icon';
-import { MonacoContextMenu } from '../MonacoContextMenu/MonacoContextMenu';
-import type { MenuGroup } from '../MonacoContextMenu/MonacoContextMenu';
+import { GroupedContextMenu } from '../GroupedContextMenu/GroupedContextMenu';
+import type { MenuGroup } from '../GroupedContextMenu/GroupedContextMenu';
 import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
 import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
 import { useExplorerStore } from '../../../../stores/explorerStore';
@@ -26,7 +26,6 @@ type SplitMoveDirection = 'left' | 'right' | 'up' | 'down';
 export interface TabBarProps {
   tabs: EditorTab[];
   activeTabId: string | null;
-  editorType?: 'monaco' | 'codemirror';
   onTabClick: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
   onCloseMultipleTabs?: (tabIds: string[]) => void;
@@ -111,7 +110,6 @@ const toWorkspaceRelativePath = (
 export const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTabId,
-  editorType = 'monaco',
   onTabClick,
   onTabClose,
   onCloseMultipleTabs,
@@ -127,7 +125,6 @@ export const TabBar: React.FC<TabBarProps> = ({
   onRevealTabInExplorerView,
   onOpenInNewWindow
 }) => {
-  const [isEditorFocused, setIsEditorFocused] = useState(true);
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
   const scrollContainerRef = useRef<CustomScrollbarRef>(null);
   const previousTabIdsRef = useRef<string[]>([]);
@@ -140,10 +137,6 @@ export const TabBar: React.FC<TabBarProps> = ({
   const noteContextMenus = useWorkbenchMenuContributions('note/context');
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
-  const nextEditorType = editorType === 'monaco' ? 'codemirror' : 'monaco';
-  const editorSwitchTitle = editorType === 'monaco'
-    ? '切换到 CodeMirror 编辑器'
-    : '切换到 Monaco 编辑器';
   const isEditableDocumentTab = (() => {
     if (!activeTab || activeTab.type !== 'file') return false;
     const title = activeTab.title?.trim() || '';
@@ -220,23 +213,6 @@ export const TabBar: React.FC<TabBarProps> = ({
     setCodeMirrorMode(newMode);
     window.dispatchEvent(new CustomEvent('set-codemirror-mode', { detail: newMode }));
   }, [codeMirrorMode]);
-  
-  // 鐩戝惉缂栬緫鍣ㄥ尯鍩熺劍鐐瑰彉鍖?
-  useEffect(() => {
-    const handleFocus = () => setIsEditorFocused(true);
-    const handleBlur = () => setIsEditorFocused(false);
-    
-    const editorArea = document.querySelector('.editor-area');
-    if (editorArea) {
-      editorArea.addEventListener('focusin', handleFocus);
-      editorArea.addEventListener('focusout', handleBlur);
-      
-      return () => {
-        editorArea.removeEventListener('focusin', handleFocus);
-        editorArea.removeEventListener('focusout', handleBlur);
-      };
-    }
-  }, []);
 
   // 褰撴椿鍔ㄦ爣绛炬敼鍙樻椂锛屾粴鍔ㄥ埌鍙鍖哄煙
   useEffect(() => {
@@ -928,16 +904,6 @@ export const TabBar: React.FC<TabBarProps> = ({
             </button>
             
             <button 
-              className="tab-bar-action-btn"
-              title={editorSwitchTitle}
-              onClick={() => {
-                window.dispatchEvent(new CustomEvent('set-editor-type', { detail: nextEditorType }));
-              }}
-            >
-              <Icon name="editor-switch" size={16} />
-            </button>
-            
-            <button 
               ref={moreButtonRef}
               className="tab-bar-action-btn"
               title={'\u66f4\u591a\u64cd\u4f5c'}
@@ -950,7 +916,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       </div>
 
       {/* 鏇村鎿嶄綔鑿滃崟 */}
-      <MonacoContextMenu
+      <GroupedContextMenu
         visible={showMoreMenu}
         x={moreMenuPosition.x}
         y={moreMenuPosition.y}
