@@ -18,23 +18,9 @@ import { isModelEnabled } from '../../../services/ai';
 import { Select, type SelectGroup } from '../../common/Select/Select';
 import { buildLevel1MenuItems, buildLevel2MenuItems } from '../../Layout/EditorArea/AIZoneWidget/buildContextMenuItems';
 import { TipTapInput, type TipTapInputRef } from '../../Layout/EditorArea/AIZoneWidget/TipTapInput';
-import { ChatHistory } from '../../Layout/AIChatPanel/ChatHistory';
-import {
-  DEFAULT_CHAT_SESSION_TITLE,
-  getChatSessionTitle,
-  getChatSessionTitleFromMessages,
-  truncateChatSessionTitle,
-} from '../../Layout/AIChatPanel/chatSessionTitle';
 import type { AIRequestParams, AIResponse, StreamCallback } from '../../../types/aiProvider';
 import { getPromptTemplateById } from '../../../services/PromptTemplateService';
-import {
-  getActiveCodeMirrorEditorMeta,
-} from '../../../lib/editor/activeCodeMirrorEditor';
 import { knowledgeBaseService } from '../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
-import {
-  inlineChatHistoryService,
-  type InlineChatQuery,
-} from '../../../services/InlineChatHistoryService';
 import { tableReferenceService } from '../../../services/tableReference/TableReferenceService';
 import './InlineAIChat.scss';
 
@@ -125,7 +111,6 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [dropdownDirection, setDropdownDirection] = useState<'up' | 'down'>('down');
   const [isAtMenuOpen, setIsAtMenuOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [atMenuLevel, setAtMenuLevel] = useState<'main' | 'detail'>('main');
   const [atMenuGroups, setAtMenuGroups] = useState<SelectGroup[]>([]);
   const [currentCategory, setCurrentCategory] = useState('');
@@ -137,20 +122,15 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
   const [fileReferences, setFileReferences] = useState<Array<{ path: string; name: string }>>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<ReferenceItem[]>([]);
   const [forms, setForms] = useState<ReferenceItem[]>([]);
-  const [outputMaxHeight, setOutputMaxHeight] = useState<number | undefined>(undefined);
-  const [currentSessionId, setCurrentSessionId] = useState('');
-  const [isHistorySessionActive, setIsHistorySessionActive] = useState(false);
+  const [outputReservedSpace, setOutputReservedSpace] = useState(0);
   const tiptapInputRef = useRef<TipTapInputRef>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const outputMessagesRef = useRef<HTMLDivElement>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const modelTriggerRef = useRef<HTMLSpanElement>(null);
   const atTriggerRef = useRef<HTMLSpanElement>(null);
-  const historyTriggerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isAtMenuOpeningRef = useRef(false);
   const atMenuOpenRequestRef = useRef(0);
-  const currentSessionIdRef = useRef(currentSessionId);
   const atMenuValues = getSelectableAtMenuValues(atMenuGroups);
   const highlightedAtMenuValue = atMenuValues[atMenuHighlightIndex] ?? '';
   const canSend = (
@@ -164,24 +144,13 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
     )
   );
   const assistantMessages = messages.filter((message) => message.role === 'assistant');
-  const latestCompletedAssistantMessage = [...assistantMessages].reverse().find((message) => (
-    !message.isStreaming && message.content.trim()
-  ));
-  const currentSessionTitle = getChatSessionTitleFromMessages(messages);
-  const currentSessionTitleLabel = truncateChatSessionTitle(currentSessionTitle, 32);
-  const hasVisibleOutputPanel = assistantMessages.length > 0;
-  const shouldLockScroll = isModelDropdownOpen || isAtMenuOpen || isHistoryOpen || hasVisibleOutputPanel;
-  const getInlineChatFileUri = (): string => {
-    const editorMeta = getActiveCodeMirrorEditorMeta();
-    return editorMeta.path?.trim() || editorMeta.title?.trim() || 'untitled';
-  };
-  const getInlineChatLineNumber = (): number => (
-    view.state.doc.lineAt(view.state.selection.main.head).number
+  const latestAssistantMessage = assistantMessages[assistantMessages.length - 1];
+  const shouldShowOutputActions = Boolean(
+    latestAssistantMessage
+    && !latestAssistantMessage.isStreaming
+    && latestAssistantMessage.content.trim(),
   );
-  const inlineHistoryQuery: InlineChatQuery | undefined = (() => {
-    const fileUri = getInlineChatFileUri();
-    return fileUri ? { fileUri } : undefined;
-  })();
+  const shouldLockScroll = isModelDropdownOpen || isAtMenuOpen;
 
   useEffect(() => {
     const loadModels = async (): Promise<void> => {
@@ -214,52 +183,37 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    currentSessionIdRef.current = currentSessionId;
-  }, [currentSessionId]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages]);
-
   useLayoutEffect(() => {
-    if (assistantMessages.length === 0) {
-      setOutputMaxHeight(undefined);
+    const outputElement = outputRef.current;
+
+    if (!latestAssistantMessage || !outputElement) {
+      setOutputReservedSpace(0);
       return;
     }
 
-    const scrollElement = view.scrollDOM;
-    const outputElement = outputMessagesRef.current;
-    if (!outputElement) {
-      return;
-    }
-
-    const updateOutputMaxHeight = (): void => {
-      const scrollRect = scrollElement.getBoundingClientRect();
-      const outputRect = outputElement.getBoundingClientRect();
-      const nextMaxHeight = Math.max(0, Math.floor(scrollRect.bottom - outputRect.top));
-      setOutputMaxHeight(nextMaxHeight);
+    const updateOutputReservedSpace = (): void => {
+      const nextReservedSpace = Math.ceil(outputElement.getBoundingClientRect().height);
+      setOutputReservedSpace((currentReservedSpace) => (
+        currentReservedSpace === nextReservedSpace ? currentReservedSpace : nextReservedSpace
+      ));
     };
 
-    updateOutputMaxHeight();
+    updateOutputReservedSpace();
 
     const resizeObserver = typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => {
-        updateOutputMaxHeight();
+        updateOutputReservedSpace();
       })
       : null;
 
-    resizeObserver?.observe(scrollElement);
     resizeObserver?.observe(outputElement);
-    window.addEventListener('resize', updateOutputMaxHeight);
-    scrollElement.addEventListener('scroll', updateOutputMaxHeight, { passive: true });
+    window.addEventListener('resize', updateOutputReservedSpace);
 
     return () => {
       resizeObserver?.disconnect();
-      window.removeEventListener('resize', updateOutputMaxHeight);
-      scrollElement.removeEventListener('scroll', updateOutputMaxHeight);
+      window.removeEventListener('resize', updateOutputReservedSpace);
     };
-  }, [assistantMessages.length, view]);
+  }, [latestAssistantMessage?.id]);
 
   useEffect(() => {
     if (!isModelDropdownOpen) {
@@ -292,11 +246,11 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
 
     const isInsideAllowedScrollArea = (target: EventTarget | null): boolean => {
       if (target instanceof Element) {
-        return Boolean(target.closest('.cm-inline-ai-output, .cm-inline-ai-model-dropdown, .cm-inline-ai-at-select-content, .chat-history-menu'));
+        return Boolean(target.closest('.cm-inline-ai-output, .cm-inline-ai-model-dropdown, .cm-inline-ai-at-select-content'));
       }
 
       if (target instanceof Node) {
-        return Boolean(target.parentElement?.closest('.cm-inline-ai-output, .cm-inline-ai-model-dropdown, .cm-inline-ai-at-select-content, .chat-history-menu'));
+        return Boolean(target.parentElement?.closest('.cm-inline-ai-output, .cm-inline-ai-model-dropdown, .cm-inline-ai-at-select-content'));
       }
 
       return false;
@@ -542,81 +496,24 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
     return selection.from < selection.to ? view.state.sliceDoc(selection.from, selection.to) : (initialSelection || '');
   };
 
-  const ensureHistorySession = async (seedContent: string): Promise<string> => {
-    if (currentSessionIdRef.current) {
-      return currentSessionIdRef.current;
-    }
+  const finalizeStreamingMessage = (messageId: string): void => {
+    setMessages((currentMessages) => (
+      currentMessages.flatMap((message) => {
+        if (message.id !== messageId) {
+          return [message];
+        }
 
-    const fileUri = getInlineChatFileUri();
-    const sessionId = inlineChatHistoryService.generateSessionId(fileUri);
+        if (!message.isStreaming) {
+          return [message];
+        }
 
-    try {
-      await inlineChatHistoryService.createSession({
-        id: sessionId,
-        fileUri,
-        lineNumber: getInlineChatLineNumber(),
-        title: getChatSessionTitle(seedContent || DEFAULT_CHAT_SESSION_TITLE),
-        context: getSelectionText().trim() || undefined,
-      });
-      currentSessionIdRef.current = sessionId;
-      setCurrentSessionId(sessionId);
-      return sessionId;
-    } catch (error) {
-      console.warn('[InlineAIChat] Failed to create inline chat history session:', error);
-      return '';
-    }
-  };
+        if (!message.content) {
+          return [];
+        }
 
-  const persistHistoryMessage = async (
-    sessionId: string,
-    message: ChatMessage,
-    model?: string,
-  ): Promise<void> => {
-    if (!sessionId) {
-      return;
-    }
-
-    try {
-      await inlineChatHistoryService.addMessage({
-        id: message.id,
-        sessionId,
-        role: message.role,
-        content: message.content,
-        model,
-        reasoning: undefined,
-      });
-    } catch (error) {
-      console.warn('[InlineAIChat] Failed to persist inline chat history message:', error);
-    }
-  };
-
-  const loadHistorySession = async (sessionId: string): Promise<void> => {
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    setIsLoading(false);
-
-    try {
-      const messages = await inlineChatHistoryService.getMessages(sessionId);
-      currentSessionIdRef.current = sessionId;
-      setMessages(messages.map((message) => ({
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        timestamp: message.timestamp,
-        isStreaming: false,
-      })));
-      setCurrentSessionId(sessionId);
-      setIsHistorySessionActive(true);
-      setInputText('');
-      setFileReferences([]);
-      setKnowledgeBases([]);
-      setForms([]);
-      tiptapInputRef.current?.clear();
-      setIsHistoryOpen(false);
-      tiptapInputRef.current?.focus();
-    } catch (error) {
-      console.error('[InlineAIChat] Failed to load chat history session:', error);
-    }
+        return [{ ...message, isStreaming: false }];
+      })
+    ));
   };
 
   const handleSend = async (): Promise<void> => {
@@ -655,8 +552,6 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
       assistantMessage,
     ]);
     setIsLoading(true);
-    setIsHistoryOpen(false);
-    setIsHistorySessionActive(false);
     tiptapInputRef.current?.clear();
     setInputText('');
     setFileReferences([]);
@@ -676,6 +571,8 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
       }
     }
 
+    let requestController: AbortController | null = null;
+
     try {
       const modelConfig = await getModelConfig(selectedModel);
 
@@ -684,11 +581,6 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
       }
 
       const actualModelName = modelConfig.actualModelId;
-      const historySessionId = await ensureHistorySession(userMessageContent);
-
-      if (historySessionId) {
-        await persistHistoryMessage(historySessionId, userMessage);
-      }
 
       await aiService.setProvider(modelConfig.providerId, {
         name: modelConfig.configName,
@@ -731,7 +623,11 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
         ],
         temperature: modelConfig.temperature,
         maxTokens: modelConfig.maxTokens,
-        signal: (abortControllerRef.current = new AbortController()).signal,
+        signal: (() => {
+          requestController = new AbortController();
+          abortControllerRef.current = requestController;
+          return requestController.signal;
+        })(),
       };
 
       let fullResponse = '';
@@ -758,17 +654,21 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
                 : message
             ))
           ));
-          if (historySessionId) {
-            void persistHistoryMessage(historySessionId, {
-              ...assistantMessage,
-              content: fullResponse,
-              isStreaming: false,
-            }, actualModelName);
-          }
           setIsLoading(false);
-          abortControllerRef.current = null;
+          if (abortControllerRef.current === requestController) {
+            abortControllerRef.current = null;
+          }
         },
         onError: (error: Error) => {
+          if (requestController?.signal.aborted) {
+            finalizeStreamingMessage(assistantMessageId);
+            setIsLoading(false);
+            if (abortControllerRef.current === requestController) {
+              abortControllerRef.current = null;
+            }
+            return;
+          }
+
           const fallback = fullResponse || `Request failed: ${error.message || 'Unknown error'}`;
 
           setMessages((currentMessages) => (
@@ -778,20 +678,24 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
                 : message
             ))
           ));
-          if (historySessionId) {
-            void persistHistoryMessage(historySessionId, {
-              ...assistantMessage,
-              content: fallback,
-              isStreaming: false,
-            }, actualModelName);
-          }
           setIsLoading(false);
-          abortControllerRef.current = null;
+          if (abortControllerRef.current === requestController) {
+            abortControllerRef.current = null;
+          }
         },
       };
 
       await aiService.generateTextStream(requestParams, streamCallback);
     } catch (error) {
+      if (requestController?.signal.aborted) {
+        finalizeStreamingMessage(assistantMessageId);
+        setIsLoading(false);
+        if (abortControllerRef.current === requestController) {
+          abortControllerRef.current = null;
+        }
+        return;
+      }
+
       const message = error instanceof Error ? error.message : 'Unknown error';
 
       setMessages((currentMessages) => (
@@ -858,11 +762,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
     abortControllerRef.current = null;
     setIsLoading(false);
     setMessages([]);
-    currentSessionIdRef.current = '';
-    setCurrentSessionId('');
-    setIsHistorySessionActive(false);
     setIsModelDropdownOpen(false);
-    setIsHistoryOpen(false);
     closeAtMenu();
     setInputText('');
     setFileReferences([]);
@@ -874,7 +774,10 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
 
   return (
     <>
-      <div className="cm-inline-ai-chat">
+      <div
+        className="cm-inline-ai-chat"
+        style={outputReservedSpace > 0 ? { marginBottom: `${outputReservedSpace}px` } : undefined}
+      >
         <div className="cm-inline-ai-border-top" />
 
       <div className="cm-inline-ai-input-area">
@@ -905,6 +808,9 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
                 onClick={() => {
                   abortControllerRef.current?.abort();
                   abortControllerRef.current = null;
+                  if (latestAssistantMessage?.isStreaming) {
+                    finalizeStreamingMessage(latestAssistantMessage.id);
+                  }
                   setIsLoading(false);
                 }}
                 title="Stop"
@@ -939,7 +845,6 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
                 ref={atTriggerRef}
                 className="cm-inline-ai-at-trigger"
                 onClick={() => {
-                  setIsHistoryOpen(false);
                   if (isAtMenuOpen) {
                     closeAtMenu();
                   } else {
@@ -987,38 +892,16 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
                 </div>
                 )}
               </div>
-              <div
-                ref={historyTriggerRef}
-                className={`cm-inline-ai-history-trigger ${isHistoryOpen ? 'active' : ''}`}
-                onClick={() => {
-                  setIsModelDropdownOpen(false);
-                  closeAtMenu();
-                  setIsHistoryOpen((open) => !open);
-                }}
-                title={currentSessionTitle || DEFAULT_CHAT_SESSION_TITLE}
-              >
-                <Icon name="history" size={14} iconSet="ui" />
-                <span className="cm-inline-ai-history-label">{currentSessionTitleLabel}</span>
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                  <path
-                    d={isHistoryOpen ? 'M3 7L6 4L9 7' : 'M3 5L6 8L9 5'}
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
           </div>
-          <div className="cm-inline-ai-actions">
-            {!isHistoryOpen && !isHistorySessionActive && latestCompletedAssistantMessage && (
+          {false && (
+            <>
               <>
                 <span
                   className="cm-inline-ai-btn"
                   onClick={() => {
-                    onInsert(latestCompletedAssistantMessage.content);
+                    onInsert(latestAssistantMessage?.content ?? '');
                   }}
-                  title="接受到编辑器"
+                  title="接受"
                 >
                   <Icon name="check" size={14} />
                   接受
@@ -1028,8 +911,8 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
                   取消
                 </span>
               </>
-            )}
-          </div>
+            </>
+          )}
           <div
             ref={modelDropdownRef}
             className={`cm-inline-ai-model-select ${isModelDropdownOpen ? 'open' : ''}`}
@@ -1038,7 +921,6 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
               ref={modelTriggerRef}
               className="cm-inline-ai-model-trigger"
               onClick={() => {
-                setIsHistoryOpen(false);
                 closeAtMenu();
                 if (!isModelDropdownOpen) {
                   const rect = modelTriggerRef.current?.getBoundingClientRect();
@@ -1087,52 +969,53 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
       </div>
 
         <div className="cm-inline-ai-border-bottom" />
-      </div>
 
-      {assistantMessages.length > 0 && (
-        <div className="cm-inline-ai-output">
-          <div
-            ref={outputMessagesRef}
-            className="cm-inline-ai-messages"
-            style={outputMaxHeight !== undefined ? { maxHeight: `${outputMaxHeight}px` } : undefined}
-          >
-            {assistantMessages.map((message) => {
-              const isThinkingPlaceholder = message.isStreaming && !message.content;
-
-              return (
-                <div key={message.id} className={`cm-inline-ai-message cm-inline-ai-message-${message.role}`}>
-                  <div className="cm-inline-ai-message-content">
-                    {isThinkingPlaceholder ? (
-                      <span className="cm-inline-ai-thinking">
-                        <span>Thinking</span>
-                        <span className="cm-inline-ai-thinking-dots" aria-hidden="true">
-                          <span className="cm-inline-ai-thinking-dot">.</span>
-                          <span className="cm-inline-ai-thinking-dot">.</span>
-                          <span className="cm-inline-ai-thinking-dot">.</span>
-                        </span>
-                      </span>
-                    ) : (
-                      <>
-                        {message.content}
-                        {message.isStreaming && <span className="cm-inline-ai-cursor" />}
-                      </>
-                    )}
-                  </div>
+        {latestAssistantMessage && (
+          <div ref={outputRef} className="cm-inline-ai-output">
+            {shouldShowOutputActions && (
+              <div className="cm-inline-ai-output-header">
+                <div className="cm-inline-ai-output-actions">
+                  <span
+                    className="cm-inline-ai-btn"
+                    onClick={() => {
+                      onInsert(latestAssistantMessage.content);
+                    }}
+                    title="接受"
+                  >
+                    <Icon name="check" size={14} />
+                    接受
+                  </span>
+                  <span className="cm-inline-ai-btn" onClick={onClose} title="取消">
+                    <Icon name="close" size={14} />
+                    取消
+                  </span>
                 </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
+              </div>
+            )}
+            <div className="cm-inline-ai-messages">
+              <div className={`cm-inline-ai-message cm-inline-ai-message-${latestAssistantMessage.role}`}>
+                <div className="cm-inline-ai-message-content">
+                  {latestAssistantMessage.isStreaming && !latestAssistantMessage.content ? (
+                    <span className="cm-inline-ai-thinking">
+                      <span>Thinking</span>
+                      <span className="cm-inline-ai-thinking-dots" aria-hidden="true">
+                        <span className="cm-inline-ai-thinking-dot">.</span>
+                        <span className="cm-inline-ai-thinking-dot">.</span>
+                        <span className="cm-inline-ai-thinking-dot">.</span>
+                      </span>
+                    </span>
+                  ) : (
+                    <>
+                      {latestAssistantMessage.content}
+                      {latestAssistantMessage.isStreaming && <span className="cm-inline-ai-cursor" />}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
-      <ChatHistory
-        isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        onSelectSession={(sessionId: string) => { void loadHistorySession(sessionId); }}
-        buttonRef={historyTriggerRef}
-        source="inline"
-        inlineQuery={inlineHistoryQuery}
-      />
+        )}
+      </div>
     </>
   );
 };

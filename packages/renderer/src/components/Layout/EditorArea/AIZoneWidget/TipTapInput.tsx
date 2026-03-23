@@ -248,6 +248,10 @@ export const TipTapInput = forwardRef<TipTapInputRef, TipTapInputProps>((
       const charBefore = atIndex > 0 ? textBefore[atIndex - 1] : ' ';
       if (charBefore === ' ' || charBefore === '\n' || atIndex === 0) {
         const query = textBefore.slice(atIndex + 1);
+        if (/\s/.test(query)) {
+          onAtCancel?.();
+          return;
+        }
         const coords = editor.view.coordsAtPos($from.pos);
         onAtTrigger(query, { top: coords.bottom, left: coords.left });
         return;

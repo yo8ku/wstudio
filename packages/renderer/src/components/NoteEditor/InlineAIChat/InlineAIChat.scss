@@ -6,98 +6,12 @@
 .cm-inline-ai-chat {
   display: flex;
   flex-direction: column;
+  position: relative;
+  overflow: visible;
   background-color: var(--ws-editor-background);
   margin: 8px 0;
   max-width: 100%;
   padding: 2px;
-
-  .cm-inline-ai-messages {
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 8px 12px;
-    width: 800px;
-
-    &::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    &::-webkit-scrollbar-track {
-      background-color: transparent;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background-color: var(--ws-scrollbarSlider-background, rgba(128, 128, 128, 0.4));
-      border-radius: 3px;
-    }
-
-    .cm-inline-ai-message {
-      margin-bottom: 8px;
-
-      &:last-child {
-        margin-bottom: 0;
-      }
-
-      .cm-inline-ai-message-content {
-        font-size: 13px;
-        line-height: 1.5;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-
-      &.cm-inline-ai-message-user {
-        .cm-inline-ai-message-content {
-          padding: 8px 12px;
-          background-color: var(--ws-button-background);
-          color: var(--ws-button-foreground);
-          border-radius: 8px 8px 2px 8px;
-          margin-left: 20%;
-        }
-      }
-
-      &.cm-inline-ai-message-assistant {
-        .cm-inline-ai-message-content {
-          padding: 8px 12px;
-          background-color: var(--ws-sideBar-background);
-          color: var(--ws-editor-foreground);
-          border-radius: 8px 8px 8px 2px;
-          margin-right: 20%;
-        }
-      }
-    }
-
-    .cm-inline-ai-cursor {
-      display: inline-block;
-      width: 2px;
-      height: 14px;
-      background-color: var(--ws-editor-foreground);
-      margin-left: 2px;
-      vertical-align: text-bottom;
-    }
-
-    .cm-inline-ai-thinking {
-      display: inline-flex;
-      align-items: baseline;
-    }
-
-    .cm-inline-ai-thinking-dots {
-      display: inline-flex;
-      min-width: 12px;
-    }
-
-    .cm-inline-ai-thinking-dot {
-      display: inline-block;
-      opacity: 0.24;
-      animation: cm-inline-ai-thinking-dot 1.2s infinite ease-in-out;
-
-      &:nth-child(2) {
-        animation-delay: 0.2s;
-      }
-
-      &:nth-child(3) {
-        animation-delay: 0.4s;
-      }
-    }
-  }
 
   .cm-inline-ai-border-top,
   .cm-inline-ai-border-bottom {
@@ -471,113 +385,58 @@
         }
       }
 
-      .cm-inline-ai-history-trigger {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        max-width: 220px;
-        height: 24px;
-        padding: 0 8px;
-        border-radius: 4px;
-        cursor: pointer;
-        color: var(--ws-descriptionForeground);
-        flex-shrink: 0;
-        font-size: 12px;
-        font-weight: 500;
-        line-height: 24px;
-        opacity: 0.78;
-        transition: color 0.15s ease, opacity 0.15s ease, background-color 0.15s ease;
-
-        &:hover {
-          background-color: var(--ws-list-hoverBackground);
-          color: var(--ws-editor-foreground);
-          opacity: 1;
-        }
-
-        &.active {
-          background-color: var(--ws-list-activeSelectionBackground);
-          color: var(--ws-list-activeSelectionForeground);
-          opacity: 1;
-        }
-
-        .cm-inline-ai-history-label {
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-      }
-
-      .cm-inline-ai-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-
-        .cm-inline-ai-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          padding: 4px 10px;
-          font-size: 12px;
-          border-radius: 4px;
-          cursor: pointer;
-          color: var(--ws-descriptionForeground);
-
-          &:hover:not(.disabled) {
-            background-color: var(--ws-list-hoverBackground);
-            color: var(--ws-editor-foreground);
-          }
-
-          &.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-          }
-
-          &.cm-inline-ai-btn-send {
-            color: var(--ws-button-foreground);
-
-            &:hover:not(.disabled) {
-              background-color: var(--ws-button-hoverBackground);
-            }
-          }
-
-          &.cm-inline-ai-btn-stop {
-            background-color: var(--ws-inputValidation-errorBackground);
-            color: var(--ws-errorForeground);
-
-            &:hover {
-              opacity: 0.9;
-            }
-          }
-        }
-      }
     }
   }
 }
 
 .cm-inline-ai-output {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 3;
   box-sizing: border-box;
   width: 100%;
   max-width: 800px;
   padding: 8px 12px 0;
+  pointer-events: auto;
+
+  .cm-inline-ai-output-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 6px;
+  }
+
+  .cm-inline-ai-output-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cm-inline-ai-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ws-descriptionForeground);
+
+    &:hover:not(.disabled) {
+      background-color: var(--ws-list-hoverBackground);
+      color: var(--ws-editor-foreground);
+    }
+
+    &.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
 
   .cm-inline-ai-messages {
-    overflow-y: auto;
+    overflow: visible;
     width: 100%;
     padding-top: 12px;
-
-    &::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    &::-webkit-scrollbar-track {
-      background-color: transparent;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background-color: var(--ws-scrollbarSlider-background, rgba(128, 128, 128, 0.4));
-      border-radius: 3px;
-    }
 
     .cm-inline-ai-message {
       margin-bottom: 8px;
