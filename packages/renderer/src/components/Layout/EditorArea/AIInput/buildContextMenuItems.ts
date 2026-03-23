@@ -11,11 +11,12 @@ interface WorkspaceTreeEntry {
   type: string;
 }
 
+const ALLOWED_REFERENCE_FILE_EXTENSIONS = new Set(['.md', '.txt', '.json']);
 const LABEL_FILES = '\u6587\u4ef6&\u6587\u4ef6\u5939';
 const LABEL_KNOWLEDGE_BASE = '\u77e5\u8bc6\u5e93';
 const LABEL_FORMS = '\u8868\u5355';
 const LABEL_PROMPTS = '\u63d0\u793a\u8bcd';
-const LABEL_RULES = '\u89c4\u5219';
+const LABEL_RULES = '\u5199\u4f5c\u89c4\u5219';
 
 function getFileName(filePath: string): string {
   const parts = filePath.split(/[/\\]/);
@@ -36,6 +37,21 @@ function truncatePath(filePath: string, maxSegments = 2): string {
   }
 
   return `..../${pathSegments.slice(-maxSegments).join('/')}`;
+}
+
+function getFileExtension(filePath: string): string {
+  const fileName = getFileName(filePath).toLowerCase();
+  const extensionIndex = fileName.lastIndexOf('.');
+
+  if (extensionIndex < 0) {
+    return '';
+  }
+
+  return fileName.slice(extensionIndex);
+}
+
+function isAllowedReferenceFile(filePath: string): boolean {
+  return ALLOWED_REFERENCE_FILE_EXTENSIONS.has(getFileExtension(filePath));
 }
 
 function formatRecentFileLabel(filePath: string): React.ReactElement {
@@ -75,10 +91,18 @@ async function buildRecentFilesGroup(): Promise<SelectGroup[]> {
       return [];
     }
 
+    const recentFiles = response.data
+      .filter((filePath) => isAllowedReferenceFile(filePath))
+      .slice(0, 3);
+
+    if (recentFiles.length === 0) {
+      return [];
+    }
+
     return [{
       groupName: '',
-      items: response.data.slice(0, 3).map((filePath, index) => ({
-        value: `recent-file-${index}`,
+      items: recentFiles.map((filePath) => ({
+        value: `recent-file-${filePath}`,
         label: formatRecentFileLabel(filePath),
         icon: React.createElement(Icon, { iconSet: 'ui', name: 'file', size: 14 }),
       })),
@@ -113,7 +137,6 @@ export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
   groups.push(buildCategoryItem('category-files', LABEL_FILES, 'folder', groups.length > 0));
   groups.push(buildCategoryItem('category-knowledge-base', LABEL_KNOWLEDGE_BASE, 'book-open', true));
   groups.push(buildCategoryItem('category-forms', LABEL_FORMS, 'table-properties', true));
-  groups.push(buildCategoryItem('category-prompts', LABEL_PROMPTS, 'message-circle'));
   groups.push(buildCategoryItem('category-rules', LABEL_RULES, 'file-code'));
 
   return groups;
@@ -135,7 +158,7 @@ async function buildWorkspaceFileItems(
 ): Promise<SelectItem[]> {
   const entries = await loadWorkspaceEntries(targetPath);
   const folders = entries.filter((entry) => entry.type === 'directory');
-  const files = entries.filter((entry) => entry.type !== 'directory');
+  const files = entries.filter((entry) => entry.type !== 'directory' && isAllowedReferenceFile(entry.path));
   const items: SelectItem[] = [];
 
   for (const folder of folders) {

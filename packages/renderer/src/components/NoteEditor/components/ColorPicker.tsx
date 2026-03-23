@@ -4,7 +4,7 @@
  * 描述：支持色相选择、饱和度/亮度选择、透明度选择、手动输入、实时预览
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import './ColorPicker.scss';
 
@@ -180,7 +180,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   const [isPositioned, setIsPositioned] = useState(false);
 
   // 初始位置
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (anchorRect) {
       setPosition({ x: anchorRect.right + 10, y: anchorRect.top });
       setIsPositioned(false);
@@ -188,8 +188,8 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   }, [anchorRect]);
 
   // 调整位置，避免被状态栏遮挡（在组件渲染后）
-  useEffect(() => {
-    if (!isPositioned && containerRef.current && anchorRect) {
+  useLayoutEffect(() => {
+    if (containerRef.current && anchorRect) {
       const pickerRect = containerRef.current.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
       const viewportWidth = window.innerWidth;
@@ -215,7 +215,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       setPosition({ x, y });
       setIsPositioned(true);
     }
-  });
+  }, [anchorRect]);
 
   // 更新颜色
   const updateColor = useCallback(
@@ -400,7 +400,12 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
     <div
       ref={containerRef}
       className="custom-color-picker"
-      style={{ left: position.x, top: position.y }}
+      style={{
+        left: position.x,
+        top: position.y,
+        visibility: isPositioned ? 'visible' : 'hidden',
+        pointerEvents: isPositioned ? 'auto' : 'none',
+      }}
       onMouseDown={(e) => e.stopPropagation()}
     >
       {/* 饱和度/亮度选择区域 */}

@@ -1,15 +1,40 @@
-import React, { useEffect, useRef, useState } from 'react';
+/**
+ * CodeMirror 内联 AI 聊天组件。
+ * 复刻 15c83a66 版本的卡片式内联聊天交互与 TipTap 输入实现。
+ */
+
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
+import { VscMention, VscStopCircle } from 'react-icons/vsc';
 import { Icon } from '../../Icons/Icon';
-import { getCachedModels, getModelConfig } from '../../../services/ModelCacheService';
+import { CustomScrollbar } from '../../common/CustomScrollbar';
+import {
+  extractActualModelIdFromCacheModelId,
+  getCachedModels,
+  getModelConfig,
+} from '../../../services/ModelCacheService';
 import { aiService } from '../../../services/ai/AIService';
 import { isModelEnabled } from '../../../services/ai';
 import { Select, type SelectGroup } from '../../common/Select/Select';
-import { buildLevel1MenuItems, buildLevel2MenuItems } from '../../Layout/EditorArea/AIInput/buildContextMenuItems';
-import { PromptInput, type PromptInputRef } from '../../Layout/EditorArea/AIInput/PromptInput';
+import { buildLevel1MenuItems, buildLevel2MenuItems } from '../../Layout/EditorArea/AIZoneWidget/buildContextMenuItems';
+import { TipTapInput, type TipTapInputRef } from '../../Layout/EditorArea/AIZoneWidget/TipTapInput';
+import { ChatHistory } from '../../Layout/AIChatPanel/ChatHistory';
+import {
+  DEFAULT_CHAT_SESSION_TITLE,
+  getChatSessionTitle,
+  getChatSessionTitleFromMessages,
+  truncateChatSessionTitle,
+} from '../../Layout/AIChatPanel/chatSessionTitle';
 import type { AIRequestParams, AIResponse, StreamCallback } from '../../../types/aiProvider';
 import { getPromptTemplateById } from '../../../services/PromptTemplateService';
+import {
+  getActiveCodeMirrorEditorMeta,
+} from '../../../lib/editor/activeCodeMirrorEditor';
 import { knowledgeBaseService } from '../../Layout/Sidebar/KnowledgeBase/knowledgeBaseService';
+import {
+  inlineChatHistoryService,
+  type InlineChatQuery,
+} from '../../../services/InlineChatHistoryService';
 import { tableReferenceService } from '../../../services/tableReference/TableReferenceService';
 import './InlineAIChat.scss';
 
@@ -23,6 +48,9 @@ interface ChatMessage {
 
 interface ModelInfo {
   modelId: string;
+  configName: string;
+  providerId: string;
+  actualModelId: string;
   displayName?: string;
   capabilities?: {
     thinking?: boolean;
@@ -34,6 +62,11 @@ interface ReferenceItem {
   name: string;
 }
 
+interface AtMenuAnchorPosition {
+  top: number;
+  left: number;
+}
+
 interface InlineAIChatProps {
   onClose: () => void;
   onInsert: (text: string) => void;
@@ -42,9 +75,14 @@ interface InlineAIChatProps {
 }
 
 const createId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const trimContent = (content: string, limit: number): string => content.length > limit ? `${content.slice(0, limit)}\n...` : content;
+
+const trimContent = (content: string, limit: number): string => (
+  content.length > limit ? `${content.slice(0, limit)}\n...` : content
+);
+
 const getSelectableAtMenuValues = (groups: SelectGroup[]): string[] => {
   const values: string[] = [];
+
   for (const group of groups) {
     for (const item of group.items) {
       if (!item.disabled) {
@@ -52,42 +90,110 @@ const getSelectableAtMenuValues = (groups: SelectGroup[]): string[] => {
       }
     }
   }
+
   return values;
 };
 
-export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, onInsert, initialSelection, view }) => {
+const groupModelsByConfig = (models: ModelInfo[]): Array<{ configName: string; models: ModelInfo[] }> => {
+  const grouped = new Map<string, ModelInfo[]>();
+
+  models.forEach((model) => {
+    if (!grouped.has(model.configName)) {
+      grouped.set(model.configName, []);
+    }
+
+    grouped.get(model.configName)?.push(model);
+  });
+
+  return Array.from(grouped.entries()).map(([configName, groupedModels]) => ({
+    configName,
+    models: groupedModels,
+  }));
+};
+
+export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({
+  onClose,
+  onInsert,
+  initialSelection,
+  view,
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [inputText, setInputText] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [dropdownDirection, setDropdownDirection] = useState<'up' | 'down'>('down');
   const [isAtMenuOpen, setIsAtMenuOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [atMenuLevel, setAtMenuLevel] = useState<'main' | 'detail'>('main');
   const [atMenuGroups, setAtMenuGroups] = useState<SelectGroup[]>([]);
   const [currentCategory, setCurrentCategory] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [atMenuHeight, setAtMenuHeight] = useState<number | undefined>(undefined);
   const [atMenuHighlightIndex, setAtMenuHighlightIndex] = useState(0);
-  const [isSparklesMenuOpen, setIsSparklesMenuOpen] = useState(false);
-  const [isToneSubmenuOpen, setIsToneSubmenuOpen] = useState(false);
+  const [isAtMenuKeyboardNavigating, setIsAtMenuKeyboardNavigating] = useState(false);
+  const [atMenuAnchorPosition, setAtMenuAnchorPosition] = useState<AtMenuAnchorPosition | null>(null);
   const [fileReferences, setFileReferences] = useState<Array<{ path: string; name: string }>>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<ReferenceItem[]>([]);
   const [forms, setForms] = useState<ReferenceItem[]>([]);
-  const promptInputRef = useRef<PromptInputRef>(null);
+  const [outputMaxHeight, setOutputMaxHeight] = useState<number | undefined>(undefined);
+  const [currentSessionId, setCurrentSessionId] = useState('');
+  const [isHistorySessionActive, setIsHistorySessionActive] = useState(false);
+  const tiptapInputRef = useRef<TipTapInputRef>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const outputMessagesRef = useRef<HTMLDivElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
   const modelTriggerRef = useRef<HTMLSpanElement>(null);
+  const atTriggerRef = useRef<HTMLSpanElement>(null);
+  const historyTriggerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isAtMenuOpeningRef = useRef(false);
+  const atMenuOpenRequestRef = useRef(0);
+  const currentSessionIdRef = useRef(currentSessionId);
   const atMenuValues = getSelectableAtMenuValues(atMenuGroups);
   const highlightedAtMenuValue = atMenuValues[atMenuHighlightIndex] ?? '';
+  const canSend = (
+    !isLoading
+    && !!selectedModel
+    && (
+      inputText.trim().length > 0
+      || fileReferences.length > 0
+      || knowledgeBases.length > 0
+      || forms.length > 0
+    )
+  );
+  const assistantMessages = messages.filter((message) => message.role === 'assistant');
+  const latestCompletedAssistantMessage = [...assistantMessages].reverse().find((message) => (
+    !message.isStreaming && message.content.trim()
+  ));
+  const currentSessionTitle = getChatSessionTitleFromMessages(messages);
+  const currentSessionTitleLabel = truncateChatSessionTitle(currentSessionTitle, 32);
+  const hasVisibleOutputPanel = assistantMessages.length > 0;
+  const shouldLockScroll = isModelDropdownOpen || isAtMenuOpen || isHistoryOpen || hasVisibleOutputPanel;
+  const getInlineChatFileUri = (): string => {
+    const editorMeta = getActiveCodeMirrorEditorMeta();
+    return editorMeta.path?.trim() || editorMeta.title?.trim() || 'untitled';
+  };
+  const getInlineChatLineNumber = (): number => (
+    view.state.doc.lineAt(view.state.selection.main.head).number
+  );
+  const inlineHistoryQuery: InlineChatQuery | undefined = (() => {
+    const fileUri = getInlineChatFileUri();
+    return fileUri ? { fileUri } : undefined;
+  })();
 
   useEffect(() => {
     const loadModels = async (): Promise<void> => {
       const cachedModels = await getCachedModels();
-      const enabledModels = cachedModels.filter((model) => isModelEnabled(model.modelId));
+      const enabledModels = cachedModels.filter((model) => isModelEnabled(model.actualModelId));
       const modelsToUse = enabledModels.length > 0 ? enabledModels : cachedModels;
+
       setAvailableModels(modelsToUse.map((model) => ({
         modelId: model.modelId,
+        configName: model.configName,
+        providerId: model.providerId,
+        actualModelId: model.actualModelId,
         displayName: model.displayName,
         capabilities: model.capabilities,
       })));
@@ -95,7 +201,7 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
     };
 
     void loadModels();
-    promptInputRef.current?.focus();
+    tiptapInputRef.current?.focus();
 
     const handleReload = () => void loadModels();
     window.addEventListener('ai-config-updated', handleReload);
@@ -109,8 +215,130 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
   }, []);
 
   useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: 'end' });
   }, [messages]);
+
+  useLayoutEffect(() => {
+    if (assistantMessages.length === 0) {
+      setOutputMaxHeight(undefined);
+      return;
+    }
+
+    const scrollElement = view.scrollDOM;
+    const outputElement = outputMessagesRef.current;
+    if (!outputElement) {
+      return;
+    }
+
+    const updateOutputMaxHeight = (): void => {
+      const scrollRect = scrollElement.getBoundingClientRect();
+      const outputRect = outputElement.getBoundingClientRect();
+      const nextMaxHeight = Math.max(0, Math.floor(scrollRect.bottom - outputRect.top));
+      setOutputMaxHeight(nextMaxHeight);
+    };
+
+    updateOutputMaxHeight();
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+        updateOutputMaxHeight();
+      })
+      : null;
+
+    resizeObserver?.observe(scrollElement);
+    resizeObserver?.observe(outputElement);
+    window.addEventListener('resize', updateOutputMaxHeight);
+    scrollElement.addEventListener('scroll', updateOutputMaxHeight, { passive: true });
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateOutputMaxHeight);
+      scrollElement.removeEventListener('scroll', updateOutputMaxHeight);
+    };
+  }, [assistantMessages.length, view]);
+
+  useEffect(() => {
+    if (!isModelDropdownOpen) {
+      return;
+    }
+
+    const handleDocumentMouseDown = (event: MouseEvent): void => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (!modelDropdownRef.current?.contains(target)) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleDocumentMouseDown, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentMouseDown, true);
+    };
+  }, [isModelDropdownOpen]);
+
+  useEffect(() => {
+    if (!shouldLockScroll) {
+      return;
+    }
+
+    const isInsideAllowedScrollArea = (target: EventTarget | null): boolean => {
+      if (target instanceof Element) {
+        return Boolean(target.closest('.cm-inline-ai-output, .cm-inline-ai-model-dropdown, .cm-inline-ai-at-select-content, .chat-history-menu'));
+      }
+
+      if (target instanceof Node) {
+        return Boolean(target.parentElement?.closest('.cm-inline-ai-output, .cm-inline-ai-model-dropdown, .cm-inline-ai-at-select-content, .chat-history-menu'));
+      }
+
+      return false;
+    };
+
+    const handleScrollLock = (event: WheelEvent | TouchEvent): void => {
+      if (isInsideAllowedScrollArea(event.target)) {
+        return;
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    const listenerOptions: AddEventListenerOptions = { passive: false, capture: true };
+
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('wheel', handleScrollLock, listenerOptions);
+    window.addEventListener('touchmove', handleScrollLock, listenerOptions);
+    document.addEventListener('wheel', handleScrollLock, listenerOptions);
+    document.addEventListener('touchmove', handleScrollLock, listenerOptions);
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.paddingRight = previousBodyPaddingRight;
+      window.removeEventListener('wheel', handleScrollLock, listenerOptions);
+      window.removeEventListener('touchmove', handleScrollLock, listenerOptions);
+      document.removeEventListener('wheel', handleScrollLock, listenerOptions);
+      document.removeEventListener('touchmove', handleScrollLock, listenerOptions);
+    };
+  }, [shouldLockScroll]);
 
   const loadLevel1Menu = async (): Promise<void> => {
     setAtMenuGroups(await buildLevel1MenuItems());
@@ -121,24 +349,40 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
   };
 
   const loadLevel2Menu = async (category: string, folders: Set<string>): Promise<void> => {
-    setAtMenuGroups(await buildLevel2MenuItems(category, () => {}, () => {}, () => {}, folders, undefined, () => {}, new Set()));
+    setAtMenuGroups(
+      await buildLevel2MenuItems(
+        category,
+        () => {},
+        () => {},
+        () => {},
+        folders,
+        undefined,
+        () => {},
+        new Set(),
+      ),
+    );
     setAtMenuLevel('detail');
     setCurrentCategory(category);
     setAtMenuHighlightIndex(0);
   };
 
   const closeAtMenu = (): void => {
+    atMenuOpenRequestRef.current += 1;
+    isAtMenuOpeningRef.current = false;
     setIsAtMenuOpen(false);
     setAtMenuLevel('main');
+    setAtMenuGroups([]);
     setCurrentCategory('');
     setExpandedFolders(new Set());
     setAtMenuHeight(undefined);
     setAtMenuHighlightIndex(0);
+    setIsAtMenuKeyboardNavigating(false);
+    setAtMenuAnchorPosition(null);
   };
 
   const insertPromptText = (text: string, replaceAtTrigger = false): void => {
-    promptInputRef.current?.insertText(text, replaceAtTrigger);
-    promptInputRef.current?.focus();
+    tiptapInputRef.current?.insertText(text, replaceAtTrigger);
+    tiptapInputRef.current?.focus();
   };
 
   const handleAtMenuSelect = async (value: string): Promise<void> => {
@@ -152,22 +396,27 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
     if (value.startsWith('folder-') && currentCategory) {
       const folderPath = value.replace('folder-', '');
       const folders = new Set(expandedFolders);
-      if (folders.has(folderPath)) folders.delete(folderPath);
-      else folders.add(folderPath);
+
+      if (folders.has(folderPath)) {
+        folders.delete(folderPath);
+      } else {
+        folders.add(folderPath);
+      }
+
       setExpandedFolders(folders);
       await loadLevel2Menu(currentCategory, folders);
       return;
     }
 
     if (value.startsWith('recent-file-')) {
-      const response = await window.electron?.workspace?.getRecentFiles();
-      const index = Number.parseInt(value.replace('recent-file-', ''), 10);
-      const filePath = response?.success && response.data ? response.data[index] || '' : '';
+      const filePath = value.replace('recent-file-', '');
+
       if (filePath) {
         const fileName = filePath.split(/[/\\]/).pop() || filePath;
-        promptInputRef.current?.insertFileReference(filePath, fileName);
-        setFileReferences(promptInputRef.current?.getFileReferences() ?? []);
+        tiptapInputRef.current?.insertFileReference(filePath, fileName);
+        setFileReferences(tiptapInputRef.current?.getFileReferences() ?? []);
       }
+
       closeAtMenu();
       return;
     }
@@ -175,15 +424,19 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
     if (value.startsWith('file-')) {
       const filePath = value.replace('file-', '');
       const fileName = filePath.split(/[/\\]/).pop() || filePath;
-      promptInputRef.current?.insertFileReference(filePath, fileName);
-      setFileReferences(promptInputRef.current?.getFileReferences() ?? []);
+      tiptapInputRef.current?.insertFileReference(filePath, fileName);
+      setFileReferences(tiptapInputRef.current?.getFileReferences() ?? []);
       closeAtMenu();
       return;
     }
 
     if (value.startsWith('prompt-')) {
       const template = await getPromptTemplateById(value.replace('prompt-', ''));
-      if (template?.content?.trim()) insertPromptText(template.content.trim(), true);
+
+      if (template?.content?.trim()) {
+        insertPromptText(template.content.trim(), true);
+      }
+
       closeAtMenu();
       return;
     }
@@ -191,10 +444,16 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
     if (value.startsWith('kb-')) {
       const kbId = value.replace('kb-', '');
       const item = await knowledgeBaseService.findItem(kbId);
+
       if (item && item.type === 'folder') {
-        setKnowledgeBases((currentItems) => currentItems.some((entry) => entry.id === kbId) ? currentItems : [...currentItems, { id: kbId, name: item.title }]);
+        setKnowledgeBases((currentItems) => (
+          currentItems.some((entry) => entry.id === kbId)
+            ? currentItems
+            : [...currentItems, { id: kbId, name: item.title }]
+        ));
         insertPromptText(`@${item.title} `, true);
       }
+
       closeAtMenu();
       return;
     }
@@ -202,24 +461,37 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
     if (value.startsWith('form-')) {
       const formId = value.replace('form-', '');
       const formDetail = await tableReferenceService.getFormDetail(formId);
+
       if (formDetail) {
-        setForms((currentItems) => currentItems.some((entry) => entry.id === formId) ? currentItems : [...currentItems, { id: formId, name: formDetail.name }]);
+        setForms((currentItems) => (
+          currentItems.some((entry) => entry.id === formId)
+            ? currentItems
+            : [...currentItems, { id: formId, name: formDetail.name }]
+        ));
         insertPromptText(`@${formDetail.name} `, true);
       }
+
       closeAtMenu();
     }
   };
 
   const handleAtMenuNavigate = (direction: 'up' | 'down'): void => {
     const totalItems = atMenuValues.length;
-    if (totalItems === 0) return;
-    setAtMenuHighlightIndex((currentIndex) => direction === 'up'
-      ? (currentIndex <= 0 ? totalItems - 1 : currentIndex - 1)
-      : (currentIndex >= totalItems - 1 ? 0 : currentIndex + 1));
+
+    if (totalItems === 0) {
+      return;
+    }
+
+    setAtMenuHighlightIndex((currentIndex) => (
+      direction === 'up'
+        ? (currentIndex <= 0 ? totalItems - 1 : currentIndex - 1)
+        : (currentIndex >= totalItems - 1 ? 0 : currentIndex + 1)
+    ));
   };
 
   const handleAtMenuSelectHighlighted = async (): Promise<void> => {
     const selectedValue = atMenuValues[atMenuHighlightIndex];
+
     if (selectedValue) {
       await handleAtMenuSelect(selectedValue);
     }
@@ -270,28 +542,135 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
     return selection.from < selection.to ? view.state.sliceDoc(selection.from, selection.to) : (initialSelection || '');
   };
 
-  const handleSend = async (): Promise<void> => {
-    if (isLoading || !selectedModel) return;
+  const ensureHistorySession = async (seedContent: string): Promise<string> => {
+    if (currentSessionIdRef.current) {
+      return currentSessionIdRef.current;
+    }
 
-    const inputText = promptInputRef.current?.getText().trim() || '';
-    const currentFileReferences = promptInputRef.current?.getFileReferences() ?? fileReferences;
-    if (!inputText && currentFileReferences.length === 0 && knowledgeBases.length === 0 && forms.length === 0) return;
+    const fileUri = getInlineChatFileUri();
+    const sessionId = inlineChatHistoryService.generateSessionId(fileUri);
+
+    try {
+      await inlineChatHistoryService.createSession({
+        id: sessionId,
+        fileUri,
+        lineNumber: getInlineChatLineNumber(),
+        title: getChatSessionTitle(seedContent || DEFAULT_CHAT_SESSION_TITLE),
+        context: getSelectionText().trim() || undefined,
+      });
+      currentSessionIdRef.current = sessionId;
+      setCurrentSessionId(sessionId);
+      return sessionId;
+    } catch (error) {
+      console.warn('[InlineAIChat] Failed to create inline chat history session:', error);
+      return '';
+    }
+  };
+
+  const persistHistoryMessage = async (
+    sessionId: string,
+    message: ChatMessage,
+    model?: string,
+  ): Promise<void> => {
+    if (!sessionId) {
+      return;
+    }
+
+    try {
+      await inlineChatHistoryService.addMessage({
+        id: message.id,
+        sessionId,
+        role: message.role,
+        content: message.content,
+        model,
+        reasoning: undefined,
+      });
+    } catch (error) {
+      console.warn('[InlineAIChat] Failed to persist inline chat history message:', error);
+    }
+  };
+
+  const loadHistorySession = async (sessionId: string): Promise<void> => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
+
+    try {
+      const messages = await inlineChatHistoryService.getMessages(sessionId);
+      currentSessionIdRef.current = sessionId;
+      setMessages(messages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp,
+        isStreaming: false,
+      })));
+      setCurrentSessionId(sessionId);
+      setIsHistorySessionActive(true);
+      setInputText('');
+      setFileReferences([]);
+      setKnowledgeBases([]);
+      setForms([]);
+      tiptapInputRef.current?.clear();
+      setIsHistoryOpen(false);
+      tiptapInputRef.current?.focus();
+    } catch (error) {
+      console.error('[InlineAIChat] Failed to load chat history session:', error);
+    }
+  };
+
+  const handleSend = async (): Promise<void> => {
+    if (isLoading || !selectedModel) {
+      return;
+    }
+
+    const inputText = tiptapInputRef.current?.getText().trim() || '';
+    const currentFileReferences = tiptapInputRef.current?.getFileReferences() ?? fileReferences;
+
+    if (!inputText && currentFileReferences.length === 0 && knowledgeBases.length === 0 && forms.length === 0) {
+      return;
+    }
 
     const userMessageId = createId();
     const assistantMessageId = createId();
     const selectionText = getSelectionText().trim();
-    setMessages((currentMessages) => [...currentMessages, { id: userMessageId, role: 'user', content: inputText || '[context only]', timestamp: Date.now() }, { id: assistantMessageId, role: 'assistant', content: '', timestamp: Date.now(), isStreaming: true }]);
+    const userMessageContent = inputText || '[context only]';
+    const userMessage: ChatMessage = {
+      id: userMessageId,
+      role: 'user',
+      content: userMessageContent,
+      timestamp: Date.now(),
+    };
+    const assistantMessage: ChatMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      isStreaming: true,
+    };
+
+    setMessages((currentMessages) => [
+      ...currentMessages,
+      userMessage,
+      assistantMessage,
+    ]);
     setIsLoading(true);
-    promptInputRef.current?.clear();
+    setIsHistoryOpen(false);
+    setIsHistorySessionActive(false);
+    tiptapInputRef.current?.clear();
+    setInputText('');
     setFileReferences([]);
     setKnowledgeBases([]);
     setForms([]);
 
     let fileContext = '';
+
     for (const reference of currentFileReferences) {
       try {
         const content = await window.electronAPI?.fs?.readFile?.(reference.path, 'utf-8');
-        if (content) fileContext += `[File] ${reference.name}\n${trimContent(content, 3000)}\n\n`;
+        if (content) {
+          fileContext += `[File] ${reference.name}\n${trimContent(content, 3000)}\n\n`;
+        }
       } catch (error) {
         console.warn('[InlineAIChat] Failed to read referenced file:', error);
       }
@@ -299,8 +678,17 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
 
     try {
       const modelConfig = await getModelConfig(selectedModel);
-      if (!modelConfig) throw new Error(`Model config not found: ${selectedModel}`);
-      const actualModelName = modelConfig.modelId.includes(':') ? modelConfig.modelId.split(':')[1] : modelConfig.modelId;
+
+      if (!modelConfig) {
+        throw new Error(`Model config not found: ${selectedModel}`);
+      }
+
+      const actualModelName = modelConfig.actualModelId;
+      const historySessionId = await ensureHistorySession(userMessageContent);
+
+      if (historySessionId) {
+        await persistHistoryMessage(historySessionId, userMessage);
+      }
 
       await aiService.setProvider(modelConfig.providerId, {
         name: modelConfig.configName,
@@ -312,15 +700,35 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
       });
 
       const contextBlocks: string[] = [];
-      if (selectionText) contextBlocks.push(`[Selected Text]\n${selectionText}`);
-      if (fileContext.trim()) contextBlocks.push(fileContext.trim());
-      if (knowledgeBases.length > 0) contextBlocks.push(`[Knowledge Bases]\n${knowledgeBases.map((item) => item.name).join(', ')}`);
-      if (forms.length > 0) contextBlocks.push(`[Forms]\n${forms.map((item) => item.name).join(', ')}`);
-      const finalPrompt = contextBlocks.length > 0 ? `${contextBlocks.join('\n\n')}\n\n[User Request]\n${inputText || 'Use the provided context.'}` : inputText;
+
+      if (selectionText) {
+        contextBlocks.push(`[Selected Text]\n${selectionText}`);
+      }
+
+      if (fileContext.trim()) {
+        contextBlocks.push(fileContext.trim());
+      }
+
+      if (knowledgeBases.length > 0) {
+        contextBlocks.push(`[Knowledge Bases]\n${knowledgeBases.map((item) => item.name).join(', ')}`);
+      }
+
+      if (forms.length > 0) {
+        contextBlocks.push(`[Forms]\n${forms.map((item) => item.name).join(', ')}`);
+      }
+
+      const finalPrompt = contextBlocks.length > 0
+        ? `${contextBlocks.join('\n\n')}\n\n[User Request]\n${inputText || 'Use the provided context.'}`
+        : inputText;
 
       const requestParams: AIRequestParams = {
         model: actualModelName,
-        messages: [...messages.filter((message) => !message.isStreaming).map((message) => ({ role: message.role, content: message.content })), { role: 'user', content: finalPrompt }],
+        messages: [
+          ...messages
+            .filter((message) => !message.isStreaming)
+            .map((message) => ({ role: message.role, content: message.content })),
+          { role: 'user', content: finalPrompt },
+        ],
         temperature: modelConfig.temperature,
         maxTokens: modelConfig.maxTokens,
         signal: (abortControllerRef.current = new AbortController()).signal,
@@ -330,17 +738,53 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
       const streamCallback: StreamCallback = {
         onContent: (content: string) => {
           fullResponse += content;
-          setMessages((currentMessages) => currentMessages.map((message) => message.id === assistantMessageId ? { ...message, content: fullResponse, isStreaming: true } : message));
+          setMessages((currentMessages) => (
+            currentMessages.map((message) => (
+              message.id === assistantMessageId
+                ? { ...message, content: fullResponse, isStreaming: true }
+                : message
+            ))
+          ));
         },
         onComplete: (response: AIResponse) => {
-          if (!fullResponse && response.content) fullResponse = response.content;
-          setMessages((currentMessages) => currentMessages.map((message) => message.id === assistantMessageId ? { ...message, content: fullResponse, isStreaming: false } : message));
+          if (!fullResponse && response.content) {
+            fullResponse = response.content;
+          }
+
+          setMessages((currentMessages) => (
+            currentMessages.map((message) => (
+              message.id === assistantMessageId
+                ? { ...message, content: fullResponse, isStreaming: false }
+                : message
+            ))
+          ));
+          if (historySessionId) {
+            void persistHistoryMessage(historySessionId, {
+              ...assistantMessage,
+              content: fullResponse,
+              isStreaming: false,
+            }, actualModelName);
+          }
           setIsLoading(false);
           abortControllerRef.current = null;
         },
         onError: (error: Error) => {
           const fallback = fullResponse || `Request failed: ${error.message || 'Unknown error'}`;
-          setMessages((currentMessages) => currentMessages.map((message) => message.id === assistantMessageId ? { ...message, content: fallback, isStreaming: false } : message));
+
+          setMessages((currentMessages) => (
+            currentMessages.map((message) => (
+              message.id === assistantMessageId
+                ? { ...message, content: fallback, isStreaming: false }
+                : message
+            ))
+          ));
+          if (historySessionId) {
+            void persistHistoryMessage(historySessionId, {
+              ...assistantMessage,
+              content: fallback,
+              isStreaming: false,
+            }, actualModelName);
+          }
           setIsLoading(false);
           abortControllerRef.current = null;
         },
@@ -349,61 +793,346 @@ export const InlineAIChatComponent: React.FC<InlineAIChatProps> = ({ onClose, on
       await aiService.generateTextStream(requestParams, streamCallback);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      setMessages((currentMessages) => currentMessages.map((item) => item.id === assistantMessageId ? { ...item, content: `Request failed: ${message}`, isStreaming: false } : item));
+
+      setMessages((currentMessages) => (
+        currentMessages.map((item) => (
+          item.id === assistantMessageId
+            ? { ...item, content: `Request failed: ${message}`, isStreaming: false }
+            : item
+        ))
+      ));
       setIsLoading(false);
       abortControllerRef.current = null;
     }
   };
 
-  const handleAIAbilityClick = (type: 'polish' | 'expand' | 'shorten' | 'tone', tone?: string): void => {
-    const selectionText = getSelectionText().trim();
-    if (!selectionText) {
-      promptInputRef.current?.insertText('Please select some text first.');
+  const getModelDisplayName = (modelId: string): string => (
+    availableModels.find((model) => model.modelId === modelId)?.displayName
+    || availableModels.find((model) => model.modelId === modelId)?.actualModelId
+    || (modelId ? extractActualModelIdFromCacheModelId(modelId) : 'Select Model')
+  );
+
+  const openAtMenu = async (position: AtMenuAnchorPosition): Promise<void> => {
+    setAtMenuAnchorPosition(position);
+
+    if (isAtMenuOpen || isAtMenuOpeningRef.current) {
       return;
     }
-    const prompts: Record<'polish' | 'expand' | 'shorten', string> = {
-      polish: `Please polish the following text:\n\n${selectionText}`,
-      expand: `Please expand the following text:\n\n${selectionText}`,
-      shorten: `Please shorten the following text:\n\n${selectionText}`,
-    };
-    promptInputRef.current?.setText(type === 'tone' ? `Please rewrite the following text in a ${tone || 'professional'} tone:\n\n${selectionText}` : prompts[type]);
-    promptInputRef.current?.focus();
-    setIsSparklesMenuOpen(false);
-    setIsToneSubmenuOpen(false);
+
+    isAtMenuOpeningRef.current = true;
+    const requestId = atMenuOpenRequestRef.current + 1;
+    atMenuOpenRequestRef.current = requestId;
+    setIsAtMenuKeyboardNavigating(false);
+    setAtMenuGroups([]);
+
+    try {
+      await loadLevel1Menu();
+
+      if (atMenuOpenRequestRef.current !== requestId) {
+        return;
+      }
+
+      setIsAtMenuOpen(true);
+    } finally {
+      if (atMenuOpenRequestRef.current === requestId) {
+        isAtMenuOpeningRef.current = false;
+      }
+    }
   };
 
-  const getModelDisplayName = (modelId: string): string => availableModels.find((model) => model.modelId === modelId)?.displayName || (modelId.includes(':') ? modelId.split(':')[1] : modelId || 'Select Model');
+  const openToolbarAtMenu = (): void => {
+    const rect = atTriggerRef.current?.getBoundingClientRect();
+
+    if (!rect) {
+      return;
+    }
+
+    void openAtMenu({
+      top: rect.bottom,
+      left: rect.left,
+    });
+  };
+
+  const createNewChat = (): void => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
+    setMessages([]);
+    currentSessionIdRef.current = '';
+    setCurrentSessionId('');
+    setIsHistorySessionActive(false);
+    setIsModelDropdownOpen(false);
+    setIsHistoryOpen(false);
+    closeAtMenu();
+    setInputText('');
+    setFileReferences([]);
+    setKnowledgeBases([]);
+    setForms([]);
+    tiptapInputRef.current?.clear();
+    tiptapInputRef.current?.focus();
+  };
 
   return (
-    <div className="cm-inline-ai-chat">
-      <div className="cm-inline-ai-header">
-        <div className="cm-inline-ai-header-left"><span className="cm-inline-ai-title">AI Assistant</span>{getSelectionText().trim() && <span className="cm-inline-ai-selection-badge">Selected</span>}</div>
-        <div className="cm-inline-ai-header-right">
-          <div className="cm-inline-ai-sparkles-menu">
-            <span className="cm-inline-ai-sparkles-btn" onClick={() => { setIsSparklesMenuOpen((open) => !open); setIsToneSubmenuOpen(false); }} title="Quick actions"><Icon name="sparkles" size={14} /></span>
-            {isSparklesMenuOpen && <div className="cm-inline-ai-sparkles-dropdown"><div className="cm-inline-ai-sparkles-option" onClick={() => handleAIAbilityClick('polish')}>Polish</div><div className="cm-inline-ai-sparkles-option" onClick={() => handleAIAbilityClick('expand')}>Expand</div><div className="cm-inline-ai-sparkles-option" onClick={() => handleAIAbilityClick('shorten')}>Shorten</div><div className="cm-inline-ai-sparkles-option cm-inline-ai-sparkles-option-submenu" onMouseEnter={() => setIsToneSubmenuOpen(true)} onMouseLeave={() => setIsToneSubmenuOpen(false)}><span>Rewrite Tone</span><Icon name="chevron-right" size={12} />{isToneSubmenuOpen && <div className="cm-inline-ai-tone-submenu"><div className="cm-inline-ai-sparkles-option" onClick={() => handleAIAbilityClick('tone', 'professional')}>Professional</div><div className="cm-inline-ai-sparkles-option" onClick={() => handleAIAbilityClick('tone', 'casual')}>Casual</div><div className="cm-inline-ai-sparkles-option" onClick={() => handleAIAbilityClick('tone', 'academic')}>Academic</div></div>}</div></div>}
-          </div>
-          <div className="cm-inline-ai-at-menu">
-            <span className="cm-inline-ai-at-trigger" onClick={() => { if (isAtMenuOpen) closeAtMenu(); else { void loadLevel1Menu(); setIsAtMenuOpen(true); } }} title="Add context">@</span>
-            {isAtMenuOpen && <Select value={highlightedAtMenuValue} onChange={(value: string) => { void handleAtMenuSelect(value); }} groups={atMenuGroups} placeholder="Select context..." className="cm-inline-ai-at-select" showSearch={true} open={true} align="right" headerLeftIcon={atMenuLevel === 'detail' ? <Icon name="chevron-left" size={16} /> : undefined} onHeaderLeftClick={atMenuLevel === 'detail' ? () => { void loadLevel1Menu(); } : undefined} fixedHeight={atMenuLevel === 'detail' ? atMenuHeight : undefined} onHeightChange={atMenuLevel === 'main' ? setAtMenuHeight : undefined} onItemClick={(value: string) => !(value.startsWith('category-') || value.startsWith('folder-'))} onOpenChange={(open: boolean) => { if (!open) closeAtMenu(); }} onDropdownKeyDown={handleAtMenuDropdownKeyDown} />}
-          </div>
-          <span className="cm-inline-ai-close" onClick={onClose} title="Close"><Icon name="close" size={14} /></span>
-        </div>
-      </div>
-      {messages.length > 0 && <div className="cm-inline-ai-messages">{messages.map((message) => <div key={message.id} className={`cm-inline-ai-message cm-inline-ai-message-${message.role}`}><div className="cm-inline-ai-message-content">{message.content || (message.isStreaming ? 'Thinking...' : '')}{message.isStreaming && <span className="cm-inline-ai-cursor" />}</div></div>)}<div ref={messagesEndRef} /></div>}
+    <>
+      <div className="cm-inline-ai-chat">
+        <div className="cm-inline-ai-border-top" />
+
       <div className="cm-inline-ai-input-area">
-        <PromptInput ref={promptInputRef} className="cm-inline-ai-prompt-input" placeholder="Describe what you want AI to help with..." onSubmit={() => { void handleSend(); }} onEscape={onClose} onChange={() => setFileReferences(promptInputRef.current?.getFileReferences() ?? [])} onAtTrigger={() => { if (!isAtMenuOpen) { void loadLevel1Menu(); setIsAtMenuOpen(true); } }} onAtCancel={closeAtMenu} onFileReferencesChange={setFileReferences} isAtMenuOpen={isAtMenuOpen} onAtMenuNavigate={handleAtMenuNavigate} onAtMenuSelect={() => { void handleAtMenuSelectHighlighted(); }} onAtMenuBack={() => { void loadLevel1Menu(); }} />
+        <div className="cm-inline-ai-input-shell">
+          <TipTapInput
+            ref={tiptapInputRef}
+            className="cm-inline-ai-tiptap-input"
+            placeholder="Describe what you want AI to help with..."
+            onSubmit={() => { void handleSend(); }}
+            onEscape={onClose}
+            onChange={(text: string) => {
+              setInputText(text);
+            }}
+            onAtTrigger={(_query: string, position: { top: number; left: number }) => {
+              void openAtMenu(position);
+            }}
+            onAtCancel={closeAtMenu}
+            onFileReferencesChange={setFileReferences}
+            isAtMenuOpen={isAtMenuOpen}
+            onAtMenuNavigate={handleAtMenuNavigate}
+            onAtMenuSelect={() => { void handleAtMenuSelectHighlighted(); }}
+            onAtMenuBack={() => { void loadLevel1Menu(); }}
+          />
+          <div className="cm-inline-ai-input-side">
+            {isLoading ? (
+              <span
+                className="cm-inline-ai-icon-btn cm-inline-ai-icon-btn-stop"
+                onClick={() => {
+                  abortControllerRef.current?.abort();
+                  abortControllerRef.current = null;
+                  setIsLoading(false);
+                }}
+                title="Stop"
+              >
+                <VscStopCircle size={14} />
+              </span>
+            ) : (
+              <span
+                className={`cm-inline-ai-icon-btn cm-inline-ai-icon-btn-send ${!canSend ? 'disabled' : ''}`}
+                onClick={() => { void handleSend(); }}
+                title="Send"
+              >
+                <Icon name="send" size={14} />
+              </span>
+            )}
+            <span className="cm-inline-ai-icon-btn" onClick={onClose} title="Close">
+              <Icon name="close" size={14} />
+            </span>
+          </div>
+        </div>
         <div className="cm-inline-ai-toolbar">
-          <div className={`cm-inline-ai-model-select ${isModelDropdownOpen ? 'open' : ''}`}>
-            <span ref={modelTriggerRef} className="cm-inline-ai-model-trigger" onClick={() => { if (!isModelDropdownOpen) { const rect = modelTriggerRef.current?.getBoundingClientRect(); if (rect) setDropdownDirection(rect.bottom + 260 > window.innerHeight ? 'up' : 'down'); } setIsModelDropdownOpen((open) => !open); }}>{getModelDisplayName(selectedModel)}<Icon name="chevron-down" size={12} /></span>
-            {isModelDropdownOpen && <div className={`cm-inline-ai-model-dropdown cm-inline-ai-model-dropdown-${dropdownDirection}`}>{availableModels.map((model) => <div key={model.modelId} className={`cm-inline-ai-model-option ${model.modelId === selectedModel ? 'selected' : ''}`} onClick={() => { setSelectedModel(model.modelId); setIsModelDropdownOpen(false); }}><span className="cm-inline-ai-model-name">{model.displayName || model.modelId.split(':')[1] || model.modelId}</span>{model.capabilities?.thinking && <span className="cm-inline-ai-model-badge">Thinking</span>}</div>)}</div>}
+          <div className="cm-inline-ai-toolbar-left">
+            <div
+              className="cm-inline-ai-new-chat-trigger"
+              onClick={createNewChat}
+              title="新建对话"
+            >
+              <Icon name="plus" size={14} />
+            </div>
+            <div className="cm-inline-ai-at-menu">
+              <span
+                ref={atTriggerRef}
+                className="cm-inline-ai-at-trigger"
+                onClick={() => {
+                  setIsHistoryOpen(false);
+                  if (isAtMenuOpen) {
+                    closeAtMenu();
+                  } else {
+                    openToolbarAtMenu();
+                  }
+                }}
+                title="Add context"
+                >
+                  <VscMention size={14} />
+                </span>
+              {isAtMenuOpen && atMenuAnchorPosition && (
+                <div
+                  className="cm-inline-ai-at-select-anchor"
+                  style={{
+                    top: `${atMenuAnchorPosition.top}px`,
+                    left: `${atMenuAnchorPosition.left}px`,
+                  }}
+                >
+                  <Select
+                    value=""
+                    highlightedValue={isAtMenuKeyboardNavigating ? highlightedAtMenuValue : ''}
+                    onChange={(value: string) => {
+                      void handleAtMenuSelect(value);
+                    }}
+                    groups={atMenuGroups}
+                    placeholder="Select context..."
+                    className="cm-inline-ai-at-select"
+                    showSearch={true}
+                    open={true}
+                    align="left"
+                    headerLeftIcon={atMenuLevel === 'detail' ? <Icon name="chevron-left" size={16} /> : undefined}
+                    onHeaderLeftClick={atMenuLevel === 'detail' ? () => { void loadLevel1Menu(); } : undefined}
+                    fixedHeight={atMenuLevel === 'detail' ? atMenuHeight : undefined}
+                    onHeightChange={atMenuLevel === 'main' ? setAtMenuHeight : undefined}
+                    onItemClick={(value: string) => !(value.startsWith('category-') || value.startsWith('folder-'))}
+                    onOpenChange={(open: boolean) => {
+                      if (!open) {
+                        closeAtMenu();
+                      }
+                    }}
+                    onDropdownKeyDown={handleAtMenuDropdownKeyDown}
+                    onKeyboardNavigatingChange={setIsAtMenuKeyboardNavigating}
+                    useCustomScrollbar={true}
+                  />
+                </div>
+                )}
+              </div>
+              <div
+                ref={historyTriggerRef}
+                className={`cm-inline-ai-history-trigger ${isHistoryOpen ? 'active' : ''}`}
+                onClick={() => {
+                  setIsModelDropdownOpen(false);
+                  closeAtMenu();
+                  setIsHistoryOpen((open) => !open);
+                }}
+                title={currentSessionTitle || DEFAULT_CHAT_SESSION_TITLE}
+              >
+                <Icon name="history" size={14} iconSet="ui" />
+                <span className="cm-inline-ai-history-label">{currentSessionTitleLabel}</span>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path
+                    d={isHistoryOpen ? 'M3 7L6 4L9 7' : 'M3 5L6 8L9 5'}
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
           </div>
           <div className="cm-inline-ai-actions">
-            {messages.some((message) => message.role === 'assistant' && !message.isStreaming && message.content.trim()) && <span className="cm-inline-ai-btn" onClick={() => { const lastMessage = [...messages].reverse().find((message) => message.role === 'assistant' && !message.isStreaming && message.content.trim()); if (lastMessage) onInsert(lastMessage.content); }} title="Insert into editor"><Icon name="check" size={14} />Insert</span>}
-            {isLoading ? <span className="cm-inline-ai-btn cm-inline-ai-btn-stop" onClick={() => { abortControllerRef.current?.abort(); abortControllerRef.current = null; setIsLoading(false); }} title="Stop"><Icon name="close" size={14} />Stop</span> : <span className={`cm-inline-ai-btn cm-inline-ai-btn-send ${!selectedModel ? 'disabled' : ''}`} onClick={() => { void handleSend(); }} title="Send"><Icon name="send" size={14} />Send</span>}
+            {!isHistoryOpen && !isHistorySessionActive && latestCompletedAssistantMessage && (
+              <>
+                <span
+                  className="cm-inline-ai-btn"
+                  onClick={() => {
+                    onInsert(latestCompletedAssistantMessage.content);
+                  }}
+                  title="接受到编辑器"
+                >
+                  <Icon name="check" size={14} />
+                  接受
+                </span>
+                <span className="cm-inline-ai-btn" onClick={onClose} title="取消">
+                  <Icon name="close" size={14} />
+                  取消
+                </span>
+              </>
+            )}
+          </div>
+          <div
+            ref={modelDropdownRef}
+            className={`cm-inline-ai-model-select ${isModelDropdownOpen ? 'open' : ''}`}
+          >
+            <span
+              ref={modelTriggerRef}
+              className="cm-inline-ai-model-trigger"
+              onClick={() => {
+                setIsHistoryOpen(false);
+                closeAtMenu();
+                if (!isModelDropdownOpen) {
+                  const rect = modelTriggerRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setDropdownDirection(rect.bottom + 260 > window.innerHeight ? 'up' : 'down');
+                  }
+                }
+                setIsModelDropdownOpen((open) => !open);
+              }}
+            >
+              {getModelDisplayName(selectedModel)}
+              <Icon name="chevron-down" size={12} />
+            </span>
+            {isModelDropdownOpen && (
+              <CustomScrollbar
+                className={`cm-inline-ai-model-dropdown cm-inline-ai-model-dropdown-${dropdownDirection}`}
+                scrollbarWidth={6}
+                onWheel={(event) => {
+                  event.stopPropagation();
+                }}
+              >
+                {groupModelsByConfig(availableModels).map((group) => (
+                  <div key={group.configName} className="cm-inline-ai-model-group">
+                    <div className="cm-inline-ai-model-group-title">{group.configName}</div>
+                    {group.models.map((model) => (
+                      <div
+                        key={model.modelId}
+                        className={`cm-inline-ai-model-option ${model.modelId === selectedModel ? 'selected' : ''}`}
+                        onClick={() => {
+                          setSelectedModel(model.modelId);
+                          setIsModelDropdownOpen(false);
+                        }}
+                      >
+                        <span className="cm-inline-ai-model-name">
+                          {model.displayName || model.actualModelId}
+                        </span>
+                        {model.capabilities?.thinking && <span className="cm-inline-ai-model-badge">Thinking</span>}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </CustomScrollbar>
+            )}
           </div>
         </div>
       </div>
-    </div>
+
+        <div className="cm-inline-ai-border-bottom" />
+      </div>
+
+      {assistantMessages.length > 0 && (
+        <div className="cm-inline-ai-output">
+          <div
+            ref={outputMessagesRef}
+            className="cm-inline-ai-messages"
+            style={outputMaxHeight !== undefined ? { maxHeight: `${outputMaxHeight}px` } : undefined}
+          >
+            {assistantMessages.map((message) => {
+              const isThinkingPlaceholder = message.isStreaming && !message.content;
+
+              return (
+                <div key={message.id} className={`cm-inline-ai-message cm-inline-ai-message-${message.role}`}>
+                  <div className="cm-inline-ai-message-content">
+                    {isThinkingPlaceholder ? (
+                      <span className="cm-inline-ai-thinking">
+                        <span>Thinking</span>
+                        <span className="cm-inline-ai-thinking-dots" aria-hidden="true">
+                          <span className="cm-inline-ai-thinking-dot">.</span>
+                          <span className="cm-inline-ai-thinking-dot">.</span>
+                          <span className="cm-inline-ai-thinking-dot">.</span>
+                        </span>
+                      </span>
+                    ) : (
+                      <>
+                        {message.content}
+                        {message.isStreaming && <span className="cm-inline-ai-cursor" />}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+      )}
+      <ChatHistory
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        onSelectSession={(sessionId: string) => { void loadHistorySession(sessionId); }}
+        buttonRef={historyTriggerRef}
+        source="inline"
+        inlineQuery={inlineHistoryQuery}
+      />
+    </>
   );
 };

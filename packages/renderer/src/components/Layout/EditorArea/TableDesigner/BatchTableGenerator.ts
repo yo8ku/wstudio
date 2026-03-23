@@ -283,9 +283,7 @@ export class BatchTableGenerator {
       throw new Error(`未找到模型配置：${this.modelId}`);
     }
 
-    const actualModelName = modelConfig.modelId.includes(':') 
-      ? modelConfig.modelId.split(':')[1] 
-      : modelConfig.modelId;
+      const actualModelName = modelConfig.actualModelId;
 
     await aiService.setProvider(modelConfig.providerId, {
       name: modelConfig.configName,

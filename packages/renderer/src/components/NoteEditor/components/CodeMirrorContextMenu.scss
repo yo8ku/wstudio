@@ -6,10 +6,10 @@
 .cm-context-menu {
   position: fixed;
   z-index: 10000;
-  min-width: 200px;
-  border-radius: 6px;
-  padding: 6px;
-  font-size: 13px;
+  min-width: 184px;
+  border-radius: 5px;
+  padding: 4px;
+  font-size: 12px;
   user-select: none;
   cursor: default;
   border: 1px solid var(--ws-dropdown-border, transparent);
@@ -20,13 +20,16 @@
   &-item {
     display: flex;
     align-items: center;
-    padding: 6px 12px;
+    min-height: 24px;
+    padding: 4px 10px;
     cursor: pointer;
     position: relative;
-    border-radius: 4px;
+    border-radius: 3px;
+    line-height: 1.2;
     color: var(--ws-foreground);
 
-    &:hover:not(.disabled) {
+    &:hover:not(.disabled),
+    &.active:not(.disabled) {
       background-color: var(--ws-list-hoverBackground);
     }
 
@@ -36,14 +39,14 @@
     }
 
     &.has-submenu {
-      padding-right: 24px;
+      padding-right: 22px;
     }
 
     // 图标
     &-icon {
-      width: 16px;
-      height: 16px;
-      margin-right: 10px;
+      width: 14px;
+      height: 14px;
+      margin-right: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -51,8 +54,8 @@
       color: var(--ws-descriptionForeground);
 
       svg {
-        width: 14px;
-        height: 14px;
+        width: 13px;
+        height: 13px;
       }
     }
 
@@ -66,8 +69,8 @@
 
     // 快捷键
     &-shortcut {
-      margin-left: 24px;
-      font-size: 11px;
+      margin-left: 16px;
+      font-size: 10px;
       color: var(--ws-descriptionForeground);
       white-space: nowrap;
     }
@@ -75,17 +78,17 @@
     // 子菜单箭头
     &-arrow {
       position: absolute;
-      right: 8px;
-      width: 12px;
-      height: 12px;
+      right: 6px;
+      width: 10px;
+      height: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       color: var(--ws-descriptionForeground);
 
       svg {
-        width: 10px;
-        height: 10px;
+        width: 9px;
+        height: 9px;
       }
     }
   }
@@ -93,7 +96,7 @@
   // 分隔线
   &-separator {
     height: 1px;
-    margin: 6px 0;
+    margin: 4px 0;
     background-color: var(--ws-dropdown-border, var(--ws-panel-border));
   }
 }
@@ -103,12 +106,12 @@
   position: absolute;
   left: 100%;
   top: 0;
-  min-width: 180px;
+  min-width: 168px;
   max-height: 400px;
   overflow-y: auto;
-  border-radius: 6px;
-  padding: 6px;
-  font-size: 13px;
+  border-radius: 5px;
+  padding: 4px;
+  font-size: 12px;
   border: 1px solid var(--ws-dropdown-border, transparent);
   background-color: var(--ws-dropdown-background);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -134,10 +137,10 @@
 
 // 颜色圆点
 .cm-context-menu-color-dot {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  margin-right: 10px;
+  margin-right: 8px;
   flex-shrink: 0;
   border: 1px solid var(--ws-panel-border);
 }
@@ -151,9 +154,9 @@
 
 // 颜色触发器（点击打开自定义颜色选择器）
 .cm-context-menu-color-trigger {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
   border: 1px solid var(--ws-panel-border);
   background: linear-gradient(
     135deg,

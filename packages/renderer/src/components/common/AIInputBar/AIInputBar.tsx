@@ -6,7 +6,11 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Icon } from '../../Icons/Icon';
-import { getCachedModels, getModelConfig } from '../../../services/ModelCacheService';
+import {
+  extractActualModelIdFromCacheModelId,
+  getCachedModels,
+  getModelConfig,
+} from '../../../services/ModelCacheService';
 import { aiService } from '../../../services/ai/AIService';
 import { isModelEnabled } from '../../../services/ai';
 import { CommandParser, type CommandType, type ParsedCommand } from '../../../utils/CommandParser';
@@ -18,6 +22,7 @@ interface ModelInfo {
   modelId: string;
   configName: string;
   providerId: string;
+  actualModelId: string;
   displayName?: string;
 }
 
@@ -149,15 +154,13 @@ export const AIInputBar: React.FC<AIInputBarProps> = ({
         const cachedModels = await getCachedModels();
         const modelInfos: ModelInfo[] = cachedModels
           .filter(model => {
-            const modelName = model.modelId.includes(':') 
-              ? model.modelId.split(':')[1] 
-              : model.modelId;
-            return isModelEnabled(modelName);
+            return isModelEnabled(model.actualModelId);
           })
           .map(model => ({
             modelId: model.modelId,
             configName: model.configName,
             providerId: model.providerId,
+            actualModelId: model.actualModelId,
             displayName: model.displayName,
           }));
         
@@ -320,9 +323,7 @@ export const AIInputBar: React.FC<AIInputBarProps> = ({
         throw new Error(`未找到模型配置：${selectedModel}`);
       }
 
-      const actualModelName = modelConfig.modelId.includes(':') 
-        ? modelConfig.modelId.split(':')[1] 
-        : modelConfig.modelId;
+      const actualModelName = modelConfig.actualModelId;
 
       await aiService.setProvider(modelConfig.providerId, {
         name: modelConfig.configName,
@@ -394,9 +395,26 @@ export const AIInputBar: React.FC<AIInputBarProps> = ({
   const getModelDisplayName = (modelId: string): string => {
     const model = availableModels.find(m => m.modelId === modelId);
     if (model?.displayName) return model.displayName;
-    const colonIndex = modelId.indexOf(':');
-    return colonIndex > 0 ? modelId.substring(colonIndex + 1) : modelId;
+    if (model?.actualModelId) return model.actualModelId;
+    return extractActualModelIdFromCacheModelId(modelId);
   };
+
+  const groupedModels = useMemo(() => {
+    const grouped = new Map<string, ModelInfo[]>();
+
+    availableModels.forEach((model) => {
+      if (!grouped.has(model.configName)) {
+        grouped.set(model.configName, []);
+      }
+
+      grouped.get(model.configName)?.push(model);
+    });
+
+    return Array.from(grouped.entries()).map(([configName, models]) => ({
+      configName,
+      models,
+    }));
+  }, [availableModels]);
 
   // 切换模型菜单
   const toggleModelMenu = useCallback(() => {
@@ -497,16 +515,21 @@ export const AIInputBar: React.FC<AIInputBarProps> = ({
           {isModelDropdownOpen && (
             <div className="ai-input-bar-model-dropdown">
               {availableModels.length > 0 ? (
-                availableModels.map(model => (
-                  <div
-                    key={model.modelId}
-                    className={`ai-input-bar-model-option ${model.modelId === selectedModel ? 'selected' : ''}`}
-                    onClick={() => {
-                      setSelectedModel(model.modelId);
-                      setIsModelDropdownOpen(false);
-                    }}
-                  >
-                    {model.displayName || model.modelId.split(':')[1]}
+                groupedModels.map(group => (
+                  <div key={group.configName} className="ai-input-bar-model-group">
+                    <div className="ai-input-bar-model-group-title">{group.configName}</div>
+                    {group.models.map(model => (
+                      <div
+                        key={model.modelId}
+                        className={`ai-input-bar-model-option ${model.modelId === selectedModel ? 'selected' : ''}`}
+                        onClick={() => {
+                          setSelectedModel(model.modelId);
+                          setIsModelDropdownOpen(false);
+                        }}
+                      >
+                        {model.displayName || model.actualModelId}
+                      </div>
+                    ))}
                   </div>
                 ))
               ) : (

@@ -1,40 +1,55 @@
-/**
- * CodeMirror 编辑器右键菜单组件
- * 功能：为 CodeMirror 编辑器提供自定义右键菜单
- * 描述：支持新建链接、外部链接、文本格式、段落设置、插入、剪切、复制、粘贴、全选等功能
- */
-
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import './CodeMirrorContextMenu.scss';
 import { ColorPicker } from './ColorPicker';
 
-/**
- * 二级菜单包装组件 - 自动调整位置避免超出视口
- */
 const SubmenuWrapper: React.FC<{
   children: React.ReactNode;
   statusBarHeight: number;
 }> = ({ children, statusBarHeight }) => {
   const submenuRef = useRef<HTMLDivElement>(null);
   const [adjustedStyle, setAdjustedStyle] = useState<React.CSSProperties>({});
+  const [isPositionReady, setIsPositionReady] = useState(false);
 
-  useEffect(() => {
-    if (submenuRef.current) {
-      const rect = submenuRef.current.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const availableBottom = viewportHeight - statusBarHeight;
-
-      // 如果二级菜单底部超出可用区域，向上调整
-      if (rect.bottom > availableBottom) {
-        const overflow = rect.bottom - availableBottom;
-        setAdjustedStyle({ top: -overflow });
-      }
+  useLayoutEffect(() => {
+    if (!submenuRef.current) {
+      return;
     }
+
+    const rect = submenuRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const availableBottom = viewportHeight - statusBarHeight;
+    let nextStyle: React.CSSProperties = {};
+
+    if (rect.right > viewportWidth) {
+      nextStyle = {
+        left: 'auto',
+        right: '100%',
+      };
+    }
+
+    if (rect.bottom > availableBottom) {
+      const overflow = rect.bottom - availableBottom;
+      nextStyle = {
+        ...nextStyle,
+        top: -overflow,
+      };
+    }
+
+    setAdjustedStyle(nextStyle);
+    setIsPositionReady(true);
   }, [statusBarHeight]);
 
   return (
-    <div ref={submenuRef} className="cm-context-submenu" style={adjustedStyle}>
+    <div
+      ref={submenuRef}
+      className="cm-context-submenu"
+      style={{
+        ...adjustedStyle,
+        visibility: isPositionReady ? 'visible' : 'hidden',
+      }}
+    >
       {children}
     </div>
   );
@@ -49,15 +64,10 @@ export interface ContextMenuItem {
   disabled?: boolean;
   separator?: boolean;
   submenu?: ContextMenuItem[];
-  /** 颜色标识（用于颜色菜单项显示圆形色块） */
   color?: string;
-  /** 是否为自定义颜色选项 */
   isCustomColor?: boolean;
-  /** 自定义颜色回调（确认选择时调用） */
   onCustomColor?: (color: string) => void;
-  /** 自定义颜色预览回调（拖动时实时调用） */
   onCustomColorPreview?: (color: string) => void;
-  /** 自定义颜色取消回调（取消选择时调用，用于清除预览） */
   onCustomColorCancel?: () => void;
 }
 
@@ -78,63 +88,66 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
+  const [isPositionReady, setIsPositionReady] = useState(false);
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
-  // 自定义颜色选择器状态
   const [colorPickerState, setColorPickerState] = useState<{
     visible: boolean;
     anchorRect?: DOMRect;
     onColorChange?: (color: string) => void;
     onColorConfirm?: (color: string) => void;
     onCancel?: () => void;
+    sourceItemId?: string;
+    sourceParentItemId?: string;
   }>({ visible: false });
 
-  // 状态栏高度
   const STATUS_BAR_HEIGHT = 28;
 
-  // 当菜单关闭时，重置状态
   useEffect(() => {
     if (!visible) {
       setColorPickerState({ visible: false });
       setActiveSubmenu(null);
+      setIsPositionReady(false);
     }
   }, [visible]);
 
-  // 调整菜单位置，防止超出视图
-  useEffect(() => {
-    if (visible && menuRef.current) {
-      const menu = menuRef.current;
-      const rect = menu.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      let adjustedX = x;
-      let adjustedY = y;
-
-      if (x + rect.width > viewportWidth) {
-        adjustedX = viewportWidth - rect.width - 10;
-      }
-
-      // 底部留出状态栏空间
-      if (y + rect.height > viewportHeight - STATUS_BAR_HEIGHT) {
-        adjustedY = viewportHeight - rect.height - STATUS_BAR_HEIGHT - 10;
-      }
-
-      adjustedX = Math.max(10, adjustedX);
-      adjustedY = Math.max(10, adjustedY);
-
-      setPosition({ x: adjustedX, y: adjustedY });
+  useLayoutEffect(() => {
+    if (!visible || !menuRef.current) {
+      return;
     }
+
+    const rect = menuRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let adjustedX = x;
+    let adjustedY = y;
+
+    if (x + rect.width > viewportWidth) {
+      adjustedX = viewportWidth - rect.width - 10;
+    }
+
+    if (y + rect.height > viewportHeight - STATUS_BAR_HEIGHT) {
+      adjustedY = y - rect.height;
+    }
+
+    adjustedX = Math.max(10, adjustedX);
+    adjustedY = Math.max(10, adjustedY);
+
+    setPosition({ x: adjustedX, y: adjustedY });
+    setIsPositionReady(true);
   }, [visible, x, y]);
 
-  // 点击外部关闭菜单
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      return;
+    }
 
     const handleClickOutside = (e: MouseEvent) => {
-      // 如果颜色选择器打开，不关闭菜单
-      if (colorPickerState.visible) return;
-
       const target = e.target as HTMLElement;
+
+      if (target.closest('.custom-color-picker')) {
+        return;
+      }
 
       if (menuRef.current && !menuRef.current.contains(target)) {
         onClose();
@@ -151,7 +164,6 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
       }
     };
 
-    // 使用 click 而不是 mousedown，因为颜色选择器在 mousedown 时会打开
     setTimeout(() => {
       document.addEventListener('click', handleClickOutside, true);
       document.addEventListener('keydown', handleEscape);
@@ -163,12 +175,13 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
     };
   }, [visible, onClose, colorPickerState.visible]);
 
-  // 打开颜色选择器
   const openColorPicker = (
     anchorElement: HTMLElement,
     onColorChange?: (color: string) => void,
     onColorConfirm?: (color: string) => void,
-    onCancel?: () => void
+    onCancel?: () => void,
+    sourceItemId?: string,
+    sourceParentItemId?: string
   ) => {
     const rect = anchorElement.getBoundingClientRect();
     setColorPickerState({
@@ -177,12 +190,12 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
       onColorChange,
       onColorConfirm,
       onCancel,
+      sourceItemId,
+      sourceParentItemId,
     });
   };
 
-  // 关闭颜色选择器
   const closeColorPicker = () => {
-    // 调用取消回调
     colorPickerState.onCancel?.();
     setColorPickerState({ visible: false });
   };
@@ -192,25 +205,27 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
   }
 
   const handleItemClick = (item: ContextMenuItem) => {
-    if (item.disabled || item.submenu) return;
+    if (item.disabled || item.submenu) {
+      return;
+    }
+
     if (item.action) {
       item.action();
     }
+
     onClose();
   };
 
-  // 渲染二级菜单项（不触发 activeSubmenu 变化）
   const renderSubmenuItem = (item: ContextMenuItem) => {
     if (item.separator) {
       return <div key={item.id} className="cm-context-menu-separator" />;
     }
 
-    // 自定义颜色选项
     if (item.isCustomColor) {
       return (
         <div
           key={item.id}
-          className="cm-context-menu-item cm-context-menu-custom-color"
+          className={`cm-context-menu-item cm-context-menu-custom-color ${colorPickerState.visible && colorPickerState.sourceItemId === item.id ? 'active' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
             openColorPicker(
@@ -221,7 +236,9 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
                 closeColorPicker();
                 onClose();
               },
-              item.onCustomColorCancel
+              item.onCustomColorCancel,
+              item.id,
+              activeSubmenu ?? undefined
             );
           }}
         >
@@ -234,7 +251,9 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
     return (
       <div
         key={item.id}
-        className={`cm-context-menu-item ${item.disabled ? 'disabled' : ''}`}
+        className={`cm-context-menu-item ${item.disabled ? 'disabled' : ''} ${
+          colorPickerState.visible && colorPickerState.sourceItemId === item.id ? 'active' : ''
+        }`}
         onClick={() => handleItemClick(item)}
       >
         {item.color ? (
@@ -253,7 +272,6 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
     );
   };
 
-  // 渲染一级菜单项
   const renderMenuItem = (item: ContextMenuItem) => {
     if (item.separator) {
       return <div key={item.id} className="cm-context-menu-separator" />;
@@ -261,17 +279,19 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
 
     const hasSubmenu = item.submenu && item.submenu.length > 0;
 
-    // 自定义颜色选项
     if (item.isCustomColor) {
       return (
         <div
           key={item.id}
-          className="cm-context-menu-item cm-context-menu-custom-color"
+          className={`cm-context-menu-item cm-context-menu-custom-color ${
+            colorPickerState.visible && colorPickerState.sourceItemId === item.id ? 'active' : ''
+          }`}
           onMouseEnter={() => {
-            // 颜色选择器打开时不改变 activeSubmenu
-            if (!colorPickerState.visible) {
-              setActiveSubmenu(null);
+            if (colorPickerState.visible) {
+              closeColorPicker();
             }
+
+            setActiveSubmenu(null);
           }}
           onClick={(e) => {
             e.stopPropagation();
@@ -283,7 +303,8 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
                 closeColorPicker();
                 onClose();
               },
-              item.onCustomColorCancel
+              item.onCustomColorCancel,
+              item.id
             );
           }}
         >
@@ -296,11 +317,19 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
     return (
       <div
         key={item.id}
-        className={`cm-context-menu-item ${item.disabled ? 'disabled' : ''} ${hasSubmenu ? 'has-submenu' : ''}`}
+        className={`cm-context-menu-item ${item.disabled ? 'disabled' : ''} ${hasSubmenu ? 'has-submenu' : ''} ${
+          activeSubmenu === item.id ||
+          (colorPickerState.visible && colorPickerState.sourceItemId === item.id) ||
+          (colorPickerState.visible && colorPickerState.sourceParentItemId === item.id)
+            ? 'active'
+            : ''
+        }`}
         onClick={() => handleItemClick(item)}
         onMouseEnter={() => {
-          // 颜色选择器打开时不改变 activeSubmenu
-          if (colorPickerState.visible) return;
+          if (colorPickerState.visible) {
+            closeColorPicker();
+          }
+
           if (hasSubmenu) {
             setActiveSubmenu(item.id);
           } else {
@@ -340,7 +369,11 @@ export const CodeMirrorContextMenu: React.FC<CodeMirrorContextMenuProps> = ({
     <div
       ref={menuRef}
       className="cm-context-menu"
-      style={{ left: `${position.x}px`, top: `${position.y}px` }}
+      style={{
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        visibility: isPositionReady ? 'visible' : 'hidden',
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       {items.map((item) => renderMenuItem(item))}

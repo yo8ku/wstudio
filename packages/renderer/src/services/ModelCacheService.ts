@@ -1,7 +1,6 @@
 /**
- * 模型缓存服务
- * 用于在本地缓存AI模型列表，避免重复的IPC通信
- * 使用 electron-store 进行持久化存储
+ * Model cache service.
+ * Stores AI model metadata in electron-store and rebuilds it from SQLite-backed configs when needed.
  */
 
 import { electronStore } from './ElectronStoreService';
@@ -9,430 +8,286 @@ import { getProviderModels } from './ai';
 
 const MODEL_CACHE_KEY = 'model-cache';
 
-export interface CachedModelInfo {
-  modelId: string;          // 格式：配置名:模型名
-  configName: string;       // AI配置名称
-  apiKey: string;           // API密钥
-  apiEndpoint: string;      // API端点
-  providerId: string;       // 提供商ID
-  temperature?: number;     // 温度参数
-  id?: string;              // 模型ID（可选）
-  name?: string;            // 模型名称（可选）
-  displayName?: string;     // 模型显示名称（可选）
-  maxTokens?: number;       // 最大令牌数（可选）
-  capabilities?: {          // 模型能力（可选）
-    thinking?: boolean;     // 是否支持深度思考
-    tool_calls?: string[];  // 支持的工具调用
-  };
+interface ModelCapabilities {
+  thinking?: boolean;
+  tool_calls?: string[];
 }
 
+interface RawChatModel {
+  id?: string;
+  name?: string;
+  displayName?: string;
+  capabilities?: ModelCapabilities;
+}
+
+interface RawAIConfig {
+  id?: string;
+  name: string;
+  providerId: string;
+  apiKey?: string;
+  apiEndpoint?: string;
+  temperature?: number;
+  maxTokens?: number;
+  chatModels?: RawChatModel[];
+  model?: string;
+  modelId?: string;
+}
+
+export interface CachedModelInfo {
+  modelId: string;
+  configId: string;
+  configName: string;
+  apiKey: string;
+  apiEndpoint: string;
+  providerId: string;
+  actualModelId: string;
+  temperature?: number;
+  id?: string;
+  name?: string;
+  displayName?: string;
+  maxTokens?: number;
+  capabilities?: ModelCapabilities;
+}
+
+type StoredCachedModelInfo = Omit<CachedModelInfo, 'configId' | 'actualModelId'> & {
+  configId?: string;
+  actualModelId?: string;
+};
+
+export const extractActualModelIdFromCacheModelId = (cacheModelId: string): string => {
+  const separatorIndex = cacheModelId.lastIndexOf(':');
+  return separatorIndex >= 0 ? cacheModelId.slice(separatorIndex + 1) : cacheModelId;
+};
+
+const buildCacheModelId = (configId: string, actualModelId: string): string => `${configId}:${actualModelId}`;
+
+const normalizeDisplayName = (actualModelId: string, displayName?: string): string | undefined => {
+  if (displayName?.trim()) {
+    return displayName.trim();
+  }
+
+  if (actualModelId.includes('/')) {
+    return actualModelId.split('/').pop() || actualModelId;
+  }
+
+  return undefined;
+};
+
+const getConfigIdentity = (config: RawAIConfig): string => {
+  const trimmedId = config.id?.trim();
+  if (trimmedId) {
+    return trimmedId;
+  }
+
+  return config.name.trim();
+};
+
+const normalizeCachedModel = (model: StoredCachedModelInfo): CachedModelInfo => ({
+  ...model,
+  configId: model.configId?.trim() || model.configName,
+  actualModelId: model.actualModelId?.trim() || extractActualModelIdFromCacheModelId(model.modelId),
+});
+
+const needsCacheRefresh = (models: StoredCachedModelInfo[]): boolean => (
+  models.some((model) => !model.configId?.trim() || !model.actualModelId?.trim())
+);
+
+const loadConfigsFromDatabase = async (): Promise<RawAIConfig[]> => {
+  const configs = await window.electron?.ipcRenderer.invoke('ai-model:list') as RawAIConfig[] | undefined;
+  return Array.isArray(configs) ? configs : [];
+};
+
+const enrichCapabilities = async (models: CachedModelInfo[]): Promise<CachedModelInfo[]> => {
+  return Promise.all(
+    models.map(async (model) => {
+      if (model.capabilities || !model.providerId) {
+        return model;
+      }
+
+      const providerModels = await getProviderModels(model.providerId);
+      const providerModel = providerModels.find((item) => item.id === model.actualModelId);
+
+      if (!providerModel?.capabilities) {
+        return model;
+      }
+
+      return {
+        ...model,
+        capabilities: providerModel.capabilities,
+      };
+    }),
+  );
+};
+
+const buildCacheEntry = (
+  config: RawAIConfig,
+  configId: string,
+  actualModelId: string,
+  options: {
+    id?: string;
+    name?: string;
+    displayName?: string;
+    capabilities?: ModelCapabilities;
+  } = {},
+): CachedModelInfo => ({
+  modelId: buildCacheModelId(configId, actualModelId),
+  configId,
+  configName: config.name,
+  apiKey: config.apiKey || '',
+  apiEndpoint: config.apiEndpoint || '',
+  providerId: config.providerId,
+  actualModelId,
+  temperature: config.temperature,
+  id: options.id || actualModelId,
+  name: options.name || actualModelId,
+  displayName: normalizeDisplayName(actualModelId, options.displayName),
+  maxTokens: config.maxTokens,
+  capabilities: options.capabilities,
+});
+
+const buildModelsFromConfigs = async (configs: RawAIConfig[]): Promise<CachedModelInfo[]> => {
+  const modelMap = new Map<string, CachedModelInfo>();
+
+  for (const config of configs) {
+    if (!config.apiKey || !config.apiEndpoint) {
+      continue;
+    }
+
+    const configId = getConfigIdentity(config);
+    let hasAddedModels = false;
+
+    if (Array.isArray(config.chatModels) && config.chatModels.length > 0) {
+      const providerModels = await getProviderModels(config.providerId);
+
+      for (const chatModel of config.chatModels) {
+        const actualModelId = (chatModel.id || chatModel.name || '').trim();
+        if (!actualModelId) {
+          continue;
+        }
+
+        const providerModel = providerModels.find((item) => item.id === actualModelId);
+        const cacheEntry = buildCacheEntry(config, configId, actualModelId, {
+          id: chatModel.id,
+          name: chatModel.name || chatModel.id || actualModelId,
+          displayName: chatModel.displayName,
+          capabilities: chatModel.capabilities || providerModel?.capabilities,
+        });
+
+        if (!modelMap.has(cacheEntry.modelId)) {
+          modelMap.set(cacheEntry.modelId, cacheEntry);
+          hasAddedModels = true;
+        }
+      }
+    } else if (config.model?.trim()) {
+      const cacheEntry = buildCacheEntry(config, configId, config.model.trim());
+      modelMap.set(cacheEntry.modelId, cacheEntry);
+      hasAddedModels = true;
+    } else if (config.modelId?.trim()) {
+      const actualModelId = config.modelId.trim();
+      const cacheEntry = buildCacheEntry(config, configId, actualModelId, {
+        displayName: actualModelId,
+      });
+      modelMap.set(cacheEntry.modelId, cacheEntry);
+      hasAddedModels = true;
+    }
+
+    if (!hasAddedModels) {
+      console.warn(`[ModelCache] No available models found in config "${config.name}".`);
+    }
+  }
+
+  return Array.from(modelMap.values());
+};
+
 /**
- * 保存模型列表到本地缓存
+ * Save model list into local cache.
  */
 export async function cacheModels(models: CachedModelInfo[]): Promise<void> {
   try {
-    // 直接保存完整的模型信息（保持 CachedModelInfo 格式）
     await electronStore.set(MODEL_CACHE_KEY, models);
-    console.log('[ModelCache]  缓存模型列表，数量:', models.length);
+    console.log('[ModelCache] Cached model count:', models.length);
   } catch (error) {
-    console.error('[ModelCache]  缓存模型失败:', error);
+    console.error('[ModelCache] Failed to cache models:', error);
   }
 }
 
 /**
- * 从本地缓存加载模型列表
- * 优先从 electron-store 缓存获取，如果缓存不存在则从 SQLite 数据库获取
+ * Load model list from electron-store first, then rebuild from SQLite-backed configs when needed.
  */
 export async function getCachedModels(): Promise<CachedModelInfo[]> {
   try {
-    // 1. 尝试从 electron-store 缓存获取
-    const cached = await electronStore.get(MODEL_CACHE_KEY);
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      // 检查缓存格式是否正确
-      if (cached[0] && typeof cached[0] === 'object' && 'modelId' in cached[0]) {
-        console.log('[ModelCache]  从 electron-store 加载缓存的模型，数量:', cached.length);
-        
-        // 补充缺失的 capabilities（从配置文件获取）
-        const modelsWithCapabilities = await Promise.all(
-          (cached as CachedModelInfo[]).map(async (model) => {
-            if (!model.capabilities && model.providerId) {
-              // 从模型ID中提取实际的模型名称（格式：configName:modelName）
-              const actualModelId = model.modelId.includes(':') 
-                ? model.modelId.split(':')[1] 
-                : model.modelId;
-              
-              const configModels = await getProviderModels(model.providerId);
-              const configModel = configModels.find(cm => cm.id === actualModelId);
-              if (configModel?.capabilities) {
-                console.log(`[ModelCache] 从配置文件补充缓存模型 ${actualModelId} 的 capabilities:`, configModel.capabilities);
-                return { ...model, capabilities: configModel.capabilities };
-              }
-            }
-            return model;
-          })
-        );
-        
-        return modelsWithCapabilities;
+    const cached = await electronStore.get(MODEL_CACHE_KEY) as StoredCachedModelInfo[] | undefined;
+    const cachedModels = Array.isArray(cached) ? cached : [];
+
+    if (cachedModels.length > 0 && cachedModels.every((model) => typeof model.modelId === 'string')) {
+      if (!needsCacheRefresh(cachedModels)) {
+        return enrichCapabilities(cachedModels.map(normalizeCachedModel));
       }
+
+      await clearModelCache();
     }
-    
-    // 2. 缓存不存在或格式不正确，从 SQLite 数据库获取
-    console.log('[ModelCache] 缓存不存在，从 SQLite 数据库加载模型...');
-    
-    const configs = await window.electron?.ipcRenderer.invoke('ai-model:list');
-    
-    console.log('[ModelCache] 🔍 getCachedModels - 从数据库获取的配置:', JSON.stringify(configs, null, 2));
-    
-    if (!configs || configs.length === 0) {
-      console.log('[ModelCache] 数据库中没有找到AI配置');
+
+    const configs = await loadConfigsFromDatabase();
+    if (configs.length === 0) {
       return [];
     }
 
-    console.log('[ModelCache] 📊 getCachedModels - 配置数量:', configs.length);
-    configs.forEach((cfg: any, index: number) => {
-      console.log(`[ModelCache] getCachedModels - 配置 ${index + 1}:`, {
-        id: cfg.id,
-        name: cfg.name,
-        providerId: cfg.providerId,
-        hasChatModels: !!cfg.chatModels,
-        chatModelsCount: cfg.chatModels?.length || 0,
-        chatModelsData: cfg.chatModels,
-        hasModel: !!cfg.model,
-        hasModelId: !!cfg.modelId,
-        hasApiKey: !!cfg.apiKey,
-        hasApiEndpoint: !!cfg.apiEndpoint
-      });
-    });
-
-    const models: CachedModelInfo[] = [];
-
-    // 提供商名称映射
-    const getProviderName = (providerId: string) => {
-      const providerMap: Record<string, string> = {
-        'openai': 'OpenAI',
-        'anthropic': 'Anthropic',
-        'google': 'Google',
-        'deepseek': 'DeepSeek',
-        'modelscope': 'ModelScope',
-        'custom': 'Custom'
-      };
-      return providerMap[providerId] || providerId;
-    };
-
-    // 遍历配置，提取模型
-    const modelMap = new Map<string, CachedModelInfo>(); // 使用Map去重
-    
-    for (const config of configs) {
-      // 只处理有API Key的配置（已配置的）
-      if (!config.apiKey || !config.apiEndpoint) {
-        console.log(`[ModelCache] 跳过未配置的配置: ${config.name}`);
-        continue;
-      }
-
-      const providerName = getProviderName(config.providerId);
-      let hasAddedModels = false;
-
-      // 如果配置有chatModels列表，使用列表中的模型
-      if (config.chatModels && config.chatModels.length > 0) {
-        // 获取配置文件中的模型信息（用于补充 capabilities）
-        const configModels = await getProviderModels(config.providerId);
-        
-        for (const chatModel of config.chatModels) {
-          const modelId = chatModel.id || chatModel.name;
-          if (!modelId) {
-            console.warn(`[ModelCache] 配置 ${config.name} 中的模型没有有效的 ID:`, chatModel);
-            continue;
-          }
-          
-          const modelString = `${providerName}:${modelId}`;
-          
-          // 如果没有 displayName，尝试从 modelId 中提取
-          let displayName = chatModel.displayName;
-          if (!displayName && modelId.includes('/')) {
-            // 对于 "ZhipuAI/GLM-4.6" 格式，提取 "/" 后面的部分
-            displayName = modelId.split('/').pop() || modelId;
-          }
-          
-          // 如果数据库中没有 capabilities，从配置文件获取
-          let capabilities = chatModel.capabilities;
-          if (!capabilities) {
-            const configModel = configModels.find(cm => cm.id === modelId);
-            if (configModel?.capabilities) {
-              capabilities = configModel.capabilities;
-              console.log(`[ModelCache] 从配置文件补充 ${modelId} 的 capabilities:`, capabilities);
-            }
-          }
-          
-          console.log(`[ModelCache] 处理模型 ${modelId}:`, {
-            displayName,
-            capabilities,
-            hasThinking: capabilities?.thinking
-          });
-          
-          // 使用modelString作为key，避免重复
-          if (!modelMap.has(modelString)) {
-            modelMap.set(modelString, {
-              modelId: modelString,
-              configName: config.name,
-              apiKey: config.apiKey,
-              apiEndpoint: config.apiEndpoint,
-              providerId: config.providerId,
-              temperature: config.temperature,
-              id: chatModel.id,
-              name: chatModel.name || chatModel.id,
-              displayName: displayName,
-              maxTokens: config.maxTokens,
-              capabilities: capabilities
-            });
-            hasAddedModels = true;
-          }
-        }
-      } 
-      // 否则，如果有单个model字段，使用它
-      else if (config.model) {
-        const modelString = `${providerName}:${config.model}`;
-        
-        // 使用modelString作为key，避免重复
-        if (!modelMap.has(modelString)) {
-          modelMap.set(modelString, {
-            modelId: modelString,
-            configName: config.name,
-            apiKey: config.apiKey,
-            apiEndpoint: config.apiEndpoint,
-            providerId: config.providerId,
-            temperature: config.temperature,
-            maxTokens: config.maxTokens
-          });
-          hasAddedModels = true;
-        }
-      }
-      // 🔥 如果配置既没有 chatModels 也没有 model，尝试从 modelId 字段获取
-      else if (config.modelId) {
-        const modelString = `${providerName}:${config.modelId}`;
-        
-        if (!modelMap.has(modelString)) {
-          modelMap.set(modelString, {
-            modelId: modelString,
-            configName: config.name,
-            apiKey: config.apiKey,
-            apiEndpoint: config.apiEndpoint,
-            providerId: config.providerId,
-            temperature: config.temperature,
-            maxTokens: config.maxTokens,
-            displayName: config.modelId
-          });
-          hasAddedModels = true;
-        }
-      }
-      
-      // 🔥 日志：如果配置没有任何模型，记录警告
-      if (!hasAddedModels) {
-        console.warn(`[ModelCache] ⚠️ 配置 "${config.name}" 没有找到任何可用的模型数据！`, {
-          providerId: config.providerId,
-          hasChatModels: !!config.chatModels,
-          chatModelsLength: config.chatModels?.length || 0,
-          hasModel: !!config.model,
-          hasModelId: !!config.modelId
-        });
-      }
-    }
-    
-    // 将Map转换为数组
-    models.push(...Array.from(modelMap.values()));
-    
-    console.log('[ModelCache] 去重后的模型数量:', models.length);
-    console.log('[ModelCache] 模型列表:', models.map(m => m.modelId).join(', '));
-
-    // 保存到缓存
+    const models = await buildModelsFromConfigs(configs);
     if (models.length > 0) {
       await cacheModels(models);
-      console.log('[ModelCache]  已将模型缓存到 electron-store，数量:', models.length);
     }
 
     return models;
   } catch (error) {
-    console.error('[ModelCache]  加载缓存模型失败:', error);
+    console.error('[ModelCache] Failed to load models:', error);
     return [];
   }
 }
 
 /**
- * 获取模型ID列表（仅ID）
+ * Return cached model ids only.
  */
 export async function getCachedModelIds(): Promise<string[]> {
   const models = await getCachedModels();
-  return models.map(m => m.modelId);
+  return models.map((model) => model.modelId);
 }
 
 /**
- * 根据模型ID获取模型配置信息
+ * Return a cached model config by cache model id.
  */
 export async function getModelConfig(modelId: string): Promise<CachedModelInfo | undefined> {
   const models = await getCachedModels();
-  return models.find(m => m.modelId === modelId);
+  return models.find((model) => model.modelId === modelId);
 }
 
 /**
- * 清除模型缓存
+ * Clear model cache.
  */
 export async function clearModelCache(): Promise<void> {
   try {
     await electronStore.delete(MODEL_CACHE_KEY);
-    console.log('[ModelCache]  已清除模型缓存');
+    console.log('[ModelCache] Cleared model cache.');
   } catch (error) {
-    console.error('[ModelCache]  清除模型缓存失败:', error);
+    console.error('[ModelCache] Failed to clear model cache:', error);
   }
 }
 
 /**
- * 从AI配置生成并缓存模型列表
- * 注意：AI 配置现在存储在 SQLite 中，通过 IPC 获取
+ * Rebuild model cache from AI configs.
  */
 export async function updateModelCacheFromConfig(): Promise<void> {
   try {
-    // AI 配置存储在 SQLite 中，需要通过 IPC 获取
-    const configs = await window.electron?.ipcRenderer.invoke('ai-model:list');
-    
-    console.log('[ModelCache] 🔍 从数据库获取的配置:', JSON.stringify(configs, null, 2));
-    
-    if (!configs || configs.length === 0) {
-      console.log('[ModelCache] 没有找到AI配置');
+    const configs = await loadConfigsFromDatabase();
+
+    if (configs.length === 0) {
       await clearModelCache();
       return;
     }
-    
-    console.log('[ModelCache] 📊 配置数量:', configs.length);
-    configs.forEach((cfg: any, index: number) => {
-      console.log(`[ModelCache] 配置 ${index + 1}:`, {
-        id: cfg.id,
-        name: cfg.name,
-        providerId: cfg.providerId,
-        hasChatModels: !!cfg.chatModels,
-        chatModelsCount: cfg.chatModels?.length || 0,
-        hasModel: !!cfg.model,
-        hasModelId: !!cfg.modelId,
-        hasApiKey: !!cfg.apiKey,
-        hasApiEndpoint: !!cfg.apiEndpoint
-      });
-    });
 
-    const modelMap = new Map<string, CachedModelInfo>(); // 使用Map去重
-
-    const getProviderName = (providerId: string) => {
-      const providerMap: Record<string, string> = {
-        'openai': 'OpenAI',
-        'anthropic': 'Anthropic',
-        'google': 'Google',
-        'deepseek': 'DeepSeek',
-        'modelscope': 'ModelScope',
-        'custom': 'Custom'
-      };
-      return providerMap[providerId] || providerId;
-    };
-
-    configs.forEach((config: any) => {
-      // 只处理有API Key的配置（已配置的）
-      if (!config.apiKey || !config.apiEndpoint) {
-        console.log(`[ModelCache] 跳过未配置的配置: ${config.name}`);
-        return;
-      }
-
-      const providerName = getProviderName(config.providerId);
-      let hasAddedModels = false;
-
-      // 如果配置有chatModels列表，使用列表中的模型
-      if (config.chatModels && config.chatModels.length > 0) {
-        config.chatModels.forEach((chatModel: any) => {
-          const modelId = chatModel.id || chatModel.name;
-          if (!modelId) {
-            console.warn(`[ModelCache] 配置 ${config.name} 中的模型没有有效的 ID:`, chatModel);
-            return;
-          }
-          
-          const modelString = `${providerName}:${modelId}`;
-          
-          // 如果没有 displayName，尝试从 modelId 中提取
-          let displayName = chatModel.displayName;
-          if (!displayName && modelId.includes('/')) {
-            // 对于 "ZhipuAI/GLM-4.6" 格式，提取 "/" 后面的部分
-            displayName = modelId.split('/').pop() || modelId;
-          }
-          
-          // 使用modelString作为key，避免重复
-          if (!modelMap.has(modelString)) {
-            modelMap.set(modelString, {
-              modelId: modelString,
-              configName: config.name,
-              apiKey: config.apiKey,
-              apiEndpoint: config.apiEndpoint,
-              providerId: config.providerId,
-              temperature: config.temperature,
-              displayName: displayName,
-              maxTokens: config.maxTokens
-            });
-            hasAddedModels = true;
-          }
-        });
-      } 
-      // 否则，如果有单个model字段，使用它
-      else if (config.model) {
-        const modelString = `${providerName}:${config.model}`;
-        
-        // 使用modelString作为key，避免重复
-        if (!modelMap.has(modelString)) {
-          modelMap.set(modelString, {
-            modelId: modelString,
-            configName: config.name,
-            apiKey: config.apiKey,
-            apiEndpoint: config.apiEndpoint,
-            providerId: config.providerId,
-            temperature: config.temperature,
-            maxTokens: config.maxTokens
-          });
-          hasAddedModels = true;
-        }
-      }
-      // 🔥 如果配置既没有 chatModels 也没有 model，尝试从 modelId 字段获取
-      else if (config.modelId) {
-        const modelString = `${providerName}:${config.modelId}`;
-        
-        if (!modelMap.has(modelString)) {
-          modelMap.set(modelString, {
-            modelId: modelString,
-            configName: config.name,
-            apiKey: config.apiKey,
-            apiEndpoint: config.apiEndpoint,
-            providerId: config.providerId,
-            temperature: config.temperature,
-            maxTokens: config.maxTokens,
-            displayName: config.modelId
-          });
-          hasAddedModels = true;
-        }
-      }
-      
-      // 🔥 日志：如果配置没有任何模型，记录警告
-      if (!hasAddedModels) {
-        console.warn(`[ModelCache] ⚠️ 配置 "${config.name}" 没有找到任何可用的模型数据！`, {
-          providerId: config.providerId,
-          hasChatModels: !!config.chatModels,
-          chatModelsLength: config.chatModels?.length || 0,
-          hasModel: !!config.model,
-          hasModelId: !!config.modelId
-        });
-      }
-    });
-
-    const models = Array.from(modelMap.values());
-    
-    console.log('[ModelCache] 更新缓存 - 去重后的模型数量:', models.length);
-    console.log('[ModelCache] 更新缓存 - 模型列表:', models.map(m => m.modelId).join(', '));
-
+    const models = await buildModelsFromConfigs(configs);
     await cacheModels(models);
-    
-    // 触发模型更新事件
     window.dispatchEvent(new CustomEvent('models-cache-updated'));
   } catch (error) {
-    console.error('[ModelCache]  更新模型缓存失败:', error);
+    console.error('[ModelCache] Failed to refresh model cache:', error);
   }
 }

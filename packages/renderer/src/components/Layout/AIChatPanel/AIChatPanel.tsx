@@ -3,7 +3,12 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { getCachedModels, getModelConfig, type CachedModelInfo } from '../../../services/ModelCacheService';
+import {
+  extractActualModelIdFromCacheModelId,
+  getCachedModels,
+  getModelConfig,
+  type CachedModelInfo,
+} from '../../../services/ModelCacheService';
 import { aiService } from '../../../services/ai/AIService';
 import { isModelEnabled, loadModelEnabledStatesFromDB, type ChatMessage } from '../../../services/ai';
 import { DropdownMenu, type DropdownMenuItem, type DropdownMenuGroup } from '../../common/DropdownMenu';
@@ -78,6 +83,7 @@ interface ModelInfo {
   modelId: string;
   configName: string;
   providerId: string;
+  actualModelId: string;
   displayName?: string;
   capabilities?: {
     thinking?: boolean;
@@ -1840,11 +1846,7 @@ const ThinkingIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
  */
 const formatModelDisplayName = (modelId: string): string => {
   if (!modelId) return '';
-  const colonIndex = modelId.indexOf(':');
-  if (colonIndex > 0) {
-    return modelId.substring(colonIndex + 1);
-  }
-  return modelId;
+  return extractActualModelIdFromCacheModelId(modelId);
 };
 
 /**
@@ -3078,8 +3080,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       const modelInfos: ModelInfo[] = cachedModels
         .filter(model => {
           // Extract real model name from model ID (configName:modelName).
-          const modelName = model.modelId.includes(':') ? model.modelId.split(':')[1] : model.modelId;
-          return isModelEnabled(modelName);
+          return isModelEnabled(model.actualModelId);
         })
         .map(model => {
           console.log('[AIChatPanel] 模型信息:', model.modelId, 'capabilities:', model.capabilities);
@@ -3087,6 +3088,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             modelId: model.modelId,
             configName: model.configName,
             providerId: model.providerId,
+            actualModelId: model.actualModelId,
             displayName: model.displayName,
             capabilities: model.capabilities
           };
@@ -3191,6 +3193,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       console.error('[AIChatPanel] 加载历史会话失败:', error);
     }
   }, []); // No external dependencies.
+
+
 
   // 初始化聊天会话并恢复当前会话 ID
   useEffect(() => {
@@ -3791,9 +3795,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
       try {
         // Reinitialize provider only when model changes.
-        const actualModelId = selectedModel.includes(':') ? selectedModel.split(':')[1] : selectedModel;
+        let actualModelId = extractActualModelIdFromCacheModelId(selectedModel);
         if (!providerCacheRef.current || providerCacheRef.current.modelId !== selectedModel) {
           const modelConfig = await getModelConfig(selectedModel);
+          actualModelId = modelConfig?.actualModelId || actualModelId;
           if (!modelConfig) throw new Error(`未找到模型配置：${selectedModel}`);
           await aiService.setProvider(modelConfig.providerId, {
             id: modelConfig.id || 'default',

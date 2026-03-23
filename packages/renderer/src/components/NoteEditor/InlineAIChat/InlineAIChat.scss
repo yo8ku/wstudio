@@ -7,175 +7,16 @@
   display: flex;
   flex-direction: column;
   background-color: var(--ws-editor-background);
-  border: 1px solid var(--ws-border-background);
-  border-radius: 2px;
   margin: 8px 0;
   max-width: 100%;
   padding: 2px;
 
-  // 头部工具栏
-  .cm-inline-ai-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background-color: var(--ws-sideBar-background);
-    border-bottom: 1px solid var(--ws-panel-border);
-
-    .cm-inline-ai-header-left {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-
-      .cm-inline-ai-title {
-        font-size: 13px;
-        font-weight: 500;
-        color: var(--ws-editor-foreground);
-      }
-
-      .cm-inline-ai-selection-badge {
-        font-size: 11px;
-        padding: 2px 6px;
-        background-color: var(--ws-badge-background);
-        color: var(--ws-badge-foreground);
-        border-radius: 4px;
-      }
-    }
-
-    .cm-inline-ai-header-right {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-
-      .cm-inline-ai-sparkles-menu {
-        position: relative;
-
-        .cm-inline-ai-sparkles-btn {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 24px;
-          height: 24px;
-          border-radius: 4px;
-          cursor: pointer;
-          color: var(--ws-descriptionForeground);
-
-          &:hover {
-            background-color: var(--ws-list-hoverBackground);
-            color: var(--ws-editor-foreground);
-          }
-        }
-
-        .cm-inline-ai-sparkles-dropdown {
-          position: absolute;
-          top: 100%;
-          right: 0;
-          min-width: 120px;
-          margin-top: 4px;
-          padding: 4px;
-          background-color: var(--ws-dropdown-background);
-          border: 1px solid var(--ws-dropdown-border);
-          border-radius: 6px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          z-index: 10000;
-
-          .cm-inline-ai-sparkles-option {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: var(--ws-dropdown-foreground);
-            cursor: pointer;
-
-            &:hover {
-              background-color: var(--ws-list-hoverBackground);
-            }
-
-            &.cm-inline-ai-sparkles-option-submenu {
-              position: relative;
-            }
-          }
-
-          .cm-inline-ai-tone-submenu {
-            position: absolute;
-            bottom: 0;
-            left: 100%;
-            min-width: 100px;
-            margin-left: 4px;
-            padding: 4px;
-            background-color: var(--ws-dropdown-background);
-            border: 1px solid var(--ws-dropdown-border);
-            border-radius: 6px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            z-index: 10001;
-          }
-        }
-      }
-
-      .cm-inline-ai-at-menu {
-        position: relative;
-
-        .cm-inline-ai-at-trigger {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 24px;
-          height: 24px;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 14px;
-          font-weight: 600;
-          color: var(--ws-descriptionForeground);
-
-          &:hover {
-            background-color: var(--ws-list-hoverBackground);
-            color: var(--ws-editor-foreground);
-          }
-        }
-
-        // Select 组件样式覆盖
-        .cm-inline-ai-at-select {
-          position: absolute;
-          top: 100%;
-          right: 0;
-          width: 0;
-          height: 0;
-          overflow: visible;
-
-          .select-trigger {
-            display: none;
-          }
-        }
-      }
-
-      .cm-inline-ai-close {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-        border-radius: 4px;
-        cursor: pointer;
-        color: var(--ws-descriptionForeground);
-
-        &:hover {
-          background-color: var(--ws-list-hoverBackground);
-          color: var(--ws-editor-foreground);
-        }
-      }
-    }
-  }
-
-  // 消息列表
   .cm-inline-ai-messages {
     max-height: 200px;
     overflow-y: auto;
     padding: 8px 12px;
+    width: 800px;
 
-    // 自定义滚动条
     &::-webkit-scrollbar {
       width: 6px;
     }
@@ -224,7 +65,6 @@
       }
     }
 
-    // 流式输出光标
     .cm-inline-ai-cursor {
       display: inline-block;
       width: 2px;
@@ -233,105 +73,194 @@
       margin-left: 2px;
       vertical-align: text-bottom;
     }
+
+    .cm-inline-ai-thinking {
+      display: inline-flex;
+      align-items: baseline;
+    }
+
+    .cm-inline-ai-thinking-dots {
+      display: inline-flex;
+      min-width: 12px;
+    }
+
+    .cm-inline-ai-thinking-dot {
+      display: inline-block;
+      opacity: 0.24;
+      animation: cm-inline-ai-thinking-dot 1.2s infinite ease-in-out;
+
+      &:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      &:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+    }
   }
 
-  // 输入区域
-  .cm-inline-ai-input-area {
-    padding: 8px 12px;
-    border-top: 1px solid var(--ws-input-border);
+  .cm-inline-ai-border-top,
+  .cm-inline-ai-border-bottom {
+    width: 100%;
+    height: 1px;
+    flex-shrink: 0;
+    background-color: var(--ws-aiZoneBorder-background);
+    opacity: 0.6;
+  }
 
-    // Prompt 输入框样式
-    .cm-inline-ai-prompt-input {
+  .cm-inline-ai-input-area {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 800px;
+    padding: 8px 12px;
+    .cm-inline-ai-input-shell {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      background-color: var(--ws-input-background);
+      border: 1px solid var(--ws-input-border);
+      border-radius: 6px;
+
+      &:focus-within {
+        border-color: var(--ws-focusBorder);
+      }
+    }
+
+    .cm-inline-ai-tiptap-input {
+      flex: 1;
+      min-width: 0;
       width: 100%;
       min-height: 36px;
       max-height: 150px;
       overflow-y: auto;
-      display: flex;
-      flex-direction: column;
 
-      .prompt-input-file-references {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        padding-bottom: 6px;
-      }
-
-      .prompt-input-editor {
-        background-color: var(--ws-input-background);
+      .tiptap-editor {
+        position: relative;
+        padding: 8px 10px;
+        background-color: transparent;
+        border: none;
+        border-radius: 0;
         color: var(--ws-input-foreground);
         font-size: 13px;
         outline: none;
+        min-height: 36px;
 
-        &:focus-within {
-          border-color: var(--ws-focusBorder);
+        &:focus {
+          border: none;
         }
 
-        .cm-editor {
-          min-height: 36px;
-          background: transparent;
+        p {
+          margin: 0;
         }
 
-        // 文件引用标签样式
-        .cm-scroller {
-          overflow: auto;
+        .tiptap-file-reference {
+          display: inline-flex;
+          align-items: center;
+          padding: 1px 6px;
+          margin: 0 2px;
+          background-color: var(--ws-badge-background);
+          color: var(--ws-badge-foreground);
+          border-radius: 4px;
+          font-size: 12px;
+          vertical-align: baseline;
         }
 
-        // 占位符样式
-        .cm-content {
-          min-height: 36px;
-          padding: 8px 10px;
-        }
-
-        .cm-placeholder {
+        &.tiptap-empty::before {
+          content: attr(data-placeholder);
           color: var(--ws-input-placeholderForeground);
+          pointer-events: none;
+          position: absolute;
         }
       }
 
-      // 占位符样式
-    }
-
-    .cm-inline-ai-input {
-      width: 100%;
-      min-height: 36px;
-      max-height: 150px;
-      padding: 8px 10px;
-      background-color: var(--ws-input-background);
-      border: 1px solid var(--ws-input-border);
-      border-radius: 6px;
-      color: var(--ws-input-foreground);
-      font-size: 13px;
-      resize: none;
-      outline: none;
-
-      &:focus {
-        border-color: var(--ws-focusBorder);
-      }
-
-      &::placeholder {
+      .ProseMirror p.is-editor-empty:first-child::before {
+        content: attr(data-placeholder);
         color: var(--ws-input-placeholderForeground);
-      }
-
-      &:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
+        pointer-events: none;
+        float: left;
+        height: 0;
       }
     }
 
-    // 底部工具栏
+    .cm-inline-ai-input-side {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      padding: 4px 4px 4px 0;
+      flex-shrink: 0;
+    }
+
+    .cm-inline-ai-icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--ws-descriptionForeground);
+      flex-shrink: 0;
+
+      &:hover:not(.disabled) {
+        background-color: var(--ws-list-hoverBackground);
+        color: var(--ws-editor-foreground);
+      }
+
+      &.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
+      &.cm-inline-ai-icon-btn-send {
+        &:hover{
+                  background-color:var(--ws-list-hoverBackground);
+        }
+        color: var(--ws-button-foreground);
+
+
+        &.disabled {
+          background-color: transparent;
+          color: var(--ws-descriptionForeground);
+        }
+      }
+
+      &.cm-inline-ai-icon-btn-stop {
+        background-color: var(--ws-inputValidation-errorBackground);
+        color: var(--ws-errorForeground);
+
+        &:hover {
+          opacity: 0.9;
+        }
+      }
+    }
+
     .cm-inline-ai-toolbar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
+      gap: 12px;
       margin-top: 8px;
 
-      // 模型选择
+      .cm-inline-ai-toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+
       .cm-inline-ai-model-select {
+        margin-left: auto;
         position: relative;
 
         .cm-inline-ai-model-trigger {
           display: inline-flex;
           align-items: center;
           gap: 4px;
+          border-radius: 6px;
           padding: 4px 8px;
           font-size: 12px;
           color: var(--ws-descriptionForeground);
@@ -343,7 +272,6 @@
           }
         }
 
-        // 下拉菜单打开时，触发器保持选中状态
         &.open .cm-inline-ai-model-trigger {
           background-color: var(--ws-list-hoverBackground);
           color: var(--ws-editor-foreground);
@@ -351,16 +279,45 @@
 
         .cm-inline-ai-model-dropdown {
           position: absolute;
-          left: 0;
-          min-width: 251px;
+          right: 0;
+          left: auto;
+          box-sizing: border-box;
+          width: min(220px, calc(100vw - 16px));
+          max-width: calc(100vw - 16px);
           max-height: 200px;
-          overflow-y: auto;
           padding: 4px;
           background-color: var(--ws-dropdown-background);
           border: 1px solid var(--ws-dropdown-border);
-          border-radius: 6px;
+          border-radius: 4px;
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
           z-index: 10000;
+
+          .custom-scrollbar-content {
+            max-height: 192px;
+            overscroll-behavior: contain;
+          }
+
+          .custom-scrollbar-track {
+            top: 4px;
+            right: 2px;
+            bottom: 4px;
+            border-radius: 0;
+          }
+
+          .custom-scrollbar-thumb {
+            background-color: var(--ws-scrollbarSlider-background, rgba(128, 128, 128, 0.4));
+            border-radius: 0;
+            cursor: default;
+
+            &:hover {
+              background-color: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+            }
+
+            &.is-dragging {
+              background-color: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+              cursor: default;
+            }
+          }
 
           &.cm-inline-ai-model-dropdown-down {
             top: 100%;
@@ -379,7 +336,6 @@
             gap: 8px;
             padding: 3px 11px;
             border-radius: 4px;
-            margin-top: 6px;
             font-size: 12px;
             color: var(--ws-dropdown-foreground);
             cursor: pointer;
@@ -409,10 +365,149 @@
               border-radius: 4px;
             }
           }
+
+          .cm-inline-ai-model-group + .cm-inline-ai-model-group {
+            margin-top: 6px;
+          }
+
+          .cm-inline-ai-model-group-title {
+            padding: 6px 11px 4px;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.4;
+            color: var(--ws-descriptionForeground);
+          }
         }
       }
 
-      // 操作按钮
+      .cm-inline-ai-at-menu {
+        position: relative;
+
+        .cm-inline-ai-at-trigger {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--ws-descriptionForeground);
+
+          &:hover {
+            background-color: var(--ws-list-hoverBackground);
+            color: var(--ws-editor-foreground);
+          }
+        }
+
+        .cm-inline-ai-at-select-anchor {
+          position: fixed;
+          width: 0;
+          height: 0;
+          overflow: visible;
+          pointer-events: none;
+        }
+
+        .cm-inline-ai-at-select {
+          position: static;
+          width: 0;
+          height: 0;
+          overflow: visible;
+
+          .select-trigger {
+            display: none;
+          }
+        }
+      }
+      .cm-inline-ai-toolbar-separator {
+        width: 1px;
+        height: 20px;
+        background-color: var(--ws-divider-background);
+        opacity: 0.36;
+      }
+
+      .cm-inline-ai-toolbar-extra {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .cm-inline-ai-toolbar-extra-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
+        cursor: pointer;
+        color: var(--ws-descriptionForeground);
+
+        &:hover:not(.disabled) {
+          background-color: var(--ws-list-hoverBackground);
+          color: var(--ws-editor-foreground);
+        }
+
+        &.disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          pointer-events: none;
+        }
+      }
+      .cm-inline-ai-new-chat-trigger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
+        cursor: pointer;
+        color: var(--ws-descriptionForeground);
+        flex-shrink: 0;
+
+        &:hover {
+          background-color: var(--ws-list-hoverBackground);
+          color: var(--ws-editor-foreground);
+        }
+      }
+
+      .cm-inline-ai-history-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        max-width: 220px;
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        color: var(--ws-descriptionForeground);
+        flex-shrink: 0;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 24px;
+        opacity: 0.78;
+        transition: color 0.15s ease, opacity 0.15s ease, background-color 0.15s ease;
+
+        &:hover {
+          background-color: var(--ws-list-hoverBackground);
+          color: var(--ws-editor-foreground);
+          opacity: 1;
+        }
+
+        &.active {
+          background-color: var(--ws-list-activeSelectionBackground);
+          color: var(--ws-list-activeSelectionForeground);
+          opacity: 1;
+        }
+
+        .cm-inline-ai-history-label {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      }
+
       .cm-inline-ai-actions {
         display: flex;
         align-items: center;
@@ -460,47 +555,203 @@
   }
 }
 
-// Widget 容器样式
+.cm-inline-ai-output {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 800px;
+  padding: 8px 12px 0;
+
+  .cm-inline-ai-messages {
+    overflow-y: auto;
+    width: 100%;
+    padding-top: 12px;
+
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background-color: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background-color: var(--ws-scrollbarSlider-background, rgba(128, 128, 128, 0.4));
+      border-radius: 3px;
+    }
+
+    .cm-inline-ai-message {
+      margin-bottom: 8px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+
+      .cm-inline-ai-message-content {
+        font-size: 13px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--ws-descriptionForeground);
+      }
+
+      &.cm-inline-ai-message-assistant {
+        .cm-inline-ai-message-content {
+          padding: 4px 0 4px 12px;
+          margin-right: 0;
+          border-radius: 0;
+          border-left: 1px solid var(--ws-aiZoneBorder-background);
+          background-color: transparent;
+          color: var(--ws-descriptionForeground);
+          opacity: 0.78;
+        }
+      }
+    }
+
+    .cm-inline-ai-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 14px;
+      background-color: var(--ws-descriptionForeground);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      opacity: 0.72;
+    }
+
+    .cm-inline-ai-thinking {
+      display: inline-flex;
+      align-items: baseline;
+    }
+
+    .cm-inline-ai-thinking-dots {
+      display: inline-flex;
+      min-width: 12px;
+    }
+
+    .cm-inline-ai-thinking-dot {
+      display: inline-block;
+      opacity: 0.24;
+      animation: cm-inline-ai-thinking-dot 1.2s infinite ease-in-out;
+
+      &:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      &:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+    }
+  }
+}
+
+@keyframes cm-inline-ai-thinking-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.24;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
 .cm-inline-ai-widget {
   display: block;
   margin: 8px 0;
 }
 
-// AI 助手打开时选中文本的高亮样式
 .cm-ai-selection-highlight {
   background-color: var(--ws-editor-selectionBackground);
   border-radius: 2px;
 }
 
-
-// Select 组件 Portal 渲染的下拉菜单样式覆盖
 .select-content.cm-inline-ai-at-select-content {
   min-width: 200px;
   max-width: 280px;
   max-height: 350px;
 
+  .select-item:hover:not(.selected),
+  .select-item[data-type='file']:hover:not(.selected),
+  .select-item[data-type='folder']:hover:not(.selected),
+  .select-item[data-type='form']:hover:not(.selected),
+  .select-item[data-type='form-column']:hover:not(.selected) {
+    background-color: var(--ws-list-hoverBackground, var(--ws-button-hoverBackground)) !important;
+    color: var(--ws-list-hoverForeground, var(--ws-foreground)) !important;
+  }
+
   .select-item.selected,
   .select-item.selected:hover,
+  .select-item.keyboard-highlighted,
+  .select-item.keyboard-highlighted:hover,
   .select-item[data-type='file'].selected,
   .select-item[data-type='file'].selected:hover,
+  .select-item[data-type='file'].keyboard-highlighted,
+  .select-item[data-type='file'].keyboard-highlighted:hover,
   .select-item[data-type='folder'].selected,
   .select-item[data-type='folder'].selected:hover,
+  .select-item[data-type='folder'].keyboard-highlighted,
+  .select-item[data-type='folder'].keyboard-highlighted:hover,
   .select-item[data-type='form'].selected,
   .select-item[data-type='form'].selected:hover,
+  .select-item[data-type='form'].keyboard-highlighted,
+  .select-item[data-type='form'].keyboard-highlighted:hover,
   .select-item[data-type='form-column'].selected,
-  .select-item[data-type='form-column'].selected:hover {
+  .select-item[data-type='form-column'].selected:hover,
+  .select-item[data-type='form-column'].keyboard-highlighted,
+  .select-item[data-type='form-column'].keyboard-highlighted:hover {
     background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22))))) !important;
     color: var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground)))) !important;
   }
 
-  // 隐藏勾选标记占位空间
   .select-item .select-item-check {
     display: none;
   }
 
-  // 菜单列表填充剩余空间
-  .select-list {
+  .select-list,
+  .select-list-custom-scrollbar {
     flex: 1;
-    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .select-list-custom-scrollbar {
+    .custom-scrollbar-content {
+      min-height: 0;
+      overscroll-behavior: contain;
+    }
+
+    .custom-scrollbar-track {
+      top: 4px;
+      right: 2px;
+      bottom: 4px;
+      border-radius: 0;
+    }
+
+    .custom-scrollbar-thumb {
+      background-color: var(--ws-scrollbarSlider-background, rgba(128, 128, 128, 0.4));
+      border-radius: 0;
+      cursor: default;
+
+      &:hover {
+        background-color: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+      }
+
+      &.is-dragging {
+        background-color: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+        cursor: default;
+      }
+    }
+  }
+
+  &.keyboard-nav {
+    .select-item:hover:not(.selected),
+    .select-item[data-type='file']:hover:not(.selected),
+    .select-item[data-type='folder']:hover:not(.selected),
+    .select-item[data-type='form']:hover:not(.selected),
+    .select-item[data-type='form-column']:hover:not(.selected) {
+      background-color: var(--ws-list-hoverBackground, var(--ws-button-hoverBackground)) !important;
+      color: var(--ws-list-hoverForeground, var(--ws-foreground)) !important;
+    }
   }
 }

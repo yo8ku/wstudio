@@ -7,6 +7,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../Icons/Icon';
+import { CustomScrollbar, type CustomScrollbarRef } from '../CustomScrollbar/CustomScrollbar';
 import './Select.scss';
 
 export interface SelectItem {
@@ -33,6 +34,8 @@ export interface SelectGroup {
 export interface SelectProps {
   /** 褰撳墠閫変腑鐨勫€?*/
   value: string;
+  /** 褰撳墠楂樹寒鐨勫€硷紙涓嶄細浣滀负鐪熷疄閫変腑鍊硷級 */
+  highlightedValue?: string;
   /** 鍊煎彉鍖栧洖璋?*/
   onChange: (value: string) => void;
   /** 鑿滃崟椤瑰垪琛紙鏀寔鍒嗙粍鎴栨墎骞冲垪琛級 */
@@ -70,6 +73,8 @@ export interface SelectProps {
   /** 鎵撳紑鍚庨亣鍒板閮ㄦ粴鍔ㄦ椂鏄惁鍏抽棴鑿滃崟 */
   closeOnScroll?: boolean;
   onDropdownKeyDown?: React.KeyboardEventHandler<HTMLElement>;
+  onKeyboardNavigatingChange?: (isKeyboardNavigating: boolean) => void;
+  useCustomScrollbar?: boolean;
 }
 
 /**
@@ -77,6 +82,7 @@ export interface SelectProps {
  */
 export const Select: React.FC<SelectProps> = ({
   value,
+  highlightedValue = '',
   onChange,
   items = [],
   groups = [],
@@ -96,6 +102,8 @@ export const Select: React.FC<SelectProps> = ({
   onHeightChange,
   closeOnScroll = false,
   onDropdownKeyDown,
+  onKeyboardNavigatingChange,
+  useCustomScrollbar = false,
 }) => {
   // 濡傛灉鎻愪緵浜?open 灞炴€э紝浣跨敤鍙楁帶妯″紡锛涘惁鍒欎娇鐢ㄥ唴閮ㄧ姸鎬?
   const [internalIsOpen, setInternalIsOpen] = useState(false);
@@ -114,9 +122,16 @@ export const Select: React.FC<SelectProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const menuListRef = useRef<HTMLDivElement>(null);
+  const customScrollbarRef = useRef<CustomScrollbarRef>(null);
   const selectedItemRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const lastRectRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null);
+
+  const getMenuListElement = useCallback((): HTMLDivElement | null => (
+    useCustomScrollbar
+      ? (customScrollbarRef.current?.getContentElement() ?? null)
+      : menuListRef.current
+  ), [useCustomScrollbar]);
 
   // 璁＄畻涓嬫媺鑿滃崟浣嶇疆
   const updatePosition = useCallback((providedRect?: DOMRect) => {
@@ -139,11 +154,15 @@ export const Select: React.FC<SelectProps> = ({
       if (actualWidth > 0) {
         menuWidth = actualWidth;
       }
-    } else if (menuListRef.current) {
-      // 濡傛灉鑿滃崟鍒楄〃宸叉覆鏌撲絾瀹瑰櫒鏈覆鏌擄紝浣跨敤鍒楄〃楂樺害鍔犱笂鎼滅储妗嗛珮搴︼紙濡傛灉鏈夛級
-      const listHeight = menuListRef.current.scrollHeight;
-      const searchHeight = showSearch ? 40 : 0; // 鎼滅储妗嗛珮搴︾害 40px
-      menuHeight = Math.min(listHeight + searchHeight, 500); // 鏈€澶ч珮搴﹂檺鍒朵负 500px
+    } else {
+      const menuListElement = getMenuListElement();
+
+      if (menuListElement) {
+        // 濡傛灉鑿滃崟鍒楄〃宸叉覆鏌撲絾瀹瑰櫒鏈覆鏌擄紝浣跨敤鍒楄〃楂樺害鍔犱笂鎼滅储妗嗛珮搴︼紙濡傛灉鏈夛級
+        const listHeight = menuListElement.scrollHeight;
+        const searchHeight = showSearch ? 40 : 0; // 鎼滅储妗嗛珮搴︾害 40px
+        menuHeight = Math.min(listHeight + searchHeight, 500); // 鏈€澶ч珮搴﹂檺鍒朵负 500px
+      }
     }
 
     // 璁＄畻鍙敤绌洪棿锛堝瀭鐩存柟鍚戯級
@@ -205,7 +224,7 @@ export const Select: React.FC<SelectProps> = ({
     
     // 鏍囪浣嶇疆宸茶绠楀畬鎴?
     setIsPositionReady(true);
-  }, [placement, showSearch, align, menuGap]);
+  }, [placement, showSearch, align, menuGap, getMenuListElement]);
 
   // 鎵撳紑鑿滃崟鏃舵洿鏂颁綅缃?
   useLayoutEffect(() => {
@@ -248,6 +267,10 @@ export const Select: React.FC<SelectProps> = ({
       setIsKeyboardNavigating(false);
     }
   };
+
+  useEffect(() => {
+    onKeyboardNavigatingChange?.(isKeyboardNavigating);
+  }, [isKeyboardNavigating, onKeyboardNavigatingChange]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -307,7 +330,7 @@ export const Select: React.FC<SelectProps> = ({
         updatePosition();
       });
     }
-  }, [value, updatePosition]);
+  }, [highlightedValue, updatePosition, value]);
 
   // 褰撹彍鍗曞唴瀹癸紙groups 鎴?items锛夊彉鍖栨椂锛岄噸鏂拌绠椾綅缃?
   // 杩欏浜庝簩绾ц彍鍗曞垏鎹㈡椂淇濇寔姝ｇ‘鐨勪綅缃緢閲嶈
@@ -424,10 +447,14 @@ export const Select: React.FC<SelectProps> = ({
 
   // 鎵撳紑鑿滃崟鎴栧綋鍓嶉」鍙樺寲鏃舵粴鍔ㄥ埌閫変腑鐨勯」
   useEffect(() => {
-    if (isOpen && selectedItemRef.current && menuListRef.current) {
+    const menuListElement = getMenuListElement();
+
+    if (isOpen && selectedItemRef.current && menuListElement) {
       setTimeout(() => {
-        if (selectedItemRef.current && menuListRef.current) {
-          const menuList = menuListRef.current;
+        const currentMenuListElement = getMenuListElement();
+
+        if (selectedItemRef.current && currentMenuListElement) {
+          const menuList = currentMenuListElement;
           const selectedItem = selectedItemRef.current;
           
           const itemOffsetTop = selectedItem.offsetTop;
@@ -443,7 +470,7 @@ export const Select: React.FC<SelectProps> = ({
         }
       }, 0);
     }
-  }, [isOpen, value]);
+  }, [getMenuListElement, highlightedValue, isOpen, value]);
 
   // 鑾峰彇鏄剧ず鏂囨湰
   const getDisplayText = (): string => {
@@ -513,6 +540,7 @@ export const Select: React.FC<SelectProps> = ({
   // 娓叉煋鑿滃崟椤?
   const renderItem = (item: SelectItem) => {
     const isSelected = item.value === value;
+    const isHighlighted = !isSelected && item.value === highlightedValue;
     const selectedStyle: React.CSSProperties | undefined = isSelected
       ? {
           backgroundColor: 'var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22)))))',
@@ -531,11 +559,11 @@ export const Select: React.FC<SelectProps> = ({
     return (
       <div
         key={item.value}
-        ref={isSelected ? selectedItemRef : null}
-        className={`select-item ${isSelected ? 'selected' : ''} ${item.disabled ? 'disabled' : ''}`}
+        ref={isSelected || isHighlighted ? selectedItemRef : null}
+        className={`select-item ${isSelected ? 'selected' : ''} ${isHighlighted ? 'keyboard-highlighted' : ''} ${item.disabled ? 'disabled' : ''}`}
         onClick={() => handleItemClick(item.value, item.disabled)}
         style={selectedStyle}
-        aria-selected={isSelected}
+        aria-selected={isSelected || isHighlighted}
         data-selected={isSelected ? 'true' : 'false'}
         data-type={item.dataType}
         data-depth={item.depth !== undefined ? item.depth : undefined}
@@ -621,7 +649,7 @@ export const Select: React.FC<SelectProps> = ({
                   ref={searchInputRef}
                   type="text"
                   className="select-search-input"
-                  placeholder="鎼滅储..."
+                  placeholder={'\u641c\u7d22...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
@@ -638,7 +666,7 @@ export const Select: React.FC<SelectProps> = ({
               ref={searchInputRef}
               type="text"
               className="select-search-input"
-              placeholder="鎼滅储..."
+              placeholder={'\u641c\u7d22...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onClick={(e) => e.stopPropagation()}
@@ -646,9 +674,19 @@ export const Select: React.FC<SelectProps> = ({
             />
           </div>
         )}
-        <div ref={menuListRef} className="select-list">
-          {renderMenuContent()}
-        </div>
+        {useCustomScrollbar ? (
+          <CustomScrollbar
+            ref={customScrollbarRef}
+            className="select-list-custom-scrollbar"
+            scrollbarWidth={6}
+          >
+            {renderMenuContent()}
+          </CustomScrollbar>
+        ) : (
+          <div ref={menuListRef} className="select-list">
+            {renderMenuContent()}
+          </div>
+        )}
       </div>,
       document.body
     );

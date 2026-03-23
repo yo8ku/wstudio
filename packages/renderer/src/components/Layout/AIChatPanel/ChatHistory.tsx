@@ -3,10 +3,16 @@
  * 显示历史会话列表，支持搜索、切换和删除会话。
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Icon } from '../../Icons/Icon';
 import { modal, useModalStore } from '../../../stores/modalStore';
-import type { ChatSessionData } from '../../../types/electron';
+import type { ChatMessageData, ChatSessionData } from '../../../types/electron';
+import {
+  inlineChatHistoryService,
+  type InlineChatMessage,
+  type InlineChatQuery,
+  type InlineChatSession,
+} from '../../../services/InlineChatHistoryService';
 import { PressableControl } from './PressableControl';
 import {
   DEFAULT_CHAT_SESSION_TITLE,
@@ -20,6 +26,15 @@ interface ChatHistoryProps {
   onClose: () => void;
   onSelectSession: (sessionId: string) => void;
   buttonRef: React.RefObject<HTMLDivElement>;
+  source?: 'panel' | 'inline';
+  inlineQuery?: InlineChatQuery;
+}
+
+type HistorySession = ChatSessionData | InlineChatSession;
+type HistoryMessage = ChatMessageData | InlineChatMessage;
+interface MenuPosition {
+  x: number;
+  y: number;
 }
 
 export const ChatHistory: React.FC<ChatHistoryProps> = ({
@@ -27,18 +42,21 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
   onClose,
   onSelectSession,
   buttonRef,
+  source = 'panel',
+  inlineQuery,
 }) => {
-  const [sessions, setSessions] = useState<ChatSessionData[]>([]);
+  const [sessions, setSessions] = useState<HistorySession[]>([]);
   const [sessionTitles, setSessionTitles] = useState<Map<string, string>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
+  const [isPositionReady, setIsPositionReady] = useState(false);
   const [maxHeight, setMaxHeight] = useState(400);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const isModalOpen = useModalStore((state) => state.isOpen);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isOpen || !buttonRef.current) {
       return;
     }
@@ -57,7 +75,15 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
       y: menuY,
     });
     setMaxHeight(Math.max(200, Math.min(500, availableHeight)));
+    setIsPositionReady(true);
   }, [buttonRef, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsPositionReady(false);
+      setMenuPosition(null);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -67,33 +93,56 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
     setSearchQuery('');
     void loadSessions();
     requestAnimationFrame(() => searchInputRef.current?.focus());
-  }, [isOpen]);
+  }, [
+    inlineQuery?.fileUri,
+    inlineQuery?.limit,
+    inlineQuery?.lineNumber,
+    inlineQuery?.offset,
+    inlineQuery?.sessionId,
+    isOpen,
+    source,
+  ]);
 
   const loadSessions = async () => {
     setIsLoading(true);
 
     try {
-      const result = await window.electronAPI?.chatHistory?.getSessions();
-
-      if (!result?.success || !result.data) {
-        return;
-      }
-
-      setSessions(result.data);
-
       const titles = new Map<string, string>();
-      for (const session of result.data) {
-        const messagesResult = await window.electronAPI?.chatHistory?.getMessages(session.id);
-        if (!messagesResult?.success || !messagesResult.data?.length) {
-          continue;
+      let nextSessions: HistorySession[] = [];
+
+      if (source === 'inline') {
+        nextSessions = await inlineChatHistoryService.querySessions(inlineQuery || {});
+
+        for (const session of nextSessions) {
+          const messages = await inlineChatHistoryService.getMessages(session.id);
+          const firstUserMessage = messages.find((message: HistoryMessage) => message.role === 'user');
+          if (firstUserMessage) {
+            titles.set(session.id, getChatSessionTitle(firstUserMessage.content));
+          }
+        }
+      } else {
+        const result = await window.electronAPI?.chatHistory?.getSessions();
+
+        if (!result?.success || !result.data) {
+          return;
         }
 
-        const firstUserMessage = messagesResult.data.find((message) => message.role === 'user');
-        if (firstUserMessage) {
-          titles.set(session.id, getChatSessionTitle(firstUserMessage.content));
+        nextSessions = result.data;
+
+        for (const session of result.data) {
+          const messagesResult = await window.electronAPI?.chatHistory?.getMessages(session.id);
+          if (!messagesResult?.success || !messagesResult.data?.length) {
+            continue;
+          }
+
+          const firstUserMessage = messagesResult.data.find((message: HistoryMessage) => message.role === 'user');
+          if (firstUserMessage) {
+            titles.set(session.id, getChatSessionTitle(firstUserMessage.content));
+          }
         }
       }
 
+      setSessions(nextSessions);
       setSessionTitles(titles);
     } catch (error) {
       console.error('[ChatHistory] 加载会话失败:', error);
@@ -132,9 +181,14 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
       cancelText: '取消',
       onConfirm: async () => {
         try {
-          const result = await window.electronAPI?.chatHistory?.deleteSession(sessionId);
-          if (result?.success) {
+          if (source === 'inline') {
+            await inlineChatHistoryService.deleteSession(sessionId);
             await loadSessions();
+          } else {
+            const result = await window.electronAPI?.chatHistory?.deleteSession(sessionId);
+            if (result?.success) {
+              await loadSessions();
+            }
           }
         } catch (error) {
           console.error('[ChatHistory] 删除会话失败:', error);
@@ -181,14 +235,11 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
       }
     };
 
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleEscape);
-    }, 100);
+    document.addEventListener('mousedown', handleClickOutside, true);
+    document.addEventListener('keydown', handleEscape);
 
     return () => {
-      clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside, true);
       document.removeEventListener('keydown', handleEscape);
     };
   }, [buttonRef, isModalOpen, isOpen, onClose]);
@@ -203,9 +254,11 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
       className="chat-history-menu"
       style={{
         position: 'fixed',
-        left: `${menuPosition.x}px`,
-        top: `${menuPosition.y}px`,
+        left: `${menuPosition?.x ?? 0}px`,
+        top: `${menuPosition?.y ?? 0}px`,
         maxHeight: `${maxHeight}px`,
+        visibility: isPositionReady ? 'visible' : 'hidden',
+        pointerEvents: isPositionReady ? 'auto' : 'none',
         zIndex: 1000,
       }}
     >
