@@ -85,9 +85,9 @@ export interface ElectronAPI {
     }>) => Promise<{ success: boolean; count?: number }>;
   };
   // 缁愭褰涢悞锔惧仯閻樿埖鈧胶娲冮崥?
-  onWindowFocus?: (callback: (focused: boolean) => void) => void;
-  onWindowBlur?: (callback: (focused: boolean) => void) => void;
-  onWindowMaximizedStateChanged?: (callback: (isMaximized: boolean) => void) => void;
+  onWindowFocus?: (callback: (focused: boolean) => void) => (() => void);
+  onWindowBlur?: (callback: (focused: boolean) => void) => (() => void);
+  onWindowMaximizedStateChanged?: (callback: (isMaximized: boolean) => void) => (() => void);
   
   // 閹垫挸绱戠憴鍡涱暥閺傚洣娆㈢€电鐦藉?
   openVideoFile?: () => Promise<{ canceled: boolean; filePath?: string }>;

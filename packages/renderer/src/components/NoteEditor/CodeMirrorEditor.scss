@@ -326,12 +326,41 @@
     pointer-events: auto;
   }
 
+  .cm-lineNumbers {
+    min-width: 40px;
+  }
+
+  .cm-lineNumbers .cm-gutterElement {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+    width: 100%;
+    font-family: none;
+    font-size: 12px;
+    color: var(--ws-editorLineNumber-foreground);
+    padding: 0 5px 0 0;
+    box-sizing: border-box;
+    line-height: 1;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    transform: translateY(-1px);
+  }
+
   .cm-activeLineGutter {
-    background-color: transparent;
+    background-color: transparent !important;
+  }
+
+  .cm-gutterElement.cm-activeLineGutter {
+    background-color: transparent !important;
+  }
+
+  .cm-lineNumbers .cm-gutterElement.cm-activeLineGutter {
+    color: var(--ws-editorLineNumber-activeForeground) !important;
   }
 
   .cm-activeLine {
-    background-color: transparent;
+    background-color: var(--ws-editor-lineHighlightBackground) !important;
   }
 
   .cm-selectionBackground {
@@ -342,7 +371,7 @@
   .cm-content {
     max-width: 100%;
     min-width: 0;
-    font-family: none;
+    font-family: "Cascadia Mono SemiBold";
   }
 
   .cm-line {
@@ -380,8 +409,6 @@
   // 标题行装饰器 - 通过行级别设置字体大小
   .cm-heading-line {
     text-decoration: none !important;
-    padding-bottom: 6px;
-
     // 确保行内所有元素继承字体大小
     * {
       font-size: inherit;
@@ -2235,15 +2262,18 @@
 
 // 折叠 Gutter 样式（Obsidian 风格）
 .cm-foldGutter {
-  width: auto;
-  min-width: 20px;
-  padding: 0 2px;
+  width: 24px;
+  min-width: 24px;
+  padding: 0;
   cursor: pointer;
 
   .cm-gutterElement {
     display: flex;
-    align-items: flex-start;
-    padding-top: 2px;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+    padding: 0;
   }
 }
 
@@ -2254,6 +2284,7 @@
   justify-content: center;
   width: 20px;
   height: 20px;
+  line-height: 1;
   color: var(--ws-descriptionForeground);
   cursor: pointer;
   flex-shrink: 0;
@@ -2269,6 +2300,7 @@
   }
 
   svg {
+    display: block;
     width: 18px;
     height: 18px;
     stroke-width: 2.5;

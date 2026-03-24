@@ -228,6 +228,8 @@ export const FileExplorer: React.FC = () => {
   const isCreateBookmarkDialogOpen = isBookmarkDialogOpen;
   const setIsCreateBookmarkDialogOpen = setIsBookmarkDialogOpen;
   const outlineNodesRef = useRef<ExplorerOutlineNode[]>([]);
+  const outlineSnapshotRef = useRef<string>('');
+  const outlineSyncTimeoutRef = useRef<number | null>(null);
   const fileTreeRevealRequestIdRef = useRef<number>(0);
   const bookmarkNameInputRef = useRef<HTMLInputElement | null>(null);
   
@@ -281,6 +283,14 @@ export const FileExplorer: React.FC = () => {
   useEffect(() => {
     outlineNodesRef.current = outlineNodes;
   }, [outlineNodes]);
+
+  const clearPendingOutlineSync = useCallback((): void => {
+    if (outlineSyncTimeoutRef.current !== null) {
+      window.clearTimeout(outlineSyncTimeoutRef.current);
+      outlineSyncTimeoutRef.current = null;
+    }
+  }, []);
+
   // 表单区域展开状态（持久化）
   const [initialFormExpanded, setInitialFormExpanded] = useState<boolean>(false);
 
@@ -299,6 +309,12 @@ export const FileExplorer: React.FC = () => {
     )
       ? normalizedLanguage
       : fallbackLanguage || normalizedLanguage;
+    const outlineSnapshot = `${resolvedPath}\u0000${resolvedLanguage}\u0000${content}`;
+    if (outlineSnapshotRef.current === outlineSnapshot) {
+      return;
+    }
+
+    outlineSnapshotRef.current = outlineSnapshot;
     const parsedOutlineNodes = OutlineService.parseOutline(content, resolvedLanguage);
     const nextOutlineNodes = applyOutlineExpansionState(
       parsedOutlineNodes,
@@ -337,7 +353,9 @@ export const FileExplorer: React.FC = () => {
   const scheduleOutlineSync = useCallback((attempt: number = 0): void => {
     const runSync = (nextAttempt: number): void => {
       const delay = nextAttempt === 0 ? 0 : 16;
-      window.setTimeout(() => {
+      clearPendingOutlineSync();
+      outlineSyncTimeoutRef.current = window.setTimeout(() => {
+        outlineSyncTimeoutRef.current = null;
         const didSync = syncOutlineFromActiveEditor();
         if (!didSync && nextAttempt < 4) {
           runSync(nextAttempt + 1);
@@ -346,7 +364,7 @@ export const FileExplorer: React.FC = () => {
     };
 
     runSync(attempt);
-  }, [syncOutlineFromActiveEditor]);
+  }, [clearPendingOutlineSync, syncOutlineFromActiveEditor]);
 
 
   // 辅助函数：根据路径查找节�?
@@ -924,22 +942,23 @@ export const FileExplorer: React.FC = () => {
           && customEvent.detail.path === currentActiveFilePath
         ) {
           return;
-        }
-
-        setSelectedFilePath(customEvent.detail.path);
-        setCurrentActiveFilePath(customEvent.detail.path);
-        setSelectedOutlineNode(null);
-        scheduleOutlineSync();
-        console.log('[FileExplorer] 标签页切换，更新文件树选中状�?', customEvent.detail.path);
       }
-    };
+
+      setSelectedFilePath(customEvent.detail.path);
+      setCurrentActiveFilePath(customEvent.detail.path);
+      setSelectedOutlineNode(null);
+      if (isOutlineExpanded) {
+        scheduleOutlineSync();
+      }
+    }
+  };
 
     window.addEventListener('tab-switched', handleTabSwitch as EventListener);
 
     return () => {
       window.removeEventListener('tab-switched', handleTabSwitch as EventListener);
     };
-  }, [currentActiveFilePath, scheduleOutlineSync, selectedFilePath, setSelectedOutlineNode]);
+  }, [currentActiveFilePath, isOutlineExpanded, scheduleOutlineSync, selectedFilePath, setSelectedOutlineNode]);
 
   // 监听编辑器活动文件变化事件（用于标签页切换）
   useEffect(() => {
@@ -951,21 +970,22 @@ export const FileExplorer: React.FC = () => {
           && customEvent.detail.path === currentActiveFilePath
         ) {
           return;
-        }
-
-        setSelectedFilePath(customEvent.detail.path);
-        setCurrentActiveFilePath(customEvent.detail.path);
-        scheduleOutlineSync();
-        console.log('[FileExplorer] 活动文件变化，更新文件树选中状�?', customEvent.detail.path);
       }
-    };
+
+      setSelectedFilePath(customEvent.detail.path);
+      setCurrentActiveFilePath(customEvent.detail.path);
+      if (isOutlineExpanded) {
+        scheduleOutlineSync();
+      }
+    }
+  };
 
     window.addEventListener('editor-active-file-change', handleActiveFileChange as EventListener);
 
     return () => {
       window.removeEventListener('editor-active-file-change', handleActiveFileChange as EventListener);
     };
-  }, [currentActiveFilePath, scheduleOutlineSync, selectedFilePath]);
+  }, [currentActiveFilePath, isOutlineExpanded, scheduleOutlineSync, selectedFilePath]);
 
   useEffect(() => {
     if (!selectedFilePath || selectedFilePath === rootFolderPath) {
@@ -1001,6 +1021,10 @@ export const FileExplorer: React.FC = () => {
 
   // 监听编辑器内容变化，更新大纲
   useEffect(() => {
+    if (!isOutlineExpanded) {
+      return;
+    }
+
     const handleContentChanged = (event: Event) => {
       const customEvent = event as CustomEvent<{ 
         content: string; 
@@ -1009,12 +1033,6 @@ export const FileExplorer: React.FC = () => {
       }>;
       
       const { content, language, path } = customEvent.detail;
-      console.log('[FileExplorer] 收到大纲更新事件:', {
-        contentLength: content?.length || 0,
-        language,
-        path,
-        hasContent: !!content && !!content.trim()
-      });
       updateOutlineState(content, language, path);
     };
 
@@ -1023,11 +1041,7 @@ export const FileExplorer: React.FC = () => {
     return () => {
       window.removeEventListener('editor:content-changed', handleContentChanged as EventListener);
     };
-  }, [updateOutlineState]);
-
-  useEffect(() => {
-    scheduleOutlineSync();
-  }, [scheduleOutlineSync]);
+  }, [isOutlineExpanded, updateOutlineState]);
 
   const loadFavoriteNotes = useCallback(async (): Promise<void> => {
     try {
@@ -1063,11 +1077,15 @@ export const FileExplorer: React.FC = () => {
 
   useEffect(() => {
     if (!isOutlineExpanded) {
+      clearPendingOutlineSync();
       return;
     }
 
     scheduleOutlineSync();
-  }, [isOutlineExpanded, scheduleOutlineSync]);
+    return () => {
+      clearPendingOutlineSync();
+    };
+  }, [clearPendingOutlineSync, isOutlineExpanded, scheduleOutlineSync]);
 
   useEffect(() => {
     if (!isBookmarkViewActive) {
@@ -1388,9 +1406,8 @@ export const FileExplorer: React.FC = () => {
     setOutlineExpanded(nextExpanded);
     if (nextExpanded) {
       setIsBookmarkViewActive(false);
-      scheduleOutlineSync();
     }
-  }, [isOutlineExpanded, scheduleOutlineSync, setOutlineExpanded]);
+  }, [isOutlineExpanded, setOutlineExpanded]);
 
   const bookmarkItems = useMemo<BookmarkNoteDisplayItem[]>(() => {
     const noteEntryMap = new Map<string, BookmarkEntryItem>();

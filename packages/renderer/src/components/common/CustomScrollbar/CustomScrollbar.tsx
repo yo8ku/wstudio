@@ -252,6 +252,10 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
 
     // 鼠标进入
     const handleMouseEnter = useCallback(() => {
+      if (!hasScrollableContentRef.current && !hasHScrollableContentRef.current) {
+        return;
+      }
+
       fadeIn();
     }, [fadeIn]);
 
@@ -615,7 +619,6 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
         }
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        onMouseMove={fadeInIfScrollable}
       >
         <div
           ref={contentRef}
@@ -628,8 +631,6 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
             onWheel?.(event);
             scheduleInteractionFadeOut();
           }}
-          onMouseEnter={fadeInIfScrollable}
-          onMouseMove={fadeInIfScrollable}
         >
           {children}
         </div>

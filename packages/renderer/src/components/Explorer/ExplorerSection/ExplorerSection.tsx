@@ -3,7 +3,7 @@
  * Handles section header rendering, expand state, and action buttons.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Icon } from '../../Icons/Icon';
 import './ExplorerSection.scss';
 
@@ -45,12 +45,6 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
   const useFolderIdleIcon = toggleIconMode === 'folder-on-idle';
   const useFormIdleIcon = toggleIconMode === 'form-on-idle';
   const useEditorsIdleIcon = toggleIconMode === 'editors-on-idle';
-
-  useEffect(() => {
-    if (!isControlled) {
-      onExpandChange?.(defaultExpanded);
-    }
-  }, []);
 
   const handleToggle = () => {
     const nextExpanded = !isExpanded;

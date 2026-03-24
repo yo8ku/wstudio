@@ -10,11 +10,12 @@ import { autocompletion, Completion, CompletionContext, startCompletion } from '
 import {
   EditorView,
   keymap,
-  highlightActiveLine,
+  lineNumbers,
   Decoration,
   DecorationSet,
   WidgetType,
   gutter,
+  gutterLineClass,
   GutterMarker,
   ViewPlugin,
   ViewUpdate,
@@ -60,6 +61,67 @@ export type EditorMode = 'source' | 'preview';
 
 const LARGE_FILE_CHARACTER_THRESHOLD = 250 * 1024;
 const LARGE_FILE_CHANGE_SYNC_DELAY_MS = 180;
+const activeLineDecoration = Decoration.line({ class: 'cm-activeLine' });
+
+class ActiveLineGutterMarker extends GutterMarker {
+  elementClass = 'cm-activeLineGutter';
+}
+
+const activeLineGutterMarker = new ActiveLineGutterMarker();
+
+const hasNonEmptySelection = (state: EditorState): boolean => {
+  return state.selection.ranges.some(range => !range.empty);
+};
+
+const buildActiveLineDecorations = (state: EditorState): DecorationSet => {
+  if (hasNonEmptySelection(state)) {
+    return Decoration.none;
+  }
+
+  const builder = new RangeSetBuilder<Decoration>();
+  let lastLineStart = -1;
+
+  for (const range of state.selection.ranges) {
+    const lineStart = state.doc.lineAt(range.head).from;
+    if (lineStart > lastLineStart) {
+      builder.add(lineStart, lineStart, activeLineDecoration);
+      lastLineStart = lineStart;
+    }
+  }
+
+  return builder.finish();
+};
+
+const activeLineHighlightExtension = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+
+  constructor(view: EditorView) {
+    this.decorations = buildActiveLineDecorations(view.state);
+  }
+
+  update(update: ViewUpdate): void {
+    if (update.docChanged || update.selectionSet) {
+      this.decorations = buildActiveLineDecorations(update.state);
+    }
+  }
+}, {
+  decorations: value => value.decorations
+});
+
+const activeLineGutterHighlightExtension = gutterLineClass.compute(['selection'], state => {
+  const markers: Range<GutterMarker>[] = [];
+  let lastLineStart = -1;
+
+  for (const range of state.selection.ranges) {
+    const lineStart = state.doc.lineAt(range.head).from;
+    if (lineStart > lastLineStart) {
+      markers.push(activeLineGutterMarker.range(lineStart));
+      lastLineStart = lineStart;
+    }
+  }
+
+  return RangeSet.of(markers);
+});
 
 const formatLargeFileApproximateSize = (characterCount: number): string => {
   if (characterCount >= 1024 * 1024) {
@@ -9222,8 +9284,11 @@ sequenceDiagram
     });
 
     // 閺嶈宓佸Ο鈥崇础閸愬啿鐣鹃弰顖氭儊娴ｈ法鏁ゆ０鍕潔鐟佸懘銈伴崳?
+    const lineNumberExtension = lineNumbers();
+
     let extensions = [
-      highlightActiveLine(),
+      activeLineHighlightExtension,
+      activeLineGutterHighlightExtension,
       history(),
       markdown(),
       autocompletion({
@@ -9258,6 +9323,7 @@ sequenceDiagram
       Prec.highest(colorDecorationsField),
       // 妫版粏澹婃０鍕潔鐟佸懘銈伴崳?
       colorPreviewDecorations,
+      lineNumberExtension,
       // 閹舵ê褰旂紒鍕彯娴滎噯绱欓崗澶嬬垼闁鑵戦弮鑸垫▔缁€铏瑰煑缁狙呮畱閹舵ê褰旈崶鐐垼閸滃苯鐡欑悰宀€娈戠紓鈺勭箻缁惧尅绱?
       foldGroupHighlightField,
       // 閹舵ê褰旈崝鐔诲厴閿涘牅绗夋担璺ㄦ暏 customFoldService閿涘矂浼╅崗宥勭瑢 markdown 鐟欙絾鐎介崳銊ュ暱缁愪緤绱?
@@ -9303,12 +9369,14 @@ sequenceDiagram
     // 妫板嫯顫嶅Ο鈥崇础濞ｈ濮為梾鎰 Markdown 鐠囶厽纭堕惃鍕棅妤楁澘娅?
     if (isLargeFileMode) {
       extensions = [
-        highlightActiveLine(),
+        activeLineHighlightExtension,
+        activeLineGutterHighlightExtension,
         history(),
         indentUnit.of('  '),
         customKeymap,
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         updateListener,
+        lineNumberExtension,
         EditorState.readOnly.of(!editable),
         EditorView.theme({
           '&': {

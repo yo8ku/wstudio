@@ -5,6 +5,13 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+const subscribeIpcChannel = (channel, listener) => {
+  ipcRenderer.on(channel, listener);
+  return () => {
+    ipcRenderer.removeListener(channel, listener);
+  };
+};
+
 // 暴露安全的 API 给渲染进程
 contextBridge.exposeInMainWorld('electron', {
   // IPC 渲染器通用接口
@@ -311,13 +318,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 窗口状态监听
   onWindowFocus: (callback) => {
-    ipcRenderer.on('window-focus', () => callback(true));
+    const listener = () => callback(true);
+    return subscribeIpcChannel('window-focus', listener);
   },
   onWindowBlur: (callback) => {
-    ipcRenderer.on('window-blur', () => callback(false));
+    const listener = () => callback(false);
+    return subscribeIpcChannel('window-blur', listener);
   },
   onWindowMaximizedStateChanged: (callback) => {
-    ipcRenderer.on('window-maximized-state-changed', (_event, isMaximized) => callback(isMaximized));
+    const listener = (_event, isMaximized) => callback(isMaximized);
+    return subscribeIpcChannel('window-maximized-state-changed', listener);
   },
 
   // 打开视频文件对话框

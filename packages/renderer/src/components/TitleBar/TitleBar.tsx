@@ -66,17 +66,29 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   };
 
   useEffect(() => {
+    const cleanups: Array<() => void> = [];
+
     if (window.electronAPI?.onWindowFocus) {
-      window.electronAPI.onWindowFocus(() => setIsWindowActive(true));
+      cleanups.push(window.electronAPI.onWindowFocus(() => setIsWindowActive(true)));
     }
 
     if (window.electronAPI?.onWindowBlur) {
-      window.electronAPI.onWindowBlur(() => setIsWindowActive(false));
+      cleanups.push(window.electronAPI.onWindowBlur(() => setIsWindowActive(false)));
     }
+
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
   }, []);
 
   useEffect(() => {
     let isMounted = true;
+    const cleanupWindowMaximizedStateChanged = window.electronAPI?.onWindowMaximizedStateChanged?.((isMaximized) => {
+      if (isMounted) {
+        setIsWindowMaximized(isMaximized);
+      }
+    });
+
     const handleWindowResize = (): void => {
       if (!isMounted) {
         return;
@@ -87,17 +99,10 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     void syncWindowMaximizedState();
     window.addEventListener('resize', handleWindowResize);
 
-    if (window.electronAPI?.onWindowMaximizedStateChanged) {
-      window.electronAPI.onWindowMaximizedStateChanged((isMaximized) => {
-        if (isMounted) {
-          setIsWindowMaximized(isMaximized);
-        }
-      });
-    }
-
     return () => {
       isMounted = false;
       window.removeEventListener('resize', handleWindowResize);
+      cleanupWindowMaximizedStateChanged?.();
     };
   }, []);
 
