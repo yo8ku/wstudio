@@ -159,6 +159,20 @@ contextBridge.exposeInMainWorld('electron', {
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell:open-external', url)
   },
+
+  // 书签分组弹出选择器 API
+  bookmarkGroupPicker: {
+    prepare: () => ipcRenderer.invoke('bookmark-group-picker:prepare'),
+    open: (request) => ipcRenderer.invoke('bookmark-group-picker:open', request),
+    getState: () => ipcRenderer.invoke('bookmark-group-picker:get-state'),
+    select: (groupId) => ipcRenderer.invoke('bookmark-group-picker:select', groupId),
+    cancel: () => ipcRenderer.invoke('bookmark-group-picker:cancel'),
+    onStateChanged: (callback) => {
+      const subscription = (_event, nextState) => callback(nextState);
+      ipcRenderer.on('bookmark-group-picker:state-changed', subscription);
+      return () => ipcRenderer.removeListener('bookmark-group-picker:state-changed', subscription);
+    }
+  },
   
   // 表单 API
   form: {
@@ -219,6 +233,13 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   createNewWindow: () => ipcRenderer.invoke('window:create-new-instance'),
+  openNoteInNewWindow: (payload) => ipcRenderer.invoke('window:open-note-in-new-window', payload),
+  onOpenNoteInNewWindow: (callback) => {
+    const subscription = (_event, payload) => callback(payload);
+    ipcRenderer.on('window:open-note-in-new-window', subscription);
+    return () => ipcRenderer.removeListener('window:open-note-in-new-window', subscription);
+  },
+  notifyEditorReady: () => ipcRenderer.send('window:editor-ready'),
 });
 
 // 保持向后兼容

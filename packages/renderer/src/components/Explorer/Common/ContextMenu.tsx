@@ -22,6 +22,7 @@ export interface ContextMenuProps {
   items: ContextMenuItem[];
   position: { x: number; y: number };
   horizontalAnchor?: 'left' | 'right';
+  className?: string;
   onClose: () => void;
 }
 
@@ -173,6 +174,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   items,
   position,
   horizontalAnchor = 'left',
+  className = '',
   onClose,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -508,8 +510,22 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   return createPortal(
     <>
       <div
+        className="explorer-context-menu-overlay"
+        aria-hidden="true"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }}
+      />
+      <div
         ref={menuRef}
-        className="explorer-context-menu"
+        className={`explorer-context-menu${className ? ` ${className}` : ''}`}
         tabIndex={-1}
         style={{
           position: 'fixed',

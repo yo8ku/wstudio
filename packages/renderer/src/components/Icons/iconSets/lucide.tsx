@@ -20,6 +20,7 @@ import {
   LuBolt as Bolt,
   LuBold as Bold,
   LuBook as Book,
+  LuBookmark as Bookmark,
   LuBookMarked as BookMarked,
   LuBookOpen as BookOpen,
   LuBookOpenText as BookOpenText,
@@ -183,6 +184,7 @@ registerIconNames(['explorer'], FolderTree);
 registerIconNames(['search'], Search);
 registerIconNames(['source-control', 'git', 'git-branch'], GitBranch);
 registerIconNames(['extensions', 'extensions-manager', 'components', 'extension', 'component'], Blocks);
+registerIconNames(['bookmark'], Bookmark);
 registerIconNames(['knowledge-base'], BookMarked);
 registerIconNames(['knowledge-base-book'], BookOpenText);
 registerIconNames(['ai-model'], Bot);

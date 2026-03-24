@@ -28,6 +28,54 @@
   }
 }
 
+.explorer-context-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: transparent;
+}
+
+.explorer-context-menu.bookmark-context-menu {
+  min-width: 172px;
+  font-size: 11px;
+
+  .explorer-context-menu-header {
+    gap: 3px;
+    padding: 6px 10px;
+  }
+
+  .explorer-context-menu-content {
+    padding: 3px;
+  }
+
+  .explorer-context-menu-item {
+    gap: 6px;
+    height: 24px;
+    padding: 4px 10px;
+    border-radius: 3px;
+  }
+
+  .explorer-context-menu-icon {
+    width: 14px;
+    min-width: 14px;
+  }
+
+  .explorer-context-menu-arrow,
+  .explorer-context-menu-check,
+  .explorer-context-menu-custom-inline {
+    margin-left: 8px;
+  }
+
+  .explorer-context-menu-separator {
+    margin: 3px 8px;
+  }
+
+  .explorer-context-menu-custom {
+    padding: 4px 10px;
+    border-radius: 3px;
+  }
+}
+
 .explorer-context-menu-header {
   display: flex;
   align-items: center;

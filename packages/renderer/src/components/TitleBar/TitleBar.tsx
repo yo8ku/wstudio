@@ -20,6 +20,7 @@ interface TitleBarProps {
   onTogglePanel?: () => void;
   isSidebarOpen?: boolean;
   isTerminalPanelOpen?: boolean;
+  windowMode?: 'full' | 'editor-only';
 }
 
 interface MenuItem {
@@ -45,7 +46,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   onToggleAIPanel,
   onTogglePanel,
   isSidebarOpen = false,
-  isTerminalPanelOpen = false
+  isTerminalPanelOpen = false,
+  windowMode = 'full'
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [openSubmenus, setOpenSubmenus] = useState<string[]>([]);
@@ -356,86 +358,92 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   return (
     <div className={`titlebar${!isWindowActive ? ' inactive' : ''}`}>
       <div className="titlebar-drag-region">
-        <div className="titlebar-icon">
-          <div
-            className="titlebar-sidebar-toggle"
-            onClick={onToggleSidebar}
-            title="Toggle sidebar"
-            aria-label="Toggle sidebar"
-          >
-            <Icon iconSet="ui" name="panel-left" size={18} />
-          </div>
-        </div>
-
-        <div className="titlebar-menu" ref={menuRef}>
-          {menuConfig.map(menu => (
+        {windowMode === 'full' && (
+          <div className="titlebar-icon">
             <div
-              key={menu.title}
-              className="titlebar-menu-item"
-              onMouseEnter={() => handleMenuHoverEnter(menu.title)}
+              className="titlebar-sidebar-toggle"
+              onClick={onToggleSidebar}
+              title="Toggle sidebar"
+              aria-label="Toggle sidebar"
             >
-              <div
-                className={`titlebar-menu-button ${activeMenu === menu.title ? 'active' : ''}`}
-                onClick={() => handleMenuClick(menu.title)}
-              >
-                {menu.title}
-              </div>
-
-              {activeMenu === menu.title && (
-                <div className="titlebar-dropdown">
-                  {menu.items.map((item, index) => renderMenuItem(item, index))}
-                </div>
-              )}
+              <Icon iconSet="ui" name="panel-left" size={18} />
             </div>
-          ))}
-        </div>
+          </div>
+        )}
+
+        {windowMode === 'full' && (
+          <div className="titlebar-menu" ref={menuRef}>
+            {menuConfig.map(menu => (
+              <div
+                key={menu.title}
+                className="titlebar-menu-item"
+                onMouseEnter={() => handleMenuHoverEnter(menu.title)}
+              >
+                <div
+                  className={`titlebar-menu-button ${activeMenu === menu.title ? 'active' : ''}`}
+                  onClick={() => handleMenuClick(menu.title)}
+                >
+                  {menu.title}
+                </div>
+
+                {activeMenu === menu.title && (
+                  <div className="titlebar-dropdown">
+                    {menu.items.map((item, index) => renderMenuItem(item, index))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       
 
       <div className="titlebar-controls">
-        <div className="titlebar-control-group titlebar-utility-controls">
-          <div
-            className="titlebar-ai-button"
-            onClick={onToggleAIPanel}
-            onMouseEnter={() => setHoveredControl('ai-assistant')}
-            onMouseLeave={handleControlMouseLeave}
-            style={getTitleBarControlStyle('ai-assistant')}
-            title="AI助手"
-          >
-            <Icon name="ai-assistant" size={TITLEBAR_ICON_SIZE} />
-          </div>
+        {windowMode === 'full' && (
+          <div className="titlebar-control-group titlebar-utility-controls">
+            <div
+              className="titlebar-ai-button"
+              onClick={onToggleAIPanel}
+              onMouseEnter={() => setHoveredControl('ai-assistant')}
+              onMouseLeave={handleControlMouseLeave}
+              style={getTitleBarControlStyle('ai-assistant')}
+              title="AI助手"
+            >
+              <Icon name="ai-assistant" size={TITLEBAR_ICON_SIZE} />
+            </div>
 
-          <div
-            className="titlebar-ai-button"
-            onClick={onToggleSidebar}
-            onMouseEnter={() => setHoveredControl('sidebar')}
-            onMouseLeave={handleControlMouseLeave}
-            style={getTitleBarControlStyle('sidebar')}
-            title="侧边栏"
-          >
-            {isSidebarOpen ? (
-              <VscLayoutSidebarLeft size={TITLEBAR_ICON_SIZE} />
-            ) : (
-              <VscLayoutSidebarLeftOff size={TITLEBAR_ICON_SIZE} />
-            )}
-          </div>
+            <div
+              className="titlebar-ai-button"
+              onClick={onToggleSidebar}
+              onMouseEnter={() => setHoveredControl('sidebar')}
+              onMouseLeave={handleControlMouseLeave}
+              style={getTitleBarControlStyle('sidebar')}
+              title="侧边栏"
+            >
+              {isSidebarOpen ? (
+                <VscLayoutSidebarLeft size={TITLEBAR_ICON_SIZE} />
+              ) : (
+                <VscLayoutSidebarLeftOff size={TITLEBAR_ICON_SIZE} />
+              )}
+            </div>
 
-          <div
-            className="titlebar-ai-button"
-            onClick={onTogglePanel}
-            onMouseEnter={() => setHoveredControl('terminal')}
-            onMouseLeave={handleControlMouseLeave}
-            style={getTitleBarControlStyle('terminal')}
-            title="终端"
-          >
-            {isTerminalPanelOpen ? (
-              <VscLayoutPanel size={TITLEBAR_ICON_SIZE} />
-            ) : (
-              <VscLayoutPanelOff size={TITLEBAR_ICON_SIZE} />
-            )}
+            <div
+              className="titlebar-ai-button"
+              onClick={onTogglePanel}
+              onMouseEnter={() => setHoveredControl('terminal')}
+              onMouseLeave={handleControlMouseLeave}
+              style={getTitleBarControlStyle('terminal')}
+              title="终端"
+            >
+              {isTerminalPanelOpen ? (
+                <VscLayoutPanel size={TITLEBAR_ICON_SIZE} />
+              ) : (
+                <VscLayoutPanelOff size={TITLEBAR_ICON_SIZE} />
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="titlebar-control-group titlebar-window-controls">
           <div

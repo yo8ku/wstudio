@@ -42,8 +42,10 @@ export type { ExplorerSectionProps, ActionButton } from './ExplorerSection';
 
 // 通用组件
 export { TreeView } from './Common/TreeView';
+export { TreeChildren, TreeNodeRow } from './Common/TreeNode';
 export { ContextMenu } from './Common/ContextMenu';
 export { InlineInput } from './Common/InlineInput';
 export type { TreeViewProps } from './Common/TreeView';
+export type { TreeChildrenProps, TreeNodeRowProps } from './Common/TreeNode';
 export type { ContextMenuProps, ContextMenuItem } from './Common/ContextMenu';
 export type { InlineInputProps } from './Common/InlineInput';

@@ -66,7 +66,8 @@ export default defineConfig({
     rollupOptions: {
       external: ['electron', 'jsdom', 'fs/promises', 'path', 'crypto', 'child_process', 'chokidar', 'events'],
       input: {
-        main: path.resolve(__dirname, 'index.html')
+        main: path.resolve(__dirname, 'index.html'),
+        bookmarkGroupPicker: path.resolve(__dirname, 'bookmark-group-picker.html'),
       }
     }
   },

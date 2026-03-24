@@ -75,6 +75,13 @@ export interface SelectProps {
   onDropdownKeyDown?: React.KeyboardEventHandler<HTMLElement>;
   onKeyboardNavigatingChange?: (isKeyboardNavigating: boolean) => void;
   useCustomScrollbar?: boolean;
+  showSelectionIndicator?: boolean;
+  fitViewportHeight?: boolean;
+  viewportPadding?: number;
+  maxMenuHeight?: number;
+  customScrollbarDefaultOpacity?: number;
+  customScrollbarFadeOutDelay?: number;
+  customScrollbarShowOnMount?: boolean;
 }
 
 /**
@@ -104,6 +111,13 @@ export const Select: React.FC<SelectProps> = ({
   onDropdownKeyDown,
   onKeyboardNavigatingChange,
   useCustomScrollbar = false,
+  showSelectionIndicator = true,
+  fitViewportHeight = false,
+  viewportPadding = 8,
+  maxMenuHeight,
+  customScrollbarDefaultOpacity,
+  customScrollbarFadeOutDelay,
+  customScrollbarShowOnMount = false,
 }) => {
   // 濡傛灉鎻愪緵浜?open 灞炴€э紝浣跨敤鍙楁帶妯″紡锛涘惁鍒欎娇鐢ㄥ唴閮ㄧ姸鎬?
   const [internalIsOpen, setInternalIsOpen] = useState(false);
@@ -132,6 +146,9 @@ export const Select: React.FC<SelectProps> = ({
       ? (customScrollbarRef.current?.getContentElement() ?? null)
       : menuListRef.current
   ), [useCustomScrollbar]);
+  const normalizedMaxMenuHeight = typeof maxMenuHeight === 'number' && Number.isFinite(maxMenuHeight)
+    ? Math.max(maxMenuHeight, 120)
+    : null;
 
   // 璁＄畻涓嬫媺鑿滃崟浣嶇疆
   const updatePosition = useCallback((providedRect?: DOMRect) => {
@@ -168,7 +185,14 @@ export const Select: React.FC<SelectProps> = ({
     // 璁＄畻鍙敤绌洪棿锛堝瀭鐩存柟鍚戯級
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    const edgeSpacing = 4; // 杈圭紭闂磋窛锛堥槻姝㈣彍鍗曡创杈癸級
+    const edgeSpacing = Math.max(viewportPadding, 4); // 杈圭紭闂磋窛锛堥槻姝㈣彍鍗曡创杈癸級
+    const maxViewportHeight = Math.max(window.innerHeight - edgeSpacing * 2, 120);
+    if (normalizedMaxMenuHeight !== null) {
+      menuHeight = Math.min(menuHeight, normalizedMaxMenuHeight);
+    }
+    if (fitViewportHeight) {
+      menuHeight = Math.min(menuHeight, maxViewportHeight);
+    }
 
     // 鍒ゆ柇搴旇鍚戜笂杩樻槸鍚戜笅鏄剧ず
     // 濡傛灉搴曢儴绌洪棿涓嶅涓斾笂鏂圭┖闂磋冻澶燂紝鍒欏悜涓婃樉绀?
@@ -214,17 +238,23 @@ export const Select: React.FC<SelectProps> = ({
       leftPosition = Math.max(edgeSpacing, window.innerWidth - menuWidth - edgeSpacing);
     }
 
+    const topPosition = calculatedPlacement === 'top'
+      ? rect.top - menuHeight - menuGap
+      : rect.bottom + menuGap;
+    const boundedTop = Math.min(
+      Math.max(topPosition, edgeSpacing),
+      Math.max(edgeSpacing, window.innerHeight - menuHeight - edgeSpacing),
+    );
+
     setPosition({
-      top: calculatedPlacement === 'top' 
-        ? rect.top - menuHeight - menuGap  // fixed 瀹氫綅锛氱洿鎺ヤ娇鐢ㄨ鍙ｅ潗鏍?
-        : rect.bottom + menuGap,
+      top: boundedTop,
       left: leftPosition,
       width: rect.width,
     });
     
     // 鏍囪浣嶇疆宸茶绠楀畬鎴?
     setIsPositionReady(true);
-  }, [placement, showSearch, align, menuGap, getMenuListElement]);
+  }, [placement, showSearch, align, menuGap, getMenuListElement, fitViewportHeight, normalizedMaxMenuHeight, viewportPadding]);
 
   // 鎵撳紑鑿滃崟鏃舵洿鏂颁綅缃?
   useLayoutEffect(() => {
@@ -568,7 +598,9 @@ export const Select: React.FC<SelectProps> = ({
         data-type={item.dataType}
         data-depth={item.depth !== undefined ? item.depth : undefined}
       >
-        <span className="select-item-check">{isSelected && <Icon name="check" size={14} />}</span>
+        {showSelectionIndicator && (
+          <span className="select-item-check">{isSelected && <Icon name="check" size={14} />}</span>
+        )}
         {item.icon && (
           <span 
             className={`select-item-icon ${item.expandValue ? 'expandable' : ''}`}
@@ -616,6 +648,18 @@ export const Select: React.FC<SelectProps> = ({
   const renderDropdownContent = () => {
     if (!isOpen) return null;
 
+    const contentMaxHeight = normalizedMaxMenuHeight !== null
+      ? (
+        fitViewportHeight
+          ? `min(calc(100vh - ${viewportPadding * 2}px), ${normalizedMaxMenuHeight}px)`
+          : `${normalizedMaxMenuHeight}px`
+      )
+      : (
+        fitViewportHeight
+          ? `calc(100vh - ${viewportPadding * 2}px)`
+          : undefined
+      );
+
     return createPortal(
       <div
         ref={contentRef}
@@ -628,6 +672,7 @@ export const Select: React.FC<SelectProps> = ({
           '--select-content-width': `${position.width}px`,
           opacity: isPositionReady ? 1 : 0,
           visibility: isPositionReady ? 'visible' : 'hidden',
+          ...(contentMaxHeight ? { maxHeight: contentMaxHeight } : {}),
           ...(fixedHeight ? { height: `${fixedHeight}px` } : {}),
         } as React.CSSProperties}
       >
@@ -679,6 +724,9 @@ export const Select: React.FC<SelectProps> = ({
             ref={customScrollbarRef}
             className="select-list-custom-scrollbar"
             scrollbarWidth={6}
+            defaultOpacity={customScrollbarDefaultOpacity}
+            fadeOutDelay={customScrollbarFadeOutDelay}
+            showOnMount={customScrollbarShowOnMount}
           >
             {renderMenuContent()}
           </CustomScrollbar>

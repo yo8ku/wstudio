@@ -3,10 +3,11 @@
  * Renders workspace files and folders, header actions, and node interactions.
  */
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import ExplorerSection, { type ActionButton } from '../ExplorerSection';
 import { FileTreeNode, FileTreeCallbacks } from './types';
 import { InlineInput } from '../Common/InlineInput';
+import { TreeChildren, TreeNodeRow } from '../Common/TreeNode';
 import { CustomScrollbar, CustomScrollbarRef } from '../../common/CustomScrollbar';
 import { Icon } from '../../Icons/Icon';
 import { useExplorerStore } from '../../../stores/explorerStore';
@@ -49,6 +50,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   const scrollbarRef = useRef<CustomScrollbarRef>(null);
   const isRestoringScrollRef = useRef<boolean>(false);
   const scrollSnapFrameRef = useRef<number | null>(null);
+  const treeAnchorRef = useRef<{ path: string; offsetTop: number } | null>(null);
   const { fileTreeScrollTop, setFileTreeScrollTop, workspacePath } = useExplorerStore();
 
   const handleScroll = useCallback((scrollTop: number) => {
@@ -69,6 +71,21 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     }
 
     contentElement.scrollTop = roundedScrollTop;
+  }, []);
+
+  const storeTreeAnchor = useCallback((path: string, target: HTMLDivElement): void => {
+    const contentElement = scrollbarRef.current?.getContentElement();
+    if (!contentElement) {
+      return;
+    }
+
+    const contentRect = contentElement.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+
+    treeAnchorRef.current = {
+      path,
+      offsetTop: targetRect.top - contentRect.top,
+    };
   }, []);
 
   useEffect(() => {
@@ -95,6 +112,45 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
 
   useEffect(() => {
     scrollbarRef.current?.updateScrollbar();
+  }, [nodes]);
+
+  useLayoutEffect(() => {
+    const pendingAnchor = treeAnchorRef.current;
+    if (!pendingAnchor) {
+      return;
+    }
+
+    const contentElement = scrollbarRef.current?.getContentElement();
+    if (!contentElement) {
+      treeAnchorRef.current = null;
+      return;
+    }
+
+    const targetElement = Array.from(
+      contentElement.querySelectorAll<HTMLElement>('[data-file-path]'),
+    ).find((element) => element.dataset.filePath === pendingAnchor.path);
+
+    treeAnchorRef.current = null;
+
+    if (!targetElement) {
+      return;
+    }
+
+    const contentRect = contentElement.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+    const delta = targetRect.top - contentRect.top - pendingAnchor.offsetTop;
+
+    if (Math.abs(delta) < 0.5) {
+      return;
+    }
+
+    isRestoringScrollRef.current = true;
+    contentElement.scrollTop += delta;
+    scrollbarRef.current?.updateScrollbar();
+
+    window.requestAnimationFrame(() => {
+      isRestoringScrollRef.current = false;
+    });
   }, [nodes]);
 
   useEffect(() => {
@@ -219,47 +275,48 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
 
     if (node.isCreating) {
       return (
-        <div key={`creating-${node.creatingType}`} className="file-tree-node">
-          <div
-            className="file-tree-node-content creating"
-            style={{ paddingLeft: `${(node.depth || 0) * 12 + 8}px` }}
-            onClick={(event) => {
-              event.stopPropagation();
-              event.preventDefault();
-            }}
-            onMouseDown={(event) => {
-              event.stopPropagation();
-              event.preventDefault();
-            }}
-            onMouseUp={(event) => {
-              event.stopPropagation();
-              event.preventDefault();
-            }}
-          >
-            <span className="file-tree-chevron" />
+        <TreeNodeRow
+          key={`creating-${node.creatingType}`}
+          depth={node.depth || 0}
+          creating={true}
+          onClick={(event) => {
+            event.stopPropagation();
+            event.preventDefault();
+          }}
+          onMouseDown={(event) => {
+            event.stopPropagation();
+            event.preventDefault();
+          }}
+          onMouseUp={(event) => {
+            event.stopPropagation();
+            event.preventDefault();
+          }}
+          leading={<span className="file-tree-chevron" />}
+          icon={(
             <Icon
               iconSet="ui"
               name={node.creatingType === 'folder' ? 'folder' : 'file'}
               size={16}
               className="file-tree-icon"
             />
-            <InlineInput
-              placeholder={node.creatingType === 'folder' ? '\u65b0\u5efa\u6587\u4ef6\u5939' : '\u65b0\u5efa\u6587\u4ef6'}
-              onConfirm={(name) => callbacks?.onCreateConfirm?.(node, name)}
-              onCancel={() => callbacks?.onCreateCancel?.(node)}
-              autoFocus={true}
-            />
-          </div>
-        </div>
+          )}
+        >
+          <InlineInput
+            placeholder={node.creatingType === 'folder' ? '\u65b0\u5efa\u6587\u4ef6\u5939' : '\u65b0\u5efa\u6587\u4ef6'}
+            onConfirm={(name) => callbacks?.onCreateConfirm?.(node, name)}
+            onCancel={() => callbacks?.onCreateCancel?.(node)}
+            autoFocus={true}
+          />
+        </TreeNodeRow>
       );
     }
 
     if (node.isEditing) {
       return (
-        <div key={node.path} className="file-tree-node">
-          <div
-            className="file-tree-node-content editing"
-            style={{ paddingLeft: `${(node.depth || 0) * 12 + 8}px` }}
+        <React.Fragment key={node.path}>
+          <TreeNodeRow
+            depth={node.depth || 0}
+            editing={true}
             onClick={(event) => {
               event.stopPropagation();
               event.preventDefault();
@@ -268,9 +325,9 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
               event.stopPropagation();
               event.preventDefault();
             }}
+            leading={node.isDirectory ? renderChevron(Boolean(node.isExpanded)) : <span className="file-tree-chevron" />}
+            icon={renderNodeIcon(node)}
           >
-            {node.isDirectory ? renderChevron(Boolean(node.isExpanded)) : <span className="file-tree-chevron" />}
-            {renderNodeIcon(node)}
             <InlineInput
               initialValue={node.name}
               placeholder="\u8f93\u5165\u540d\u79f0"
@@ -278,13 +335,13 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
               onCancel={() => callbacks?.onRename?.(node, node.name)}
               autoFocus={true}
             />
-          </div>
+          </TreeNodeRow>
           {node.isDirectory && node.isExpanded && node.children && (
-            <div className="file-tree-children">
+            <TreeChildren>
               {node.children.map((child) => renderNode(child))}
-            </div>
+            </TreeChildren>
           )}
-        </div>
+        </React.Fragment>
       );
     }
 
@@ -292,16 +349,16 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     const parentDepth = depth > 0 ? depth - 1 : 0;
 
     return (
-      <div key={node.path} className="file-tree-node" data-parent-depth={parentDepth}>
-        <div
-          className={`file-tree-node-content ${isSelected ? 'selected' : ''} ${
-            isContextMenuTarget ? 'context-menu-active' : ''
-          }`}
-          style={{ paddingLeft: `${depth * 12 + 8}px` }}
-          data-depth={depth}
-          data-file-path={node.path}
-          onClick={() => {
+      <React.Fragment key={node.path}>
+        <TreeNodeRow
+          depth={depth}
+          parentDepth={parentDepth}
+          selected={isSelected}
+          contextMenuActive={isContextMenuTarget}
+          dataFilePath={node.path}
+          onClick={(event) => {
             if (node.isDirectory) {
+              storeTreeAnchor(node.path, event.currentTarget);
               callbacks?.onFileClick?.(node);
               callbacks?.onFolderToggle?.(node);
               return;
@@ -315,17 +372,17 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
             }
           }}
           onContextMenu={(event) => callbacks?.onContextMenu?.(node, event)}
+          leading={node.isDirectory ? renderChevron(Boolean(node.isExpanded)) : <span className="file-tree-chevron" />}
+          icon={renderNodeIcon(node)}
         >
-          {node.isDirectory ? renderChevron(Boolean(node.isExpanded)) : <span className="file-tree-chevron" />}
-          {renderNodeIcon(node)}
           <span className="file-tree-name">{node.name}</span>
-        </div>
+        </TreeNodeRow>
         {node.isDirectory && node.isExpanded && node.children && (
-          <div className="file-tree-children" data-parent-depth={depth}>
+          <TreeChildren parentDepth={depth}>
             {node.children.map((child) => renderNode(child))}
-          </div>
+          </TreeChildren>
         )}
-      </div>
+      </React.Fragment>
     );
   };
 

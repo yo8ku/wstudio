@@ -37,6 +37,8 @@ export interface CustomScrollbarProps {
   onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
   /** 滚轮事件 */
   onWheel?: (event: React.WheelEvent<HTMLDivElement>) => void;
+  alwaysVisible?: boolean;
+  showOnMount?: boolean;
 }
 
 export interface CustomScrollbarRef {
@@ -72,9 +74,12 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
       onContextMenu,
       onClick,
       onWheel,
+      alwaysVisible = false,
+      showOnMount = false,
     },
     ref
   ) => {
+    const wrapperRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const trackRef = useRef<HTMLDivElement>(null);
     const thumbRef = useRef<HTMLDivElement>(null);
@@ -83,6 +88,7 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
     const scrollbarUpdateFrameRef = useRef<number | null>(null);
     const fadeTimerRef = useRef<number | null>(null);
     const animationFrameRef = useRef<number | null>(null);
+    const interactionFadeTimerRef = useRef<number | null>(null);
     const isThumbDraggingRef = useRef(false);
     const isHThumbDraggingRef = useRef(false);
     const dragStartYRef = useRef(0);
@@ -90,13 +96,14 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
     const dragStartScrollTopRef = useRef(0);
     const dragStartScrollLeftRef = useRef(0);
 
-    const [scrollbarOpacity, setScrollbarOpacity] = useState(0);
+    const [scrollbarOpacity, setScrollbarOpacity] = useState(alwaysVisible ? defaultOpacity : 0);
     const [hasScrollableContent, setHasScrollableContent] = useState(false);
     const [hasHScrollableContent, setHasHScrollableContent] = useState(false);
     const [isThumbDragging, setIsThumbDragging] = useState(false);
     const [isHThumbDragging, setIsHThumbDragging] = useState(false);
     const hasScrollableContentRef = useRef(false);
     const hasHScrollableContentRef = useRef(false);
+    const didShowOnMountRef = useRef(false);
     
     const showVertical = direction === 'vertical' || direction === 'both';
     const showHorizontal = direction === 'horizontal' || direction === 'both';
@@ -107,6 +114,10 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
         clearTimeout(fadeTimerRef.current);
         fadeTimerRef.current = null;
       }
+      if (interactionFadeTimerRef.current) {
+        clearTimeout(interactionFadeTimerRef.current);
+        interactionFadeTimerRef.current = null;
+      }
       if (animationFrameRef.current) {
         clearTimeout(animationFrameRef.current);
         animationFrameRef.current = null;
@@ -116,6 +127,11 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
 
     // 淡出：逐步降低透明度
     const fadeOut = useCallback(() => {
+      if (alwaysVisible) {
+        setScrollbarOpacity(defaultOpacity);
+        return;
+      }
+
       const step = 0.01;
       const interval = 10;
       let currentOpacity = defaultOpacity;
@@ -141,7 +157,7 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
       } else {
         animate();
       }
-    }, [defaultOpacity, fadeOutDelay]);
+    }, [alwaysVisible, defaultOpacity, fadeOutDelay]);
 
     // 更新是否有可滚动内容
     const updateHasScrollableContent = useCallback((value: boolean) => {
@@ -241,11 +257,82 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
 
     // 鼠标离开
     const handleMouseLeave = useCallback(() => {
+      if (alwaysVisible) {
+        return;
+      }
+
       if (isThumbDraggingRef.current || isHThumbDraggingRef.current) {
         return;
       }
       fadeOut();
-    }, [fadeOut]);
+    }, [alwaysVisible, fadeOut]);
+
+    const scheduleInteractionFadeOut = useCallback(() => {
+      if (alwaysVisible) {
+        setScrollbarOpacity(defaultOpacity);
+        return;
+      }
+
+      if (interactionFadeTimerRef.current) {
+        clearTimeout(interactionFadeTimerRef.current);
+        interactionFadeTimerRef.current = null;
+      }
+
+      interactionFadeTimerRef.current = window.setTimeout(() => {
+        const wrapperElement = wrapperRef.current;
+        if (!wrapperElement) {
+          return;
+        }
+
+        if (
+          wrapperElement.matches(':hover') ||
+          isThumbDraggingRef.current ||
+          isHThumbDraggingRef.current
+        ) {
+          return;
+        }
+
+        fadeOut();
+      }, Math.max(fadeOutDelay, 180)) as number;
+    }, [alwaysVisible, defaultOpacity, fadeOut, fadeOutDelay]);
+
+    const fadeInIfScrollable = useCallback(() => {
+      if (!hasScrollableContentRef.current && !hasHScrollableContentRef.current) {
+        return;
+      }
+
+      fadeIn();
+    }, [fadeIn]);
+
+    useEffect(() => {
+      setScrollbarOpacity(alwaysVisible ? defaultOpacity : 0);
+    }, [alwaysVisible, defaultOpacity]);
+
+    useEffect(() => {
+      if (!showOnMount || alwaysVisible || didShowOnMountRef.current) {
+        return;
+      }
+
+      if (!hasScrollableContent && !hasHScrollableContent) {
+        return;
+      }
+
+      didShowOnMountRef.current = true;
+      fadeIn();
+    }, [alwaysVisible, fadeIn, hasHScrollableContent, hasScrollableContent, showOnMount]);
+
+    useEffect(() => {
+      const wrapperElement = wrapperRef.current;
+      if (!wrapperElement) {
+        return;
+      }
+
+      if (!wrapperElement.matches(':hover')) {
+        return;
+      }
+
+      fadeInIfScrollable();
+    }, [fadeInIfScrollable, hasHScrollableContent, hasScrollableContent]);
 
     // 拖动滚动条
     const handleThumbMouseMove = useCallback(
@@ -420,8 +507,10 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
 
       const handleScroll = () => {
         if (!contentElement) return;
+        fadeIn();
         onScroll?.(contentElement.scrollTop);
         scheduleScrollbarUpdate();
+        scheduleInteractionFadeOut();
       };
 
       contentElement.addEventListener('scroll', handleScroll, { passive: true });
@@ -429,7 +518,7 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
       return () => {
         contentElement.removeEventListener('scroll', handleScroll);
       };
-    }, [scheduleScrollbarUpdate, onScroll]);
+    }, [fadeIn, scheduleInteractionFadeOut, scheduleScrollbarUpdate, onScroll]);
 
     // 监听内容变化
     useEffect(() => {
@@ -461,6 +550,9 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
       return () => {
         if (fadeTimerRef.current) {
           clearTimeout(fadeTimerRef.current);
+        }
+        if (interactionFadeTimerRef.current) {
+          clearTimeout(interactionFadeTimerRef.current);
         }
         if (animationFrameRef.current) {
           clearTimeout(animationFrameRef.current);
@@ -513,6 +605,7 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
 
     return (
       <div
+        ref={wrapperRef}
         className={`custom-scrollbar-wrapper ${className} ${showHorizontal ? 'custom-scrollbar-wrapper--horizontal' : ''}`}
         style={
           {
@@ -522,6 +615,7 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
         }
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onMouseMove={fadeInIfScrollable}
       >
         <div
           ref={contentRef}
@@ -529,7 +623,13 @@ export const CustomScrollbar = forwardRef<CustomScrollbarRef, CustomScrollbarPro
           style={contentOverflowStyle}
           onContextMenu={onContextMenu}
           onClick={onClick}
-          onWheel={onWheel}
+          onWheel={(event) => {
+            fadeIn();
+            onWheel?.(event);
+            scheduleInteractionFadeOut();
+          }}
+          onMouseEnter={fadeInIfScrollable}
+          onMouseMove={fadeInIfScrollable}
         >
           {children}
         </div>

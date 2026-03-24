@@ -4,6 +4,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BookmarkGroupPickerWindow } from './components/Popup/BookmarkGroupPickerWindow/BookmarkGroupPickerWindow';
 import { MainLayout } from './components/Layout/MainLayout';
 import { initIconSystem } from './components/Icons';
 import { NotificationContainer } from './components/Notification';
@@ -13,6 +14,8 @@ import './styles/index.scss';
 import './styles/aiResponseFormatter.scss';
 
 type ReactRoot = ReturnType<typeof ReactDOM.createRoot>;
+const popupView = new URLSearchParams(window.location.search).get('popup');
+const isBookmarkGroupPickerPopup = popupView === 'bookmark-group-picker';
 
 declare global {
   interface Window {
@@ -149,6 +152,10 @@ function initializeRecoveryService(): void {
 }
 
 const App: React.FC = () => {
+  if (isBookmarkGroupPickerPopup) {
+    return <BookmarkGroupPickerWindow />;
+  }
+
   return (
     <>
       <MainLayout />
@@ -164,7 +171,9 @@ clearOldBackgroundCover();
 installSvgCleanup();
 installDevtoolsShortcut();
 initIconSystem();
-initializeRecoveryService();
+if (!isBookmarkGroupPickerPopup) {
+  initializeRecoveryService();
+}
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

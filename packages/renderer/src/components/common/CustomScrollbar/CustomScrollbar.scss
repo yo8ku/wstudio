@@ -65,9 +65,10 @@
   left: 0;
   width: 100%;
   border-radius: 999px;
+  background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.45));
   opacity: 1;
   pointer-events: auto;
-  cursor: grab;
+  cursor: default;
 
   &:hover {
     background: var(--ws-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
@@ -75,7 +76,6 @@
 
   &.is-dragging {
     background: var(--ws-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
-    cursor: grabbing;
   }
 
   // 横向滚动条滑块

@@ -4,7 +4,7 @@
  */
 
 import { FileParser } from '@note-studio/global-rag';
-import type { NoteItem } from '../types/electron';
+import type { NoteItem, OpenNoteInNewWindowPayload } from '../types/electron';
 
 const SPECIAL_PATH_PREFIXES = [
   'settings:/',
@@ -29,6 +29,8 @@ export interface UpsertNoteByPathPayload {
   previousPath?: string;
   metadata?: string;
 }
+
+export type OpenNoteInEditorMode = 'default' | 'new-tab' | 'split-right' | 'new-window';
 
 export const isLinkableFile = (file?: LinkableFileLike | null): boolean => {
   if (!file || (file.type && file.type !== 'file')) {
@@ -90,6 +92,7 @@ export const openNoteInEditor = async (
   options?: {
     lineNumber?: number;
     column?: number;
+    openMode?: OpenNoteInEditorMode;
     setCurrentNote?: (note: NoteItem | null) => void;
   }
 ): Promise<NoteItem | null> => {
@@ -98,17 +101,30 @@ export const openNoteInEditor = async (
     return null;
   }
 
+  const openMode = options?.openMode ?? 'default';
+  const openPayload: OpenNoteInNewWindowPayload = {
+    path: note.path,
+    content: note.content,
+    name: note.title,
+    language: getEditorLanguageForNote(note),
+    lineNumber: options?.lineNumber,
+    column: options?.column ?? 1
+  };
+
+  if (openMode === 'new-window') {
+    const openResult = window.electron?.openNoteInNewWindow
+      ? await window.electron.openNoteInNewWindow(openPayload)
+      : await window.electron?.ipcRenderer.invoke('window:open-note-in-new-window', openPayload);
+    return openResult?.success ? note : null;
+  }
+
   options?.setCurrentNote?.(note);
 
   window.dispatchEvent(new CustomEvent('open-file', {
     detail: {
-      path: note.path,
-      content: note.content,
-      name: note.title,
-      language: getEditorLanguageForNote(note),
+      ...openPayload,
       isPreview: false,
-      lineNumber: options?.lineNumber,
-      column: options?.column ?? 1
+      openMode
     }
   }));
 

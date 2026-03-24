@@ -9730,6 +9730,7 @@ sequenceDiagram
                     className={`cm-outline-tab ${outlineTab === 'headings' ? 'active' : ''}`}
                     onClick={() => setOutlineTab('headings')}
                   >
+                    <Icon name="bookmark" size={14} className="cm-outline-tab-icon" />
                     大纲
                   </div>
                   <div

@@ -4,10 +4,11 @@
  */
 
 import { create } from 'zustand';
+import type { ReactNode } from 'react';
 
 interface ModalConfig {
-  title: string;
-  description?: string;
+  title: ReactNode;
+  description?: ReactNode;
   confirmText?: string;
   cancelText?: string;
   onConfirm?: () => void | Promise<void>;

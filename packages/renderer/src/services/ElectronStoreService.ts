@@ -66,6 +66,16 @@ interface StoreSchema {
   'explorer-config': {
     showOpenEditors?: boolean;
     isFormExpanded?: boolean;
+    bookmarkGroups?: Array<{
+      id: string;
+      name: string;
+      collapsed: boolean;
+    }>;
+    bookmarkEntries?: Array<{
+      noteId: string;
+      name: string;
+      groupId: string | null;
+    }>;
   };
 
   // AI 聊天设置

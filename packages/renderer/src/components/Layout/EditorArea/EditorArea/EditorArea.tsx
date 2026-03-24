@@ -39,6 +39,8 @@ import { toastService } from '../../../../services/ToastService';
 import { useLinkStore } from '../../../../stores/linkStore';
 import { useNoteStore } from '../../../../stores/noteStore';
 import { getNoteByPath, isLinkableFile, upsertNoteByPath } from '../../../../utils/noteLinking';
+import type { OpenNoteInEditorMode } from '../../../../utils/noteLinking';
+import type { OpenNoteInNewWindowPayload } from '../../../../types/electron';
 import type {
   ExtensionHostTextEditPayload,
   PluginEditorApplyTextEditsRequestPayload,
@@ -129,6 +131,18 @@ interface ReplaceActiveTabContentDetail {
 
 interface UpdateActiveTabTitleDetail {
   title?: string;
+}
+
+interface OpenFileDetail {
+  path?: string;
+  content?: string;
+  name?: string;
+  language?: string;
+  activateIfExists?: boolean;
+  isPreview?: boolean;
+  lineNumber?: number;
+  column?: number;
+  openMode?: OpenNoteInEditorMode;
 }
 
 interface OpenTerminalTabDetail {
@@ -299,6 +313,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   console.log('========================================');
   console.log('');
   console.log('========================================');
+  const isEditorOnlyWindow = new URLSearchParams(window.location.search).get('windowMode') === 'editor-only';
   
   // 瀹革缚鏅剁紓鏍帆閸ｃ劎绮?
   const [tabs, setTabs] = useState<EditorTab[]>([]);
@@ -1128,6 +1143,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   useEffect(() => {
     const loadLastOpened = async () => {
       try {
+        const startupMode = new URLSearchParams(window.location.search).get('startupMode');
+        if (startupMode === 'open-note-window') {
+          return;
+        }
+
         const result = await window.electron?.workspace?.getLastOpened();
         const lastOpenedPath = resolveLastOpenedPath(result as LastOpenedRestoreResult | undefined);
         if (!lastOpenedPath) return;
@@ -1168,16 +1188,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       console.log('[EditorArea] 娴滃娆㈢猾璇茬€?', event.type);
       console.log('[EditorArea] 娴滃娆㈢€电钖?', event);
       
-      const customEvent = event as CustomEvent<{ 
-        path?: string; 
-        content?: string; 
-        name?: string; 
-        language?: string;
-        activateIfExists?: boolean;
-        isPreview?: boolean;  // 閺傛澘顤冮敍姘Ц閸氾缚璐熸０鍕潔濡€崇础
-        lineNumber?: number;  // 閺傛澘顤冮敍姘愁洣鐎规矮缍呴惃鍕攽閸?
-        column?: number;      // 閺傛澘顤冮敍姘愁洣鐎规矮缍呴惃鍕灙閸?
-      }>;
+      const customEvent = event as CustomEvent<OpenFileDetail>;
       
       console.log('[EditorArea] 娴滃娆㈢拠锔藉剰:', customEvent.detail);
       console.log('[EditorArea] 鐠囷附鍎忕猾璇茬€?', typeof customEvent.detail);
@@ -1193,6 +1204,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           isPreview = false,
           lineNumber,
           column,
+          openMode = 'default',
         } = customEvent.detail;
         
         console.log('[EditorArea] Opening file:', {
@@ -1201,8 +1213,112 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           language,
           contentLength: content?.length || 0,
           contentPreview: content?.substring(0, 100),
-          isPreview
+          isPreview,
+          openMode,
         });
+
+        const revealOpenedLine = (): void => {
+          if (!lineNumber) {
+            return;
+          }
+
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('editor-reveal-line', {
+              detail: { lineNumber, column: column || 1 }
+            }));
+          }, 100);
+        };
+
+        const createFileTab = (): EditorTab => ({
+          id: `file-${Date.now()}`,
+          title: name || 'Untitled',
+          path: path || '',
+          isDirty: false,
+          language: language || 'plaintext',
+          content: content ?? '',
+          isContentLoading: content === undefined,
+          type: 'file',
+          isPreview,
+        });
+
+        const openFileInPane = (
+          paneId: EditorPaneId,
+          allowDuplicatePath: boolean,
+        ): void => {
+          ensurePaneVisibleForDrop(paneId);
+
+          if (!allowDuplicatePath) {
+            const existingTargetTab = getPaneTabs(paneId).find((tab) => (
+              tab.type === 'file' && tab.path === path
+            ));
+            if (existingTargetTab) {
+              if (content !== undefined) {
+                setPaneTabs(paneId, (currentTabs) => currentTabs.map((tab) => (
+                  tab.id === existingTargetTab.id
+                    ? {
+                        ...tab,
+                        content,
+                        language: language || tab.language,
+                        isContentLoading: false,
+                        isPreview: false,
+                      }
+                    : tab
+                )));
+              }
+
+              setPaneActiveTabId(paneId, existingTargetTab.id);
+              setFocusedPaneId(paneId);
+              return;
+            }
+          }
+
+          const newTab = createFileTab();
+          setPaneTabs(paneId, (currentTabs) => [...currentTabs, newTab]);
+          setPaneActiveTabId(paneId, newTab.id);
+          setFocusedPaneId(paneId);
+        };
+
+        if (openMode === 'new-window') {
+          const normalizedPath = path?.trim() || '';
+          if (!normalizedPath) {
+            toastService.error('当前文件缺少路径，无法在新窗口打开');
+            return;
+          }
+
+          const openPayload: OpenNoteInNewWindowPayload = {
+            path: normalizedPath,
+            content: content ?? '',
+            name: name || 'Untitled',
+            language: language || 'plaintext',
+            lineNumber,
+            column: column || 1,
+          };
+          const openResult = window.electron?.openNoteInNewWindow
+            ? await window.electron.openNoteInNewWindow(openPayload)
+            : await window.electron?.ipcRenderer.invoke('window:open-note-in-new-window', openPayload);
+          if (!openResult?.success) {
+            toastService.error(openResult?.error || '在新窗口打开失败');
+          }
+          return;
+        }
+
+        if (openMode === 'new-tab') {
+          openFileInPane(focusedPaneIdRef.current, true);
+          revealOpenedLine();
+          return;
+        }
+
+        if (openMode === 'split-right') {
+          const targetPaneId: EditorPaneId = (
+            focusedPaneIdRef.current === 'left-bottom'
+            || focusedPaneIdRef.current === 'right-bottom'
+          )
+            ? 'right-bottom'
+            : 'right-top';
+          openFileInPane(targetPaneId, false);
+          revealOpenedLine();
+          return;
+        }
 
         const paneSnapshots: Array<{
           paneId: EditorPaneId;
@@ -1347,13 +1463,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         // 閻㈠彉绨幋鎴滄粦閸︺劌鍤遍弫鏉跨础閺囧瓨鏌婃稉顓熸￥濞夋洜娲块幒銉問闂傤噯绱濋幋鎴滄粦娴ｈ法鏁?setTimeout 閸︺劋绗傞棃銏㈡畱娴狅絿鐖滄稉顓☆啎缂?
         
         // 婵″倹鐏夐幐鍥х暰娴滃棜顢戦崣鍑ょ礉鐟欙箑褰傜€规矮缍呮禍瀣╂
-        if (lineNumber) {
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('editor-reveal-line', {
-              detail: { lineNumber, column: column || 1 }
-            }));
-          }, 100);
-        }
+        revealOpenedLine();
       } else {
         // 閹垫挸绱戦弬鍥︽鐎电鐦藉鍡礄闂堢偤顣╃憴鍫熌佸蹇ョ礆
         try {
@@ -1850,6 +1960,31 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     window.addEventListener('open-settings-json', handleOpenSettingsJson as EventListener);
     window.addEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
     window.addEventListener('editor:update-active-tab-title', handleUpdateActiveTabTitle as EventListener);
+    const handleOpenNoteInNewWindow = (payload: OpenNoteInNewWindowPayload): void => {
+      window.dispatchEvent(new CustomEvent<OpenFileDetail>('open-file', {
+        detail: {
+          path: payload.path,
+          content: payload.content,
+          name: payload.name,
+          language: payload.language,
+          activateIfExists: true,
+          isPreview: false,
+          lineNumber: payload.lineNumber,
+          column: payload.column,
+          openMode: 'default',
+        }
+      }));
+    };
+    const removeOpenNoteInNewWindowListener = window.electron?.onOpenNoteInNewWindow
+      ? window.electron.onOpenNoteInNewWindow(handleOpenNoteInNewWindow)
+      : window.electron?.ipcRenderer.on?.('window:open-note-in-new-window', (_event, payload) => {
+          handleOpenNoteInNewWindow(payload as OpenNoteInNewWindowPayload);
+        });
+    if (window.electron?.notifyEditorReady) {
+      window.electron.notifyEditorReady();
+    } else {
+      window.electron?.ipcRenderer.send('window:editor-ready');
+    }
     
     console.log('[EditorArea] ========== 閹碘偓閺堝绨ㄦ禒鍓佹磧閸氼剙娅掑鍙夋暈閸?==========');
     console.log('[EditorArea] open-file 閻╂垵鎯夐崳?', handleOpenFile);
@@ -1893,6 +2028,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       window.removeEventListener('show-markdown-preview', handleShowMarkdownPreview as EventListener);
       window.removeEventListener('editor:update-active-tab-title', handleUpdateActiveTabTitle as EventListener);
       window.removeEventListener('close-all-editors', handleCloseAllEditors);
+      removeOpenNoteInNewWindowListener?.();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -3946,6 +4082,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               onRevealTabInExplorerView={revealTabInExplorerView}
               onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('left-top', tabIds)}
               onOpenInNewWindow={handleOpenTabInNewWindow}
+              showSplitEditorAction={!isEditorOnlyWindow}
             />
           ) : (
             <div className="tab-bar-placeholder" />
@@ -4118,6 +4255,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     onRevealTabInExplorerView={revealTabInExplorerView}
                     onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('left-bottom', tabIds)}
                     onOpenInNewWindow={handleOpenTabInNewWindow}
+                    showSplitEditorAction={!isEditorOnlyWindow}
                   />
                 ) : (
                   <div className="tab-bar-placeholder" />
@@ -4220,6 +4358,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     onRevealTabInExplorerView={() => revealTabInExplorerView(sourceTab.id)}
                     onCloseMultipleTabs={() => closeExtraRightSplitPane(pane.id)}
                     onOpenInNewWindow={() => handleOpenTabInNewWindow(sourceTab.id)}
+                    showSplitEditorAction={!isEditorOnlyWindow}
                   />
 
                   <Breadcrumb path={sourceTab.path} />
@@ -4274,6 +4413,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                 onRevealTabInExplorerView={revealTabInExplorerView}
                 onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('right-top', tabIds)}
                 onOpenInNewWindow={handleOpenTabInNewWindow}
+                showSplitEditorAction={!isEditorOnlyWindow}
               />
             )}
 
@@ -4425,6 +4565,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                       onRevealTabInExplorerView={revealTabInExplorerView}
                       onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('right-bottom', tabIds)}
                       onOpenInNewWindow={handleOpenTabInNewWindow}
+                      showSplitEditorAction={!isEditorOnlyWindow}
                     />
                   ) : (
                     <div className="tab-bar-placeholder" />

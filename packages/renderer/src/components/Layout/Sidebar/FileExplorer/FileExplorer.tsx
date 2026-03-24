@@ -1,23 +1,41 @@
-/**
+﻿/**
  * 文件浏览器组�?
  * 功能：集成资源管理器，包括打开的编辑器、文件树、大�?
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { EditorView } from '@codemirror/view';
+import { VscInfo } from 'react-icons/vsc';
 import { ExplorerView } from '../../../Explorer';
+import { Icon } from '../../../Icons/Icon';
 import type { FileTreeNode, OutlineNode as ExplorerOutlineNode } from '../../../Explorer';
+import type { BookmarkEntryItem, BookmarkGroupItem, BookmarkGroupSection, BookmarkNoteDisplayItem } from '../../../Explorer/Bookmark/types';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../common/AlertDialog/AlertDialog';
+import { Select, type SelectItem } from '../../../common/Select/Select';
 import { electronStore } from '../../../../services/ElectronStoreService';
 import { OutlineService } from '../../../../services/OutlineService';
 import { useExplorerStore } from '../../../../stores/explorerStore';
+import { useNoteStore } from '../../../../stores/noteStore';
 import { modal } from '../../../../stores/modalStore';
 import { toastService } from '../../../../services/ToastService';
+import type { NoteItem } from '../../../../types/electron';
 import {
   getActiveCodeMirrorEditorContent,
   getActiveCodeMirrorEditorMeta,
   getActiveCodeMirrorEditorView,
 } from '../../../../lib/editor/activeCodeMirrorEditor';
-import { getEditorLanguageForNote } from '../../../../utils/noteLinking';
+import {
+  getEditorLanguageForNote,
+  openNoteInEditor,
+  type OpenNoteInEditorMode,
+} from '../../../../utils/noteLinking';
+import './FileExplorer.scss';
 
 interface FileSystemTreeEntry {
   name: string;
@@ -104,8 +122,63 @@ const applyOutlineExpansionState = (
   }))
 );
 
+type BookmarkDialogMode = 'create' | 'rename' | 'edit';
+type BookmarkGroupConfigItem = Omit<BookmarkGroupItem, 'parentId'> & {
+  parentId?: string | null;
+};
+const normalizeBookmarkGroup = (group: BookmarkGroupConfigItem): BookmarkGroupItem => ({
+  ...group,
+  parentId: group.parentId ?? null,
+});
+const collectDefaultCollapsedBookmarkGroupPickerIds = (groups: BookmarkGroupItem[]): string[] => {
+  const parentGroupIdSet = new Set<string>();
+
+  for (const group of groups) {
+    if (group.parentId) {
+      parentGroupIdSet.add(group.parentId);
+    }
+  }
+
+  return groups
+    .filter((group) => parentGroupIdSet.has(group.id))
+    .map((group) => group.id);
+};
+
 export const FileExplorer: React.FC = () => {
   const normalizePath = (value: string): string => value.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+  const stripBookmarkFileExtension = (value: string, path: string): string => {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      return '';
+    }
+
+    const pathSegments = path.split(/[/\\]/);
+    const fileName = pathSegments[pathSegments.length - 1] || path;
+    const extensionIndex = fileName.lastIndexOf('.');
+    if (extensionIndex <= 0) {
+      return trimmedValue;
+    }
+
+    const extension = fileName.slice(extensionIndex);
+    if (
+      trimmedValue.length > extension.length
+      && trimmedValue.toLowerCase().endsWith(extension.toLowerCase())
+    ) {
+      return trimmedValue.slice(0, -extension.length);
+    }
+
+    return trimmedValue;
+  };
+  const getBookmarkDefaultName = (note: NoteItem): string => {
+    const title = stripBookmarkFileExtension(note.title, note.path);
+    if (title) {
+      return title;
+    }
+
+    const pathSegments = note.path.split(/[/\\]/);
+    const fileName = pathSegments[pathSegments.length - 1] || note.path;
+    return stripBookmarkFileExtension(fileName, note.path);
+  };
   const convertTreeEntryToNode = (
     item: FileSystemTreeEntry,
     depth: number,
@@ -129,6 +202,9 @@ export const FileExplorer: React.FC = () => {
     setSelectedOutlineNode,
     setOutlineExpanded,
   } = useExplorerStore();
+  const currentNote = useNoteStore((state) => state.currentNote);
+  const setCurrentNote = useNoteStore((state) => state.setCurrentNote);
+  const toggleFavorite = useNoteStore((state) => state.toggleFavorite);
   
   // 文件树状�?- 优先使用 store 中的数据
   const [fileTree, setFileTree] = useState<FileTreeNode[]>(storeFileTreeData || []);
@@ -139,8 +215,21 @@ export const FileExplorer: React.FC = () => {
   const [currentActiveFilePath, setCurrentActiveFilePath] = useState<string>('');
   const [fileTreeRevealRequest, setFileTreeRevealRequest] = useState<{ id: number; path: string } | null>(null);
   const [outlineNodes, setOutlineNodes] = useState<ExplorerOutlineNode[]>([]);
+  const [favoriteNotes, setFavoriteNotes] = useState<NoteItem[]>([]);
+  const [bookmarkEntries, setBookmarkEntries] = useState<BookmarkEntryItem[]>([]);
+  const [bookmarkGroups, setBookmarkGroups] = useState<BookmarkGroupItem[]>([]);
+  const [isBookmarkViewActive, setIsBookmarkViewActive] = useState<boolean>(false);
+  const [isBookmarkDialogOpen, setIsBookmarkDialogOpen] = useState(false);
+  const [bookmarkDialogMode, setBookmarkDialogMode] = useState<BookmarkDialogMode>('create');
+  const [bookmarkDialogTargetItem, setBookmarkDialogTargetItem] = useState<BookmarkNoteDisplayItem | null>(null);
+  const [bookmarkDraftName, setBookmarkDraftName] = useState('');
+  const [bookmarkDraftGroupId, setBookmarkDraftGroupId] = useState('');
+  const [collapsedBookmarkGroupPickerIds, setCollapsedBookmarkGroupPickerIds] = useState<string[]>([]);
+  const isCreateBookmarkDialogOpen = isBookmarkDialogOpen;
+  const setIsCreateBookmarkDialogOpen = setIsBookmarkDialogOpen;
   const outlineNodesRef = useRef<ExplorerOutlineNode[]>([]);
   const fileTreeRevealRequestIdRef = useRef<number>(0);
+  const bookmarkNameInputRef = useRef<HTMLInputElement | null>(null);
   
   // 内联编辑状�?- 使用 ref 避免闭包陷阱
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
@@ -530,6 +619,14 @@ export const FileExplorer: React.FC = () => {
       const config = await electronStore.get('explorer-config');
       if (config?.isFormExpanded !== undefined) {
         setInitialFormExpanded(config.isFormExpanded);
+      }
+
+      if (config?.bookmarkGroups) {
+        setBookmarkGroups(config.bookmarkGroups.map((group: BookmarkGroupConfigItem) => normalizeBookmarkGroup(group)));
+      }
+
+      if (config?.bookmarkEntries) {
+        setBookmarkEntries(config.bookmarkEntries);
       }
     };
     loadConfig();
@@ -932,6 +1029,38 @@ export const FileExplorer: React.FC = () => {
     scheduleOutlineSync();
   }, [scheduleOutlineSync]);
 
+  const loadFavoriteNotes = useCallback(async (): Promise<void> => {
+    try {
+      const favorites = await window.electron?.ipcRenderer.invoke('note:getFavorites') as NoteItem[] | null | undefined;
+      setFavoriteNotes(favorites || []);
+    } catch (error) {
+      console.error('[FileExplorer] 加载书签失败:', error);
+      setFavoriteNotes([]);
+    }
+  }, []);
+
+  const persistBookmarkConfig = useCallback(async (
+    nextGroups: BookmarkGroupItem[],
+    nextEntries: BookmarkEntryItem[],
+  ): Promise<void> => {
+    const normalizedGroups = nextGroups.map((group) => normalizeBookmarkGroup(group));
+    setBookmarkGroups(normalizedGroups);
+    setBookmarkEntries(nextEntries);
+
+    const currentConfig = await electronStore.get('explorer-config') ?? {};
+    await electronStore.set('explorer-config', {
+      ...currentConfig,
+      bookmarkGroups: normalizedGroups,
+      bookmarkEntries: nextEntries,
+    });
+  }, []);
+
+  const persistBookmarkGroups = useCallback(async (
+    nextGroups: BookmarkGroupItem[],
+  ): Promise<void> => {
+    await persistBookmarkConfig(nextGroups, bookmarkEntries);
+  }, [bookmarkEntries, persistBookmarkConfig]);
+
   useEffect(() => {
     if (!isOutlineExpanded) {
       return;
@@ -939,6 +1068,29 @@ export const FileExplorer: React.FC = () => {
 
     scheduleOutlineSync();
   }, [isOutlineExpanded, scheduleOutlineSync]);
+
+  useEffect(() => {
+    if (!isBookmarkViewActive) {
+      return;
+    }
+
+    void loadFavoriteNotes();
+  }, [isBookmarkViewActive, loadFavoriteNotes]);
+
+  useEffect(() => {
+    if (!isCreateBookmarkDialogOpen) {
+      return;
+    }
+
+    const focusTimer = window.setTimeout(() => {
+      bookmarkNameInputRef.current?.focus();
+      bookmarkNameInputRef.current?.select();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+    };
+  }, [isCreateBookmarkDialogOpen]);
 
   // 在指定文件夹中添加创建节�?
   // 移除任何正在创建的临时节�?
@@ -1221,13 +1373,675 @@ export const FileExplorer: React.FC = () => {
     void revealPathInFileTree(revealCurrentFilePath);
   }, [revealCurrentFilePath, revealPathInFileTree]);
 
+  const handleToggleBookmarkView = useCallback(() => {
+    const nextActive = !isBookmarkViewActive;
+    setIsBookmarkViewActive(nextActive);
+
+    if (nextActive) {
+      setOutlineExpanded(false);
+      void loadFavoriteNotes();
+    }
+  }, [isBookmarkViewActive, loadFavoriteNotes, setOutlineExpanded]);
+
   const handleToggleOutlineView = useCallback(() => {
     const nextExpanded = !isOutlineExpanded;
     setOutlineExpanded(nextExpanded);
     if (nextExpanded) {
+      setIsBookmarkViewActive(false);
       scheduleOutlineSync();
     }
   }, [isOutlineExpanded, scheduleOutlineSync, setOutlineExpanded]);
+
+  const bookmarkItems = useMemo<BookmarkNoteDisplayItem[]>(() => {
+    const noteEntryMap = new Map<string, BookmarkEntryItem>();
+    for (const entry of bookmarkEntries) {
+      noteEntryMap.set(entry.noteId, entry);
+    }
+
+    return favoriteNotes.map((note) => ({
+      note,
+      entry: noteEntryMap.get(note.id) ?? {
+        noteId: note.id,
+        name: getBookmarkDefaultName(note),
+        groupId: null,
+      },
+    }));
+  }, [bookmarkEntries, favoriteNotes]);
+
+  const groupedBookmarkItems = useMemo<BookmarkGroupSection[]>(() => {
+    const itemsByGroupId = new Map<string, BookmarkNoteDisplayItem[]>();
+    for (const item of bookmarkItems) {
+      if (!item.entry.groupId) {
+        continue;
+      }
+
+      const existingItems = itemsByGroupId.get(item.entry.groupId) ?? [];
+      existingItems.push(item);
+      itemsByGroupId.set(item.entry.groupId, existingItems);
+    }
+
+    const groupsByParentId = new Map<string | null, BookmarkGroupItem[]>();
+    for (const group of bookmarkGroups) {
+      const parentId = group.parentId ?? null;
+      const existingGroups = groupsByParentId.get(parentId) ?? [];
+      existingGroups.push(group);
+      groupsByParentId.set(parentId, existingGroups);
+    }
+
+    const buildGroupSections = (
+      parentId: string | null,
+      depth: number,
+    ): BookmarkGroupSection[] => {
+      const childGroups = groupsByParentId.get(parentId) ?? [];
+      return childGroups.map((group) => ({
+        group,
+        items: itemsByGroupId.get(group.id) ?? [],
+        children: buildGroupSections(group.id, depth + 1),
+        depth,
+      }));
+    };
+
+    return buildGroupSections(null, 0);
+  }, [bookmarkGroups, bookmarkItems]);
+
+  const ungroupedBookmarkItems = useMemo<BookmarkNoteDisplayItem[]>(() => {
+    const validGroupIds = new Set<string>(bookmarkGroups.map((group) => group.id));
+    return bookmarkItems.filter((item) => (
+      !item.entry.groupId || !validGroupIds.has(item.entry.groupId)
+    ));
+  }, [bookmarkGroups, bookmarkItems]);
+
+  const toggleBookmarkGroupPickerCollapse = useCallback((groupId: string): void => {
+    setCollapsedBookmarkGroupPickerIds((currentIds) => (
+      currentIds.includes(groupId)
+        ? currentIds.filter((currentId) => currentId !== groupId)
+        : [...currentIds, groupId]
+    ));
+  }, []);
+
+  const bookmarkGroupSelectItems = useMemo<SelectItem[]>(() => {
+    const groupsByParentId = new Map<string | null, BookmarkGroupItem[]>();
+    for (const group of bookmarkGroups) {
+      const parentId = group.parentId ?? null;
+      const existingGroups = groupsByParentId.get(parentId) ?? [];
+      existingGroups.push(group);
+      groupsByParentId.set(parentId, existingGroups);
+    }
+
+    const collapsedGroupIdSet = new Set<string>(collapsedBookmarkGroupPickerIds);
+
+    const renderBookmarkGroupSelectIcon = (
+      hasChildren: boolean,
+      isCollapsed: boolean,
+      groupId?: string,
+    ): React.ReactNode => (
+      <>
+        {hasChildren ? (
+          <Icon
+            name={isCollapsed ? 'chevron-right' : 'chevron-down'}
+            size={15}
+            className="file-explorer-bookmark-group-select-chevron"
+            onClick={(event): void => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!groupId) {
+                return;
+              }
+
+              toggleBookmarkGroupPickerCollapse(groupId);
+            }}
+          />
+        ) : (
+          <span className="file-explorer-bookmark-group-select-chevron-spacer" />
+        )}
+        <Icon
+          name="folder"
+          size={16}
+          className="file-explorer-bookmark-group-select-folder"
+        />
+      </>
+    );
+
+    const flattenGroups = (parentId: string | null, depth: number): SelectItem[] => {
+      const childGroups = groupsByParentId.get(parentId) ?? [];
+      return childGroups.flatMap((group) => {
+        const hasChildren = (groupsByParentId.get(group.id)?.length ?? 0) > 0;
+        const isCollapsed = collapsedGroupIdSet.has(group.id);
+        return [
+          {
+            value: group.id,
+            label: group.name,
+            icon: renderBookmarkGroupSelectIcon(hasChildren, isCollapsed, group.id),
+            dataType: 'folder',
+            depth,
+          },
+          ...(isCollapsed ? [] : flattenGroups(group.id, depth + 1)),
+        ];
+      });
+    };
+
+    return flattenGroups(null, 0);
+  }, [bookmarkGroups, collapsedBookmarkGroupPickerIds, toggleBookmarkGroupPickerCollapse]);
+
+  const resolveBookmarkGroupId = useCallback((groupId: string | null | undefined): string | null => {
+    if (!groupId) {
+      return null;
+    }
+
+    return bookmarkGroups.some((group) => group.id === groupId) ? groupId : null;
+  }, [bookmarkGroups]);
+
+  const openBookmarkDialog = useCallback((
+    mode: BookmarkDialogMode,
+    item: BookmarkNoteDisplayItem,
+  ): void => {
+    const defaultBookmarkName = item.entry.name.trim()
+      ? item.entry.name
+      : getBookmarkDefaultName(item.note);
+    const normalizedGroupId = resolveBookmarkGroupId(item.entry.groupId);
+
+    setBookmarkDialogMode(mode);
+    setBookmarkDialogTargetItem({
+      ...item,
+      entry: {
+        ...item.entry,
+        name: defaultBookmarkName,
+        groupId: normalizedGroupId,
+      },
+    });
+    setBookmarkDraftName(defaultBookmarkName);
+    setBookmarkDraftGroupId(normalizedGroupId ?? '');
+    setCollapsedBookmarkGroupPickerIds(collectDefaultCollapsedBookmarkGroupPickerIds(bookmarkGroups));
+    setIsBookmarkDialogOpen(true);
+  }, [bookmarkGroups, resolveBookmarkGroupId]);
+
+  const openBookmarkNote = useCallback(async (
+    item: BookmarkNoteDisplayItem,
+    openMode: OpenNoteInEditorMode = 'default',
+  ): Promise<void> => {
+    try {
+      const openedNote = await openNoteInEditor(item.note.id, {
+        setCurrentNote,
+        openMode,
+      });
+      if (!openedNote) {
+        return;
+      }
+
+      setSelectedFilePath(openedNote.path);
+      setCurrentActiveFilePath(openedNote.path);
+    } catch (error) {
+      console.error('[FileExplorer] 打开书签失败:', error);
+    }
+  }, [setCurrentNote]);
+
+  const handleBookmarkNoteSelect = useCallback(async (item: BookmarkNoteDisplayItem): Promise<void> => {
+    try {
+      const openedNote = await openNoteInEditor(item.note.id, { setCurrentNote });
+      if (!openedNote) {
+        return;
+      }
+
+      setSelectedFilePath(openedNote.path);
+      setCurrentActiveFilePath(openedNote.path);
+    } catch (error) {
+      console.error('[FileExplorer] 打开书签失败:', error);
+    }
+  }, [setCurrentNote]);
+
+  const closeCreateBookmarkDialog = useCallback((): void => {
+    setIsCreateBookmarkDialogOpen(false);
+    setBookmarkDraftName('');
+    setBookmarkDraftGroupId('');
+  }, []);
+
+  const handleCreateBookmark = useCallback((): void => {
+    if (!currentNote || currentNote.isFavorite) {
+      return;
+    }
+
+    const existingEntry = bookmarkEntries.find((entry) => entry.noteId === currentNote.id);
+    const hasExistingGroup = Boolean(
+      existingEntry?.groupId
+      && bookmarkGroups.some((group) => group.id === existingEntry.groupId),
+    );
+    const defaultBookmarkName = existingEntry?.name.trim()
+      ? existingEntry.name
+      : getBookmarkDefaultName(currentNote);
+
+    setBookmarkDraftName(defaultBookmarkName);
+    setBookmarkDraftGroupId(
+      hasExistingGroup && existingEntry?.groupId
+        ? existingEntry.groupId
+        : '',
+    );
+    setIsCreateBookmarkDialogOpen(true);
+  }, [bookmarkEntries, bookmarkGroups, currentNote]);
+
+  const canCreateBookmark = useMemo(() => {
+    if (!currentNote || currentNote.isFavorite) {
+      return false;
+    }
+
+    return !favoriteNotes.some((note) => note.id === currentNote.id);
+  }, [currentNote, favoriteNotes]);
+
+  const canConfirmCreateBookmark = useMemo(() => (
+    Boolean(bookmarkDraftName.trim())
+    && (currentNote ? !currentNote.isFavorite : false)
+  ), [bookmarkDraftName, currentNote]);
+
+  const handleCreateBookmarkConfirm = useCallback(async (): Promise<void> => {
+    if (!currentNote || currentNote.isFavorite) {
+      return;
+    }
+
+    const trimmedName = bookmarkDraftName.trim();
+    if (!trimmedName) {
+      toastService.warning('书签名称不能为空');
+      return;
+    }
+
+    const selectedGroupId = bookmarkDraftGroupId.trim() || null;
+    const normalizedGroupId = selectedGroupId && bookmarkGroups.some((group) => group.id === selectedGroupId)
+      ? selectedGroupId
+      : null;
+    const nextEntries = [
+      ...bookmarkEntries.filter((entry) => entry.noteId !== currentNote.id),
+      {
+        noteId: currentNote.id,
+        name: trimmedName,
+        groupId: normalizedGroupId,
+      },
+    ];
+
+    try {
+      const didCreateBookmark = await toggleFavorite(currentNote.id);
+      if (!didCreateBookmark) {
+        return;
+      }
+
+      await persistBookmarkConfig(bookmarkGroups, nextEntries);
+      await loadFavoriteNotes();
+      closeCreateBookmarkDialog();
+    } catch (error) {
+      console.error('[FileExplorer] 新建书签失败:', error);
+    }
+  }, [
+    bookmarkDraftGroupId,
+    bookmarkDraftName,
+    bookmarkEntries,
+    bookmarkGroups,
+    closeCreateBookmarkDialog,
+    currentNote,
+    loadFavoriteNotes,
+    persistBookmarkConfig,
+    toggleFavorite,
+  ]);
+
+  const handleBookmarkDraftNameKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key !== 'Enter' || !canConfirmCreateBookmark) {
+      return;
+    }
+
+    event.preventDefault();
+    void handleCreateBookmarkConfirm();
+  }, [canConfirmCreateBookmark, handleCreateBookmarkConfirm]);
+
+  const closeBookmarkDialog = useCallback((): void => {
+    setIsBookmarkDialogOpen(false);
+    setBookmarkDialogMode('create');
+    setBookmarkDialogTargetItem(null);
+    setBookmarkDraftName('');
+    setBookmarkDraftGroupId('');
+    setCollapsedBookmarkGroupPickerIds([]);
+  }, []);
+
+  const handleBookmarkCreateRequest = useCallback((): void => {
+    if (!currentNote || currentNote.isFavorite) {
+      return;
+    }
+
+    const existingEntry = bookmarkEntries.find((entry) => entry.noteId === currentNote.id);
+    const defaultBookmarkName = existingEntry?.name.trim()
+      ? existingEntry.name
+      : getBookmarkDefaultName(currentNote);
+
+    openBookmarkDialog('create', {
+      note: currentNote,
+      entry: {
+        noteId: currentNote.id,
+        name: defaultBookmarkName,
+        groupId: resolveBookmarkGroupId(existingEntry?.groupId),
+      },
+    });
+  }, [bookmarkEntries, currentNote, openBookmarkDialog, resolveBookmarkGroupId]);
+
+  const handleBookmarkOpenInNewTab = useCallback(async (item: BookmarkNoteDisplayItem): Promise<void> => {
+    await openBookmarkNote(item, 'new-tab');
+  }, [openBookmarkNote]);
+
+  const handleBookmarkSplitRightOpen = useCallback(async (item: BookmarkNoteDisplayItem): Promise<void> => {
+    await openBookmarkNote(item, 'split-right');
+  }, [openBookmarkNote]);
+
+  const handleBookmarkOpenInNewWindow = useCallback(async (item: BookmarkNoteDisplayItem): Promise<void> => {
+    await openBookmarkNote(item, 'new-window');
+  }, [openBookmarkNote]);
+
+  const handleBookmarkRename = useCallback((item: BookmarkNoteDisplayItem): void => {
+    openBookmarkDialog('rename', item);
+  }, [openBookmarkDialog]);
+
+  const handleBookmarkEdit = useCallback((item: BookmarkNoteDisplayItem): void => {
+    openBookmarkDialog('edit', item);
+  }, [openBookmarkDialog]);
+
+  const handleBookmarkRevealInFileTree = useCallback((item: BookmarkNoteDisplayItem): void => {
+    setIsBookmarkViewActive(false);
+    setOutlineExpanded(false);
+    void revealPathInFileTree(item.note.path);
+  }, [revealPathInFileTree, setOutlineExpanded]);
+
+  const handleBookmarkRemove = useCallback(async (item: BookmarkNoteDisplayItem): Promise<void> => {
+    const nextEntries = bookmarkEntries.filter((entry) => entry.noteId !== item.note.id);
+
+    try {
+      const nextFavoriteStatus = await toggleFavorite(item.note.id);
+      if (nextFavoriteStatus) {
+        return;
+      }
+
+      await persistBookmarkConfig(bookmarkGroups, nextEntries);
+      await loadFavoriteNotes();
+
+      if (bookmarkDialogTargetItem?.note.id === item.note.id) {
+        closeBookmarkDialog();
+      }
+    } catch (error) {
+      console.error('[FileExplorer] 移除书签失败:', error);
+    }
+  }, [
+    bookmarkDialogTargetItem,
+    bookmarkEntries,
+    bookmarkGroups,
+    closeBookmarkDialog,
+    loadFavoriteNotes,
+    persistBookmarkConfig,
+    toggleFavorite,
+  ]);
+
+  const canConfirmBookmarkDialog = useMemo(() => {
+    if (!bookmarkDialogTargetItem || !bookmarkDraftName.trim()) {
+      return false;
+    }
+
+    if (bookmarkDialogMode !== 'create') {
+      return true;
+    }
+
+    return !favoriteNotes.some((note) => note.id === bookmarkDialogTargetItem.note.id);
+  }, [bookmarkDialogMode, bookmarkDialogTargetItem, bookmarkDraftName, favoriteNotes]);
+
+  const handleBookmarkDialogConfirm = useCallback(async (): Promise<void> => {
+    if (!bookmarkDialogTargetItem) {
+      return;
+    }
+
+    const trimmedName = bookmarkDraftName.trim();
+    if (!trimmedName) {
+      toastService.warning('书签名称不能为空');
+      return;
+    }
+
+    const selectedGroupId = bookmarkDraftGroupId.trim() || null;
+    const normalizedDraftGroupId = resolveBookmarkGroupId(selectedGroupId);
+
+    try {
+      if (bookmarkDialogMode === 'create') {
+        if (favoriteNotes.some((note) => note.id === bookmarkDialogTargetItem.note.id)) {
+          return;
+        }
+
+        const nextEntries = [
+          ...bookmarkEntries.filter((entry) => entry.noteId !== bookmarkDialogTargetItem.note.id),
+          {
+            noteId: bookmarkDialogTargetItem.note.id,
+            name: trimmedName,
+            groupId: normalizedDraftGroupId,
+          },
+        ];
+
+        const didCreateBookmark = await toggleFavorite(bookmarkDialogTargetItem.note.id);
+        if (!didCreateBookmark) {
+          return;
+        }
+
+        await persistBookmarkConfig(bookmarkGroups, nextEntries);
+        await loadFavoriteNotes();
+        closeBookmarkDialog();
+        return;
+      }
+
+      const nextEntries = [
+        ...bookmarkEntries.filter((entry) => entry.noteId !== bookmarkDialogTargetItem.note.id),
+        {
+          noteId: bookmarkDialogTargetItem.note.id,
+          name: trimmedName,
+          groupId: bookmarkDialogMode === 'edit'
+            ? normalizedDraftGroupId
+            : resolveBookmarkGroupId(bookmarkDialogTargetItem.entry.groupId),
+        },
+      ];
+
+      await persistBookmarkConfig(bookmarkGroups, nextEntries);
+      closeBookmarkDialog();
+    } catch (error) {
+      console.error('[FileExplorer] 保存书签失败:', error);
+    }
+  }, [
+    bookmarkDialogMode,
+    bookmarkDialogTargetItem,
+    bookmarkDraftGroupId,
+    bookmarkDraftName,
+    bookmarkEntries,
+    bookmarkGroups,
+    closeBookmarkDialog,
+    favoriteNotes,
+    loadFavoriteNotes,
+    persistBookmarkConfig,
+    resolveBookmarkGroupId,
+    toggleFavorite,
+  ]);
+
+  const handleCreateBookmarkGroup = useCallback(async (
+    name: string,
+    parentId?: string | null,
+  ): Promise<void> => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    const duplicateGroup = bookmarkGroups.some((group) => group.name.trim().toLowerCase() === trimmedName.toLowerCase());
+    if (duplicateGroup) {
+      toastService.warning('书签组已存在', { description: trimmedName });
+      return;
+    }
+
+    const normalizedParentId = resolveBookmarkGroupId(parentId);
+    const expandedAncestorGroupIds = new Set<string>();
+    let currentParentId = normalizedParentId;
+
+    while (currentParentId) {
+      expandedAncestorGroupIds.add(currentParentId);
+      currentParentId = bookmarkGroups.find((group) => group.id === currentParentId)?.parentId ?? null;
+    }
+
+    const nextGroups = [
+      ...bookmarkGroups.map((group) => (
+        expandedAncestorGroupIds.has(group.id)
+          ? { ...group, collapsed: false }
+          : group
+      )),
+      {
+        id: `bookmark-group-${Date.now()}`,
+        name: trimmedName,
+        collapsed: false,
+        parentId: normalizedParentId,
+      },
+    ];
+
+    await persistBookmarkGroups(nextGroups);
+  }, [bookmarkGroups, persistBookmarkGroups, resolveBookmarkGroupId]);
+
+  const handleRenameBookmarkGroup = useCallback(async (
+    groupId: string,
+    name: string,
+  ): Promise<void> => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    const targetGroup = bookmarkGroups.find((group) => group.id === groupId);
+    if (!targetGroup) {
+      return;
+    }
+
+    if (targetGroup.name.trim() === trimmedName) {
+      return;
+    }
+
+    const duplicateGroup = bookmarkGroups.some((group) => (
+      group.id !== groupId
+      && group.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    ));
+    if (duplicateGroup) {
+      toastService.warning('书签组已存在', { description: trimmedName });
+      return;
+    }
+
+    const nextGroups = bookmarkGroups.map((group) => (
+      group.id === groupId
+        ? { ...group, name: trimmedName }
+        : group
+    ));
+
+    await persistBookmarkGroups(nextGroups);
+  }, [bookmarkGroups, persistBookmarkGroups]);
+
+  const handleRemoveBookmarkGroup = useCallback((groupId: string): void => {
+    const targetGroup = bookmarkGroups.find((group) => group.id === groupId);
+    if (!targetGroup) {
+      return;
+    }
+
+    const collectDescendantGroupIds = (parentGroupId: string): string[] => {
+      const childGroupIds = bookmarkGroups
+        .filter((group) => group.parentId === parentGroupId)
+        .map((group) => group.id);
+
+      return childGroupIds.flatMap((childGroupId) => [
+        childGroupId,
+        ...collectDescendantGroupIds(childGroupId),
+      ]);
+    };
+
+    const descendantGroupIds = collectDescendantGroupIds(groupId);
+    const removedGroupIds = new Set<string>([groupId, ...descendantGroupIds]);
+    const descendantGroupCount = descendantGroupIds.length;
+    const affectedBookmarkCount = bookmarkEntries.filter((entry) => (
+      entry.groupId ? removedGroupIds.has(entry.groupId) : false
+    )).length;
+    const descriptionParts = [
+      '\u79fb\u9664\u540e\uff0c\u5f53\u524d\u4e66\u7b7e\u7ec4\u53ca\u5176\u6240\u6709\u5b50\u5206\u7ec4\u90fd\u4f1a\u88ab\u5220\u9664\uff0c\u4e14\u65e0\u6cd5\u64a4\u9500\u3002',
+    ];
+
+    if (descendantGroupCount > 0) {
+      descriptionParts.push(`\u5c06\u540c\u65f6\u79fb\u9664 ${descendantGroupCount} \u4e2a\u5b50\u5206\u7ec4\u3002`);
+    }
+
+    if (affectedBookmarkCount > 0) {
+      descriptionParts.push(`\u8fd9\u4e9b\u5206\u7ec4\u4e0b\u7684 ${affectedBookmarkCount} \u4e2a\u4e66\u7b7e\u4f1a\u79fb\u52a8\u5230\u201c\u672a\u5206\u7ec4\u201d\u3002`);
+    }
+
+    modal.confirm({
+      title: (
+        <span className="file-explorer-modal-title-with-icon">
+          <VscInfo size={16} />
+          <span>{'\u79fb\u9664\u4e66\u7b7e\u7ec4'}</span>
+        </span>
+      ),
+      description: descriptionParts.join(''),
+      confirmText: '\u79fb\u9664',
+      cancelText: '\u53d6\u6d88',
+      onConfirm: async () => {
+        try {
+          const nextGroups = bookmarkGroups.filter((group) => !removedGroupIds.has(group.id));
+          const nextEntries = bookmarkEntries.map((entry) => (
+            entry.groupId && removedGroupIds.has(entry.groupId)
+              ? { ...entry, groupId: null }
+              : entry
+          ));
+
+          await persistBookmarkConfig(nextGroups, nextEntries);
+
+          setBookmarkDialogTargetItem((currentItem) => {
+            if (!currentItem || !currentItem.entry.groupId || !removedGroupIds.has(currentItem.entry.groupId)) {
+              return currentItem;
+            }
+
+            return {
+              ...currentItem,
+              entry: {
+                ...currentItem.entry,
+                groupId: null,
+              },
+            };
+          });
+
+          if (removedGroupIds.has(bookmarkDraftGroupId)) {
+            setBookmarkDraftGroupId('');
+          }
+        } catch (error) {
+          console.error('[FileExplorer] \u79fb\u9664\u4e66\u7b7e\u7ec4\u5931\u8d25:', error);
+        }
+      },
+    });
+  }, [
+    bookmarkDraftGroupId,
+    bookmarkEntries,
+    bookmarkGroups,
+    persistBookmarkConfig,
+  ]);
+
+  const handleToggleBookmarkGroup = useCallback(async (groupId: string): Promise<void> => {
+    const nextGroups = bookmarkGroups.map((group) => (
+      group.id === groupId
+        ? { ...group, collapsed: !group.collapsed }
+        : group
+    ));
+
+    await persistBookmarkGroups(nextGroups);
+  }, [bookmarkGroups, persistBookmarkGroups]);
+
+  const handleCollapseBookmarkGroups = useCallback(async (): Promise<void> => {
+    if (bookmarkGroups.length === 0) {
+      return;
+    }
+
+    const nextGroups = bookmarkGroups.map((group) => ({
+      ...group,
+      collapsed: true,
+    }));
+
+    await persistBookmarkGroups(nextGroups);
+  }, [bookmarkGroups, persistBookmarkGroups]);
+
+  const canCollapseBookmarkGroups = useMemo(() => (
+    bookmarkGroups.length > 0 || favoriteNotes.length > 0
+  ), [bookmarkGroups.length, favoriteNotes.length]);
 
   const handleOutlineNodeSelect = useCallback((node: ExplorerOutlineNode) => {
     setSelectedOutlineNode(node);
@@ -1575,6 +2389,13 @@ export const FileExplorer: React.FC = () => {
     };
   }, [addCreatingNodeInFolder, startRename, handleDelete, handleRevealInExplorer, handleIndexFile, handleIndexFolder]);
 
+  const bookmarkDialogTitle = bookmarkDialogMode === 'create'
+    ? '添加书签'
+    : bookmarkDialogMode === 'rename'
+      ? '重命名书签'
+      : '编辑书签';
+  const showBookmarkDialogGroupField = bookmarkDialogMode !== 'rename';
+
   return (
     <>
       <ExplorerView
@@ -1587,7 +2408,14 @@ export const FileExplorer: React.FC = () => {
         fileTreeRevealRequest={fileTreeRevealRequest}
         workspaceHeaderActionMode={workspaceHeaderActionMode}
         canRevealCurrentFile={Boolean(revealCurrentFilePath)}
+        isBookmarkViewActive={isBookmarkViewActive}
         isOutlineViewActive={isOutlineExpanded}
+        groupedBookmarkItems={groupedBookmarkItems}
+        ungroupedBookmarkItems={ungroupedBookmarkItems}
+        selectedBookmarkNotePath={currentActiveFilePath || selectedFilePath}
+        canCreateBookmark={canCreateBookmark}
+        canCreateBookmarkGroup={true}
+        canCollapseBookmarkGroups={canCollapseBookmarkGroups}
         onFileClick={handleFileClick}
         onFileDoubleClick={handleFileDoubleClick}
         onFolderToggle={handleFolderToggle}
@@ -1601,8 +2429,33 @@ export const FileExplorer: React.FC = () => {
         }}
         onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
+        onToggleBookmarkView={handleToggleBookmarkView}
         onToggleOutlineView={handleToggleOutlineView}
         onRevealCurrentFile={handleRevealCurrentFile}
+        onCreateBookmark={handleBookmarkCreateRequest}
+        onCreateBookmarkGroup={handleCreateBookmarkGroup}
+        onRenameBookmarkGroup={(groupId, name): void => {
+          void handleRenameBookmarkGroup(groupId, name);
+        }}
+        onRemoveBookmarkGroup={handleRemoveBookmarkGroup}
+        onToggleBookmarkGroup={handleToggleBookmarkGroup}
+        onCollapseBookmarkGroups={handleCollapseBookmarkGroups}
+        onBookmarkNoteSelect={handleBookmarkNoteSelect}
+        onBookmarkOpenInNewTab={(item): void => {
+          void handleBookmarkOpenInNewTab(item);
+        }}
+        onBookmarkSplitRightOpen={(item): void => {
+          void handleBookmarkSplitRightOpen(item);
+        }}
+        onBookmarkOpenInNewWindow={(item): void => {
+          void handleBookmarkOpenInNewWindow(item);
+        }}
+        onBookmarkRename={handleBookmarkRename}
+        onBookmarkEdit={handleBookmarkEdit}
+        onBookmarkRevealInFileTree={handleBookmarkRevealInFileTree}
+        onBookmarkRemove={(item): void => {
+          void handleBookmarkRemove(item);
+        }}
         onOutlineNodeSelect={handleOutlineNodeSelect}
         onOutlineNodeToggle={handleOutlineNodeToggle}
         onCollapseOutline={handleOutlineCollapse}
@@ -1619,6 +2472,87 @@ export const FileExplorer: React.FC = () => {
           });
         }}
       />
+      <AlertDialog
+        open={isBookmarkDialogOpen}
+        onOpenChange={(open): void => {
+          if (!open) {
+            closeBookmarkDialog();
+          }
+        }}
+      >
+        <AlertDialogContent className="file-explorer-bookmark-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{bookmarkDialogTitle}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className="file-explorer-bookmark-form">
+            <label className="file-explorer-bookmark-field">
+              <span className="file-explorer-bookmark-label">书签名称</span>
+              <input
+                ref={bookmarkNameInputRef}
+                type="text"
+                className="file-explorer-bookmark-input"
+                value={bookmarkDraftName}
+                placeholder="输入书签名称"
+                onChange={(event): void => {
+                  setBookmarkDraftName(event.target.value);
+                }}
+                onKeyDown={(event): void => {
+                  if (event.key !== 'Enter' || !canConfirmBookmarkDialog) {
+                    return;
+                  }
+
+                  event.preventDefault();
+                  void handleBookmarkDialogConfirm();
+                }}
+              />
+            </label>
+            {showBookmarkDialogGroupField && (
+              <div className="file-explorer-bookmark-field">
+                <span className="file-explorer-bookmark-label">所属分组</span>
+                <Select
+                  value={bookmarkDraftGroupId}
+                  onChange={(value): void => {
+                    setBookmarkDraftGroupId(value);
+                  }}
+                  items={bookmarkGroupSelectItems}
+                  className="file-explorer-bookmark-group-select"
+                  useCustomScrollbar={true}
+                  customScrollbarDefaultOpacity={0.7}
+                  customScrollbarFadeOutDelay={120}
+                  customScrollbarShowOnMount={true}
+                  showSelectionIndicator={false}
+                  fitViewportHeight={true}
+                  viewportPadding={12}
+                  maxMenuHeight={300}
+                  placeholder=""
+                />
+              </div>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <span
+              className="alert-dialog-cancel"
+              onClick={(): void => {
+                closeBookmarkDialog();
+              }}
+            >
+              取消
+            </span>
+            <span
+              className={`alert-dialog-action${canConfirmBookmarkDialog ? '' : ' is-disabled'}`}
+              onClick={(): void => {
+                if (!canConfirmBookmarkDialog) {
+                  return;
+                }
+
+                void handleBookmarkDialogConfirm();
+              }}
+            >
+              保存
+            </span>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };

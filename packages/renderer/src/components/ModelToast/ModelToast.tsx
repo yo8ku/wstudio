@@ -16,8 +16,8 @@ import {
 } from '../common/AlertDialog';
 
 export interface ModelToastProps {
-  title: string;
-  description?: string;
+  title: React.ReactNode;
+  description?: React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   onConfirm?: () => void;

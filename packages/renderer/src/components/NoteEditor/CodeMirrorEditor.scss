@@ -84,6 +84,9 @@
   }
 
   .cm-outline-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 8px 12px;
     font-size: 12px;
     color: var(--ws-descriptionForeground);
@@ -99,6 +102,10 @@
       color: var(--ws-foreground);
       border-bottom-color: var(--ws-focusBorder);
     }
+  }
+
+  .cm-outline-tab-icon {
+    color: inherit;
   }
 
   .cm-outline-tab-spacer {

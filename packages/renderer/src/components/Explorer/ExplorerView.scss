@@ -73,9 +73,6 @@
     outline-offset: 0;
   }
 
-  &.is-static {
-    cursor: default;
-  }
 }
 
 .explorer-view-content {
@@ -116,6 +113,7 @@
 
   .custom-scrollbar-content > .open-editors-section,
   .custom-scrollbar-content > .file-tree-section,
+  .custom-scrollbar-content > .bookmark-section,
   .custom-scrollbar-content > .form-section,
   .custom-scrollbar-content > .accordion-section,
   .custom-scrollbar-content > .outline-section {
@@ -131,6 +129,7 @@
     flex: 0 0 auto;
   }
 
+  .custom-scrollbar-content > .bookmark-section,
   .custom-scrollbar-content > .file-tree-section,
   .custom-scrollbar-content > .outline-section {
     flex: 1 1 auto;
@@ -143,6 +142,7 @@
 
   .custom-scrollbar-content > .open-editors-section,
   .custom-scrollbar-content > .file-tree-section,
+  .custom-scrollbar-content > .bookmark-section,
   .custom-scrollbar-content > .form-section,
   .custom-scrollbar-content > .outline-section {
     background-color: transparent;

@@ -40,6 +40,7 @@ export interface TabBarProps {
   onOpenTabInExplorer?: (tabId: string) => void;
   onRevealTabInExplorerView?: (tabId: string) => void;
   onOpenInNewWindow?: (tabId: string) => void;
+  showSplitEditorAction?: boolean;
 }
 
 const normalizePath = (value: string): string => value.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
@@ -123,7 +124,8 @@ export const TabBar: React.FC<TabBarProps> = ({
   onAddTabToChat,
   onOpenTabInExplorer,
   onRevealTabInExplorerView,
-  onOpenInNewWindow
+  onOpenInNewWindow,
+  showSplitEditorAction = true
 }) => {
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
   const scrollContainerRef = useRef<CustomScrollbarRef>(null);
@@ -895,6 +897,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         
         {isEditableDocumentTab && (
           <>
+            {showSplitEditorAction && (
             <button 
               className="tab-bar-action-btn"
               title="拆分编辑器"
@@ -902,6 +905,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             >
               <Icon name="split-vertical" size={16} />
             </button>
+            )}
             
             <button 
               ref={moreButtonRef}

@@ -26,7 +26,7 @@ export const InlineInput: React.FC<InlineInputProps> = ({
 
   useEffect(() => {
     if (autoFocus && inputRef.current) {
-      inputRef.current.focus();
+      inputRef.current.focus({ preventScroll: true });
       inputRef.current.select();
     }
     // 设置一个短暂的延迟，确保组件已完全挂载

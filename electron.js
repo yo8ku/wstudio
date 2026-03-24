@@ -3,7 +3,7 @@
  */
 
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, dialog, session, shell, Menu, globalShortcut, systemPreferences } = electron;
+const { app, BrowserWindow, ipcMain, dialog, session, shell, Menu, globalShortcut, systemPreferences, screen } = electron;
 const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
@@ -55,6 +55,10 @@ const logIconPath = path.join(__dirname, 'log', 'log.png');
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
 const DEV_SERVER_MAX_RETRIES = 8;
 const DEV_SERVER_RETRY_DELAY_MS = 750;
+const BOOKMARK_GROUP_PICKER_HTML_FILE = 'bookmark-group-picker.html';
+const BOOKMARK_GROUP_PICKER_QUERY = {
+  popup: 'bookmark-group-picker'
+};
 const privilegedSchemes = [
   {
     scheme: 'local-file',
@@ -116,9 +120,41 @@ if (bootstrapProtocol && typeof bootstrapProtocol.registerSchemesAsPrivileged ==
 
 let mainWindow;
 let terminalService = null;
+const bookmarkGroupPickerSessions = new Map();
+const sourceBookmarkGroupPickerMap = new Map();
+const pendingOpenNoteWindowPayloads = new Map();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeOpenNoteInNewWindowPayload(rawPayload) {
+  const normalizedPath = typeof rawPayload?.path === 'string' ? rawPayload.path.trim() : '';
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const normalizedName = typeof rawPayload?.name === 'string' && rawPayload.name.trim()
+    ? rawPayload.name.trim()
+    : path.basename(normalizedPath);
+  const normalizedLanguage = typeof rawPayload?.language === 'string' && rawPayload.language.trim()
+    ? rawPayload.language.trim()
+    : 'plaintext';
+  const normalizedLineNumber = Number.isFinite(rawPayload?.lineNumber) && rawPayload.lineNumber > 0
+    ? Math.round(rawPayload.lineNumber)
+    : undefined;
+  const normalizedColumn = Number.isFinite(rawPayload?.column) && rawPayload.column > 0
+    ? Math.round(rawPayload.column)
+    : 1;
+
+  return {
+    path: normalizedPath,
+    content: typeof rawPayload?.content === 'string' ? rawPayload.content : '',
+    name: normalizedName,
+    language: normalizedLanguage,
+    lineNumber: normalizedLineNumber,
+    column: normalizedColumn
+  };
 }
 
 async function loadDevServerWithRetry(targetWindow, targetUrl = DEV_SERVER_URL, attempt = 1) {
@@ -137,6 +173,320 @@ async function loadDevServerWithRetry(targetWindow, targetUrl = DEV_SERVER_URL, 
     await sleep(DEV_SERVER_RETRY_DELAY_MS);
     await loadDevServerWithRetry(targetWindow, targetUrl, attempt + 1);
   }
+}
+
+function buildRendererUrl(htmlFileName = 'index.html', query = null) {
+  const rendererUrl = new URL(htmlFileName, `${DEV_SERVER_URL}/`);
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      rendererUrl.searchParams.set(key, value);
+    }
+  }
+
+  return rendererUrl.toString();
+}
+
+async function loadRendererWindow(targetWindow, options = {}, openDevTools = false) {
+  const {
+    htmlFileName = 'index.html',
+    query = null
+  } = options;
+
+  if (process.env.NODE_ENV === 'development') {
+    await loadDevServerWithRetry(targetWindow, buildRendererUrl(htmlFileName, query));
+    if (openDevTools && targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.webContents.openDevTools();
+    }
+    return;
+  }
+
+  const indexFilePath = path.join(__dirname, 'packages/renderer/dist', htmlFileName);
+  if (query) {
+    await targetWindow.loadFile(indexFilePath, { query });
+    return;
+  }
+
+  await targetWindow.loadFile(indexFilePath);
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeBookmarkGroupPickerSize(rawValue, fallback, minValue, maxValue) {
+  if (!Number.isFinite(rawValue)) {
+    return fallback;
+  }
+
+  return clampNumber(Math.round(rawValue), minValue, maxValue);
+}
+
+function resolveBookmarkGroupPickerBounds(sourceWindow, request) {
+  const sourceContentBounds = sourceWindow.getContentBounds();
+  const anchorRect = request?.anchorRect ?? {};
+  const anchorLeft = Number.isFinite(anchorRect.left) ? anchorRect.left : 0;
+  const anchorTop = Number.isFinite(anchorRect.top) ? anchorRect.top : 0;
+  const anchorWidth = Number.isFinite(anchorRect.width) ? anchorRect.width : 0;
+  const anchorHeight = Number.isFinite(anchorRect.height) ? anchorRect.height : 0;
+  const triggerScreenRect = {
+    x: Math.round(sourceContentBounds.x + anchorLeft),
+    y: Math.round(sourceContentBounds.y + anchorTop),
+    width: Math.max(1, Math.round(anchorWidth)),
+    height: Math.max(1, Math.round(anchorHeight))
+  };
+  const targetDisplay = screen.getDisplayMatching(triggerScreenRect);
+  const { workArea } = targetDisplay;
+  const popupWidth = normalizeBookmarkGroupPickerSize(
+    Math.max(request?.minWidth ?? 0, triggerScreenRect.width),
+    Math.max(triggerScreenRect.width, 240),
+    220,
+    Math.max(220, workArea.width - 16)
+  );
+  const popupHeight = normalizeBookmarkGroupPickerSize(
+    request?.maxHeight,
+    420,
+    180,
+    Math.max(180, workArea.height - 16)
+  );
+  const spacing = 4;
+  const safeMargin = 8;
+  const belowTop = triggerScreenRect.y + triggerScreenRect.height + spacing;
+  const aboveTop = triggerScreenRect.y - popupHeight - spacing;
+  const canOpenBelow = belowTop + popupHeight <= workArea.y + workArea.height - safeMargin;
+  const canOpenAbove = aboveTop >= workArea.y + safeMargin;
+  const nextTop = canOpenBelow || !canOpenAbove ? belowTop : aboveTop;
+  const nextLeft = triggerScreenRect.x;
+
+  return {
+    width: popupWidth,
+    height: popupHeight,
+    x: clampNumber(
+      nextLeft,
+      workArea.x + safeMargin,
+      Math.max(workArea.x + safeMargin, workArea.x + workArea.width - popupWidth - safeMargin)
+    ),
+    y: clampNumber(
+      nextTop,
+      workArea.y + safeMargin,
+      Math.max(workArea.y + safeMargin, workArea.y + workArea.height - popupHeight - safeMargin)
+    )
+  };
+}
+
+function resolveBookmarkGroupPickerBackgroundColor(request) {
+  return '#00000000';
+}
+
+function resolveBookmarkGroupPickerBackgroundEffect(popupWindow, request) {
+  if (!request?.hasWorkbenchBackgroundImage) {
+    return 'none';
+  }
+
+  if (process.platform !== 'win32') {
+    return 'none';
+  }
+
+  if (!popupWindow || popupWindow.isDestroyed()) {
+    return 'none';
+  }
+
+  if (typeof popupWindow.setBackgroundMaterial !== 'function') {
+    return 'none';
+  }
+
+  return 'system-acrylic';
+}
+
+function applyBookmarkGroupPickerWindowAppearance(popupWindow, request) {
+  const backgroundEffect = resolveBookmarkGroupPickerBackgroundEffect(popupWindow, request);
+
+  popupWindow.setBackgroundColor(resolveBookmarkGroupPickerBackgroundColor(request));
+
+  if (typeof popupWindow.setBackgroundMaterial === 'function') {
+    try {
+      popupWindow.setBackgroundMaterial(backgroundEffect === 'system-acrylic' ? 'acrylic' : 'none');
+    } catch (error) {
+      console.warn('[Electron] Failed to update bookmark group picker background material:', error);
+      return 'none';
+    }
+  }
+
+  return backgroundEffect;
+}
+
+function resolveBookmarkGroupPickerSession(popupWindowId, result = { status: 'cancelled', groupId: null }) {
+  const sessionRecord = bookmarkGroupPickerSessions.get(popupWindowId);
+  if (!sessionRecord) {
+    return;
+  }
+
+  if (sessionRecord.resolved || typeof sessionRecord.resolve !== 'function') {
+    return;
+  }
+
+  sessionRecord.resolved = true;
+  const resolveSession = sessionRecord.resolve;
+  sessionRecord.resolve = null;
+  resolveSession(result);
+}
+
+function disposeBookmarkGroupPickerSession(popupWindowId, result = { status: 'cancelled', groupId: null }) {
+  const sessionRecord = bookmarkGroupPickerSessions.get(popupWindowId);
+  if (!sessionRecord) {
+    return;
+  }
+
+  resolveBookmarkGroupPickerSession(popupWindowId, result);
+  bookmarkGroupPickerSessions.delete(popupWindowId);
+  if (sourceBookmarkGroupPickerMap.get(sessionRecord.sourceWindowId) === popupWindowId) {
+    sourceBookmarkGroupPickerMap.delete(sessionRecord.sourceWindowId);
+  }
+}
+
+function syncBookmarkGroupPickerWindow(sessionRecord, sourceWindow, request) {
+  const popupWindow = sessionRecord?.popupWindow;
+  if (!popupWindow || popupWindow.isDestroyed()) {
+    return;
+  }
+
+  const popupBounds = resolveBookmarkGroupPickerBounds(sourceWindow, request);
+  const backgroundEffect = applyBookmarkGroupPickerWindowAppearance(popupWindow, request);
+  const nextState = {
+    ...request,
+    backgroundEffect
+  };
+
+  sessionRecord.request = nextState;
+  popupWindow.setBounds(popupBounds);
+
+  if (sessionRecord.isReady && popupWindow.webContents && !popupWindow.webContents.isDestroyed()) {
+    popupWindow.webContents.send('bookmark-group-picker:state-changed', nextState);
+  }
+}
+
+function showBookmarkGroupPickerWindow(sessionRecord) {
+  const popupWindow = sessionRecord?.popupWindow;
+  if (!popupWindow || popupWindow.isDestroyed()) {
+    return;
+  }
+
+  if (!sessionRecord.isReady) {
+    sessionRecord.pendingShow = true;
+    return;
+  }
+
+  sessionRecord.pendingShow = false;
+  popupWindow.show();
+  popupWindow.focus();
+}
+
+function hideBookmarkGroupPickerWindow(popupWindowId, result = { status: 'cancelled', groupId: null }) {
+  const sessionRecord = bookmarkGroupPickerSessions.get(popupWindowId);
+  if (!sessionRecord) {
+    return;
+  }
+
+  sessionRecord.pendingShow = false;
+  resolveBookmarkGroupPickerSession(popupWindowId, result);
+  const popupWindow = sessionRecord.popupWindow;
+  if (popupWindow && !popupWindow.isDestroyed() && popupWindow.isVisible()) {
+    popupWindow.hide();
+  }
+}
+
+function createBookmarkGroupPickerWindow(sourceWindow) {
+  const popupBounds = resolveBookmarkGroupPickerBounds(sourceWindow, null);
+  const popupWindow = new BrowserWindow({
+    ...popupBounds,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    autoHideMenuBar: true,
+    parent: sourceWindow,
+    alwaysOnTop: true,
+    hasShadow: true,
+    roundedCorners: false,
+    backgroundMaterial: 'none',
+    backgroundColor: resolveBookmarkGroupPickerBackgroundColor(null),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      backgroundThrottling: false
+    }
+  });
+  setWindowsAccentBorder(popupWindow, false);
+
+  popupWindow.on('blur', () => {
+    hideBookmarkGroupPickerWindow(popupWindow.id);
+  });
+
+  popupWindow.on('closed', () => {
+    disposeBookmarkGroupPickerSession(popupWindow.id);
+  });
+
+  return popupWindow;
+}
+
+function ensureBookmarkGroupPickerSession(sourceWindow) {
+  const existingPopupId = sourceBookmarkGroupPickerMap.get(sourceWindow.id);
+  if (existingPopupId) {
+    const existingSession = bookmarkGroupPickerSessions.get(existingPopupId);
+    const existingWindow = existingSession?.popupWindow;
+    if (existingSession && existingWindow && !existingWindow.isDestroyed()) {
+      return existingSession;
+    }
+
+    disposeBookmarkGroupPickerSession(existingPopupId);
+  }
+
+  const popupWindow = createBookmarkGroupPickerWindow(sourceWindow);
+  const sessionRecord = {
+    popupWindow,
+    request: null,
+    resolve: null,
+    resolved: true,
+    sourceWindowId: sourceWindow.id,
+    isReady: false,
+    pendingShow: false
+  };
+
+  bookmarkGroupPickerSessions.set(popupWindow.id, sessionRecord);
+  sourceBookmarkGroupPickerMap.set(sourceWindow.id, popupWindow.id);
+
+  void loadRendererWindow(popupWindow, {
+    htmlFileName: BOOKMARK_GROUP_PICKER_HTML_FILE,
+    query: BOOKMARK_GROUP_PICKER_QUERY
+  }).then(() => {
+    const nextSessionRecord = bookmarkGroupPickerSessions.get(popupWindow.id);
+    if (!nextSessionRecord || popupWindow.isDestroyed()) {
+      return;
+    }
+
+    nextSessionRecord.isReady = true;
+    if (nextSessionRecord.request) {
+      syncBookmarkGroupPickerWindow(nextSessionRecord, sourceWindow, nextSessionRecord.request);
+    }
+    if (nextSessionRecord.pendingShow) {
+      showBookmarkGroupPickerWindow(nextSessionRecord);
+    }
+  }).catch((error) => {
+    console.error('[Electron] Failed to load bookmark group picker window:', error);
+    disposeBookmarkGroupPickerSession(popupWindow.id);
+    if (!popupWindow.isDestroyed()) {
+      popupWindow.destroy();
+    }
+  });
+
+  return sessionRecord;
 }
 
 function clampColorChannel(value) {
@@ -284,7 +634,10 @@ function registerWindowsAccentBorderSync(targetWindow) {
  * 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎯ь嚟閳绘棃鏌ゆ慨鎰偓妤€鐣烽崼鏇熺叆?
  * @param {string} backgroundColor - 缂傚倷鐒﹂崝鏍€冮崨鑸汗婵炴垯鍨洪崵鍕倶閻愰潧浜鹃柣婵愬灦閺屻倗娑甸崪浣告疂缂備浇椴搁悷鈺侇嚕閸洖唯闁靛鍎查鍥偡濠婂懎顣奸柟绋挎啞閺呭爼鎮╁畷鍥ｆ灃婵犵數濮甸崙褰掑汲椤栫偞鐓?
  */
-function createWindow(backgroundColor = '#1e1e1e') {
+function createWindow(backgroundColor = '#1e1e1e', options = {}) {
+  const startupQuery = options && typeof options === 'object' && options.query
+    ? options.query
+    : null;
   const createdWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -357,15 +710,15 @@ function createWindow(backgroundColor = '#1e1e1e') {
 
   if (process.env.NODE_ENV === 'development') {
     console.log(`[Electron] 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥箓鎳氶埡鍐ｅ亾濞堝灝鏋涘Δ鐘茬箳濡叉劖瀵奸弶鎴狀槷闂佺粯顭囬崕銈囩矈?Vite 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥附绻濋埀顒勫炊椤掆偓缁€澶愭煃閵夈劍鐝柣?${DEV_SERVER_URL}`);
-    void loadDevServerWithRetry(createdWindow, DEV_SERVER_URL);
-    createdWindow.webContents.openDevTools();
+    void loadRendererWindow(createdWindow, { query: startupQuery }, true);
   } else {
     // 闂備焦鐪归崹濠氬窗瀹ュ棭娈介柛銉仜閻旂厧鐏崇€规洖娲ㄩ、鍛存⒑閹稿海鈯曢柤鍦亾閹便劑鎮欑€涙ê顫￠梺鍏间航閸庢娊鍩€椤掑鐏犳い鏇熺懇瀹曨偊宕熼鈧埀顒傛暬閺岋綁濡搁妷銉痪闂佸搫顑呴崯鎾极?
     console.log('[Electron] Production mode: loading built renderer files.');
-    createdWindow.loadFile(path.join(__dirname, 'packages/renderer/dist/index.html'));
+    void loadRendererWindow(createdWindow, { query: startupQuery });
   }
 
   createdWindow.on('closed', () => {
+    pendingOpenNoteWindowPayloads.delete(createdWindow.id);
 
     if (resizeStateResetTimer) {
       clearTimeout(resizeStateResetTimer);
@@ -1695,6 +2048,113 @@ ipcMain.handle('window:create-new-instance', async () => {
       error: error instanceof Error ? error.message : String(error)
     };
   }
+});
+
+ipcMain.handle('window:open-note-in-new-window', async (_event, payload) => {
+  const normalizedPayload = normalizeOpenNoteInNewWindowPayload(payload);
+  if (!normalizedPayload) {
+    return {
+      success: false,
+      error: 'Invalid note payload.'
+    };
+  }
+
+  try {
+    const backgroundColor = await resolveInitialWindowBackgroundColor();
+    const createdWindow = createWindow(backgroundColor, {
+      query: {
+        startupMode: 'open-note-window',
+        windowMode: 'editor-only'
+      }
+    });
+    pendingOpenNoteWindowPayloads.set(createdWindow.id, normalizedPayload);
+    return { success: true, windowId: createdWindow.id };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
+
+ipcMain.on('window:editor-ready', (event) => {
+  const targetWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return;
+  }
+
+  const pendingPayload = pendingOpenNoteWindowPayloads.get(targetWindow.id);
+  if (!pendingPayload) {
+    return;
+  }
+
+  pendingOpenNoteWindowPayloads.delete(targetWindow.id);
+  targetWindow.webContents.send('window:open-note-in-new-window', pendingPayload);
+});
+
+ipcMain.handle('bookmark-group-picker:prepare', (event) => {
+  const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!sourceWindow || sourceWindow.isDestroyed()) {
+    return { success: false };
+  }
+
+  ensureBookmarkGroupPickerSession(sourceWindow);
+  return { success: true };
+});
+
+ipcMain.handle('bookmark-group-picker:open', async (event, request) => {
+  const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!sourceWindow || sourceWindow.isDestroyed()) {
+    return { status: 'cancelled', groupId: null };
+  }
+
+  const sessionRecord = ensureBookmarkGroupPickerSession(sourceWindow);
+  resolveBookmarkGroupPickerSession(sessionRecord.popupWindow.id);
+
+  return await new Promise((resolve) => {
+    sessionRecord.resolve = resolve;
+    sessionRecord.resolved = false;
+    syncBookmarkGroupPickerWindow(sessionRecord, sourceWindow, request);
+    showBookmarkGroupPickerWindow(sessionRecord);
+  });
+});
+
+ipcMain.handle('bookmark-group-picker:get-state', (event) => {
+  const popupWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!popupWindow || popupWindow.isDestroyed()) {
+    return null;
+  }
+
+  const sessionRecord = bookmarkGroupPickerSessions.get(popupWindow.id);
+  return sessionRecord?.request ?? null;
+});
+
+ipcMain.handle('bookmark-group-picker:select', (event, groupId) => {
+  const popupWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!popupWindow || popupWindow.isDestroyed()) {
+    return { success: false };
+  }
+
+  const normalizedGroupId = typeof groupId === 'string' && groupId.trim()
+    ? groupId
+    : null;
+  hideBookmarkGroupPickerWindow(popupWindow.id, {
+    status: 'selected',
+    groupId: normalizedGroupId
+  });
+
+  return { success: true };
+});
+
+ipcMain.handle('bookmark-group-picker:cancel', (event) => {
+  const popupWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!popupWindow || popupWindow.isDestroyed()) {
+    return { success: false };
+  }
+
+  hideBookmarkGroupPickerWindow(popupWindow.id);
+
+  return { success: true };
 });
 
 

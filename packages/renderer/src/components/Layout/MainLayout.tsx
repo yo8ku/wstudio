@@ -193,6 +193,7 @@ const resolveWindowBackgroundColor = (): string => {
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const searchParams = new URLSearchParams(window.location.search);
+  const isEditorOnlyWindow = searchParams.get('windowMode') === 'editor-only';
   const startupPanel = searchParams.get('openPanel');
   const shouldOpenPanelOnStartup = startupPanel === 'terminal' || startupPanel === 'timeline' || startupPanel === 'links';
   const initialPanelView: PanelView =
@@ -297,6 +298,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
   // 鐩戝惉鎵撳紑搴曢儴闈㈡澘浜嬩欢
   useEffect(() => {
+    if (isEditorOnlyWindow) {
+      return undefined;
+    }
+
     const handleOpenPanel = (event: Event) => {
       const customEvent = event as CustomEvent<{ view?: PanelView }>;
       const view = customEvent.detail?.view || 'terminal';
@@ -310,10 +315,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('open-panel', handleOpenPanel);
     };
-  }, []);
+  }, [isEditorOnlyWindow]);
 
   // 鐩戝惉浠庢爣绛鹃〉杩樺師 AI 闈㈡澘鍒颁晶杈规爮
   useEffect(() => {
+    if (isEditorOnlyWindow) {
+      return undefined;
+    }
+
     const handleRestoreAIChatPanel = () => {
       setIsAIChatVisible(true);
     };
@@ -322,7 +331,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     return () => {
       window.removeEventListener('restore-ai-chat-panel', handleRestoreAIChatPanel);
     };
-  }, []);
+  }, [isEditorOnlyWindow]);
 
   // 鍒濆鍖栦富棰樼郴缁?
   const initializeTheme = useThemeStore((state) => state.initialize);
@@ -422,6 +431,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
   // 鍒濆鍖栧伐浣滃尯鍚庡彴绱㈠紩鏈嶅姟锛堜娇鐢ㄥ弻 Worker Thread锛屼笉闃诲 UI锛?
   useEffect(() => {
+    if (isEditorOnlyWindow) {
+      return undefined;
+    }
+
     const initWorkspaceIndexing = async () => {
       try {
         console.log('[MainLayout] 鍒濆鍖栧伐浣滃尯鍚庡彴绱㈠紩鏈嶅姟...');
@@ -513,10 +526,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     return () => {
       window.electron?.ipcRenderer?.invoke('workspace-vector-index:stop').catch(() => {});
     };
-  }, []);
+  }, [isEditorOnlyWindow]);
 
   // 鍒濆鍖栧叏灞€鍛戒护涓績
   useEffect(() => {
+    if (isEditorOnlyWindow) {
+      return undefined;
+    }
+
     void loadWorkbenchContributions();
     const unsubscribe = workbenchContributionService.subscribe((snapshot) => {
       setWorkbenchContributions(snapshot);
@@ -525,7 +542,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     return () => {
       unsubscribe();
     };
-  }, [loadWorkbenchContributions]);
+  }, [isEditorOnlyWindow, loadWorkbenchContributions]);
 
   useEffect(() => {
     if (!isPluginActivityBarItem(activeActivity)) {
@@ -539,6 +556,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   }, [activeActivity, pluginActivityItems]);
 
   useEffect(() => {
+    if (isEditorOnlyWindow) {
+      return;
+    }
+
     const currentPanels = workbenchContributions.runtimeWebviewPanels;
     const revealTokens = panelRevealTokensRef.current;
     let nextFocusedPanelKey: string | null = null;
@@ -563,9 +584,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       setPanelActiveView(`plugin-webview:${nextFocusedPanelKey}` as PanelView);
       setIsPanelVisible(true);
     }
-  }, [workbenchContributions.runtimeWebviewPanels]);
+  }, [isEditorOnlyWindow, workbenchContributions.runtimeWebviewPanels]);
 
   useEffect(() => {
+    if (isEditorOnlyWindow) {
+      return;
+    }
+
     if (!panelActiveView.startsWith('plugin-webview:')) {
       return;
     }
@@ -577,9 +602,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     if (!stillExists) {
       setPanelActiveView('terminal');
     }
-  }, [panelActiveView, workbenchContributions.runtimeWebviewPanels]);
+  }, [isEditorOnlyWindow, panelActiveView, workbenchContributions.runtimeWebviewPanels]);
 
   useEffect(() => {
+    if (isEditorOnlyWindow) {
+      return undefined;
+    }
+
     console.log('[MainLayout] 鍒濆鍖栧叏灞€鍛戒护涓績...');
     const commandCenter = getGlobalCommandCenter() ?? new VSCodeCommandCenter();
     commandCenterRef.current = commandCenter;
@@ -618,10 +647,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       extensionDevelopmentProviderRef.current = null;
       pluginCommandProviderRef.current = null;
     };
-  }, []);
+  }, [isEditorOnlyWindow]);
 
   // 鐩戝惉蹇嵎閿?
   useEffect(() => {
+    if (isEditorOnlyWindow) {
+      return undefined;
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // F1 - 鎵撳紑鍛戒护闈㈡澘
       if (e.key === 'F1') {
@@ -655,7 +688,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleTerminalPanel, isPanelVisible]);
+  }, [handleToggleTerminalPanel, isEditorOnlyWindow, isPanelVisible]);
 
   // 浣跨敤 useMemo 浼樺寲鏍峰紡瀵硅薄锛岄伩鍏嶆瘡娆℃覆鏌撻兘鍒涘缓鏂板璞?
   const mainLayoutStyle = useMemo(() => ({
@@ -670,12 +703,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   }), []);
 
   const isPanelHorizontal = panelPosition === 'top' || panelPosition === 'bottom';
-  const isTerminalPanelOpen = isPanelVisible && panelActiveView === 'terminal';
+  const isTerminalPanelOpen = !isEditorOnlyWindow && isPanelVisible && panelActiveView === 'terminal';
 
   return (
     <IconThemeProvider>
       <div 
-        className={`main-layout ${className}`} 
+        className={`main-layout ${className}${isEditorOnlyWindow ? ' editor-only-window' : ''}`} 
         style={mainLayoutStyle}
       >
         <BackgroundImageLayer />
@@ -691,6 +724,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
             onTogglePanel={handleToggleTerminalPanel}
             isSidebarOpen={isSidebarVisible}
             isTerminalPanelOpen={isTerminalPanelOpen}
+            windowMode={isEditorOnlyWindow ? 'editor-only' : 'full'}
           />
         </div>
         
@@ -708,6 +742,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
           }}
         >
           {/* 宸︿晶涓讳晶鏍忥紙ActivityBar + Sidebar锛? 褰?sidebarPosition === 'left' 鏃舵樉绀?*/}
+          {!isEditorOnlyWindow && (
             <div className='left-ActivityBar' 
               style={{ 
               display: sidebarPosition === 'left' ? 'flex' : 'none', 
@@ -738,6 +773,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
               </div>
             </div>
+          )}
 
             {/*END 宸︿晶涓讳晶鏍忥紙ActivityBar + Sidebar锛? 褰?sidebarPosition === 'left' 鏃舵樉绀?*/}
           
@@ -752,7 +788,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
               position: 'relative',
               display: 'flex',
               flexDirection: isPanelHorizontal ? 'column' : 'row',
-              borderRight: '1px solid var(--ws-border-background)',
+              borderRight: isEditorOnlyWindow ? 'none' : '1px solid var(--ws-border-background)',
               order: (() => {
                 // AI Chat 鍦ㄥ乏渚ф椂锛岀紪杈戝櫒鍦ㄥ彸杈?
                 if (aiChatPanelPosition === 'left') return 2;
@@ -762,7 +798,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
             }}
           >
             {/* 缂栬緫鍣ㄥ尯鍩?*/}
-            {isPanelVisible && (panelPosition === 'top' || panelPosition === 'left') && (
+            {!isEditorOnlyWindow && isPanelVisible && (panelPosition === 'top' || panelPosition === 'left') && (
               <Panel
                 activeView={panelActiveView}
                 placement={panelPosition}
@@ -777,7 +813,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
             </div>
 
             {/* 搴曢儴闈㈡澘 */}
-            {isPanelVisible && (panelPosition === 'bottom' || panelPosition === 'right') && (
+            {!isEditorOnlyWindow && isPanelVisible && (panelPosition === 'bottom' || panelPosition === 'right') && (
               <Panel
                 activeView={panelActiveView}
                 placement={panelPosition}
@@ -789,7 +825,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
           </div>
 
           {/* AI 瀵硅瘽闈㈡澘 */}
-          {isAIChatVisible && (
+          {!isEditorOnlyWindow && isAIChatVisible && (
             <div
               className='ai-chat-panel-right-border'
               style={{
@@ -818,6 +854,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
           )}
 
           {/* 鍙充晶涓讳晶鏍忥紙Sidebar + ActivityBar锛? 褰?sidebarPosition === 'right' 鏃舵樉绀?*/}
+          {!isEditorOnlyWindow && (
             <div className='right-ActivityBar' style={{ 
             display: sidebarPosition === 'right' ? 'flex' : 'none', 
               order: 3,
@@ -842,12 +879,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
                 />
               </div>
             </div>
+          )}
 
           {/* 鍙充晶杈规爮 */}
           {/* 鍙充晶娲诲姩鏍?- 鏍规嵁鐘舵€佹樉绀洪殣钘?*/}
         </div>
         
         {/* 鐘舵€佹爮 */}
+        {!isEditorOnlyWindow && (
         <div className='StatusBar' style={{ 
           backgroundColor:'var(--ws-editor-background)',
           flexShrink: 0, 
@@ -860,6 +899,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         }}>
           <StatusBar />
         </div>
+        )}
       </div>
 
       {/* 鍏ㄥ眬妯℃€佺獥鍙?*/}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { CustomScrollbar } from '../../common/CustomScrollbar';
 import { TreeView } from '../Common/TreeView';
 import { OutlineNode } from './OutlineNode';
 import { OutlineNode as OutlineNodeType } from './types';
@@ -24,7 +25,7 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
   onNodeToggle,
 }) => (
   <div className="outline-section">
-    <div className="outline-content">
+    <CustomScrollbar className="outline-content" scrollbarWidth={10}>
       {nodes.length === 0 ? (
         <div className="outline-empty">活动编辑器无法提供大纲信息</div>
       ) : (
@@ -40,7 +41,7 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
           ))}
         </TreeView>
       )}
-    </div>
+    </CustomScrollbar>
   </div>
 );
 

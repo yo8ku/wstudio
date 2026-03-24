@@ -5,6 +5,13 @@
 /**
  * 娑撳顣介幒銉ュ經
  */
+import type {
+  BookmarkGroupPickerActionResult,
+  BookmarkGroupPickerRequest,
+  BookmarkGroupPickerResult,
+  BookmarkGroupPickerState,
+} from './bookmarkGroupPicker';
+
 export interface ITheme {
   id: string;
   name: string;
@@ -124,6 +131,21 @@ export interface FileResult {
 }
 
 export type WorkspaceLastOpenedResult = APIResponse<string> | FileResult;
+
+export interface OpenNoteInNewWindowPayload {
+  path: string;
+  content: string;
+  name: string;
+  language: string;
+  lineNumber?: number;
+  column?: number;
+}
+
+export interface WindowOperationResult {
+  success: boolean;
+  windowId?: number;
+  error?: string;
+}
 
 /**
  * 閼卞﹤銇夊Ο鈥崇€烽幒銉ュ經
@@ -328,6 +350,14 @@ export interface ElectronIPC {
   shell?: {
     openExternal: (url: string) => Promise<APIResponse>;
   };
+  bookmarkGroupPicker?: {
+    prepare: () => Promise<BookmarkGroupPickerActionResult>;
+    open: (request: BookmarkGroupPickerRequest) => Promise<BookmarkGroupPickerResult>;
+    getState: () => Promise<BookmarkGroupPickerState | null>;
+    select: (groupId: string | null) => Promise<BookmarkGroupPickerActionResult>;
+    cancel: () => Promise<BookmarkGroupPickerActionResult>;
+    onStateChanged: (callback: (state: BookmarkGroupPickerState) => void) => (() => void);
+  };
   form?: {
     initialize: () => Promise<APIResponse>;
     // 閸掑棛绮嶉幙宥勭稊
@@ -354,7 +384,10 @@ export interface ElectronIPC {
     onData: (callback: (terminalId: string, data: string) => void) => () => void;
     onExit: (callback: (terminalId: string, exitCode: number) => void) => () => void;
   };
-  createNewWindow: () => Promise<{ success: boolean; windowId?: number; error?: string }>;
+  createNewWindow: () => Promise<WindowOperationResult>;
+  openNoteInNewWindow: (payload: OpenNoteInNewWindowPayload) => Promise<WindowOperationResult>;
+  onOpenNoteInNewWindow: (callback: (payload: OpenNoteInNewWindowPayload) => void) => () => void;
+  notifyEditorReady: () => void;
   fileReference?: {
     add: (filePath: string, content: string, options?: {
       modelName?: string;

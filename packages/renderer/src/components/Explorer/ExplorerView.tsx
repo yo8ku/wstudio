@@ -3,11 +3,14 @@ import { FileTreeSection } from './FileTree/FileTreeSection';
 import { TimelineSection } from './Timeline/TimelineSection';
 import { FormSection } from './Form';
 import { FileTreeNode } from './FileTree/types';
+import { BookmarkSection } from './Bookmark/BookmarkSection';
+import type { BookmarkGroupSection, BookmarkNoteDisplayItem } from './Bookmark/types';
 import { OutlineSection } from './Outline/OutlineSection';
 import { OutlineNode as OutlineNodeType } from './Outline/types';
 import { TimelineItem } from './Timeline/types';
 import { ContextMenu, ContextMenuItem } from './Common/ContextMenu';
-import { LuChevronsDownUp, LuChevronsUpDown, LuDiscAlbum } from 'react-icons/lu';
+import type { NoteItem } from '../../types/electron';
+import { LuBookmark, LuChevronsDownUp, LuChevronsUpDown, LuDiscAlbum } from 'react-icons/lu';
 import { VscListUnordered } from 'react-icons/vsc';
 import {
   AlertDialog,
@@ -39,6 +42,13 @@ export interface ExplorerViewProps {
   workspaceHeaderActionMode?: WorkspaceHeaderActionMode;
   canRevealCurrentFile?: boolean;
   isOutlineViewActive?: boolean;
+  isBookmarkViewActive?: boolean;
+  groupedBookmarkItems?: BookmarkGroupSection[];
+  ungroupedBookmarkItems?: BookmarkNoteDisplayItem[];
+  selectedBookmarkNotePath?: string;
+  canCreateBookmark?: boolean;
+  canCreateBookmarkGroup?: boolean;
+  canCollapseBookmarkGroups?: boolean;
   
   // 鏃堕棿绾?
   timelineItems?: TimelineItem[];
@@ -55,11 +65,26 @@ export interface ExplorerViewProps {
   onRefresh?: () => void;
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
+  onToggleBookmarkView?: () => void;
   onToggleOutlineView?: () => void;
   onRevealCurrentFile?: () => void;
   onOutlineNodeSelect?: (node: OutlineNodeType) => void;
   onOutlineNodeToggle?: (node: OutlineNodeType) => void;
   onCollapseOutline?: () => void;
+  onCreateBookmark?: () => void;
+  onCreateBookmarkGroup?: (name: string, parentId?: string | null) => void;
+  onRenameBookmarkGroup?: (groupId: string, name: string) => void;
+  onRemoveBookmarkGroup?: (groupId: string) => void;
+  onToggleBookmarkGroup?: (groupId: string) => void;
+  onCollapseBookmarkGroups?: () => void;
+  onBookmarkNoteSelect?: (item: BookmarkNoteDisplayItem) => void;
+  onBookmarkOpenInNewTab?: (item: BookmarkNoteDisplayItem) => void;
+  onBookmarkSplitRightOpen?: (item: BookmarkNoteDisplayItem) => void;
+  onBookmarkOpenInNewWindow?: (item: BookmarkNoteDisplayItem) => void;
+  onBookmarkRename?: (item: BookmarkNoteDisplayItem) => void;
+  onBookmarkEdit?: (item: BookmarkNoteDisplayItem) => void;
+  onBookmarkRevealInFileTree?: (item: BookmarkNoteDisplayItem) => void;
+  onBookmarkRemove?: (item: BookmarkNoteDisplayItem) => void;
   onCreateConfirm?: (node: FileTreeNode, name: string) => void;
   onCreateCancel?: (node: FileTreeNode) => void;
   onRename?: (node: FileTreeNode, newName: string) => void;
@@ -83,6 +108,13 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   workspaceHeaderActionMode = 'collapse-all',
   canRevealCurrentFile = false,
   isOutlineViewActive = false,
+  isBookmarkViewActive = false,
+  groupedBookmarkItems = [],
+  ungroupedBookmarkItems = [],
+  selectedBookmarkNotePath = '',
+  canCreateBookmark = false,
+  canCreateBookmarkGroup = false,
+  canCollapseBookmarkGroups = false,
   timelineItems = [],
   onFileClick,
   onFileDoubleClick,
@@ -93,11 +125,26 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   onRefresh,
   onExpandAll,
   onCollapseAll,
+  onToggleBookmarkView,
   onToggleOutlineView,
   onRevealCurrentFile,
   onOutlineNodeSelect,
   onOutlineNodeToggle,
   onCollapseOutline,
+  onCreateBookmark,
+  onCreateBookmarkGroup,
+  onRenameBookmarkGroup,
+  onRemoveBookmarkGroup,
+  onToggleBookmarkGroup,
+  onCollapseBookmarkGroups,
+  onBookmarkNoteSelect,
+  onBookmarkOpenInNewTab,
+  onBookmarkSplitRightOpen,
+  onBookmarkOpenInNewWindow,
+  onBookmarkRename,
+  onBookmarkEdit,
+  onBookmarkRevealInFileTree,
+  onBookmarkRemove,
   onCreateConfirm,
   onCreateCancel,
   onRename,
@@ -109,6 +156,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   const [contextMenuState, setContextMenuState] = useState<{
     position: { x: number; y: number };
     items: ContextMenuItem[];
+    className?: string;
   } | null>(null);
   const [contextMenuSelectionPath, setContextMenuSelectionPath] = useState<string | null>(null);
   
@@ -678,6 +726,95 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     setContextMenuSelectionPath(null);
   }, []);
 
+  const buildBookmarkMenuItems = useCallback((item: BookmarkNoteDisplayItem): ContextMenuItem[] => ([
+    {
+      id: 'bookmark-open-in-new-tab',
+      label: '新标签页中打开',
+      onClick: () => {
+        onBookmarkOpenInNewTab?.(item);
+      },
+    },
+    {
+      id: 'bookmark-open-in-split-right',
+      label: '向右分屏打开',
+      onClick: () => {
+        onBookmarkSplitRightOpen?.(item);
+      },
+    },
+    {
+      id: 'bookmark-open-in-new-window',
+      label: '新窗口中打开',
+      onClick: () => {
+        onBookmarkOpenInNewWindow?.(item);
+      },
+    },
+    {
+      id: 'bookmark-menu-separator-1',
+      label: '',
+      separator: true,
+    },
+    {
+      id: 'bookmark-rename',
+      label: '重命名',
+      onClick: () => {
+        onBookmarkRename?.(item);
+      },
+    },
+    {
+      id: 'bookmark-edit',
+      label: '编辑',
+      onClick: () => {
+        onBookmarkEdit?.(item);
+      },
+    },
+    {
+      id: 'bookmark-menu-separator-2',
+      label: '',
+      separator: true,
+    },
+    {
+      id: 'bookmark-reveal-in-file-tree',
+      label: '文件列表中显示当前文件',
+      onClick: () => {
+        onBookmarkRevealInFileTree?.(item);
+      },
+    },
+    {
+      id: 'bookmark-remove',
+      label: '移除',
+      onClick: () => {
+        onBookmarkRemove?.(item);
+      },
+    },
+  ]), [
+    onBookmarkEdit,
+    onBookmarkOpenInNewTab,
+    onBookmarkOpenInNewWindow,
+    onBookmarkRemove,
+    onBookmarkRename,
+    onBookmarkRevealInFileTree,
+    onBookmarkSplitRightOpen,
+  ]);
+
+  const handleBookmarkNoteContextMenu = useCallback((
+    item: BookmarkNoteDisplayItem,
+    event: React.MouseEvent<HTMLDivElement>,
+  ): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenuSelectionPath(item.note.path);
+    setContextMenuState({
+      position: { x: event.clientX, y: event.clientY },
+      items: buildBookmarkMenuItems(item),
+      className: 'bookmark-context-menu',
+    });
+  }, [buildBookmarkMenuItems]);
+
+  const handleBookmarkNoteSelect = useCallback((item: BookmarkNoteDisplayItem): void => {
+    setContextMenuSelectionPath(null);
+    onBookmarkNoteSelect?.(item);
+  }, [onBookmarkNoteSelect]);
+
   const handleFileContextMenu = useCallback(async (node: FileTreeNode, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -885,14 +1022,24 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   // 鍥犱负瀹冧娇鐢?flexGrow + resizable 妯″紡锛屽簲璇ュ缁堝彲浠ヨ皟鏁撮珮搴?
   const canTimelineResize = true;
   const showExpandAllAction = workspaceHeaderActionMode === 'expand-all';
+  const isSecondaryViewActive = isOutlineViewActive || isBookmarkViewActive;
+  const canHandleBookmarkViewToggle = Boolean(onToggleBookmarkView);
   const canHandleOutlineViewToggle = Boolean(onToggleOutlineView);
   const canHandleWorkspaceHeaderAction =
-    !isOutlineViewActive && Boolean(onExpandAll || onCollapseAll);
+    !isSecondaryViewActive && Boolean(onExpandAll || onCollapseAll);
   const canHandleRevealCurrentFile =
-    !isOutlineViewActive && canRevealCurrentFile && Boolean(onRevealCurrentFile);
+    !isSecondaryViewActive && canRevealCurrentFile && Boolean(onRevealCurrentFile);
+  const bookmarkTitle = isBookmarkViewActive ? '资源管理器' : '书签';
   const outlineToggleTitle = isOutlineViewActive ? '资源管理器' : '大纲';
   const workspaceHeaderActionTitle = showExpandAllAction ? '展开全部' : '折叠全部';
   const revealCurrentFileTitle = '定位当前文件';
+  const handleBookmarkViewToggleAction = (): void => {
+    if (!canHandleBookmarkViewToggle) {
+      return;
+    }
+
+    onToggleBookmarkView?.();
+  };
   const handleOutlineViewToggleAction = (): void => {
     if (!canHandleOutlineViewToggle) {
       return;
@@ -928,6 +1075,17 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     }
 
     onExpandAll?.();
+  };
+  const handleBookmarkViewToggleKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+  ): void => {
+    if (!canHandleBookmarkViewToggle || (event.key !== 'Enter' && event.key !== ' ')) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    handleBookmarkViewToggleAction();
   };
   const handleOutlineViewToggleKeyDown = (
     event: React.KeyboardEvent<HTMLDivElement>,
@@ -967,6 +1125,24 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     <div className="explorer-view">
       <div className="explorer-workspace-title">
         <div className="explorer-workspace-title-actions">
+          <div
+            role="button"
+            tabIndex={canHandleBookmarkViewToggle ? 0 : -1}
+            className={`explorer-workspace-title-icon${canHandleBookmarkViewToggle ? '' : ' is-disabled'}${isBookmarkViewActive ? ' is-active' : ''}`}
+            aria-disabled={!canHandleBookmarkViewToggle}
+            aria-pressed={isBookmarkViewActive}
+            title={bookmarkTitle}
+            aria-label={bookmarkTitle}
+            onMouseDown={(event): void => {
+              event.stopPropagation();
+            }}
+            onClick={(): void => {
+              handleBookmarkViewToggleAction();
+            }}
+            onKeyDown={handleBookmarkViewToggleKeyDown}
+          >
+            <LuBookmark size={17} />
+          </div>
           <div
             role="button"
             tabIndex={canHandleOutlineViewToggle ? 0 : -1}
@@ -1023,7 +1199,25 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       </div>
 
       <CustomScrollbar className="explorer-view-content" scrollbarWidth={10}>
-        {isOutlineViewActive ? (
+        {isBookmarkViewActive ? (
+          <BookmarkSection
+            groupedItems={groupedBookmarkItems}
+            ungroupedItems={ungroupedBookmarkItems}
+            selectedNotePath={selectedBookmarkNotePath}
+            contextMenuSelectionPath={contextMenuSelectionPath ?? ''}
+            canCreateBookmark={canCreateBookmark}
+            canCreateBookmarkGroup={canCreateBookmarkGroup}
+            canCollapseAll={canCollapseBookmarkGroups}
+            onCreateBookmark={onCreateBookmark}
+            onCreateBookmarkGroup={onCreateBookmarkGroup}
+            onRenameBookmarkGroup={onRenameBookmarkGroup}
+            onRemoveBookmarkGroup={onRemoveBookmarkGroup}
+            onToggleBookmarkGroup={onToggleBookmarkGroup}
+            onCollapseAll={onCollapseBookmarkGroups}
+            onNoteSelect={handleBookmarkNoteSelect}
+            onNoteContextMenu={handleBookmarkNoteContextMenu}
+          />
+        ) : isOutlineViewActive ? (
           <OutlineSection
             nodes={outlineNodes}
             selectedNode={selectedOutlineNode}
@@ -1107,6 +1301,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         <ContextMenu
           items={contextMenuState.items}
           position={contextMenuState.position}
+          className={contextMenuState.className}
           onClose={closeContextMenu}
         />
       )}

@@ -78,9 +78,6 @@
 }
 
 .alert-dialog-action {
-  background-color: var(--ws-button-background);
-  color: var(--ws-button-foreground);
-
   &:hover {
     background-color: var(--ws-button-hover-background);
   }

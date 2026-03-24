@@ -225,13 +225,15 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   toggleFavorite: async (id) => {
     try {
       const newStatus = await window.electron?.ipcRenderer.invoke('note:toggleFavorite', id);
-      if (typeof newStatus === 'boolean') {
-        get().updateNoteInList(id, { isFavorite: newStatus });
+      if (typeof newStatus !== 'boolean') {
+        throw new Error('切换收藏状态返回值无效');
       }
-      return newStatus || false;
+
+      get().updateNoteInList(id, { isFavorite: newStatus });
+      return newStatus;
     } catch (error) {
       console.error('[noteStore] 切换收藏状态失败:', error);
-      return false;
+      throw error instanceof Error ? error : new Error('切换收藏状态失败');
     }
   }
 }));

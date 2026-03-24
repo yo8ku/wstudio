@@ -1,0 +1,232 @@
+/**
+ * FileExplorer bookmark dialog styles.
+ */
+
+.file-explorer-bookmark-dialog {
+  width: min(460px, calc(100vw - 32px));
+
+  .file-explorer-bookmark-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .file-explorer-bookmark-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    color: var(--ws-foreground);
+  }
+
+  .file-explorer-bookmark-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ws-descriptionForeground, var(--ws-description-foreground, var(--ws-foreground)));
+  }
+
+  .file-explorer-bookmark-input {
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--ws-input-border, var(--ws-panel-border));
+    border-radius: 4px;
+    box-sizing: border-box;
+    background: var(--ws-input-background, var(--ws-editor-background));
+    color: var(--ws-input-foreground, var(--ws-foreground));
+    outline: none;
+
+    &::placeholder {
+      color: var(--ws-input-placeholderForeground, var(--ws-descriptionForeground));
+    }
+
+    &:focus {
+      border-color: var(--ws-focusBorder, var(--ws-button-background));
+      box-shadow: 0 0 0 1px var(--ws-focusBorder, var(--ws-button-background));
+    }
+  }
+
+  .file-explorer-bookmark-group-select {
+    .select-trigger {
+      justify-content: space-between;
+      min-height: 32px;
+      padding: 3px 10px;
+      border: 1px solid var(--ws-input-border, var(--ws-panel-border));
+      border-radius: 4px;
+      background: var(--ws-input-background, var(--ws-editor-background));
+      color: var(--ws-input-foreground, var(--ws-foreground));
+      box-sizing: border-box;
+    }
+  }
+
+  .file-explorer-bookmark-group-picker-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 32px;
+    padding: 3px 10px;
+    border: 1px solid var(--ws-input-border, var(--ws-panel-border));
+    border-radius: 4px;
+    box-sizing: border-box;
+    background: var(--ws-input-background, var(--ws-editor-background));
+    color: var(--ws-input-foreground, var(--ws-foreground));
+    cursor: pointer;
+    outline: none;
+
+    &:focus {
+      border-color: var(--ws-focusBorder, var(--ws-button-background));
+      box-shadow: 0 0 0 1px var(--ws-focusBorder, var(--ws-button-background));
+    }
+  }
+
+  .file-explorer-bookmark-group-picker-trigger-label {
+    min-width: 0;
+    flex: 1 1 auto;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-explorer-bookmark-group-picker-trigger-icon {
+    flex: 0 0 auto;
+    color: inherit;
+    opacity: 0.8;
+  }
+
+  .alert-dialog-action.is-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+body.background-image-enabled {
+  .file-explorer-bookmark-dialog {
+    background-color: rgba(17, 24, 39, 0.72);
+    background-color: color-mix(in srgb, var(--ws-editor-background, var(--ws-sideBar-background)) 24%, transparent);
+    border-color: color-mix(in srgb, var(--ws-panel-border, var(--ws-dropdown-border, rgba(255, 255, 255, 0.12))) 82%, transparent);
+    box-shadow: 0 10px 40px var(--ws-widget-shadow, rgba(0, 0, 0, 0.3));
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background-clip: padding-box;
+  }
+
+  .file-explorer-bookmark-dialog .file-explorer-bookmark-input,
+  .file-explorer-bookmark-dialog .file-explorer-bookmark-group-picker-trigger,
+  .file-explorer-bookmark-dialog .file-explorer-bookmark-group-select .select-trigger {
+    background-color: rgba(17, 24, 39, 0.48);
+    background-color: color-mix(in srgb, var(--ws-input-background, var(--ws-editor-background)) 76%, transparent);
+    border-color: color-mix(in srgb, var(--ws-input-border, var(--ws-panel-border)) 86%, transparent);
+  }
+}
+
+.file-explorer-bookmark-group-select-content {
+  z-index: 100001;
+  border-radius: 4px;
+
+  .select-item[data-type='folder'] {
+    margin-bottom: 0;
+  }
+
+  .select-item[data-type='folder'] {
+    .select-item-icon {
+      min-width: 15px;
+
+      svg:first-child:not(:only-child) {
+        width: 15px;
+        height: 15px;
+        font-size: 15px;
+        opacity: 0.9;
+      }
+    }
+  }
+
+  .select-list-custom-scrollbar {
+    .custom-scrollbar-content {
+      padding: 4px;
+    }
+
+    .custom-scrollbar-track,
+    .custom-scrollbar-thumb {
+      border-radius: 0;
+    }
+  }
+}
+
+body.background-image-enabled {
+  .file-explorer-bookmark-group-select-content {
+    background-color: rgba(17, 24, 39, 0.72);
+    background-color: color-mix(in srgb, var(--ws-dropdown-background, var(--ws-editor-background)) 82%, transparent);
+    border-color: color-mix(in srgb, var(--ws-dropdown-border, var(--ws-panel-border, rgba(255, 255, 255, 0.12))) 82%, transparent);
+    box-shadow: 0 10px 40px var(--ws-widget-shadow, rgba(0, 0, 0, 0.3));
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    background-clip: padding-box;
+
+    .select-list,
+    .select-list-custom-scrollbar,
+    .select-list-custom-scrollbar .custom-scrollbar-content {
+      background: transparent;
+    }
+
+    .select-item[data-type='folder'] {
+      margin-bottom: 0;
+    }
+
+    .select-item {
+      background-color: transparent;
+    }
+
+    .select-item:hover {
+      background-color: color-mix(in srgb, var(--ws-list-hoverBackground, var(--ws-list-hover-background, rgba(127, 127, 127, 0.16))) 84%, transparent);
+    }
+
+    .select-item.selected,
+    .select-item.selected:hover {
+      background-color: color-mix(in srgb, var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22)))) 86%, transparent);
+    }
+  }
+}
+
+.file-explorer-bookmark-group-select-chevron-spacer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  opacity: 0.45;
+}
+
+.file-explorer-bookmark-group-select-chevron,
+.file-explorer-bookmark-group-select-folder {
+  color: inherit;
+}
+
+.file-explorer-bookmark-group-select-chevron {
+  cursor: pointer;
+  opacity: 0.8;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.file-explorer-modal-title-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+
+  svg {
+    flex: 0 0 auto;
+    color: #cca700;
+  }
+}

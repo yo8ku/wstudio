@@ -1,0 +1,97 @@
+/**
+ * Bookmark section styles.
+ * Keeps bookmark-specific layout while reusing the explorer tree row structure.
+ */
+
+.bookmark-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bookmark-content {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  .custom-scrollbar-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    gap: 0;
+    padding: 0 0 6px;
+    overflow-x: hidden;
+  }
+}
+
+.bookmark-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 4px 4px;
+  flex: 0 0 auto;
+}
+
+.bookmark-toolbar-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  border-radius: 4px;
+  color: var(--ws-activityBar-inactiveForeground);
+  cursor: pointer;
+  user-select: none;
+
+  &:hover:not(.is-disabled),
+  &:focus-visible:not(.is-disabled) {
+    background: var(--ws-list-hoverBackground, var(--ws-list-hover-background));
+    color: var(--ws-activityBar-foreground);
+    outline: 1px solid var(--ws-focusBorder, var(--ws-button-background));
+    outline-offset: 0;
+  }
+
+  &.is-disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+}
+
+.bookmark-empty {
+  margin: 0 6px;
+  padding: 10px;
+  font-size: 12px;
+  font-style: italic;
+  border-radius: 6px;
+  color: var(--ws-descriptionForeground, var(--ws-disabledForeground, var(--ws-list-deemphasizedForeground)));
+  background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
+}
+
+.bookmark-groups {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0;
+}
+
+.bookmark-group {
+  min-width: 0;
+}
+
+.bookmark-section {
+  .file-tree-node,
+  .file-tree-children {
+    min-width: 0;
+  }
+
+  .file-tree-children[data-parent-depth]::before {
+    left: var(--bookmark-guide-left, 15px);
+  }
+}
