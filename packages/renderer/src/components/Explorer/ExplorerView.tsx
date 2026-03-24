@@ -48,7 +48,6 @@ export interface ExplorerViewProps {
   selectedBookmarkNotePath?: string;
   canCreateBookmark?: boolean;
   canCreateBookmarkGroup?: boolean;
-  canCollapseBookmarkGroups?: boolean;
   
   // 鏃堕棿绾?
   timelineItems?: TimelineItem[];
@@ -114,7 +113,6 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   selectedBookmarkNotePath = '',
   canCreateBookmark = false,
   canCreateBookmarkGroup = false,
-  canCollapseBookmarkGroups = false,
   timelineItems = [],
   onFileClick,
   onFileDoubleClick,
@@ -1025,13 +1023,20 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   const isSecondaryViewActive = isOutlineViewActive || isBookmarkViewActive;
   const canHandleBookmarkViewToggle = Boolean(onToggleBookmarkView);
   const canHandleOutlineViewToggle = Boolean(onToggleOutlineView);
+  const canHandleBookmarkCollapseAction =
+    isBookmarkViewActive && groupedBookmarkItems.length > 0 && Boolean(onCollapseBookmarkGroups);
+  const canHandleOutlineCollapseAction =
+    isOutlineViewActive && outlineNodes.length > 0 && Boolean(onCollapseOutline);
   const canHandleWorkspaceHeaderAction =
     !isSecondaryViewActive && Boolean(onExpandAll || onCollapseAll);
+  const canHandleHeaderAction =
+    canHandleBookmarkCollapseAction || canHandleOutlineCollapseAction || canHandleWorkspaceHeaderAction;
   const canHandleRevealCurrentFile =
     !isSecondaryViewActive && canRevealCurrentFile && Boolean(onRevealCurrentFile);
   const bookmarkTitle = isBookmarkViewActive ? '资源管理器' : '书签';
   const outlineToggleTitle = isOutlineViewActive ? '资源管理器' : '大纲';
-  const workspaceHeaderActionTitle = showExpandAllAction ? '展开全部' : '折叠全部';
+  const workspaceHeaderActionTitle =
+    !isSecondaryViewActive && showExpandAllAction ? '展开全部' : '折叠全部';
   const revealCurrentFileTitle = '定位当前文件';
   const handleBookmarkViewToggleAction = (): void => {
     if (!canHandleBookmarkViewToggle) {
@@ -1055,6 +1060,24 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     onRevealCurrentFile?.();
   };
   const handleWorkspaceHeaderAction = (): void => {
+    if (isBookmarkViewActive) {
+      if (!canHandleBookmarkCollapseAction) {
+        return;
+      }
+
+      onCollapseBookmarkGroups?.();
+      return;
+    }
+
+    if (isOutlineViewActive) {
+      if (!canHandleOutlineCollapseAction) {
+        return;
+      }
+
+      onCollapseOutline?.();
+      return;
+    }
+
     if (!canHandleWorkspaceHeaderAction) {
       return;
     }
@@ -1112,7 +1135,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   const handleWorkspaceHeaderActionKeyDown = (
     event: React.KeyboardEvent<HTMLDivElement>,
   ): void => {
-    if (!canHandleWorkspaceHeaderAction || (event.key !== 'Enter' && event.key !== ' ')) {
+    if (!canHandleHeaderAction || (event.key !== 'Enter' && event.key !== ' ')) {
       return;
     }
 
@@ -1180,9 +1203,9 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
           </div>
           <div
             role="button"
-            tabIndex={canHandleWorkspaceHeaderAction ? 0 : -1}
-            className={`explorer-workspace-title-icon${canHandleWorkspaceHeaderAction ? '' : ' is-disabled'}`}
-            aria-disabled={!canHandleWorkspaceHeaderAction}
+            tabIndex={canHandleHeaderAction ? 0 : -1}
+            className={`explorer-workspace-title-icon${canHandleHeaderAction ? '' : ' is-disabled'}`}
+            aria-disabled={!canHandleHeaderAction}
             onMouseDown={(event): void => {
               event.stopPropagation();
             }}
@@ -1193,7 +1216,9 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
             title={workspaceHeaderActionTitle}
             aria-label={workspaceHeaderActionTitle}
           >
-            {showExpandAllAction ? <LuChevronsUpDown size={16} /> : <LuChevronsDownUp size={16} />}
+            {!isSecondaryViewActive && showExpandAllAction
+              ? <LuChevronsUpDown size={16} />
+              : <LuChevronsDownUp size={16} />}
           </div>
         </div>
       </div>
@@ -1207,13 +1232,11 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
             contextMenuSelectionPath={contextMenuSelectionPath ?? ''}
             canCreateBookmark={canCreateBookmark}
             canCreateBookmarkGroup={canCreateBookmarkGroup}
-            canCollapseAll={canCollapseBookmarkGroups}
             onCreateBookmark={onCreateBookmark}
             onCreateBookmarkGroup={onCreateBookmarkGroup}
             onRenameBookmarkGroup={onRenameBookmarkGroup}
             onRemoveBookmarkGroup={onRemoveBookmarkGroup}
             onToggleBookmarkGroup={onToggleBookmarkGroup}
-            onCollapseAll={onCollapseBookmarkGroups}
             onNoteSelect={handleBookmarkNoteSelect}
             onNoteContextMenu={handleBookmarkNoteContextMenu}
           />

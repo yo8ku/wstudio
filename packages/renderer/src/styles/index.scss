@@ -170,6 +170,7 @@ body.background-image-enabled .titleBar {
   // border-bottom: 1px solid  #8b8b8b52;
 }
 
+
 body.background-image-enabled .sidebar[data-position=left] {
 
   border-right: 1px solid #8b8b8b52;
@@ -316,19 +317,7 @@ body.background-image-enabled .panel-container>* {
 }
 
 
-//AI panle 鑱婂ぉ闈㈡澘杈撳叆鍖哄煙
 
-[data-theme-mode='dark'] .ai-chat-panel-input-container {
-  border-top: 1px solid rgba(105, 105, 105, 0.39);
-}
-
-[data-theme-mode='dark'] .ai-chat-panel-right-border {
-  border-right: 1px solid rgba(95, 94, 94, 0.27)
-}
-
-[data-theme-mode='dark'] .ai-chat-panel .ai-chat-panel-input-container-inner {
-  border: 1px solid #ffffff2e;
-}
 
 
 //鑿滃崟

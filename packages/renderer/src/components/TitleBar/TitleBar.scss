@@ -5,6 +5,7 @@
   user-select: none;
   position: relative;
   z-index: 100;
+  border-bottom: 1px solid transparent;
   /* 确保位于 AI 输入边框层之上 */
 }
 
@@ -17,43 +18,6 @@
   -webkit-app-region: drag;
   flex: 1;
 }
-
-.titlebar-icon {
-  display: flex;
-  align-items: center;
-  -webkit-app-region: no-drag;
-}
-
-.titlebar-sidebar-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 3px;
-  color: var(--ws-activityBar-inactiveForeground);
-  opacity: 0.6;
-  cursor: pointer;
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
-.titlebar-sidebar-toggle:hover {
-  background-color: var(--titlebar-hover);
-  color: var(--ws-activityBar-foreground);
-  opacity: 1;
-}
-
-.titlebar-sidebar-toggle:active {
-  opacity: 1;
-}
-
-.titlebar-sidebar-toggle>span {
-  pointer-events: none;
-}
-
-
 
 .titlebar-title {
   font-size: 12px;
@@ -129,7 +93,7 @@
   display: flex;
   align-items: center;
   height: 100%;
-  margin-left: 0.5rem;
+  margin-left: 2px;
   -webkit-app-region: no-drag;
   gap: 2px;
 }
@@ -155,6 +119,17 @@
   outline: none;
   font-size: 13px;
   color: var(--ws-menu-foreground);
+}
+
+.titlebar-menu-button--icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+}
+
+.titlebar-menu-button-icon {
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .titlebar-menu-button:hover {

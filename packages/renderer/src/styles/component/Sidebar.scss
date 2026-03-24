@@ -7,14 +7,14 @@
 //颜色-侧边栏
 .sidebar[data-position="left"] {
   background-color: var(--ws-sideBar-background);
-  border-right:1px solid var(--ws-border-background);
+  border-right:1px solid var(--ws-sideBar-border);
   color:var(--ws-list-foreground);
 }
 
 
 // 侧边栏
 [data-theme-mode='light'] .sidebar[data-position=right] {
-  border-left:1px solid var(--ws-border-background);
+  border-left:1px solid var(--ws-sideBar-border);
 }
 
 

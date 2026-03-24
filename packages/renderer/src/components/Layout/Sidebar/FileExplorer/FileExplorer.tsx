@@ -2039,10 +2039,6 @@ export const FileExplorer: React.FC = () => {
     await persistBookmarkGroups(nextGroups);
   }, [bookmarkGroups, persistBookmarkGroups]);
 
-  const canCollapseBookmarkGroups = useMemo(() => (
-    bookmarkGroups.length > 0 || favoriteNotes.length > 0
-  ), [bookmarkGroups.length, favoriteNotes.length]);
-
   const handleOutlineNodeSelect = useCallback((node: ExplorerOutlineNode) => {
     setSelectedOutlineNode(node);
 
@@ -2415,7 +2411,6 @@ export const FileExplorer: React.FC = () => {
         selectedBookmarkNotePath={currentActiveFilePath || selectedFilePath}
         canCreateBookmark={canCreateBookmark}
         canCreateBookmarkGroup={true}
-        canCollapseBookmarkGroups={canCollapseBookmarkGroups}
         onFileClick={handleFileClick}
         onFileDoubleClick={handleFileDoubleClick}
         onFolderToggle={handleFolderToggle}

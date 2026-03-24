@@ -788,7 +788,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
               position: 'relative',
               display: 'flex',
               flexDirection: isPanelHorizontal ? 'column' : 'row',
-              borderRight: isEditorOnlyWindow ? 'none' : '1px solid var(--ws-border-background)',
+              borderRight: isEditorOnlyWindow ? 'none' : '1px solid var(--ws-titleBar-border)',
               order: (() => {
                 // AI Chat 鍦ㄥ乏渚ф椂锛岀紪杈戝櫒鍦ㄥ彸杈?
                 if (aiChatPanelPosition === 'left') return 2;

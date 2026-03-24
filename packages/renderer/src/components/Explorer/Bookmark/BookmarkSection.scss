@@ -52,7 +52,6 @@
   &:focus-visible:not(.is-disabled) {
     background: var(--ws-list-hoverBackground, var(--ws-list-hover-background));
     color: var(--ws-activityBar-foreground);
-    outline: 1px solid var(--ws-focusBorder, var(--ws-button-background));
     outline-offset: 0;
   }
 

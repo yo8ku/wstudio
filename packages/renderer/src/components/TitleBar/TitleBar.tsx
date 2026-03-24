@@ -3,6 +3,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { LuAlignJustify } from 'react-icons/lu';
 import {
   VscChromeMaximize,
   VscChromeRestore,
@@ -40,6 +41,7 @@ interface MenuConfig {
 type TitleBarControl = 'ai-assistant' | 'sidebar' | 'terminal' | 'minimize' | 'maximize' | 'close';
 
 const TITLEBAR_ICON_SIZE = 16;
+const FILE_MENU_TITLE = '文件';
 
 export const TitleBar: React.FC<TitleBarProps> = ({
   onToggleSidebar,
@@ -355,22 +357,23 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     );
   };
 
+  const renderMenuTitle = (menuTitle: string): React.ReactNode => {
+    if (menuTitle === FILE_MENU_TITLE) {
+      return (
+        <LuAlignJustify
+          className="titlebar-menu-button-icon"
+          size={TITLEBAR_ICON_SIZE}
+          aria-hidden="true"
+        />
+      );
+    }
+
+    return menuTitle;
+  };
+
   return (
     <div className={`titlebar${!isWindowActive ? ' inactive' : ''}`}>
       <div className="titlebar-drag-region">
-        {windowMode === 'full' && (
-          <div className="titlebar-icon">
-            <div
-              className="titlebar-sidebar-toggle"
-              onClick={onToggleSidebar}
-              title="Toggle sidebar"
-              aria-label="Toggle sidebar"
-            >
-              <Icon iconSet="ui" name="panel-left" size={18} />
-            </div>
-          </div>
-        )}
-
         {windowMode === 'full' && (
           <div className="titlebar-menu" ref={menuRef}>
             {menuConfig.map(menu => (
@@ -380,10 +383,12 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 onMouseEnter={() => handleMenuHoverEnter(menu.title)}
               >
                 <div
-                  className={`titlebar-menu-button ${activeMenu === menu.title ? 'active' : ''}`}
+                  className={`titlebar-menu-button ${menu.title === FILE_MENU_TITLE ? 'titlebar-menu-button--icon' : ''} ${activeMenu === menu.title ? 'active' : ''}`}
                   onClick={() => handleMenuClick(menu.title)}
+                  title={menu.title}
+                  aria-label={menu.title}
                 >
-                  {menu.title}
+                  {renderMenuTitle(menu.title)}
                 </div>
 
                 {activeMenu === menu.title && (

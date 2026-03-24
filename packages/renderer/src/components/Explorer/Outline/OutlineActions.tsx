@@ -1,4 +1,5 @@
 import React from 'react';
+import { LuChevronsDownUp } from 'react-icons/lu';
 import { Icon } from '../../Icons/Icon';
 
 export interface OutlineActionsProps {
@@ -20,7 +21,7 @@ export const OutlineActions: React.FC<OutlineActionsProps> = ({
           title="折叠全部"
           onClick={onCollapse}
         >
-          <Icon name="collapse-all" size={16} />
+          <LuChevronsDownUp size={16} />
         </div>
       )}
       {onFilter && (

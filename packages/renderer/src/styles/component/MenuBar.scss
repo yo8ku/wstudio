@@ -3,15 +3,17 @@
  * 功能：定义菜单栏的颜色主题
  */
 
-.titlebar-menu-item{
+.titlebar-menu-item {
   border-radius: 4px;
-  &:hover{
+  color: var(--ws-activityBar-inactiveForeground);
+
+  &:hover {
     background-color: var(--ws-menu-selectionBackground);
     color: var(--ws-menu-selectionForeground);
   }
 }
 
- 
+
 .menu-bar {
   background-color: var(--ws-menu-background);
   color: var(--ws-menu-foreground);
@@ -47,11 +49,3 @@
 .menu-bar .menu-separator {
   background-color: var(--ws-menu-separatorBackground);
 }
-
-
-
-
-
-
-
-

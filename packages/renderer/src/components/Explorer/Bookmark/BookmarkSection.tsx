@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { LuBookmarkPlus, LuChevronsDownUp, LuFolderPlus } from 'react-icons/lu';
+import { LuBookmarkPlus, LuFolderPlus } from 'react-icons/lu';
 import { Icon } from '../../Icons/Icon';
 import { CustomScrollbar } from '../../common/CustomScrollbar';
 import { ContextMenu, type ContextMenuItem } from '../Common/ContextMenu';
@@ -20,13 +20,11 @@ export interface BookmarkSectionProps {
   contextMenuSelectionPath?: string;
   canCreateBookmark?: boolean;
   canCreateBookmarkGroup?: boolean;
-  canCollapseAll?: boolean;
   onCreateBookmark?: () => void;
   onCreateBookmarkGroup?: (name: string, parentId?: string | null) => void;
   onRenameBookmarkGroup?: (groupId: string, name: string) => void;
   onRemoveBookmarkGroup?: (groupId: string) => void;
   onToggleBookmarkGroup?: (groupId: string) => void;
-  onCollapseAll?: () => void;
   onNoteSelect: (item: BookmarkNoteDisplayItem) => void;
   onNoteContextMenu?: (
     item: BookmarkNoteDisplayItem,
@@ -44,7 +42,6 @@ const LABEL_REMOVE = '\u79fb\u9664';
 const LABEL_NEW_BOOKMARK_GROUP = '\u65b0\u5efa\u4e66\u7b7e\u7ec4';
 const LABEL_RENAME_BOOKMARK_GROUP = '\u91cd\u547d\u540d\u4e66\u7b7e\u7ec4';
 const LABEL_BOOKMARK_CURRENT_TAB = '\u6536\u85cf\u5f53\u524d\u6807\u7b7e\u9875';
-const LABEL_COLLAPSE_ALL = '\u5168\u90e8\u6298\u53e0';
 const LABEL_NO_BOOKMARKS = '\u6682\u65e0\u4e66\u7b7e\u5185\u5bb9';
 
 const normalizePath = (value: string): string => value.replace(/\\/g, '/');
@@ -60,13 +57,11 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
   contextMenuSelectionPath = '',
   canCreateBookmark = false,
   canCreateBookmarkGroup = false,
-  canCollapseAll = false,
   onCreateBookmark,
   onCreateBookmarkGroup,
   onRenameBookmarkGroup,
   onRemoveBookmarkGroup,
   onToggleBookmarkGroup,
-  onCollapseAll,
   onNoteSelect,
   onNoteContextMenu,
 }) => {
@@ -352,35 +347,6 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
           }}
         >
           <LuFolderPlus size={16} />
-        </div>
-        <div
-          role="button"
-          tabIndex={canCollapseAll ? 0 : -1}
-          className={`bookmark-toolbar-action${canCollapseAll ? '' : ' is-disabled'}`}
-          aria-disabled={!canCollapseAll}
-          title={LABEL_COLLAPSE_ALL}
-          aria-label={LABEL_COLLAPSE_ALL}
-          onMouseDown={(event): void => {
-            event.stopPropagation();
-          }}
-          onClick={(): void => {
-            if (!canCollapseAll) {
-              return;
-            }
-
-            onCollapseAll?.();
-          }}
-          onKeyDown={(event): void => {
-            if (!canCollapseAll || (event.key !== 'Enter' && event.key !== ' ')) {
-              return;
-            }
-
-            event.preventDefault();
-            event.stopPropagation();
-            onCollapseAll?.();
-          }}
-        >
-          <LuChevronsDownUp size={16} />
         </div>
       </div>
       <CustomScrollbar className="bookmark-content" scrollbarWidth={10}>
