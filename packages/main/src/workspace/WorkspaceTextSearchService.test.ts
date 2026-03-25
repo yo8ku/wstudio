@@ -48,6 +48,8 @@ describe('searchWorkspaceText', () => {
     });
 
     expect(result.limitHit).toBe(false);
+    expect(result.totalCount).toBe(2);
+    expect(result.totalFiles).toBe(2);
     expect(result.items).toHaveLength(2);
     expect(result.items[0]).toMatchObject({
       relativePath: 'notes/alpha.md',
@@ -99,6 +101,8 @@ describe('searchWorkspaceText', () => {
     });
 
     expect(result.items).toHaveLength(1);
+    expect(result.totalCount).toBe(1);
+    expect(result.totalFiles).toBe(1);
     expect(result.items[0].relativePath).toBe('src/keep.ts');
   });
 
@@ -124,6 +128,12 @@ describe('searchWorkspaceText', () => {
 
     expect(result.limitHit).toBe(true);
     expect(result.items).toHaveLength(3);
+    expect(result.totalCount).toBe(DEFAULT_WORKSPACE_SEARCH_MAX_RESULTS + 1);
+    expect(result.totalFiles).toBe(1);
+    expect(result.groupCounts).toEqual([{
+      groupKey: `file:${path.join(workspaceDirectory, 'notes/limit.md')}`,
+      totalMatches: DEFAULT_WORKSPACE_SEARCH_MAX_RESULTS + 1,
+    }]);
   });
 
   it('supports note-backed targets before filesystem targets', async () => {
@@ -144,11 +154,47 @@ describe('searchWorkspaceText', () => {
     );
 
     expect(result.items).toHaveLength(2);
+    expect(result.totalCount).toBe(2);
+    expect(result.totalFiles).toBe(2);
     expect(result.items[0]).toMatchObject({
       source: 'note',
       noteId: 'note-1',
       title: 'Inbox',
       relativePath: 'Inbox',
+    });
+  });
+
+  it('skips duplicate workspace files when the same path is already provided as a note target', async () => {
+    const workspaceDirectory = await createWorkspace();
+    const absolutePath = path.join(workspaceDirectory, 'notes/shared.md');
+    await writeWorkspaceFile(workspaceDirectory, 'notes/shared.md', 'needle from shared note');
+
+    const result = await searchWorkspaceText(
+      workspaceDirectory,
+      { query: 'needle' },
+      [{
+        absolutePath,
+        relativePath: 'notes/shared.md',
+        content: 'needle from shared note',
+        source: 'note',
+        noteId: 'note-shared',
+        title: 'Shared',
+      }],
+    );
+
+    expect(result.limitHit).toBe(false);
+    expect(result.totalCount).toBe(1);
+    expect(result.totalFiles).toBe(1);
+    expect(result.groupCounts).toEqual([{
+      groupKey: 'note:note-shared',
+      totalMatches: 1,
+    }]);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      source: 'note',
+      noteId: 'note-shared',
+      absolutePath,
+      relativePath: 'notes/shared.md',
     });
   });
 });

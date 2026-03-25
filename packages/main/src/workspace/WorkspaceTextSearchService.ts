@@ -33,6 +33,14 @@ export interface WorkspaceTextSearchMatch {
 export interface WorkspaceTextSearchResponse {
   items: WorkspaceTextSearchMatch[];
   limitHit: boolean;
+  totalCount: number;
+  totalFiles: number;
+  groupCounts: WorkspaceTextSearchGroupCount[];
+}
+
+export interface WorkspaceTextSearchGroupCount {
+  groupKey: string;
+  totalMatches: number;
 }
 
 export interface WorkspaceTextSearchTarget {
@@ -54,6 +62,12 @@ interface CompiledSearchRequest {
   readonly includePatterns: readonly CompiledPathPattern[];
   readonly excludePatterns: readonly CompiledPathPattern[];
   readonly maxResults: number;
+}
+
+interface SearchAccumulator {
+  readonly items: WorkspaceTextSearchMatch[];
+  readonly groupCounts: Map<string, number>;
+  totalCount: number;
 }
 
 const WORD_BOUNDARY_PATTERN = '[\\p{L}\\p{N}_]';
@@ -205,8 +219,25 @@ const shouldSkipEntry = (entryName: string, isDirectory: boolean): boolean => {
   return isDirectory && WORKSPACE_SEARCH_SKIPPED_DIRECTORIES.has(entryName);
 };
 
-const createMatchKey = (item: WorkspaceTextSearchMatch): string => (
-  `${item.absolutePath}:${item.line}:${item.column}:${item.preview}`
+const isPathWithinDirectory = (rootDirectory: string, targetPath: string): boolean => {
+  const normalizedRootDirectory = path.resolve(rootDirectory);
+  const normalizedTargetPath = path.resolve(targetPath);
+  const relativePath = path.relative(normalizedRootDirectory, normalizedTargetPath);
+
+  return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+};
+
+const createSkippedWorkspaceTargetPaths = (
+  workspaceDirectory: string,
+  additionalTargets: readonly WorkspaceTextSearchTarget[],
+): ReadonlySet<string> => new Set(
+  additionalTargets
+    .map(target => target.absolutePath)
+    .filter(absolutePath => isPathWithinDirectory(workspaceDirectory, absolutePath)),
+);
+
+const createMatchGroupKey = (item: WorkspaceTextSearchMatch): string => (
+  item.noteId ? `note:${item.noteId}` : `file:${item.absolutePath}`
 );
 
 const createMatchFromIndex = (
@@ -245,11 +276,10 @@ const createMatchFromIndex = (
 const searchTargetText = (
   target: WorkspaceTextSearchTarget,
   compiledRequest: CompiledSearchRequest,
-  items: WorkspaceTextSearchMatch[],
-  seenKeys: Set<string>,
-): boolean => {
+  accumulator: SearchAccumulator,
+): void => {
   if (target.content.includes('\u0000')) {
-    return false;
+    return;
   }
 
   const lineStarts = getLineStarts(target.content);
@@ -265,15 +295,15 @@ const searchTargetText = (
     );
 
     lineCursor = nextMatch.lineCursor;
-    const matchKey = createMatchKey(nextMatch.item);
 
-    if (!seenKeys.has(matchKey)) {
-      seenKeys.add(matchKey);
-      items.push(nextMatch.item);
-    }
+    accumulator.totalCount += 1;
 
-    if (items.length >= compiledRequest.maxResults) {
-      return true;
+    const groupKey = createMatchGroupKey(nextMatch.item);
+    const currentGroupCount = accumulator.groupCounts.get(groupKey) ?? 0;
+    accumulator.groupCounts.set(groupKey, currentGroupCount + 1);
+
+    if (accumulator.items.length < compiledRequest.maxResults) {
+      accumulator.items.push(nextMatch.item);
     }
 
     if (match[0].length === 0) {
@@ -282,8 +312,6 @@ const searchTargetText = (
 
     match = compiledRequest.matcher.exec(target.content);
   }
-
-  return false;
 };
 
 const isTargetIncluded = (
@@ -308,9 +336,8 @@ const isTargetIncluded = (
 const searchAdditionalTargets = (
   additionalTargets: readonly WorkspaceTextSearchTarget[],
   compiledRequest: CompiledSearchRequest,
-  items: WorkspaceTextSearchMatch[],
-  seenKeys: Set<string>,
-): boolean => {
+  accumulator: SearchAccumulator,
+): void => {
   for (const target of additionalTargets) {
     const normalizedRelativePath = target.relativePath.trim();
     const basename = path.basename(normalizedRelativePath || target.absolutePath);
@@ -320,22 +347,17 @@ const searchAdditionalTargets = (
     }
 
     compiledRequest.matcher.lastIndex = 0;
-    const limitHit = searchTargetText(target, compiledRequest, items, seenKeys);
-    if (limitHit) {
-      return true;
-    }
+    searchTargetText(target, compiledRequest, accumulator);
   }
-
-  return false;
 };
 
 const searchWorkspaceDirectory = async (
   workspaceDirectory: string,
   currentDirectory: string,
   compiledRequest: CompiledSearchRequest,
-  items: WorkspaceTextSearchMatch[],
-  seenKeys: Set<string>,
-): Promise<boolean> => {
+  accumulator: SearchAccumulator,
+  skippedWorkspaceTargetPaths: ReadonlySet<string>,
+): Promise<void> => {
   const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -351,18 +373,17 @@ const searchWorkspaceDirectory = async (
     }
 
     if (entry.isDirectory()) {
-      const limitHit = await searchWorkspaceDirectory(
+      await searchWorkspaceDirectory(
         workspaceDirectory,
         absolutePath,
         compiledRequest,
-        items,
-        seenKeys,
+        accumulator,
+        skippedWorkspaceTargetPaths,
       );
+      continue;
+    }
 
-      if (limitHit) {
-        return true;
-      }
-
+    if (skippedWorkspaceTargetPaths.has(absolutePath)) {
       continue;
     }
 
@@ -376,8 +397,7 @@ const searchWorkspaceDirectory = async (
     try {
       const content = await fs.readFile(absolutePath, 'utf8');
       compiledRequest.matcher.lastIndex = 0;
-
-      const limitHit = searchTargetText(
+      searchTargetText(
         {
           absolutePath,
           relativePath,
@@ -385,19 +405,12 @@ const searchWorkspaceDirectory = async (
           source: 'workspace-file',
         },
         compiledRequest,
-        items,
-        seenKeys,
+        accumulator,
       );
-
-      if (limitHit) {
-        return true;
-      }
     } catch {
       // Skip unreadable entries and non-text files.
     }
   }
-
-  return false;
 };
 
 export const searchWorkspaceText = async (
@@ -409,28 +422,44 @@ export const searchWorkspaceText = async (
     return {
       items: [],
       limitHit: false,
+      totalCount: 0,
+      totalFiles: 0,
+      groupCounts: [],
     };
   }
 
   const compiledRequest = compileRequest(request);
-  const items: WorkspaceTextSearchMatch[] = [];
-  const seenKeys = new Set<string>();
-  const additionalTargetLimitHit = searchAdditionalTargets(
+  const skippedWorkspaceTargetPaths = createSkippedWorkspaceTargetPaths(
+    workspaceDirectory,
+    additionalTargets,
+  );
+  const accumulator: SearchAccumulator = {
+    items: [],
+    groupCounts: new Map<string, number>(),
+    totalCount: 0,
+  };
+
+  searchAdditionalTargets(
     additionalTargets,
     compiledRequest,
-    items,
-    seenKeys,
+    accumulator,
   );
-  const limitHit = additionalTargetLimitHit || await searchWorkspaceDirectory(
+  await searchWorkspaceDirectory(
     workspaceDirectory,
     workspaceDirectory,
     compiledRequest,
-    items,
-    seenKeys,
+    accumulator,
+    skippedWorkspaceTargetPaths,
   );
 
   return {
-    items,
-    limitHit,
+    items: accumulator.items,
+    limitHit: accumulator.totalCount > accumulator.items.length,
+    totalCount: accumulator.totalCount,
+    totalFiles: accumulator.groupCounts.size,
+    groupCounts: Array.from(accumulator.groupCounts.entries()).map(([groupKey, totalMatches]) => ({
+      groupKey,
+      totalMatches,
+    })),
   };
 };

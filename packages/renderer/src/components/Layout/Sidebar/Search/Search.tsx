@@ -8,6 +8,7 @@ import { TreeChildren, TreeNodeRow } from '../../../Explorer/Common/TreeNode';
 import { TreeView } from '../../../Explorer/Common/TreeView';
 import { Icon } from '../../../Icons/Icon';
 import { Tooltip } from '../../../Tooltip/Tooltip';
+import { CustomScrollbar } from '../../../common/CustomScrollbar';
 import { PressableControl } from '../../../common/PressableControl';
 import { SearchToolbarIcon } from '../../../common/SearchToolbarIcon';
 import { SearchToolbarField } from '../../../common/SearchToolbarField';
@@ -30,16 +31,30 @@ interface SearchResult {
   title?: string;
 }
 
+interface SearchResultGroupCount {
+  groupKey: string;
+  totalMatches: number;
+}
+
 interface SearchResultGroup {
   key: string;
   label: string;
   title: string;
+  totalCount: number;
   results: SearchResult[];
 }
 
+type SearchResultGroupCountMap = Record<string, number>;
+
 const SEARCH_INPUT_MAX_HEIGHT = 120;
 const SEARCH_RESULT_TOOLTIP_MAX_LENGTH = 360;
-const SEARCH_RESULT_PREVIEW_MAX_LENGTH = 56;
+const SEARCH_RESULT_PREVIEW_MIN_LENGTH = 72;
+const SEARCH_RESULT_PREVIEW_MAX_LENGTH = 240;
+const SEARCH_RESULT_PREVIEW_RESERVED_WIDTH = 28;
+const SEARCH_RESULT_PREVIEW_APPROX_CHAR_WIDTH = 5;
+const SEARCH_RESULT_PREVIEW_LENGTH_BUFFER = 10;
+const SEARCH_RESULT_PREVIEW_LEADING_CONTEXT = 18;
+const SEARCH_PANEL_MAX_RESULTS = 1000;
 
 const getSearchResultGroupKey = (result: SearchResult): string => (
   result.noteId ? `note:${result.noteId}` : `file:${result.absolutePath}`
@@ -69,6 +84,28 @@ const getSearchResultTooltipContent = (preview: string): string => {
 
   return `${normalizedPreview.slice(0, SEARCH_RESULT_TOOLTIP_MAX_LENGTH - 1)}…`;
 };
+
+const createSearchResultGroupCountMap = (
+  groupCounts: readonly SearchResultGroupCount[],
+): SearchResultGroupCountMap => {
+  const nextGroupCountMap: SearchResultGroupCountMap = {};
+
+  for (const groupCount of groupCounts) {
+    nextGroupCountMap[groupCount.groupKey] = groupCount.totalMatches;
+  }
+
+  return nextGroupCountMap;
+};
+
+const getSafeSearchResultItems = (items: SearchResult[] | undefined): SearchResult[] => (
+  Array.isArray(items) ? items : []
+);
+
+const getSafeSearchResultGroupCounts = (
+  groupCounts: readonly SearchResultGroupCount[] | undefined,
+): readonly SearchResultGroupCount[] => (
+  Array.isArray(groupCounts) ? groupCounts : []
+);
 
 const createSearchPreviewMatcher = (
   query: string,
@@ -149,36 +186,33 @@ const getSearchResultDisplayPreview = (
   preview: string,
   matcher: RegExp | null,
   column: number,
+  maxLength: number,
 ): string => {
   const normalizedPreview = preview.trim();
-  if (normalizedPreview.length <= SEARCH_RESULT_PREVIEW_MAX_LENGTH) {
+  if (normalizedPreview.length <= maxLength) {
     return normalizedPreview;
   }
 
   const matchedRange = getMatchedPreviewRange(normalizedPreview, matcher, column);
   if (!matchedRange) {
-    return `${normalizedPreview.slice(0, SEARCH_RESULT_PREVIEW_MAX_LENGTH - 3)}...`;
+    return `${normalizedPreview.slice(0, maxLength - 3)}...`;
   }
 
-  const previewBudget = SEARCH_RESULT_PREVIEW_MAX_LENGTH - 6;
-  const matchLength = matchedRange.end - matchedRange.start;
-  const availableContext = Math.max(previewBudget - matchLength, 0);
-  let start = Math.max(
-    matchedRange.start - Math.floor(availableContext / 2),
-    0,
-  );
-  let end = Math.min(start + previewBudget, normalizedPreview.length);
-
-  if (end - start < previewBudget) {
-    start = Math.max(end - previewBudget, 0);
-  }
-
+  const start = Math.max(matchedRange.start - SEARCH_RESULT_PREVIEW_LEADING_CONTEXT, 0);
   const prefix = start > 0 ? '...' : '';
+  const prefixLength = prefix.length;
+  const minimumContentLength = matchedRange.end - start;
+  const baseContentBudget = Math.max(maxLength - prefixLength - 3, 0);
+  const contentBudget = Math.max(baseContentBudget, minimumContentLength);
+  const end = Math.min(start + contentBudget, normalizedPreview.length);
   const suffix = end < normalizedPreview.length ? '...' : '';
   return `${prefix}${normalizedPreview.slice(start, end)}${suffix}`;
 };
 
-const groupSearchResults = (results: SearchResult[]): SearchResultGroup[] => {
+const groupSearchResults = (
+  results: SearchResult[],
+  groupCountMap: SearchResultGroupCountMap,
+): SearchResultGroup[] => {
   const groups = new Map<string, SearchResultGroup>();
 
   for (const result of results) {
@@ -194,11 +228,15 @@ const groupSearchResults = (results: SearchResult[]): SearchResultGroup[] => {
       key: groupKey,
       label: getSearchResultGroupLabel(result),
       title: result.relativePath || result.title || result.absolutePath,
+      totalCount: groupCountMap[groupKey] ?? 1,
       results: [result],
     });
   }
 
-  return Array.from(groups.values());
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    totalCount: groupCountMap[group.key] ?? group.results.length,
+  }));
 };
 
 export const Search: React.FC = () => {
@@ -214,10 +252,15 @@ export const Search: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [limitHit, setLimitHit] = useState(false);
+  const [totalResultCount, setTotalResultCount] = useState(0);
+  const [totalResultFiles, setTotalResultFiles] = useState(0);
+  const [groupCountMap, setGroupCountMap] = useState<SearchResultGroupCountMap>({});
   const [collapsedResultGroupKeys, setCollapsedResultGroupKeys] = useState<string[]>([]);
   const [selectedResultKey, setSelectedResultKey] = useState('');
   const searchInputRef = useRef<HTMLTextAreaElement>(null);
+  const searchResultsRef = useRef<HTMLDivElement>(null);
   const searchRequestIdRef = useRef(0);
+  const [resultPreviewMaxLength, setResultPreviewMaxLength] = useState(SEARCH_RESULT_PREVIEW_MIN_LENGTH);
 
   const syncSearchInputHeight = (): void => {
     const textarea = searchInputRef.current;
@@ -234,6 +277,43 @@ export const Search: React.FC = () => {
   useLayoutEffect(() => {
     syncSearchInputHeight();
   }, [searchQuery]);
+
+  useLayoutEffect(() => {
+    const container = searchResultsRef.current;
+    if (!container) {
+      return;
+    }
+
+    const updatePreviewLength = (width: number): void => {
+      const usableWidth = Math.max(width - SEARCH_RESULT_PREVIEW_RESERVED_WIDTH, 0);
+      const estimatedLength = Math.floor(usableWidth / SEARCH_RESULT_PREVIEW_APPROX_CHAR_WIDTH)
+        + SEARCH_RESULT_PREVIEW_LENGTH_BUFFER;
+      const nextLength = Math.max(
+        SEARCH_RESULT_PREVIEW_MIN_LENGTH,
+        Math.min(SEARCH_RESULT_PREVIEW_MAX_LENGTH, estimatedLength),
+      );
+
+      setResultPreviewMaxLength((currentLength) => (
+        currentLength === nextLength ? currentLength : nextLength
+      ));
+    };
+
+    updatePreviewLength(container.clientWidth);
+
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = entries[0]?.contentRect.width ?? container.clientWidth;
+      updatePreviewLength(nextWidth);
+    });
+
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     const activeGroupKeys = new Set<string>();
@@ -272,6 +352,9 @@ export const Search: React.FC = () => {
       setResults([]);
       setSearchError('');
       setLimitHit(false);
+      setTotalResultCount(0);
+      setTotalResultFiles(0);
+      setGroupCountMap({});
       setIsSearching(false);
       return;
     }
@@ -280,6 +363,9 @@ export const Search: React.FC = () => {
       setSearchError('\u5f53\u524d\u73af\u5883\u4e0d\u652f\u6301\u5de5\u4f5c\u533a\u641c\u7d22');
       setResults([]);
       setLimitHit(false);
+      setTotalResultCount(0);
+      setTotalResultFiles(0);
+      setGroupCountMap({});
       return;
     }
 
@@ -296,6 +382,7 @@ export const Search: React.FC = () => {
         useRegex: nextUseRegex,
         includePattern: nextIncludePattern,
         excludePattern: nextExcludePattern,
+        maxResults: SEARCH_PANEL_MAX_RESULTS,
       });
 
       if (requestId !== searchRequestIdRef.current) {
@@ -305,12 +392,31 @@ export const Search: React.FC = () => {
       if (!response.success || !response.data) {
         setResults([]);
         setLimitHit(false);
+        setTotalResultCount(0);
+        setTotalResultFiles(0);
+        setGroupCountMap({});
         setSearchError(response.error || '\u5de5\u4f5c\u533a\u641c\u7d22\u5931\u8d25');
         return;
       }
 
-      setResults(response.data.items);
+      const responseItems = getSafeSearchResultItems(response.data.items);
+      const responseGroupCounts = getSafeSearchResultGroupCounts(response.data.groupCounts);
+      const fallbackGroupCountMap = createSearchResultGroupCountMap(responseGroupCounts);
+      const fallbackGroups = groupSearchResults(responseItems, fallbackGroupCountMap);
+
+      setResults(responseItems);
       setLimitHit(response.data.limitHit);
+      setTotalResultCount(
+        typeof response.data.totalCount === 'number'
+          ? response.data.totalCount
+          : responseItems.length,
+      );
+      setTotalResultFiles(
+        typeof response.data.totalFiles === 'number'
+          ? response.data.totalFiles
+          : fallbackGroups.length,
+      );
+      setGroupCountMap(fallbackGroupCountMap);
     } catch (error) {
       if (requestId !== searchRequestIdRef.current) {
         return;
@@ -318,6 +424,9 @@ export const Search: React.FC = () => {
 
       setResults([]);
       setLimitHit(false);
+      setTotalResultCount(0);
+      setTotalResultFiles(0);
+      setGroupCountMap({});
       setSearchError(
         error instanceof Error
           ? error.message
@@ -472,7 +581,7 @@ export const Search: React.FC = () => {
     void openSearchResult(result);
   };
 
-  const resultGroups = groupSearchResults(results);
+  const resultGroups = groupSearchResults(results, groupCountMap);
   const previewMatcher = createSearchPreviewMatcher(
     searchQuery,
     caseSensitive,
@@ -621,7 +730,7 @@ export const Search: React.FC = () => {
         </details>
       </div>
 
-      <div className="search-results">
+      <div className="search-results" ref={searchResultsRef}>
         {isSearching ? (
           <div className="empty-state">
             {'\u6b63\u5728\u641c\u7d22\u6574\u4e2a\u5de5\u4f5c\u533a...'}
@@ -638,96 +747,104 @@ export const Search: React.FC = () => {
           <div className="results-list">
             <div className="results-summary">
               {'\u627e\u5230 '}
-              {results.length}
+              {totalResultCount}
               {' \u4e2a\u7ed3\u679c\uff0c\u6765\u81ea '}
-              {resultGroups.length}
+              {totalResultFiles}
               {' \u4e2a\u6587\u4ef6'}
-              {limitHit ? '\uff0c\u5df2\u8fbe\u5230\u7ed3\u679c\u4e0a\u9650' : ''}
+              {limitHit ? `\uff0c\u5f53\u524d\u663e\u793a\u524d ${results.length} \u6761` : ''}
             </div>
-            <TreeView className="search-results-tree">
-              {resultGroups.map((group) => {
-                const isExpanded = !collapsedResultGroupKeys.includes(group.key);
+            <CustomScrollbar className="search-results-scrollbar" scrollbarWidth={10}>
+              <TreeView className="search-results-tree">
+                {resultGroups.map((group) => {
+                  const isExpanded = !collapsedResultGroupKeys.includes(group.key);
+                  const usePlainGroupCount = group.totalCount >= 100;
 
-                return (
-                  <React.Fragment key={group.key}>
-                    <TreeNodeRow
-                      depth={0}
-                      role="treeitem"
-                      tabIndex={0}
-                      ariaExpanded={isExpanded}
-                      title={`${group.title} (${group.results.length})`}
-                      contentClassName="search-result-group-row"
-                      onClick={() => handleToggleResultGroup(group.key)}
-                      onKeyDown={(event) => handleResultGroupKeyDown(event, group.key)}
-                      leading={(
-                        <Icon
-                          iconSet="ui"
-                          name={isExpanded ? 'chevron-down' : 'chevron-right'}
-                          size={14}
-                          className="file-tree-chevron"
-                        />
-                      )}
-                      icon={(
-                        <Icon
-                          iconSet="ui"
-                          name="file"
-                          size={16}
-                          className="file-tree-icon"
-                        />
-                      )}
-                    >
-                      <span className="file-tree-name search-result-group-label">
-                        {group.label}
-                      </span>
-                      <span className="search-result-group-count">
-                        {group.results.length}
-                      </span>
-                    </TreeNodeRow>
-                    {isExpanded && (
-                      <TreeChildren
-                        parentDepth={0}
-                        className="search-result-group-children"
+                  return (
+                    <React.Fragment key={group.key}>
+                      <TreeNodeRow
+                        depth={0}
+                        role="treeitem"
+                        tabIndex={0}
+                        ariaExpanded={isExpanded}
+                        title={`${group.title} (${group.totalCount})`}
+                        contentClassName="search-result-group-row"
+                        onClick={() => handleToggleResultGroup(group.key)}
+                        onKeyDown={(event) => handleResultGroupKeyDown(event, group.key)}
+                        leading={(
+                          <Icon
+                            iconSet="ui"
+                            name={isExpanded ? 'chevron-down' : 'chevron-right'}
+                            size={14}
+                            className="file-tree-chevron"
+                          />
+                        )}
+                        icon={(
+                          <Icon
+                            iconSet="ui"
+                            name="file"
+                            size={16}
+                            className="file-tree-icon"
+                          />
+                        )}
                       >
-                        {group.results.map((result) => {
-                          const resultKey = getSearchResultKey(result);
-                          const displayPreview = getSearchResultDisplayPreview(
-                            result.preview,
-                            previewMatcher,
-                            result.column,
-                          );
+                        <span className="file-tree-name search-result-group-label">
+                          {group.label}
+                        </span>
+                        <div className="group-count-wrapper">
+                          <span
+                            className={`search-result-group-count ${usePlainGroupCount ? 'search-result-group-count--plain' : ''}`}
+                          >
+                            {group.totalCount}
+                          </span>
+                        </div>
+                      </TreeNodeRow>
+                      {isExpanded && (
+                        <TreeChildren
+                          parentDepth={0}
+                          className="search-result-group-children"
+                        >
+                          {group.results.map((result) => {
+                            const resultKey = getSearchResultKey(result);
+                            const displayPreview = getSearchResultDisplayPreview(
+                              result.preview,
+                              previewMatcher,
+                              result.column,
+                              resultPreviewMaxLength,
+                            );
 
-                          return (
-                            <Tooltip
-                              key={resultKey}
-                              content={getSearchResultTooltipContent(result.preview)}
-                            >
-                              <TreeNodeRow
-                                depth={1}
-                                parentDepth={0}
-                                role="treeitem"
-                                tabIndex={0}
-                                selected={selectedResultKey === resultKey}
-                                ariaSelected={selectedResultKey === resultKey}
-                                contentClassName="search-result-match-row"
-                                onClick={() => {
-                                  void openSearchResult(result);
-                                }}
-                                onKeyDown={(event) => handleResultItemKeyDown(event, result)}
-                                leading={<span className="file-tree-chevron" />}
+                            return (
+                              <Tooltip
+                                key={resultKey}
+                                content={getSearchResultTooltipContent(result.preview)}
                               >
-                                <span className="file-tree-name search-result-match-text">
-                                  {renderHighlightedSearchPreview(displayPreview, previewMatcher)}
-                                </span>
-                              </TreeNodeRow>
-                            </Tooltip>
-                          );
-                        })}
-                      </TreeChildren>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </TreeView>
+                                <TreeNodeRow
+                                  depth={1}
+                                  parentDepth={0}
+                                  role="treeitem"
+                                  tabIndex={0}
+                                  selected={selectedResultKey === resultKey}
+                                  ariaSelected={selectedResultKey === resultKey}
+                                  contentClassName="search-result-match-row"
+                                  onClick={() => {
+                                    void openSearchResult(result);
+                                  }}
+                                  onKeyDown={(event) => handleResultItemKeyDown(event, result)}
+                                  leading={<span className="file-tree-chevron" />}
+                                >
+                                  <span className="file-tree-name search-result-match-text">
+                                    {renderHighlightedSearchPreview(displayPreview, previewMatcher)}
+                                  </span>
+                                </TreeNodeRow>
+                              </Tooltip>
+                            );
+                          })}
+                        </TreeChildren>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </TreeView>
+            </CustomScrollbar>
           </div>
         )}
       </div>

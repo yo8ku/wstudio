@@ -168,9 +168,17 @@ export interface WorkspaceTextSearchMatch {
   title?: string;
 }
 
+export interface WorkspaceTextSearchGroupCount {
+  groupKey: string;
+  totalMatches: number;
+}
+
 export interface WorkspaceTextSearchResponse {
   items: WorkspaceTextSearchMatch[];
   limitHit: boolean;
+  totalCount: number;
+  totalFiles: number;
+  groupCounts: WorkspaceTextSearchGroupCount[];
 }
 
 /**
