@@ -147,6 +147,32 @@ export interface WindowOperationResult {
   error?: string;
 }
 
+export interface WorkspaceTextSearchRequest {
+  query: string;
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  useRegex?: boolean;
+  includePattern?: string;
+  excludePattern?: string;
+  maxResults?: number;
+}
+
+export interface WorkspaceTextSearchMatch {
+  absolutePath: string;
+  relativePath: string;
+  line: number;
+  column: number;
+  preview: string;
+  source?: 'workspace-file' | 'note';
+  noteId?: string;
+  title?: string;
+}
+
+export interface WorkspaceTextSearchResponse {
+  items: WorkspaceTextSearchMatch[];
+  limitHit: boolean;
+}
+
 /**
  * 閼卞﹤銇夊Ο鈥崇€烽幒銉ュ經
  */
@@ -342,7 +368,9 @@ export interface ElectronIPC {
     getDir: () => Promise<APIResponse<string>>;
     getRecentFiles: () => Promise<APIResponse<string[]>>;
     getLastOpened: () => Promise<WorkspaceLastOpenedResult>;
+    addRecentFile: (filePath: string) => Promise<APIResponse>;
     clearRecentFiles: () => Promise<APIResponse>;
+    searchText: (request: WorkspaceTextSearchRequest) => Promise<APIResponse<WorkspaceTextSearchResponse>>;
   };
   knowledgeBase?: {
     openFolder: () => Promise<FileResult>;

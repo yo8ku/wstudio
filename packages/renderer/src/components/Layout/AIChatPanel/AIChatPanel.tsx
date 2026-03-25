@@ -54,7 +54,7 @@ import {
   upsertThinkingBlock as upsertThinkingContentBlock,
   upsertTodoBlock as upsertTodoContentBlock,
 } from './streamProtocol';
-import { PressableControl } from './PressableControl';
+import { PressableControl } from '../../common/PressableControl';
 import {
   DEFAULT_CHAT_SESSION_TITLE,
   getChatSessionTitleFromMessages,

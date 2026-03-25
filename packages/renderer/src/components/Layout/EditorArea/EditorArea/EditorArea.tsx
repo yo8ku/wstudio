@@ -40,6 +40,7 @@ import { useLinkStore } from '../../../../stores/linkStore';
 import { useNoteStore } from '../../../../stores/noteStore';
 import { getNoteByPath, isLinkableFile, upsertNoteByPath } from '../../../../utils/noteLinking';
 import type { OpenNoteInEditorMode } from '../../../../utils/noteLinking';
+import type { WorkspaceSearchMatchOptions } from '../../../../utils/workspaceSearchMatch';
 import type { OpenNoteInNewWindowPayload } from '../../../../types/electron';
 import type {
   ExtensionHostTextEditPayload,
@@ -142,6 +143,7 @@ interface OpenFileDetail {
   isPreview?: boolean;
   lineNumber?: number;
   column?: number;
+  searchMatch?: WorkspaceSearchMatchOptions;
   openMode?: OpenNoteInEditorMode;
 }
 
@@ -1204,6 +1206,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           isPreview = false,
           lineNumber,
           column,
+          searchMatch,
           openMode = 'default',
         } = customEvent.detail;
         
@@ -1223,8 +1226,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           }
 
           setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('editor-reveal-line', {
-              detail: { lineNumber, column: column || 1 }
+            window.dispatchEvent(new CustomEvent('note:reveal-line', {
+              detail: {
+                lineNumber,
+                column: column || 1,
+                searchMatch,
+              }
             }));
           }, 100);
         };
@@ -1367,6 +1374,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                 : tab
             ));
           }
+          revealOpenedLine();
           return;
         }
         

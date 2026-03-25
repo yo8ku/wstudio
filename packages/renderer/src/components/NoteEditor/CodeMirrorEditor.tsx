@@ -33,6 +33,11 @@ import { AtReferenceMenu } from './AtReferenceMenu';
 import { tableReferenceService, type FormInfo } from '../../services/tableReference/TableReferenceService';
 import { createTableReferenceExtension } from './TableReferenceWidget';
 import { renderMonacoToElement, unmountMonacoFromElement, updateMonacoTheme, updateMonacoLanguage, getMonacoScrollPosition } from './CodeBlockMonaco';
+import {
+  createWorkspaceSearchMatcher,
+  findClosestWorkspaceSearchMatchRange,
+  type WorkspaceSearchMatchOptions,
+} from '../../utils/workspaceSearchMatch';
 import { useThemeStore } from '../../stores/themeStore';
 import { useCodeBlockStore, applyPendingUpdatesToContent } from '../../stores/codeBlockStore';
 import { themeService } from '../../services/ThemeService';
@@ -47,6 +52,7 @@ import {
 import { openBidirectionalLinksPanel } from '../../utils/noteLinking';
 import { buildBidirectionalLinkText } from '../../utils/bidirectionalLink';
 import { toastService } from '../../services/ToastService';
+import { useNoteEditorSettingsStore } from '../../stores/noteEditorSettingsStore';
 import './CodeMirrorEditor.scss';
 import './TableReferenceWidget/InlineTablePreview.scss';
 import './InlineAIChat/InlineAIChat.scss';
@@ -173,6 +179,12 @@ export interface CodeMirrorEditorProps {
   showOutline?: boolean;
   /** 閺勵垰鎯侀弰顖氱秼閸撳秵绺哄ú鑽ゆ畱缂傛牞绶崳?*/
   isActive?: boolean;
+}
+
+interface RevealLineDetail {
+  readonly lineNumber: number;
+  readonly column?: number;
+  readonly searchMatch?: WorkspaceSearchMatchOptions;
 }
 
 /**
@@ -823,7 +835,7 @@ function buildNumberingDecorations(state: EditorState): DecorationSet {
   const numberingRegex = /^(\s*)(\d+\.|[A-Za-z]\.|[A-Za-z]\d{1,3}\.|(?:[一二三四五六七八九十百千万零两]+、?|\d+(?:\.\d+)+))\s/;
   
   // 瀵板懎濮欏〒鍛礋濮濓絽鍨敍姘崇儲鏉?閳?[ ] 閹?閳?[x] 閺嶇厧绱?
-  const todoRegex = /^[\t ]*[-*+•]\s\[[ xX]\](\s|$)/;
+  const todoRegex = /^[\t ]*[-*+\u2022]\s\[[ xX]\](\s|$)/;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
@@ -1236,7 +1248,7 @@ function getContentStartPos(state: EditorState, lineFrom: number): number {
     // 娑擃厽鏋冩惔蹇撳娇閿涙矮绔撮妴浣风癌閵嗕椒绗侀妴浣虹搼
     /^([\t ]*)([一二三四五六七八九十百千万零两]+、?\s*)/,
     // 閺冪姴绨崚妤勩€冪粭锕€褰块敍? * + 閳?
-    /^([\t ]*)([-*+•]\s+)/,
+    /^([\t ]*)([-*+\u2022]\s+)/,
     // 閺嶅洭顣界粭锕€褰块敍? ## ### 缁?
     /^([\t ]*)(#{1,6}\s+)/,
   ];
@@ -2030,7 +2042,7 @@ function handleTodoListEnter(view: EditorView): boolean {
   const lineText = line.text;
 
   // 濡偓閺屻儲妲搁崥锔芥Ц瀵板懎濮欏〒鍛礋鐞涘矉绱欓弨顖涘瘮 - [ ] 閹?- [x] 閹?閳?[ ] 閹?閳?[x] 閺嶇厧绱￠敍?
-  const todoMatch = lineText.match(/^(\s*)([-*+•])\s\[[ xX]\]\s?/);
+  const todoMatch = lineText.match(/^(\s*)([-*+\u2022])\s\[[ xX]\]\s?/);
   if (!todoMatch) {
     return false; // 娑撳秵妲稿鍛濞撳懎宕熺悰宀嬬礉娴ｈ法鏁ゆ妯款吇鐞涘奔璐?
   }
@@ -2074,7 +2086,7 @@ function handleListEnter(view: EditorView): boolean {
   const lineText = line.text;
 
   // 濡偓閺屻儲妲搁崥锔芥Ц閺冪姴绨崚妤勩€冪悰宀嬬礄閺€顖涘瘮 -閵?閵?閵嗕讲鈧?娴ｆ粈璐熼弽鍥唶閿?
-  const listMatch = lineText.match(/^(\s*)([-*+•])\s/);
+  const listMatch = lineText.match(/^(\s*)([-*+\u2022])\s/);
   if (!listMatch) {
     return false; // 娑撳秵妲搁崚妤勩€冪悰宀嬬礉娴ｈ法鏁ゆ妯款吇鐞涘奔璐?
   }
@@ -2430,7 +2442,7 @@ const customKeymap = Prec.highest(
         const cursorOffset = head - line.from;
         
         // 濡偓閺屻儲妲搁崥锔芥Ц瀵板懎濮欏〒鍛礋鐞?
-        const todoMatch = text.match(/^([\t ]*)([-*+閳ヮ晝)\s\[([ xX])\](\s|$)/);
+        const todoMatch = text.match(/^([\t ]*)([-*+\u2022])\s\[([ xX])\](\s|$)/);
         if (!todoMatch) {
           return false; // 娑撳秵妲稿鍛濞撳懎宕熼敍灞煎▏閻劑绮拋銈堫攽娑?
         }
@@ -2528,7 +2540,7 @@ const customKeymap = Prec.highest(
 
         // 濡偓閺屻儲妲搁崥锔芥Ц瀵板懎濮欏〒鍛礋閺嶇厧绱?"- [ ]" 閹?"閳?[ ]" 閸氬酣娼版潏鎾冲弳缁岀儤鐗?
         // 閻㈠彉绨?] 閸氬酣娼伴張顒冮煩鐏忚鲸婀佺粚鐑樼壐閿涘本澧嶆禒銉ょ瑝闂団偓鐟曚焦褰冮崗銉р敄閺嶇》绱濋崣顏堟付鐟曚胶些閸斻劌鍘滈弽鍥у煂缁岀儤鐗搁崥搴ㄦ桨
-        if (/^[\t ]*[-閳ヮ晝\s\[[ xX]\]$/.test(textBeforeCursor)) {
+        if (/^[\t ]*[-\u2022]\s\[[ xX]\]$/.test(textBeforeCursor)) {
           // 濡偓閺屻儱鍘滈弽鍥ф倵闂堛垺妲搁崥锕€鍑＄紒蹇旀箒缁岀儤鐗?
           if (textAfterCursor.startsWith(' ')) {
             // 瀹歌尙绮￠張澶屸敄閺嶇》绱濋崣顏喰╅崝銊ュ帨閺?
@@ -2552,12 +2564,17 @@ const customKeymap = Prec.highest(
           if (/^\s*\[[ xX]\]/.test(textAfterCursor)) {
             return false; // 娴ｈ法鏁ゆ妯款吇鐞涘奔璐熼敍灞肩瑝閺囨寧宕?
           }
-          
-          const dashPos = head - 1;
-          // 閺囨寧宕?"-" 娑?"閳? 楠炶埖褰冮崗銉р敄閺?
+
+          if (textAfterCursor.startsWith(' ')) {
+            view.dispatch({
+              selection: { anchor: head + 1 },
+            });
+            return true;
+          }
+
           view.dispatch({
-            changes: { from: dashPos, to: head, insert: '閳?' },
-            selection: { anchor: dashPos + 2 },
+            changes: { from: head, insert: ' ' },
+            selection: { anchor: head + 1 },
           });
           return true;
         }
@@ -2579,13 +2596,13 @@ const customKeymap = Prec.highest(
         const textBeforeCursor = line.text.slice(0, head - line.from);
 
         // 濡偓閺屻儲妲搁崥锕€灏柊?"- [ " 閹?"- [x" 閹?"閳?[ " 閹?"閳?[x" 閻ㄥ嫭膩瀵?
-        const todoMatch = textBeforeCursor.match(/^(\s*)([-*+•])\s\[[ xX]$/);
+        const todoMatch = textBeforeCursor.match(/^(\s*)([-*+\u2022])\s\[[ xX]$/);
         if (todoMatch) {
           const indent = todoMatch[1];
           const marker = todoMatch[2];
           
           // 婵″倹鐏夐弰?閳ヮ澁绱濋弴鎸庡床娑?-
-          if (marker === '•') {
+          if (marker === '\u2022') {
             const bulletPos = line.from + indent.length;
             view.dispatch({
               changes: [
@@ -6040,7 +6057,7 @@ class BulletWidget extends WidgetType {
   toDOM(): HTMLElement {
     const span = document.createElement('span');
     span.className = 'cm-bullet-marker';
-    span.textContent = '•';
+    span.setAttribute('aria-hidden', 'true');
     return span;
   }
 
@@ -6243,6 +6260,10 @@ const unorderedListDecorations = StateField.define<DecorationSet>({
     return parseUnorderedList(state);
   },
   update(decorations, tr) {
+    if (tr.isUserEvent('input.type.compose')) {
+      return decorations;
+    }
+
     // 閺傚洦銆傞崣妯哄閹存牕鍘滈弽鍥︾秴缂冾喖褰夐崠鏍ㄦ闁粙娓剁憰浣规纯閺?
     if (tr.docChanged || tr.selection) {
       return parseUnorderedList(tr.state);
@@ -6320,7 +6341,7 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
     // 閸栧綊鍘ゅ鍛濞撳懎宕熼敍?
     // 1. 閺冪姴绨崚妤勩€冮弽鐓庣础閿? [ ] 閹?- [x] 閹?閳?[ ] 閹?閳?[x]
     // 2. 閺堝绨崚妤勩€冮弽鐓庣础閿?. [ ] 閹?1. [x]
-    const unorderedMatch = text.match(/^([\t ]*)([-*+閳ヮ晝)\s\[([ xX])\](\s|$)/);
+    const unorderedMatch = text.match(/^([\t ]*)([-*+\u2022])\s\[([ xX])\](\s|$)/);
     const orderedMatch = text.match(/^([\t ]*)(\d+\.)\s\[([ xX])\](\s|$)/);
     
     const todoMatch = unorderedMatch || orderedMatch;
@@ -6341,7 +6362,7 @@ function parseTodoList(state: EditorState, view: EditorView): DecorationSet {
     // 婵″倹鐏夐崗澶嬬垼閸︺劌缍嬮崜宥堫攽閿涘奔绗栭崗澶嬬垼娴ｅ秶鐤嗛崷銊ヮ槻闁顢嬮崠鍝勭厵閸愬懏鍨ㄧ槐褔鍋︽径宥夆偓澶嬵攱閸氬酣娼伴敍灞肩瑝閺勫墽銇氭径宥夆偓澶嬵攱
     if (i === cursorLineNumber && cursorOffset <= checkboxEndOffset) {
       // 婵″倹鐏夐弰顖涙￥鎼村繐鍨悰銊ょ瑬閺嶅洩顔囬弰?閳ヮ澁绱濋弴鎸庡床娑?- 閺勫墽銇?
-      if (!isOrderedList && marker === '•') {
+      if (!isOrderedList && marker === '\u2022') {
         const markerStart = line.from + indent;
         const markerEnd = markerStart + 1;
         decorations.push(
@@ -8093,6 +8114,8 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
   const pendingLargeFileSyncTimerRef = useRef<number | null>(null);
   const isLargeFileMode = content.length >= LARGE_FILE_CHARACTER_THRESHOLD;
   const largeFileSummary = formatLargeFileApproximateSize(content.length);
+  const showLineNumbers = useNoteEditorSettingsStore((state) => state.showLineNumbers);
+  const loadNoteEditorSettings = useNoteEditorSettingsStore((state) => state.loadSettings);
 
   // 娑撳﹣绗呴弬鍥綅閸楁洜濮搁幀?
   const [contextMenu, setContextMenu] = useState<{
@@ -8123,6 +8146,10 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     from: number;
     to: number;
   } | null>(null);
+
+  useEffect(() => {
+    void loadNoteEditorSettings();
+  }, [loadNoteEditorSettings]);
 
   // 娣囨繂鐡ㄩ幍鎾崇磻妫版粏澹婇柅澶嬪閸ｃ劍妞傞惃鍕偓澶婂隘閼煎啫娲?
   const colorPickerSelectionRef = useRef<{ from: number; to: number } | null>(null);
@@ -9094,13 +9121,33 @@ sequenceDiagram
   }, [isLargeFileMode, showOutline]);
 
   // 鐠哄疇娴嗛崚鐗堝瘹鐎规矮缍呯純?
-  const scrollToPosition = useCallback((position: number) => {
+  const scrollToPosition = useCallback((
+    position: number,
+    selectionEnd?: number,
+    alignToCenter?: boolean,
+  ) => {
     const view = viewRef.current;
     if (!view) return;
 
+    const safePosition = Math.max(0, Math.min(position, view.state.doc.length));
+    const safeSelectionEnd = selectionEnd === undefined
+      ? safePosition
+      : Math.max(safePosition, Math.min(selectionEnd, view.state.doc.length));
+
     view.dispatch({
-      selection: { anchor: position },
-      scrollIntoView: true,
+      selection: safeSelectionEnd > safePosition
+        ? { anchor: safePosition, head: safeSelectionEnd }
+        : { anchor: safePosition },
+      ...(alignToCenter
+        ? {
+            effects: EditorView.scrollIntoView(safePosition, {
+              y: 'center',
+              yMargin: 48,
+            }),
+          }
+        : {
+            scrollIntoView: true,
+          }),
     });
     view.focus();
   }, []);
@@ -9111,7 +9158,7 @@ sequenceDiagram
         return;
       }
 
-      const customEvent = event as CustomEvent<{ lineNumber: number }>;
+      const customEvent = event as CustomEvent<RevealLineDetail>;
       const lineNumber = customEvent.detail?.lineNumber;
       if (!lineNumber) {
         return;
@@ -9119,8 +9166,33 @@ sequenceDiagram
 
       const view = viewRef.current;
       const safeLineNumber = Math.max(1, Math.min(lineNumber, view.state.doc.lines));
-      const targetPosition = view.state.doc.line(safeLineNumber).from;
-      scrollToPosition(targetPosition);
+      const targetLine = view.state.doc.line(safeLineNumber);
+      const maxColumn = targetLine.text.length + 1;
+      const safeColumn = Math.max(1, Math.min(customEvent.detail?.column ?? 1, maxColumn));
+      const searchMatch = customEvent.detail?.searchMatch;
+      let targetPosition = targetLine.from + safeColumn - 1;
+      let selectionEndPosition: number | undefined;
+
+      if (searchMatch && searchMatch.query.length > 0) {
+        const matcher = createWorkspaceSearchMatcher(
+          searchMatch.query,
+          searchMatch.caseSensitive,
+          searchMatch.wholeWord,
+          searchMatch.useRegex,
+        );
+        const matchedRange = findClosestWorkspaceSearchMatchRange(
+          targetLine.text,
+          matcher,
+          safeColumn,
+        );
+
+        if (matchedRange && matchedRange.end > matchedRange.start) {
+          targetPosition = targetLine.from + matchedRange.start;
+          selectionEndPosition = targetLine.from + matchedRange.end;
+        }
+      }
+
+      scrollToPosition(targetPosition, selectionEndPosition, true);
     };
 
     window.addEventListener('note:reveal-line', handleRevealLine as EventListener);
@@ -9284,7 +9356,7 @@ sequenceDiagram
     });
 
     // 閺嶈宓佸Ο鈥崇础閸愬啿鐣鹃弰顖氭儊娴ｈ法鏁ゆ０鍕潔鐟佸懘銈伴崳?
-    const lineNumberExtension = lineNumbers();
+    const lineNumberExtension = showLineNumbers ? lineNumbers() : null;
 
     let extensions = [
       activeLineHighlightExtension,
@@ -9323,7 +9395,7 @@ sequenceDiagram
       Prec.highest(colorDecorationsField),
       // 妫版粏澹婃０鍕潔鐟佸懘銈伴崳?
       colorPreviewDecorations,
-      lineNumberExtension,
+      ...(lineNumberExtension ? [lineNumberExtension] : []),
       // 閹舵ê褰旂紒鍕彯娴滎噯绱欓崗澶嬬垼闁鑵戦弮鑸垫▔缁€铏瑰煑缁狙呮畱閹舵ê褰旈崶鐐垼閸滃苯鐡欑悰宀€娈戠紓鈺勭箻缁惧尅绱?
       foldGroupHighlightField,
       // 閹舵ê褰旈崝鐔诲厴閿涘牅绗夋担璺ㄦ暏 customFoldService閿涘矂浼╅崗宥勭瑢 markdown 鐟欙絾鐎介崳銊ュ暱缁愪緤绱?
@@ -9376,7 +9448,7 @@ sequenceDiagram
         customKeymap,
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         updateListener,
-        lineNumberExtension,
+        ...(lineNumberExtension ? [lineNumberExtension] : []),
         EditorState.readOnly.of(!editable),
         EditorView.theme({
           '&': {
@@ -9472,6 +9544,7 @@ sequenceDiagram
     isLargeFileMode,
     mode,
     schedulePendingLargeFileSync,
+    showLineNumbers,
     updateOutline,
     wikilinkCompletionSource,
   ]);

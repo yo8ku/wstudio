@@ -1,0 +1,108 @@
+.search-toolbar-field {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  min-height: var(--ws-search-toolbar-min-height, 24px);
+  padding: var(--ws-search-toolbar-padding, 2px 2px 2px 6px);
+  gap: var(--ws-search-toolbar-gap, 2px);
+  box-sizing: border-box;
+  border: 1px solid var(--ws-search-toolbar-border, transparent);
+  border-radius: var(--ws-search-toolbar-radius, 4px);
+  background: var(
+    --ws-search-toolbar-background,
+    var(--ws-input-background, rgba(255, 255, 255, 0.04))
+  );
+  color: var(--ws-search-toolbar-color, var(--ws-foreground, #cccccc));
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+
+  &:focus-within {
+    border-color: var(
+      --ws-search-toolbar-focus-border,
+      var(--ws-focusBorder, var(--ws-focus-border, #3b8eea))
+    );
+    background: var(
+      --ws-search-toolbar-focus-background,
+      var(--ws-input-background, rgba(255, 255, 255, 0.05))
+    );
+  }
+
+  &__content {
+    flex: 1 1 auto;
+    min-width: 0;
+    align-self: stretch;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: flex-start;
+    gap: 2px;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-left: 2px;
+    padding-right: 2px;
+  }
+
+  &__option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 3px;
+    box-sizing: border-box;
+    border-radius: 4px;
+    background: transparent;
+    color:var(--ws-foreground);
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+
+    &:hover {
+      color: var(--ws-search-toolbar-option-hover-color, var(--ws-foreground, #ffffff));
+      background: var(
+        --ws-search-toolbar-option-hover-background,
+        var(--ws-toolbar-hoverBackground, rgba(255, 255, 255, 0.08))
+      );
+      border-color: var(
+        --ws-search-toolbar-option-hover-border,
+        var(--ws-panel-border, rgba(255, 255, 255, 0.16))
+      );
+    }
+
+    &.is-active {
+      color: var(--ws-search-toolbar-option-active-color, var(--ws-foreground, #ffffff));
+      background: var(
+        --ws-search-toolbar-option-active-background,
+        var(--ws-list-activeSelectionBackground, rgba(59, 142, 234, 0.22))
+      );
+      border-color: var(
+        --ws-search-toolbar-option-active-border,
+        var(--ws-focusBorder, var(--ws-focus-border, #3b8eea))
+      );
+    }
+
+    &:focus-visible {
+      color: var(--ws-search-toolbar-option-focus-color, var(--ws-foreground, #ffffff));
+      border-color: var(
+        --ws-search-toolbar-option-focus-border,
+        var(--ws-focusBorder, var(--ws-focus-border, #3b8eea))
+      );
+      outline: none;
+    }
+
+    &[aria-disabled='true'] {
+      opacity: 0.35;
+      cursor: default;
+    }
+  }
+
+  &__option-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    overflow: visible;
+    filter: drop-shadow(0.15px 0 0 currentColor) drop-shadow(-0.15px 0 0 currentColor);
+  }
+}

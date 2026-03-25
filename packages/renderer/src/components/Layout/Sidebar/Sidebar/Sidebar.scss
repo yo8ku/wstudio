@@ -20,13 +20,18 @@
     font-weight: 600;
     text-transform: uppercase;
 
-    button {
+    .sidebar-header-action {
       border: none;
       cursor: pointer;
       padding: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
+
+      &:focus-visible {
+        outline: 1px solid var(--ws-focus-border);
+        outline-offset: 2px;
+      }
 
       svg {
         width: 16px;

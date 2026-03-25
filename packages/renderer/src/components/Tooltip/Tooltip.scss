@@ -4,12 +4,20 @@
  */
 
 .custom-tooltip {
+  color: var(--ws-editorHoverWidget-foreground, var(--ws-foreground));
+  background-color: var(--ws-editorHoverWidget-background, var(--ws-editorWidget-background, var(--ws-sideBar-background, #252526)));
+  border: 1px solid var(--ws-widget-border, rgba(127, 127, 127, 0.35));
   border-radius: 3px;
   padding: 8px 12px;
   font-size: 12px;
   line-height: 1.5;
-  max-width: 320px;
-  word-wrap: break-word;
+  max-width: min(440px, calc(100vw - 32px));
+  white-space: normal;
+  word-break: break-word;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 7;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   z-index: 10000;
   pointer-events: none;

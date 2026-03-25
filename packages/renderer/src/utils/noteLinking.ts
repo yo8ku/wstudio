@@ -5,6 +5,7 @@
 
 import { FileParser } from '@note-studio/global-rag';
 import type { NoteItem, OpenNoteInNewWindowPayload } from '../types/electron';
+import type { WorkspaceSearchMatchOptions } from './workspaceSearchMatch';
 
 const SPECIAL_PATH_PREFIXES = [
   'settings:/',
@@ -92,6 +93,7 @@ export const openNoteInEditor = async (
   options?: {
     lineNumber?: number;
     column?: number;
+    searchMatch?: WorkspaceSearchMatchOptions;
     openMode?: OpenNoteInEditorMode;
     setCurrentNote?: (note: NoteItem | null) => void;
   }
@@ -124,6 +126,7 @@ export const openNoteInEditor = async (
     detail: {
       ...openPayload,
       isPreview: false,
+      searchMatch: options?.searchMatch,
       openMode
     }
   }));

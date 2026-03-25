@@ -35,6 +35,11 @@ import { noteDatabase } from '../note-system';
 import type { SettingsManager } from '../config/SettingsManager';
 import type { WorkspaceManager } from '../workspace/WorkspaceManager';
 import type { BuiltinAI } from '../services/BuiltinAI';
+import {
+  searchWorkspaceText,
+  toWorkspaceRelativePath,
+  WORKSPACE_SEARCH_SKIPPED_DIRECTORIES,
+} from '../workspace/WorkspaceTextSearchService';
 import type { PluginEditorBridge } from './PluginEditorBridge';
 import { resolveExtensionAssetUrl } from './ExtensionAssetUrl';
 import { PluginStorageRepository } from './capabilities/PluginStorageRepository';
@@ -55,13 +60,7 @@ export interface PluginCapabilitySessionContext {
   readonly storageDirectory: string;
 }
 
-const MAX_WORKSPACE_SEARCH_RESULTS = 100;
 const MAX_WORKSPACE_READ_BYTES = 1024 * 1024;
-const SKIPPED_WORKSPACE_DIRECTORIES = new Set([
-  '.git',
-  '.obsidian',
-  'node_modules',
-]);
 
 function isJsonObjectValue(value: JsonValue | null): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -531,10 +530,6 @@ function namespacePluginSettingKey(extensionId: string, key: string): string {
   return `extensions.${extensionId}.${key}`;
 }
 
-function toWorkspaceRelativePath(workspaceDirectory: string, absolutePath: string): string {
-  return path.relative(workspaceDirectory, absolutePath).replace(/\\/g, '/');
-}
-
 function sanitizeNoteFileName(title: string): string {
   const normalized = title
     .trim()
@@ -782,9 +777,12 @@ export class PluginCapabilityRouter {
     }
 
     const workspaceDirectory = workspaceManager.getWorkspaceDir();
-    const results: ExtensionHostWorkspaceSearchResultPayload[] = [];
-    await this.searchWorkspaceDirectory(workspaceDirectory, workspaceDirectory, query, results);
-    return results;
+    const searchResponse = await searchWorkspaceText(workspaceDirectory, { query });
+    return searchResponse.items.map((item) => ({
+      path: item.relativePath,
+      line: item.line,
+      preview: item.preview,
+    }));
   }
 
   private async handleNoteReadRequest(
@@ -1051,7 +1049,7 @@ export class PluginCapabilityRouter {
       if (entry.name.startsWith('.') && entry.name !== '.vscode') {
         continue;
       }
-      if (entry.isDirectory() && SKIPPED_WORKSPACE_DIRECTORIES.has(entry.name)) {
+      if (entry.isDirectory() && WORKSPACE_SEARCH_SKIPPED_DIRECTORIES.has(entry.name)) {
         continue;
       }
 
@@ -1077,59 +1075,6 @@ export class PluginCapabilityRouter {
     return fs.readFile(resolvedPath, 'utf8');
   }
 
-  private async searchWorkspaceDirectory(
-    workspaceDirectory: string,
-    currentDirectory: string,
-    query: string,
-    results: ExtensionHostWorkspaceSearchResultPayload[],
-  ): Promise<void> {
-    if (results.length >= MAX_WORKSPACE_SEARCH_RESULTS) {
-      return;
-    }
-
-    const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
-    for (const entry of entries) {
-      if (results.length >= MAX_WORKSPACE_SEARCH_RESULTS) {
-        return;
-      }
-
-      if (entry.name.startsWith('.') && entry.name !== '.vscode') {
-        continue;
-      }
-
-      if (entry.isDirectory() && SKIPPED_WORKSPACE_DIRECTORIES.has(entry.name)) {
-        continue;
-      }
-
-      const absolutePath = path.join(currentDirectory, entry.name);
-      if (entry.isDirectory()) {
-        await this.searchWorkspaceDirectory(workspaceDirectory, absolutePath, query, results);
-        continue;
-      }
-
-      try {
-        const fileContent = await fs.readFile(absolutePath, 'utf8');
-        const lines = fileContent.split(/\r?\n/);
-        for (let index = 0; index < lines.length; index += 1) {
-          if (results.length >= MAX_WORKSPACE_SEARCH_RESULTS) {
-            return;
-          }
-
-          if (!lines[index].includes(query)) {
-            continue;
-          }
-
-          results.push({
-            path: toWorkspaceRelativePath(workspaceDirectory, absolutePath),
-            line: index + 1,
-            preview: lines[index].trim(),
-          });
-        }
-      } catch {
-        // Skip non-text files and unreadable entries.
-      }
-    }
-  }
 }
 
 export const pluginCapabilityRouter = PluginCapabilityRouter.getInstance();

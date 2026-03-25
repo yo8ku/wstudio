@@ -78,7 +78,8 @@ contextBridge.exposeInMainWorld('electron', {
     getRecentFiles: () => ipcRenderer.invoke('workspace:get-recent-files'),
     getLastOpened: () => ipcRenderer.invoke('workspace:get-last-opened'),
     addRecentFile: (filePath) => ipcRenderer.invoke('workspace:add-recent-file', filePath),
-    clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files')
+    clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files'),
+    searchText: (request) => ipcRenderer.invoke('workspace:search-text', request)
   },
 
   // 知识库 API

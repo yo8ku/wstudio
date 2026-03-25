@@ -13,6 +13,7 @@ interface NoteEditorSettings {
   showEditorSwitch: boolean;
   autoSave: boolean;
   autoSaveInterval: number;
+  showLineNumbers: boolean;
 }
 
 interface NoteEditorSettingsStore extends NoteEditorSettings {
@@ -22,6 +23,7 @@ interface NoteEditorSettingsStore extends NoteEditorSettings {
   setShowEditorSwitch: (show: boolean) => Promise<void>;
   setAutoSave: (enabled: boolean) => Promise<void>;
   setAutoSaveInterval: (interval: number) => Promise<void>;
+  setShowLineNumbers: (show: boolean) => Promise<void>;
   saveSettings: () => Promise<void>;
 }
 
@@ -30,6 +32,7 @@ const DEFAULT_SETTINGS: NoteEditorSettings = {
   showEditorSwitch: false,
   autoSave: true,
   autoSaveInterval: 3000,
+  showLineNumbers: true,
 };
 
 export const useNoteEditorSettingsStore = create<NoteEditorSettingsStore>((set, get) => ({
@@ -37,6 +40,10 @@ export const useNoteEditorSettingsStore = create<NoteEditorSettingsStore>((set, 
   isLoading: false,
 
   loadSettings: async () => {
+    if (get().isLoading) {
+      return;
+    }
+
     set({ isLoading: true });
     try {
       const settings = await electronStore.get('note-editor-settings');
@@ -46,6 +53,7 @@ export const useNoteEditorSettingsStore = create<NoteEditorSettingsStore>((set, 
           showEditorSwitch: DEFAULT_SETTINGS.showEditorSwitch,
           autoSave: settings.autoSave ?? DEFAULT_SETTINGS.autoSave,
           autoSaveInterval: settings.autoSaveInterval || DEFAULT_SETTINGS.autoSaveInterval,
+          showLineNumbers: settings.showLineNumbers ?? DEFAULT_SETTINGS.showLineNumbers,
         });
       }
     } catch (error) {
@@ -77,14 +85,20 @@ export const useNoteEditorSettingsStore = create<NoteEditorSettingsStore>((set, 
     await get().saveSettings();
   },
 
+  setShowLineNumbers: async (show: boolean) => {
+    set({ showLineNumbers: show });
+    await get().saveSettings();
+  },
+
   saveSettings: async () => {
-    const { defaultEditor, showEditorSwitch, autoSave, autoSaveInterval } = get();
+    const { defaultEditor, showEditorSwitch, autoSave, autoSaveInterval, showLineNumbers } = get();
     try {
       await electronStore.set('note-editor-settings', {
         defaultEditor,
         showEditorSwitch,
         autoSave,
         autoSaveInterval,
+        showLineNumbers,
       });
     } catch (error) {
       console.error('[NoteEditorSettings] 保存设置失败:', error);

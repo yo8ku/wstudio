@@ -1,492 +1,287 @@
 /**
- * 搜索面板样式
+ * Search panel styles.
+ * Defines layout and interaction states for search, replace, range controls, and results.
  */
 
 .search-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px;
+  padding: 8px;
   overflow-y: auto;
+  color: var(--ws-foreground);
+  font-size: 12px;
 
-  /* 搜索输入区域 */
   .search-input-section {
     margin-bottom: 12px;
+  }
 
-    .search-input-wrapper {
-      position: relative;
-      width: 100%;
+  .search-input-wrapper {
+    --ws-search-toolbar-min-height: 24px;
+    --ws-search-toolbar-padding: 2px 2px 2px 6px;
 
-      .search-input {
-        width: 100%;
-        padding: 6px 12px;
-        padding-right: 80px; /* 为右侧按钮留出空间 */
-        font-size: 13px;
-        border-radius: 2px;
-        outline: none;
-      }
-
-      /* 搜索选项按钮组 */
-      .search-options {
-        position: absolute;
-        right: 4px;
-        top: 4px;
-        display: flex;
-        gap: 4px;
-
-        .option-button {
-          padding: 4px;
-          border-radius: 2px;
-          border: none;
-          opacity: 0.6;
-          cursor: pointer;
-          transition: opacity 0.2s, background-color 0.2s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-
-          &:hover {
-            opacity: 1;
-          }
-
-          &.active {
-            opacity: 1;
-          }
-
-          .button-text {
-            font-size: 12px;
-          }
-
-          svg {
-            width: 16px;
-            height: 16px;
-          }
-        }
-      }
+    .search-toolbar-field__option-icon {
+      filter: none;
+      shape-rendering: geometricPrecision;
     }
 
-    /* 切换替换按钮 */
-    .toggle-replace-button {
-      margin-top: 8px;
-      padding: 0;
-      border: none;
-      font-size: 12px;
-      opacity: 0.6;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      transition: opacity 0.2s;
+    .search-toolbar-field__option-icon path {
+      stroke: currentColor;
+      stroke-width: 0.18px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+      paint-order: stroke fill;
+    }
+  }
 
-      &:hover {
-        opacity: 1;
-      }
+  .search-input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-height: 120px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--ws-input-foreground, inherit);
+    font: inherit;
+    line-height: 24px;
+    resize: none;
+    overflow-y: hidden;
+    outline: none;
 
-      .chevron-icon {
-        width: 12px;
-        height: 12px;
-        margin-right: 4px;
-        transition: transform 0.2s;
+    &::placeholder {
+      color: var(--ws-input-placeholderForeground, var(--ws-description-foreground));
+    }
 
-        &.expanded {
-          transform: rotate(90deg);
-        }
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  .toggle-replace-button {
+    margin-top: 8px;
+    padding: 0;
+    opacity: 0.6;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: opacity 0.2s;
+    user-select: none;
+
+    &:hover {
+      opacity: 1;
+    }
+
+    &:focus-visible {
+      opacity: 1;
+      outline: 1px solid var(--ws-focus-border);
+      outline-offset: 1px;
+    }
+
+    .chevron-icon {
+      width: 12px;
+      height: 12px;
+      margin-right: 4px;
+      transition: transform 0.2s;
+
+      &.expanded {
+        transform: rotate(90deg);
       }
     }
   }
 
-  /* 替换输入区域 */
   .replace-input-section {
     margin-bottom: 12px;
+  }
 
-    .replace-input-wrapper {
-      position: relative;
-      width: 100%;
-      margin-bottom: 8px;
+  .replace-input-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 8px;
+  }
 
-      .replace-input {
-        width: 100%;
-        padding: 6px 12px;
-        font-size: 13px;
-        border-radius: 2px;
-        outline: none;
-      }
+  .replace-input {
+    width: 100%;
+    padding: 6px 12px;
+    font-size: 13px;
+    border-radius: 3px;
+    outline: none;
+  }
+
+  .replace-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .replace-button {
+    padding: 4px 12px;
+    font-size: 12px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    user-select: none;
+
+    &:focus-visible {
+      outline: 1px solid var(--ws-focus-border);
+      outline-offset: 1px;
     }
 
-    /* 替换按钮组 */
-    .replace-actions {
-      display: flex;
-      gap: 8px;
+    &:active {
+      opacity: 0.8;
+    }
 
-      .replace-button {
-        padding: 4px 12px;
-        font-size: 12px;
-        border-radius: 2px;
-        border: none;
-        cursor: pointer;
-        transition: background-color 0.2s;
-
-        &:active {
-          opacity: 0.8;
-        }
-      }
+    &[aria-disabled='true'] {
+      opacity: 0.45;
+      cursor: default;
     }
   }
 
-  /* 搜索选项/范围 */
   .search-options-section {
     margin-bottom: 16px;
 
     details {
       font-size: 13px;
-
-      summary {
-        cursor: pointer;
-        user-select: none;
-        opacity: 0.6;
-        transition: opacity 0.2s;
-        list-style: none;
-        display: flex;
-        align-items: center;
-
-        &::-webkit-details-marker {
-          display: none;
-        }
-
-        &:hover {
-          opacity: 1;
-        }
-
-        &::before {
-          content: '';
-          width: 6px;
-          height: 6px;
-          display: inline-block;
-          margin-right: 6px;
-          margin-top: -1px;
-          border-right: 1.5px solid currentColor;
-          border-bottom: 1.5px solid currentColor;
-          transform: rotate(-45deg);
-          transform-origin: center;
-          transition: transform 0.2s;
-        }
-      }
-
-      &[open] summary::before {
-        transform: rotate(45deg);
-      }
-
-      .options-content {
-        margin-top: 8px;
-        padding-left: 16px;
-        font-size: 12px;
-
-        .option-input-wrapper {
-          margin-bottom: 4px;
-
-          &:last-child {
-            margin-bottom: 0;
-          }
-
-          .option-input {
-            width: 100%;
-            padding: 4px 8px;
-            font-size: 12px;
-            border-radius: 2px;
-            outline: none;
-          }
-        }
-      }
-    }
-  }
-
-  /* 搜索结果区域 */
-  .search-results {
-    flex: 1;
-    overflow-y: auto;
-
-    .empty-state {
-      text-align: center;
-      padding: 32px 0;
-      font-size: 13px;
     }
 
-    .results-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-
-      .result-item {
-        font-size: 13px;
-
-        .result-file {
-          font-weight: 600;
-          margin-bottom: 4px;
-        }
-
-        .result-match {
-          padding-left: 16px;
-          padding: 4px;
-          cursor: pointer;
-          opacity: 0.8;
-          transition: background-color 0.2s;
-          .match-text {
-            margin-left: 8px;
-          }
-        }
-      }
-    }
-  }
-}
-
-/*
- * 搜索面板样式
- */
-
-.search-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 12px;
-  overflow-y: auto;
-
-  /* 搜索输入区域 */
-  .search-input-section {
-    margin-bottom: 12px;
-
-    .search-input-wrapper {
-      position: relative;
-      width: 100%;
-
-      .search-input {
-        width: 100%;
-        padding: 6px 12px;
-        padding-right: 80px; /* 为右侧按钮留出空间 */
-        font-size: 13px;
-        border-radius: 2px;
-        outline: none;
-      }
-
-      /* 搜索选项按钮组 */
-      .search-options {
-        position: absolute;
-        right: 4px;
-        top: 4px;
-        display: flex;
-        gap: 4px;
-
-        .option-button {
-          padding: 4px;
-          border-radius: 2px;
-          border: none;
-          opacity: 0.6;
-          cursor: pointer;
-          transition: opacity 0.2s, background-color 0.2s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-
-          &:hover {
-            opacity: 1;
-          }
-
-          &.active {
-            opacity: 1;
-          }
-
-          .button-text {
-            font-size: 12px;
-          }
-
-          svg {
-            width: 16px;
-            height: 16px;
-          }
-        }
-      }
-    }
-
-    /* 切换替换按钮 */
-    .toggle-replace-button {
-      margin-top: 8px;
-      padding: 0;
-      border: none;
-      font-size: 12px;
-      opacity: 0.6;
+    summary {
       cursor: pointer;
+      user-select: none;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+      list-style: none;
       display: flex;
       align-items: center;
-      transition: opacity 0.2s;
+
+      &::-webkit-details-marker {
+        display: none;
+      }
 
       &:hover {
         opacity: 1;
       }
 
-      .chevron-icon {
-        width: 12px;
-        height: 12px;
-        margin-right: 4px;
+      &::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        display: inline-block;
+        margin-top: -1px;
+        margin-right: 6px;
+        border-right: 1.5px solid currentColor;
+        border-bottom: 1.5px solid currentColor;
+        transform: rotate(-45deg);
+        transform-origin: center;
         transition: transform 0.2s;
-
-        &.expanded {
-          transform: rotate(90deg);
-        }
       }
     }
-  }
 
-  /* 替换输入区域 */
-  .replace-input-section {
-    margin-bottom: 12px;
+    details[open] summary::before {
+      transform: rotate(45deg);
+    }
 
-    .replace-input-wrapper {
-      position: relative;
+    .options-content {
+      margin-top: 8px;
+      padding-left: 16px;
+      font-size: 12px;
+    }
+
+    .option-input-wrapper {
+      margin-bottom: 4px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    .option-input {
       width: 100%;
-      margin-bottom: 8px;
-
-      .replace-input {
-        width: 100%;
-        padding: 6px 12px;
-        font-size: 13px;
-        border-radius: 2px;
-        outline: none;
-
-        &::placeholder {
-        }
-
-        &:focus {
-        }
-      }
-    }
-
-    /* 替换按钮组 */
-    .replace-actions {
-      display: flex;
-      gap: 8px;
-
-      .replace-button {
-        padding: 4px 12px;
-        font-size: 12px;
-        border-radius: 2px;
-        border: none;
-        cursor: pointer;
-        transition: background-color 0.2s;
-        &:active {
-          opacity: 0.8;
-        }
-      }
+      padding: 4px 8px;
+      font-size: 12px;
+      border-radius: 2px;
+      outline: none;
     }
   }
 
-  /* 搜索选项/范围 */
-  .search-options-section {
-    margin-bottom: 16px;
-
-    details {
-      font-size: 13px;
-
-      summary {
-        cursor: pointer;
-        user-select: none;
-        opacity: 0.6;
-        transition: opacity 0.2s;
-        list-style: none;
-        display: flex;
-        align-items: center;
-
-        &::-webkit-details-marker {
-          display: none;
-        }
-
-        &:hover {
-          opacity: 1;
-        }
-
-        &::before {
-          content: '';
-          width: 6px;
-          height: 6px;
-          display: inline-block;
-          margin-right: 6px;
-          margin-top: -1px;
-          border-right: 1.5px solid currentColor;
-          border-bottom: 1.5px solid currentColor;
-          transform: rotate(-45deg);
-          transform-origin: center;
-          transition: transform 0.2s;
-        }
-      }
-
-      &[open] summary::before {
-        transform: rotate(45deg);
-      }
-
-      .options-content {
-        margin-top: 8px;
-        padding-left: 16px;
-        font-size: 12px;
-
-        .option-input-wrapper {
-          margin-bottom: 4px;
-
-          &:last-child {
-            margin-bottom: 0;
-          }
-
-          .option-input {
-            width: 100%;
-            padding: 4px 8px;
-            font-size: 12px;
-            border-radius: 2px;
-            outline: none;
-
-            &::placeholder {
-            }
-
-            &:focus {
-            }
-          }
-        }
-      }
-    }
-  }
-
-  /* 搜索结果区域 */
   .search-results {
     flex: 1;
     overflow-y: auto;
+  }
 
-    .empty-state {
-      text-align: center;
-      padding: 32px 0;
-      font-size: 13px;
+  .empty-state {
+    text-align: center;
+    padding: 32px 0;
+    font-size: 13px;
+
+    &--error {
+      color: var(--ws-errorForeground, #f48771);
     }
+  }
 
-    .results-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+  .results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
 
-      .result-item {
-        font-size: 13px;
+  .results-summary {
+    opacity: 0.72;
+    font-size: 12px;
+  }
 
-        .result-file {
-          font-weight: 600;
-          margin-bottom: 4px;
-        }
+  .search-results-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background: transparent;
 
-        .result-match {
-          padding-left: 16px;
-          padding: 4px;
-          cursor: pointer;
-          opacity: 0.8;
-          transition: background-color 0.2s;
-          .match-text {
-            margin-left: 8px;
-          }
-        }
+    .file-tree-node-content {
+      background-color: transparent;
+
+      &:focus-visible {
+        outline: 1px solid var(--ws-focus-border);
+        outline-offset: -1px;
       }
     }
   }
+
+  .search-result-group-row {
+    .search-result-group-label {
+      font-weight: 500;
+    }
+  }
+
+  .search-result-group-count {
+    flex-shrink: 0;
+    min-width: 18px;
+    opacity: 0.7;
+    font-size: 11px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .search-result-group-children {
+    margin-bottom: 4px;
+  }
+
+  .search-result-match-row {
+    gap: 2px;
+
+    .search-result-match-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .search-result-highlight {
+    color: var(--ws-editor-findMatchHighlightForeground, inherit);
+    background-color: var(--ws-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.28));
+    border-radius: 2px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
 }
-
-

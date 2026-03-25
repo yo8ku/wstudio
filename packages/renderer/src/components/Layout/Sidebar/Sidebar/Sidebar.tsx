@@ -36,6 +36,7 @@ import {
   executeWorkbenchMenuContribution,
   groupWorkbenchMenuContributions,
 } from '../../../../utils/workbenchMenus';
+import { PressableControl } from '../../../common/PressableControl';
 import './Sidebar.scss';
 
 export interface SidebarProps {
@@ -90,7 +91,7 @@ export function Sidebar({
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [outlineChecked, setOutlineChecked] = useState(true);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuButtonRef = useRef<HTMLDivElement>(null);
   const { sidebarPosition } = useActivityBarStore();
 
   const activePluginContainer = isPluginActivityBarItem(activeView)
@@ -399,7 +400,9 @@ export function Sidebar({
     menuItems.push(...pluginMenuItems);
   }
 
-  const handleMenuClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
+  const handleMenuClick = (
+    event: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>,
+  ): void => {
     event.stopPropagation();
 
     if (!menuButtonRef.current) {
@@ -483,13 +486,15 @@ export function Sidebar({
         <div className="sidebar-header">
           <span>{title}</span>
           {showHeaderMenu && (
-            <button
+            <PressableControl
               ref={menuButtonRef}
-              onClick={handleMenuClick}
+              className="sidebar-header-action"
+              onPress={handleMenuClick}
+              aria-label="更多选项"
               title="更多选项"
             >
               <Icon name="more-horizontal" size={16} />
-            </button>
+            </PressableControl>
           )}
         </div>
       )}

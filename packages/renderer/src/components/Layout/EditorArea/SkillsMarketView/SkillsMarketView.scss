@@ -77,13 +77,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
   background-color: var(--ws-input-background);
-  border: 1px solid var(--ws-input-border);
-  border-radius: 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
 
   &:focus-within {
-    border-color: var(--ws-focusBorder);
+    border-color: var(--ws-input-border);
   }
 
   .search-input {
@@ -91,7 +90,8 @@
     border: none;
     background: transparent;
     color: var(--ws-input-foreground);
-    font-size: 14px;
+    font-size: 12px;
+    font-family: none;
     outline: none;
 
     &::placeholder {

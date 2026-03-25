@@ -13,7 +13,7 @@ import {
   type InlineChatQuery,
   type InlineChatSession,
 } from '../../../services/InlineChatHistoryService';
-import { PressableControl } from './PressableControl';
+import { PressableControl } from '../../common/PressableControl';
 import {
   DEFAULT_CHAT_SESSION_TITLE,
   getChatSessionTitle,

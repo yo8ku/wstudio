@@ -846,9 +846,14 @@
 
   // 无序列表圆点标记样式
   .cm-bullet-marker {
+    display: inline-block;
     color: var(--ws-textLink-foreground);
-    font-size: 1.2em;
-    line-height: 1;
+    width: 0.36em;
+    height: 0.36em;
+    border-radius: 50%;
+    background-color: currentColor;
+    vertical-align: middle;
+    transform: translateY(-0.08em);
   }
 
   // 待办清单复选框样式

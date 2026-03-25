@@ -1,6 +1,6 @@
 /**
- * AI 面板内使用的可访问按压控件。
- * 用 div 模拟按钮交互，统一替代原生 button。
+ * Shared pressable control.
+ * Uses a div to emulate button interactions without relying on button elements.
  */
 
 import React from 'react';
@@ -13,7 +13,7 @@ export interface PressableControlProps extends Omit<React.HTMLAttributes<HTMLDiv
 
 export const PressableControl = React.forwardRef<HTMLDivElement, PressableControlProps>(
   ({ onPress, onKeyDown, disabled = false, children, ...rest }, ref) => {
-    const handleClick: React.MouseEventHandler<HTMLDivElement> = (event) => {
+    const handleClick: React.MouseEventHandler<HTMLDivElement> = event => {
       if (disabled) {
         event.preventDefault();
         event.stopPropagation();
@@ -23,7 +23,7 @@ export const PressableControl = React.forwardRef<HTMLDivElement, PressableContro
       onPress?.(event);
     };
 
-    const handleKeyDown: React.KeyboardEventHandler<HTMLDivElement> = (event) => {
+    const handleKeyDown: React.KeyboardEventHandler<HTMLDivElement> = event => {
       onKeyDown?.(event);
 
       if (event.defaultPrevented || disabled) {

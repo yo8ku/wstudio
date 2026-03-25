@@ -13,6 +13,7 @@ import type { MenuGroup } from '../GroupedContextMenu/GroupedContextMenu';
 import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
 import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
 import { useExplorerStore } from '../../../../stores/explorerStore';
+import { useNoteEditorSettingsStore } from '../../../../stores/noteEditorSettingsStore';
 import { useWorkbenchMenuContributions } from '../../../../hooks/useWorkbenchMenuContributions';
 import {
   executeWorkbenchMenuContribution,
@@ -136,6 +137,9 @@ export const TabBar: React.FC<TabBarProps> = ({
   const [codeMirrorMode, setCodeMirrorMode] = useState<'source' | 'preview'>('source');
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
   const workspacePath = useExplorerStore((state) => state.workspacePath);
+  const showLineNumbers = useNoteEditorSettingsStore((state) => state.showLineNumbers);
+  const loadNoteEditorSettings = useNoteEditorSettingsStore((state) => state.loadSettings);
+  const setShowLineNumbers = useNoteEditorSettingsStore((state) => state.setShowLineNumbers);
   const noteContextMenus = useWorkbenchMenuContributions('note/context');
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
@@ -159,6 +163,10 @@ export const TabBar: React.FC<TabBarProps> = ({
       setShowMoreMenu(false);
     }
   }, [isEditableDocumentTab, showMoreMenu]);
+
+  useEffect(() => {
+    void loadNoteEditorSettings();
+  }, [loadNoteEditorSettings]);
 
   const handleTabBarWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const scrollContainer = scrollContainerRef.current?.getContentElement();
@@ -460,6 +468,14 @@ export const TabBar: React.FC<TabBarProps> = ({
           id: 'source-mode',
           label: codeMirrorMode === 'source' ? '\u9884\u89c8\u6a21\u5f0f' : '\u6e90\u7801\u6a21\u5f0f',
           action: toggleCodeMirrorMode,
+          disabled: !activeTab
+        },
+        {
+          id: 'toggle-line-numbers',
+          label: showLineNumbers ? '隐藏行号' : '显示行号',
+          action: () => {
+            void setShowLineNumbers(!showLineNumbers);
+          },
           disabled: !activeTab
         }
       ]

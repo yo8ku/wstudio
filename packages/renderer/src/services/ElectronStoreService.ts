@@ -109,6 +109,7 @@ interface StoreSchema {
     showEditorSwitch: boolean;
     autoSave: boolean;
     autoSaveInterval: number;
+    showLineNumbers: boolean;
   };
 
   // AI 聊天选中的模型
