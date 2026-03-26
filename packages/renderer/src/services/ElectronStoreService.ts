@@ -24,6 +24,11 @@ interface StoreSchema {
     timestamp: number;
     type?: string;
   }>;
+
+  'workspace-search-history': Array<{
+    query: string;
+    timestamp: number;
+  }>;
   
   // 知识库数据
   'knowledge-base': {

@@ -22,7 +22,9 @@ export interface ParsedTag {
  * 标签正则表达式
  * 匹配 #标签名 或 #父标签/子标签 格式
  */
-const TAG_REGEX = /#([\w\u4e00-\u9fa5]+(\/[\w\u4e00-\u9fa5]+)*)/g;
+const TAG_NAME_PATTERN = /[\p{Script=Han}A-Za-z0-9][^\s#]*/u;
+const TAG_REGEX = new RegExp(`#(${TAG_NAME_PATTERN.source})`, 'gu');
+const VALID_TAG_NAME_REGEX = new RegExp(`^${TAG_NAME_PATTERN.source}$`, 'u');
 
 /**
  * 从内容中解析标签
@@ -124,8 +126,7 @@ export function isValidTagName(tagName: string): boolean {
   }
 
   // 标签名只能包含字母、数字、中文和下划线
-  const validPattern = /^[\w\u4e00-\u9fa5]+(\/[\w\u4e00-\u9fa5]+)*$/;
-  return validPattern.test(tagName);
+  return VALID_TAG_NAME_REGEX.test(tagName);
 }
 
 /**

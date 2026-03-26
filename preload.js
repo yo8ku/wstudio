@@ -75,11 +75,32 @@ contextBridge.exposeInMainWorld('electron', {
   // 工作区 API
   workspace: {
     getDir: () => ipcRenderer.invoke('workspace:get-dir'),
+    getRootDirectories: () => ipcRenderer.invoke('workspace:get-root-directories'),
+    getSearchBlockKeywords: (request) => ipcRenderer.invoke('workspace:get-search-block-keywords', request),
+    getSearchTags: (request) => ipcRenderer.invoke('workspace:get-search-tags', request),
     getRecentFiles: () => ipcRenderer.invoke('workspace:get-recent-files'),
     getLastOpened: () => ipcRenderer.invoke('workspace:get-last-opened'),
     addRecentFile: (filePath) => ipcRenderer.invoke('workspace:add-recent-file', filePath),
     clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files'),
-    searchText: (request) => ipcRenderer.invoke('workspace:search-text', request)
+    searchText: (request) => ipcRenderer.invoke('workspace:search-text', request),
+    replaceText: (request) => ipcRenderer.invoke('workspace:replace-text', request),
+    startSearchSession: (request) => ipcRenderer.invoke('workspace:search-start', request),
+    cancelSearchSession: (sessionId) => ipcRenderer.invoke('workspace:search-cancel', sessionId),
+    onSearchBatch: (callback) => {
+      const subscription = (_event, payload) => callback(payload);
+      ipcRenderer.on('workspace-search:batch', subscription);
+      return () => ipcRenderer.removeListener('workspace-search:batch', subscription);
+    },
+    onSearchComplete: (callback) => {
+      const subscription = (_event, payload) => callback(payload);
+      ipcRenderer.on('workspace-search:complete', subscription);
+      return () => ipcRenderer.removeListener('workspace-search:complete', subscription);
+    },
+    onSearchError: (callback) => {
+      const subscription = (_event, payload) => callback(payload);
+      ipcRenderer.on('workspace-search:error', subscription);
+      return () => ipcRenderer.removeListener('workspace-search:error', subscription);
+    }
   },
 
   // 知识库 API

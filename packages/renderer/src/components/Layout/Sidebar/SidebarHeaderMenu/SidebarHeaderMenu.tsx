@@ -3,7 +3,7 @@
  * 功能：为侧边栏标题栏提供下拉菜单
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import './SidebarHeaderMenu.scss';
 
 export interface SidebarHeaderMenuItem {
@@ -22,17 +22,22 @@ export interface SidebarHeaderMenuItem {
 interface SidebarHeaderMenuProps {
   isOpen: boolean;
   position: { x: number; y: number };
+  horizontalAlign?: 'start' | 'end';
   onClose: () => void;
   items: SidebarHeaderMenuItem[];
 }
 
+const SIDEBAR_HEADER_MENU_VIEWPORT_MARGIN = 12;
+
 export const SidebarHeaderMenu: React.FC<SidebarHeaderMenuProps> = ({
   isOpen,
   position,
+  horizontalAlign = 'start',
   onClose,
   items,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [resolvedPosition, setResolvedPosition] = useState(position);
 
   // 点击外部关闭
   useEffect(() => {
@@ -69,6 +74,44 @@ export const SidebarHeaderMenu: React.FC<SidebarHeaderMenuProps> = ({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen, onClose]);
 
+  useLayoutEffect(() => {
+    if (!isOpen || !menuRef.current) {
+      return;
+    }
+
+    const menuRect = menuRef.current.getBoundingClientRect();
+    let nextX = horizontalAlign === 'end'
+      ? position.x - menuRect.width
+      : position.x;
+    let nextY = position.y;
+
+    if (nextX + menuRect.width > window.innerWidth - SIDEBAR_HEADER_MENU_VIEWPORT_MARGIN) {
+      nextX = window.innerWidth - SIDEBAR_HEADER_MENU_VIEWPORT_MARGIN - menuRect.width;
+    }
+    if (nextX < SIDEBAR_HEADER_MENU_VIEWPORT_MARGIN) {
+      nextX = SIDEBAR_HEADER_MENU_VIEWPORT_MARGIN;
+    }
+
+    if (nextY + menuRect.height > window.innerHeight - SIDEBAR_HEADER_MENU_VIEWPORT_MARGIN) {
+      nextY = window.innerHeight - SIDEBAR_HEADER_MENU_VIEWPORT_MARGIN - menuRect.height;
+    }
+    if (nextY < SIDEBAR_HEADER_MENU_VIEWPORT_MARGIN) {
+      nextY = SIDEBAR_HEADER_MENU_VIEWPORT_MARGIN;
+    }
+
+    if (nextX !== resolvedPosition.x || nextY !== resolvedPosition.y) {
+      setResolvedPosition({ x: nextX, y: nextY });
+    }
+  }, [
+    horizontalAlign,
+    isOpen,
+    items,
+    position.x,
+    position.y,
+    resolvedPosition.x,
+    resolvedPosition.y,
+  ]);
+
   if (!isOpen) return null;
 
   return (
@@ -76,8 +119,8 @@ export const SidebarHeaderMenu: React.FC<SidebarHeaderMenuProps> = ({
       ref={menuRef}
       className="sidebar-header-menu"
       style={{
-        left: `${position.x}px`,
-        top: `${position.y}px`,
+        left: `${resolvedPosition.x}px`,
+        top: `${resolvedPosition.y}px`,
       }}
     >
       {items.map((item, index) => {

@@ -127,6 +127,8 @@ interface ReplaceActiveTabContentDetail {
   path?: string;
   name?: string;
   markDirty?: boolean;
+  skipCreate?: boolean;
+  skipDirty?: boolean;
   diffPreview?: EditorTab['diffPreview'];
 }
 
@@ -170,6 +172,11 @@ interface LastOpenedRestoreResult {
   success: boolean;
   data?: string | LastOpenedFileDescriptor;
   error?: string;
+}
+
+interface FileSavedDetail {
+  path: string;
+  tabId: string;
 }
 
 const normalizeComparableFilePath = (value: string): string =>
@@ -1551,6 +1558,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       const targetPath = typeof detail.path === 'string' ? detail.path : '';
       const targetName = typeof detail.name === 'string' ? detail.name : '';
       const markDirty = detail.markDirty ?? false;
+      const skipCreate = detail.skipCreate === true;
+      const skipDirty = detail.skipDirty === true;
       const normalizedTargetPath = targetPath ? normalizeComparableFilePath(targetPath) : '';
 
       const applyToTabs = (
@@ -1567,6 +1576,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           const matchByPath = !!normalizedTargetPath && normalizedTabPath === normalizedTargetPath;
           const matchByActive = !normalizedTargetPath && !!activeId && tab.id === activeId;
           if (!matchByPath && !matchByActive) return tab;
+          if (skipDirty && tab.isDirty) return tab;
 
           matched = true;
           resolvedTargetId = tab.id;
@@ -1624,7 +1634,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         return;
       }
 
-      if (targetPath) {
+      if (targetPath && !skipCreate) {
         const createdTab: EditorTab = {
           id: `file-${Date.now()}`,
           title: targetName || 'Untitled',
@@ -3471,6 +3481,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           if (syncedNote) {
             setCurrentNote(syncedNote);
           }
+          window.dispatchEvent(new CustomEvent<FileSavedDetail>('file-saved', {
+            detail: {
+              path: result.data.path,
+              tabId: tab.id,
+            },
+          }));
         }
       } catch (error) {
         // 閸欙箑鐡ㄦ稉鐑樻瀮娴犺泛銇戠拹銉礉闂堟瑩绮径鍕倞
@@ -3498,6 +3514,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         if (syncedNote) {
           setCurrentNote(syncedNote);
         }
+        window.dispatchEvent(new CustomEvent<FileSavedDetail>('file-saved', {
+          detail: {
+            path: tab.path,
+            tabId: tab.id,
+          },
+        }));
       }
     } catch (error) {
       // 娣囨繂鐡ㄩ弬鍥︽瀵倸鐖堕敍宀勬饯姒涙ê顦╅悶?

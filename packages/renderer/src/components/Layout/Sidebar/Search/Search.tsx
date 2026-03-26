@@ -1,24 +1,64 @@
-/**
+﻿/**
  * Search panel component.
  * Executes workspace-wide text search from the sidebar without using button elements.
  */
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { TreeChildren, TreeNodeRow } from '../../../Explorer/Common/TreeNode';
+import React, { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { parseWorkspaceSearchQuery } from '@note-studio/shared';
+import { LuChevronsUpDown, LuX } from 'react-icons/lu';
+import { TreeNodeRow } from '../../../Explorer/Common/TreeNode';
 import { TreeView } from '../../../Explorer/Common/TreeView';
 import { Icon } from '../../../Icons/Icon';
 import { Tooltip } from '../../../Tooltip/Tooltip';
-import { CustomScrollbar } from '../../../common/CustomScrollbar';
+import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
 import { PressableControl } from '../../../common/PressableControl';
 import { SearchToolbarIcon } from '../../../common/SearchToolbarIcon';
 import { SearchToolbarField } from '../../../common/SearchToolbarField';
+import { SidebarHeaderMenu, type SidebarHeaderMenuItem } from '../SidebarHeaderMenu';
 import { openNoteInEditor } from '../../../../utils/noteLinking';
+import { electronStore } from '../../../../services/ElectronStoreService';
+import type {
+  WorkspaceSearchBlockCandidate,
+  WorkspaceTextReplaceUpdatedTarget,
+} from '../../../../types/electron';
 import {
   createWorkspaceSearchMatcher,
   findClosestWorkspaceSearchMatchRange,
   type WorkspaceSearchMatchOptions,
 } from '../../../../utils/workspaceSearchMatch';
 import './Search.scss';
+
+export interface SearchProps {
+  refreshActionId?: number;
+  clearActionId?: number;
+  collapseAllActionId?: number;
+}
+
+export type SearchSortMode =
+  | 'fileNameAsc'
+  | 'fileNameDesc'
+  | 'updatedAtDesc'
+  | 'updatedAtAsc'
+  | 'createdAtDesc'
+  | 'createdAtAsc';
+
+interface SearchHistoryEntry {
+  query: string;
+  timestamp: number;
+}
+
+interface SearchAssistOption {
+  token: string;
+  description: string;
+}
+
+interface ActivePathAssistState {
+  kind: 'path' | 'tag' | 'block';
+  token: string;
+  tokenStart: number;
+  value: string;
+}
 
 interface SearchResult {
   absolutePath: string;
@@ -29,11 +69,35 @@ interface SearchResult {
   source?: 'workspace-file' | 'note';
   noteId?: string;
   title?: string;
+  matchedText?: string;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 interface SearchResultGroupCount {
   groupKey: string;
   totalMatches: number;
+}
+
+interface SearchBatchEvent {
+  sessionId: string;
+  items: SearchResult[];
+  limitHit: boolean;
+  totalCount: number;
+  totalFiles: number;
+}
+
+interface SearchCompleteEvent {
+  sessionId: string;
+  groupCounts: SearchResultGroupCount[];
+  limitHit: boolean;
+  totalCount: number;
+  totalFiles: number;
+}
+
+interface SearchErrorEvent {
+  sessionId: string;
+  error: string;
 }
 
 interface SearchResultGroup {
@@ -42,19 +106,134 @@ interface SearchResultGroup {
   title: string;
   totalCount: number;
   results: SearchResult[];
+  isFilterOnly: boolean;
+  sortFileName: string;
+  createdAt: number;
+  updatedAt: number;
 }
+
+interface SearchVirtualGroupRow {
+  type: 'group';
+  key: string;
+  rowIndex: number;
+  group: SearchResultGroup;
+  isExpanded: boolean;
+}
+
+interface SearchVirtualResultRow {
+  type: 'result';
+  key: string;
+  rowIndex: number;
+  result: SearchResult;
+}
+
+type SearchVirtualRow = SearchVirtualGroupRow | SearchVirtualResultRow;
 
 type SearchResultGroupCountMap = Record<string, number>;
 
+interface BufferedSearchBatchSummary {
+  limitHit: boolean;
+  totalCount: number;
+  totalFiles: number;
+}
+
+interface BufferedSearchSessionEvents {
+  items: SearchResult[];
+  summary: BufferedSearchBatchSummary;
+  completePayload: SearchCompleteEvent | null;
+  errorPayload: SearchErrorEvent | null;
+}
+
+interface SearchHighlightRange {
+  start: number;
+  end: number;
+}
+
+interface SearchAssistPanelLayout {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+}
+
+interface ReplaceActiveTabContentDetail {
+  content: string;
+  path?: string;
+  name?: string;
+  markDirty?: boolean;
+  skipCreate?: boolean;
+  skipDirty?: boolean;
+}
+
 const SEARCH_INPUT_MAX_HEIGHT = 120;
 const SEARCH_RESULT_TOOLTIP_MAX_LENGTH = 360;
-const SEARCH_RESULT_PREVIEW_MIN_LENGTH = 72;
 const SEARCH_RESULT_PREVIEW_MAX_LENGTH = 240;
-const SEARCH_RESULT_PREVIEW_RESERVED_WIDTH = 28;
-const SEARCH_RESULT_PREVIEW_APPROX_CHAR_WIDTH = 5;
-const SEARCH_RESULT_PREVIEW_LENGTH_BUFFER = 10;
 const SEARCH_RESULT_PREVIEW_LEADING_CONTEXT = 18;
-const SEARCH_PANEL_MAX_RESULTS = 1000;
+const SEARCH_PANEL_MAX_RESULTS = 20000;
+const SEARCH_RESULT_ROW_HEIGHT = 22;
+const SEARCH_RESULT_OVERSCAN_ROWS = 10;
+const SEARCH_RESULT_BATCH_FLUSH_DELAY = 32;
+const SEARCH_HISTORY_STORE_KEY = 'workspace-search-history';
+const SEARCH_HISTORY_MAX_ITEMS = 8;
+const SEARCH_ASSIST_PANEL_OFFSET = 6;
+const SEARCH_ASSIST_PANEL_VIEWPORT_MARGIN = 12;
+const SEARCH_ASSIST_PANEL_MIN_WIDTH = 280;
+const SEARCH_ASSIST_PANEL_EXTRA_WIDTH = 72;
+const SEARCH_FILTER_ASSIST_PANEL_WIDTH = 245;
+const INCOMPLETE_PATH_SEARCH_QUERY_PATTERN = /^\s*path(?:\s*[:\uFF1A]\s*["']?\s*)?$/iu;
+const INCOMPLETE_PATH_ASSIST_KEYWORD_PATTERN = /(^|[\s])(p|pa|pat|path)$/iu;
+const INCOMPLETE_TAG_SEARCH_QUERY_PATTERN = /^\s*tag(?:\s*[:\uFF1A]\s*["']?\s*)?$/iu;
+const INCOMPLETE_TAG_ASSIST_KEYWORD_PATTERN = /(^|[\s])(ta|tag)$/iu;
+const INCOMPLETE_BLOCK_SEARCH_QUERY_PATTERN = /^\s*block(?:\s*[:\uFF1A]\s*["']?\s*)?$/iu;
+const INCOMPLETE_BLOCK_ASSIST_KEYWORD_PATTERN = /(^|[\s])(bloc|block)$/iu;
+const SEARCH_ASSIST_QUERY_TOKEN_PATTERNS: readonly RegExp[] = [
+  /(^|[\s])path[:\uFF1A]/iu,
+  /(^|[\s])file[:\uFF1A]/iu,
+  /(^|[\s])tag[:\uFF1A]/iu,
+  /(^|[\s])block[:\uFF1A]/iu,
+];
+/*
+const PATH_SEARCH_TOKEN = 'path锛?;
+const BLOCK_SEARCH_TOKEN = 'block锛?;
+const SEARCH_ASSIST_OPTIONS: readonly SearchAssistOption[] = [
+  { token: PATH_SEARCH_TOKEN, description: '鍖归厤鏂囦欢璺緞' },
+  { token: 'file锛?, description: '鍖归厤鏂囦欢鍚? },
+  { token: 'tag锛?, description: '鎼滅储鏍囩' },
+  { token: BLOCK_SEARCH_TOKEN, description: '鎼滅储鍧楀叧閿瘝' },
+];
+const TAG_SEARCH_TOKEN = 'tag锛?;
+*/
+const PATH_SEARCH_TOKEN = 'path\uFF1A';
+const BLOCK_SEARCH_TOKEN = 'block\uFF1A';
+const SEARCH_ASSIST_OPTIONS: readonly SearchAssistOption[] = [
+  { token: PATH_SEARCH_TOKEN, description: '\u5339\u914d\u6587\u4ef6\u8def\u5f84' },
+  { token: 'file\uFF1A', description: '\u5339\u914d\u6587\u4ef6\u540d' },
+  { token: 'tag\uFF1A', description: '\u641c\u7d22\u6807\u7b7e' },
+  { token: BLOCK_SEARCH_TOKEN, description: '\u641c\u7d22\u5757\u5173\u952e\u8bcd' },
+];
+const TAG_SEARCH_TOKEN = 'tag\uFF1A';
+const SEARCH_SORT_MENU_OPTIONS: readonly {
+  readonly mode: SearchSortMode;
+  readonly label: string;
+}[] = [
+  { mode: 'fileNameAsc', label: '\u6587\u4ef6\u540d(A-Z)' },
+  { mode: 'fileNameDesc', label: '\u6587\u4ef6\u540d(Z-A)' },
+  { mode: 'updatedAtDesc', label: '\u7f16\u8f91\u65f6\u95f4(\u4ece\u65b0\u5230\u65e7)' },
+  { mode: 'updatedAtAsc', label: '\u7f16\u8f91\u65f6\u95f4(\u4ece\u65e7\u5230\u65b0)' },
+  { mode: 'createdAtDesc', label: '\u521b\u5efa\u65f6\u95f4(\u4ece\u65b0\u5230\u65e7)' },
+  { mode: 'createdAtAsc', label: '\u521b\u5efa\u65f6\u95f4(\u4ece\u65e7\u5230\u65b0)' },
+];
+
+const createBufferedSearchSessionEvents = (): BufferedSearchSessionEvents => ({
+  items: [],
+  summary: {
+    limitHit: false,
+    totalCount: 0,
+    totalFiles: 0,
+  },
+  completePayload: null,
+  errorPayload: null,
+});
 
 const getSearchResultGroupKey = (result: SearchResult): string => (
   result.noteId ? `note:${result.noteId}` : `file:${result.absolutePath}`
@@ -65,6 +244,10 @@ const getSearchResultKey = (result: SearchResult): string => (
 );
 
 const getSearchResultGroupLabel = (result: SearchResult): string => {
+  if (result.preview === result.relativePath && result.relativePath.trim().length > 0) {
+    return result.relativePath;
+  }
+
   if (result.title && result.title.trim().length > 0) {
     return result.title.trim();
   }
@@ -75,14 +258,93 @@ const getSearchResultGroupLabel = (result: SearchResult): string => {
   return pathSegments[pathSegments.length - 1] || sourcePath;
 };
 
-const getSearchResultTooltipContent = (preview: string): string => {
-  const normalizedPreview = preview.trim();
+const getSearchResultSortFileName = (result: SearchResult): string => {
+  const sourcePath = (result.relativePath || result.title || result.absolutePath).trim();
+  if (sourcePath.length === 0) {
+    return '';
+  }
+
+  const normalizedPath = sourcePath.replace(/\\/g, '/');
+  const pathSegments = normalizedPath.split('/').filter(segment => segment.length > 0);
+  return pathSegments[pathSegments.length - 1] || normalizedPath;
+};
+
+const getFileNameFromPath = (value: string): string => {
+  const normalizedPath = value.replace(/\\/g, '/');
+  const pathSegments = normalizedPath.split('/').filter(segment => segment.length > 0);
+  return pathSegments[pathSegments.length - 1] || value;
+};
+
+const compareSearchResultGroupFileName = (
+  leftGroup: SearchResultGroup,
+  rightGroup: SearchResultGroup,
+  isAscending: boolean,
+): number => {
+  const direction = isAscending ? 1 : -1;
+  const fileNameDifference = leftGroup.sortFileName.localeCompare(
+    rightGroup.sortFileName,
+    'zh-Hans-CN',
+  );
+  if (fileNameDifference !== 0) {
+    return fileNameDifference * direction;
+  }
+
+  return leftGroup.title.localeCompare(rightGroup.title, 'zh-Hans-CN') * direction;
+};
+
+const compareSearchResultGroupTimestamp = (
+  leftGroup: SearchResultGroup,
+  rightGroup: SearchResultGroup,
+  field: 'createdAt' | 'updatedAt',
+  isDescending: boolean,
+): number => {
+  const leftTimestamp = leftGroup[field];
+  const rightTimestamp = rightGroup[field];
+  const timestampDifference = isDescending
+    ? rightTimestamp - leftTimestamp
+    : leftTimestamp - rightTimestamp;
+  if (timestampDifference !== 0) {
+    return timestampDifference;
+  }
+
+  return compareSearchResultGroupFileName(leftGroup, rightGroup, true);
+};
+
+const sortSearchResultGroups = (
+  groups: readonly SearchResultGroup[],
+  sortMode: SearchSortMode,
+): SearchResultGroup[] => {
+  const nextGroups = [...groups];
+
+  nextGroups.sort((leftGroup, rightGroup) => {
+    switch (sortMode) {
+      case 'fileNameDesc':
+        return compareSearchResultGroupFileName(leftGroup, rightGroup, false);
+      case 'updatedAtDesc':
+        return compareSearchResultGroupTimestamp(leftGroup, rightGroup, 'updatedAt', true);
+      case 'updatedAtAsc':
+        return compareSearchResultGroupTimestamp(leftGroup, rightGroup, 'updatedAt', false);
+      case 'createdAtDesc':
+        return compareSearchResultGroupTimestamp(leftGroup, rightGroup, 'createdAt', true);
+      case 'createdAtAsc':
+        return compareSearchResultGroupTimestamp(leftGroup, rightGroup, 'createdAt', false);
+      case 'fileNameAsc':
+      default:
+        return compareSearchResultGroupFileName(leftGroup, rightGroup, true);
+    }
+  });
+
+  return nextGroups;
+};
+
+const getSearchTooltipContent = (content: string): string => {
+  const normalizedPreview = content.trim();
 
   if (normalizedPreview.length <= SEARCH_RESULT_TOOLTIP_MAX_LENGTH) {
     return normalizedPreview;
   }
 
-  return `${normalizedPreview.slice(0, SEARCH_RESULT_TOOLTIP_MAX_LENGTH - 1)}…`;
+  return `${normalizedPreview.slice(0, SEARCH_RESULT_TOOLTIP_MAX_LENGTH - 3)}...`;
 };
 
 const createSearchResultGroupCountMap = (
@@ -107,6 +369,123 @@ const getSafeSearchResultGroupCounts = (
   Array.isArray(groupCounts) ? groupCounts : []
 );
 
+const normalizeSearchHistoryEntries = (
+  entries: readonly SearchHistoryEntry[] | undefined,
+): SearchHistoryEntry[] => {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries
+    .filter((entry) => entry.query.trim().length > 0 && Number.isFinite(entry.timestamp))
+    .sort((leftEntry, rightEntry) => rightEntry.timestamp - leftEntry.timestamp)
+    .slice(0, SEARCH_HISTORY_MAX_ITEMS);
+};
+
+const buildNextSearchHistoryEntries = (
+  currentEntries: readonly SearchHistoryEntry[],
+  query: string,
+): SearchHistoryEntry[] => {
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length === 0) {
+    return [...currentEntries];
+  }
+
+  const nextTimestamp = Date.now();
+  const deduplicatedEntries = currentEntries.filter((entry) => entry.query !== normalizedQuery);
+  return [
+    {
+      query: normalizedQuery,
+      timestamp: nextTimestamp,
+    },
+    ...deduplicatedEntries,
+  ].slice(0, SEARCH_HISTORY_MAX_ITEMS);
+};
+
+
+const ACTIVE_PATH_ASSIST_PATTERN = (
+  /(^|[\s])((path|tag|block)[:\uFF1A])\s*(?:"([^"]*)"?|'([^']*)'?|([^\s]*))?$/iu
+);
+
+const getActivePathAssistState = (query: string): ActivePathAssistState | null => {
+  const match = ACTIVE_PATH_ASSIST_PATTERN.exec(query);
+  if (!match) {
+    return null;
+  }
+
+  const matchIndex = match.index ?? 0;
+  const leadingSegment = match[1] ?? '';
+  const tokenKind = (match[3] ?? '').toLowerCase();
+  return {
+    kind: tokenKind === 'tag' ? 'tag' : tokenKind === 'block' ? 'block' : 'path',
+    token: match[2],
+    tokenStart: matchIndex + leadingSegment.length,
+    value: (match[4] ?? match[5] ?? match[6] ?? '').trim(),
+  };
+};
+
+const applyPathSuggestionToQuery = (
+  currentQuery: string,
+  activePathAssist: ActivePathAssistState,
+  suggestion: string,
+): string => {
+  const prefix = currentQuery.slice(0, activePathAssist.tokenStart);
+  const formattedSuggestion = /\s/.test(suggestion) ? `"${suggestion}"` : suggestion;
+  return `${prefix}${activePathAssist.token} ${formattedSuggestion}`;
+};
+
+const isIncompletePathSearchQuery = (query: string): boolean => (
+  query.trim().length > 0
+  && (
+    INCOMPLETE_PATH_SEARCH_QUERY_PATTERN.test(query)
+    || INCOMPLETE_TAG_SEARCH_QUERY_PATTERN.test(query)
+    || INCOMPLETE_BLOCK_SEARCH_QUERY_PATTERN.test(query)
+  )
+);
+
+const hasIncompletePathAssistKeyword = (query: string): boolean => (
+  INCOMPLETE_PATH_ASSIST_KEYWORD_PATTERN.test(query)
+  || INCOMPLETE_TAG_ASSIST_KEYWORD_PATTERN.test(query)
+  || INCOMPLETE_BLOCK_ASSIST_KEYWORD_PATTERN.test(query)
+);
+
+const hasSearchAssistQueryTokens = (query: string): boolean => (
+  SEARCH_ASSIST_QUERY_TOKEN_PATTERNS.some(pattern => pattern.test(query))
+);
+
+const calculateSearchAssistPanelLayout = (
+  anchorRect: DOMRect,
+  preferredWidthOverride?: number,
+): SearchAssistPanelLayout => {
+  const maxWidth = Math.max(window.innerWidth - SEARCH_ASSIST_PANEL_VIEWPORT_MARGIN * 2, 0);
+  const preferredWidth = preferredWidthOverride ?? Math.max(
+    anchorRect.width + SEARCH_ASSIST_PANEL_EXTRA_WIDTH,
+    SEARCH_ASSIST_PANEL_MIN_WIDTH,
+  );
+  const width = Math.min(preferredWidth, maxWidth);
+  let left = anchorRect.left;
+  if (left + width > window.innerWidth - SEARCH_ASSIST_PANEL_VIEWPORT_MARGIN) {
+    left = window.innerWidth - SEARCH_ASSIST_PANEL_VIEWPORT_MARGIN - width;
+  }
+  if (left < SEARCH_ASSIST_PANEL_VIEWPORT_MARGIN) {
+    left = SEARCH_ASSIST_PANEL_VIEWPORT_MARGIN;
+  }
+
+  let top = anchorRect.bottom + SEARCH_ASSIST_PANEL_OFFSET;
+  if (top < SEARCH_ASSIST_PANEL_VIEWPORT_MARGIN) {
+    top = SEARCH_ASSIST_PANEL_VIEWPORT_MARGIN;
+  }
+  const availableHeight = window.innerHeight - top - SEARCH_ASSIST_PANEL_VIEWPORT_MARGIN;
+  const maxHeight = Math.max(availableHeight, 0);
+
+  return {
+    top,
+    left,
+    width,
+    maxHeight,
+  };
+};
+
 const createSearchPreviewMatcher = (
   query: string,
   isCaseSensitive: boolean,
@@ -118,6 +497,157 @@ const createSearchPreviewMatcher = (
   isWholeWord,
   isRegex,
 );
+
+const normalizePathHighlightValue = (
+  value: string,
+  caseSensitive: boolean,
+): string => {
+  const normalizedValue = value.replace(/\\/g, '/');
+  return caseSensitive ? normalizedValue : normalizedValue.toLowerCase();
+};
+
+const mergeSearchHighlightRanges = (
+  ranges: readonly SearchHighlightRange[],
+): SearchHighlightRange[] => {
+  if (ranges.length === 0) {
+    return [];
+  }
+
+  const sortedRanges = [...ranges].sort((leftRange, rightRange) => (
+    leftRange.start - rightRange.start || leftRange.end - rightRange.end
+  ));
+  const mergedRanges: SearchHighlightRange[] = [];
+  let currentRange: SearchHighlightRange = {
+    start: sortedRanges[0].start,
+    end: sortedRanges[0].end,
+  };
+
+  for (let index = 1; index < sortedRanges.length; index += 1) {
+    const nextRange = sortedRanges[index];
+    if (nextRange.start <= currentRange.end) {
+      currentRange = {
+        start: currentRange.start,
+        end: Math.max(currentRange.end, nextRange.end),
+      };
+      continue;
+    }
+
+    mergedRanges.push(currentRange);
+    currentRange = {
+      start: nextRange.start,
+      end: nextRange.end,
+    };
+  }
+
+  mergedRanges.push(currentRange);
+  return mergedRanges;
+};
+
+const renderSearchHighlights = (
+  value: string,
+  ranges: readonly SearchHighlightRange[],
+): React.ReactNode => {
+  if (value.length === 0 || ranges.length === 0) {
+    return value;
+  }
+
+  const fragments: React.ReactNode[] = [];
+  let cursor = 0;
+
+  for (let index = 0; index < ranges.length; index += 1) {
+    const range = ranges[index];
+    if (cursor < range.start) {
+      fragments.push(value.slice(cursor, range.start));
+    }
+
+    fragments.push(
+      <span
+        key={`highlight-${range.start}-${index}`}
+        className="search-result-highlight"
+      >
+        {value.slice(range.start, range.end)}
+      </span>,
+    );
+    cursor = range.end;
+  }
+
+  if (cursor < value.length) {
+    fragments.push(value.slice(cursor));
+  }
+
+  return fragments;
+};
+
+const getPathHighlightRanges = (
+  value: string,
+  pathFilters: readonly string[],
+  caseSensitive: boolean,
+): SearchHighlightRange[] => {
+  if (value.length === 0 || pathFilters.length === 0) {
+    return [];
+  }
+
+  const normalizedValue = normalizePathHighlightValue(value, caseSensitive);
+  const ranges: SearchHighlightRange[] = [];
+
+  for (const pathFilter of pathFilters) {
+    const normalizedFilter = normalizePathHighlightValue(
+      pathFilter.trim().replace(/^\/+|\/+$/g, ''),
+      caseSensitive,
+    );
+    if (normalizedFilter.length === 0) {
+      continue;
+    }
+
+    let matchIndex = normalizedValue.indexOf(normalizedFilter);
+    while (matchIndex >= 0) {
+      ranges.push({
+        start: matchIndex,
+        end: matchIndex + normalizedFilter.length,
+      });
+      matchIndex = normalizedValue.indexOf(normalizedFilter, matchIndex + normalizedFilter.length);
+    }
+  }
+
+  return mergeSearchHighlightRanges(ranges);
+};
+
+const getFileHighlightRanges = (
+  value: string,
+  fileFilters: readonly string[],
+  caseSensitive: boolean,
+): SearchHighlightRange[] => {
+  if (value.length === 0 || fileFilters.length === 0) {
+    return [];
+  }
+
+  const normalizedValue = value.replace(/\\/g, '/');
+  const basenameStart = normalizedValue.lastIndexOf('/') + 1;
+  const basename = normalizedValue.slice(basenameStart);
+  const normalizedBasename = normalizePathHighlightValue(basename, caseSensitive);
+  const ranges: SearchHighlightRange[] = [];
+
+  for (const fileFilter of fileFilters) {
+    const normalizedFilter = normalizePathHighlightValue(
+      fileFilter.trim().replace(/^[/\\]+|[/\\]+$/g, ''),
+      caseSensitive,
+    );
+    if (normalizedFilter.length === 0) {
+      continue;
+    }
+
+    let matchIndex = normalizedBasename.indexOf(normalizedFilter);
+    while (matchIndex >= 0) {
+      ranges.push({
+        start: basenameStart + matchIndex,
+        end: basenameStart + matchIndex + normalizedFilter.length,
+      });
+      matchIndex = normalizedBasename.indexOf(normalizedFilter, matchIndex + normalizedFilter.length);
+    }
+  }
+
+  return mergeSearchHighlightRanges(ranges);
+};
 
 const renderHighlightedSearchPreview = (
   preview: string,
@@ -209,9 +739,34 @@ const getSearchResultDisplayPreview = (
   return `${prefix}${normalizedPreview.slice(start, end)}${suffix}`;
 };
 
+const getSearchPreviewMatchColumn = (
+  preview: string,
+  matchedText: string,
+  caseSensitive: boolean,
+): number => {
+  const normalizedPreview = caseSensitive ? preview : preview.toLowerCase();
+  const normalizedMatchedText = caseSensitive ? matchedText : matchedText.toLowerCase();
+  const matchIndex = normalizedPreview.indexOf(normalizedMatchedText);
+  return matchIndex >= 0 ? matchIndex + 1 : 1;
+};
+
+const renderHighlightedFilterLabel = (
+  label: string,
+  pathFilters: readonly string[],
+  fileFilters: readonly string[],
+  caseSensitive: boolean,
+): React.ReactNode => renderSearchHighlights(
+  label,
+  mergeSearchHighlightRanges([
+    ...getPathHighlightRanges(label, pathFilters, caseSensitive),
+    ...getFileHighlightRanges(label, fileFilters, caseSensitive),
+  ]),
+);
+
 const groupSearchResults = (
   results: SearchResult[],
   groupCountMap: SearchResultGroupCountMap,
+  isFilterOnlySearchMode: boolean,
 ): SearchResultGroup[] => {
   const groups = new Map<string, SearchResultGroup>();
 
@@ -230,6 +785,10 @@ const groupSearchResults = (
       title: result.relativePath || result.title || result.absolutePath,
       totalCount: groupCountMap[groupKey] ?? 1,
       results: [result],
+      isFilterOnly: isFilterOnlySearchMode,
+      sortFileName: getSearchResultSortFileName(result),
+      createdAt: result.createdAt ?? 0,
+      updatedAt: result.updatedAt ?? 0,
     });
   }
 
@@ -239,7 +798,48 @@ const groupSearchResults = (
   }));
 };
 
-export const Search: React.FC = () => {
+const buildSearchVirtualRows = (
+  resultGroups: readonly SearchResultGroup[],
+  collapsedResultGroupKeys: readonly string[],
+): SearchVirtualRow[] => {
+  const collapsedGroupKeySet = new Set(collapsedResultGroupKeys);
+  const virtualRows: SearchVirtualRow[] = [];
+  let rowIndex = 0;
+
+  for (const group of resultGroups) {
+    const isExpanded = !collapsedGroupKeySet.has(group.key);
+    virtualRows.push({
+      type: 'group',
+      key: `group:${group.key}`,
+      rowIndex,
+      group,
+      isExpanded,
+    });
+    rowIndex += 1;
+
+    if (!isExpanded || group.isFilterOnly) {
+      continue;
+    }
+
+    for (const result of group.results) {
+      virtualRows.push({
+        type: 'result',
+        key: `result:${getSearchResultKey(result)}`,
+        rowIndex,
+        result,
+      });
+      rowIndex += 1;
+    }
+  }
+
+  return virtualRows;
+};
+
+export const Search: React.FC<SearchProps> = ({
+  refreshActionId = 0,
+  clearActionId = 0,
+  collapseAllActionId = 0,
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
   const [showReplace, setShowReplace] = useState(false);
@@ -250,6 +850,7 @@ export const Search: React.FC = () => {
   const [excludePattern, setExcludePattern] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isReplacing, setIsReplacing] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [limitHit, setLimitHit] = useState(false);
   const [totalResultCount, setTotalResultCount] = useState(0);
@@ -257,10 +858,252 @@ export const Search: React.FC = () => {
   const [groupCountMap, setGroupCountMap] = useState<SearchResultGroupCountMap>({});
   const [collapsedResultGroupKeys, setCollapsedResultGroupKeys] = useState<string[]>([]);
   const [selectedResultKey, setSelectedResultKey] = useState('');
+  const [sortMode, setSortMode] = useState<SearchSortMode>('fileNameAsc');
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const [sortMenuPosition, setSortMenuPosition] = useState({ x: 0, y: 0 });
+  const [isSearchAssistOpen, setIsSearchAssistOpen] = useState(false);
+  const [searchHistoryEntries, setSearchHistoryEntries] = useState<SearchHistoryEntry[]>([]);
+  const [workspaceRootDirectories, setWorkspaceRootDirectories] = useState<string[]>([]);
+  const [availableBlockKeywords, setAvailableBlockKeywords] = useState<WorkspaceSearchBlockCandidate[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [isBlockAssistLoading, setIsBlockAssistLoading] = useState(false);
+  const [isTagAssistLoading, setIsTagAssistLoading] = useState(false);
+  const [loadedBlockAssistScopeKey, setLoadedBlockAssistScopeKey] = useState('');
+  const [loadedTagAssistScopeKey, setLoadedTagAssistScopeKey] = useState('');
+  const [searchAssistPanelLayout, setSearchAssistPanelLayout] = useState<SearchAssistPanelLayout | null>(null);
+  const searchInputAnchorRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLTextAreaElement>(null);
-  const searchResultsRef = useRef<HTMLDivElement>(null);
+  const searchAssistPanelRef = useRef<HTMLDivElement>(null);
+  const searchSortButtonRef = useRef<HTMLDivElement>(null);
+  const searchResultsScrollbarRef = useRef<CustomScrollbarRef>(null);
   const searchRequestIdRef = useRef(0);
-  const [resultPreviewMaxLength, setResultPreviewMaxLength] = useState(SEARCH_RESULT_PREVIEW_MIN_LENGTH);
+  const searchSessionIdRef = useRef('');
+  const searchHistoryEntriesRef = useRef<SearchHistoryEntry[]>([]);
+  const awaitingSearchSessionStartRef = useRef(false);
+  const shouldAutoCollapseGroupsRef = useRef(true);
+  const blockAssistRequestIdRef = useRef(0);
+  const tagAssistRequestIdRef = useRef(0);
+  const seenResultGroupKeysRef = useRef<Set<string>>(new Set());
+  const pendingBatchItemsRef = useRef<SearchResult[]>([]);
+  const pendingBatchSummaryRef = useRef<BufferedSearchBatchSummary>({
+    limitHit: false,
+    totalCount: 0,
+    totalFiles: 0,
+  });
+  const bufferedSearchSessionEventsRef = useRef<Record<string, BufferedSearchSessionEvents>>({});
+  const pendingBatchFlushTimerRef = useRef<number | null>(null);
+  const [resultsScrollTop, setResultsScrollTop] = useState(0);
+  const [resultsViewportHeight, setResultsViewportHeight] = useState(0);
+
+  const updateSearchAssistPanelLayout = (): void => {
+    const anchorElement = searchInputAnchorRef.current;
+    if (!anchorElement) {
+      setSearchAssistPanelLayout(null);
+      return;
+    }
+
+    const currentActiveAssist = getActivePathAssistState(searchQuery);
+
+    setSearchAssistPanelLayout(calculateSearchAssistPanelLayout(
+      anchorElement.getBoundingClientRect(),
+      currentActiveAssist !== null ? SEARCH_FILTER_ASSIST_PANEL_WIDTH : undefined,
+    ));
+  };
+
+  const openSearchAssist = (): void => {
+    updateSearchAssistPanelLayout();
+    setIsSearchAssistOpen(true);
+  };
+
+  const clearPendingBatchFlushTimer = (): void => {
+    if (pendingBatchFlushTimerRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(pendingBatchFlushTimerRef.current);
+    pendingBatchFlushTimerRef.current = null;
+  };
+
+  const resetPendingBatchState = (): void => {
+    clearPendingBatchFlushTimer();
+    pendingBatchItemsRef.current = [];
+    pendingBatchSummaryRef.current = {
+      limitHit: false,
+      totalCount: 0,
+      totalFiles: 0,
+    };
+  };
+
+  const resetBufferedSearchSessionEvents = (): void => {
+    awaitingSearchSessionStartRef.current = false;
+    bufferedSearchSessionEventsRef.current = {};
+  };
+
+  const getBufferedSearchSessionEvents = (
+    sessionId: string,
+  ): BufferedSearchSessionEvents => {
+    const existingEvents = bufferedSearchSessionEventsRef.current[sessionId];
+    if (existingEvents) {
+      return existingEvents;
+    }
+
+    const nextEvents = createBufferedSearchSessionEvents();
+    bufferedSearchSessionEventsRef.current[sessionId] = nextEvents;
+    return nextEvents;
+  };
+
+  const clearBufferedSearchSessionEvents = (sessionId: string): void => {
+    const nextBufferedEvents = { ...bufferedSearchSessionEventsRef.current };
+    delete nextBufferedEvents[sessionId];
+    bufferedSearchSessionEventsRef.current = nextBufferedEvents;
+  };
+
+  const flushPendingBatchState = (): void => {
+    clearPendingBatchFlushTimer();
+
+    const nextItems = pendingBatchItemsRef.current;
+    if (nextItems.length === 0) {
+      return;
+    }
+
+    const nextSummary = pendingBatchSummaryRef.current;
+    pendingBatchItemsRef.current = [];
+
+    startTransition(() => {
+      setResults((currentResults) => [...currentResults, ...nextItems]);
+      setLimitHit(nextSummary.limitHit);
+      setTotalResultCount(nextSummary.totalCount);
+      setTotalResultFiles(nextSummary.totalFiles);
+    });
+  };
+
+  const schedulePendingBatchFlush = (): void => {
+    if (pendingBatchFlushTimerRef.current !== null) {
+      return;
+    }
+
+    pendingBatchFlushTimerRef.current = window.setTimeout(() => {
+      flushPendingBatchState();
+    }, SEARCH_RESULT_BATCH_FLUSH_DELAY);
+  };
+
+  const applySearchBatchPayload = (payload: SearchBatchEvent): void => {
+    const batchItems = getSafeSearchResultItems(payload.items);
+    pendingBatchItemsRef.current.push(...batchItems);
+    pendingBatchSummaryRef.current = {
+      limitHit: payload.limitHit,
+      totalCount: payload.totalCount,
+      totalFiles: payload.totalFiles,
+    };
+    schedulePendingBatchFlush();
+  };
+
+  const applySearchCompletePayload = (payload: SearchCompleteEvent): void => {
+    flushPendingBatchState();
+    searchSessionIdRef.current = '';
+    awaitingSearchSessionStartRef.current = false;
+    clearBufferedSearchSessionEvents(payload.sessionId);
+    startTransition(() => {
+      setLimitHit(payload.limitHit);
+      setTotalResultCount(payload.totalCount);
+      setTotalResultFiles(payload.totalFiles);
+      setGroupCountMap(createSearchResultGroupCountMap(
+        getSafeSearchResultGroupCounts(payload.groupCounts),
+      ));
+      setIsSearching(false);
+    });
+  };
+
+  const applySearchErrorPayload = (payload: SearchErrorEvent): void => {
+    resetPendingBatchState();
+    searchSessionIdRef.current = '';
+    awaitingSearchSessionStartRef.current = false;
+    clearBufferedSearchSessionEvents(payload.sessionId);
+    setSearchError(payload.error);
+    setIsSearching(false);
+  };
+
+  const flushBufferedSearchSessionEvents = (sessionId: string): void => {
+    const bufferedEvents = bufferedSearchSessionEventsRef.current[sessionId];
+    if (!bufferedEvents) {
+      return;
+    }
+
+    clearBufferedSearchSessionEvents(sessionId);
+
+    if (bufferedEvents.items.length > 0) {
+      pendingBatchItemsRef.current.push(...bufferedEvents.items);
+      pendingBatchSummaryRef.current = bufferedEvents.summary;
+      flushPendingBatchState();
+    }
+
+    if (bufferedEvents.errorPayload) {
+      applySearchErrorPayload(bufferedEvents.errorPayload);
+      return;
+    }
+
+    if (bufferedEvents.completePayload) {
+      applySearchCompletePayload(bufferedEvents.completePayload);
+    }
+  };
+
+  const resetSearchResultsState = (): void => {
+    resetPendingBatchState();
+    resetBufferedSearchSessionEvents();
+    setResults([]);
+    setLimitHit(false);
+    setTotalResultCount(0);
+    setTotalResultFiles(0);
+    setGroupCountMap({});
+    setResultsScrollTop(0);
+    setCollapsedResultGroupKeys([]);
+    shouldAutoCollapseGroupsRef.current = true;
+    seenResultGroupKeysRef.current = new Set();
+    searchResultsScrollbarRef.current?.setScrollTop(0);
+  };
+
+  const cancelActiveSearchSession = async (): Promise<void> => {
+    const activeSessionId = searchSessionIdRef.current;
+    searchSessionIdRef.current = '';
+
+    if (!activeSessionId || !window.electron?.workspace?.cancelSearchSession) {
+      return;
+    }
+
+    try {
+      await window.electron.workspace.cancelSearchSession(activeSessionId);
+    } catch {
+      // Ignore cancellation failures because a completed search may already be gone.
+    }
+  };
+
+  const updateSearchHistoryState = (entries: SearchHistoryEntry[]): void => {
+    searchHistoryEntriesRef.current = entries;
+    setSearchHistoryEntries(entries);
+  };
+
+  const persistSearchHistory = async (query: string): Promise<void> => {
+    const nextEntries = buildNextSearchHistoryEntries(searchHistoryEntriesRef.current, query);
+    updateSearchHistoryState(nextEntries);
+    await electronStore.set(SEARCH_HISTORY_STORE_KEY, nextEntries);
+  };
+
+  const clearSearchHistory = async (): Promise<void> => {
+    updateSearchHistoryState([]);
+    await electronStore.set(SEARCH_HISTORY_STORE_KEY, []);
+  };
+
+  const focusSearchInputAt = (cursor: number): void => {
+    window.requestAnimationFrame(() => {
+      const textarea = searchInputRef.current;
+      if (!textarea) {
+        return;
+      }
+
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+    });
+  };
 
   const syncSearchInputHeight = (): void => {
     const textarea = searchInputRef.current;
@@ -279,60 +1122,252 @@ export const Search: React.FC = () => {
   }, [searchQuery]);
 
   useLayoutEffect(() => {
-    const container = searchResultsRef.current;
-    if (!container) {
+    const contentElement = searchResultsScrollbarRef.current?.getContentElement();
+    if (!contentElement) {
+      setResultsViewportHeight(0);
       return;
     }
 
-    const updatePreviewLength = (width: number): void => {
-      const usableWidth = Math.max(width - SEARCH_RESULT_PREVIEW_RESERVED_WIDTH, 0);
-      const estimatedLength = Math.floor(usableWidth / SEARCH_RESULT_PREVIEW_APPROX_CHAR_WIDTH)
-        + SEARCH_RESULT_PREVIEW_LENGTH_BUFFER;
-      const nextLength = Math.max(
-        SEARCH_RESULT_PREVIEW_MIN_LENGTH,
-        Math.min(SEARCH_RESULT_PREVIEW_MAX_LENGTH, estimatedLength),
-      );
+    const updateViewportMetrics = (): void => {
+      const nextViewportHeight = contentElement.clientHeight;
+      const nextScrollTop = Math.round(contentElement.scrollTop);
 
-      setResultPreviewMaxLength((currentLength) => (
-        currentLength === nextLength ? currentLength : nextLength
+      setResultsViewportHeight((currentHeight) => (
+        currentHeight === nextViewportHeight ? currentHeight : nextViewportHeight
+      ));
+      setResultsScrollTop((currentScrollTop) => (
+        currentScrollTop === nextScrollTop ? currentScrollTop : nextScrollTop
       ));
     };
 
-    updatePreviewLength(container.clientWidth);
+    updateViewportMetrics();
 
     if (typeof ResizeObserver === 'undefined') {
       return;
     }
 
-    const observer = new ResizeObserver((entries) => {
-      const nextWidth = entries[0]?.contentRect.width ?? container.clientWidth;
-      updatePreviewLength(nextWidth);
+    const observer = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateViewportMetrics);
     });
 
-    observer.observe(container);
+    observer.observe(contentElement);
     return () => {
       observer.disconnect();
+    };
+  }, [results.length, searchError, searchQuery.length]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadSearchHistory = async (): Promise<void> => {
+      const storedEntries = await electronStore.get(SEARCH_HISTORY_STORE_KEY);
+      if (!isActive) {
+        return;
+      }
+
+      updateSearchHistoryState(normalizeSearchHistoryEntries(storedEntries));
+    };
+
+    void loadSearchHistory();
+
+    return () => {
+      isActive = false;
     };
   }, []);
 
   useEffect(() => {
-    const activeGroupKeys = new Set<string>();
+    let isActive = true;
+
+    const loadWorkspaceRootDirectories = async (): Promise<void> => {
+      if (!window.electron?.workspace?.getRootDirectories) {
+        return;
+      }
+
+      const response = await window.electron.workspace.getRootDirectories();
+      if (!isActive || !response.success || !Array.isArray(response.data)) {
+        return;
+      }
+
+      setWorkspaceRootDirectories(response.data);
+    };
+
+    void loadWorkspaceRootDirectories();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isSearchAssistOpen) {
+      setSearchAssistPanelLayout(null);
+      return undefined;
+    }
+
+    const anchorElement = searchInputAnchorRef.current;
+    if (!anchorElement) {
+      setSearchAssistPanelLayout(null);
+      return undefined;
+    }
+
+    updateSearchAssistPanelLayout();
+
+    const schedulePanelLayoutUpdate = (): void => {
+      window.requestAnimationFrame(updateSearchAssistPanelLayout);
+    };
+
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => {
+        schedulePanelLayoutUpdate();
+      });
+
+    resizeObserver?.observe(anchorElement);
+    window.addEventListener('resize', schedulePanelLayoutUpdate);
+    window.addEventListener('scroll', schedulePanelLayoutUpdate, true);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', schedulePanelLayoutUpdate);
+      window.removeEventListener('scroll', schedulePanelLayoutUpdate, true);
+    };
+  }, [isSearchAssistOpen, searchQuery]);
+
+  useEffect(() => {
+    if (!isSearchAssistOpen) {
+      return undefined;
+    }
+
+    const handlePointerDownOutside = (event: MouseEvent): void => {
+      const targetNode = event.target;
+      if (!(targetNode instanceof Node)) {
+        return;
+      }
+
+      if (searchInputAnchorRef.current?.contains(targetNode)) {
+        return;
+      }
+
+      if (searchAssistPanelRef.current?.contains(targetNode)) {
+        return;
+      }
+
+      setIsSearchAssistOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDownOutside);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDownOutside);
+    };
+  }, [isSearchAssistOpen]);
+
+  useEffect(() => {
+    const activeGroupKeys: string[] = [];
+    const activeGroupKeySet = new Set<string>();
     const activeResultKeys = new Set<string>();
 
     for (const result of results) {
-      activeGroupKeys.add(getSearchResultGroupKey(result));
+      const groupKey = getSearchResultGroupKey(result);
+      if (!activeGroupKeySet.has(groupKey)) {
+        activeGroupKeySet.add(groupKey);
+        activeGroupKeys.push(groupKey);
+      }
       activeResultKeys.add(getSearchResultKey(result));
     }
 
-    setCollapsedResultGroupKeys((currentKeys) => (
-      currentKeys.filter((groupKey) => activeGroupKeys.has(groupKey))
-    ));
-    setSelectedResultKey((currentKey) => (
-      currentKey && activeResultKeys.has(currentKey) ? currentKey : ''
-    ));
+    setCollapsedResultGroupKeys((currentKeys) => {
+      if (shouldAutoCollapseGroupsRef.current) {
+        seenResultGroupKeysRef.current = new Set(activeGroupKeys);
+        return [];
+      }
+
+      const nextCollapsedKeys = currentKeys.filter((groupKey) => activeGroupKeySet.has(groupKey));
+      const nextCollapsedKeySet = new Set(nextCollapsedKeys);
+
+      for (const groupKey of activeGroupKeys) {
+        if (!seenResultGroupKeysRef.current.has(groupKey) && !nextCollapsedKeySet.has(groupKey)) {
+          nextCollapsedKeys.push(groupKey);
+        }
+      }
+
+      seenResultGroupKeysRef.current = new Set(activeGroupKeys);
+      return nextCollapsedKeys;
+    });
+    setSelectedResultKey((currentKey) => {
+      if (currentKey && activeResultKeys.has(currentKey)) {
+        return currentKey;
+      }
+
+      return results.length > 0 ? getSearchResultKey(results[0]) : '';
+    });
   }, [results]);
 
-  const executeSearch = async (overrides?: {
+  useEffect(() => {
+    if (
+      !window.electron?.workspace?.onSearchBatch
+      || !window.electron.workspace.onSearchComplete
+      || !window.electron.workspace.onSearchError
+    ) {
+      return undefined;
+    }
+
+    const unsubscribeBatch = window.electron.workspace.onSearchBatch((payload: SearchBatchEvent) => {
+      if (payload.sessionId === searchSessionIdRef.current) {
+        applySearchBatchPayload(payload);
+        return;
+      }
+
+      if (!awaitingSearchSessionStartRef.current || searchSessionIdRef.current.length > 0) {
+        return;
+      }
+
+      const bufferedEvents = getBufferedSearchSessionEvents(payload.sessionId);
+      bufferedEvents.items.push(...getSafeSearchResultItems(payload.items));
+      bufferedEvents.summary = {
+        limitHit: payload.limitHit,
+        totalCount: payload.totalCount,
+        totalFiles: payload.totalFiles,
+      };
+    });
+    const unsubscribeComplete = window.electron.workspace.onSearchComplete((
+      payload: SearchCompleteEvent,
+    ) => {
+      if (payload.sessionId === searchSessionIdRef.current) {
+        applySearchCompletePayload(payload);
+        return;
+      }
+
+      if (!awaitingSearchSessionStartRef.current || searchSessionIdRef.current.length > 0) {
+        return;
+      }
+
+      const bufferedEvents = getBufferedSearchSessionEvents(payload.sessionId);
+      bufferedEvents.completePayload = payload;
+    });
+    const unsubscribeError = window.electron.workspace.onSearchError((payload: SearchErrorEvent) => {
+      if (payload.sessionId === searchSessionIdRef.current) {
+        applySearchErrorPayload(payload);
+        return;
+      }
+
+      if (!awaitingSearchSessionStartRef.current || searchSessionIdRef.current.length > 0) {
+        return;
+      }
+
+      const bufferedEvents = getBufferedSearchSessionEvents(payload.sessionId);
+      bufferedEvents.errorPayload = payload;
+    });
+
+    return () => {
+      unsubscribeBatch();
+      unsubscribeComplete();
+      unsubscribeError();
+      resetPendingBatchState();
+      void cancelActiveSearchSession();
+    };
+  }, []);
+
+  const executeLegacySearch = async (overrides?: {
     searchQuery?: string;
     caseSensitive?: boolean;
     wholeWord?: boolean;
@@ -347,32 +1382,11 @@ export const Search: React.FC = () => {
     const nextIncludePattern = overrides?.includePattern ?? includePattern;
     const nextExcludePattern = overrides?.excludePattern ?? excludePattern;
 
-    if (nextSearchQuery.length === 0) {
-      searchRequestIdRef.current += 1;
-      setResults([]);
-      setSearchError('');
-      setLimitHit(false);
-      setTotalResultCount(0);
-      setTotalResultFiles(0);
-      setGroupCountMap({});
-      setIsSearching(false);
-      return;
-    }
-
     if (!window.electron?.workspace?.searchText) {
       setSearchError('\u5f53\u524d\u73af\u5883\u4e0d\u652f\u6301\u5de5\u4f5c\u533a\u641c\u7d22');
-      setResults([]);
-      setLimitHit(false);
-      setTotalResultCount(0);
-      setTotalResultFiles(0);
-      setGroupCountMap({});
+      resetSearchResultsState();
       return;
     }
-
-    const requestId = searchRequestIdRef.current + 1;
-    searchRequestIdRef.current = requestId;
-    setIsSearching(true);
-    setSearchError('');
 
     try {
       const response = await window.electron.workspace.searchText({
@@ -385,16 +1399,8 @@ export const Search: React.FC = () => {
         maxResults: SEARCH_PANEL_MAX_RESULTS,
       });
 
-      if (requestId !== searchRequestIdRef.current) {
-        return;
-      }
-
       if (!response.success || !response.data) {
-        setResults([]);
-        setLimitHit(false);
-        setTotalResultCount(0);
-        setTotalResultFiles(0);
-        setGroupCountMap({});
+        resetSearchResultsState();
         setSearchError(response.error || '\u5de5\u4f5c\u533a\u641c\u7d22\u5931\u8d25');
         return;
       }
@@ -402,7 +1408,16 @@ export const Search: React.FC = () => {
       const responseItems = getSafeSearchResultItems(response.data.items);
       const responseGroupCounts = getSafeSearchResultGroupCounts(response.data.groupCounts);
       const fallbackGroupCountMap = createSearchResultGroupCountMap(responseGroupCounts);
-      const fallbackGroups = groupSearchResults(responseItems, fallbackGroupCountMap);
+      const fallbackParsedQuery = parseWorkspaceSearchQuery(nextSearchQuery);
+      const fallbackGroups = groupSearchResults(
+        responseItems,
+        fallbackGroupCountMap,
+        fallbackParsedQuery.textQuery.length === 0
+          && (
+            fallbackParsedQuery.pathFilters.length > 0
+            || fallbackParsedQuery.fileFilters.length > 0
+          ),
+      );
 
       setResults(responseItems);
       setLimitHit(response.data.limitHit);
@@ -418,28 +1433,238 @@ export const Search: React.FC = () => {
       );
       setGroupCountMap(fallbackGroupCountMap);
     } catch (error) {
-      if (requestId !== searchRequestIdRef.current) {
-        return;
-      }
-
-      setResults([]);
-      setLimitHit(false);
-      setTotalResultCount(0);
-      setTotalResultFiles(0);
-      setGroupCountMap({});
+      resetSearchResultsState();
       setSearchError(
         error instanceof Error
           ? error.message
           : '\u5de5\u4f5c\u533a\u641c\u7d22\u5931\u8d25',
       );
-    } finally {
-      if (requestId === searchRequestIdRef.current) {
-        setIsSearching(false);
-      }
     }
   };
 
+  const executeSearch = async (overrides?: {
+    searchQuery?: string;
+    caseSensitive?: boolean;
+    wholeWord?: boolean;
+    useRegex?: boolean;
+    includePattern?: string;
+    excludePattern?: string;
+  }): Promise<void> => {
+    const nextSearchQuery = overrides?.searchQuery ?? searchQuery;
+    const nextCaseSensitive = overrides?.caseSensitive ?? caseSensitive;
+    const nextWholeWord = overrides?.wholeWord ?? wholeWord;
+    const nextUseRegex = overrides?.useRegex ?? useRegex;
+    const nextIncludePattern = overrides?.includePattern ?? includePattern;
+    const nextExcludePattern = overrides?.excludePattern ?? excludePattern;
+    const requestId = searchRequestIdRef.current + 1;
+    const searchRequest = {
+      query: nextSearchQuery,
+      caseSensitive: nextCaseSensitive,
+      wholeWord: nextWholeWord,
+      useRegex: nextUseRegex,
+      includePattern: nextIncludePattern,
+      excludePattern: nextExcludePattern,
+      maxResults: SEARCH_PANEL_MAX_RESULTS,
+    };
+
+    searchRequestIdRef.current = requestId;
+    await cancelActiveSearchSession();
+
+    if (nextSearchQuery.length === 0 || isIncompletePathSearchQuery(nextSearchQuery)) {
+      resetSearchResultsState();
+      setSearchError('');
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError('');
+    resetSearchResultsState();
+
+    if (!window.electron?.workspace?.startSearchSession) {
+      await executeLegacySearch(overrides);
+      if (requestId === searchRequestIdRef.current) {
+        setIsSearching(false);
+      }
+      return;
+    }
+
+    try {
+      awaitingSearchSessionStartRef.current = true;
+      const response = await window.electron.workspace.startSearchSession(searchRequest);
+
+      if (requestId !== searchRequestIdRef.current) {
+        if (response.success && response.data?.sessionId) {
+          if (window.electron.workspace.cancelSearchSession) {
+            await window.electron.workspace.cancelSearchSession(response.data.sessionId);
+          }
+          clearBufferedSearchSessionEvents(response.data.sessionId);
+        }
+        return;
+      }
+
+      if (!response.success || !response.data) {
+        awaitingSearchSessionStartRef.current = false;
+        resetSearchResultsState();
+        setSearchError(response.error || '\u5de5\u4f5c\u533a\u641c\u7d22\u5931\u8d25');
+        setIsSearching(false);
+        return;
+      }
+
+      searchSessionIdRef.current = response.data.sessionId;
+      awaitingSearchSessionStartRef.current = false;
+      flushBufferedSearchSessionEvents(response.data.sessionId);
+    } catch (error) {
+      if (requestId !== searchRequestIdRef.current) {
+        return;
+      }
+
+      awaitingSearchSessionStartRef.current = false;
+      resetSearchResultsState();
+      setSearchError(
+        error instanceof Error
+          ? error.message
+          : '\u5de5\u4f5c\u533a\u641c\u7d22\u5931\u8d25',
+      );
+      setIsSearching(false);
+    }
+  };
+
+  const clearSearchResults = async (): Promise<void> => {
+    searchRequestIdRef.current += 1;
+    await cancelActiveSearchSession();
+    resetSearchResultsState();
+    setSearchError('');
+    setIsSearching(false);
+  };
+
+  const clearSearchAssistQuery = async (): Promise<void> => {
+    setSearchQuery('');
+    await clearSearchResults();
+    openSearchAssist();
+    focusSearchInputAt(0);
+  };
+
+  const syncUpdatedTargetsInEditor = (
+    updatedTargets: readonly WorkspaceTextReplaceUpdatedTarget[],
+  ): void => {
+    for (const updatedTarget of updatedTargets) {
+      const targetPath = updatedTarget.editorPath.trim();
+      if (targetPath.length === 0) {
+        continue;
+      }
+
+      window.dispatchEvent(new CustomEvent<ReplaceActiveTabContentDetail>(
+        'editor:replace-active-tab-content',
+        {
+          detail: {
+            path: targetPath,
+            name: updatedTarget.title?.trim() || getFileNameFromPath(targetPath),
+            content: updatedTarget.content,
+            markDirty: false,
+            skipCreate: true,
+            skipDirty: true,
+          },
+        },
+      ));
+    }
+  };
+
+  const executeReplace = async (replaceAll: boolean): Promise<void> => {
+    if (!window.electron?.workspace?.replaceText) {
+      setSearchError('\u5f53\u524d\u73af\u5883\u4e0d\u652f\u6301\u5de5\u4f5c\u533a\u66ff\u6362');
+      return;
+    }
+
+    if (parsedSearchQuery.blockFilters.length > 0) {
+      setSearchError('\u5f53\u524d\u641c\u7d22\u6761\u4ef6\u4e0d\u652f\u6301\u66ff\u6362');
+      /*
+      setSearchError('褰撳墠鎼滅储鏉′欢涓嶆敮鎸佹浛鎹?);
+      return;
+      */
+      return;
+    }
+
+    const supportsTagOnlyReplace = (
+      parsedSearchQuery.textQuery.length === 0
+      && parsedSearchQuery.tagFilters.length > 0
+    );
+    if (parsedSearchQuery.textQuery.length === 0 && !supportsTagOnlyReplace) {
+      setSearchError('\u5f53\u524d\u641c\u7d22\u6761\u4ef6\u4e0d\u652f\u6301\u66ff\u6362');
+      return;
+    }
+
+    if (!replaceAll && selectedResult === null) {
+      return;
+    }
+
+    try {
+      setIsReplacing(true);
+      setSearchError('');
+      const response = await window.electron.workspace.replaceText({
+        query: searchQuery,
+        replace: replaceQuery,
+        replaceAll,
+        caseSensitive,
+        wholeWord,
+        useRegex,
+        includePattern,
+        excludePattern,
+        target: !replaceAll && selectedResult
+          ? {
+              absolutePath: selectedResult.absolutePath,
+              line: selectedResult.line,
+              column: selectedResult.column,
+              source: selectedResult.source,
+              noteId: selectedResult.noteId,
+            }
+          : undefined,
+      });
+
+      if (!response.success || !response.data) {
+        setSearchError(response.error || '\u5de5\u4f5c\u533a\u66ff\u6362\u5931\u8d25');
+        return;
+      }
+
+      syncUpdatedTargetsInEditor(response.data.updatedTargets);
+      await executeSearch();
+    } catch (error) {
+      setSearchError(
+        error instanceof Error
+          ? error.message
+          : '\u5de5\u4f5c\u533a\u66ff\u6362\u5931\u8d25',
+      );
+    } finally {
+      setIsReplacing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (refreshActionId <= 0) {
+      return;
+    }
+
+    if (searchQuery.length === 0) {
+      return;
+    }
+
+    void executeSearch();
+  }, [refreshActionId]);
+
+  useEffect(() => {
+    if (clearActionId <= 0) {
+      return;
+    }
+
+    void clearSearchResults();
+  }, [clearActionId]);
+
   const handleSearch = (): void => {
+    if (searchQuery.trim().length > 0 && !isIncompletePathSearchQuery(searchQuery)) {
+      void persistSearchHistory(searchQuery);
+    }
+
+    setIsSearchAssistOpen(false);
     void executeSearch();
   };
 
@@ -477,6 +1702,12 @@ export const Search: React.FC = () => {
       return;
     }
 
+    if (event.key === 'Escape' && isSearchAssistOpen) {
+      event.preventDefault();
+      setIsSearchAssistOpen(false);
+      return;
+    }
+
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSearch();
@@ -494,6 +1725,17 @@ export const Search: React.FC = () => {
     void executeSearch();
   };
 
+  const handleReplaceInputKeyDown = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ): void => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    event.preventDefault();
+    void executeReplace(event.ctrlKey || event.metaKey);
+  };
+
   const handleSearchRangeBlur = (): void => {
     if (searchQuery.length === 0) {
       return;
@@ -502,19 +1744,240 @@ export const Search: React.FC = () => {
     void executeSearch();
   };
 
+  const parsedSearchQuery = parseWorkspaceSearchQuery(searchQuery);
+  const selectedResult = results.find(result => getSearchResultKey(result) === selectedResultKey) ?? null;
+  const activeFilterAssist = getActivePathAssistState(searchQuery);
+  const activePathAssist = activeFilterAssist?.kind === 'path' ? activeFilterAssist : null;
+  const activeBlockAssist = activeFilterAssist?.kind === 'block' ? activeFilterAssist : null;
+  const activeTagAssist = activeFilterAssist?.kind === 'tag' ? activeFilterAssist : null;
+  const hasSearchAssistTokensInQuery = hasSearchAssistQueryTokens(searchQuery);
+  const hasIncompletePathKeyword = hasIncompletePathAssistKeyword(searchQuery);
+  const hasCompletedPathAssistValue = (
+    activeFilterAssist !== null
+    && activeFilterAssist.value.length > 0
+  );
+  const shouldSuppressSearchAssistOpen = (
+    hasCompletedPathAssistValue
+    || hasIncompletePathKeyword
+    || (hasSearchAssistTokensInQuery && activeFilterAssist === null)
+  );
+  const showPathAssistPanel = isSearchAssistOpen && activeFilterAssist !== null;
+  const showSearchAssistPanel = (
+    isSearchAssistOpen
+    && activeFilterAssist === null
+    && !hasIncompletePathKeyword
+    && !hasSearchAssistTokensInQuery
+  );
+  const shouldRenderSearchAssistPanel = showSearchAssistPanel || showPathAssistPanel;
+  const isFilterOnlySearchMode = (
+    parsedSearchQuery.textQuery.length === 0
+    && (
+      parsedSearchQuery.pathFilters.length > 0
+      || parsedSearchQuery.fileFilters.length > 0
+      || parsedSearchQuery.tagFilters.length > 0
+    )
+  );
+  const canExecuteReplace = !isReplacing
+    && searchQuery.trim().length > 0
+    && !isIncompletePathSearchQuery(searchQuery);
+  const canReplaceSelectedResult = canExecuteReplace && selectedResult !== null;
+  const canReplaceAllResults = canExecuteReplace && (totalResultCount > 0 || results.length > 0);
+  const filteredWorkspaceRootDirectories = activePathAssist
+    ? workspaceRootDirectories.filter((rootDirectory) => (
+      activePathAssist.value.length === 0
+      || rootDirectory.toLowerCase().includes(activePathAssist.value.toLowerCase())
+    ))
+    : [];
+  const filteredAvailableBlockKeywords = activeBlockAssist
+    ? availableBlockKeywords.filter((blockCandidate) => (
+      activeBlockAssist.value.length === 0
+      || blockCandidate.keyword.toLowerCase().includes(activeBlockAssist.value.toLowerCase())
+    ))
+    : [];
+  const filteredAvailableTags = activeTagAssist
+    ? availableTags.filter((tagName) => {
+      const normalizedFilterValue = activeTagAssist.value.trim().replace(/^#/, '').toLowerCase();
+      return (
+        normalizedFilterValue.length === 0
+        || tagName.toLowerCase().includes(normalizedFilterValue)
+      );
+    })
+    : [];
+  const isBlockAssistPanelVisible = isSearchAssistOpen && activeBlockAssist !== null;
+  const isTagAssistPanelVisible = isSearchAssistOpen && activeTagAssist !== null;
+  const currentAssistScopeKey = `${includePattern}\u0000${excludePattern}`;
+
+  useEffect(() => {
+    const electronApi = window.electron;
+    const workspaceApi = electronApi?.workspace;
+
+    if (!isTagAssistPanelVisible) {
+      return;
+    }
+
+    if (loadedTagAssistScopeKey === currentAssistScopeKey || !workspaceApi?.getSearchTags) {
+      return;
+    }
+
+    const requestId = tagAssistRequestIdRef.current + 1;
+    tagAssistRequestIdRef.current = requestId;
+
+    const loadAvailableTags = async (): Promise<void> => {
+      setIsTagAssistLoading(true);
+      setAvailableTags([]);
+
+      try {
+        const response = await Promise.race([
+          workspaceApi.getSearchTags({
+            includePattern,
+            excludePattern,
+          }),
+          new Promise<undefined>((resolve) => {
+            window.setTimeout(() => resolve(undefined), 2000);
+          }),
+        ]);
+
+        if (requestId !== tagAssistRequestIdRef.current) {
+          return;
+        }
+
+        if (response === undefined || !response.success || !Array.isArray(response.data)) {
+          setLoadedTagAssistScopeKey('');
+          return;
+        }
+
+        const nextTags = [...response.data].sort((leftTag, rightTag) => (
+          leftTag.localeCompare(rightTag, 'zh-Hans-CN')
+        ));
+        setAvailableTags(nextTags);
+        setLoadedTagAssistScopeKey(currentAssistScopeKey);
+      } catch (error) {
+        console.error('[Search] 鍔犺浇鏍囩鍊欓€夊け璐?', error);
+      } finally {
+        if (requestId === tagAssistRequestIdRef.current) {
+          setIsTagAssistLoading(false);
+        }
+      }
+    };
+
+    void loadAvailableTags();
+  }, [
+    currentAssistScopeKey,
+    isTagAssistPanelVisible,
+    loadedTagAssistScopeKey,
+  ]);
+
+  useEffect(() => {
+    const electronApi = window.electron;
+    const workspaceApi = electronApi?.workspace;
+
+    if (!isBlockAssistPanelVisible) {
+      return;
+    }
+
+    if (
+      loadedBlockAssistScopeKey === currentAssistScopeKey
+      || !workspaceApi?.getSearchBlockKeywords
+    ) {
+      return;
+    }
+
+    const requestId = blockAssistRequestIdRef.current + 1;
+    blockAssistRequestIdRef.current = requestId;
+
+    const loadAvailableBlockKeywords = async (): Promise<void> => {
+      setIsBlockAssistLoading(true);
+      setAvailableBlockKeywords([]);
+
+      try {
+        const response = await Promise.race([
+          workspaceApi.getSearchBlockKeywords({
+            includePattern,
+            excludePattern,
+          }),
+          new Promise<undefined>((resolve) => {
+            window.setTimeout(() => resolve(undefined), 2000);
+          }),
+        ]);
+
+        if (requestId !== blockAssistRequestIdRef.current) {
+          return;
+        }
+
+        if (response === undefined || !response.success || !Array.isArray(response.data)) {
+          setLoadedBlockAssistScopeKey('');
+          return;
+        }
+
+        const nextBlockKeywords = [...response.data].sort((leftCandidate, rightCandidate) => (
+          leftCandidate.keyword.localeCompare(rightCandidate.keyword, 'zh-Hans-CN')
+        ));
+        setAvailableBlockKeywords(nextBlockKeywords);
+        setLoadedBlockAssistScopeKey(currentAssistScopeKey);
+      } catch (error) {
+        console.error('[Search] Failed to load block keyword suggestions:', error);
+      } finally {
+        if (requestId === blockAssistRequestIdRef.current) {
+          setIsBlockAssistLoading(false);
+        }
+      }
+    };
+
+    void loadAvailableBlockKeywords();
+  }, [
+    currentAssistScopeKey,
+    isBlockAssistPanelVisible,
+    loadedBlockAssistScopeKey,
+  ]);
+
+  useEffect(() => {
+    const handleFileSaved = (): void => {
+      setLoadedBlockAssistScopeKey('');
+      setAvailableBlockKeywords([]);
+      setLoadedTagAssistScopeKey('');
+      setAvailableTags([]);
+    };
+
+    window.addEventListener('file-saved', handleFileSaved);
+    return () => {
+      window.removeEventListener('file-saved', handleFileSaved);
+    };
+  }, []);
+
   const currentSearchMatch: WorkspaceSearchMatchOptions = {
-    query: searchQuery,
+    query: parsedSearchQuery.textQuery,
     caseSensitive,
     wholeWord,
     useRegex,
   };
 
+  const getResultSearchMatch = (
+    result: SearchResult,
+  ): WorkspaceSearchMatchOptions | undefined => {
+    if (parsedSearchQuery.textQuery.length > 0) {
+      return currentSearchMatch;
+    }
+
+    if (result.matchedText && result.matchedText.length > 0) {
+      return {
+        query: result.matchedText,
+        caseSensitive,
+        wholeWord: false,
+        useRegex: false,
+      };
+    }
+
+    return undefined;
+  };
+
   const handleResultOpen = async (result: SearchResult): Promise<void> => {
+    const resultSearchMatch = getResultSearchMatch(result);
+
     if (result.noteId) {
       await openNoteInEditor(result.noteId, {
         lineNumber: result.line,
         column: result.column,
-        searchMatch: currentSearchMatch,
+        searchMatch: resultSearchMatch,
       });
       return;
     }
@@ -539,12 +2002,13 @@ export const Search: React.FC = () => {
         isPreview: false,
         lineNumber: result.line,
         column: result.column,
-        searchMatch: currentSearchMatch,
+        searchMatch: resultSearchMatch,
       },
     }));
   };
 
   const handleToggleResultGroup = (groupKey: string): void => {
+    shouldAutoCollapseGroupsRef.current = false;
     setCollapsedResultGroupKeys((currentKeys) => (
       currentKeys.includes(groupKey)
         ? currentKeys.filter((currentKey) => currentKey !== groupKey)
@@ -581,71 +2045,431 @@ export const Search: React.FC = () => {
     void openSearchResult(result);
   };
 
-  const resultGroups = groupSearchResults(results, groupCountMap);
+  const resultGroups = sortSearchResultGroups(
+    groupSearchResults(results, groupCountMap, isFilterOnlySearchMode),
+    sortMode,
+  );
+  const virtualRows = buildSearchVirtualRows(resultGroups, collapsedResultGroupKeys);
+  const effectiveViewportHeight = resultsViewportHeight > 0
+    ? resultsViewportHeight
+    : SEARCH_RESULT_ROW_HEIGHT * 12;
+  const virtualStartIndex = Math.max(
+    Math.floor(resultsScrollTop / SEARCH_RESULT_ROW_HEIGHT) - SEARCH_RESULT_OVERSCAN_ROWS,
+    0,
+  );
+  const virtualVisibleRowCount = Math.max(
+    Math.ceil(effectiveViewportHeight / SEARCH_RESULT_ROW_HEIGHT) + SEARCH_RESULT_OVERSCAN_ROWS * 2,
+    1,
+  );
+  const virtualEndIndex = Math.min(
+    virtualStartIndex + virtualVisibleRowCount,
+    virtualRows.length,
+  );
+  const visibleVirtualRows = virtualRows.slice(virtualStartIndex, virtualEndIndex);
+  const virtualContentHeight = Math.max(
+    virtualRows.length * SEARCH_RESULT_ROW_HEIGHT,
+    effectiveViewportHeight,
+  );
   const previewMatcher = createSearchPreviewMatcher(
-    searchQuery,
+    parsedSearchQuery.textQuery,
     caseSensitive,
     wholeWord,
     useRegex,
   );
+  const searchAssistPanelStyle = searchAssistPanelLayout
+    ? {
+      top: `${searchAssistPanelLayout.top}px`,
+      left: `${searchAssistPanelLayout.left}px`,
+      width: `${searchAssistPanelLayout.width}px`,
+      maxHeight: `${searchAssistPanelLayout.maxHeight}px`,
+    }
+    : undefined;
+
+  useEffect(() => {
+    if (collapseAllActionId <= 0) {
+      return;
+    }
+
+    const collapsedGroupKeys: string[] = [];
+    const collapsedGroupKeySet = new Set<string>();
+
+    for (const result of results) {
+      const groupKey = getSearchResultGroupKey(result);
+      if (collapsedGroupKeySet.has(groupKey)) {
+        continue;
+      }
+
+      collapsedGroupKeySet.add(groupKey);
+      collapsedGroupKeys.push(groupKey);
+    }
+
+    shouldAutoCollapseGroupsRef.current = false;
+    setCollapsedResultGroupKeys(collapsedGroupKeys);
+  }, [collapseAllActionId, results]);
+
+  const handleSearchInputFocus = (): void => {
+    if (shouldSuppressSearchAssistOpen) {
+      setIsSearchAssistOpen(false);
+      return;
+    }
+
+    openSearchAssist();
+  };
+
+  const handleSearchInputClick = (): void => {
+    if (shouldSuppressSearchAssistOpen) {
+      setIsSearchAssistOpen(false);
+      return;
+    }
+
+    openSearchAssist();
+  };
+
+  const handleSearchInputChange = (
+    event: React.ChangeEvent<HTMLTextAreaElement>,
+  ): void => {
+    const nextQuery = event.target.value;
+    setSearchQuery(nextQuery);
+
+    const hasSearchOutput = isSearching
+      || searchError.length > 0
+      || results.length > 0
+      || totalResultCount > 0
+      || totalResultFiles > 0;
+    if (!hasSearchOutput) {
+      return;
+    }
+
+    if (!isIncompletePathSearchQuery(nextQuery)) {
+      return;
+    }
+
+    void clearSearchResults();
+  };
+
+  const handleClearSearchHistory = (): void => {
+    void clearSearchHistory();
+  };
+
+  const handleSortMenuClose = (): void => {
+    setIsSortMenuOpen(false);
+  };
+
+  const handleSortMenuOpen = (
+    event: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>,
+  ): void => {
+    event.stopPropagation();
+
+    if (!searchSortButtonRef.current) {
+      return;
+    }
+
+    if (isSortMenuOpen) {
+      setIsSortMenuOpen(false);
+      return;
+    }
+
+    const rect = searchSortButtonRef.current.getBoundingClientRect();
+    setSortMenuPosition({
+      x: rect.right,
+      y: rect.bottom + 4,
+    });
+    setIsSortMenuOpen(true);
+  };
+
+  const searchSortMenuItems: SidebarHeaderMenuItem[] = SEARCH_SORT_MENU_OPTIONS.map((option) => ({
+    id: option.mode,
+    label: option.label,
+    checked: sortMode === option.mode,
+    onClick: () => {
+      setSortMode(option.mode);
+      setIsSortMenuOpen(false);
+    },
+  }));
+  const activeSortLabel = SEARCH_SORT_MENU_OPTIONS.find((option) => option.mode === sortMode)?.label
+    ?? SEARCH_SORT_MENU_OPTIONS[0].label;
+
+  useEffect(() => {
+    if (searchQuery.length === 0) {
+      setIsSortMenuOpen(false);
+    }
+  }, [searchQuery]);
+
+  const handleInsertSearchOption = (token: string): void => {
+    const nextQuery = token.endsWith(' ') ? token : `${token} `;
+    setSearchQuery(nextQuery);
+    setIsSearchAssistOpen(
+      token === PATH_SEARCH_TOKEN || token === TAG_SEARCH_TOKEN || token === BLOCK_SEARCH_TOKEN,
+    );
+    void clearSearchResults();
+    focusSearchInputAt(nextQuery.length);
+  };
+
+  const handleSelectPathSuggestion = (rootDirectory: string): void => {
+    if (!activePathAssist) {
+      return;
+    }
+
+    const nextQuery = applyPathSuggestionToQuery(searchQuery, activePathAssist, rootDirectory);
+    setSearchQuery(nextQuery);
+    setIsSearchAssistOpen(false);
+    focusSearchInputAt(nextQuery.length);
+    void persistSearchHistory(nextQuery);
+    void executeSearch({ searchQuery: nextQuery });
+  };
+
+  const handleSelectTagSuggestion = (tagName: string): void => {
+    if (!activeTagAssist) {
+      return;
+    }
+
+    const nextQuery = applyPathSuggestionToQuery(searchQuery, activeTagAssist, `#${tagName}`);
+    setSearchQuery(nextQuery);
+    setIsSearchAssistOpen(false);
+    focusSearchInputAt(nextQuery.length);
+    void persistSearchHistory(nextQuery);
+    void executeSearch({ searchQuery: nextQuery });
+  };
+
+  const handleSelectBlockSuggestion = (blockKeyword: string): void => {
+    if (!activeBlockAssist) {
+      return;
+    }
+
+    const nextQuery = applyPathSuggestionToQuery(searchQuery, activeBlockAssist, blockKeyword);
+    setSearchQuery(nextQuery);
+    setIsSearchAssistOpen(false);
+    focusSearchInputAt(nextQuery.length);
+    void persistSearchHistory(nextQuery);
+    void executeSearch({ searchQuery: nextQuery });
+  };
+
+  const handleSelectSearchHistory = (query: string): void => {
+    setSearchQuery(query);
+    setIsSearchAssistOpen(false);
+    focusSearchInputAt(query.length);
+    void persistSearchHistory(query);
+    void executeSearch({ searchQuery: query });
+  };
 
   return (
     <div className="search-panel">
       <div className="search-input-section">
-        <SearchToolbarField
-          className="search-input-wrapper"
-          actions={(
-            <>
-              <PressableControl
-                className={`search-toolbar-field__option ${caseSensitive ? 'is-active' : ''}`}
-                onPress={handleToggleCaseSensitive}
-                aria-label={'\u5339\u914d\u5927\u5c0f\u5199'}
-                aria-pressed={caseSensitive}
-                title={'\u5339\u914d\u5927\u5c0f\u5199'}
-              >
-                <SearchToolbarIcon
-                  name="caseSensitive"
-                  className="search-toolbar-field__option-icon"
-                />
-              </PressableControl>
-              <PressableControl
-                className={`search-toolbar-field__option ${wholeWord ? 'is-active' : ''}`}
-                onPress={handleToggleWholeWord}
-                aria-label={'\u5168\u5b57\u5339\u914d'}
-                aria-pressed={wholeWord}
-                title={'\u5168\u5b57\u5339\u914d'}
-              >
-                <SearchToolbarIcon
-                  name="wholeWord"
-                  className="search-toolbar-field__option-icon"
-                />
-              </PressableControl>
-              <PressableControl
-                className={`search-toolbar-field__option ${useRegex ? 'is-active' : ''}`}
-                onPress={handleToggleRegex}
-                aria-label={'\u4f7f\u7528\u6b63\u5219\u8868\u8fbe\u5f0f'}
-                aria-pressed={useRegex}
-                title={'\u4f7f\u7528\u6b63\u5219\u8868\u8fbe\u5f0f'}
-              >
-                <SearchToolbarIcon
-                  name="regex"
-                  className="search-toolbar-field__option-icon"
-                />
-              </PressableControl>
-            </>
-          )}
-        >
-          <textarea
-            ref={searchInputRef}
-            value={searchQuery}
-            onChange={event => setSearchQuery(event.target.value)}
-            onKeyDown={handleSearchInputKeyDown}
-            placeholder={'\u641c\u7d22'}
-            className="search-input"
-            rows={1}
-            spellCheck={false}
-          />
-        </SearchToolbarField>
+        <div ref={searchInputAnchorRef} className="search-input-anchor">
+          <SearchToolbarField
+            className="search-input-wrapper"
+            actions={(
+              hasSearchAssistTokensInQuery ? (
+                <PressableControl
+                  className="search-toolbar-field__option"
+                  onPress={() => {
+                    void clearSearchAssistQuery();
+                  }}
+                  aria-label={'\u6e05\u9664\u641c\u7d22\u9009\u9879'}
+                  title={'\u6e05\u9664\u641c\u7d22\u9009\u9879'}
+                >
+                  <LuX size={14} />
+                </PressableControl>
+              ) : (
+                <>
+                  <PressableControl
+                    className={`search-toolbar-field__option ${caseSensitive ? 'is-active' : ''}`}
+                    onPress={handleToggleCaseSensitive}
+                    aria-label={'\u533a\u5206\u5927\u5c0f\u5199'}
+                    aria-pressed={caseSensitive}
+                    title={'\u533a\u5206\u5927\u5c0f\u5199'}
+                  >
+                    <SearchToolbarIcon
+                      name="caseSensitive"
+                      className="search-toolbar-field__option-icon"
+                    />
+                  </PressableControl>
+                  <PressableControl
+                    className={`search-toolbar-field__option ${wholeWord ? 'is-active' : ''}`}
+                    onPress={handleToggleWholeWord}
+                    aria-label={'\u5168\u5b57\u5339\u914d'}
+                    aria-pressed={wholeWord}
+                    title={'\u5168\u5b57\u5339\u914d'}
+                  >
+                    <SearchToolbarIcon
+                      name="wholeWord"
+                      className="search-toolbar-field__option-icon"
+                    />
+                  </PressableControl>
+                  <PressableControl
+                    className={`search-toolbar-field__option ${useRegex ? 'is-active' : ''}`}
+                    onPress={handleToggleRegex}
+                    aria-label={'\u4f7f\u7528\u6b63\u5219\u8868\u8fbe\u5f0f'}
+                    aria-pressed={useRegex}
+                    title={'\u4f7f\u7528\u6b63\u5219\u8868\u8fbe\u5f0f'}
+                  >
+                    <SearchToolbarIcon
+                      name="regex"
+                      className="search-toolbar-field__option-icon"
+                    />
+                  </PressableControl>
+                </>
+              )
+            )}
+          >
+            <textarea
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={handleSearchInputChange}
+              onFocus={handleSearchInputFocus}
+              onClick={handleSearchInputClick}
+              onKeyDown={handleSearchInputKeyDown}
+              placeholder={'\u641c\u7d22'}
+              className="search-input"
+              rows={1}
+              spellCheck={false}
+            />
+          </SearchToolbarField>
+
+        </div>
+
+        {shouldRenderSearchAssistPanel && searchAssistPanelStyle && createPortal(
+          showSearchAssistPanel ? (
+            <div
+              ref={searchAssistPanelRef}
+              className="search-assist-panel"
+              role="dialog"
+              aria-label={'\u641c\u7d22\u8f85\u52a9'}
+              style={searchAssistPanelStyle}
+            >
+              <div className="search-assist-group">
+                <div className="search-assist-group-title">{'\u641c\u7d22\u9009\u9879'}</div>
+                {SEARCH_ASSIST_OPTIONS.map((option) => (
+                  <PressableControl
+                    key={option.token}
+                    className="search-assist-item"
+                    onMouseDown={event => event.preventDefault()}
+                    onPress={() => handleInsertSearchOption(option.token)}
+                    title={option.description}
+                    aria-label={`${option.token} ${option.description}`}
+                  >
+                    <span className="search-assist-item-token">{option.token}</span>
+                    <span className="search-assist-item-description">{option.description}</span>
+                  </PressableControl>
+                ))}
+              </div>
+              <div className="search-assist-group search-assist-group--history">
+                <div className="search-assist-group-title search-assist-group-title--with-action">
+                  <span>{'\u641c\u7d22\u5386\u53f2'}</span>
+                  <PressableControl
+                    className="search-assist-close"
+                    onMouseDown={event => event.preventDefault()}
+                    onPress={handleClearSearchHistory}
+                    title={'\u6e05\u9664\u641c\u7d22\u5386\u53f2'}
+                    aria-label={'\u6e05\u9664\u641c\u7d22\u5386\u53f2'}
+                  >
+                    <LuX size={12} />
+                  </PressableControl>
+                </div>
+                <div className="search-assist-history-list">
+                  {searchHistoryEntries.length > 0 ? (
+                    searchHistoryEntries.map((entry) => (
+                      <PressableControl
+                        key={`${entry.query}-${entry.timestamp}`}
+                        className="search-assist-item search-assist-item--history"
+                        onMouseDown={event => event.preventDefault()}
+                        onPress={() => handleSelectSearchHistory(entry.query)}
+                        title={entry.query}
+                        aria-label={`${'\u4f7f\u7528\u641c\u7d22\u5386\u53f2'} ${entry.query}`}
+                      >
+                        <span className="search-assist-history-query">{entry.query}</span>
+                      </PressableControl>
+                    ))
+                  ) : (
+                    <div className="search-assist-empty">{'\u6682\u65e0\u641c\u7d22\u5386\u53f2'}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div
+              ref={searchAssistPanelRef}
+              className="search-path-assist-panel"
+              role="dialog"
+              aria-label={activeTagAssist
+                ? '\u6807\u7b7e\u9009\u62e9'
+                : activeBlockAssist
+                  ? '\u5757\u5173\u952e\u8bcd\u9009\u62e9'
+                  : '\u8def\u5f84\u9009\u62e9'}
+              style={searchAssistPanelStyle}
+            >
+              <div className="search-path-assist-list">
+                {activeTagAssist ? (
+                  isTagAssistLoading ? (
+                    <div className="search-assist-empty">{'\u52a0\u8f7d\u6807\u7b7e\u4e2d...'}</div>
+                  ) : filteredAvailableTags.length > 0 ? (
+                    filteredAvailableTags.map((tagName) => (
+                      <Tooltip
+                        key={tagName}
+                        content={getSearchTooltipContent(`#${tagName}`)}
+                      >
+                        <PressableControl
+                          className="search-assist-item search-assist-item--history"
+                          onMouseDown={event => event.preventDefault()}
+                          onPress={() => handleSelectTagSuggestion(tagName)}
+                          aria-label={`${'\u9009\u62e9\u6807\u7b7e'} #${tagName}`}
+                        >
+                          <span className="search-assist-history-query">#{tagName}</span>
+                        </PressableControl>
+                      </Tooltip>
+                    ))
+                  ) : (
+                    <div className="search-assist-empty">{'\u6682\u65e0\u53ef\u7528\u6807\u7b7e'}</div>
+                  )
+                ) : activeBlockAssist ? (
+                  isBlockAssistLoading ? (
+                    <div className="search-assist-empty">
+                      {'\u52a0\u8f7d\u5757\u5173\u952e\u8bcd\u4e2d...'}
+                    </div>
+                  ) : filteredAvailableBlockKeywords.length > 0 ? (
+                    filteredAvailableBlockKeywords.map((blockCandidate) => (
+                      <Tooltip
+                        key={blockCandidate.keyword}
+                        content={getSearchTooltipContent(blockCandidate.preview)}
+                      >
+                        <PressableControl
+                          className="search-assist-item search-assist-item--history"
+                          onMouseDown={event => event.preventDefault()}
+                          onPress={() => handleSelectBlockSuggestion(blockCandidate.keyword)}
+                          aria-label={`${'\u9009\u62e9\u5757\u5173\u952e\u8bcd'} ${blockCandidate.keyword}`}
+                        >
+                          <span className="search-assist-history-query">{blockCandidate.keyword}</span>
+                        </PressableControl>
+                      </Tooltip>
+                    ))
+                  ) : (
+                    <div className="search-assist-empty">
+                      {'\u6682\u65e0\u53ef\u7528\u5757\u5173\u952e\u8bcd'}
+                    </div>
+                  )
+                ) : filteredWorkspaceRootDirectories.length > 0 ? (
+                  filteredWorkspaceRootDirectories.map((rootDirectory) => (
+                    <PressableControl
+                      key={rootDirectory}
+                      className="search-assist-item search-assist-item--history"
+                      onMouseDown={event => event.preventDefault()}
+                      onPress={() => handleSelectPathSuggestion(rootDirectory)}
+                      title={rootDirectory}
+                      aria-label={`${'\u9009\u62e9\u6839\u76ee\u5f55'} ${rootDirectory}`}
+                    >
+                      <span className="search-assist-history-query">{rootDirectory}</span>
+                    </PressableControl>
+                  ))
+                ) : (
+                  <div className="search-assist-empty">
+                    {'\u6682\u65e0\u53ef\u7528\u7684\u6839\u76ee\u5f55'}
+                  </div>
+                )}
+              </div>
+            </div>
+          ),
+          document.body,
+        )}
 
         <PressableControl
           onPress={() => setShowReplace(!showReplace)}
@@ -675,6 +2499,7 @@ export const Search: React.FC = () => {
               type="text"
               value={replaceQuery}
               onChange={event => setReplaceQuery(event.target.value)}
+              onKeyDown={handleReplaceInputKeyDown}
               placeholder={'\u66ff\u6362'}
               className="replace-input"
             />
@@ -682,17 +2507,25 @@ export const Search: React.FC = () => {
           <div className="replace-actions">
             <PressableControl
               className="replace-button"
-              onPress={() => undefined}
-              disabled
-              title={'\u66ff\u6362\u529f\u80fd\u6682\u672a\u5b9e\u73b0'}
+              onPress={() => {
+                void executeReplace(false);
+              }}
+              disabled={!canReplaceSelectedResult}
+              title={canReplaceSelectedResult
+                ? '\u66ff\u6362\u5f53\u524d\u9009\u4e2d\u7684\u641c\u7d22\u7ed3\u679c'
+                : '\u8bf7\u5148\u9009\u4e2d\u4e00\u6761\u641c\u7d22\u7ed3\u679c'}
             >
               {'\u66ff\u6362'}
             </PressableControl>
             <PressableControl
               className="replace-button"
-              onPress={() => undefined}
-              disabled
-              title={'\u5168\u90e8\u66ff\u6362\u529f\u80fd\u6682\u672a\u5b9e\u73b0'}
+              onPress={() => {
+                void executeReplace(true);
+              }}
+              disabled={!canReplaceAllResults}
+              title={canReplaceAllResults
+                ? '\u66ff\u6362\u5f53\u524d\u641c\u7d22\u7ed3\u679c\u4e2d\u7684\u6240\u6709\u5339\u914d'
+                : '\u5f53\u524d\u6ca1\u6709\u53ef\u66ff\u6362\u7684\u641c\u7d22\u7ed3\u679c'}
             >
               {'\u5168\u90e8\u66ff\u6362'}
             </PressableControl>
@@ -730,124 +2563,208 @@ export const Search: React.FC = () => {
         </details>
       </div>
 
-      <div className="search-results" ref={searchResultsRef}>
-        {isSearching ? (
-          <div className="empty-state">
-            {'\u6b63\u5728\u641c\u7d22\u6574\u4e2a\u5de5\u4f5c\u533a...'}
-          </div>
-        ) : searchError ? (
+      <div className="search-results">
+        {searchError ? (
           <div className="empty-state empty-state--error">{searchError}</div>
-        ) : searchQuery.length === 0 ? (
-          <div className="empty-state">
-            {'\u8f93\u5165\u5185\u5bb9\u540e\u6309 Enter \u641c\u7d22\u6574\u4e2a\u5de5\u4f5c\u533a'}
-          </div>
-        ) : results.length === 0 ? (
-          <div className="empty-state">{'\u6ca1\u6709\u641c\u7d22\u7ed3\u679c'}</div>
-        ) : (
+        ) : searchQuery.length === 0 ? null : (
           <div className="results-list">
             <div className="results-summary">
-              {'\u627e\u5230 '}
-              {totalResultCount}
-              {' \u4e2a\u7ed3\u679c\uff0c\u6765\u81ea '}
-              {totalResultFiles}
-              {' \u4e2a\u6587\u4ef6'}
-              {limitHit ? `\uff0c\u5f53\u524d\u663e\u793a\u524d ${results.length} \u6761` : ''}
+              <span className="results-summary-text">
+                {'\u627e\u5230 '}
+                {totalResultCount}
+                {' \u4e2a\u7ed3\u679c'}
+                {limitHit ? `\uff0c\u5df2\u8fbe\u5230 ${SEARCH_PANEL_MAX_RESULTS} \u6761\u4e0a\u9650` : ''}
+              </span>
+              <PressableControl
+                ref={searchSortButtonRef}
+                className="results-summary-sort"
+                onPress={handleSortMenuOpen}
+                aria-label={`\u6392\u5e8f\uff0c\u5f53\u524d\u4e3a${activeSortLabel}`}
+                title={activeSortLabel}
+              >
+                <span className="results-summary-sort-label">{activeSortLabel}</span>
+                <LuChevronsUpDown size={16} />
+              </PressableControl>
             </div>
-            <CustomScrollbar className="search-results-scrollbar" scrollbarWidth={10}>
-              <TreeView className="search-results-tree">
-                {resultGroups.map((group) => {
-                  const isExpanded = !collapsedResultGroupKeys.includes(group.key);
-                  const usePlainGroupCount = group.totalCount >= 100;
+            {results.length > 0 && (
+              <CustomScrollbar
+                ref={searchResultsScrollbarRef}
+                className="search-results-scrollbar"
+                scrollbarWidth={10}
+                onScroll={(scrollTop) => {
+                  setResultsScrollTop(Math.round(scrollTop));
+                }}
+              >
+                <TreeView className="search-results-tree search-results-tree--virtualized">
+                  <div
+                    className="search-results-virtual-spacer"
+                    style={{ height: `${virtualContentHeight}px` }}
+                  >
+                    {visibleVirtualRows.map((row) => {
+                      const rowStyle: React.CSSProperties = {
+                        top: `${row.rowIndex * SEARCH_RESULT_ROW_HEIGHT}px`,
+                      };
 
-                  return (
-                    <React.Fragment key={group.key}>
-                      <TreeNodeRow
-                        depth={0}
-                        role="treeitem"
-                        tabIndex={0}
-                        ariaExpanded={isExpanded}
-                        title={`${group.title} (${group.totalCount})`}
-                        contentClassName="search-result-group-row"
-                        onClick={() => handleToggleResultGroup(group.key)}
-                        onKeyDown={(event) => handleResultGroupKeyDown(event, group.key)}
-                        leading={(
-                          <Icon
-                            iconSet="ui"
-                            name={isExpanded ? 'chevron-down' : 'chevron-right'}
-                            size={14}
-                            className="file-tree-chevron"
-                          />
-                        )}
-                        icon={(
-                          <Icon
-                            iconSet="ui"
-                            name="file"
-                            size={16}
-                            className="file-tree-icon"
-                          />
-                        )}
-                      >
-                        <span className="file-tree-name search-result-group-label">
-                          {group.label}
-                        </span>
-                        <div className="group-count-wrapper">
-                          <span
-                            className={`search-result-group-count ${usePlainGroupCount ? 'search-result-group-count--plain' : ''}`}
+                      if (row.type === 'group') {
+                        const filterOnlyResult = row.group.isFilterOnly ? row.group.results[0] : null;
+                        const filterOnlyResultKey = filterOnlyResult
+                          ? getSearchResultKey(filterOnlyResult)
+                          : '';
+                        const usePlainGroupCount = row.group.totalCount >= 100;
+
+                        return (
+                          <div
+                            key={row.key}
+                            className="search-results-virtual-row search-results-virtual-row--group"
+                            style={rowStyle}
                           >
-                            {group.totalCount}
-                          </span>
-                        </div>
-                      </TreeNodeRow>
-                      {isExpanded && (
-                        <TreeChildren
-                          parentDepth={0}
-                          className="search-result-group-children"
-                        >
-                          {group.results.map((result) => {
-                            const resultKey = getSearchResultKey(result);
-                            const displayPreview = getSearchResultDisplayPreview(
-                              result.preview,
-                              previewMatcher,
-                              result.column,
-                              resultPreviewMaxLength,
-                            );
+                            <TreeNodeRow
+                              depth={0}
+                              role="treeitem"
+                              tabIndex={0}
+                              ariaExpanded={row.group.isFilterOnly ? undefined : row.isExpanded}
+                              selected={filterOnlyResultKey.length > 0 && selectedResultKey === filterOnlyResultKey}
+                              ariaSelected={filterOnlyResultKey.length > 0 && selectedResultKey === filterOnlyResultKey}
+                              title={row.group.isFilterOnly
+                                ? row.group.title
+                                : `${row.group.title} (${row.group.totalCount})`}
+                              contentClassName="search-result-group-row"
+                              onClick={() => {
+                                if (filterOnlyResult) {
+                                  void openSearchResult(filterOnlyResult);
+                                  return;
+                                }
 
-                            return (
-                              <Tooltip
-                                key={resultKey}
-                                content={getSearchResultTooltipContent(result.preview)}
-                              >
-                                <TreeNodeRow
-                                  depth={1}
-                                  parentDepth={0}
-                                  role="treeitem"
-                                  tabIndex={0}
-                                  selected={selectedResultKey === resultKey}
-                                  ariaSelected={selectedResultKey === resultKey}
-                                  contentClassName="search-result-match-row"
-                                  onClick={() => {
-                                    void openSearchResult(result);
-                                  }}
-                                  onKeyDown={(event) => handleResultItemKeyDown(event, result)}
-                                  leading={<span className="file-tree-chevron" />}
-                                >
-                                  <span className="file-tree-name search-result-match-text">
-                                    {renderHighlightedSearchPreview(displayPreview, previewMatcher)}
+                                handleToggleResultGroup(row.group.key);
+                              }}
+                              onKeyDown={(event) => {
+                                if (filterOnlyResult) {
+                                  handleResultItemKeyDown(event, filterOnlyResult);
+                                  return;
+                                }
+
+                                handleResultGroupKeyDown(event, row.group.key);
+                              }}
+                              leading={(
+                                filterOnlyResult ? (
+                                  <span className="file-tree-chevron search-result-group-spacer" />
+                                ) : (
+                                  <Icon
+                                    iconSet="ui"
+                                    name={row.isExpanded ? 'chevron-down' : 'chevron-right'}
+                                    size={14}
+                                    className="file-tree-chevron"
+                                  />
+                                )
+                              )}
+                              icon={(
+                                <Icon
+                                  iconSet="ui"
+                                  name="file"
+                                  size={16}
+                                  className="file-tree-icon"
+                                />
+                              )}
+                            >
+                              <span className="file-tree-name search-result-group-label">
+                                {row.group.isFilterOnly
+                                  ? renderHighlightedFilterLabel(
+                                    row.group.label,
+                                    parsedSearchQuery.pathFilters,
+                                    parsedSearchQuery.fileFilters,
+                                    caseSensitive,
+                                  )
+                                  : row.group.label}
+                              </span>
+                              {!row.group.isFilterOnly && (
+                                <div className="group-count-wrapper">
+                                  <span
+                                    className={`search-result-group-count ${usePlainGroupCount ? 'search-result-group-count--plain' : ''}`}
+                                  >
+                                    {row.group.totalCount}
                                   </span>
-                                </TreeNodeRow>
-                              </Tooltip>
-                            );
-                          })}
-                        </TreeChildren>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </TreeView>
-            </CustomScrollbar>
+                                </div>
+                              )}
+                            </TreeNodeRow>
+                          </div>
+                        );
+                      }
+
+                      const resultKey = getSearchResultKey(row.result);
+                      const rowPreviewMatcher = (
+                        previewMatcher
+                        ?? (
+                          row.result.matchedText && row.result.matchedText.length > 0
+                            ? createSearchPreviewMatcher(
+                              row.result.matchedText,
+                              caseSensitive,
+                              false,
+                              false,
+                            )
+                            : null
+                        )
+                      );
+                      const previewColumn = (
+                        parsedSearchQuery.textQuery.length === 0
+                        && row.result.matchedText
+                        && row.result.matchedText.length > 0
+                      )
+                        ? getSearchPreviewMatchColumn(
+                          row.result.preview,
+                          row.result.matchedText,
+                          caseSensitive,
+                        )
+                        : row.result.column;
+                      const displayPreview = getSearchResultDisplayPreview(
+                        row.result.preview,
+                        rowPreviewMatcher,
+                        previewColumn,
+                        SEARCH_RESULT_PREVIEW_MAX_LENGTH,
+                      );
+
+                      return (
+                        <div
+                          key={row.key}
+                          className="search-results-virtual-row search-results-virtual-row--match"
+                          style={rowStyle}
+                        >
+                          <Tooltip content={getSearchTooltipContent(row.result.preview)}>
+                            <TreeNodeRow
+                              depth={1}
+                              parentDepth={0}
+                              role="treeitem"
+                              tabIndex={0}
+                              selected={selectedResultKey === resultKey}
+                              ariaSelected={selectedResultKey === resultKey}
+                              contentClassName="search-result-match-row search-result-match-row--virtualized"
+                              onClick={() => {
+                                void openSearchResult(row.result);
+                              }}
+                              onKeyDown={(event) => handleResultItemKeyDown(event, row.result)}
+                              leading={<span className="file-tree-chevron" />}
+                            >
+                              <span className="file-tree-name search-result-match-text">
+                                {renderHighlightedSearchPreview(displayPreview, rowPreviewMatcher)}
+                              </span>
+                            </TreeNodeRow>
+                          </Tooltip>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </TreeView>
+              </CustomScrollbar>
+            )}
           </div>
         )}
       </div>
+      <SidebarHeaderMenu
+        isOpen={isSortMenuOpen}
+        position={sortMenuPosition}
+        horizontalAlign="end"
+        onClose={handleSortMenuClose}
+        items={searchSortMenuItems}
+      />
     </div>
   );
 };

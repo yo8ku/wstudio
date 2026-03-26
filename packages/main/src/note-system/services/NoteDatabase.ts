@@ -42,6 +42,11 @@ interface TagRow extends QueryResultRow {
   created_at: number;
 }
 
+interface NoteTagNameRow extends QueryResultRow {
+  note_id: string;
+  tag_name: string;
+}
+
 /**
  * 链接数据库行类型
  */
@@ -1355,6 +1360,35 @@ export class NoteDatabase {
     );
 
     return result?.count || 0;
+  }
+
+  async getTagNamesByNoteIds(noteIds: readonly string[]): Promise<Record<string, string[]>> {
+    await this.ensureInitialized();
+
+    if (noteIds.length === 0) {
+      return {};
+    }
+
+    const placeholders = noteIds.map(() => '?').join(', ');
+    const results = await this.db.query<NoteTagNameRow>(
+      `SELECT nt.note_id, t.name AS tag_name
+       FROM note_tags nt
+       INNER JOIN tags t ON t.id = nt.tag_id
+       WHERE nt.note_id IN (${placeholders})
+       ORDER BY t.name`,
+      [...noteIds]
+    );
+
+    const noteTagNameMap: Record<string, string[]> = {};
+    for (const result of results) {
+      if (!noteTagNameMap[result.note_id]) {
+        noteTagNameMap[result.note_id] = [];
+      }
+
+      noteTagNameMap[result.note_id].push(result.tag_name);
+    }
+
+    return noteTagNameMap;
   }
 }
 

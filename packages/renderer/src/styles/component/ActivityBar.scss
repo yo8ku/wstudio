@@ -18,7 +18,6 @@
 
 .activity-bar-item:not(.active) {
   color: var(--ws-activityBar-inactiveForeground);
-  opacity: 0.6;
 }
 
 .activity-bar-item:not(.active):hover {

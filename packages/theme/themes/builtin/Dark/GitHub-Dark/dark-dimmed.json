@@ -38,7 +38,7 @@
     "input.foreground": "#adbac7",
     "input.placeholderForeground": "#636e7b",
     "badge.foreground": "#cdd9e5",
-    "badge.background": "#316dca",
+    "badge.background": "#4c566594",
     "progressBar.background": "#316dca",
     "titleBar.activeForeground": "#768390",
     "titleBar.activeBackground": "#22272e",

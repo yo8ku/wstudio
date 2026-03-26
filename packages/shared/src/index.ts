@@ -15,6 +15,7 @@ export * from './block-editor';
 export * from './protocols/ExtensionHostProtocol';
 export * from './protocols/PluginBlockEditorBridgeProtocol';
 export * from './protocols/PluginEditorBridgeProtocol';
+export * from './utils/workspaceSearchQuery';
 
 // 显式导出主题相关常量，确保构建工具能正确识别
 export { THEME_CHANNELS } from './types/theme';

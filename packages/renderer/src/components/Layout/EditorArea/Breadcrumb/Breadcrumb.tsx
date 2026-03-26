@@ -87,8 +87,7 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({ path }) => {
           {segment === '...' ? (
             <span className="breadcrumb-ellipsis">...</span>
           ) : (
-            <button
-              type="button"
+            <div
               className={`breadcrumb-item ${
                 isTwoLevelNavigation && index === 0 ? 'breadcrumb-item--parent' : ''
               } ${
@@ -98,7 +97,7 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({ path }) => {
               title={`${path} - reveal in file tree`}
             >
               {segment}
-            </button>
+            </div>
           )}
 
           {index < displaySegments.length - 1 && (

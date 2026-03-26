@@ -20,6 +20,24 @@
     font-weight: 600;
     text-transform: uppercase;
 
+    .sidebar-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+
+      .sidebar-header-action {
+        border-radius: 4px;
+        transition: background-color 0.15s ease;
+
+        &:hover {
+          background-color: var(
+            --ws-toolbar-hoverBackground,
+            var(--ws-toolbar-hover-background, rgba(127, 127, 127, 0.18))
+          );
+        }
+      }
+    }
+
     .sidebar-header-action {
       border: none;
       cursor: pointer;
@@ -27,6 +45,18 @@
       display: flex;
       align-items: center;
       justify-content: center;
+
+      &--clear {
+        order: 1;
+      }
+
+      &--collapse {
+        order: 2;
+      }
+
+      &--sort {
+        display: none;
+      }
 
       &:focus-visible {
         outline: 1px solid var(--ws-focus-border);

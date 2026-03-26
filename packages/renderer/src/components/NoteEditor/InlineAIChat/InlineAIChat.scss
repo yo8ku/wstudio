@@ -174,6 +174,7 @@
           display: inline-flex;
           align-items: center;
           gap: 4px;
+          font-family: none;
           border-radius: 6px;
           padding: 4px 8px;
           font-size: 12px;
@@ -195,6 +196,7 @@
           position: absolute;
           right: 0;
           left: auto;
+          font-family: none;
           box-sizing: border-box;
           width: min(220px, calc(100vw - 16px));
           max-width: calc(100vw - 16px);

@@ -3,12 +3,14 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { LuArrowDownZA } from 'react-icons/lu';
+import { VscClearAll, VscCollapseAll, VscRefresh } from 'react-icons/vsc';
 import type {
   WorkbenchContributionSnapshot,
   WorkbenchSidebarTitleMenuContext,
 } from '@note-studio/shared';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
-import { Search } from '../Search/Search';
+import { Search, type SearchSortMode } from '../Search/Search';
 import { Extensions } from '../Extensions';
 import { KnowledgeBase } from '../KnowledgeBase/KnowledgeBase';
 import { AIModel } from '../AIModel/AIModel';
@@ -49,6 +51,19 @@ const MIN_WIDTH = 200;
 const MAX_WIDTH = 600;
 const DEFAULT_WIDTH = 230;
 const COLLAPSE_THRESHOLD = 150;
+const SEARCH_SORT_MENU_WIDTH = 220;
+
+const SEARCH_SORT_MENU_OPTIONS: readonly {
+  readonly mode: SearchSortMode;
+  readonly label: string;
+}[] = [
+  { mode: 'fileNameAsc', label: '文件名（A-Z）' },
+  { mode: 'fileNameDesc', label: '文件名（Z-A）' },
+  { mode: 'updatedAtDesc', label: '编辑时间（从新到旧）' },
+  { mode: 'updatedAtAsc', label: '编辑时间（从旧到新）' },
+  { mode: 'createdAtDesc', label: '创建时间（从新到旧）' },
+  { mode: 'createdAtAsc', label: '创建时间（从旧到新）' },
+];
 
 function getSidebarTitle(
   activeView: ActivityBarItem,
@@ -90,8 +105,15 @@ export function Sidebar({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [outlineChecked, setOutlineChecked] = useState(true);
+  const [searchRefreshActionId, setSearchRefreshActionId] = useState(0);
+  const [searchClearActionId, setSearchClearActionId] = useState(0);
+  const [searchCollapseAllActionId, setSearchCollapseAllActionId] = useState(0);
+  const [searchSortMode, setSearchSortMode] = useState<SearchSortMode>('fileNameAsc');
+  const [isSearchSortMenuOpen, setIsSearchSortMenuOpen] = useState(false);
+  const [searchSortMenuPosition, setSearchSortMenuPosition] = useState({ x: 0, y: 0 });
   const sidebarRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLDivElement>(null);
+  const searchSortButtonRef = useRef<HTMLDivElement>(null);
   const { sidebarPosition } = useActivityBarStore();
 
   const activePluginContainer = isPluginActivityBarItem(activeView)
@@ -341,7 +363,13 @@ export function Sidebar({
       case 'explorer':
         return <FileExplorer />;
       case 'search':
-        return <Search />;
+        return (
+          <Search
+            refreshActionId={searchRefreshActionId}
+            clearActionId={searchClearActionId}
+            collapseAllActionId={searchCollapseAllActionId}
+          />
+        );
       case 'extensions':
         return <Extensions />;
       case 'knowledge-base':
@@ -422,6 +450,42 @@ export function Sidebar({
     setIsMenuOpen(false);
   };
 
+  const handleSearchSortMenuClose = (): void => {
+    setIsSearchSortMenuOpen(false);
+  };
+
+  const handleSearchSortMenuClick = (
+    event: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>,
+  ): void => {
+    event.stopPropagation();
+
+    if (!searchSortButtonRef.current) {
+      return;
+    }
+
+    if (isSearchSortMenuOpen) {
+      setIsSearchSortMenuOpen(false);
+      return;
+    }
+
+    const rect = searchSortButtonRef.current.getBoundingClientRect();
+    setSearchSortMenuPosition({
+      x: sidebarPosition === 'left' ? rect.left : rect.right - SEARCH_SORT_MENU_WIDTH,
+      y: rect.bottom + 4,
+    });
+    setIsSearchSortMenuOpen(true);
+  };
+
+  const searchSortMenuItems: SidebarHeaderMenuItem[] = SEARCH_SORT_MENU_OPTIONS.map((option) => ({
+    id: option.mode,
+    label: option.label,
+    checked: searchSortMode === option.mode,
+    onClick: () => {
+      setSearchSortMode(option.mode);
+      setIsSearchSortMenuOpen(false);
+    },
+  }));
+
   const handleMouseDown = (event: React.MouseEvent): void => {
     event.preventDefault();
     setIsResizing(true);
@@ -469,7 +533,8 @@ export function Sidebar({
   }, [isResizing, onClose, sidebarPosition]);
 
   const showSidebarHeader = activeView !== 'ai-model' && activeView !== 'explorer';
-  const showHeaderMenu = menuItems.length > 0;
+  const showSearchHeaderActions = activeView === 'search';
+  const showHeaderMenu = !showSearchHeaderActions && menuItems.length > 0;
 
   return (
     <div
@@ -485,6 +550,43 @@ export function Sidebar({
       {showSidebarHeader && (
         <div className="sidebar-header">
           <span>{title}</span>
+          {showSearchHeaderActions && (
+            <div className="sidebar-header-actions">
+              <PressableControl
+                className="sidebar-header-action"
+                onPress={() => setSearchRefreshActionId((currentId) => currentId + 1)}
+                aria-label="刷新搜索"
+                title="刷新搜索"
+              >
+                <VscRefresh size={15} />
+              </PressableControl>
+              <PressableControl
+                ref={searchSortButtonRef}
+                className="sidebar-header-action sidebar-header-action--sort"
+                onPress={handleSearchSortMenuClick}
+                aria-label="排序"
+                title="排序"
+              >
+                <LuArrowDownZA size={15} />
+              </PressableControl>
+              <PressableControl
+                className="sidebar-header-action sidebar-header-action--collapse"
+                onPress={() => setSearchCollapseAllActionId((currentId) => currentId + 1)}
+                aria-label="鍏ㄩ儴鎶樺彔鎼滅储缁撴灉"
+                title="鍏ㄩ儴鎶樺彔鎼滅储缁撴灉"
+              >
+                <VscCollapseAll size={15} />
+              </PressableControl>
+              <PressableControl
+                className="sidebar-header-action sidebar-header-action--clear"
+                onPress={() => setSearchClearActionId((currentId) => currentId + 1)}
+                aria-label="清除搜索结果"
+                title="清除搜索结果"
+              >
+                <VscClearAll size={15} />
+              </PressableControl>
+            </div>
+          )}
           {showHeaderMenu && (
             <PressableControl
               ref={menuButtonRef}
@@ -514,6 +616,14 @@ export function Sidebar({
           position={menuPosition}
           onClose={handleMenuClose}
           items={menuItems}
+        />
+      )}
+      {showSearchHeaderActions && (
+        <SidebarHeaderMenu
+          isOpen={isSearchSortMenuOpen}
+          position={searchSortMenuPosition}
+          onClose={handleSearchSortMenuClose}
+          items={searchSortMenuItems}
         />
       )}
     </div>

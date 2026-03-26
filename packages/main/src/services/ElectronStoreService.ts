@@ -26,6 +26,11 @@ interface StoreSchema {
     timestamp: number;
     type?: string;
   }>;
+
+  'workspace-search-history': Array<{
+    query: string;
+    timestamp: number;
+  }>;
   
   // 知识库数据
   'knowledge-base': {
@@ -107,6 +112,7 @@ export class ElectronStoreService {
       defaults: {
         'model-cache': [],
         'command-history': [],
+        'workspace-search-history': [],
         'knowledge-base': {
           spaces: [],
           settings: {

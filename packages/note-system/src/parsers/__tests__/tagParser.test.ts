@@ -18,12 +18,17 @@ import {
 /**
  * 生成有效的标签名（不含 /）
  */
-const simpleTagName = fc.stringOf(
-  fc.oneof(
-    fc.char().filter((c: string) => /[\w\u4e00-\u9fa5]/.test(c))
-  ),
-  { minLength: 1, maxLength: 20 }
-).filter((s: string) => s.length > 0 && /^[\w\u4e00-\u9fa5]+$/.test(s));
+const tagLeadingCharacter = fc.char().filter((c: string) => /[\p{Script=Han}A-Za-z0-9]/u.test(c));
+const tagContinuationCharacter = fc.char().filter((c: string) => /[\w\u4e00-\u9fa5]/u.test(c));
+
+const simpleTagName = fc
+  .tuple(
+    tagLeadingCharacter,
+    fc.stringOf(tagContinuationCharacter, { minLength: 0, maxLength: 19 }),
+  )
+  .map(([leadingCharacter, remainingCharacters]: [string, string]) => (
+    `${leadingCharacter}${remainingCharacters}`
+  ));
 
 /**
  * 生成嵌套标签名
@@ -219,6 +224,12 @@ describe('TagParser Property Tests', () => {
       expect(isValidTagName('')).toBe(false);
       expect(isValidTagName('   ')).toBe(false);
     });
+
+    it('首字符为特殊符号的标签应不通过验证', () => {
+      expect(isValidTagName('`code')).toBe(false);
+      expect(isValidTagName('_private')).toBe(false);
+      expect(isValidTagName('-dash')).toBe(false);
+    });
   });
 
   /**
@@ -265,6 +276,41 @@ describe('TagParser Property Tests', () => {
         ),
         { numRuns: 50 }
       );
+    });
+  });
+  describe('标签分隔规则', () => {
+    it('允许中文标点出现在标签中，并以空格作为结束边界', () => {
+      const content = '#边城匠人故事，发布时间：2025年11月02日 07:23';
+
+      const parsedTags = parseTagsFromContent(content);
+      const uniqueTags = extractUniqueTags(content);
+
+      expect(parsedTags).toHaveLength(1);
+      expect(parsedTags[0]?.fullName).toBe('边城匠人故事，发布时间：2025年11月02日');
+      expect(uniqueTags).toEqual(['边城匠人故事，发布时间：2025年11月02日']);
+      expect(isValidTagName('边城匠人故事，发布时间：2025年11月02日')).toBe(true);
+    });
+
+    it('忽略 # 后紧跟特殊符号的内联标签', () => {
+      const content = 'ignore #`snippet #_private #-dash and keep #标签1';
+
+      const parsedTags = parseTagsFromContent(content);
+      const uniqueTags = extractUniqueTags(content);
+
+      expect(parsedTags).toHaveLength(1);
+      expect(parsedTags[0]?.fullName).toBe('标签1');
+      expect(uniqueTags).toEqual(['标签1']);
+    });
+
+    it('忽略 #， #。 #@ #... 和 # 空格 这类非法标签起始', () => {
+      const content = 'ignore #， #。 #@ #... # 标签 and keep #abc123';
+
+      const parsedTags = parseTagsFromContent(content);
+      const uniqueTags = extractUniqueTags(content);
+
+      expect(parsedTags).toHaveLength(1);
+      expect(parsedTags[0]?.fullName).toBe('abc123');
+      expect(uniqueTags).toEqual(['abc123']);
     });
   });
 });

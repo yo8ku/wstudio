@@ -10,6 +10,11 @@
       "types": "./dist/cjs/index.d.ts",
       "require": "./dist/cjs/index.js",
       "import": "./dist/esm/index.js"
+    },
+    "./utils/workspaceSearchQuery": {
+      "types": "./dist/cjs/utils/workspaceSearchQuery.d.ts",
+      "require": "./dist/cjs/utils/workspaceSearchQuery.js",
+      "import": "./dist/esm/utils/workspaceSearchQuery.js"
     }
   },
   "scripts": {

@@ -63,8 +63,7 @@
 
 body.background-image-enabled {
   .breadcrumb {
-    background-color: rgba(17, 24, 39, 0.72) !important;
-    background-color: color-mix(in srgb, var(--ws-breadcrumb-background, var(--ws-editor-background)) 84%, transparent) !important;
+    background-color: color-mix(in srgb, var(--ws-editorGroupHeader-tabsBackground, var(--ws-editor-background)) 84%, transparent) !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);

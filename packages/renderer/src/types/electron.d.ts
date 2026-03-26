@@ -157,6 +157,20 @@ export interface WorkspaceTextSearchRequest {
   maxResults?: number;
 }
 
+export interface WorkspaceTextReplaceTarget {
+  absolutePath: string;
+  line: number;
+  column: number;
+  source?: 'workspace-file' | 'note';
+  noteId?: string;
+}
+
+export interface WorkspaceTextReplaceRequest extends WorkspaceTextSearchRequest {
+  replace: string;
+  replaceAll?: boolean;
+  target?: WorkspaceTextReplaceTarget;
+}
+
 export interface WorkspaceTextSearchMatch {
   absolutePath: string;
   relativePath: string;
@@ -166,6 +180,9 @@ export interface WorkspaceTextSearchMatch {
   source?: 'workspace-file' | 'note';
   noteId?: string;
   title?: string;
+  matchedText?: string;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface WorkspaceTextSearchGroupCount {
@@ -179,6 +196,58 @@ export interface WorkspaceTextSearchResponse {
   totalCount: number;
   totalFiles: number;
   groupCounts: WorkspaceTextSearchGroupCount[];
+}
+
+export interface WorkspaceTextReplaceUpdatedTarget {
+  absolutePath: string;
+  editorPath: string;
+  relativePath: string;
+  content: string;
+  replacedCount: number;
+  source?: 'workspace-file' | 'note';
+  noteId?: string;
+  title?: string;
+}
+
+export interface WorkspaceTextReplaceResponse {
+  replacedCount: number;
+  fileCount: number;
+  updatedTargets: WorkspaceTextReplaceUpdatedTarget[];
+}
+
+export interface WorkspaceSearchSessionStartResult {
+  sessionId: string;
+}
+
+export interface WorkspaceSearchTagRequest {
+  includePattern?: string;
+  excludePattern?: string;
+}
+
+export interface WorkspaceSearchBlockCandidate {
+  keyword: string;
+  preview: string;
+}
+
+export interface WorkspaceSearchBatchEvent {
+  sessionId: string;
+  items: WorkspaceTextSearchMatch[];
+  limitHit: boolean;
+  totalCount: number;
+  totalFiles: number;
+}
+
+export interface WorkspaceSearchCompleteEvent {
+  sessionId: string;
+  groupCounts: WorkspaceTextSearchGroupCount[];
+  limitHit: boolean;
+  totalCount: number;
+  totalFiles: number;
+}
+
+export interface WorkspaceSearchErrorEvent {
+  sessionId: string;
+  error: string;
 }
 
 /**
@@ -374,11 +443,22 @@ export interface ElectronIPC {
   };
   workspace?: {
     getDir: () => Promise<APIResponse<string>>;
+    getRootDirectories: () => Promise<APIResponse<string[]>>;
+    getSearchBlockKeywords: (
+      request?: WorkspaceSearchTagRequest,
+    ) => Promise<APIResponse<WorkspaceSearchBlockCandidate[]>>;
+    getSearchTags: (request?: WorkspaceSearchTagRequest) => Promise<APIResponse<string[]>>;
     getRecentFiles: () => Promise<APIResponse<string[]>>;
     getLastOpened: () => Promise<WorkspaceLastOpenedResult>;
     addRecentFile: (filePath: string) => Promise<APIResponse>;
     clearRecentFiles: () => Promise<APIResponse>;
     searchText: (request: WorkspaceTextSearchRequest) => Promise<APIResponse<WorkspaceTextSearchResponse>>;
+    replaceText: (request: WorkspaceTextReplaceRequest) => Promise<APIResponse<WorkspaceTextReplaceResponse>>;
+    startSearchSession: (request: WorkspaceTextSearchRequest) => Promise<APIResponse<WorkspaceSearchSessionStartResult>>;
+    cancelSearchSession: (sessionId: string) => Promise<APIResponse<{ cancelled: boolean }>>;
+    onSearchBatch: (callback: (payload: WorkspaceSearchBatchEvent) => void) => (() => void);
+    onSearchComplete: (callback: (payload: WorkspaceSearchCompleteEvent) => void) => (() => void);
+    onSearchError: (callback: (payload: WorkspaceSearchErrorEvent) => void) => (() => void);
   };
   knowledgeBase?: {
     openFolder: () => Promise<FileResult>;
