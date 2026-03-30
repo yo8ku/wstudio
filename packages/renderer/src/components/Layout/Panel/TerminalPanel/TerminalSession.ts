@@ -1541,7 +1541,8 @@ export class TerminalSession {
       console.log(`[TerminalSession] terminal created: ${this.id}`);
     } catch (error) {
       console.error('[TerminalSession] failed to create terminal:', error);
-      this.enqueueTerminalOutput(`\r\nFailed to create terminal: ${error}\r\n`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.enqueueTerminalOutput(`\r\nFailed to create terminal: ${errorMessage}\r\n`);
     }
   }
 

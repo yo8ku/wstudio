@@ -23,6 +23,7 @@ const MIN_COLS = 2;
 const MIN_ROWS = 1;
 const TERM_NAME = 'xterm-256color';
 const TERM_PROGRAM = 'note-studio';
+const NODE_PTY_UNAVAILABLE_BASE_MESSAGE = 'node-pty native module is unavailable.';
 
 interface ResolvedLaunchCommand {
   executable: string;
@@ -64,13 +65,120 @@ interface ConsoleProcessListMessage {
   consoleProcessList?: number[];
 }
 
+type WindowsPtyBackend = 'conpty' | 'winpty';
+
 const NOOP_DISPOSABLE: TerminalDisposable = {
   dispose: () => undefined,
 };
 
 let nodePtyModule: NodePtyModule | null = null;
+let nodePtyPackageName: string | null = null;
 let bundledConptyDllAvailable: boolean | null = null;
 let nodePtyWindowsCleanupPatched = false;
+
+function resolveNodePtyRoot(): string | null {
+  try {
+    const nodePtyEntryPath = require.resolve('node-pty');
+    return path.resolve(path.dirname(nodePtyEntryPath), '..');
+  } catch {
+    return null;
+  }
+}
+
+function resolveNodePtyPackageName(): string | null {
+  if (nodePtyPackageName !== null) {
+    return nodePtyPackageName;
+  }
+
+  try {
+    const nodePtyPackageJsonPath = require.resolve('node-pty/package.json');
+    const nodePtyPackageJson = JSON.parse(fs.readFileSync(nodePtyPackageJsonPath, 'utf8')) as { name?: string };
+    nodePtyPackageName = nodePtyPackageJson.name ?? 'node-pty';
+    return nodePtyPackageName;
+  } catch {
+    return null;
+  }
+}
+
+function isLydellNodePtyPackage(): boolean {
+  return resolveNodePtyPackageName() === '@lydell/node-pty';
+}
+
+function resolveLydellNodePtyBinaryPackageRoot(): string | null {
+  if (!isLydellNodePtyPackage()) {
+    return null;
+  }
+
+  try {
+    const binaryPackageName = `@lydell/node-pty-${process.platform}-${process.arch}`;
+    const binaryPackageJsonPath = require.resolve(`${binaryPackageName}/package.json`);
+    return path.dirname(binaryPackageJsonPath);
+  } catch {
+    return null;
+  }
+}
+
+function resolveNodePtyReleaseDir(): string | null {
+  if (isLydellNodePtyPackage()) {
+    return null;
+  }
+
+  const nodePtyRoot = resolveNodePtyRoot();
+  if (!nodePtyRoot) {
+    return null;
+  }
+
+  return path.join(nodePtyRoot, 'build', 'Release');
+}
+
+function hasNodePtyNativeBinary(binary: WindowsPtyBackend): boolean {
+  if (isLydellNodePtyPackage()) {
+    if (binary !== 'conpty') {
+      return false;
+    }
+
+    const binaryPackageRoot = resolveLydellNodePtyBinaryPackageRoot();
+    return Boolean(binaryPackageRoot && fs.existsSync(path.join(binaryPackageRoot, 'conpty.node')));
+  }
+
+  const releaseDir = resolveNodePtyReleaseDir();
+  if (!releaseDir) {
+    return false;
+  }
+
+  const binaryName = binary === 'conpty' ? 'conpty.node' : 'pty.node';
+  return fs.existsSync(path.join(releaseDir, binaryName));
+}
+
+function isMissingNodePtyNativeBinaryMessage(message: string): boolean {
+  const normalizedMessage = message.trim().toLowerCase();
+  return normalizedMessage.includes('conpty.node') || normalizedMessage.includes('pty.node');
+}
+
+function isNodePtyNativeLoadFailureMessage(message: string): boolean {
+  const normalizedMessage = message.trim().toLowerCase();
+  return (
+    isMissingNodePtyNativeBinaryMessage(normalizedMessage)
+    || normalizedMessage.includes('node module version')
+    || normalizedMessage.includes('module did not self-register')
+    || normalizedMessage.includes('no native build was found')
+    || normalizedMessage.includes('err_dlopen_failed')
+    || normalizedMessage.includes('the specified module could not be found')
+  );
+}
+
+function toErrorMessage(error: Error | string): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeNodePtyError(error: Error | string): Error {
+  const message = toErrorMessage(error);
+  if (!isNodePtyNativeLoadFailureMessage(message)) {
+    return error instanceof Error ? error : new Error(message);
+  }
+
+  return new Error(formatNodePtyUnavailableMessage(message));
+}
 
 function patchNodePtyWindowsCleanup(): void {
   if (nodePtyWindowsCleanupPatched || process.platform !== 'win32') {
@@ -151,24 +259,31 @@ function loadNodePty(): NodePtyModule {
     patchNodePtyWindowsCleanup();
     return nodePtyModule;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      formatNodePtyUnavailableMessage(message)
-    );
+    throw normalizeNodePtyError(error instanceof Error ? error : String(error));
   }
 }
 
 function formatNodePtyUnavailableMessage(message: string): string {
   const normalizedMessage = message.trim();
-  const baseMessage = 'node-pty native module is unavailable.';
+  const baseMessage = NODE_PTY_UNAVAILABLE_BASE_MESSAGE;
+
+  if (normalizedMessage.startsWith(baseMessage)) {
+    return normalizedMessage;
+  }
 
   if (
     process.platform === 'win32'
-    && (
-      normalizedMessage.includes('conpty.node')
-      || normalizedMessage.includes('pty.node')
-    )
+    && isMissingNodePtyNativeBinaryMessage(normalizedMessage)
   ) {
+    if (isLydellNodePtyPackage()) {
+      const binaryPackageName = `@lydell/node-pty-${process.platform}-${process.arch}`;
+      return (
+        `${baseMessage} Missing Windows terminal prebuilt binary ${binaryPackageName}/conpty.node. ` +
+        'Run "pnpm install" without omitting optional dependencies, then restart the app. ' +
+        `Original error: ${normalizedMessage}`
+      );
+    }
+
     return (
       `${baseMessage} Missing Windows terminal native binary. ` +
       'Electron 36.9.5 does not have a matching prebuilt binary for the bundled node-pty package. ' +
@@ -185,9 +300,17 @@ function hasBundledConptyDll(): boolean {
     return bundledConptyDllAvailable;
   }
 
+  if (isLydellNodePtyPackage()) {
+    bundledConptyDllAvailable = false;
+    return bundledConptyDllAvailable;
+  }
+
   try {
-    const nodePtyEntryPath = require.resolve('node-pty');
-    const nodePtyRoot = path.resolve(path.dirname(nodePtyEntryPath), '..');
+    const nodePtyRoot = resolveNodePtyRoot();
+    if (!nodePtyRoot) {
+      bundledConptyDllAvailable = false;
+      return bundledConptyDllAvailable;
+    }
     const conptyDllPath = path.join(nodePtyRoot, 'build', 'Release', 'conpty', 'conpty.dll');
     bundledConptyDllAvailable = fs.existsSync(conptyDllPath);
   } catch {
@@ -195,6 +318,26 @@ function hasBundledConptyDll(): boolean {
   }
 
   return bundledConptyDllAvailable;
+}
+
+function resolveWindowsPtyBackend(buildNumber: number | undefined): WindowsPtyBackend {
+  if (isLydellNodePtyPackage()) {
+    return 'conpty';
+  }
+
+  const supportsConpty = Boolean(buildNumber && buildNumber >= 18309);
+  const hasConptyBinary = hasNodePtyNativeBinary('conpty');
+  const hasWinptyBinary = hasNodePtyNativeBinary('winpty');
+
+  if (supportsConpty && hasConptyBinary) {
+    return 'conpty';
+  }
+
+  if (hasWinptyBinary) {
+    return 'winpty';
+  }
+
+  return supportsConpty ? 'conpty' : 'winpty';
 }
 
 export class TerminalService {
@@ -338,7 +481,7 @@ export class TerminalService {
 
     const buildNumber = this.getWindowsBuildNumber();
     return {
-      backend: buildNumber && buildNumber >= 18309 ? 'conpty' : 'winpty',
+      backend: resolveWindowsPtyBackend(buildNumber),
       buildNumber,
     };
   }
@@ -351,27 +494,32 @@ export class TerminalService {
     rows: number,
     env: Record<string, string>
   ): TerminalPty {
-    const { spawn } = loadNodePty();
     const ptyInfo = this.getPtyInfo();
-    const shouldUseConptyDll = (
-      process.platform === 'win32'
-      && ptyInfo?.backend === 'conpty'
-      && hasBundledConptyDll()
-    );
 
-    return spawn(launchCommand.executable, launchCommand.args, {
-      name: TERM_NAME,
-      cols,
-      rows,
-      cwd,
-      env,
-      encoding: 'utf8',
-      useConpty: process.platform === 'win32' ? ptyInfo?.backend === 'conpty' : undefined,
-      useConptyDll: shouldUseConptyDll,
-    });
+    try {
+      const { spawn } = loadNodePty();
+      const shouldUseConptyDll = (
+        process.platform === 'win32'
+        && ptyInfo?.backend === 'conpty'
+        && hasBundledConptyDll()
+      );
+
+      return spawn(launchCommand.executable, launchCommand.args, {
+        name: TERM_NAME,
+        cols,
+        rows,
+        cwd,
+        env,
+        encoding: 'utf8',
+        useConpty: process.platform === 'win32' ? ptyInfo?.backend === 'conpty' : undefined,
+        useConptyDll: shouldUseConptyDll,
+      });
+    } catch (error) {
+      throw normalizeNodePtyError(error instanceof Error ? error : String(error));
+    }
   }
 
-  /** Create a terminal backed by node-pty. */
+  /** Create and track a terminal instance. */
   createTerminal(options: TerminalOptions = {}): TerminalInstance {
     const id = this.generateId();
     const ownerWebContentsId = Number.isInteger(options.ownerWebContentsId)

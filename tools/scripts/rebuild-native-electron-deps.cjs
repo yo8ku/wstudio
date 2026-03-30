@@ -12,6 +12,7 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 const rootPackageJsonPath = path.join(repoRoot, 'package.json');
 const electronDir = path.join(repoRoot, 'node_modules', 'electron');
 const nodePtyDir = path.join(repoRoot, 'node_modules', 'node-pty');
+const nodePtyPackageJsonPath = path.join(nodePtyDir, 'package.json');
 const nodePtyReleaseDir = path.join(nodePtyDir, 'build', 'Release');
 const nodePtyConptyRuntimeDir = path.join(nodePtyDir, 'build', 'Release', 'conpty');
 
@@ -42,12 +43,25 @@ function resolveElectronVersion() {
 }
 
 function resolveNodePtyPackageName() {
-  if (!fs.existsSync(path.join(nodePtyDir, 'package.json'))) {
+  if (!fs.existsSync(nodePtyPackageJsonPath)) {
     return 'node-pty';
   }
 
-  const packageJson = readJson(path.join(nodePtyDir, 'package.json'));
+  const packageJson = readJson(nodePtyPackageJsonPath);
   return packageJson.name || 'node-pty';
+}
+
+function isLydellNodePtyPackage() {
+  return resolveNodePtyPackageName() === '@lydell/node-pty';
+}
+
+function resolveLydellNodePtyBinaryPackageName() {
+  return `@lydell/node-pty-${process.platform}-${process.arch}`;
+}
+
+function resolveLydellNodePtyBinaryDir() {
+  const packageName = resolveLydellNodePtyBinaryPackageName();
+  return path.join(repoRoot, 'node_modules', ...packageName.split('/'));
 }
 
 function runNode(scriptPath, args, options) {
@@ -93,6 +107,10 @@ function syncNodePtyConptyRuntime() {
     return;
   }
 
+  if (isLydellNodePtyPackage()) {
+    return;
+  }
+
   const sourceDir = resolveNodePtyConptySourceDir();
   if (!sourceDir) {
     console.log('[native] node-pty conpty runtime source not found, skipping conpty runtime sync.');
@@ -118,6 +136,21 @@ function syncNodePtyConptyRuntime() {
 function ensureNodePtyNativeBinary() {
   if (!fs.existsSync(nodePtyDir)) {
     return;
+  }
+
+  if (isLydellNodePtyPackage()) {
+    const binaryPackageName = resolveLydellNodePtyBinaryPackageName();
+    const binaryPackageDir = resolveLydellNodePtyBinaryDir();
+    const conptyBinaryPath = path.join(binaryPackageDir, 'conpty.node');
+
+    if (fs.existsSync(conptyBinaryPath)) {
+      return;
+    }
+
+    throw new Error(
+      `${binaryPackageName} was not installed or is missing conpty.node. ` +
+      'Run "pnpm install" without "--omit=optional" and restart the app.'
+    );
   }
 
   if (process.platform !== 'win32') {
@@ -184,6 +217,11 @@ function syncElectronRuntime() {
 async function rebuildNodePtyForElectron() {
   if (!fs.existsSync(nodePtyDir)) {
     console.log('[native] node-pty is not installed, skipping Electron native sync.');
+    return;
+  }
+
+  if (isLydellNodePtyPackage()) {
+    console.log(`[native] ${resolveNodePtyPackageName()} uses platform prebuilt binaries; skipping Electron rebuild.`);
     return;
   }
 
