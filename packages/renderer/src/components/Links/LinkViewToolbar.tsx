@@ -1,15 +1,14 @@
 /**
  * LinkViewToolbar.tsx
- * 统一的链接视图工具栏。
- * 功能：显示链接统计、搜索、排序和上下文展开控制。
+ * Unified toolbar for link collections.
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { SearchInput } from '../common/SearchInput';
 import {
   type LinkCollectionSort,
-  getLinkCollectionSortLabel,
-  getNextLinkCollectionSort
+  getNextLinkCollectionSort,
 } from './LinkCollection';
 import './LinkViewToolbar.scss';
 
@@ -32,22 +31,22 @@ export interface LinkViewToolbarProps {
 }
 
 const SortToolbarIcon: React.FC = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <g stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 6h9" />
-      <path d="M4 12h7" />
-      <path d="M4 18h7" />
-      <path d="M15 15l3 3l3-3" />
-      <path d="M18 6v12" />
+  <svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none'>
+    <g stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+      <path d='M4 6h9' />
+      <path d='M4 12h7' />
+      <path d='M4 18h7' />
+      <path d='M15 15l3 3l3-3' />
+      <path d='M18 6v12' />
     </g>
   </svg>
 );
 
 const ContextToolbarIcon: React.FC = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M12 2v20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="m8 18 4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="m8 6 4-4 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  <svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none'>
+    <path d='M12 2v20' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' />
+    <path d='m8 18 4 4 4-4' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' />
+    <path d='m8 6 4-4 4 4' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' />
   </svg>
 );
 
@@ -61,9 +60,23 @@ export const LinkViewToolbar: React.FC<LinkViewToolbarProps> = ({
   onQueryChange,
   onToggleSearch,
   onSortChange,
-  onToggleContext
+  onToggleContext,
 }) => {
-  const currentSortLabel = getLinkCollectionSortLabel(sortBy);
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
+  const currentSortLabel = (() => {
+    switch (sortBy) {
+      case 'title-asc':
+        return translateText('linksPanel.sort.titleAsc', '标题 A-Z');
+      case 'title-desc':
+        return translateText('linksPanel.sort.titleDesc', '标题 Z-A');
+      case 'context-desc':
+        return translateText('linksPanel.sort.contextDesc', '上下文更多');
+      case 'default':
+      default:
+        return translateText('linksPanel.sort.default', '默认');
+    }
+  })();
 
   const handleActionKeyDown =
     (callback: () => void) => (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -97,40 +110,45 @@ export const LinkViewToolbar: React.FC<LinkViewToolbarProps> = ({
     closeSearch();
   };
 
+  const sortTitle = translateText('linksPanel.toolbar.sortTitle', '排序: {{label}}').replace('{{label}}', currentSortLabel);
+  const contextTitle = showFullContext
+    ? translateText('linksPanel.toolbar.showLessContext', '收起更多上下文')
+    : translateText('linksPanel.toolbar.showMoreContext', '显示更多上下文');
+
   return (
-    <div className="link-view-toolbar">
+    <div className='link-view-toolbar'>
       {stats.length > 0 && (
-        <div className="link-view-toolbar-summary">
+        <div className='link-view-toolbar-summary'>
           {stats.map((stat) => (
-            <div key={stat.label} className="link-view-toolbar-summary-item">
-              <span className="link-view-toolbar-summary-label">{stat.label}：</span>
-              <span className="link-view-toolbar-summary-count">{stat.count}</span>
+            <div key={stat.label} className='link-view-toolbar-summary-item'>
+              <span className='link-view-toolbar-summary-label'>{`${stat.label}:`}</span>
+              <span className='link-view-toolbar-summary-count'>{stat.count}</span>
             </div>
           ))}
         </div>
       )}
 
-      <div className="link-view-toolbar-actions">
+      <div className='link-view-toolbar-actions'>
         <SearchInput
           value={query}
           onChange={onQueryChange}
           placeholder={searchPlaceholder}
-          className="link-view-toolbar-search-control"
+          className='link-view-toolbar-search-control'
           expandedWidth={220}
           iconSize={14}
           expanded={isSearchVisible}
           onExpandedChange={handleExpandedChange}
-          collapseOnBlur="always"
+          collapseOnBlur='always'
           clearOnCollapse={false}
           hideIconWhenExpanded
         />
 
         <div
           className={`link-view-toolbar-action ${sortBy !== 'default' ? 'is-active' : ''}`}
-          role="button"
+          role='button'
           tabIndex={0}
-          title={`排序：${currentSortLabel}`}
-          aria-label={`排序：${currentSortLabel}`}
+          title={sortTitle}
+          aria-label={sortTitle}
           onClick={() => onSortChange(getNextLinkCollectionSort(sortBy))}
           onKeyDown={handleActionKeyDown(() => onSortChange(getNextLinkCollectionSort(sortBy)))}
         >
@@ -139,10 +157,10 @@ export const LinkViewToolbar: React.FC<LinkViewToolbarProps> = ({
 
         <div
           className={`link-view-toolbar-action link-view-toolbar-action--context ${showFullContext ? 'is-active' : ''}`}
-          role="button"
+          role='button'
           tabIndex={0}
-          title={showFullContext ? '收起更多上下文' : '更多上下文'}
-          aria-label={showFullContext ? '收起更多上下文' : '更多上下文'}
+          title={contextTitle}
+          aria-label={contextTitle}
           onClick={onToggleContext}
           onKeyDown={handleActionKeyDown(onToggleContext)}
         >

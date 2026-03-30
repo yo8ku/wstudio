@@ -50,6 +50,7 @@ import type {
   PluginEditorStateResponsePayload,
 } from '@note-studio/shared';
 import { PLUGIN_EDITOR_BRIDGE_CHANNELS } from '@note-studio/shared';
+import { translate } from '../../../../i18n';
 import './EditorArea.scss';
 
 export interface EditorTab {
@@ -104,6 +105,14 @@ type SplitDirection = 'horizontal' | 'vertical';
 type EditorPaneId = 'left-top' | 'left-bottom' | 'right-top' | 'right-bottom';
 type PaneDropPlacement = 'full' | 'left' | 'right' | 'top' | 'bottom';
 type PaneMoveDirection = 'left' | 'right' | 'up' | 'down';
+
+type EditorAreaTranslationValue = string | number | boolean;
+
+const translateEditorAreaText = (
+  key: string,
+  defaultValue: string,
+  values?: Record<string, EditorAreaTranslationValue>,
+): string => String(translate(key, values ? { defaultValue, ...values } : { defaultValue }));
 
 const TAB_DRAG_MIME = 'application/x-note-studio-tab';
 const EDITOR_BRIDGE_PANE_ORDER: EditorPaneId[] = ['left-top', 'right-top', 'left-bottom', 'right-bottom'];
@@ -1695,7 +1704,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         } else {
           const newTab: EditorTab = {
             id: `media-${Date.now()}`,
-            title: '缁辩姵娼楃粻锛勬倞',
+            title: translateEditorAreaText('sidebar.titles.media', '素材管理'),
             path: 'media:/',
             isDirty: false,
             type: 'media'
@@ -1813,7 +1822,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         }
         
         const tabId = `table-designer-${formId || Date.now()}`;
-        const tabTitle = formName ? `琛ㄦ牸 - ${formName}` : '琛ㄦ牸璁捐鍣?';
+        const tabTitle = formName
+          ? translateEditorAreaText('tableDesigner.tabs.named', '表格 - {{name}}', { name: formName })
+          : translateEditorAreaText('tableDesigner.tabs.untitled', '表格设计器');
         const newTabItem: EditorTab = {
           id: tabId,
           title: tabTitle,
@@ -2150,7 +2161,12 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         setTabs(currentTabs => 
           currentTabs.map(tab => 
             tab.formId === formId 
-              ? { ...tab, title: `鐞涖劍鐗?- ${newName}` }
+              ? {
+                ...tab,
+                title: translateEditorAreaText('tableDesigner.tabs.named', '表格 - {{name}}', {
+                  name: newName,
+                }),
+              }
               : tab
           )
         );
@@ -2476,7 +2492,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       
       // 婵″倹鐏夊▽鈩冩箒 configId閿涘苯鐨剧拠鏇氱矤 configIndex 閼惧嘲褰囬柊宥囩枂娣団剝浼?
       let actualConfigId = configId;
-      let configName = 'AI 濡€崇€烽柊宥囩枂';
+      let configName = translateEditorAreaText('aiConfigView.header.createTitle', 'AI 模型配置');
       
       if (!actualConfigId && configIndex !== undefined) {
         try {
@@ -2498,7 +2514,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         setTabs(prev => {
           const newTab: EditorTab = {
             id: `ai-config-${Date.now()}`,
-            title: '閺傛澘缂撻柊宥囩枂',
+            title: translateEditorAreaText(
+              'aiConfigView.header.createTitle',
+              'AI 模型配置',
+            ),
             path: `ai-config:/${tempConfigId}`,
             isDirty: false,
             type: 'ai-config',
@@ -2542,7 +2561,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           const tabPath = `ai-config:/${actualConfigId}`;
           const newTab: EditorTab = {
             id: `ai-config-${Date.now()}`,
-            title: `闁板秶鐤?- ${configName}`,
+            title: translateEditorAreaText(
+              'aiConfigView.header.editTitle',
+              '配置 - {{name}}',
+              { name: configName },
+            ),
             path: tabPath,
             isDirty: false,
             type: 'ai-config',
@@ -2579,7 +2602,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             return {
               ...tab,
               configId: realId,
-              title: `闁板秶鐤?- ${configName}`
+              title: translateEditorAreaText(
+                'aiConfigView.header.editTitle',
+                '配置 - {{name}}',
+                { name: configName },
+              ),
             };
           }
           return tab;
@@ -2648,7 +2675,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               if (tab.configId) {
                 const config = configMap.get(tab.configId);
                 if (config?.name) {
-                  const newTitle = `闁板秶鐤?- ${config.name}`;
+                  const newTitle = translateEditorAreaText(
+                    'aiConfigView.header.editTitle',
+                    '配置 - {{name}}',
+                    { name: config.name },
+                  );
                   console.log('[EditorArea] 閺囧瓨鏌婇弽鍥╊劮妞ゅ灚鐖ｆ０?闁俺绻僣onfigId):', { oldTitle: tab.title, newTitle, configId: tab.configId });
                   return { ...tab, title: newTitle };
                 }
@@ -2657,7 +2688,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               else if (tab.configIndex !== undefined) {
                 const config = configs[tab.configIndex];
                 if (config?.name) {
-                  const newTitle = `闁板秶鐤?- ${config.name}`;
+                  const newTitle = translateEditorAreaText(
+                    'aiConfigView.header.editTitle',
+                    '配置 - {{name}}',
+                    { name: config.name },
+                  );
                   console.log('[EditorArea] 閺囧瓨鏌婇弽鍥╊劮妞ゅ灚鐖ｆ０?闁俺绻僣onfigIndex):', { oldTitle: tab.title, newTitle, configIndex: tab.configIndex });
                   // 閸氬本妞傞弴瀛樻煀 configId 娴犮儰绌堕崥搴ｇ敾娴ｈ法鏁?
                   return { ...tab, title: newTitle, configId: config.id };

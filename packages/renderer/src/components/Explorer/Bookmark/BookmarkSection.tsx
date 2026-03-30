@@ -4,6 +4,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { LuBookmarkPlus, LuFolderPlus } from 'react-icons/lu';
 import { Icon } from '../../Icons/Icon';
 import { CustomScrollbar } from '../../common/CustomScrollbar';
@@ -36,14 +37,6 @@ interface BookmarkTreeChildrenStyle extends React.CSSProperties {
   '--bookmark-guide-left'?: string;
 }
 
-const LABEL_RENAME = '\u91cd\u547d\u540d';
-const LABEL_CREATE_GROUP = '\u65b0\u5efa\u5206\u7ec4';
-const LABEL_REMOVE = '\u79fb\u9664';
-const LABEL_NEW_BOOKMARK_GROUP = '\u65b0\u5efa\u4e66\u7b7e\u7ec4';
-const LABEL_RENAME_BOOKMARK_GROUP = '\u91cd\u547d\u540d\u4e66\u7b7e\u7ec4';
-const LABEL_BOOKMARK_CURRENT_TAB = '\u6536\u85cf\u5f53\u524d\u6807\u7b7e\u9875';
-const LABEL_NO_BOOKMARKS = '\u6682\u65e0\u4e66\u7b7e\u5185\u5bb9';
-
 const normalizePath = (value: string): string => value.replace(/\\/g, '/');
 
 const createTreeChildrenStyle = (depth: number): BookmarkTreeChildrenStyle => ({
@@ -65,6 +58,9 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
   onNoteSelect,
   onNoteContextMenu,
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string =>
+    String(t(key, { defaultValue }));
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [creatingGroupParentId, setCreatingGroupParentId] = useState<string | null>(null);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -76,6 +72,19 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
   const normalizedSelectedPath = normalizePath(selectedNotePath);
   const normalizedContextMenuSelectionPath = normalizePath(contextMenuSelectionPath);
   const hasAnyBookmarkContent = groupedItems.length > 0 || ungroupedItems.length > 0;
+  const labelRename = translateText('bookmarkSection.menu.rename', '重命名');
+  const labelCreateGroup = translateText('bookmarkSection.menu.newGroup', '新建分组');
+  const labelRemove = translateText('bookmarkSection.menu.remove', '移除');
+  const labelNewBookmarkGroup = translateText('bookmarkSection.placeholders.newGroup', '新建书签组');
+  const labelRenameBookmarkGroup = translateText(
+    'bookmarkSection.placeholders.renameGroup',
+    '重命名书签组',
+  );
+  const labelBookmarkCurrentTab = translateText(
+    'bookmarkSection.actions.bookmarkCurrentTab',
+    '收藏当前标签页',
+  );
+  const labelNoBookmarks = translateText('bookmarkSection.empty', '暂无书签内容');
 
   const groupContextMenuItems = useMemo<ContextMenuItem[]>(() => {
     if (!groupContextMenuState) {
@@ -85,7 +94,7 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
     const items: ContextMenuItem[] = [
       {
         id: 'bookmark-group-rename',
-        label: LABEL_RENAME,
+        label: labelRename,
         onClick: (): void => {
           setEditingGroupId(groupContextMenuState.group.id);
           setIsCreatingGroup(false);
@@ -95,7 +104,7 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
       },
       {
         id: 'bookmark-group-create',
-        label: LABEL_CREATE_GROUP,
+        label: labelCreateGroup,
         onClick: (): void => {
           setIsCreatingGroup(true);
           setEditingGroupId(null);
@@ -114,7 +123,7 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
         },
         {
           id: 'bookmark-group-remove',
-          label: LABEL_REMOVE,
+          label: labelRemove,
           onClick: (): void => {
             setEditingGroupId(null);
             setIsCreatingGroup(false);
@@ -127,7 +136,7 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
     }
 
     return items;
-  }, [groupContextMenuState, onRemoveBookmarkGroup]);
+  }, [groupContextMenuState, labelCreateGroup, labelRemove, labelRename, onRemoveBookmarkGroup]);
 
   const handleGroupContextMenu = (
     group: BookmarkGroupItem,
@@ -194,7 +203,7 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
         icon={<Icon name="folder" size={16} className="file-tree-icon" />}
       >
         <InlineInput
-          placeholder={LABEL_NEW_BOOKMARK_GROUP}
+          placeholder={labelNewBookmarkGroup}
           onConfirm={(name): void => {
             onCreateBookmarkGroup?.(name, parentId);
             setEditingGroupId(null);
@@ -258,7 +267,7 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
           {isEditing ? (
             <InlineInput
               initialValue={section.group.name}
-              placeholder={LABEL_RENAME_BOOKMARK_GROUP}
+              placeholder={labelRenameBookmarkGroup}
               onConfirm={(name): void => {
                 onRenameBookmarkGroup?.(section.group.id, name);
                 setEditingGroupId(null);
@@ -291,8 +300,8 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
           tabIndex={canCreateBookmark ? 0 : -1}
           className={`bookmark-toolbar-action${canCreateBookmark ? '' : ' is-disabled'}`}
           aria-disabled={!canCreateBookmark}
-          title={LABEL_BOOKMARK_CURRENT_TAB}
-          aria-label={LABEL_BOOKMARK_CURRENT_TAB}
+          title={labelBookmarkCurrentTab}
+          aria-label={labelBookmarkCurrentTab}
           onMouseDown={(event): void => {
             event.stopPropagation();
           }}
@@ -320,8 +329,8 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
           tabIndex={canCreateBookmarkGroup ? 0 : -1}
           className={`bookmark-toolbar-action${canCreateBookmarkGroup ? '' : ' is-disabled'}`}
           aria-disabled={!canCreateBookmarkGroup}
-          title={LABEL_NEW_BOOKMARK_GROUP}
-          aria-label={LABEL_NEW_BOOKMARK_GROUP}
+          title={labelNewBookmarkGroup}
+          aria-label={labelNewBookmarkGroup}
           onMouseDown={(event): void => {
             event.stopPropagation();
           }}
@@ -353,7 +362,7 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
         {renderCreateGroupInput(null, 0)}
 
         {!hasAnyBookmarkContent && !isCreatingGroup ? (
-          <div className="bookmark-empty">{LABEL_NO_BOOKMARKS}</div>
+          <div className="bookmark-empty">{labelNoBookmarks}</div>
         ) : (
           <div className="bookmark-groups">
             {groupedItems.map((section) => renderGroupSection(section))}

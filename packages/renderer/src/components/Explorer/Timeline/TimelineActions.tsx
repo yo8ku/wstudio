@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface TimelineActionsProps {
   onPin?: () => void;
@@ -7,22 +8,20 @@ export interface TimelineActionsProps {
   onFilter?: () => void;
 }
 
-/**
- * 时间线工具栏
- * 提供固定、刷新、搜索、筛选等操作
- */
 export const TimelineActions: React.FC<TimelineActionsProps> = ({
   onPin,
   onRefresh,
   onSearch,
   onFilter,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="timeline-actions">
       {onPin && (
         <button
           className="timeline-action-button"
-          title="固定到顶部"
+          title={String(t('timeline.actions.pin', { defaultValue: 'Pin to Top' }))}
           onClick={onPin}
         >
           📌
@@ -31,7 +30,7 @@ export const TimelineActions: React.FC<TimelineActionsProps> = ({
       {onRefresh && (
         <button
           className="timeline-action-button"
-          title="刷新"
+          title={String(t('explorerView.workspaceMenu.general.refresh', { defaultValue: 'Refresh' }))}
           onClick={onRefresh}
         >
           🔄
@@ -40,7 +39,7 @@ export const TimelineActions: React.FC<TimelineActionsProps> = ({
       {onSearch && (
         <button
           className="timeline-action-button"
-          title="搜索"
+          title={String(t('tableDesigner.queryResult.searchPlaceholder', { defaultValue: 'Search...' }))}
           onClick={onSearch}
         >
           🔍
@@ -49,10 +48,10 @@ export const TimelineActions: React.FC<TimelineActionsProps> = ({
       {onFilter && (
         <button
           className="timeline-action-button"
-          title="筛选"
+          title={String(t('tableDesigner.toolbar.filter', { defaultValue: 'Filter' }))}
           onClick={onFilter}
         >
-          ⋯
+          ☰
         </button>
       )}
     </div>
@@ -60,24 +59,3 @@ export const TimelineActions: React.FC<TimelineActionsProps> = ({
 };
 
 export default TimelineActions;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

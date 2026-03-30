@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { KnowledgeItem } from '../../Sidebar/KnowledgeBase/types';
 import { SearchFilterIcon, SortIcon, AddDocumentIcon, ClearIcon, CheckIcon, RefreshIcon, SettingsIcon } from '../../Sidebar/KnowledgeBase/KnowledgeBaseIcons';
 import { AddFileMenu } from '../AddFileMenu';
@@ -23,6 +24,8 @@ export interface KnowledgeBaseViewProps {
   onFileDelete?: (item: KnowledgeItem) => void;
 }
 
+type KnowledgeBaseViewTranslationValue = string | number | boolean;
+
 export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   knowledgeId,
   knowledgeTitle,
@@ -31,6 +34,12 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   onFileOpen,
   onFileDelete
 }) => {
+  const { t } = useTranslation();
+  const translateText = useCallback((
+    key: string,
+    defaultValue: string,
+    values?: Record<string, KnowledgeBaseViewTranslationValue>,
+  ): string => String(t(key, values ? { defaultValue, ...values } : { defaultValue })), [t]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [showSearchInput, setShowSearchInput] = useState(false);
@@ -125,8 +134,8 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
       detail: { knowledgeId }
     }));
-    toastService.success('知识库已刷新');
-  }, [knowledgeId]);
+    toastService.success(translateText('knowledgeBase.view.refreshed', '知识库已刷新'));
+  }, [knowledgeId, translateText]);
 
   // 打开设置面板（触发事件通知侧边栏打开）
   const handleOpenSettings = useCallback(() => {
@@ -134,7 +143,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     window.dispatchEvent(new CustomEvent('open-knowledge-settings', {
       detail: { knowledgeId }
     }));
-  }, [knowledgeId]);
+  }, [knowledgeId, translateText]);
 
   // 排序处理
   const handleSort = useCallback(() => {
@@ -206,7 +215,11 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             // 如果文件正在处理中，阻止重复上传
             if (processingStatus === 'processing' || processingStatus === 'pending') {
               console.log(`[KnowledgeBaseView] 阻止重复上传: ${fileName}, 状态: ${processingStatus}`);
-              toastService.warning(`文件 "${fileName}" 正在上传中，请等待完成！`);
+              toastService.warning(translateText(
+                'knowledgeBase.view.fileUploading',
+                '文件 "{{fileName}}" 正在上传中，请等待完成！',
+                { fileName },
+              ));
               failedCount++;
               continue;
             }
@@ -220,7 +233,11 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
           // 先读取文件内容检查长度（最小 300 字符）
           const fileReadResult = await window.electron?.file?.read(filePath);
           if (!fileReadResult?.success || !fileReadResult.data?.content) {
-            toastService.error(`无法读取文件: ${fileName}`);
+            toastService.error(translateText(
+              'knowledgeBase.view.readFileFailed',
+              '无法读取文件: {{fileName}}',
+              { fileName },
+            ));
             failedCount++;
             continue;
           }
@@ -231,9 +248,15 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
           const MIN_DOCUMENT_LENGTH = 300;
           
           if (contentLength < MIN_DOCUMENT_LENGTH) {
-            toastService.error(
-              `文档 "${fileName}" 过短（${contentLength} 字符），最少需要 ${MIN_DOCUMENT_LENGTH} 字符`
-            );
+            toastService.error(translateText(
+              'knowledgeBase.view.documentTooShort',
+              '文档 "{{fileName}}" 过短（{{contentLength}} 字符），最少需要 {{minLength}} 字符',
+              {
+                fileName,
+                contentLength,
+                minLength: MIN_DOCUMENT_LENGTH,
+              },
+            ));
             failedCount++;
             continue;
           }
@@ -338,7 +361,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             console.error('[KnowledgeBaseView] 文件处理失败:', errorMessage);
             
             // 显示友好的错误提示
-            toastService.error('文件处理失败');
+            toastService.error(translateText(
+              'knowledgeBase.view.fileProcessingFailed',
+              '文件处理失败',
+            ));
           });
           
           importedCount++;
@@ -350,9 +376,26 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
 
       // 显示导入结果
       if (importedCount > 0) {
-        toastService.success(`成功导入 ${importedCount} 个文件${failedCount > 0 ? `，${failedCount} 个文件失败` : ''}`);
+        toastService.success(translateText(
+          'knowledgeBase.view.importFilesSuccess',
+          '成功导入 {{importedCount}} 个文件{{failedSuffix}}',
+          {
+            importedCount,
+            failedSuffix: failedCount > 0
+              ? translateText(
+                'knowledgeBase.view.failedCountSuffix',
+                '，{{failedCount}} 个文件失败',
+                { failedCount },
+              )
+              : '',
+          },
+        ));
       } else if (failedCount > 0) {
-        toastService.error(`导入失败，共 ${failedCount} 个文件`);
+        toastService.error(translateText(
+          'knowledgeBase.view.importFailed',
+          '导入失败，共 {{failedCount}} 个文件',
+          { failedCount },
+        ));
       }
 
       // 触发知识库刷新事件
@@ -361,10 +404,14 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      toastService.error(`导入文件失败: ${errorMessage}`);
+      toastService.error(translateText(
+        'knowledgeBase.view.importFilesFailedWithMessage',
+        '导入文件失败: {{message}}',
+        { message: errorMessage },
+      ));
       console.error('[KnowledgeBaseView] 导入文件失败:', error);
     }
-  }, [knowledgeId]);
+  }, [knowledgeId, translateText]);
 
   // 导入本地文件夹
   const handleImportFolder = useCallback(async () => {
@@ -392,7 +439,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
       const scanResult = await window.electron?.ipcRenderer?.invoke('folder:scanFiles', folderPath);
       
       if (!scanResult || !scanResult.success || !scanResult.data || scanResult.data.length === 0) {
-        toastService.warning('所选文件夹中没有支持的文件（仅支持 .md, .markdown, .json, .txt 文件）');
+        toastService.warning(translateText(
+          'knowledgeBase.view.importFolderNoSupportedFiles',
+          '所选文件夹中没有支持的文件（仅支持 .md, .markdown, .json, .txt 文件）',
+        ));
         return;
       }
 
@@ -492,9 +542,26 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
 
       // 显示导入结果
       if (importedCount > 0) {
-        toastService.success(`成功导入 ${importedCount} 个文件${failedCount > 0 ? `，${failedCount} 个文件失败` : ''}，开始向量化处理...`);
+        toastService.success(translateText(
+          'knowledgeBase.view.importFolderSuccess',
+          '成功导入 {{importedCount}} 个文件{{failedSuffix}}，开始向量化处理...',
+          {
+            importedCount,
+            failedSuffix: failedCount > 0
+              ? translateText(
+                'knowledgeBase.view.failedCountSuffix',
+                '，{{failedCount}} 个文件失败',
+                { failedCount },
+              )
+              : '',
+          },
+        ));
       } else if (failedCount > 0) {
-        toastService.error(`导入失败，共 ${failedCount} 个文件`);
+        toastService.error(translateText(
+          'knowledgeBase.view.importFailed',
+          '导入失败，共 {{failedCount}} 个文件',
+          { failedCount },
+        ));
         return;
       }
 
@@ -620,9 +687,16 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             }));
             
             // 显示友好的错误提示
-            let displayMessage = '向量化处理失败';
+            let displayMessage = translateText(
+              'knowledgeBase.view.batchVectorizationFailed',
+              '向量化处理失败',
+            );
             if (errorMessage.length < 100) {
-              displayMessage = `向量化处理失败: ${errorMessage}`;
+              displayMessage = translateText(
+                'knowledgeBase.view.batchVectorizationFailedWithMessage',
+                '向量化处理失败: {{message}}',
+                { message: errorMessage },
+              );
             }
             toastService.error(displayMessage);
           }
@@ -640,10 +714,14 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      toastService.error(`导入文件夹失败: ${errorMessage}`);
+      toastService.error(translateText(
+        'knowledgeBase.view.importFolderFailedWithMessage',
+        '导入文件夹失败: {{message}}',
+        { message: errorMessage },
+      ));
       console.error('[KnowledgeBaseView] 导入文件夹失败:', error);
     }
-  }, [knowledgeId]);
+  }, [knowledgeId, translateText]);
 
   // 导入笔记
   const handleImportNote = useCallback((noteId: string) => {
@@ -699,7 +777,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     );
 
     if (filesWithPaths.length === 0) {
-      toastService.error('无法定位需要重试的文件路径');
+      toastService.error(translateText(
+        'knowledgeBase.view.retryMissingPath',
+        '无法定位需要重试的文件路径',
+      ));
       return;
     }
 
@@ -758,7 +839,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
       }
 
       if (failedRetryResults.length === 0) {
-        toastService.success('失败的文件已重新处理完成');
+        toastService.success(translateText(
+          'knowledgeBase.view.retrySuccess',
+          '失败的文件已重新处理完成',
+        ));
         
         // 检查是否所有文件都处理完成，如果是，清除 configChanged 标志
         const allData = await knowledgeBaseService.loadFromStorage();
@@ -798,18 +882,33 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
           }
         }
       } else if (failedRetryResults.length === filesWithPaths.length) {
-        toastService.error('重试失败，请检查控制台日志获取更多信息');
+        toastService.error(translateText(
+          'knowledgeBase.view.retryAllFailed',
+          '重试失败，请检查控制台日志获取更多信息',
+        ));
       } else {
         const failedTitles = failedRetryResults.slice(0, 3).map(item => item.title).join('、');
-        toastService.warning(`部分文件重试失败：${failedTitles}${failedRetryResults.length > 3 ? ' 等' : ''}`);
+        toastService.warning(translateText(
+          'knowledgeBase.view.retryPartialFailed',
+          '部分文件重试失败：{{titles}}{{moreSuffix}}',
+          {
+            titles: failedTitles,
+            moreSuffix: failedRetryResults.length > 3
+              ? translateText('knowledgeBase.view.retryMoreSuffix', ' 等')
+              : '',
+          },
+        ));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      toastService.error(message || '重试失败，请稍后再试');
+      toastService.error(
+        message
+          || translateText('knowledgeBase.view.retryDefaultError', '重试失败，请稍后再试'),
+      );
     } finally {
       setIsRetryingFailedFiles(false);
     }
-  }, [failedFiles, isRetryingFailedFiles, knowledgeId]);
+  }, [failedFiles, isRetryingFailedFiles, knowledgeId, translateText]);
 
   // 获取文件图标（使用应用统一的图标系统）
   const getFileIcon = (item: KnowledgeItem) => {
@@ -837,7 +936,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   // 重新上传失败的文件
   const handleRetryFile = useCallback(async (item: KnowledgeItem) => {
     if (!item.path) {
-      toastService.error('无法获取文件路径');
+      toastService.error(translateText(
+        'knowledgeBase.view.retryFilePathMissing',
+        '无法获取文件路径',
+      ));
       return;
     }
 
@@ -872,16 +974,24 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
         detail: { knowledgeId }
       }));
 
-      toastService.success(`文件 "${item.title}" 重新上传成功`);
+      toastService.success(translateText(
+        'knowledgeBase.view.retryFileSuccess',
+        '文件 "{{title}}" 重新上传成功',
+        { title: item.title },
+      ));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       await knowledgeBaseService.updateFileProcessingStatus(item.path, 'error', 0);
       window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
         detail: { knowledgeId }
       }));
-      toastService.error(`重新上传失败: ${errorMessage}`);
+      toastService.error(translateText(
+        'knowledgeBase.view.retryFileFailed',
+        '重新上传失败: {{message}}',
+        { message: errorMessage },
+      ));
     }
-  }, [knowledgeId]);
+  }, [knowledgeId, translateText]);
 
   // 递归渲染文件（失败文件排在最前面）
   const renderItems = (items: KnowledgeItem[], level: number = 0): React.ReactNode => {
@@ -929,7 +1039,19 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                     return (
                       <span className="item-processing-status">
                         {status === 'processing' && (
-                          <span className="processing-indicator" title={`处理中 ${progress !== undefined ? progress + '%' : ''}`}>
+                          <span
+                            className="processing-indicator"
+                            title={progress !== undefined
+                              ? translateText(
+                                'knowledgeBase.view.status.processingWithProgress',
+                                '处理中 {{progress}}%',
+                                { progress },
+                              )
+                              : translateText(
+                                'knowledgeBase.view.status.processing',
+                                '处理中',
+                              )}
+                          >
                             <span className="spinner"></span>
                             {progress !== undefined && (
                               <span className="progress-text">{progress}%</span>
@@ -937,21 +1059,29 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                           </span>
                         )}
                         {status === 'pending' && (
-                          <span className="pending-indicator" title="等待处理">
+                          <span
+                            className="pending-indicator"
+                            title={translateText('knowledgeBase.view.status.pending', '等待处理')}
+                          >
                             <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                               <circle cx="6" cy="6" r="2"/>
                             </svg>
                           </span>
                         )}
                         {status === 'completed' && (
-                          <span className="completed-indicator" title="处理完成">
+                          <span
+                            className="completed-indicator"
+                            title={translateText('knowledgeBase.view.status.completed', '处理完成')}
+                          >
                             <CheckIcon className="check-icon" />
                           </span>
                         )}
                         {status === 'error' && (
                           <span 
                             className="error-indicator" 
-                            title={hoveredErrorItem === item.id ? "点击重新上传" : "处理失败"}
+                            title={hoveredErrorItem === item.id
+                              ? translateText('knowledgeBase.view.status.retry', '点击重新上传')
+                              : translateText('knowledgeBase.view.status.error', '处理失败')}
                             onMouseEnter={() => setHoveredErrorItem(item.id)}
                             onMouseLeave={() => setHoveredErrorItem(null)}
                             onClick={(e) => {
@@ -986,7 +1116,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                         e.stopPropagation();
                         onFileDelete?.(item);
                       }}
-                      title="删除"
+                      title={translateText('knowledgeBase.view.delete', '删除')}
                     >
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                         <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.506a.58.58 0 0 0-.01 0H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1h-.995a.59.59 0 0 0-.01 0H11Zm1.958 1-.846 10.58a1 1 0 0 1-.997.92h-6.23a1 1 0 0 1-.997-.92L3.042 3.5h9.916Z"/>
@@ -1040,7 +1170,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
         <div className="header-middle">
           {configChanged && (
             <span className="config-changed-warning">
-              * 配置发生改变，请更新知识库。
+              {translateText(
+                'knowledgeBase.view.configChanged',
+                '* 配置发生改变，请更新知识库。',
+              )}
             </span>
           )}
         </div>
@@ -1053,8 +1186,15 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               disabled={isRetryingFailedFiles}
               title={
                 isRetryingFailedFiles
-                  ? '正在重试失败的文件，请稍候'
-                  : `检测到 ${failedFiles.length} 个处理失败的文件，点击重试`
+                  ? translateText(
+                    'knowledgeBase.view.retryInProgressTitle',
+                    '正在重试失败的文件，请稍候',
+                  )
+                  : translateText(
+                    'knowledgeBase.view.retryAvailableTitle',
+                    '检测到 {{count}} 个处理失败的文件，点击重试',
+                    { count: failedFiles.length },
+                  )
               }
             >
               <span className={`retry-icon ${isRetryingFailedFiles ? 'spinning' : ''}`}>
@@ -1069,7 +1209,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                 ref={searchInputRef}
                 type="text"
                 className="search-input"
-                placeholder="搜索文件..."
+                placeholder={translateText(
+                  'knowledgeBase.view.searchPlaceholder',
+                  '搜索文件...',
+                )}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -1082,7 +1225,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                 <button
                   className="clear-button"
                   onClick={handleClearSearch}
-                  title="清除"
+                  title={translateText('knowledgeBase.view.clear', '清除')}
                 >
                   <ClearIcon />
                 </button>
@@ -1092,28 +1235,28 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
           <button 
             className={`action-button ${showSearchInput ? 'active' : ''}`}
             onClick={handleToggleSearch}
-            title="搜索过滤"
+            title={translateText('knowledgeBase.view.searchFilter', '搜索过滤')}
           >
             <SearchFilterIcon />
           </button>
           <button 
             className="action-button"
             onClick={handleOpenSettings}
-            title="知识库设置"
+            title={translateText('knowledgeBase.view.settings', '知识库设置')}
           >
             <SettingsIcon />
           </button>
           <button 
             className="action-button"
             onClick={handleRefresh}
-            title="更新"
+            title={translateText('knowledgeBase.view.refresh', '更新')}
           >
             <RefreshIcon />
           </button>
           <button 
             className="action-button"
             onClick={handleSort}
-            title="排序"
+            title={translateText('knowledgeBase.view.sort', '排序')}
           >
             <SortIcon />
           </button>
@@ -1121,7 +1264,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             ref={addButtonRef}
             className={`action-button ${showAddMenu ? 'active' : ''}`}
             onClick={handleAddFile}
-            title="添加文件"
+            title={translateText('knowledgeBase.view.addFile', '添加文件')}
           >
             <AddDocumentIcon />
           </button>
@@ -1148,7 +1291,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             <svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor" opacity="0.3">
               <path d="M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811V2.828zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492V2.687zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783z"/>
             </svg>
-            <p>该知识库暂无文件</p>
+            <p>{translateText('knowledgeBase.view.empty', '该知识库暂无文件')}</p>
           </div>
         )}
       </div>

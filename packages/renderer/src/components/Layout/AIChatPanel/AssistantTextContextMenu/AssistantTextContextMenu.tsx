@@ -6,6 +6,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '@/components/Icons';
 import './AssistantTextContextMenu.scss';
 
@@ -32,7 +33,9 @@ export const AssistantTextContextMenu: React.FC<AssistantTextContextMenuProps> =
   onAddToChat,
   onInsertToInlineEdit
 }) => {
+  const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
 
   // 点击外部关闭菜单
   useEffect(() => {
@@ -132,7 +135,7 @@ export const AssistantTextContextMenu: React.FC<AssistantTextContextMenuProps> =
           </svg>
         </div>
         <div className="assistant-text-context-menu-item-label">
-          插入到文档
+          {translateText('aiChatPanel.assistantTextContextMenu.insertToDocument', 'Insert into Document')}
         </div>
       </div>
 
@@ -149,7 +152,7 @@ export const AssistantTextContextMenu: React.FC<AssistantTextContextMenuProps> =
           </svg>
         </div>
         <div className="assistant-text-context-menu-item-label">
-          插入到内联编辑
+          {translateText('aiChatPanel.assistantTextContextMenu.insertToInlineEdit', 'Insert into Inline Edit')}
         </div>
       </div>
 
@@ -163,7 +166,7 @@ export const AssistantTextContextMenu: React.FC<AssistantTextContextMenuProps> =
           </svg>
         </div>
         <div className="assistant-text-context-menu-item-label">
-          添加到聊天
+          {translateText('aiChatPanel.assistantTextContextMenu.addToChat', 'Add to Chat')}
         </div>
       </div>
 
@@ -177,7 +180,7 @@ export const AssistantTextContextMenu: React.FC<AssistantTextContextMenuProps> =
           <Icon name="copy" size={16} />
         </div>
         <div className="assistant-text-context-menu-item-label">
-          复制
+          {translateText('aiChatPanel.assistantTextContextMenu.copy', 'Copy')}
         </div>
       </div>
     </div>

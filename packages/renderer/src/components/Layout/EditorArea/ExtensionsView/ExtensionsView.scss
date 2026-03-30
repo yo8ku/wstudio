@@ -1,0 +1,173 @@
+/**
+ * Built-in extensions workbench styles.
+ * Separates host-owned extension management from third-party plugin entry points.
+ */
+
+.extensions-view {
+  height: 100%;
+  padding: 18px 20px 24px;
+  overflow: auto;
+  color: var(--ws-editor-foreground);
+  background:
+    radial-gradient(circle at top right, rgba(47, 111, 237, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%);
+}
+
+.extensions-view__hero {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.extensions-view__hero-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--ws-tab-border, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  background: var(--ws-editor-background);
+  color: var(--ws-editor-foreground);
+  flex-shrink: 0;
+}
+
+.extensions-view__hero-copy {
+  min-width: 0;
+}
+
+.extensions-view__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.extensions-view__description {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ws-descriptionForeground, var(--ws-editor-foreground));
+  opacity: 0.8;
+}
+
+.extensions-view__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.extensions-view__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.extensions-view__section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.extensions-view__section-count {
+  font-size: 12px;
+  opacity: 0.68;
+}
+
+.extensions-view__state {
+  padding: 16px 18px;
+  border: 1px solid var(--ws-tab-border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 13px;
+}
+
+.extensions-view__state--error {
+  color: var(--ws-errorForeground, #f48771);
+}
+
+.extensions-view__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.extensions-view__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--ws-tab-border, rgba(255, 255, 255, 0.12));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ws-editor-background) 88%, white 12%);
+}
+
+.extensions-view__card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.extensions-view__card-title-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.extensions-view__card-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.extensions-view__card-version {
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.extensions-view__status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+}
+
+.extensions-view__status.is-enabled {
+  color: var(--ws-charts-green, #4ec9b0);
+}
+
+.extensions-view__status.is-disabled {
+  color: var(--ws-descriptionForeground, var(--ws-editor-foreground));
+  opacity: 0.65;
+}
+
+.extensions-view__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.extensions-view__meta-separator {
+  opacity: 0.45;
+}
+
+.extensions-view__plugin-id {
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.extensions-view__card-description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.86;
+}

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icons/Icon';
 import './ModelThinking.scss';
 
@@ -33,6 +34,7 @@ export const ModelThinking: React.FC<ModelThinkingProps> = ({
   showDuration = true,
   className = ''
 }) => {
+  const { t } = useTranslation();
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [elapsedTime, setElapsedTime] = useState(0); // 实时计时（毫秒）
 
@@ -213,7 +215,9 @@ export const ModelThinking: React.FC<ModelThinkingProps> = ({
       {expandedSteps.size > 0 && onToggleExpand && !hasThinkingStep && (
         <div className="model-thinking-footer" onClick={onToggleExpand}>
           <Icon name="chevron-up" size={16}  />
-          <span className="model-thinking-collapse-text">收起深度思考</span>
+          <span className="model-thinking-collapse-text">
+            {String(t('modelThinking.collapse', { defaultValue: 'Collapse Deep Thinking' }))}
+          </span>
         </div>
       )}
     </div>

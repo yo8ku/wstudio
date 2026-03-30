@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../../../Icons/Icon';
 import { getOllamaTranslateService, SUPPORTED_LANGUAGES } from '../../../../services/translate';
 import './TranslatePanel.scss';
@@ -48,6 +49,9 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
   onClose,
   onApply,
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string =>
+    String(t(key, { defaultValue }));
   const [sourceText, setSourceText] = useState(initialText);
   const [targetText, setTargetText] = useState('');
   const [sourceLang, setSourceLang] = useState<string>(SUPPORTED_LANGUAGES.AUTO);
@@ -122,14 +126,24 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
       // 检查服务是否可用
       const isHealthy = await translateService.checkHealth();
       if (!isHealthy) {
-        setError('Ollama 服务不可用，请确保 Ollama 正在运行');
+        setError(
+          translateText(
+            'tableDesigner.translatePanel.errors.ollamaUnavailable',
+            'Ollama is unavailable. Make sure Ollama is running.',
+          ),
+        );
         return;
       }
       
       // 检查模型是否存在
       const hasModel = await translateService.hasTranslateModel();
       if (!hasModel) {
-        setError('翻译模型未安装，请先下载模型');
+        setError(
+          translateText(
+            'tableDesigner.translatePanel.errors.modelMissing',
+            'The translation model is not installed. Download the model first.',
+          ),
+        );
         return;
       }
       
@@ -141,7 +155,7 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
       
       setTargetText(result.translatedText);
     } catch (err) {
-      setError('翻译失败，请重试');
+      setError(translateText('tableDesigner.translatePanel.errors.failed', 'Translation failed. Try again.'));
       console.error('[TranslatePanel] 翻译错误:', err);
     } finally {
       setIsTranslating(false);
@@ -172,7 +186,9 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
 
   // 获取语言标签
   const getLanguageLabel = (value: string): string => {
-    if (value === SUPPORTED_LANGUAGES.AUTO) return '自动检测';
+    if (value === SUPPORTED_LANGUAGES.AUTO) {
+      return translateText('tableDesigner.translatePanel.autoDetect', 'Auto Detect');
+    }
     return LANGUAGE_OPTIONS.find(opt => opt.value === value)?.label || value;
   };
 
@@ -190,7 +206,9 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
     >
       {/* 头部 */}
       <div className="translate-panel-header">
-        <span className="translate-panel-title">翻译</span>
+        <span className="translate-panel-title">
+          {translateText('tableDesigner.translatePanel.title', 'Translate')}
+        </span>
         <span className="translate-panel-close" onClick={onClose}>
           <Icon name="close" size={14} />
         </span>
@@ -213,7 +231,7 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
                 className={`translate-panel-lang-option ${sourceLang === SUPPORTED_LANGUAGES.AUTO ? 'selected' : ''}`}
                 onClick={() => { setSourceLang(SUPPORTED_LANGUAGES.AUTO); setShowSourceDropdown(false); }}
               >
-                自动检测
+                {translateText('tableDesigner.translatePanel.autoDetect', 'Auto Detect')}
               </div>
               {LANGUAGE_OPTIONS.map(opt => (
                 <div
@@ -232,7 +250,7 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
         <span
           className={`translate-panel-swap ${sourceLang === SUPPORTED_LANGUAGES.AUTO ? 'disabled' : ''}`}
           onClick={handleSwapLanguages}
-          title="交换语言"
+          title={translateText('tableDesigner.translatePanel.swapLanguages', 'Swap Languages')}
         >
           <Icon name="refresh" size={14} />
         </span>
@@ -270,7 +288,7 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
             className="translate-panel-textarea"
             value={sourceText}
             onChange={(e) => setSourceText(e.target.value)}
-            placeholder="输入要翻译的文本..."
+            placeholder={translateText('tableDesigner.translatePanel.inputPlaceholder', 'Enter text to translate...')}
           />
         </div>
 
@@ -280,7 +298,9 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
             className={`translate-panel-btn translate-panel-btn-primary ${isTranslating ? 'loading' : ''}`}
             onClick={handleTranslate}
           >
-            {isTranslating ? '翻译中...' : '翻译'}
+            {isTranslating
+              ? translateText('tableDesigner.translatePanel.translating', 'Translating...')
+              : translateText('tableDesigner.translatePanel.translate', 'Translate')}
           </span>
         </div>
 
@@ -296,14 +316,14 @@ export const TranslatePanel: React.FC<TranslatePanelProps> = ({
         {targetText && (
           <div className="translate-panel-result-area">
             <div className="translate-panel-result-header">
-              <span>翻译结果</span>
+              <span>{translateText('tableDesigner.translatePanel.resultTitle', 'Translation Result')}</span>
             </div>
             <div className="translate-panel-result">
               {targetText}
             </div>
             <div className="translate-panel-result-actions">
               <span className="translate-panel-btn" onClick={handleApply}>
-                应用
+                {translateText('tableDesigner.translatePanel.apply', 'Apply')}
               </span>
             </div>
           </div>

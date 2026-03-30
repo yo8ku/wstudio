@@ -4,6 +4,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { LuArrowDownZA } from 'react-icons/lu';
+import { useTranslation } from 'react-i18next';
 import { VscClearAll, VscCollapseAll, VscRefresh } from 'react-icons/vsc';
 import type {
   WorkbenchContributionSnapshot,
@@ -55,51 +56,23 @@ const SEARCH_SORT_MENU_WIDTH = 220;
 
 const SEARCH_SORT_MENU_OPTIONS: readonly {
   readonly mode: SearchSortMode;
-  readonly label: string;
+  readonly translationKey: string;
+  readonly defaultLabel: string;
 }[] = [
-  { mode: 'fileNameAsc', label: '文件名（A-Z）' },
-  { mode: 'fileNameDesc', label: '文件名（Z-A）' },
-  { mode: 'updatedAtDesc', label: '编辑时间（从新到旧）' },
-  { mode: 'updatedAtAsc', label: '编辑时间（从旧到新）' },
-  { mode: 'createdAtDesc', label: '创建时间（从新到旧）' },
-  { mode: 'createdAtAsc', label: '创建时间（从旧到新）' },
+  { mode: 'fileNameAsc', translationKey: 'sidebar.searchSort.fileNameAsc', defaultLabel: 'File Name (A-Z)' },
+  { mode: 'fileNameDesc', translationKey: 'sidebar.searchSort.fileNameDesc', defaultLabel: 'File Name (Z-A)' },
+  { mode: 'updatedAtDesc', translationKey: 'sidebar.searchSort.updatedAtDesc', defaultLabel: 'Updated Time (Newest First)' },
+  { mode: 'updatedAtAsc', translationKey: 'sidebar.searchSort.updatedAtAsc', defaultLabel: 'Updated Time (Oldest First)' },
+  { mode: 'createdAtDesc', translationKey: 'sidebar.searchSort.createdAtDesc', defaultLabel: 'Created Time (Newest First)' },
+  { mode: 'createdAtAsc', translationKey: 'sidebar.searchSort.createdAtAsc', defaultLabel: 'Created Time (Oldest First)' },
 ];
-
-function getSidebarTitle(
-  activeView: ActivityBarItem,
-  pluginContainerTitle: string | null,
-): string {
-  if (pluginContainerTitle) {
-    return pluginContainerTitle;
-  }
-
-  switch (activeView) {
-    case 'explorer':
-      return '资源管理器';
-    case 'search':
-      return '搜索';
-    case 'extensions':
-      return '扩展插件';
-    case 'knowledge-base':
-      return '知识库';
-    case 'ai-model':
-      return 'AI 模型';
-    case 'user':
-      return '用户';
-    case 'settings':
-      return '设置';
-    case 'media':
-      return '素材管理';
-    default:
-      return '';
-  }
-}
 
 export function Sidebar({
   activeView,
   onClose,
   workbenchContributions,
 }: SidebarProps): JSX.Element {
+  const { t } = useTranslation();
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -115,6 +88,7 @@ export function Sidebar({
   const menuButtonRef = useRef<HTMLDivElement>(null);
   const searchSortButtonRef = useRef<HTMLDivElement>(null);
   const { sidebarPosition } = useActivityBarStore();
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
 
   const activePluginContainer = isPluginActivityBarItem(activeView)
     ? (
@@ -133,7 +107,32 @@ export function Sidebar({
   const sidebarTitleMenus = workbenchContributions?.menus.filter(
     menu => menu.location === 'sidebar/title',
   ) ?? [];
-  const title = getSidebarTitle(activeView, activePluginContainer?.title ?? null);
+  const title = (() => {
+    if (activePluginContainer?.title) {
+      return activePluginContainer.title;
+    }
+
+    switch (activeView) {
+      case 'explorer':
+        return translateText('sidebar.titles.explorer', 'Explorer');
+      case 'search':
+        return translateText('sidebar.titles.search', 'Search');
+      case 'extensions':
+        return translateText('sidebar.titles.extensions', 'Extensions');
+      case 'knowledge-base':
+        return translateText('sidebar.titles.knowledgeBase', 'Knowledge Base');
+      case 'ai-model':
+        return translateText('sidebar.titles.aiModel', 'AI Models');
+      case 'user':
+        return translateText('sidebar.titles.user', 'User');
+      case 'settings':
+        return translateText('sidebar.titles.settings', 'Settings');
+      case 'media':
+        return translateText('sidebar.titles.media', 'Media Library');
+      default:
+        return '';
+    }
+  })();
 
   const getBuiltInMenuItems = (): SidebarHeaderMenuItem[] => {
     switch (activeView) {
@@ -141,7 +140,7 @@ export function Sidebar({
         return [
           {
             id: 'outline',
-            label: '大纲',
+            label: translateText('sidebar.menus.explorer.outline', 'Outline'),
             checked: outlineChecked,
             onClick: () => {
               setOutlineChecked(!outlineChecked);
@@ -155,7 +154,7 @@ export function Sidebar({
           },
           {
             id: 'import-notes-header',
-            label: '其他笔记',
+            label: translateText('sidebar.menus.explorer.otherNotes', 'Other Notes'),
             disabled: true,
           },
           {
@@ -172,7 +171,7 @@ export function Sidebar({
           },
           {
             id: 'import-yuque',
-            label: '语雀',
+            label: translateText('sidebar.menus.explorer.yuque', 'Yuque'),
             icon: <YuqueIcon size={16} />,
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
@@ -208,7 +207,7 @@ export function Sidebar({
           },
           {
             id: 'import-siyuan',
-            label: '思源笔记',
+            label: translateText('sidebar.menus.explorer.siyuan', 'SiYuan Notes'),
             icon: <SiyuanIcon size={16} />,
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
@@ -220,7 +219,7 @@ export function Sidebar({
           },
           {
             id: 'import-feishu',
-            label: '飞书',
+            label: translateText('sidebar.menus.explorer.feishu', 'Feishu'),
             icon: <FeishuIcon size={16} />,
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
@@ -237,7 +236,7 @@ export function Sidebar({
           },
           {
             id: 'kouzi',
-            label: '扣子智能体',
+            label: translateText('sidebar.menus.explorer.kouzi', 'Kouzi Agent'),
             icon: <KouziIcon size={16} />,
             actionIcon: <Icon name="settings" size={14} />,
             onClick: () => {
@@ -252,14 +251,14 @@ export function Sidebar({
         return [
           {
             id: 'refresh-search',
-            label: '刷新',
+            label: translateText('sidebar.menus.search.refresh', 'Refresh'),
             onClick: () => {
               console.log('刷新搜索');
             },
           },
           {
             id: 'clear-search',
-            label: '清除搜索结果',
+            label: translateText('sidebar.menus.search.clearResults', 'Clear Search Results'),
             onClick: () => {
               console.log('清除搜索结果');
             },
@@ -269,14 +268,14 @@ export function Sidebar({
         return [
           {
             id: 'add-folder',
-            label: '添加文件夹',
+            label: translateText('sidebar.menus.knowledgeBase.addFolder', 'Add Folder'),
             onClick: () => {
               console.log('添加文件夹到知识库');
             },
           },
           {
             id: 'refresh-kb',
-            label: '刷新',
+            label: translateText('sidebar.menus.knowledgeBase.refresh', 'Refresh'),
             onClick: () => {
               console.log('刷新知识库');
             },
@@ -288,7 +287,7 @@ export function Sidebar({
           },
           {
             id: 'kb-settings',
-            label: '知识库设置',
+            label: translateText('sidebar.menus.knowledgeBase.settings', 'Knowledge Base Settings'),
             onClick: () => {
               console.log('打开知识库设置');
             },
@@ -302,7 +301,7 @@ export function Sidebar({
         return [
           {
             id: 'profile',
-            label: '个人资料',
+            label: translateText('sidebar.menus.user.profile', 'Profile'),
             onClick: () => {
               console.log('查看个人资料');
             },
@@ -314,7 +313,7 @@ export function Sidebar({
           },
           {
             id: 'logout',
-            label: '退出登录',
+            label: translateText('sidebar.menus.user.logout', 'Log Out'),
             onClick: () => {
               console.log('退出登录');
             },
@@ -324,7 +323,7 @@ export function Sidebar({
         return [
           {
             id: 'reset-settings',
-            label: '重置所有设置',
+            label: translateText('sidebar.menus.settings.resetAll', 'Reset All Settings'),
             onClick: () => {
               console.log('重置所有设置');
             },
@@ -336,14 +335,14 @@ export function Sidebar({
           },
           {
             id: 'export-settings',
-            label: '导出设置',
+            label: translateText('sidebar.menus.settings.export', 'Export Settings'),
             onClick: () => {
               console.log('导出设置');
             },
           },
           {
             id: 'import-settings',
-            label: '导入设置',
+            label: translateText('sidebar.menus.settings.import', 'Import Settings'),
             onClick: () => {
               console.log('导入设置');
             },
@@ -478,7 +477,7 @@ export function Sidebar({
 
   const searchSortMenuItems: SidebarHeaderMenuItem[] = SEARCH_SORT_MENU_OPTIONS.map((option) => ({
     id: option.mode,
-    label: option.label,
+    label: translateText(option.translationKey, option.defaultLabel),
     checked: searchSortMode === option.mode,
     onClick: () => {
       setSearchSortMode(option.mode);
@@ -555,8 +554,8 @@ export function Sidebar({
               <PressableControl
                 className="sidebar-header-action"
                 onPress={() => setSearchRefreshActionId((currentId) => currentId + 1)}
-                aria-label="刷新搜索"
-                title="刷新搜索"
+                aria-label={translateText('sidebar.headerActions.refreshSearch', 'Refresh Search')}
+                title={translateText('sidebar.headerActions.refreshSearch', 'Refresh Search')}
               >
                 <VscRefresh size={15} />
               </PressableControl>
@@ -564,24 +563,24 @@ export function Sidebar({
                 ref={searchSortButtonRef}
                 className="sidebar-header-action sidebar-header-action--sort"
                 onPress={handleSearchSortMenuClick}
-                aria-label="排序"
-                title="排序"
+                aria-label={translateText('sidebar.headerActions.sort', 'Sort')}
+                title={translateText('sidebar.headerActions.sort', 'Sort')}
               >
                 <LuArrowDownZA size={15} />
               </PressableControl>
               <PressableControl
                 className="sidebar-header-action sidebar-header-action--collapse"
                 onPress={() => setSearchCollapseAllActionId((currentId) => currentId + 1)}
-                aria-label="鍏ㄩ儴鎶樺彔鎼滅储缁撴灉"
-                title="鍏ㄩ儴鎶樺彔鎼滅储缁撴灉"
+                aria-label={translateText('sidebar.headerActions.collapseAll', 'Collapse All')}
+                title={translateText('sidebar.headerActions.collapseAll', 'Collapse All')}
               >
                 <VscCollapseAll size={15} />
               </PressableControl>
               <PressableControl
                 className="sidebar-header-action sidebar-header-action--clear"
                 onPress={() => setSearchClearActionId((currentId) => currentId + 1)}
-                aria-label="清除搜索结果"
-                title="清除搜索结果"
+                aria-label={translateText('sidebar.headerActions.clearSearchResults', 'Clear Search Results')}
+                title={translateText('sidebar.headerActions.clearSearchResults', 'Clear Search Results')}
               >
                 <VscClearAll size={15} />
               </PressableControl>
@@ -592,8 +591,8 @@ export function Sidebar({
               ref={menuButtonRef}
               className="sidebar-header-action"
               onPress={handleMenuClick}
-              aria-label="更多选项"
-              title="更多选项"
+              aria-label={translateText('sidebar.headerActions.moreOptions', 'More Options')}
+              title={translateText('sidebar.headerActions.moreOptions', 'More Options')}
             >
               <Icon name="more-horizontal" size={16} />
             </PressableControl>

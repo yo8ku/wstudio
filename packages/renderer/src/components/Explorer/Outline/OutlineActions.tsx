@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { LuChevronsDownUp } from 'react-icons/lu';
 import { Icon } from '../../Icons/Icon';
 
@@ -13,12 +14,14 @@ export const OutlineActions: React.FC<OutlineActionsProps> = ({
   onFilter,
   onCollapse,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="outline-actions">
       {onCollapse && (
         <div
           className="outline-action-button"
-          title="折叠全部"
+          title={String(t('explorerView.headers.collapseAll', { defaultValue: 'Collapse All' }))}
           onClick={onCollapse}
         >
           <LuChevronsDownUp size={16} />
@@ -27,7 +30,7 @@ export const OutlineActions: React.FC<OutlineActionsProps> = ({
       {onFilter && (
         <div
           className="outline-action-button"
-          title="筛选"
+          title={String(t('tableDesigner.toolbar.filter', { defaultValue: 'Filter' }))}
           onClick={onFilter}
         >
           <Icon name="filter" size={16} />

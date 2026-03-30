@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { CustomScrollbar } from '../../common/CustomScrollbar';
 import { TreeView } from '../Common/TreeView';
 import { OutlineNode } from './OutlineNode';
@@ -23,26 +24,32 @@ export const OutlineSection: React.FC<OutlineSectionProps> = ({
   selectedNode,
   onNodeSelect,
   onNodeToggle,
-}) => (
-  <div className="outline-section">
-    <CustomScrollbar className="outline-content" scrollbarWidth={10}>
-      {nodes.length === 0 ? (
-        <div className="outline-empty">活动编辑器无法提供大纲信息</div>
-      ) : (
-        <TreeView>
-          {nodes.map((node) => (
-            <OutlineNode
-              key={node.id}
-              node={node}
-              selectedNodeId={selectedNode?.id}
-              onSelect={onNodeSelect}
-              onToggle={onNodeToggle}
-            />
-          ))}
-        </TreeView>
-      )}
-    </CustomScrollbar>
-  </div>
-);
+}) => {
+  const { t } = useTranslation();
+
+  return (
+    <div className="outline-section">
+      <CustomScrollbar className="outline-content" scrollbarWidth={10}>
+        {nodes.length === 0 ? (
+          <div className="outline-empty">
+            {String(t('outlineSection.empty.unavailable', { defaultValue: 'Unable to provide outline information' }))}
+          </div>
+        ) : (
+          <TreeView>
+            {nodes.map((node) => (
+              <OutlineNode
+                key={node.id}
+                node={node}
+                selectedNodeId={selectedNode?.id}
+                onSelect={onNodeSelect}
+                onToggle={onNodeToggle}
+              />
+            ))}
+          </TreeView>
+        )}
+      </CustomScrollbar>
+    </div>
+  );
+};
 
 export default OutlineSection;

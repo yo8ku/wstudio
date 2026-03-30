@@ -10,11 +10,12 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@lancedb/lancedb": "^0.22.3",
-    "@langchain/textsplitters": "^1.0.1",
-    "@note-studio/extension-runtime": "workspace:*",
-    "@note-studio/global-rag": "workspace:*",
-    "@note-studio/note-system": "workspace:*",
+      "@lancedb/lancedb": "^0.22.3",
+      "@langchain/textsplitters": "^1.0.1",
+      "@note-studio/plugin-api": "workspace:*",
+      "@note-studio/extension-runtime": "workspace:*",
+      "@note-studio/global-rag": "workspace:*",
+      "@note-studio/note-system": "workspace:*",
     "@note-studio/shared": "workspace:*",
     "@note-studio/theme": "workspace:*",
     "better-sqlite3": "^11.0.0",

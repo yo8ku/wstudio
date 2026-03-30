@@ -1,35 +1,26 @@
 /**
- * 创建知识库对话框组件
- * 功能：提供创建编辑知识库的UI和交互
- * 描述：支持输入知识库名称、上传封面、添加描述
+ * Create knowledge base dialog component.
+ * Supports creating and editing knowledge base metadata.
  */
 
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { AddFileIcon } from './KnowledgeBaseIcons';
 import { KnowledgeItem } from './types';
 
 interface CreateKnowledgeDialogProps {
-  /** 是否显示对话框 */
   visible: boolean;
-  /** 关闭对话框回调 */
   onClose: () => void;
-  /** 创建知识库回调 */
   onCreate: (data: KnowledgeBaseData) => void;
-  /** 编辑模式：要编辑的知识库 */
   editItem?: KnowledgeItem;
-  /** 编辑回调 */
   onEdit?: (id: string, data: KnowledgeBaseData) => void;
 }
 
 export interface KnowledgeBaseData {
-  /** 知识库名称 */
   name: string;
-  /** 封面图片 */
   cover?: File;
-  /** 描述 */
   description: string;
-  /** 封面 Base64（编辑时使用） */
   coverBase64?: string;
 }
 
@@ -40,123 +31,117 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
   editItem,
   onEdit,
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string =>
+    String(t(key, { defaultValue }));
   const coverInputRef = useRef<HTMLInputElement>(null);
-  const isEditMode = !!editItem;
-  
+  const isEditMode = Boolean(editItem);
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [coverPreview, setCoverPreview] = useState<string>('');
+  const [coverPreview, setCoverPreview] = useState('');
   const [coverFile, setCoverFile] = useState<File | undefined>();
 
-  // 编辑模式：加载现有数据
   useEffect(() => {
     if (editItem) {
       setName(editItem.title || '');
       setDescription(editItem.metadata?.description || '');
       setCoverPreview(editItem.metadata?.cover || '');
       setCoverFile(undefined);
-    } else {
-      // 创建模式：重置表单
-      setName('');
-      setDescription('');
-      setCoverPreview('');
-      setCoverFile(undefined);
+      return;
     }
+
+    setName('');
+    setDescription('');
+    setCoverPreview('');
+    setCoverFile(undefined);
   }, [editItem, visible]);
 
-  if (!visible) return null;
+  if (!visible) {
+    return null;
+  }
 
-  /**
-   * 处理封面上传
-   */
-  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleCoverChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
       setCoverFile(file);
       const reader = new FileReader();
-      reader.onload = (event) => {
-        setCoverPreview(event.target?.result as string);
+      reader.onload = (loadEvent) => {
+        setCoverPreview(String(loadEvent.target?.result ?? ''));
       };
       reader.readAsDataURL(file);
     }
   };
 
-  /**
-   * 处理创建/编辑
-   */
   const handleCreate = () => {
     if (!name.trim()) {
-      alert('请输入知识库名称');
+      alert(translateText('knowledgeBase.createDialog.nameRequired', 'Enter the knowledge base name'));
       return;
     }
-    
+
     const data: KnowledgeBaseData = {
       name: name.trim(),
       cover: coverFile,
       description: description.trim(),
     };
 
-    // 如果是编辑模式且没有上传新封面，保留原封面
     if (isEditMode && !coverFile && coverPreview) {
       data.coverBase64 = coverPreview;
     }
-    
+
     if (isEditMode && editItem && onEdit) {
       onEdit(editItem.id, data);
     } else {
       onCreate(data);
     }
-    
-    // 重置表单
+
     setName('');
     setDescription('');
     setCoverPreview('');
     setCoverFile(undefined);
   };
 
-  const handleBrowseCover = () => {
-    coverInputRef.current?.click();
-  };
-
   const dialogContent = (
     <div className="create-knowledge-dialog-overlay" onClick={onClose}>
-      <div 
-        className="create-knowledge-dialog" 
-        onClick={(e) => e.stopPropagation()}
+      <div
+        className="create-knowledge-dialog"
+        onClick={(event) => event.stopPropagation()}
         style={{
           backgroundColor: 'var(--ws-editor-background)',
           borderColor: 'var(--ws-contrast-border)',
           color: 'var(--ws-editor-foreground)',
         }}
       >
-        {/* 对话框标题 */}
-        <div 
+        <div
           className="create-knowledge-dialog__header"
           style={{ borderColor: 'var(--ws-contrast-border)' }}
         >
           <h3 style={{ color: 'var(--ws-editor-foreground)' }}>
-            {isEditMode ? '编辑知识库' : '创建知识库'}
+            {isEditMode
+              ? translateText('knowledgeBase.createDialog.editTitle', 'Edit Knowledge Base')
+              : translateText('knowledgeBase.createDialog.createTitle', 'Create Knowledge Base')}
           </h3>
           <button
             className="create-knowledge-dialog__close"
             onClick={onClose}
             style={{ color: 'var(--ws-editor-foreground)' }}
+            title={translateText('knowledgeBase.createDialog.close', 'Close')}
           >
             ×
           </button>
         </div>
 
-        {/* 对话框内容 */}
         <div className="create-knowledge-dialog__body">
-          {/* 知识库名称 */}
           <div className="create-knowledge-dialog__section">
-            <label style={{ color: 'var(--ws-editor-foreground)' }}>知识库名称*</label>
+            <label style={{ color: 'var(--ws-editor-foreground)' }}>
+              {translateText('knowledgeBase.createDialog.nameLabel', 'Knowledge Base Name')}*
+            </label>
             <input
               type="text"
               className="create-knowledge-dialog__input"
-              placeholder="请输入知识库名称"
+              placeholder={translateText('knowledgeBase.createDialog.namePlaceholder', 'Enter the knowledge base name')}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(event) => setName(event.target.value)}
               style={{
                 backgroundColor: 'var(--ws-input-background)',
                 color: 'var(--ws-input-foreground)',
@@ -165,9 +150,10 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
             />
           </div>
 
-          {/* 封面上传 */}
           <div className="create-knowledge-dialog__section">
-            <label style={{ color: 'var(--ws-editor-foreground)' }}>封面</label>
+            <label style={{ color: 'var(--ws-editor-foreground)' }}>
+              {translateText('knowledgeBase.createDialog.coverLabel', 'Cover')}
+            </label>
             <input
               ref={coverInputRef}
               type="file"
@@ -175,36 +161,41 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
               onChange={handleCoverChange}
               style={{ display: 'none' }}
             />
-            <div 
+            <div
               className="create-knowledge-dialog__cover-upload"
-              onClick={handleBrowseCover}
+              onClick={() => coverInputRef.current?.click()}
               style={{
                 backgroundColor: 'var(--ws-input-background)',
                 borderColor: 'var(--ws-contrast-border)',
               }}
             >
               {coverPreview ? (
-                <img src={coverPreview} alt="封面预览" className="cover-preview" />
+                <img
+                  src={coverPreview}
+                  alt={translateText('knowledgeBase.createDialog.coverPreviewAlt', 'Cover Preview')}
+                  className="cover-preview"
+                />
               ) : (
-                <div 
+                <div
                   className="cover-placeholder"
                   style={{ color: 'var(--descriptionForeground)' }}
                 >
                   <AddFileIcon className="icon-add" />
-                  <span>点击上传封面</span>
+                  <span>{translateText('knowledgeBase.createDialog.uploadCover', 'Click to upload a cover image')}</span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* 描述 */}
           <div className="create-knowledge-dialog__section">
-            <label style={{ color: 'var(--ws-editor-foreground)' }}>描述</label>
+            <label style={{ color: 'var(--ws-editor-foreground)' }}>
+              {translateText('knowledgeBase.createDialog.descriptionLabel', 'Description')}
+            </label>
             <textarea
               className="create-knowledge-dialog__textarea"
-              placeholder="请输入知识库描述"
+              placeholder={translateText('knowledgeBase.createDialog.descriptionPlaceholder', 'Enter the knowledge base description')}
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(event) => setDescription(event.target.value)}
               rows={4}
               style={{
                 backgroundColor: 'var(--ws-input-background)',
@@ -216,8 +207,7 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
           </div>
         </div>
 
-        {/* 对话框底部 */}
-        <div 
+        <div
           className="create-knowledge-dialog__footer"
           style={{ borderColor: 'var(--ws-contrast-border)' }}
         >
@@ -230,7 +220,7 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
               borderColor: 'var(--ws-contrast-border)',
             }}
           >
-            取消
+            {translateText('knowledgeBase.createDialog.cancel', 'Cancel')}
           </button>
           <button
             className="create-knowledge-dialog__button create-knowledge-dialog__button--create"
@@ -243,7 +233,9 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
               opacity: !name.trim() ? 0.5 : 1,
             }}
           >
-            {isEditMode ? '保存' : '创建'}
+            {isEditMode
+              ? translateText('knowledgeBase.createDialog.save', 'Save')
+              : translateText('knowledgeBase.createDialog.create', 'Create')}
           </button>
         </div>
       </div>
@@ -252,4 +244,3 @@ export const CreateKnowledgeDialog: React.FC<CreateKnowledgeDialogProps> = ({
 
   return createPortal(dialogContent, document.body);
 };
-

@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLinkStore } from '../../../../stores/linkStore';
 import { useNoteStore } from '../../../../stores/noteStore';
 import { openNoteInEditor } from '../../../../utils/noteLinking';
@@ -7,7 +8,7 @@ import {
   LinkViewToolbar,
   createBacklinkCollectionItems,
   createMentionCollectionItems,
-  createOutlinkCollectionItems
+  createOutlinkCollectionItems,
 } from '../../../Links';
 import { Icon } from '../../../Icons';
 import './LinksPanel.scss';
@@ -33,8 +34,10 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
   onQueryChange = () => {},
   onToggleSearch = () => {},
   onSortChange = () => {},
-  onToggleContext = () => {}
+  onToggleContext = () => {},
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
   const {
     outlinks,
     backlinks,
@@ -42,9 +45,16 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
     isLoading,
     loadLinks,
     findUnlinkedMentions,
-    convertUnlinkedMention
+    convertUnlinkedMention,
   } = useLinkStore();
   const { currentNote, setCurrentNote } = useNoteStore();
+
+  const collectionTexts = useMemo(() => ({
+    unresolvedBadge: translateText('linksPanel.badges.unresolved', '未解析'),
+    sourceNoteFallback: translateText('linksPanel.defaults.sourceNote', '来源笔记'),
+    lineBadge: (lineNumber: number): string => translateText('linksPanel.badges.line', `第 ${lineNumber} 行`).replace('{{line}}', String(lineNumber)),
+    convertMentionAction: translateText('linksPanel.actions.convertMention', '转为链接'),
+  }), [t]);
 
   useEffect(() => {
     if (!currentNote) {
@@ -53,7 +63,7 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
 
     void Promise.all([
       loadLinks(currentNote.id),
-      findUnlinkedMentions(currentNote.id)
+      findUnlinkedMentions(currentNote.id),
     ]);
   }, [currentNote, findUnlinkedMentions, loadLinks]);
 
@@ -66,7 +76,7 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
       await openNoteInEditor(noteId, {
         lineNumber,
         column: 1,
-        setCurrentNote
+        setCurrentNote,
       });
     } catch (error) {
       console.error('[LinksPanel] Failed to open note:', error);
@@ -76,7 +86,7 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
   const handleConvertMention = async (
     sourceNoteId: string,
     position: { start: number; end: number },
-    matchedText: string
+    matchedText: string,
   ): Promise<void> => {
     if (!currentNote) {
       return;
@@ -87,12 +97,14 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
 
   if (!currentNote) {
     return (
-      <div className="links-panel links-panel-empty-state">
-        <div className="links-panel-empty">
-          <Icon name="links" size={42} />
-          <div className="links-panel-empty-title">{'\u8bf7\u5148\u6253\u5f00\u4e00\u7bc7\u7b14\u8bb0'}</div>
-          <div className="links-panel-empty-description">
-            {'\u6253\u5f00\u7b14\u8bb0\u540e\uff0c\u8fd9\u91cc\u4f1a\u663e\u793a\u51fa\u94fe\u3001\u53cd\u5411\u94fe\u63a5\u548c\u672a\u94fe\u63a5\u63d0\u53ca\u3002'}
+      <div className='links-panel links-panel-empty-state'>
+        <div className='links-panel-empty'>
+          <Icon name='links' size={42} />
+          <div className='links-panel-empty-title'>
+            {translateText('linksPanel.states.openNoteTitle', '请先打开一篇笔记')}
+          </div>
+          <div className='links-panel-empty-description'>
+            {translateText('linksPanel.states.openNoteDescription', '打开笔记后，这里会显示出链、反向链接和提及。')}
           </div>
         </div>
       </div>
@@ -100,11 +112,13 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
   }
 
   return (
-    <div className="links-panel">
-      <div className="links-panel-content">
+    <div className='links-panel'>
+      <div className='links-panel-content'>
         {isLoading ? (
-          <div className="links-panel-empty">
-            <div className="links-panel-empty-title">{'\u52a0\u8f7d\u4e2d...'}</div>
+          <div className='links-panel-empty'>
+            <div className='links-panel-empty-title'>
+              {translateText('linksPanel.states.loading', '加载中...')}
+            </div>
           </div>
         ) : (
           <>
@@ -113,11 +127,11 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
               sortBy={sortBy}
               isSearchVisible={isSearchVisible}
               showFullContext={showFullContext}
-              searchPlaceholder={'\u641c\u7d22\u51fa\u94fe\u3001\u53cd\u5411\u94fe\u63a5\u6216\u63d0\u53ca...'}
+              searchPlaceholder={translateText('linksPanel.toolbar.searchPlaceholder', '搜索出链、反向链接或提及...')}
               stats={[
-                { label: '\u51fa\u94fe', count: outlinks.length },
-                { label: '\u53cd\u5411\u94fe\u63a5', count: backlinks.length },
-                { label: '\u63d0\u53ca', count: unlinkedMentions.length }
+                { label: translateText('linksPanel.collections.outlinks', '出链'), count: outlinks.length },
+                { label: translateText('linksPanel.collections.backlinks', '反向链接'), count: backlinks.length },
+                { label: translateText('linksPanel.collections.mentions', '提及'), count: unlinkedMentions.length },
               ]}
               onQueryChange={onQueryChange}
               onToggleSearch={onToggleSearch}
@@ -126,9 +140,9 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
             />
 
             <LinkCollection
-              title={'\u51fa\u94fe'}
-              items={createOutlinkCollectionItems(outlinks, handleOpenNote)}
-              emptyText={'\u5f53\u524d\u7b14\u8bb0\u6ca1\u6709\u51fa\u94fe'}
+              title={translateText('linksPanel.collections.outlinks', '出链')}
+              items={createOutlinkCollectionItems(outlinks, handleOpenNote, collectionTexts)}
+              emptyText={translateText('linksPanel.emptyTexts.outlinks', '当前笔记没有出链')}
               defaultCollapsed
               resetKey={`${currentNote.id}-outlinks`}
               query={query}
@@ -137,9 +151,9 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
             />
 
             <LinkCollection
-              title={'\u53cd\u5411\u94fe\u63a5'}
-              items={createBacklinkCollectionItems(backlinks, handleOpenNote)}
-              emptyText={'\u5f53\u524d\u7b14\u8bb0\u6ca1\u6709\u53cd\u5411\u94fe\u63a5'}
+              title={translateText('linksPanel.collections.backlinks', '反向链接')}
+              items={createBacklinkCollectionItems(backlinks, handleOpenNote, collectionTexts)}
+              emptyText={translateText('linksPanel.emptyTexts.backlinks', '当前笔记没有反向链接')}
               defaultCollapsed
               resetKey={`${currentNote.id}-backlinks`}
               query={query}
@@ -148,13 +162,14 @@ export const LinksPanel: React.FC<LinksPanelProps> = ({
             />
 
             <LinkCollection
-              title={'\u63d0\u53ca'}
+              title={translateText('linksPanel.collections.mentions', '提及')}
               items={createMentionCollectionItems(
                 unlinkedMentions,
                 handleOpenNote,
-                handleConvertMention
+                handleConvertMention,
+                collectionTexts,
               )}
-              emptyText={'\u5f53\u524d\u7b14\u8bb0\u6ca1\u6709\u672a\u94fe\u63a5\u63d0\u53ca'}
+              emptyText={translateText('linksPanel.emptyTexts.mentions', '当前笔记没有提及')}
               defaultCollapsed
               resetKey={`${currentNote.id}-mentions`}
               query={query}

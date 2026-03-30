@@ -4,6 +4,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { useActivityBarStore } from '../../../stores/activityBarStore';
 import { Icon } from '../../Icons';
 import './ActivityBarContextMenu.scss';
@@ -21,6 +22,7 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
   y,
   onClose,
 }) => {
+  const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   const {
     visibility,
@@ -28,15 +30,19 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
     toggleVisibility,
     toggleSidebarPosition,
   } = useActivityBarStore();
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
 
   const menuItems: Array<{ id: keyof typeof visibility; label: string; checked: boolean }> = [
-    { id: 'explorer', label: '资源管理器', checked: visibility.explorer },
-    { id: 'search', label: '搜索', checked: visibility.search },
-    { id: 'extensions', label: '扩展插件', checked: visibility.extensions },
-    { id: 'knowledgeBase', label: '知识库', checked: visibility.knowledgeBase },
-    { id: 'aiModel', label: 'AI 模型', checked: visibility.aiModel },
-    { id: 'media', label: '素材管理', checked: visibility.media },
+    { id: 'explorer', label: translateText('sidebar.titles.explorer', 'Explorer'), checked: visibility.explorer },
+    { id: 'search', label: translateText('sidebar.titles.search', 'Search'), checked: visibility.search },
+    { id: 'extensions', label: translateText('sidebar.titles.extensions', 'Extensions'), checked: visibility.extensions },
+    { id: 'knowledgeBase', label: translateText('sidebar.titles.knowledgeBase', 'Knowledge Base'), checked: visibility.knowledgeBase },
+    { id: 'aiModel', label: translateText('sidebar.titles.aiModel', 'AI Models'), checked: visibility.aiModel },
+    { id: 'media', label: translateText('sidebar.titles.media', 'Media Library'), checked: visibility.media },
   ];
+  const toggleSidebarLabel = sidebarPosition === 'left'
+    ? translateText('sidebar.activityBarContextMenu.moveSidebarRight', 'Move Primary Sidebar Right')
+    : translateText('sidebar.activityBarContextMenu.moveSidebarLeft', 'Move Primary Sidebar Left');
 
   useEffect(() => {
     if (visible && menuRef.current) {
@@ -130,7 +136,7 @@ export const ActivityBarContextMenu: React.FC<ActivityBarContextMenuProps> = ({
       >
         <div className="activity-bar-context-menu-item-icon" />
         <div className="activity-bar-context-menu-item-label">
-          {sidebarPosition === 'left' ? '向右移动主侧栏' : '向左移动主侧栏'}
+          {toggleSidebarLabel}
         </div>
       </div>
     </div>

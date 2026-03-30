@@ -11,9 +11,13 @@ LaenceDBView/
 *.ps1
 
 技术文档/
+log/
 
 # 忽略临时文档
 docs/
+plugin-dev/
+
+plugins/
 
 # Build outputs (构建输出 - 通过编译生成)
 dist/

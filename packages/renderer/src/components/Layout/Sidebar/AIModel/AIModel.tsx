@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { updateModelCacheFromConfig } from '../../../../services/ModelCacheService';
 import { Icon } from '../../../Icons/Icon';
 import './AIModel.scss';
@@ -34,8 +35,10 @@ interface AIModelStorageConfig {
 }
 
 export const AIModel: React.FC = () => {
+  const { t } = useTranslation();
   const [configs, setConfigs] = useState<AIModelStorageConfig[]>([]);
   const [activeConfigIndex, setActiveConfigIndex] = useState<number | null>(null);
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
 
   // 从 SQLite 加载配置
   useEffect(() => {
@@ -202,8 +205,8 @@ export const AIModel: React.FC = () => {
       'xai': 'xAI Grok',
       'groq': 'Groq',
       'azure': 'Azure OpenAI',
-      'custom': '自定义',
-      'builtin': '内置模型'
+      'custom': translateText('aiModelSidebar.providers.custom', 'Custom'),
+      'builtin': translateText('aiModelSidebar.providers.builtin', 'Built-in Models')
     };
     return providerNames[providerId] || providerId;
   };
@@ -214,12 +217,17 @@ export const AIModel: React.FC = () => {
     <div className="sidebar-content ai-model-sidebar">
       {/* 顶部操作栏 */}
       <div className="ai-model-header">
-        <h3 className="ai-model-title">AI 模型配置 ({configs.length})</h3>
+        <h3 className="ai-model-title">
+          {String(t('aiModelSidebar.title', {
+            defaultValue: 'AI Model Configurations ({{count}})',
+            count: configs.length,
+          }))}
+        </h3>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button 
             className="btn-add-config" 
             onClick={addNewConfig}
-            title="添加新配置"
+            title={translateText('aiModelSidebar.actions.addConfig', 'Add Configuration')}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 3.5a.5.5 0 0 1 .5.5v3.5H12a.5.5 0 0 1 0 1H8.5V12a.5.5 0 0 1-1 0V8.5H4a.5.5 0 0 1 0-1h3.5V4a.5.5 0 0 1 .5-.5z"/>
@@ -230,7 +238,7 @@ export const AIModel: React.FC = () => {
 
       {configs.length === 0 ? (
         <div className="empty-state">
-          <p>暂无配置</p>
+          <p>{translateText('aiModelSidebar.empty', 'No configurations yet')}</p>
         </div>
       ) : (
         <div className="config-list">
@@ -244,7 +252,9 @@ export const AIModel: React.FC = () => {
                 <div className="config-name">
                   {config.name}
                   {config.isEnabled === false && (
-                    <span className="config-status-badge disabled">已禁用</span>
+                    <span className="config-status-badge disabled">
+                      {translateText('aiModelSidebar.disabled', 'Disabled')}
+                    </span>
                   )}
                 </div>
                 <div className="config-provider">
@@ -254,7 +264,7 @@ export const AIModel: React.FC = () => {
               <button 
                 className="btn-delete-config"
                 onClick={(e) => deleteConfig(config.id, e)}
-                title="删除配置"
+                title={translateText('aiModelSidebar.actions.deleteConfig', 'Delete Configuration')}
               >
                 <Icon name="delete" size={16} />
               </button>

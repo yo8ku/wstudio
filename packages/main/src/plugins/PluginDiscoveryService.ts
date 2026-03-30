@@ -13,6 +13,7 @@ import {
   type ExtensionManifestIssue,
   type ExtensionRuntimeDescriptor,
 } from '@note-studio/extension-runtime';
+import type { PluginManifest } from '@note-studio/plugin-api';
 import {
   EXTENSION_PLATFORM_VERSION,
   type ExtensionActivationEvent,
@@ -21,14 +22,23 @@ import {
 import { aiPanelActionRegistry } from './AIPanelActionRegistry';
 import { pluginCommandRegistry } from './PluginCommandRegistry';
 import { aiPanelContributionRegistry } from './AIPanelContributionRegistry';
+import type { PluginDescriptor } from './PluginDescriptor';
 import { workbenchContributionRegistry } from './WorkbenchContributionRegistry';
 
 const PLUGIN_MANIFEST_FILENAME = 'plugin.json';
 const PLUGIN_DIRECTORY_ENV_KEY = 'NOTE_STUDIO_EXTENSION_DIRS';
 
+type JsonRecord = {
+  readonly [key: string]: JsonValue;
+};
+
 interface PluginCandidate {
   readonly rootDirectory: string;
   readonly manifestPath: string;
+}
+
+export interface PluginDiscoveryOptions {
+  readonly roots?: readonly string[];
 }
 
 export interface PluginScanFailure {
@@ -53,11 +63,46 @@ function isPathInsideRoot(rootDirectory: string, targetPath: string): boolean {
     && !path.isAbsolute(relativePath);
 }
 
+function isJsonRecord(value: JsonValue): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: JsonValue | undefined): boolean {
+  return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
+function isLegacyPluginManifest(value: JsonValue): value is JsonRecord & PluginManifest {
+  if (!isJsonRecord(value)) {
+    return false;
+  }
+
+  return typeof value.id === 'string'
+    && value.id.trim().length > 0
+    && typeof value.name === 'string'
+    && value.name.trim().length > 0
+    && typeof value.version === 'string'
+    && value.version.trim().length > 0
+    && typeof value.apiVersion === 'string'
+    && value.apiVersion.trim().length > 0
+    && typeof value.main === 'string'
+    && value.main.trim().length > 0
+    && (value.displayName === undefined || typeof value.displayName === 'string')
+    && (value.description === undefined || typeof value.description === 'string')
+    && (value.publisher === undefined || typeof value.publisher === 'string')
+    && (value.activationEvents === undefined || isStringArray(value.activationEvents))
+    && (value.keywords === undefined || isStringArray(value.keywords))
+    && (value.enabledByDefault === undefined || typeof value.enabledByDefault === 'boolean')
+    && (value.contributes === undefined || isJsonRecord(value.contributes));
+}
+
 export class PluginDiscoveryService {
   private static instance: PluginDiscoveryService | null = null;
 
   private registry = new ExtensionRegistry();
+  private legacyDescriptors = new Map<string, PluginDescriptor>();
   private scanFailures: PluginScanFailure[] = [];
+  private resolvedRoots: string[] = [];
+  private legacyResolvedRoots: string[] = [];
   private initialized = false;
 
   public static getInstance(): PluginDiscoveryService {
@@ -72,6 +117,11 @@ export class PluginDiscoveryService {
     const summary = await this.scanInstalledPlugins();
     this.initialized = true;
     return summary;
+  }
+
+  public async discover(options: PluginDiscoveryOptions = {}): Promise<readonly PluginDescriptor[]> {
+    const roots = options.roots ? [...options.roots] : this.resolvePluginRoots();
+    return this.scanLegacyPlugins(roots);
   }
 
   public async reload(): Promise<PluginScanSummary> {
@@ -96,12 +146,28 @@ export class PluginDiscoveryService {
     return this.registry.findByActivationEvent(activationEvent);
   }
 
+  public getAll(): readonly PluginDescriptor[] {
+    return Array.from(this.legacyDescriptors.values());
+  }
+
   public getFailures(): readonly PluginScanFailure[] {
     return [...this.scanFailures];
   }
 
   public getPluginRoots(): readonly string[] {
+    if (this.resolvedRoots.length > 0) {
+      return [...this.resolvedRoots];
+    }
+
     return this.resolvePluginRoots();
+  }
+
+  public getResolvedRoots(): readonly string[] {
+    if (this.legacyResolvedRoots.length > 0) {
+      return [...this.legacyResolvedRoots];
+    }
+
+    return this.getPluginRoots();
   }
 
   private async scanInstalledPlugins(): Promise<PluginScanSummary> {
@@ -117,6 +183,7 @@ export class PluginDiscoveryService {
       await fs.mkdir(rootDirectory, { recursive: true });
     }
 
+    this.resolvedRoots = [...roots];
     const candidates = await this.collectPluginCandidates(roots);
     let registeredCount = 0;
 
@@ -139,6 +206,27 @@ export class PluginDiscoveryService {
     );
 
     return summary;
+  }
+
+  private async scanLegacyPlugins(roots: readonly string[]): Promise<readonly PluginDescriptor[]> {
+    this.legacyDescriptors.clear();
+    this.legacyResolvedRoots = [...roots];
+
+    for (const rootDirectory of roots) {
+      await fs.mkdir(rootDirectory, { recursive: true });
+    }
+
+    const candidates = await this.collectPluginCandidates(roots);
+    const descriptors: PluginDescriptor[] = [];
+
+    for (const candidate of candidates) {
+      const descriptor = await this.registerLegacyCandidate(candidate);
+      if (descriptor) {
+        descriptors.push(descriptor);
+      }
+    }
+
+    return descriptors;
   }
 
   private resolvePluginRoots(): readonly string[] {
@@ -194,6 +282,60 @@ export class PluginDiscoveryService {
     return Array.from(candidates.values()).sort((left, right) =>
       left.rootDirectory.localeCompare(right.rootDirectory, 'zh-CN'),
     );
+  }
+
+  private async registerLegacyCandidate(candidate: PluginCandidate): Promise<PluginDescriptor | null> {
+    let manifestSource = '';
+
+    try {
+      manifestSource = await fs.readFile(candidate.manifestPath, 'utf8');
+    } catch {
+      console.warn(`[PluginDiscoveryService] legacy manifest read failed: ${candidate.manifestPath}`);
+      return null;
+    }
+
+    let manifestJson: JsonValue;
+    try {
+      manifestJson = JSON.parse(manifestSource) as JsonValue;
+    } catch {
+      return null;
+    }
+
+    if (!isLegacyPluginManifest(manifestJson)) {
+      return null;
+    }
+
+    const manifest: PluginManifest = manifestJson;
+
+    const entryFilePath = path.resolve(candidate.rootDirectory, manifest.main);
+    if (!isPathInsideRoot(candidate.rootDirectory, entryFilePath)) {
+      return null;
+    }
+
+    try {
+      const stats = await fs.stat(entryFilePath);
+      if (!stats.isFile()) {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+
+    if (this.legacyDescriptors.has(manifest.id)) {
+      console.warn(`[PluginDiscoveryService] duplicate legacy plugin id: ${manifest.id}`);
+      return null;
+    }
+
+    const descriptor: PluginDescriptor = {
+      id: manifest.id,
+      manifest,
+      manifestPath: candidate.manifestPath,
+      rootDirectory: candidate.rootDirectory,
+      entryFilePath,
+    };
+
+    this.legacyDescriptors.set(descriptor.id, descriptor);
+    return descriptor;
   }
 
   private async getManifestPathIfExists(rootDirectory: string): Promise<string | null> {

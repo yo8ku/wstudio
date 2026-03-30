@@ -1,6 +1,13 @@
 import type { LinkItem, UnlinkedMentionItem } from '../../types/electron';
 import type { LinkCollectionChildItem, LinkCollectionItem } from './LinkCollection';
 
+interface LinkCollectionTexts {
+  unresolvedBadge?: string;
+  sourceNoteFallback?: string;
+  lineBadge?: (lineNumber: number) => string;
+  convertMentionAction?: string;
+}
+
 const hasLineNumber = (lineNumber?: number): lineNumber is number => typeof lineNumber === 'number';
 
 const getAnchorSuffix = (kind?: LinkItem['targetKind'], anchor?: string): string => {
@@ -12,7 +19,7 @@ const getAnchorSuffix = (kind?: LinkItem['targetKind'], anchor?: string): string
 };
 
 const buildWikilinkLabel = (
-  link: Pick<LinkItem, 'targetTitle' | 'displayText' | 'targetKind' | 'targetAnchor'>
+  link: Pick<LinkItem, 'targetTitle' | 'displayText' | 'targetKind' | 'targetAnchor'>,
 ): string => {
   const targetReference = `${link.targetTitle}${getAnchorSuffix(link.targetKind, link.targetAnchor)}`;
 
@@ -44,7 +51,7 @@ const pushGroupedChild = (
   groups: Map<string, LinkCollectionItem>,
   groupKey: string,
   createGroup: () => LinkCollectionItem,
-  child: LinkCollectionChildItem
+  child: LinkCollectionChildItem,
 ) => {
   const existingGroup = groups.get(groupKey);
 
@@ -60,11 +67,13 @@ const pushGroupedChild = (
 
 export const createOutlinkCollectionItems = (
   links: LinkItem[],
-  openNote: (noteId?: string) => void | Promise<void>
+  openNote: (noteId?: string) => void | Promise<void>,
+  texts: LinkCollectionTexts = {},
 ): LinkCollectionItem[] => {
+  const unresolvedBadge = texts.unresolvedBadge || '未解析';
   const groups = new Map<string, LinkCollectionItem>();
 
-  links.forEach(link => {
+  links.forEach((link) => {
     const groupKey = `${link.targetId || 'dangling'}:${link.targetTitle}`;
 
     pushGroupedChild(
@@ -73,8 +82,8 @@ export const createOutlinkCollectionItems = (
       () => ({
         id: `outlink-${groupKey}`,
         title: link.targetTitle,
-        badges: link.targetId ? [] : [{ label: '未解析', tone: 'warning' }],
-        children: []
+        badges: link.targetId ? [] : [{ label: unresolvedBadge, tone: 'warning' }],
+        children: [],
       }),
       {
         id: link.id,
@@ -82,9 +91,9 @@ export const createOutlinkCollectionItems = (
         context: link.context,
         sourceNoteId: link.sourceId,
         lineNumber: link.sourceLine,
-        badges: link.targetId ? [] : [{ label: '未解析', tone: 'warning' }],
-        onOpen: link.targetId ? () => openNote(link.targetId) : undefined
-      }
+        badges: link.targetId ? [] : [{ label: unresolvedBadge, tone: 'warning' }],
+        onOpen: link.targetId ? () => openNote(link.targetId) : undefined,
+      },
     );
   });
 
@@ -93,12 +102,15 @@ export const createOutlinkCollectionItems = (
 
 export const createBacklinkCollectionItems = (
   links: LinkItem[],
-  openNote: (noteId?: string, lineNumber?: number) => void | Promise<void>
+  openNote: (noteId?: string, lineNumber?: number) => void | Promise<void>,
+  texts: LinkCollectionTexts = {},
 ): LinkCollectionItem[] => {
+  const sourceNoteFallback = texts.sourceNoteFallback || '来源笔记';
+  const lineBadge = texts.lineBadge || ((lineNumber: number) => `第 ${lineNumber} 行`);
   const groups = new Map<string, LinkCollectionItem>();
 
-  links.forEach(link => {
-    const sourceTitle = link.sourceNoteTitle || '来源笔记';
+  links.forEach((link) => {
+    const sourceTitle = link.sourceNoteTitle || sourceNoteFallback;
     const groupKey = `${link.sourceId}:${sourceTitle}`;
 
     pushGroupedChild(
@@ -107,7 +119,7 @@ export const createBacklinkCollectionItems = (
       () => ({
         id: `backlink-${groupKey}`,
         title: sourceTitle,
-        children: []
+        children: [],
       }),
       {
         id: link.id,
@@ -115,9 +127,9 @@ export const createBacklinkCollectionItems = (
         context: link.context,
         sourceNoteId: link.sourceId,
         lineNumber: link.sourceLine,
-        badges: hasLineNumber(link.sourceLine) ? [{ label: `第${link.sourceLine}行` }] : [],
-        onOpen: () => openNote(link.sourceId, link.sourceLine)
-      }
+        badges: hasLineNumber(link.sourceLine) ? [{ label: lineBadge(link.sourceLine) }] : [],
+        onOpen: () => openNote(link.sourceId, link.sourceLine),
+      },
     );
   });
 
@@ -130,9 +142,11 @@ export const createMentionCollectionItems = (
   convertMention: (
     sourceNoteId: string,
     position: { start: number; end: number },
-    matchedText: string
-  ) => void | Promise<void>
+    matchedText: string,
+  ) => void | Promise<void>,
+  texts: LinkCollectionTexts = {},
 ): LinkCollectionItem[] => {
+  const convertMentionAction = texts.convertMentionAction || '转为链接';
   const groups = new Map<string, LinkCollectionItem>();
 
   mentions.forEach((mention, index) => {
@@ -144,7 +158,7 @@ export const createMentionCollectionItems = (
       () => ({
         id: `mention-${groupKey}`,
         title: mention.noteTitle,
-        children: []
+        children: [],
       }),
       {
         id: `${mention.noteId}-${mention.position.start}-${index}`,
@@ -154,10 +168,10 @@ export const createMentionCollectionItems = (
         lineNumber: mention.position.line,
         onOpen: () => openNote(mention.noteId, mention.position.line),
         action: {
-          label: '转为链接',
-          onTrigger: () => convertMention(mention.noteId, mention.position, mention.matchedText)
-        }
-      }
+          label: convertMentionAction,
+          onTrigger: () => convertMention(mention.noteId, mention.position, mention.matchedText),
+        },
+      },
     );
   });
 

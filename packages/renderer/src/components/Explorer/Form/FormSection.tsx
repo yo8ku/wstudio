@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import ExplorerSection from '../ExplorerSection';
 import { Icon } from '../../Icons/Icon';
 import { ContextMenu, type ContextMenuItem } from '../Common/ContextMenu';
@@ -77,6 +78,10 @@ export const FormSection: React.FC<FormSectionProps> = ({
   onRenameGroup,
   onDeleteGroup,
 }) => {
+  const { t } = useTranslation();
+  const translateText = useCallback((key: string, defaultValue: string): string => (
+    String(t(key, { defaultValue }))
+  ), [t]);
   const [isExpanded, setIsExpanded] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   // 鍙抽敭鑿滃崟鐘舵€?
@@ -95,6 +100,10 @@ export const FormSection: React.FC<FormSectionProps> = ({
   const [isResizing, setIsResizing] = useState(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
+
+  const buildDefaultGroupName = useCallback((count: number): string => (
+    translateText('formSection.defaults.groupName', '分组{{count}}').replace('{{count}}', String(count))
+  ), [translateText]);
 
   // 澶勭悊鏂板缓鎸夐挳鐐瑰嚮锛屾樉绀鸿彍鍗?
   const handleNewClick = useCallback((event?: React.MouseEvent<HTMLButtonElement>) => {
@@ -333,7 +342,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
     // 鏌ユ壘鎵€鏈変互"鍒嗙粍"寮€澶寸殑鍒嗙粍鍚嶇О锛屾彁鍙栨暟瀛?
     const groupNumbers = groups
       .map(g => {
-        const match = g.name.match(/^鍒嗙粍(\d+)$/);
+        const match = g.name.match(/^(?:分组|Group\s?)(\d+)$/i);
         return match ? parseInt(match[1], 10) : 0;
       })
       .filter(n => n > 0);
@@ -359,12 +368,12 @@ export const FormSection: React.FC<FormSectionProps> = ({
         label: '鏂板缓鍒嗙粍',
         icon: 'form-folder',
         onClick: () => {
-          const groupName = `鍒嗙粍${getNextGroupNumber()}`;
+          const groupName = buildDefaultGroupName(getNextGroupNumber());
           onNewGroup?.(groupName);
         },
       },
     ];
-  }, [onNewForm, onNewGroup, selectedGroupId, getNextGroupNumber]);
+  }, [buildDefaultGroupName, onNewForm, onNewGroup, selectedGroupId, getNextGroupNumber]);
 
   // 鏋勫缓绌虹櫧鍖哄煙鍙抽敭鑿滃崟
   const buildBlankAreaContextMenu = useCallback((): ContextMenuItem[] => {
@@ -382,12 +391,37 @@ export const FormSection: React.FC<FormSectionProps> = ({
         label: '鏂板缓鍒嗙粍',
         icon: 'form-folder',
         onClick: () => {
-          const groupName = `鍒嗙粍${getNextGroupNumber()}`;
+          const groupName = buildDefaultGroupName(getNextGroupNumber());
           onNewGroup?.(groupName);
         },
       },
     ];
-  }, [onNewForm, onNewGroup, getNextGroupNumber]);
+  }, [buildDefaultGroupName, onNewForm, onNewGroup, getNextGroupNumber]);
+
+  const translateContextMenuItems = useCallback((items: ContextMenuItem[]): ContextMenuItem[] => (
+    items.map((item) => {
+      switch (item.id) {
+        case 'new-form-in-group':
+        case 'new-form':
+          return { ...item, label: translateText('formSection.menu.newForm', '新建表单') };
+        case 'new-group':
+          return { ...item, label: translateText('formSection.menu.newGroup', '新建分组') };
+        case 'rename-group':
+        case 'rename-form':
+          return { ...item, label: translateText('formSection.menu.rename', '重命名') };
+        case 'delete-group':
+          return { ...item, label: translateText('formSection.menu.deleteGroup', '删除分组') };
+        case 'open-form':
+          return { ...item, label: translateText('formSection.menu.openForm', '打开表单') };
+        case 'open-form-in-new-tab':
+          return { ...item, label: translateText('formSection.menu.openInNewTab', '在新选项卡打开') };
+        case 'delete-form':
+          return { ...item, label: translateText('formSection.menu.deleteForm', '删除表单') };
+        default:
+          return item;
+      }
+    })
+  ), [translateText]);
 
   // 澶勭悊绌虹櫧鍖哄煙鍙抽敭鑿滃崟
   const handleBlankAreaContextMenu = useCallback((e: React.MouseEvent) => {
@@ -403,7 +437,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
     {
       id: 'new-form',
       icon: <Icon name="plus" size={14} />,
-      tooltip: '鏂板缓',
+      tooltip: translateText('formSection.actions.new', '新建'),
       onClick: handleNewClick,
     },
   ];
@@ -523,7 +557,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
         />
       )}
       <ExplorerSection
-        title={'\u6570\u636E'}
+        title={translateText('formSection.title', '数据')}
         expanded={isExpanded}
         toggleIconMode="form-on-idle"
         actions={isExpanded ? actions : []}
@@ -538,7 +572,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
           {!hasContent ? (
             <div className="form-empty">
               <Icon name="table-properties" size={24} className="empty-icon" />
-              <span>鏆傛棤琛ㄥ崟</span>
+              <span>{translateText('formSection.empty', '暂无表单')}</span>
             </div>
           ) : (
             <div className="form-list">
@@ -552,7 +586,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
       {/* 鏂板缓鑿滃崟 */}
       {menuPosition && (
         <ContextMenu
-          items={buildMenuItems()}
+          items={translateContextMenuItems(buildMenuItems())}
           position={menuPosition}
           onClose={handleCloseMenu}
         />
@@ -561,7 +595,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
       {/* 鍙抽敭鑿滃崟 */}
       {contextMenuState && (
         <ContextMenu
-          items={contextMenuState.items}
+          items={translateContextMenuItems(contextMenuState.items)}
           position={contextMenuState.position}
           onClose={handleCloseContextMenu}
         />

@@ -5,6 +5,7 @@
  */
 
 import React, { useRef, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../../../Icons/Icon';
 import './CellToolbar.scss';
 
@@ -59,6 +60,9 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
   onSmartTag,
   onQuickAsk,
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string =>
+    String(t(key, { defaultValue }));
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showPolishMenu, setShowPolishMenu] = useState(false);
@@ -171,22 +175,47 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
 
   // 润色菜单项
   const polishMenuItems: { id: PolishType; label: string }[] = [
-    { id: 'polish', label: '润色' },
-    { id: 'imitate', label: '仿写' },
-    { id: 'expand', label: '扩写' },
-    { id: 'shorten', label: '缩写' },
-    { id: 'improve', label: '写作改进' },
-    { id: 'grammar', label: '语法修正' },
+    { id: 'polish', label: translateText('tableDesigner.cellToolbar.polishMenu.polish', 'Polish') },
+    { id: 'imitate', label: translateText('tableDesigner.cellToolbar.polishMenu.imitate', 'Imitate') },
+    { id: 'expand', label: translateText('tableDesigner.cellToolbar.polishMenu.expand', 'Expand') },
+    { id: 'shorten', label: translateText('tableDesigner.cellToolbar.polishMenu.shorten', 'Shorten') },
+    { id: 'improve', label: translateText('tableDesigner.cellToolbar.polishMenu.improve', 'Improve Writing') },
+    { id: 'grammar', label: translateText('tableDesigner.cellToolbar.polishMenu.grammar', 'Fix Grammar') },
   ];
 
   // 更多菜单项
   const moreMenuItems: CellToolbarMenuItem[] = [
-    { id: 'summarize', label: '总结', icon: 'sparkles', onClick: handleSummarize },
-    { id: 'extract', label: '信息提取', icon: 'sparkles', onClick: handleExtract },
-    { id: 'smart-tag', label: '智能标签', icon: 'tag', onClick: handleSmartTag },
-    { id: 'quick-ask', label: '快速提问', icon: 'sparkles', onClick: handleQuickAsk },
+    {
+      id: 'summarize',
+      label: translateText('tableDesigner.cellToolbar.moreMenu.summarize', 'Summarize'),
+      icon: 'sparkles',
+      onClick: handleSummarize,
+    },
+    {
+      id: 'extract',
+      label: translateText('tableDesigner.cellToolbar.moreMenu.extract', 'Extract Information'),
+      icon: 'sparkles',
+      onClick: handleExtract,
+    },
+    {
+      id: 'smart-tag',
+      label: translateText('tableDesigner.cellToolbar.moreMenu.smartTag', 'Smart Tag'),
+      icon: 'tag',
+      onClick: handleSmartTag,
+    },
+    {
+      id: 'quick-ask',
+      label: translateText('tableDesigner.cellToolbar.moreMenu.quickAsk', 'Quick Ask'),
+      icon: 'sparkles',
+      onClick: handleQuickAsk,
+    },
     { id: 'separator', label: '', disabled: true },
-    { id: 'settings', label: '设置', icon: 'gear', onClick: () => setShowMoreMenu(false) },
+    {
+      id: 'settings',
+      label: translateText('tableDesigner.cellToolbar.moreMenu.settings', 'Settings'),
+      icon: 'gear',
+      onClick: () => setShowMoreMenu(false),
+    },
   ];
 
   return (
@@ -200,21 +229,33 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="cell-toolbar-content">
-        <span className="cell-toolbar-item" onClick={handleFill} title="填充">
+        <span
+          className="cell-toolbar-item"
+          onClick={handleFill}
+          title={translateText('tableDesigner.cellToolbar.actions.fill', 'Fill')}
+        >
           <Icon name="cell-fill" size={20} />
         </span>
         <span 
           ref={polishButtonRef}
           className={`cell-toolbar-item ${showPolishMenu ? 'active' : ''}`} 
           onClick={handlePolishClick} 
-          title="润色"
+          title={translateText('tableDesigner.cellToolbar.actions.polish', 'Polish')}
         >
           <Icon name="cell-polish" size={20} />
         </span>
-        <span className="cell-toolbar-item" onClick={handleTranslate} title="翻译">
+        <span
+          className="cell-toolbar-item"
+          onClick={handleTranslate}
+          title={translateText('tableDesigner.cellToolbar.actions.translate', 'Translate')}
+        >
           <Icon name="cell-translate" size={20} />
         </span>
-        <span className="cell-toolbar-item" onClick={handleViewData} title="数据查看">
+        <span
+          className="cell-toolbar-item"
+          onClick={handleViewData}
+          title={translateText('tableDesigner.cellToolbar.actions.viewData', 'View Data')}
+        >
           <Icon name="eye" size={20} />
         </span>
         <span className="cell-toolbar-divider" />
@@ -222,7 +263,7 @@ export const CellToolbar: React.FC<CellToolbarProps> = ({
           ref={moreButtonRef}
           className={`cell-toolbar-item ${showMoreMenu ? 'active' : ''}`}
           onClick={handleMoreClick}
-          title="更多"
+          title={translateText('tableDesigner.cellToolbar.actions.more', 'More')}
         >
           <Icon name="cell-more" size={20} />
         </span>

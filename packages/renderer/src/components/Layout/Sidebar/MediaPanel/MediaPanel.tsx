@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../../../Icons';
 import { ContextMenu, type ContextMenuItem } from '../../../../components/Explorer/Common/ContextMenu';
 import './MediaPanel.scss';
@@ -242,6 +243,10 @@ const VideoThumbnail: React.FC<{ src: string; alt: string; cacheKey: string }> =
 };
 
 export const MediaPanel: React.FC = () => {
+  const { t } = useTranslation();
+  const translateText = useCallback((key: string, defaultValue: string): string => (
+    String(t(key, { defaultValue }))
+  ), [t]);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filterType, setFilterType] = useState<FilterType>('image');
@@ -505,6 +510,27 @@ export const MediaPanel: React.FC = () => {
   // 过滤素材
   const filteredItems = mediaItems.filter(item => item.type === filterType);
 
+  const translateContextMenuItems = useCallback((items: ContextMenuItem[]): ContextMenuItem[] => (
+    items.map(menuItem => {
+      switch (menuItem.id) {
+        case 'select':
+          return { ...menuItem, label: translateText('mediaPanel.contextMenu.select', '选择') };
+        case 'clear-selection':
+          return { ...menuItem, label: translateText('mediaPanel.contextMenu.clearSelection', '清除选择') };
+        case 'preview':
+          return { ...menuItem, label: translateText('mediaPanel.contextMenu.preview', '预览') };
+        case 'open-in-explorer':
+          return { ...menuItem, label: translateText('mediaPanel.contextMenu.openInExplorer', '在资源管理器中打开') };
+        case 'rename':
+          return { ...menuItem, label: translateText('mediaPanel.contextMenu.rename', '重命名') };
+        case 'delete':
+          return { ...menuItem, label: translateText('mediaPanel.contextMenu.delete', '删除') };
+        default:
+          return menuItem;
+      }
+    })
+  ), [translateText]);
+
   // 格式化文件大小
   const formatSize = (bytes?: number) => {
     if (!bytes) return '';
@@ -529,15 +555,15 @@ export const MediaPanel: React.FC = () => {
           <button
             className="media-panel-btn"
             onClick={handleImportFiles}
-            title="导入文件"
+            title={translateText('mediaPanel.actions.importFiles', '导入文件')}
           >
             <Icon name="plus" size={14} />
-            <span>导入</span>
+            <span>{translateText('mediaPanel.actions.import', '导入')}</span>
           </button>
           <button
             className="media-panel-btn"
             onClick={handleImportFolder}
-            title="导入文件夹"
+            title={translateText('mediaPanel.actions.importFolder', '导入文件夹')}
           >
             <Icon name="new-folder" size={14} />
           </button>
@@ -545,7 +571,7 @@ export const MediaPanel: React.FC = () => {
             <button
               className="media-panel-btn media-panel-btn--danger"
               onClick={handleDeleteSelected}
-              title="删除选中"
+              title={translateText('mediaPanel.actions.deleteSelected', '删除选中')}
             >
               <Icon name="delete" size={14} />
             </button>
@@ -558,21 +584,21 @@ export const MediaPanel: React.FC = () => {
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as FilterType)}
           >
-            <option value="image">图片</option>
-            <option value="video">视频</option>
+            <option value="image">{translateText('mediaPanel.filters.image', '图片')}</option>
+            <option value="video">{translateText('mediaPanel.filters.video', '视频')}</option>
           </select>
           {/* 视图切换 */}
           <button
             className={`media-panel-btn ${viewMode === 'grid' ? 'active' : ''}`}
             onClick={() => setViewMode('grid')}
-            title="网格视图"
+            title={translateText('mediaPanel.views.grid', '网格视图')}
           >
             <Icon name="card-view" size={14} />
           </button>
           <button
             className={`media-panel-btn ${viewMode === 'list' ? 'active' : ''}`}
             onClick={() => setViewMode('list')}
-            title="列表视图"
+            title={translateText('mediaPanel.views.list', '列表视图')}
           >
             <Icon name="list-view" size={14} />
           </button>
@@ -584,13 +610,15 @@ export const MediaPanel: React.FC = () => {
         {isLoading ? (
           <div className="media-panel-loading">
             <Icon name="refresh" size={24} />
-            <span>加载中...</span>
+            <span>{translateText('mediaPanel.states.loading', '加载中...')}</span>
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="media-panel-empty">
             <Icon name="media" size={48} />
-            <p>暂无素材</p>
-            <p className="media-panel-empty-hint">点击"导入"按钮添加图片或视频</p>
+            <p>{translateText('mediaPanel.states.empty', '暂无素材')}</p>
+            <p className="media-panel-empty-hint">
+              {translateText('mediaPanel.states.emptyHint', '点击"导入"按钮添加图片或视频')}
+            </p>
           </div>
         ) : viewMode === 'grid' ? (
           <div className="media-panel-grid">
@@ -688,7 +716,7 @@ export const MediaPanel: React.FC = () => {
       {/* 右键菜单 */}
       {contextMenu && (
         <ContextMenu
-          items={getContextMenuItems(contextMenu.item)}
+          items={translateContextMenuItems(getContextMenuItems(contextMenu.item))}
           position={contextMenu.position}
           onClose={handleCloseContextMenu}
         />

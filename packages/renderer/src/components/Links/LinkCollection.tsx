@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icons';
 import './LinkCollection.scss';
 
@@ -415,6 +416,8 @@ export const LinkCollection: React.FC<LinkCollectionProps> = ({
   sortBy = 'default',
   showFullContext = false
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
   const initialViewState = resetKey ? linkCollectionStateCache[resetKey] : undefined;
   const [isCollapsed, setIsCollapsed] = useState(initialViewState?.isCollapsed ?? defaultCollapsed);
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>(initialViewState?.expandedItems ?? {});
@@ -751,8 +754,16 @@ export const LinkCollection: React.FC<LinkCollectionProps> = ({
                                       className={`link-collection-link-row-toggle is-top ${isLoadingContext ? 'is-active' : ''}`}
                                       role="button"
                                       tabIndex={0}
-                                      title={isLoadingContext ? '正在加载上下文' : shouldShowTopCollapseToggle ? '收起上下文' : '加载上方上下文'}
-                                      aria-label={isLoadingContext ? '正在加载上下文' : shouldShowTopCollapseToggle ? '收起上下文' : '加载上方上下文'}
+                                      title={isLoadingContext
+                                        ? translateText('linksPanel.contextActions.loading', '正在加载上下文')
+                                        : shouldShowTopCollapseToggle
+                                          ? translateText('linksPanel.contextActions.collapse', '收起上下文')
+                                          : translateText('linksPanel.contextActions.loadAbove', '加载上方上下文')}
+                                      aria-label={isLoadingContext
+                                        ? translateText('linksPanel.contextActions.loading', '正在加载上下文')
+                                        : shouldShowTopCollapseToggle
+                                          ? translateText('linksPanel.contextActions.collapse', '收起上下文')
+                                          : translateText('linksPanel.contextActions.loadAbove', '加载上方上下文')}
                                       onClick={(event) => {
                                         event.stopPropagation();
                                         if (!isLoadingContext) {
@@ -832,8 +843,12 @@ export const LinkCollection: React.FC<LinkCollectionProps> = ({
                                       className={`link-collection-link-row-toggle ${isLoadingContext ? 'is-active' : ''}`}
                                       role="button"
                                       tabIndex={0}
-                                      title={isLoadingContext ? '正在加载上下文' : '更多上下文'}
-                                      aria-label={isLoadingContext ? '正在加载上下文' : '更多上下文'}
+                                      title={isLoadingContext
+                                        ? translateText('linksPanel.contextActions.loading', '正在加载上下文')
+                                        : translateText('linksPanel.contextActions.loadMore', '加载更多上下文')}
+                                      aria-label={isLoadingContext
+                                        ? translateText('linksPanel.contextActions.loading', '正在加载上下文')
+                                        : translateText('linksPanel.contextActions.loadMore', '加载更多上下文')}
                                       onClick={(event) => {
                                         event.stopPropagation();
                                         if (!isLoadingContext) {
@@ -874,8 +889,16 @@ export const LinkCollection: React.FC<LinkCollectionProps> = ({
                                       className={`link-collection-link-row-toggle is-bottom ${isLoadingContext ? 'is-active' : ''}`}
                                       role="button"
                                       tabIndex={0}
-                                      title={isLoadingContext ? '正在加载上下文' : '更多上下文'}
-                                      aria-label={isLoadingContext ? '正在加载上下文' : '更多上下文'}
+                                      title={isLoadingContext
+                                        ? translateText('linksPanel.contextActions.loading', '正在加载上下文')
+                                        : shouldShowBottomCollapseToggle
+                                          ? translateText('linksPanel.contextActions.collapse', '收起上下文')
+                                          : translateText('linksPanel.contextActions.loadMore', '加载更多上下文')}
+                                      aria-label={isLoadingContext
+                                        ? translateText('linksPanel.contextActions.loading', '正在加载上下文')
+                                        : shouldShowBottomCollapseToggle
+                                          ? translateText('linksPanel.contextActions.collapse', '收起上下文')
+                                          : translateText('linksPanel.contextActions.loadMore', '加载更多上下文')}
                                       onClick={(event) => {
                                         event.stopPropagation();
                                         if (!isLoadingContext) {
@@ -996,7 +1019,7 @@ export const LinkCollection: React.FC<LinkCollectionProps> = ({
             </div>
           ) : (
             <div className="link-collection-empty">
-              {normalizedQuery ? '娌℃湁鍖归厤缁撴灉' : emptyText}
+              {normalizedQuery ? translateText('linksPanel.states.noMatches', '没有匹配结果') : emptyText}
             </div>
           )}
         </div>

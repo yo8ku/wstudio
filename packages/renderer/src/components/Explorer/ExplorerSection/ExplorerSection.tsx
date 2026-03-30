@@ -83,17 +83,17 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
           >
             <span className="explorer-section-toggle-icon">
               {useFolderIdleIcon && (
-                <Icon name="folder" size={16} className="explorer-section-folder-icon" />
+                <Icon name="folder" size={15} className="explorer-section-folder-icon" />
               )}
               {useFormIdleIcon && (
-                <Icon name="table-properties" size={16} className="explorer-section-form-icon" />
+                <Icon name="table-properties" size={15} className="explorer-section-form-icon" />
               )}
               {useEditorsIdleIcon && (
-                <Icon name="files-folder" size={16} className="explorer-section-editors-icon" />
+                <Icon name="files-folder" size={15} className="explorer-section-editors-icon" />
               )}
               <Icon
                 name={isExpanded ? 'chevron-down' : 'chevron-right'}
-                size={16}
+                size={15}
                 className="explorer-section-chevron"
               />
             </span>

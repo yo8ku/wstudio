@@ -9,11 +9,13 @@ import {
   type JsonValue,
   type WorkbenchBackgroundSettings,
 } from '@note-studio/shared';
+import { useTranslation } from 'react-i18next';
 import type { SettingsCategory } from '../../Layout/Sidebar/SettingsSidebar';
 import { DropdownMenu } from '@/components/common/DropdownMenu';
 import { SearchInput } from '@/components/common/SearchInput';
 import { EmbeddingConfig } from '@/components/EmbeddingConfig';
 import { BackgroundImageSettings } from '@/components/Settings/BackgroundImageSettings/BackgroundImageSettings';
+import { APP_LANGUAGE_SETTING_KEY, DEFAULT_APP_LANGUAGE } from '@/i18n';
 import { workbenchContributionService } from '@/services/WorkbenchContributionService';
 import './SettingsContent.scss';
 
@@ -58,12 +60,14 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   onActiveCategoryChange,
   scrollContainerRef 
 }) => {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<Record<string, SettingValue>>({});
   const [pluginSettingDefinitions, setPluginSettingDefinitions] = useState<readonly SettingDefinition[]>([]);
   const [jsonContent, setJsonContent] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [modifiedKeys, setModifiedKeys] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>('');
+  const translateText = (key: string): string => String(t(key));
 
   const syncSettingsState = (nextSettings: Record<string, SettingValue>): void => {
     const normalizedSettings = nextSettings ?? {};
@@ -76,8 +80,8 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     // 常用设置
     {
       key: 'editor.fontSize',
-      title: 'Font Size',
-      description: '控制字体大小（像素）',
+      title: translateText('settings.definitions.editorFontSize.title'),
+      description: translateText('settings.definitions.editorFontSize.description'),
       type: 'number',
       category: 'commonly-used',
       min: 8,
@@ -86,8 +90,8 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     },
     {
       key: 'editor.tabSize',
-      title: 'Tab Size',
-      description: '一个制表符等于的空格数',
+      title: translateText('settings.definitions.editorTabSize.title'),
+      description: translateText('settings.definitions.editorTabSize.description'),
       type: 'number',
       category: 'commonly-used',
       min: 1,
@@ -96,22 +100,22 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     },
     {
       key: 'files.autoSave',
-      title: 'Auto Save',
-      description: '控制脏文件的自动保存',
+      title: translateText('settings.definitions.filesAutoSave.title'),
+      description: translateText('settings.definitions.filesAutoSave.description'),
       type: 'select',
       category: 'commonly-used',
       options: [
-        { label: 'off', value: 'off' },
-        { label: 'afterDelay', value: 'afterDelay' },
-        { label: 'onFocusChange', value: 'onFocusChange' },
-        { label: 'onWindowChange', value: 'onWindowChange' },
+        { label: translateText('settings.options.autoSave.off'), value: 'off' },
+        { label: translateText('settings.options.autoSave.afterDelay'), value: 'afterDelay' },
+        { label: translateText('settings.options.autoSave.onFocusChange'), value: 'onFocusChange' },
+        { label: translateText('settings.options.autoSave.onWindowChange'), value: 'onWindowChange' },
       ],
       defaultValue: 'off',
     },
     {
       key: 'workbench.colorTheme',
-      title: 'Color Theme',
-      description: '指定工作台中使用的颜色主题',
+      title: translateText('settings.definitions.workbenchColorTheme.title'),
+      description: translateText('settings.definitions.workbenchColorTheme.description'),
       type: 'string',
       category: 'commonly-used',
       defaultValue: 'One Dark Pro',
@@ -120,8 +124,8 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     // 文本编辑
     {
       key: 'editor.lineHeight',
-      title: 'Line Height',
-      description: '控制行高',
+      title: translateText('settings.definitions.editorLineHeight.title'),
+      description: translateText('settings.definitions.editorLineHeight.description'),
       type: 'number',
       category: 'text-editor',
       min: 0,
@@ -130,45 +134,45 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     },
     {
       key: 'editor.insertSpaces',
-      title: 'Insert Spaces',
-      description: 'Tab 键时插入空格',
+      title: translateText('settings.definitions.editorInsertSpaces.title'),
+      description: translateText('settings.definitions.editorInsertSpaces.description'),
       type: 'boolean',
       category: 'text-editor',
       defaultValue: true,
     },
     {
       key: 'editor.wordWrap',
-      title: 'Word Wrap',
-      description: '控制折行方式',
+      title: translateText('settings.definitions.editorWordWrap.title'),
+      description: translateText('settings.definitions.editorWordWrap.description'),
       type: 'select',
       category: 'text-editor',
       options: [
-        { label: 'off', value: 'off' },
-        { label: 'on', value: 'on' },
-        { label: 'wordWrapColumn', value: 'wordWrapColumn' },
-        { label: 'bounded', value: 'bounded' },
+        { label: translateText('settings.options.wordWrap.off'), value: 'off' },
+        { label: translateText('settings.options.wordWrap.on'), value: 'on' },
+        { label: translateText('settings.options.wordWrap.wordWrapColumn'), value: 'wordWrapColumn' },
+        { label: translateText('settings.options.wordWrap.bounded'), value: 'bounded' },
       ],
       defaultValue: 'off',
     },
     {
       key: 'editor.minimap.enabled',
-      title: 'Minimap Enabled',
-      description: '控制是否显示小地图',
+      title: translateText('settings.definitions.editorMinimapEnabled.title'),
+      description: translateText('settings.definitions.editorMinimapEnabled.description'),
       type: 'boolean',
       category: 'text-editor',
       defaultValue: true,
     },
     {
       key: 'editor.lineNumbers',
-      title: 'Line Numbers',
-      description: '控制行号的显示',
+      title: translateText('settings.definitions.editorLineNumbers.title'),
+      description: translateText('settings.definitions.editorLineNumbers.description'),
       type: 'select',
       category: 'text-editor',
       options: [
-        { label: 'off', value: 'off' },
-        { label: 'on', value: 'on' },
-        { label: 'relative', value: 'relative' },
-        { label: 'interval', value: 'interval' },
+        { label: translateText('settings.options.lineNumbers.off'), value: 'off' },
+        { label: translateText('settings.options.lineNumbers.on'), value: 'on' },
+        { label: translateText('settings.options.lineNumbers.relative'), value: 'relative' },
+        { label: translateText('settings.options.lineNumbers.interval'), value: 'interval' },
       ],
       defaultValue: 'on',
     },
@@ -176,28 +180,28 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     // 工作台
     {
       key: 'workbench.iconTheme',
-      title: 'Icon Theme',
-      description: '指定工作台中使用的图标主题',
+      title: translateText('settings.definitions.workbenchIconTheme.title'),
+      description: translateText('settings.definitions.workbenchIconTheme.description'),
       type: 'string',
       category: 'workbench',
       defaultValue: 'vs-seti',
     },
     {
       key: 'workbench.sideBar.location',
-      title: 'Sidebar Location',
-      description: '控制侧边栏的位置',
+      title: translateText('settings.definitions.workbenchSidebarLocation.title'),
+      description: translateText('settings.definitions.workbenchSidebarLocation.description'),
       type: 'select',
       category: 'workbench',
       options: [
-        { label: 'left', value: 'left' },
-        { label: 'right', value: 'right' },
+        { label: translateText('settings.options.sidebarLocation.left'), value: 'left' },
+        { label: translateText('settings.options.sidebarLocation.right'), value: 'right' },
       ],
       defaultValue: 'left',
     },
     {
       key: 'workbench.activityBar.visible',
-      title: 'Activity Bar Visible',
-      description: '控制活动栏的可见性',
+      title: translateText('settings.definitions.workbenchActivityBarVisible.title'),
+      description: translateText('settings.definitions.workbenchActivityBarVisible.description'),
       type: 'boolean',
       category: 'workbench',
       defaultValue: true,
@@ -206,8 +210,8 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     // 窗口
     {
       key: 'workbench.background',
-      title: 'Background Image',
-      description: '配置工作台背景图片、透明度、模糊和铺满方式',
+      title: translateText('settings.definitions.workbenchBackground.title'),
+      description: translateText('settings.definitions.workbenchBackground.description'),
       type: 'object',
       category: 'workbench',
       defaultValue: {
@@ -221,8 +225,8 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
 
     {
       key: 'window.zoomLevel',
-      title: 'Zoom Level',
-      description: '调整窗口的缩放级别',
+      title: translateText('settings.definitions.windowZoomLevel.title'),
+      description: translateText('settings.definitions.windowZoomLevel.description'),
       type: 'number',
       category: 'window',
       min: -5,
@@ -231,8 +235,8 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     },
     {
       key: 'window.title',
-      title: 'Window Title',
-      description: '控制窗口标题',
+      title: translateText('settings.definitions.windowTitle.title'),
+      description: translateText('settings.definitions.windowTitle.description'),
       type: 'string',
       category: 'window',
       defaultValue: '${activeEditorShort}${separator}${rootName}',
@@ -241,23 +245,23 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     // AI
     {
       key: 'files.encoding',
-      title: 'Files Encoding',
-      description: '读写文件时使用的默认字符集编码',
+      title: translateText('settings.definitions.filesEncoding.title'),
+      description: translateText('settings.definitions.filesEncoding.description'),
       type: 'select',
       category: 'ai',
       options: [
-        { label: 'utf8', value: 'utf8' },
-        { label: 'utf8bom', value: 'utf8bom' },
-        { label: 'utf16le', value: 'utf16le' },
-        { label: 'utf16be', value: 'utf16be' },
-        { label: 'gbk', value: 'gbk' },
+        { label: translateText('settings.options.filesEncoding.utf8'), value: 'utf8' },
+        { label: translateText('settings.options.filesEncoding.utf8bom'), value: 'utf8bom' },
+        { label: translateText('settings.options.filesEncoding.utf16le'), value: 'utf16le' },
+        { label: translateText('settings.options.filesEncoding.utf16be'), value: 'utf16be' },
+        { label: translateText('settings.options.filesEncoding.gbk'), value: 'gbk' },
       ],
       defaultValue: 'utf8',
     },
     {
       key: 'search.useIgnoreFiles',
-      title: 'Use Ignore Files',
-      description: '控制在搜索中是否使用 .gitignore 和 .ignore 文件',
+      title: translateText('settings.definitions.searchUseIgnoreFiles.title'),
+      description: translateText('settings.definitions.searchUseIgnoreFiles.description'),
       type: 'boolean',
       category: 'ai',
       defaultValue: true,
@@ -265,10 +269,22 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     // Embedding 配置（特殊处理，使用自定义组件）
     {
       key: 'embedding.config',
-      title: 'Embedding 配置',
-      description: '配置云端 Embedding API，用于知识库向量化',
+      title: translateText('settings.definitions.embeddingConfig.title'),
+      description: translateText('settings.definitions.embeddingConfig.description'),
       type: 'object',
       category: 'ai',
+    },
+    {
+      key: APP_LANGUAGE_SETTING_KEY,
+      title: translateText('settings.definitions.applicationLanguage.title'),
+      description: translateText('settings.definitions.applicationLanguage.description'),
+      type: 'select',
+      category: 'application',
+      options: [
+        { label: translateText('settings.options.appLanguage.zhCN'), value: 'zh-CN' },
+        { label: translateText('settings.options.appLanguage.enUS'), value: 'en-US' },
+      ],
+      defaultValue: DEFAULT_APP_LANGUAGE,
     },
   ];
 
@@ -325,7 +341,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       }
     } catch (error) {
       console.error('加载设置失败:', error);
-      setError('加载设置失败');
+      setError(translateText('settings.errors.loadSettings'));
     }
   };
 
@@ -346,7 +362,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         })),
       );
     } catch (error) {
-      console.error('鍔犺浇鎻掍欢璁剧疆瀹氫箟澶辫触:', error);
+      console.error('加载插件设置定义失败:', error);
       setPluginSettingDefinitions([]);
     }
   };
@@ -390,11 +406,11 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         setSettings(prev => ({ ...(prev ?? {}), [key]: value }));
         setModifiedKeys(prev => new Set([...prev, key]));
       } else {
-        setError(result?.error || '更新失败');
+        setError(typeof result?.error === 'string' ? result.error : translateText('settings.errors.updateSetting'));
       }
     } catch (error) {
       console.error('更新设置失败:', error);
-      setError('更新设置失败');
+      setError(translateText('settings.errors.updateSetting'));
     }
   };
 
@@ -417,7 +433,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       }
     } catch (error) {
       console.error('重置设置失败:', error);
-      setError('重置设置失败');
+      setError(translateText('settings.errors.resetSetting'));
     }
   };
 
@@ -465,6 +481,30 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     'document-processing',
     'application'
   ];
+
+  const categoryLabels: Record<SettingsCategory, string> = {
+    'commonly-used': translateText('settings.categories.commonlyUsed'),
+    'text-editor': translateText('settings.categories.textEditor'),
+    'workbench': translateText('settings.categories.workbench'),
+    'window': translateText('settings.categories.window'),
+    'ai': translateText('settings.categories.ai'),
+    'shortcuts': translateText('settings.categories.shortcuts'),
+    'cloud-backup': translateText('settings.categories.cloudBackup'),
+    'cloud-backup-local': translateText('settings.categories.cloudBackupLocal'),
+    'cloud-backup-webdav': translateText('settings.categories.cloudBackupWebdav'),
+    'cloud-backup-jianguoyun': translateText('settings.categories.cloudBackupJianguoyun'),
+    'cloud-backup-gitee': translateText('settings.categories.cloudBackupGitee'),
+    'cloud-backup-custom': translateText('settings.categories.cloudBackupCustom'),
+    'data-settings': translateText('settings.categories.dataSettings'),
+    'data-settings-notion': translateText('settings.categories.dataSettingsNotion'),
+    'data-settings-yuque': translateText('settings.categories.dataSettingsYuque'),
+    'data-settings-joplin': translateText('settings.categories.dataSettingsJoplin'),
+    'data-settings-obsidian': translateText('settings.categories.dataSettingsObsidian'),
+    'data-settings-siyuan': translateText('settings.categories.dataSettingsSiyuan'),
+    'data-settings-custom': translateText('settings.categories.dataSettingsCustom'),
+    'document-processing': translateText('settings.categories.documentProcessing'),
+    'application': translateText('settings.categories.application'),
+  };
 
   // 使用 IntersectionObserver 监听滚动并自动选中对应分类
   useEffect(() => {
@@ -589,7 +629,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="搜索设置"
+          placeholder={translateText('settings.toolbar.searchPlaceholder')}
           alwaysExpanded={true}
           expandedWidth="100%"
         />
@@ -608,31 +648,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
 
               {/* 遍历所有分类并显示 */}
               {allCategories.map((category) => {
-                // 鏅€氳缃垎绫?
                 const categorySettings = getCategorySettings(category);
-                const categoryLabels: Record<SettingsCategory, string> = {
-                  'commonly-used': '常用设置',
-                  'text-editor': '文本编辑器',
-                  'workbench': '工作台',
-                  'window': '窗口',
-                  'ai': 'AI',
-                  'shortcuts': '快捷键',
-                  'cloud-backup': '云端备份',
-                  'cloud-backup-local': '本地备份',
-                  'cloud-backup-webdav': 'WebDav',
-                  'cloud-backup-jianguoyun': '坚果云',
-                  'cloud-backup-gitee': 'Gitee',
-                  'cloud-backup-custom': '自定义备份',
-                  'data-settings': '数据设置',
-                  'data-settings-notion': 'Notion',
-                  'data-settings-yuque': '语雀',
-                  'data-settings-joplin': 'Joplin',
-                  'data-settings-obsidian': 'Obsidian',
-                  'data-settings-siyuan': '思源笔记',
-                  'data-settings-custom': '自定义数据源',
-                  'document-processing': '文档处理',
-                  'application': '应用程序'
-                };
 
                 if (categorySettings.length === 0) return null;
 
@@ -662,12 +678,10 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                                     <span className="setting-source-badge">{def.extensionDisplayName}</span>
                                   )}
                                   {isModified && (
-                                    <span className="modified-badge">已修改</span>
+                                    <span className="modified-badge">{translateText('settings.status.modified')}</span>
                                   )}
                                 </div>
-                                <p className="setting-description">
-                                  {def.description || (def.isPluginSetting ? '插件贡献设置项' : '')}
-                                </p>
+                                <p className="setting-description">{def.description}</p>
                                 <code className="setting-key">{def.key}</code>
                               </div>
                               <div className="setting-controls">
@@ -676,9 +690,9 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                                   <div
                                     onClick={() => handleReset(def.key)}
                                     className="reset-action"
-                                    title="重置为默认值"
+                                    title={translateText('settings.status.resetTitle')}
                                   >
-                                    重置
+                                    {translateText('settings.status.reset')}
                                   </div>
                                 )}
                               </div>
@@ -699,26 +713,26 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                     <span className="settings-footer__version">v1.0.0</span>
                   </div>
                   <div className="settings-footer__slogan">
-                    "韦"大的"思"想，从这里开始！
+                    {translateText('settings.footer.slogan')}
                   </div>
                   <div className="settings-footer__links">
                     <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://github.com')}>GitHub</span>
                     <span className="settings-footer__divider">|</span>
-                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/docs')}>用户协议</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/docs')}>{translateText('settings.footer.terms')}</span>
                     <span className="settings-footer__divider">|</span>
-                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/privacy')}>隐私政策</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/privacy')}>{translateText('settings.footer.privacy')}</span>
                     <span className="settings-footer__divider">|</span>
-                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/feedback')}>加入我们</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/feedback')}>{translateText('settings.footer.feedback')}</span>
                     <span className="settings-footer__divider">|</span>
-                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/changelog')}>联系我们</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com/changelog')}>{translateText('settings.footer.contact')}</span>
                     <span className="settings-footer__divider">|</span>
-                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com')}>进入官网</span>
+                    <span className="settings-footer__link" onClick={() => window.electron?.shell?.openExternal('https://example.com')}>{translateText('settings.footer.website')}</span>
                   </div>
                   <div className="settings-footer__copyright">
-                    Copyright 2024-2025 Note WStudio. All rights reserved.
+                    {translateText('settings.footer.copyright')}
                   </div>
                   <div className="settings-footer__icp">
-                    粤ICP备2024XXXXXX号-1
+                    {translateText('settings.footer.icp')}
                   </div>
                 </div>
               </footer>

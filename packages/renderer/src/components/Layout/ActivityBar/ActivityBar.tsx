@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { VscFiles } from 'react-icons/vsc';
 import { Icon } from '../../Icons';
 import { ThemedMaskIcon } from '../../Icons/ThemedMaskIcon';
@@ -68,44 +69,46 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   onActivityClick,
   additionalItems = [],
 }) => {
+  const { t } = useTranslation();
   const { visibility } = useActivityBarStore();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
 
   const topActivities: readonly ActivityItem[] = [
     {
       id: 'explorer',
-      title: '资源管理器',
+      title: translateText('sidebar.titles.explorer', 'Explorer'),
       iconName: 'files-copy',
       iconSet: 'ui',
       visibilityKey: 'explorer',
     },
     {
       id: 'search',
-      title: '搜索',
+      title: translateText('sidebar.titles.search', 'Search'),
       iconName: 'search',
       visibilityKey: 'search',
     },
     {
       id: 'knowledge-base',
-      title: '知识库',
+      title: translateText('sidebar.titles.knowledgeBase', 'Knowledge Base'),
       iconName: 'knowledge-base',
       visibilityKey: 'knowledgeBase',
     },
     {
       id: 'ai-model',
-      title: 'AI 模型',
+      title: translateText('sidebar.titles.aiModel', 'AI Models'),
       iconName: 'ai-model',
       visibilityKey: 'aiModel',
     },
     {
       id: 'media',
-      title: '素材管理',
+      title: translateText('sidebar.titles.media', 'Media Library'),
       iconName: 'media',
       visibilityKey: 'media',
     },
     {
       id: 'extensions',
-      title: '扩展插件',
+      title: translateText('sidebar.titles.extensions', 'Extensions'),
       iconName: 'extensions-manager',
       visibilityKey: 'extensions',
     },
@@ -114,12 +117,12 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   const bottomActivities: readonly ActivityItem[] = [
     {
       id: 'user',
-      title: '用户',
+      title: translateText('sidebar.titles.user', 'User'),
       iconName: 'circle-user-round',
     },
     {
       id: 'settings',
-      title: '设置',
+      title: translateText('sidebar.titles.settings', 'Settings'),
       iconName: 'bolt',
     },
   ];

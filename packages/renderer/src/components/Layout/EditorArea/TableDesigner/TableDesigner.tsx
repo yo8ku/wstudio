@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../../Icons/Icon';
 import { AIInputBar } from '../../../common/AIInputBar';
@@ -44,6 +45,7 @@ import type {
 } from './types';
 import { COLUMN_TYPES } from './types';
 import { getTableDataService } from '../../../../services/tableData';
+import { translate } from '../../../../i18n';
 import './TableDesigner.scss';
 
 interface TableDesignerProps {
@@ -59,7 +61,7 @@ const generateId = (): string => {
 /** 创建默认列 */
 const createDefaultColumn = (index: number): TableColumn => ({
   id: generateId(),
-  name: `列 ${index + 1}`,
+  name: translate('tableDesigner.defaults.columnPrefix', { defaultValue: 'Column' }) + ` ${index + 1}`,
   type: 'text',
   width: 150,
 });
@@ -77,12 +79,17 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
   initialConfig,
   formId,
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string, values?: Record<string, string>): string =>
+    String(t(key, values ? { defaultValue, ...values } : { defaultValue }));
   // 表格数据服务
   const tableDataServiceRef = useRef(formId ? getTableDataService(formId) : null);
   const [isDataLoading, setIsDataLoading] = useState(!!formId);
   
   // 表格设计器状态
-  const [name, setName] = useState(initialConfig?.name || '未命名表格');
+  const [name, setName] = useState(
+    initialConfig?.name || translate('tableDesigner.defaults.untitledTable', { defaultValue: 'Untitled Table' })
+  );
   const [columns, setColumns] = useState<TableColumn[]>(
     initialConfig?.columns || [createDefaultColumn(0), createDefaultColumn(1)]
   );
@@ -1313,7 +1320,9 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
         const newColumns: TableColumn[] = data.columns.map((col, index) => ({
           id: generateId(),
-          name: col.name || `列 ${index + 1}`,
+          name:
+            col.name ||
+            `${translateText('tableDesigner.defaults.columnPrefix', 'Column')} ${index + 1}`,
           type: validateColumnType(col.type || 'text', col.name, sampleDataByColumn[col.name] || []),
           width: 150,
         }));
@@ -1367,7 +1376,9 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
     const newColumns: TableColumn[] = data.columns.map((col, index) => ({
       id: generateId(),
-      name: col.name || `列 ${index + 1}`,
+      name:
+        col.name ||
+        `${translateText('tableDesigner.defaults.columnPrefix', 'Column')} ${index + 1}`,
       type: validateColumnType(col.type || 'text', col.name, sampleDataByColumn[col.name] || []),
       width: 150,
     }));
@@ -1534,10 +1545,14 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     setCurrentPage(1); // 重置分页
     setQueryResult({
       success: result.success,
-      message: result.message,
+      message: translateText(
+        'tableDesigner.queryResult.foundCount',
+        'Found {{count}} row(s)',
+        { count: String(result.data.length) },
+      ),
       data: result.data,
     });
-  }, []);
+  }, [t]);
 
   // 处理填色条件面板的填色 - 每个条件单独填色，支持不同范围
   const handleFillColorCondition = useCallback(
@@ -1664,7 +1679,11 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         if (!prev) return prev;
         return {
           ...prev,
-          message: `查询到 ${originalQueryResult.length} 条数据`,
+          message: translateText(
+            'tableDesigner.queryResult.foundCount',
+            'Found {{count}} row(s)',
+            { count: String(originalQueryResult.length) },
+          ),
           data: originalQueryResult,
         };
       });
@@ -1684,11 +1703,15 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       if (!prev) return prev;
       return {
         ...prev,
-        message: `查询到 ${filteredData.length} 条数据`,
+        message: translateText(
+          'tableDesigner.queryResult.foundCount',
+          'Found {{count}} row(s)',
+          { count: String(filteredData.length) },
+        ),
         data: filteredData,
       };
     });
-  }, [searchKeyword, originalQueryResult]);
+  }, [originalQueryResult, searchKeyword, t]);
 
   // 搜索框回车处理
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1898,7 +1921,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         onChange={handleChange}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        placeholder="输入字段标题"
+        placeholder={translateText('tableDesigner.contextMenu.placeholders.columnTitle', 'Enter a field title')}
         onClick={(e) => e.stopPropagation()}
       />
     );
@@ -1915,7 +1938,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     // 字段类型子菜单
     const typeSubmenu: ContextMenuItem[] = COLUMN_TYPES.map(typeInfo => ({
       id: `type-${typeInfo.type}`,
-      label: typeInfo.label,
+      label: translateText(`tableDesigner.contextMenu.columnTypes.${typeInfo.type}`, typeInfo.label),
       icon: typeInfo.icon,
       selected: column.type === typeInfo.type,
       onClick: () => handleUpdateColumnType(columnId, typeInfo.type),
@@ -1925,12 +1948,12 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     const menuItems: ContextMenuItem[] = [
       {
         id: 'modify-field',
-        label: '修改字段',
+        label: translateText('tableDesigner.contextMenu.column.modifyField', 'Modify Field'),
         icon: 'edit',
         submenu: [
           {
             id: 'title-label',
-            label: '标题',
+            label: translateText('tableDesigner.contextMenu.column.title', 'Title'),
             disabled: true,
           },
           {
@@ -1942,7 +1965,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
           { id: 'sep-title', label: '', separator: true },
           {
             id: 'field-type',
-            label: '字段类型',
+            label: translateText('tableDesigner.contextMenu.column.fieldType', 'Field Type'),
             submenu: typeSubmenu,
             submenuType: 'hover',
           },
@@ -1950,7 +1973,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       },
       {
         id: 'edit-description',
-        label: '编辑字段描述',
+        label: translateText('tableDesigner.contextMenu.column.editDescription', 'Edit Field Description'),
         icon: 'info-circle',
         onClick: () => {
           // TODO: 实现字段描述编辑
@@ -1959,7 +1982,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       },
       {
         id: 'fill-color',
-        label: '整列填色',
+        label: translateText('tableDesigner.contextMenu.column.fillColumnColor', 'Fill Column Color'),
         icon: 'paint-bucket',
         onClick: () => {
           // TODO: 实现整列填色
@@ -1970,14 +1993,14 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       // 第一列不显示复制字段
       ...(!isFirstColumn ? [{
         id: 'duplicate-field',
-        label: '复制字段',
+        label: translateText('tableDesigner.contextMenu.column.duplicateField', 'Duplicate Field'),
         icon: 'copy',
         onClick: () => handleDuplicateColumn(columnId),
       }] : []),
       // 第一列不显示隐藏字段
       ...(!isFirstColumn ? [{
         id: 'hide-field',
-        label: '隐藏字段',
+        label: translateText('tableDesigner.contextMenu.column.hideField', 'Hide Field'),
         icon: 'eye-off',
         onClick: () => {
           handleToggleColumnVisibility(columnId);
@@ -1988,13 +2011,13 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       // 第一列不显示向左插入字段
       ...(!isFirstColumn ? [{
         id: 'insert-left',
-        label: '向左插入字段',
+        label: translateText('tableDesigner.contextMenu.column.insertFieldLeft', 'Insert Field to the Left'),
         icon: 'arrow-left',
         onClick: () => handleInsertColumnLeft(columnId),
       }] : []),
       {
         id: 'insert-right',
-        label: '向右插入字段',
+        label: translateText('tableDesigner.contextMenu.column.insertFieldRight', 'Insert Field to the Right'),
         icon: 'arrow-right',
         onClick: () => handleInsertColumnRight(columnId),
       },
@@ -2003,7 +2026,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
         { id: 'sep-3', label: '', separator: true },
         {
           id: 'delete-field',
-          label: '删除字段',
+          label: translateText('tableDesigner.contextMenu.column.deleteField', 'Delete Field'),
           icon: 'delete',
           disabled: columns.length <= 1,
           onClick: () => handleDeleteColumn(columnId),
@@ -2012,7 +2035,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     ];
 
     return menuItems;
-  }, [columns, handleUpdateColumnType, handleUpdateColumnName, handleDuplicateColumn, handleInsertColumnLeft, handleInsertColumnRight, handleDeleteColumn, handleToggleColumnVisibility, handleCloseColumnMenu]);
+  }, [columns, handleUpdateColumnType, handleUpdateColumnName, handleDuplicateColumn, handleInsertColumnLeft, handleInsertColumnRight, handleDeleteColumn, handleToggleColumnVisibility, handleCloseColumnMenu, t]);
 
   // 打开列菜单
   const handleOpenColumnMenu = useCallback((columnId: string, event: React.MouseEvent) => {
@@ -2129,7 +2152,11 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
 
     return (
       <div className="insert-row-input-wrapper" onClick={(e) => e.stopPropagation()}>
-        <span className="insert-row-label">向{direction === 'above' ? '上' : '下'}插入</span>
+        <span className="insert-row-label">
+          {direction === 'above'
+            ? translateText('tableDesigner.contextMenu.row.insertAboveLabel', 'Insert above')
+            : translateText('tableDesigner.contextMenu.row.insertBelowLabel', 'Insert below')}
+        </span>
         <input
           ref={inputRef}
           type="text"
@@ -2139,7 +2166,9 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
           onKeyDown={handleKeyDown}
           onClick={(e) => e.stopPropagation()}
         />
-        <span className="insert-row-label">行</span>
+        <span className="insert-row-label">
+          {translateText('tableDesigner.contextMenu.row.rowsUnit', 'row(s)')}
+        </span>
       </div>
     );
   };
@@ -2153,7 +2182,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     const menuItems: ContextMenuItem[] = [
       {
         id: 'insert-row-above',
-        label: '向上插入',
+        label: translateText('tableDesigner.contextMenu.row.insertAbove', 'Insert Above'),
         icon: 'arrow-up',
         customOnly: true,
         customContent: (
@@ -2167,7 +2196,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       },
       {
         id: 'insert-row-below',
-        label: '向下插入',
+        label: translateText('tableDesigner.contextMenu.row.insertBelow', 'Insert Below'),
         icon: 'arrow-down',
         customOnly: true,
         customContent: (
@@ -2183,7 +2212,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       // 只有非子记录行才显示"添加子记录"选项
       ...(isChildRow ? [] : [{
         id: 'add-child-record',
-        label: '添加子记录',
+        label: translateText('tableDesigner.contextMenu.row.addChildRecord', 'Add Child Record'),
         icon: 'plus',
         onClick: () => {
           handleAddChildRow(rowId);
@@ -2192,7 +2221,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       }]),
       {
         id: 'add-description',
-        label: '添加描述',
+        label: translateText('tableDesigner.contextMenu.row.addDescription', 'Add Description'),
         icon: 'file-text',
         onClick: () => {
           // TODO: 实现添加描述
@@ -2202,7 +2231,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       },
       {
         id: 'row-fill-color',
-        label: '整行填色',
+        label: translateText('tableDesigner.contextMenu.row.fillRowColor', 'Fill Row Color'),
         icon: 'paint-bucket',
         onClick: () => {
           // TODO: 实现整行填色
@@ -2213,7 +2242,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       { id: 'sep-2', label: '', separator: true },
       {
         id: 'smart-summary',
-        label: '智能总结',
+        label: translateText('tableDesigner.contextMenu.row.smartSummary', 'Smart Summary'),
         icon: 'sparkles',
         onClick: () => {
           // TODO: 实现智能总结
@@ -2224,7 +2253,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       { id: 'sep-3', label: '', separator: true },
       {
         id: 'delete-record',
-        label: '删除记录',
+        label: translateText('tableDesigner.contextMenu.row.deleteRecord', 'Delete Record'),
         icon: 'delete',
         disabled: rows.length <= 1,
         onClick: () => {
@@ -2235,7 +2264,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
     ];
     
     return menuItems;
-  }, [rows, handleInsertRowAbove, handleInsertRowBelow, handleDeleteRow, handleAddChildRow, handleCloseCellContextMenu]);
+  }, [rows, handleInsertRowAbove, handleInsertRowBelow, handleDeleteRow, handleAddChildRow, handleCloseCellContextMenu, t]);
 
   // 渲染单元格
   const renderCell = (row: TableRow, column: TableColumn) => {
@@ -2878,14 +2907,14 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
             className="table-name-input"
             value={name}
             onChange={(e) => handleNameChange(e.target.value)}
-            placeholder="表格名称"
+            placeholder={translateText('tableDesigner.header.namePlaceholder', 'Table Name')}
           />
         </div>
         <div className="header-actions">
           <span 
             className={`action-btn ${(isGenerating || showDiscardButton) ? 'disabled' : ''}`} 
             onClick={() => !(isGenerating || showDiscardButton) && handleImportTable()} 
-            title="导入表格文件 (CSV, Excel)"
+            title={translateText('tableDesigner.header.importTableTitle', 'Import Table File (CSV, Excel)')}
           >
             <Icon name="import" iconSet="ui" size={16} />
           </span>
@@ -3071,7 +3100,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
           {/* AI 输入栏 */}
           {showAIInputBar && (
             <AIInputBar
-              placeholder="描述您想要的内容..."
+              placeholder={translateText('tableDesigner.ai.placeholder', 'Describe what you want...')}
               systemPrompt={getTableDesignerSystemPrompt()}
               onGenerate={handleAIGenerate}
               customGenerate={customGenerateFunction}
@@ -3098,11 +3127,51 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
               }}
               suggestions={[
                 // 生成表格建议
-                { id: 'g1', label: '生成用户信息表', prompt: '生成一个用户信息表，包含姓名、年龄、邮箱、电话、地址字段，生成5条示例数据', commandType: 'generate' },
-                { id: 'g2', label: '生成产品列表', prompt: '生成一个产品列表表格，包含产品名称、价格、库存、分类、上架状态字段，生成5条示例数据', commandType: 'generate' },
-                { id: 'g3', label: '生成任务清单', prompt: '生成一个任务清单表格，包含任务名称、负责人、截止日期、优先级、完成状态字段，生成5条示例数据', commandType: 'generate' },
-                { id: 'g4', label: '生成订单记录', prompt: '生成一个订单记录表格，包含订单号、客户名称、商品、金额、下单时间、状态字段，生成5条示例数据', commandType: 'generate' },
-                { id: 'g5', label: '生成员工考勤表', prompt: '生成一个员工考勤表，包含员工姓名、部门、日期、上班时间、下班时间、工时字段，生成5条示例数据', commandType: 'generate' },
+                {
+                  id: 'g1',
+                  label: translateText('tableDesigner.ai.suggestions.userInfo.label', 'Generate User Info Table'),
+                  prompt: translateText(
+                    'tableDesigner.ai.suggestions.userInfo.prompt',
+                    'Generate a user information table with name, age, email, phone, and address fields, plus 5 sample rows.',
+                  ),
+                  commandType: 'generate',
+                },
+                {
+                  id: 'g2',
+                  label: translateText('tableDesigner.ai.suggestions.productList.label', 'Generate Product List'),
+                  prompt: translateText(
+                    'tableDesigner.ai.suggestions.productList.prompt',
+                    'Generate a product list table with product name, price, inventory, category, and availability fields, plus 5 sample rows.',
+                  ),
+                  commandType: 'generate',
+                },
+                {
+                  id: 'g3',
+                  label: translateText('tableDesigner.ai.suggestions.taskList.label', 'Generate Task List'),
+                  prompt: translateText(
+                    'tableDesigner.ai.suggestions.taskList.prompt',
+                    'Generate a task list table with task name, owner, due date, priority, and completion status fields, plus 5 sample rows.',
+                  ),
+                  commandType: 'generate',
+                },
+                {
+                  id: 'g4',
+                  label: translateText('tableDesigner.ai.suggestions.orderLog.label', 'Generate Order Records'),
+                  prompt: translateText(
+                    'tableDesigner.ai.suggestions.orderLog.prompt',
+                    'Generate an order records table with order number, customer name, product, amount, order time, and status fields, plus 5 sample rows.',
+                  ),
+                  commandType: 'generate',
+                },
+                {
+                  id: 'g5',
+                  label: translateText('tableDesigner.ai.suggestions.attendance.label', 'Generate Attendance Table'),
+                  prompt: translateText(
+                    'tableDesigner.ai.suggestions.attendance.prompt',
+                    'Generate an attendance table with employee name, department, date, start time, end time, and work hours fields, plus 5 sample rows.',
+                  ),
+                  commandType: 'generate',
+                },
               ]}
             />
           )}
@@ -3120,19 +3189,23 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
               onMouseDown={handleQueryPanelResizeStart}
             />
             <div className="query-result-header">
-              <span className="query-result-title">查询结果</span>
+              <span className="query-result-title">
+                {translateText('tableDesigner.queryResult.title', 'Query Results')}
+              </span>
               <div className="query-result-actions">
                 <span 
                   className="query-result-fullscreen"
                   onClick={() => setIsQueryPanelFullscreen(!isQueryPanelFullscreen)}
-                  title={isQueryPanelFullscreen ? '退出全屏' : '全屏'}
+                  title={isQueryPanelFullscreen
+                    ? translateText('tableDesigner.queryResult.exitFullscreen', 'Exit Fullscreen')
+                    : translateText('tableDesigner.queryResult.fullscreen', 'Fullscreen')}
                 >
                   <Icon iconSet="ui" name={isQueryPanelFullscreen ? 'minimize-2' : 'maximize-2'} size={14} />
                 </span>
                 <span 
                   className="query-result-close"
                   onClick={() => { setQueryResult(null); setIsQueryPanelFullscreen(false); }}
-                  title="关闭"
+                  title={translateText('tableDesigner.queryResult.close', 'Close')}
                 >
                   <Icon name="close" size={14} />
                 </span>
@@ -3142,7 +3215,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
               {isQuerying ? (
                 <div className="query-result-loading">
                   <Icon name="loader" size={24} />
-                  <p>正在查询...</p>
+                  <p>{translateText('tableDesigner.queryResult.loading', 'Querying...')}</p>
                 </div>
               ) : queryResult ? (
                 <>
@@ -3155,12 +3228,16 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
                       <input
                         type="text"
                         className="query-search-input"
-                        placeholder="搜索..."
+                        placeholder={translateText('tableDesigner.queryResult.searchPlaceholder', 'Search...')}
                         value={searchKeyword}
                         onChange={e => setSearchKeyword(e.target.value)}
                         onKeyDown={handleSearchKeyDown}
                       />
-                      <span className="query-search-btn" onClick={handleSearch} title="搜索">
+                      <span
+                        className="query-search-btn"
+                        onClick={handleSearch}
+                        title={translateText('tableDesigner.queryResult.searchPlaceholder', 'Search...')}
+                      >
                         <Icon name="search" iconSet="ui" size={14} />
                       </span>
                     </div>
@@ -3216,7 +3293,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
                           <span 
                             className={`pagination-btn ${currentPage === 1 ? 'disabled' : ''}`}
                             onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
-                            title="上一页"
+                            title={translateText('tableDesigner.queryResult.previousPage', 'Previous Page')}
                           >
                             <Icon name="chevron-left" size={14} />
                           </span>
@@ -3226,7 +3303,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
                           <span 
                             className={`pagination-btn ${currentPage >= Math.ceil(queryResult.data.length / PAGE_SIZE) ? 'disabled' : ''}`}
                             onClick={() => currentPage < Math.ceil(queryResult.data.length / PAGE_SIZE) && setCurrentPage(currentPage + 1)}
-                            title="下一页"
+                            title={translateText('tableDesigner.queryResult.nextPage', 'Next Page')}
                           >
                             <Icon name="chevron-right" size={14} />
                           </span>
@@ -3235,7 +3312,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
                     </div>
                   ) : (
                     <div className="query-result-empty">
-                      暂无数据
+                      {translateText('tableDesigner.queryResult.empty', 'No data available')}
                     </div>
                   )}
                 </>
@@ -3252,11 +3329,13 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="data-viewer-header">
-              <span className="data-viewer-title">数据查看器</span>
+              <span className="data-viewer-title">
+                {translateText('tableDesigner.dataViewer.title', 'Data Viewer')}
+              </span>
               <span 
                 className="data-viewer-close"
                 onClick={() => setShowDataViewer(false)}
-                title="关闭"
+                title={translateText('tableDesigner.dataViewer.close', 'Close')}
               >
                 <Icon name="close" size={14} />
               </span>
@@ -3310,19 +3389,25 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
                               onClick={() => setDataViewerWordWrap(!dataViewerWordWrap)}
                             >
                               <span className="item-check">{dataViewerWordWrap && <Icon name="check" size={12} />}</span>
-                              <span className="item-label">自动换行</span>
+                              <span className="item-label">
+                                {translateText('tableDesigner.dataViewer.wordWrap', 'Word Wrap')}
+                              </span>
                             </div>
                             <div 
                               className="format-menu-item"
                               onClick={() => setDataViewerAutoFormat(!dataViewerAutoFormat)}
                             >
                               <span className="item-check">{dataViewerAutoFormat && <Icon name="check" size={12} />}</span>
-                              <span className="item-label">自动格式化</span>
+                              <span className="item-label">
+                                {translateText('tableDesigner.dataViewer.autoFormat', 'Auto Format')}
+                              </span>
                             </div>
                           </div>
                           <div className="format-menu-divider" />
                           <div className="format-menu-section encoding-section">
-                            <div className="section-title">编码</div>
+                            <div className="section-title">
+                              {translateText('tableDesigner.dataViewer.encoding', 'Encoding')}
+                            </div>
                             {['utf-8', 'gbk', 'gb2312', 'iso-8859-1', 'ascii'].map((enc) => (
                               <div 
                                 key={enc}
@@ -3345,7 +3430,7 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
               ) : (
                 <div className="data-viewer-empty">
                   <Icon name="table-properties" size={32} />
-                  <p>选择单元格查看数据</p>
+                  <p>{translateText('tableDesigner.dataViewer.empty', 'Select a cell to view data')}</p>
                 </div>
               )}
             </div>
@@ -3392,15 +3477,23 @@ export const TableDesigner: React.FC<TableDesignerProps> = ({
       <AlertDialog open={showModelDownloadDialog} onOpenChange={setShowModelDownloadDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>下载翻译模型</AlertDialogTitle>
+            <AlertDialogTitle>
+              {translateText('tableDesigner.downloadModelDialog.title', 'Download Translation Model')}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              检测到本地未安装翻译模型，是否在终端中下载？
-              下载完成后可重新点击翻译按钮进行翻译。
+              {translateText(
+                'tableDesigner.downloadModelDialog.description',
+                'No local translation model was found. Download it in the terminal and then try translating again.',
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmModelDownload}>下载</AlertDialogAction>
+            <AlertDialogCancel>
+              {translateText('tableDesigner.downloadModelDialog.cancel', 'Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmModelDownload}>
+              {translateText('tableDesigner.downloadModelDialog.download', 'Download')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

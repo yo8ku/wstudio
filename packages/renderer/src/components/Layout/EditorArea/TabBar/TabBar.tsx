@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { WorkbenchNoteMenuContext } from '@note-studio/shared';
+import { useTranslation } from 'react-i18next';
 import { EditorTab } from '../EditorArea';
 import { Icon } from '../../../Icons/Icon';
 import { GroupedContextMenu } from '../GroupedContextMenu/GroupedContextMenu';
@@ -128,6 +129,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onOpenInNewWindow,
   showSplitEditorAction = true
 }) => {
+  const { t } = useTranslation();
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
   const scrollContainerRef = useRef<CustomScrollbarRef>(null);
   const previousTabIdsRef = useRef<string[]>([]);
@@ -141,6 +143,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   const loadNoteEditorSettings = useNoteEditorSettingsStore((state) => state.loadSettings);
   const setShowLineNumbers = useNoteEditorSettingsStore((state) => state.setShowLineNumbers);
   const noteContextMenus = useWorkbenchMenuContributions('note/context');
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
   const isEditableDocumentTab = (() => {
@@ -436,7 +439,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'close-all',
-          label: '\u5168\u90e8\u5173\u95ed',
+          label: translateText('tabBar.moreMenu.closeAll', 'Close All'),
           action: () => {
             closeTabs(tabs.map(tab => tab.id));
           },
@@ -444,7 +447,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         },
         {
           id: 'close-saved',
-          label: '\u5173\u95ed\u5df2\u4fdd\u5b58',
+          label: translateText('tabBar.moreMenu.closeSaved', 'Close Saved'),
           action: () => {
             closeTabs(tabs.filter(tab => !tab.isDirty).map(tab => tab.id));
           },
@@ -452,9 +455,9 @@ export const TabBar: React.FC<TabBarProps> = ({
         },
         {
           id: 'lock-current',
-          label: '\u9501\u5b9a\u5f53\u524d',
+          label: translateText('tabBar.moreMenu.lockCurrent', 'Lock Current'),
           action: () => {
-            console.log('\u9501\u5b9a\u5f53\u524d');
+            console.log('lock current');
             // TODO: implement lock feature
           },
           disabled: !activeTab
@@ -466,13 +469,17 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'source-mode',
-          label: codeMirrorMode === 'source' ? '\u9884\u89c8\u6a21\u5f0f' : '\u6e90\u7801\u6a21\u5f0f',
+          label: codeMirrorMode === 'source'
+            ? translateText('tabBar.moreMenu.previewMode', 'Preview Mode')
+            : translateText('tabBar.moreMenu.sourceMode', 'Source Mode'),
           action: toggleCodeMirrorMode,
           disabled: !activeTab
         },
         {
           id: 'toggle-line-numbers',
-          label: showLineNumbers ? '隐藏行号' : '显示行号',
+          label: showLineNumbers
+            ? translateText('tabBar.moreMenu.hideLineNumbers', 'Hide Line Numbers')
+            : translateText('tabBar.moreMenu.showLineNumbers', 'Show Line Numbers'),
           action: () => {
             void setShowLineNumbers(!showLineNumbers);
           },
@@ -485,7 +492,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'split-horizontal',
-          label: '\u5de6\u53f3\u5206\u5c4f',
+          label: translateText('tabBar.moreMenu.splitHorizontal', 'Split Horizontally'),
           action: () => {
             handleSplitHorizontal();
           },
@@ -493,7 +500,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         },
         {
           id: 'split-vertical',
-          label: '\u4e0a\u4e0b\u5206\u5c4f',
+          label: translateText('tabBar.moreMenu.splitVertical', 'Split Vertically'),
           action: () => {
             handleSplitVertical();
           },
@@ -501,7 +508,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         },
         {
           id: 'open-in-new-window',
-          label: '\u5728\u65b0\u7a97\u53e3\u4e2d\u6253\u5f00',
+          label: translateText('tabBar.moreMenu.openInNewWindow', 'Open in New Window'),
           action: () => {
             handleOpenInNewWindow();
           },
@@ -514,27 +521,27 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'rename',
-          label: '\u91cd\u547d\u540d',
+          label: translateText('tabBar.moreMenu.rename', 'Rename'),
           action: () => {
-            console.log('\u91cd\u547d\u540d');
+            console.log('rename');
             // TODO: implement rename
           },
           disabled: !activeTab
         },
         {
           id: 'move-file',
-          label: '\u5c06\u6587\u4ef6\u79fb\u52a8\u5230...',
+          label: translateText('tabBar.moreMenu.moveFile', 'Move File'),
           action: () => {
-            console.log('\u5c06\u6587\u4ef6\u79fb\u52a8\u5230...');
+            console.log('move file');
             // TODO: implement move file
           },
           disabled: !activeTab
         },
         {
           id: 'mark-important',
-          label: '\u6807\u8bb0\u91cd\u8981\u6587\u4ef6',
+          label: translateText('tabBar.moreMenu.markImportant', 'Mark as Important'),
           action: () => {
-            console.log('\u6807\u8bb0\u91cd\u8981\u6587\u4ef6');
+            console.log('mark important file');
             // TODO: implement mark important
           },
           disabled: !activeTab
@@ -546,13 +553,13 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'reveal-in-explorer',
-          label: '\u5728\u8d44\u6e90\u7ba1\u7406\u5668\u4e2d\u6253\u5f00',
+          label: translateText('tabBar.moreMenu.revealInExplorer', 'Reveal in Explorer'),
           action: async () => {
             if (activeTab?.path) {
               try {
                 await window.electron?.ipcRenderer.invoke('open-in-explorer', activeTab.path);
               } catch (error) {
-                console.error('\u5728\u8d44\u6e90\u7ba1\u7406\u5668\u4e2d\u6253\u5f00\u5931\u8d25:', error);
+                console.error('failed to reveal in explorer:', error);
               }
             }
           },
@@ -565,17 +572,20 @@ export const TabBar: React.FC<TabBarProps> = ({
       items: [
         {
           id: 'delete-file',
-          label: '\u5220\u9664\u6587\u4ef6',
+          label: translateText('tabBar.moreMenu.deleteFile', 'Delete File'),
           action: async () => {
             if (activeTab?.path) {
-              const confirmed = confirm(`\u786e\u5b9a\u8981\u5220\u9664\u6587\u6863 "${activeTab.title}" \u5417\uff1f`);
+              const confirmed = window.confirm(String(t('tabBar.dialogs.confirmDeleteFile', {
+                defaultValue: 'Delete "{{title}}"?',
+                title: activeTab.title,
+              })));
               if (confirmed) {
                 try {
                   await window.electron?.ipcRenderer.invoke('delete-file', activeTab.path);
                   onTabClose(activeTab.id);
                 } catch (error) {
-                  console.error('\u5220\u9664\u6587\u4ef6\u5931\u8d25:', error);
-                  alert('\u5220\u9664\u6587\u4ef6\u5931\u8d25');
+                  console.error('delete file failed:', error);
+                  window.alert(translateText('tabBar.dialogs.deleteFileFailed', 'Failed to delete file.'));
                 }
               }
             }
@@ -648,30 +658,30 @@ export const TabBar: React.FC<TabBarProps> = ({
     return [
       {
         id: 'close',
-        label: '关闭',
+        label: translateText('tabBar.contextMenu.close', 'Close'),
         onClick: () => onTabClose(contextTargetTab.id),
       },
       {
         id: 'close-others',
-        label: '关闭其他',
+        label: translateText('tabBar.contextMenu.closeOthers', 'Close Others'),
         disabled: closeOtherTabIds.length === 0,
         onClick: () => closeTabs(closeOtherTabIds),
       },
       {
         id: 'close-right',
-        label: '关闭右侧',
+        label: translateText('tabBar.contextMenu.closeToRight', 'Close to the Right'),
         disabled: rightTabIds.length === 0,
         onClick: () => closeTabs(rightTabIds),
       },
       {
         id: 'close-saved',
-        label: '关闭已保存',
+        label: translateText('tabBar.contextMenu.closeSaved', 'Close Saved'),
         disabled: closeSavedTabIds.length === 0,
         onClick: () => closeTabs(closeSavedTabIds),
       },
       {
         id: 'close-all',
-        label: '关闭全部',
+        label: translateText('tabBar.contextMenu.closeAll', 'Close All'),
         disabled: closeAllTabIds.length === 0,
         onClick: () => closeTabs(closeAllTabIds),
       },
@@ -682,7 +692,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       },
       {
         id: 'copy-path',
-        label: '复制路径',
+        label: translateText('tabBar.contextMenu.copyPath', 'Copy Path'),
         disabled: !canOperateFile,
         onClick: () => {
           if (canOperateFile) {
@@ -692,7 +702,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       },
       {
         id: 'copy-relative-path',
-        label: '复制相对路径',
+        label: translateText('tabBar.contextMenu.copyRelativePath', 'Copy Relative Path'),
         disabled: !canOperateFile,
         onClick: () => {
           if (canOperateFile) {
@@ -702,7 +712,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       },
       {
         id: 'copy-breadcrumb-path',
-        label: '复制面包屑路径',
+        label: translateText('tabBar.contextMenu.copyBreadcrumbPath', 'Copy Breadcrumb Path'),
         disabled: !canOperateFile,
         onClick: () => {
           if (canOperateFile) {
@@ -717,7 +727,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       },
       {
         id: 'add-to-chat',
-        label: '将文件添加到聊天',
+        label: translateText('tabBar.contextMenu.addToChat', 'Add to Chat'),
         disabled: !canOperateFile,
         onClick: () => {
           if (canOperateFile) {
@@ -727,7 +737,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       },
       {
         id: 'open-in-system-explorer',
-        label: '在资源管理器打开',
+        label: translateText('tabBar.contextMenu.openInSystemExplorer', 'Open in System Explorer'),
         disabled: !canOperateFile,
         onClick: () => {
           if (canOperateFile) {
@@ -737,7 +747,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       },
       {
         id: 'reveal-in-explorer-view',
-        label: '在资源管理器视图显示',
+        label: translateText('tabBar.contextMenu.revealInExplorerView', 'Reveal in Explorer View'),
         disabled: !canOperateFile,
         onClick: () => {
           if (canOperateFile) {
@@ -747,7 +757,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       },
       {
         id: 'split-right',
-        label: '向右分割',
+        label: translateText('tabBar.contextMenu.splitRight', 'Split Right'),
         disabled: !canOperateFile || !onSplitToDirection,
         onClick: () => {
           if (canOperateFile) {
@@ -757,31 +767,31 @@ export const TabBar: React.FC<TabBarProps> = ({
       },
       {
         id: 'split-and-move',
-        label: '分割 & 移动',
+        label: translateText('tabBar.contextMenu.splitAndMove', 'Split and Move'),
         disabled: !canOperateFile,
         submenuType: 'hover',
         submenu: [
           {
             id: 'split-to-right',
-            label: '向右分屏',
+            label: translateText('tabBar.contextMenu.splitToRight', 'Split to Right'),
             disabled: !onSplitToDirection,
             onClick: () => onSplitToDirection?.(contextTargetTab.id, 'right'),
           },
           {
             id: 'split-to-left',
-            label: '向左分屏',
+            label: translateText('tabBar.contextMenu.splitToLeft', 'Split to Left'),
             disabled: !onSplitToDirection,
             onClick: () => onSplitToDirection?.(contextTargetTab.id, 'left'),
           },
           {
             id: 'split-to-down',
-            label: '向下分屏',
+            label: translateText('tabBar.contextMenu.splitToDown', 'Split to Down'),
             disabled: !onSplitToDirection,
             onClick: () => onSplitToDirection?.(contextTargetTab.id, 'down'),
           },
           {
             id: 'split-to-up',
-            label: '向上分屏',
+            label: translateText('tabBar.contextMenu.splitToUp', 'Split to Up'),
             disabled: !onSplitToDirection,
             onClick: () => onSplitToDirection?.(contextTargetTab.id, 'up'),
           },
@@ -792,25 +802,25 @@ export const TabBar: React.FC<TabBarProps> = ({
           },
           {
             id: 'move-to-up',
-            label: '移动到上方',
+            label: translateText('tabBar.contextMenu.moveToUp', 'Move to Up'),
             disabled: !onMoveToDirection,
             onClick: () => onMoveToDirection?.(contextTargetTab.id, 'up'),
           },
           {
             id: 'move-to-down',
-            label: '移动到下方',
+            label: translateText('tabBar.contextMenu.moveToDown', 'Move to Down'),
             disabled: !onMoveToDirection,
             onClick: () => onMoveToDirection?.(contextTargetTab.id, 'down'),
           },
           {
             id: 'move-to-left',
-            label: '向左移动',
+            label: translateText('tabBar.contextMenu.moveToLeft', 'Move to Left'),
             disabled: !onMoveToDirection,
             onClick: () => onMoveToDirection?.(contextTargetTab.id, 'left'),
           },
           {
             id: 'move-to-right',
-            label: '向右移动',
+            label: translateText('tabBar.contextMenu.moveToRight', 'Move to Right'),
             disabled: !onMoveToDirection,
             onClick: () => onMoveToDirection?.(contextTargetTab.id, 'right'),
           },
@@ -889,7 +899,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                 <button
                   className="tab-item-close"
                   onClick={(e) => handleTabClose(e, tab.id)}
-                  title={'\u5173\u95ed'}
+                  title={translateText('tabBar.actions.closeTab', 'Close Tab')}
                 >
                   <Icon name="close" size={16} />
                 </button>
@@ -905,7 +915,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           <button 
             className="tab-bar-action-btn"
             onClick={handleOpenSettingsJson}
-            title={'\u6253\u5f00\u8bbe\u7f6e (JSON)'}
+            title={translateText('tabBar.actions.openSettingsJson', 'Open settings.json')}
           >
             <Icon name="file-code" size={16} />
           </button>
@@ -916,7 +926,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             {showSplitEditorAction && (
             <button 
               className="tab-bar-action-btn"
-              title="拆分编辑器"
+              title={translateText('tabBar.actions.splitEditor', 'Split Editor')}
               onClick={handleSplitHorizontal}
             >
               <Icon name="split-vertical" size={16} />
@@ -926,7 +936,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             <button 
               ref={moreButtonRef}
               className="tab-bar-action-btn"
-              title={'\u66f4\u591a\u64cd\u4f5c'}
+              title={translateText('tabBar.actions.moreActions', 'More Actions')}
               onClick={handleMoreClick}
             >
               <Icon name="more-vert" size={16} />

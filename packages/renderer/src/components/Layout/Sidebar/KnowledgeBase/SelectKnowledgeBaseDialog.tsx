@@ -1,21 +1,18 @@
 /**
- * 选择知识库对话框组件
- * 功能：提供选择知识库的UI和交互
- * 描述：用于上传文件时选择目标知识库
+ * Select knowledge base dialog component.
+ * Used when the user needs to choose a target knowledge base before uploading files.
  */
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { KnowledgeItem } from './types';
 import { knowledgeBaseService } from './knowledgeBaseService';
 import './SelectKnowledgeBaseDialog.scss';
 
 interface SelectKnowledgeBaseDialogProps {
-  /** 是否显示对话框 */
   visible: boolean;
-  /** 关闭对话框回调 */
   onClose: () => void;
-  /** 选择知识库回调 */
   onSelect: (knowledgeBaseId: string) => void;
 }
 
@@ -24,27 +21,33 @@ export const SelectKnowledgeBaseDialog: React.FC<SelectKnowledgeBaseDialogProps>
   onClose,
   onSelect,
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string =>
+    String(t(key, { defaultValue }));
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeItem[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
 
-  // 加载知识库列表
   useEffect(() => {
-    if (visible) {
-      loadKnowledgeBases();
+    if (!visible) {
+      return;
     }
+
+    const loadKnowledgeBases = async () => {
+      const data = await knowledgeBaseService.loadFromStorage();
+      const folders = data.created.filter((item) => item.type === 'folder');
+      setKnowledgeBases(folders);
+
+      if (folders.length === 1) {
+        setSelectedId(folders[0].id);
+      }
+    };
+
+    loadKnowledgeBases();
   }, [visible]);
 
-  const loadKnowledgeBases = async () => {
-    const data = await knowledgeBaseService.loadFromStorage();
-    // 只显示文件夹类型的知识库（type === 'folder'）
-    const folders = data.created.filter(item => item.type === 'folder');
-    setKnowledgeBases(folders);
-    
-    // 如果只有一个知识库，默认选中
-    if (folders.length === 1) {
-      setSelectedId(folders[0].id);
-    }
-  };
+  if (!visible) {
+    return null;
+  }
 
   const handleConfirm = () => {
     if (selectedId) {
@@ -53,25 +56,20 @@ export const SelectKnowledgeBaseDialog: React.FC<SelectKnowledgeBaseDialogProps>
     }
   };
 
-  const handleCancel = () => {
-    onClose();
-  };
-
-  if (!visible) {
-    return null;
-  }
-
   const dialogContent = (
-    <div className="select-knowledge-base-dialog-overlay" onClick={handleCancel}>
-      <div 
-        className="select-knowledge-base-dialog" 
-        onClick={(e) => e.stopPropagation()}
+    <div className="select-knowledge-base-dialog-overlay" onClick={onClose}>
+      <div
+        className="select-knowledge-base-dialog"
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="select-knowledge-base-dialog__header">
-          <h3 className="select-knowledge-base-dialog__title">选择知识库</h3>
+          <h3 className="select-knowledge-base-dialog__title">
+            {translateText('knowledgeBase.selectDialog.title', 'Select Knowledge Base')}
+          </h3>
           <button
             className="select-knowledge-base-dialog__close"
-            onClick={handleCancel}
+            onClick={onClose}
+            title={translateText('knowledgeBase.selectDialog.close', 'Close')}
             style={{
               backgroundColor: 'transparent',
               border: 'none',
@@ -88,39 +86,38 @@ export const SelectKnowledgeBaseDialog: React.FC<SelectKnowledgeBaseDialogProps>
         <div className="select-knowledge-base-dialog__content">
           {knowledgeBases.length === 0 ? (
             <div className="select-knowledge-base-dialog__empty">
-              <p>暂无知识库，请先创建知识库</p>
+              <p>{translateText('knowledgeBase.selectDialog.empty', 'No knowledge bases yet. Create one first.')}</p>
             </div>
           ) : (
             <div className="select-knowledge-base-dialog__list">
-              {knowledgeBases.map((kb) => (
+              {knowledgeBases.map((knowledgeBase) => (
                 <div
-                  key={kb.id}
+                  key={knowledgeBase.id}
                   className={`select-knowledge-base-dialog__item ${
-                    selectedId === kb.id ? 'select-knowledge-base-dialog__item--selected' : ''
+                    selectedId === knowledgeBase.id ? 'select-knowledge-base-dialog__item--selected' : ''
                   }`}
-                  onClick={() => setSelectedId(kb.id)}
+                  onClick={() => setSelectedId(knowledgeBase.id)}
                   style={{
                     padding: '12px 16px',
                     marginBottom: '8px',
                     borderRadius: '4px',
                     cursor: 'pointer',
                     border: `1px solid ${
-                      selectedId === kb.id 
-                        ? 'var(--ws-primary)' 
+                      selectedId === knowledgeBase.id
+                        ? 'var(--ws-primary)'
                         : 'var(--ws-contrast-border)'
                     }`,
-                    backgroundColor: selectedId === kb.id 
-                      ? 'var(--ws-primary-background)' 
+                    backgroundColor: selectedId === knowledgeBase.id
+                      ? 'var(--ws-primary-background)'
                       : 'transparent',
                   }}
                 >
                   <div className="select-knowledge-base-dialog__item-title">
-                    {kb.title}
+                    {knowledgeBase.title}
                   </div>
-                  {kb.metadata?.description && (
-                    <div 
-                      className="select-knowledge-base-dialog__item-description" >
-                      {kb.metadata.description}
+                  {knowledgeBase.metadata?.description && (
+                    <div className="select-knowledge-base-dialog__item-description">
+                      {knowledgeBase.metadata.description}
                     </div>
                   )}
                 </div>
@@ -132,7 +129,7 @@ export const SelectKnowledgeBaseDialog: React.FC<SelectKnowledgeBaseDialogProps>
         <div className="select-knowledge-base-dialog__footer">
           <button
             className="select-knowledge-base-dialog__button select-knowledge-base-dialog__button--cancel"
-            onClick={handleCancel}
+            onClick={onClose}
             style={{
               padding: '8px 16px',
               marginRight: '8px',
@@ -143,7 +140,7 @@ export const SelectKnowledgeBaseDialog: React.FC<SelectKnowledgeBaseDialogProps>
               cursor: 'pointer',
             }}
           >
-            取消
+            {translateText('knowledgeBase.selectDialog.cancel', 'Cancel')}
           </button>
           <button
             className="select-knowledge-base-dialog__button select-knowledge-base-dialog__button--confirm"
@@ -162,7 +159,7 @@ export const SelectKnowledgeBaseDialog: React.FC<SelectKnowledgeBaseDialogProps>
               cursor: selectedId && knowledgeBases.length > 0 ? 'pointer' : 'not-allowed',
             }}
           >
-            确定
+            {translateText('knowledgeBase.selectDialog.confirm', 'Confirm')}
           </button>
         </div>
       </div>
@@ -171,4 +168,3 @@ export const SelectKnowledgeBaseDialog: React.FC<SelectKnowledgeBaseDialogProps>
 
   return createPortal(dialogContent, document.body);
 };
-

@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AIProviderIcon } from '../../Icons/AIProviderIcon';
 import { Tooltip } from '../../Tooltip';
 import { Icon } from '../../Icons';
@@ -78,6 +79,12 @@ const DEFAULT_AI_PROVIDERS_LIST = Object.values(AI_PROVIDERS).map(provider => ({
 }));
 
 export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configIndex }) => {
+  const { t } = useTranslation();
+  const translateText = useCallback(
+    (key: string, defaultValue: string, values?: Record<string, string>): string =>
+      String(t(key, values ? { defaultValue, ...values } : { defaultValue })),
+    [t],
+  );
   // 服务商列表（7种协议）
   const AI_PROVIDERS_LIST = DEFAULT_AI_PROVIDERS_LIST;
   const [config, setConfig] = useState<AIModelConfig>({
@@ -167,27 +174,42 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     
     // Embedding 模型 tooltip
     if (lowerName.includes('text-embedding-3-large')) {
-      return '文本向量(最佳)，把文字变成数字供机器搜索，精度最高';
+      return translateText(
+        'aiConfigView.tooltips.embeddingLarge',
+        'Best text embedding model for high-accuracy retrieval.',
+      );
     }
     if (lowerName.includes('text-embedding-3-small')) {
-      return '文本向量(高效)，把文字变成数字供机器搜索，性价比高';
+      return translateText(
+        'aiConfigView.tooltips.embeddingSmall',
+        'Efficient text embedding model with a better cost-performance balance.',
+      );
     }
     if (lowerName.includes('text-embedding-ada-002')) {
-      return '文本向量(旧版)，上一代经典的搜索用模型';
+      return translateText(
+        'aiConfigView.tooltips.embeddingLegacy',
+        'Legacy text embedding model from the previous generation.',
+      );
     }
     
     // 通用 embedding 模型说明
     if (lowerName.includes('embedding') || lowerName.includes('embed')) {
-      return '文本向量化模型，用于将文本转换为数字向量供机器学习使用';
+      return translateText(
+        'aiConfigView.tooltips.embeddingGeneric',
+        'Text embedding model used to convert text into numerical vectors.',
+      );
     }
     
     // Moderation 模型说明
     if (lowerName.includes('moderation')) {
-      return '内容审核模型，用于检测文本是否包含敏感或不当内容';
+      return translateText(
+        'aiConfigView.tooltips.moderation',
+        'Moderation model used to detect unsafe or inappropriate content.',
+      );
     }
     
     return '';
-  }, []);
+  }, [translateText]);
 
   // 从模型ID生成友好的显示名称
   // 例如: "ZhipuAI/GLM-4.6" -> "G L M 4.6"
@@ -293,7 +315,11 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     
     // 首先检查是否为工具模型
     if (isToolModel(modelName)) {
-      return { id: 'tool', name: '工具模型', icon: '' };
+      return {
+        id: 'tool',
+        name: translateText('aiConfigView.providers.toolModel', 'Tool Model'),
+        icon: '',
+      };
     }
     
     // OpenAI 模型
@@ -333,22 +359,30 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     
     // GLM 智谱AI 模型
     if (lowerName.includes('glm') || lowerName.includes('chatglm')) {
-      return { id: 'glm', name: 'GLM (智谱AI)', icon: 'GLM' };
+      return {
+        id: 'glm',
+        name: translateText('aiConfigView.providers.glm', 'GLM (Zhipu AI)'),
+        icon: 'GLM',
+      };
     }
     
     // Qwen (通义千问) 模型
     if (lowerName.includes('qwen')) {
-      return { id: 'qwen', name: '通义千问', icon: 'qwen' };
+      return {
+        id: 'qwen',
+        name: translateText('aiConfigView.providers.qwen', 'Qwen'),
+        icon: 'qwen',
+      };
     }
     
     // 默认使用当前提供商
     const provider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
     return { 
       id: config.providerId, 
-      name: provider?.name || '其他', 
+      name: provider?.name || translateText('aiConfigView.providers.other', 'Other'), 
       icon: currentProviderIconName 
     };
-  }, [currentProviderIconName, config.providerId, isToolModel]);
+  }, [AI_PROVIDERS_LIST, currentProviderIconName, config.providerId, isToolModel, translateText]);
 
   // 根据模型名称推断提供商图标（保持向后兼容）
   const getProviderIconByModelName = useCallback((modelName: string): string => {
@@ -679,7 +713,9 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
   const saveConfig = async () => {
     // 验证配置名称
     if (!config.name.trim()) {
-      toastService.error('请输入配置名称');
+      toastService.error(
+        translateText('aiConfigView.validation.configNameRequired', 'Please enter a configuration name.'),
+      );
       return;
     }
 
@@ -688,7 +724,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     
     // 所有提供商都需要的基础必填项
     if (!config.apiKey || !config.apiKey.trim()) {
-      missingFields.push('API Key');
+      missingFields.push(translateText('aiConfigView.validation.fields.apiKey', 'API Key'));
     }
     
     // 检查服务商是否有默认地址
@@ -697,12 +733,18 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     
     // 只有没有默认地址的服务商（如自定义）才需要必填 API 地址
     if (!hasDefaultEndpoint && (!config.apiEndpoint || !config.apiEndpoint.trim())) {
-      missingFields.push('API 地址');
+      missingFields.push(translateText('aiConfigView.validation.fields.apiEndpoint', 'API Endpoint'));
     }
     
     // 如果有必填项未填写，显示错误并返回
     if (missingFields.length > 0) {
-      toastService.error(`请填写以下必填项：${missingFields.join('、')}`);
+      toastService.error(
+        translateText(
+          'aiConfigView.validation.requiredFields',
+          'Please fill in the following required field(s): {{fields}}',
+          { fields: missingFields.join(', ') },
+        ),
+      );
       return;
     }
     
@@ -725,7 +767,12 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       const excludeId = currentConfigId.startsWith('temp-config-') ? undefined : currentConfigId;
       const nameExists = await window.electron?.ipcRenderer.invoke('ai-model:check-name-exists', config.name.trim(), excludeId);
       if (nameExists) {
-        toastService.error('配置名称已存在！');
+        toastService.error(
+          translateText(
+            'aiConfigView.toasts.duplicateName',
+            'A configuration with this name already exists.',
+          ),
+        );
         setIsSaving(false);
         return;
       }
@@ -828,7 +875,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       console.log('[AIConfigView] IPC 保存配置返回:', savedConfigId);
 
       if (savedConfigId) {
-        toastService.success('配置已保存');
+        toastService.success(translateText('aiConfigView.toasts.saved', 'Configuration saved.'));
         // 更新当前配置ID
         setCurrentConfigId(savedConfigId);
         // 更新已保存配置状态（用于检测未保存更改）
@@ -839,11 +886,13 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
         window.dispatchEvent(new CustomEvent('ai-config-updated'));
         window.dispatchEvent(new CustomEvent('models-cache-updated'));
       } else {
-        toastService.error('保存失败');
+        toastService.error(translateText('aiConfigView.toasts.saveFailed', 'Failed to save configuration.'));
       }
     } catch (error) {
       console.error('[AIConfigView] 保存配置失败:', error);
-      let errorMessage = error instanceof Error ? error.message : '未知错误';
+      let errorMessage = error instanceof Error
+        ? error.message
+        : translateText('aiConfigView.toasts.unknownError', 'Unknown error');
       
       // 从 Electron IPC 错误消息中提取实际错误信息
       // Electron 错误格式可能是: "Error invoking remote method 'ai-model:save': Error: 实际错误消息"
@@ -864,7 +913,9 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       // 如果错误信息已经包含完整描述（如"无法开启配置"），直接显示，否则添加"保存失败："前缀
       const displayMessage = errorMessage.includes('无法开启配置') || errorMessage.includes('以下必填项未填写')
         ? errorMessage
-        : '保存失败：' + errorMessage;
+        : translateText('aiConfigView.toasts.saveFailedWithReason', 'Failed to save configuration: {{message}}', {
+            message: errorMessage,
+          });
       toastService.error(displayMessage);
     } finally {
       setIsSaving(false);
@@ -880,7 +931,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     const missingFields: string[] = [];
     
     if (!config.apiKey || !config.apiKey.trim()) {
-      missingFields.push('API Key');
+      missingFields.push(translateText('aiConfigView.validation.fields.apiKey', 'API Key'));
     }
     
     // 检查服务商是否有默认地址
@@ -889,21 +940,27 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     
     // 只有没有默认地址的服务商才需要必填 API 地址
     if (!testHasDefaultEndpoint && (!config.apiEndpoint || !config.apiEndpoint.trim())) {
-      missingFields.push('API 地址');
+      missingFields.push(translateText('aiConfigView.validation.fields.apiEndpoint', 'API Endpoint'));
     }
     
     // 根据提供商类型检查额外的必填项
     // Azure OpenAI 需要填写 endpoint
     if (config.providerId === 'azure') {
       if (!config.apiEndpoint || !config.apiEndpoint.trim()) {
-        missingFields.push('API 地址');
+        missingFields.push(translateText('aiConfigView.validation.fields.apiEndpoint', 'API Endpoint'));
       }
     }
     
     // 如果有必填项未填写，显示错误并返回
     if (missingFields.length > 0) {
       console.log('[AIConfigView] ❌ 必填项未填写:', missingFields);
-      toastService.error(`请填写以下必填项：${missingFields.join('、')}`);
+      toastService.error(
+        translateText(
+          'aiConfigView.validation.requiredFields',
+          'Please fill in the following required field(s): {{fields}}',
+          { fields: missingFields.join(', ') },
+        ),
+      );
       return;
     }
     
@@ -958,7 +1015,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       
       if (isConnected) {
         setTestStatus('success');
-        toastService.success('连接成功！');
+        toastService.success(translateText('aiConfigView.toasts.connectionSuccess', 'Connection successful.'));
 
         // 标记已测试连接成功
         setHasTestedConnection(true);
@@ -990,7 +1047,12 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
         }, 3000);
       } else {
         setTestStatus('error');
-        toastService.error('连接失败：无法连接到AI服务');
+        toastService.error(
+          translateText(
+            'aiConfigView.toasts.connectionFailed',
+            'Connection failed: unable to reach the AI service.',
+          ),
+        );
       }
     } catch (error) {
       console.error('[AIConfigView] 测试连接失败:', error);
@@ -1001,7 +1063,11 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       setHasTestedConnection(false);
       
       // 使用 toast 显示提供商返回的原始错误消息
-      toastService.error(error instanceof Error ? error.message : '未知错误');
+      toastService.error(
+        error instanceof Error
+          ? error.message
+          : translateText('aiConfigView.toasts.unknownError', 'Unknown error'),
+      );
     }
   };
 
@@ -1010,21 +1076,28 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       <div className="ai-config-content">
         <div className="panel-header">
           <h1 className="panel-title-main">
-            {configIndex !== undefined && config.name ? `配置 - ${config.name}` : 'AI 模型配置'}
+            {configIndex !== undefined && config.name
+              ? translateText('aiConfigView.header.editTitle', 'Configuration - {{name}}', {
+                  name: config.name,
+                })
+              : translateText('aiConfigView.header.createTitle', 'AI Model Configuration')}
           </h1>
           <p className="panel-description">
-            配置 AI 模型的连接参数和行为设置
+            {translateText(
+              'aiConfigView.header.description',
+              'Configure connection parameters and behavior for AI models.',
+            )}
           </p>
         </div>
 
         <div className="config-form">
           {/* 基本信息 */}
           <div className="form-section">
-            <h3>基本信息</h3>
+            <h3>{translateText('aiConfigView.sections.basicInfo', 'Basic Information')}</h3>
             
             <div className="form-row">
               <div className="form-group">
-                <label>配置名称</label>
+                <label>{translateText('aiConfigView.fields.configName', 'Configuration Name')}</label>
                 <input
                   type="text"
                   className="form-control"
@@ -1032,12 +1105,15 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                   onChange={(e) => {
                     setConfig({ ...config, name: e.target.value });
                   }}
-                  placeholder="例如: 我的 GPT-4 配置"
+                  placeholder={translateText(
+                    'aiConfigView.placeholders.configName',
+                    'For example: My GPT-4 Configuration',
+                  )}
                 />
               </div>
 
               <div className="form-group">
-                <label>AI 提供商</label>
+                <label>{translateText('aiConfigView.fields.provider', 'AI Provider')}</label>
                 <DropdownMenu
                   value={config.providerId}
                   onChange={(value) => handleProviderChange(value)}
@@ -1045,7 +1121,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                     label: provider.name,
                     value: provider.id
                   }))}
-                  placeholder="选择 AI 提供商"
+                  placeholder={translateText('aiConfigView.placeholders.provider', 'Select an AI provider')}
                 />
               </div>
             </div>
@@ -1053,7 +1129,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
 
           {/* API 配置 */}
           <div className="form-section">
-            <h3>API 配置</h3>
+            <h3>{translateText('aiConfigView.sections.apiConfig', 'API Configuration')}</h3>
             
             <div className="form-group">
               <label>API Key</label>
@@ -1066,13 +1142,15 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                     setConfig({ ...config, apiKey: e.target.value });
                     setHasTestedConnection(false); // API Key 变更，需要重新测试
                   }}
-                  placeholder="输入您的 API Key"
+                  placeholder={translateText('aiConfigView.placeholders.apiKey', 'Enter your API key')}
                 />
                 <button
                   type="button"
                   className="btn-toggle-key"
                   onClick={() => setShowApiKey(!showApiKey)}
-                  title={showApiKey ? '隐藏' : '显示'}
+                  title={showApiKey
+                    ? translateText('aiConfigView.actions.hideApiKey', 'Hide')
+                    : translateText('aiConfigView.actions.showApiKey', 'Show')}
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                     {showApiKey ? (
@@ -1083,20 +1161,30 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                   </svg>
                 </button>
               </div>
-              <p className="form-hint">请妥善保管您的 API Key，不要分享给他人</p>
+              <p className="form-hint">
+                {translateText(
+                  'aiConfigView.hints.keepApiKeySafe',
+                  'Keep your API key secure and do not share it with others.',
+                )}
+              </p>
             </div>
 
             {/* Azure OpenAI 的 endpoint 提示 */}
             {config.providerId === 'azure' && (
               <div className="form-group">
-                <p className="form-hint">Azure OpenAI 需要填写完整的部署端点，格式：<br/>
+                <p className="form-hint">
+                  {translateText(
+                    'aiConfigView.hints.azureEndpoint',
+                    'Azure OpenAI requires the full deployment endpoint, for example:',
+                  )}
+                  <br/>
                   <code>https://&#123;resource&#125;.openai.azure.com/openai/deployments/&#123;deployment&#125;/chat/completions?api-version=2024-02-15-preview</code>
                 </p>
               </div>
             )}
 
             <div className="form-group">
-              <label>API 地址</label>
+              <label>{translateText('aiConfigView.fields.apiEndpoint', 'API Endpoint')}</label>
               <input
                 type="text"
                 className="form-control"
@@ -1110,28 +1198,52 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                     ? 'https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version=...'
                     : config.providerId === 'ollama'
                     ? 'http://localhost:11434/v1/chat/completions'
-                    : '留空则使用默认地址'
+                    : translateText(
+                        'aiConfigView.placeholders.apiEndpointDefault',
+                        'Leave empty to use the default endpoint',
+                      )
                 }
               />
               {config.providerId === 'azure' ? (
-                <p className="form-hint">必填，请输入完整的 API 端点地址</p>
+                <p className="form-hint">
+                  {translateText(
+                    'aiConfigView.hints.apiEndpointRequired',
+                    'Required. Enter the full API endpoint address.',
+                  )}
+                </p>
               ) : config.providerId === 'custom' ? (
-                <p className="form-hint">必填，请输入完整的 API 端点地址</p>
+                <p className="form-hint">
+                  {translateText(
+                    'aiConfigView.hints.apiEndpointRequired',
+                    'Required. Enter the full API endpoint address.',
+                  )}
+                </p>
               ) : (() => {
-                if (!config.apiEndpoint) return <p className="form-hint">可选，留空则自动使用默认地址</p>;
+                if (!config.apiEndpoint) {
+                  return (
+                    <p className="form-hint">
+                      {translateText(
+                        'aiConfigView.hints.apiEndpointOptional',
+                        'Optional. Leave empty to use the default endpoint automatically.',
+                      )}
+                    </p>
+                  );
+                }
                 // 去掉末尾已有的 /v1/... 路径，只保留 base URL
                 const base = config.apiEndpoint.replace(/\/+$/, '').replace(/\/v1(\/.*)?$/, '');
                 const previewUrl = base + '/v1/chat/completions';
                 return (
                   <p className="form-hint api-endpoint-preview">
-                    预览：{previewUrl}
+                    {translateText('aiConfigView.hints.apiEndpointPreview', 'Preview: {{url}}', {
+                      url: previewUrl,
+                    })}
                   </p>
                 );
               })()}
             </div>
 
             <div className="form-group">
-              <label>模型 ID（可选）</label>
+              <label>{translateText('aiConfigView.fields.modelId', 'Model ID (Optional)')}</label>
               <input
                 type="text"
                 className="form-control"
@@ -1140,9 +1252,17 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                   setConfig({ ...config, modelId: e.target.value });
                   setHasTestedConnection(false);
                 }}
-                placeholder="例如：gpt-5.1、deepseek、gemini-3-pro-preview"
+                placeholder={translateText(
+                  'aiConfigView.placeholders.modelId',
+                  'For example: gpt-5.1, deepseek, gemini-3-pro-preview',
+                )}
               />
-              <p className="form-hint">部分服务商（如魔塔社区）需要指定模型 ID 才能连接</p>
+              <p className="form-hint">
+                {translateText(
+                  'aiConfigView.hints.modelIdOptional',
+                  'Some providers require a model ID before a connection can be established.',
+                )}
+              </p>
             </div>
 
             <div className="form-group">
@@ -1150,18 +1270,23 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                 <div className="accordion-header-static">
                   <span className="accordion-title">
                     {groupedModels.length > 0 ? (
-                      <>
-                        {groupedModels.reduce((sum, group) => sum + group.models.length, 0)} 个可用模型 ({groupedModels.length} 个提供商)
-                      </>
+                      translateText(
+                        'aiConfigView.models.summary',
+                        '{{count}} available model(s) ({{providerCount}} provider(s))',
+                        {
+                          count: String(groupedModels.reduce((sum, group) => sum + group.models.length, 0)),
+                          providerCount: String(groupedModels.length),
+                        },
+                      )
                     ) : (
-                      '模型列表'
+                      translateText('aiConfigView.models.listTitle', 'Model List')
                     )}
                   </span>
                   
                   <SearchBox
                     value={searchKeyword}
                     onChange={setSearchKeyword}
-                    placeholder="搜索模型..."
+                    placeholder={translateText('aiConfigView.models.searchPlaceholder', 'Search models...')}
                   />
                 </div>
                 <div className="accordion-content">
@@ -1195,13 +1320,17 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                                     <Switch
                                       className="model-switch"
                                       checked={isEnabled}
-                                      ariaLabel={`切换模型 ${model.displayName || model.name}`}
+                                      ariaLabel={translateText(
+                                        'aiConfigView.modelItem.toggleModel',
+                                        'Toggle model {{name}}',
+                                        { name: model.displayName || model.name },
+                                      )}
                                       onChange={(nextChecked) => toggleModelEnabled(model.id, nextChecked)}
                                     />
                                     <button
                                       type="button"
                                       className="btn-remove-model"
-                                      title="移除模型"
+                                      title={translateText('aiConfigView.modelItem.removeModel', 'Remove model')}
                                       onClick={() => {
                                         setAvailableModels(prev => prev.filter(m => m.id !== model.id));
                                         setConfig(prev => ({
@@ -1232,7 +1361,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                     </>
                   ) : (
                     <div className="empty-models-hint no-models">
-                      暂无可用模型
+                      {translateText('aiConfigView.models.empty', 'No available models')}
                     </div>
                   )}
                 </div>
@@ -1249,45 +1378,69 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
               onClick={saveConfig}
               disabled={isSaving}
             >
-              {isSaving ? '保存中...' : '保存配置'}
+              {isSaving
+                ? translateText('aiConfigView.actions.saving', 'Saving...')
+                : translateText('aiConfigView.actions.saveConfig', 'Save Configuration')}
             </button>
             <button
               className="btn-secondary"
               onClick={testConnection}
               disabled={testStatus === 'testing'}
             >
-              {testStatus === 'testing' ? '测试中...' : '测试连接'}
+              {testStatus === 'testing'
+                ? translateText('aiConfigView.actions.testing', 'Testing...')
+                : translateText('aiConfigView.actions.testConnection', 'Test Connection')}
             </button>
           </div>
 
           {/* 使用指南 */}
           <div className="usage-guide">
-            <h3>使用指南</h3>
+            <h3>{translateText('aiConfigView.sections.usageGuide', 'Usage Guide')}</h3>
             <ul>
-              <li>选择接入协议类型，填写配置名称和 API Key</li>
-              <li>填写模型 ID，点击"测试连接"验证配置</li>
+              <li>
+                {translateText(
+                  'aiConfigView.guide.step1',
+                  'Choose the protocol, then fill in the configuration name and API key.',
+                )}
+              </li>
+              <li>
+                {translateText(
+                  'aiConfigView.guide.step2',
+                  'Fill in the model ID and click "Test Connection" to validate the configuration.',
+                )}
+              </li>
               {config.providerId === 'azure' ? (
                 <>
-                  <li>Azure OpenAI 需要手动填写完整的部署端点地址</li>
-                  <li>使用 <code>api-key</code> 头认证，无需 Bearer 前缀</li>
+                  <li>{translateText('aiConfigView.guide.azureStep1', 'Azure OpenAI requires the full deployment endpoint address.')}</li>
+                  <li>
+                    {translateText('aiConfigView.guide.azureStep2Prefix', 'Authenticate with the')} <code>api-key</code>{' '}
+                    {translateText('aiConfigView.guide.azureStep2Suffix', 'header. No Bearer prefix is required.')}
+                  </li>
                 </>
               ) : config.providerId === 'ollama' ? (
                 <>
-                  <li>Ollama 为本地部署，默认地址为 <code>http://localhost:11434</code></li>
-                  <li>无需填写 API Key，点击"测试连接"获取本地模型列表</li>
+                  <li>
+                    {translateText('aiConfigView.guide.ollamaStep1Prefix', 'Ollama runs locally. The default address is')}{' '}
+                    <code>http://localhost:11434</code>
+                  </li>
+                  <li>{translateText('aiConfigView.guide.ollamaStep2', 'No API key is required. Click "Test Connection" to fetch local models.')}</li>
                 </>
               ) : config.providerId === 'openai-response' ? (
                 <>
-                  <li>OpenAI Response 使用 <code>/v1/responses</code> 新版 API</li>
-                  <li>支持内置工具和多轮状态管理</li>
+                  <li>
+                    {translateText('aiConfigView.guide.openaiResponseStep1Prefix', 'OpenAI Response uses the new')}{' '}
+                    <code>/v1/responses</code>{' '}
+                    {translateText('aiConfigView.guide.openaiResponseStep1Suffix', 'API.')}
+                  </li>
+                  <li>{translateText('aiConfigView.guide.openaiResponseStep2', 'Supports built-in tools and multi-turn state management.')}</li>
                 </>
               ) : config.providerId === 'custom' ? (
                 <>
-                  <li>自定义协议需手动填写 API 地址</li>
-                  <li>支持所有兼容 OpenAI 格式的服务（DeepSeek、Kimi、通义千问等）</li>
+                  <li>{translateText('aiConfigView.guide.customStep1', 'Custom providers require you to enter the API endpoint manually.')}</li>
+                  <li>{translateText('aiConfigView.guide.customStep2', 'Supports all services compatible with the OpenAI format, including DeepSeek, Kimi, and Qwen.')}</li>
                 </>
               ) : (
-                <li>测试连接成功，请记得保存配置。否则无法使用！</li>
+                <li>{translateText('aiConfigView.guide.defaultStep', 'After a successful connection test, remember to save the configuration before using it.')}</li>
               )}
             </ul>
           </div>

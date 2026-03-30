@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../../../Icons/Icon';
 import { Select, type SelectItem } from '../../../common/Select';
 import type { TableColumn, ColumnType } from './types';
@@ -79,6 +80,9 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
   onFillColor,
   onClearAllFillColor,
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string =>
+    String(t(key, { defaultValue }));
   const defaultColor = 'rgba(255, 204, 0, 0.3)';
   const defaultScope: FillColorScope = 'row';
   const [conditions, setConditions] = useState<ConditionItem[]>([
@@ -293,13 +297,19 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
   const getAvailableOperators = useCallback((columnName: string): SelectItem[] => {
     const column = getColumnByName(columnName);
     if (!column) {
-      return OPERATOR_OPTIONS.map(op => ({ value: op.value, label: op.label }));
+      return OPERATOR_OPTIONS.map(op => ({
+        value: op.value,
+        label: translateText(`tableDesigner.queryPanel.operators.${op.value}`, op.label),
+      }));
     }
     const validOperators = getOperatorsForType(column.type);
     return OPERATOR_OPTIONS
       .filter(op => validOperators.includes(op.value))
-      .map(op => ({ value: op.value, label: op.label }));
-  }, [getColumnByName]);
+      .map(op => ({
+        value: op.value,
+        label: translateText(`tableDesigner.queryPanel.operators.${op.value}`, op.label),
+      }));
+  }, [getColumnByName, t]);
 
   // 列选项
   const columnItems: SelectItem[] = useMemo(() => 
@@ -309,23 +319,23 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
 
   // 条件逻辑选项
   const logicItems: SelectItem[] = useMemo(() => [
-    { value: 'and', label: '所有' },
-    { value: 'or', label: '任一' },
-  ], []);
+    { value: 'and', label: translateText('tableDesigner.queryPanel.logic.and', 'All') },
+    { value: 'or', label: translateText('tableDesigner.queryPanel.logic.or', 'Any') },
+  ], [t]);
 
   // 填色范围选项
   const scopeItems: SelectItem[] = useMemo(() => [
-    { value: 'cell', label: '单元格' },
-    { value: 'row', label: '整行' },
-    { value: 'column', label: '整列' },
-  ], []);
+    { value: 'cell', label: translateText('tableDesigner.queryPanel.scopes.cell', 'Cell') },
+    { value: 'row', label: translateText('tableDesigner.queryPanel.scopes.row', 'Row') },
+    { value: 'column', label: translateText('tableDesigner.queryPanel.scopes.column', 'Column') },
+  ], [t]);
 
   // checkbox 选项
   const checkboxItems: SelectItem[] = useMemo(() => [
-    { value: '', label: '请选择' },
-    { value: 'true', label: '是' },
-    { value: 'false', label: '否' },
-  ], []);
+    { value: '', label: translateText('tableDesigner.queryPanel.placeholders.select', 'Select') },
+    { value: 'true', label: translateText('tableDesigner.queryPanel.boolean.true', 'Yes') },
+    { value: 'false', label: translateText('tableDesigner.queryPanel.boolean.false', 'No') },
+  ], [t]);
 
   // 根据列类型渲染对应的输入组件
   const renderValueInput = useCallback((condition: ConditionItem) => {
@@ -358,7 +368,7 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
             className="condition-value"
             value={condition.value}
             onChange={e => handleUpdateCondition(condition.id, 'value', e.target.value)}
-            placeholder="输入数字"
+            placeholder={translateText('tableDesigner.queryPanel.placeholders.number', 'Enter a number')}
           />
         );
       case 'checkbox':
@@ -368,7 +378,7 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
             value={condition.value}
             onChange={val => handleUpdateCondition(condition.id, 'value', val)}
             items={checkboxItems}
-            placeholder="请选择"
+            placeholder={translateText('tableDesigner.queryPanel.placeholders.select', 'Select')}
           />
         );
       case 'select':
@@ -376,7 +386,7 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
       case 'tag':
         if (column.options && column.options.length > 0) {
           const optionItems: SelectItem[] = [
-            { value: '', label: '请选择' },
+            { value: '', label: translateText('tableDesigner.queryPanel.placeholders.select', 'Select') },
             ...column.options.map(opt => ({ value: opt, label: opt })),
           ];
           return (
@@ -385,7 +395,7 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
               value={condition.value}
               onChange={val => handleUpdateCondition(condition.id, 'value', val)}
               items={optionItems}
-              placeholder="请选择"
+              placeholder={translateText('tableDesigner.queryPanel.placeholders.select', 'Select')}
             />
           );
         }
@@ -395,7 +405,7 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
             className="condition-value"
             value={condition.value}
             onChange={e => handleUpdateCondition(condition.id, 'value', e.target.value)}
-            placeholder="输入值"
+            placeholder={translateText('tableDesigner.queryPanel.placeholders.value', 'Enter a value')}
           />
         );
       default:
@@ -405,14 +415,16 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
             className="condition-value"
             value={condition.value}
             onChange={e => handleUpdateCondition(condition.id, 'value', e.target.value)}
-            placeholder="输入值"
+            placeholder={translateText('tableDesigner.queryPanel.placeholders.value', 'Enter a value')}
           />
         );
     }
-  }, [getColumnByName, handleUpdateCondition, checkboxItems]);
+  }, [checkboxItems, getColumnByName, handleUpdateCondition, t]);
 
   // 根据模式获取标题
-  const panelTitle = mode === 'fillColor' ? '填色条件' : '查询条件';
+  const panelTitle = mode === 'fillColor'
+    ? translateText('tableDesigner.queryPanel.titles.fillColor', 'Fill Color Conditions')
+    : translateText('tableDesigner.queryPanel.titles.query', 'Query Conditions');
 
   return (
     <div className="query-condition-panel">
@@ -421,17 +433,25 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
         {/* 查询模式显示逻辑选择器，填色模式不显示 */}
         {mode === 'query' && (
           <div className="query-condition-logic-wrapper">
-            <span className="query-condition-logic-label">符合</span>
+            <span className="query-condition-logic-label">
+              {translateText('tableDesigner.queryPanel.logic.prefix', 'Match')}
+            </span>
             <Select
               className="query-condition-logic-select"
               value={conditionLogic}
               onChange={val => setConditionLogic(val as 'and' | 'or')}
               items={logicItems}
             />
-            <span className="query-condition-logic-label">条件</span>
+            <span className="query-condition-logic-label">
+              {translateText('tableDesigner.queryPanel.logic.suffix', 'conditions')}
+            </span>
           </div>
         )}
-        <span className="query-condition-close" onClick={onClose} title="关闭">
+        <span
+          className="query-condition-close"
+          onClick={onClose}
+          title={translateText('tableDesigner.queryPanel.close', 'Close')}
+        >
           <Icon name="close" size={14} />
         </span>
       </div>
@@ -451,7 +471,7 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
                     e.stopPropagation();
                     setActiveColorPickerId(activeColorPickerId === condition.id ? null : condition.id);
                   }}
-                  title="选择颜色"
+                  title={translateText('tableDesigner.queryPanel.selectColor', 'Choose a color')}
                 />
                 {activeColorPickerId === condition.id && (
                   <div className="color-picker-dropdown" onClick={(e) => e.stopPropagation()}>
@@ -482,14 +502,14 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
               value={condition.columnName}
               onChange={val => handleUpdateCondition(condition.id, 'columnName', val)}
               items={columnItems}
-              placeholder="选择列"
+              placeholder={translateText('tableDesigner.queryPanel.placeholders.column', 'Select a column')}
             />
             <Select
               className="condition-operator"
               value={condition.operator}
               onChange={val => handleUpdateCondition(condition.id, 'operator', val)}
               items={getAvailableOperators(condition.columnName)}
-              placeholder="选择条件"
+              placeholder={translateText('tableDesigner.queryPanel.placeholders.operator', 'Select a condition')}
             />
             {renderValueInput(condition)}
             {/* 填色模式显示范围选择器 */}
@@ -504,7 +524,7 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
             <span
               className="condition-remove"
               onClick={() => handleRemoveCondition(condition.id)}
-              title="删除条件"
+              title={translateText('tableDesigner.queryPanel.removeCondition', 'Remove condition')}
             >
               <Icon name="close" size={12} />
             </span>
@@ -513,27 +533,27 @@ export const QueryConditionPanel: React.FC<QueryConditionPanelProps> = ({
         {conditions.length < Math.min(MAX_CONDITIONS, columns.length) && (
           <div className="query-condition-add" onClick={handleAddCondition}>
             <Icon name="plus" size={12} />
-            <span>添加条件</span>
+            <span>{translateText('tableDesigner.queryPanel.addCondition', 'Add Condition')}</span>
           </div>
         )}
       </div>
       <div className="query-condition-footer">
         {mode === 'fillColor' ? (
           <span className="query-btn query-btn-secondary" onClick={onClearAllFillColor}>
-            清除所有填色
+            {translateText('tableDesigner.queryPanel.clearAllFillColor', 'Clear All Fill Colors')}
           </span>
         ) : (
           <span className="query-btn query-btn-secondary" onClick={handleClear}>
-            清空
+            {translateText('tableDesigner.queryPanel.clear', 'Clear')}
           </span>
         )}
         {mode === 'fillColor' ? (
           <span className="query-btn query-btn-primary" onClick={handleFillColor}>
-            填色
+            {translateText('tableDesigner.queryPanel.fillColor', 'Fill Color')}
           </span>
         ) : (
           <span className="query-btn query-btn-primary" onClick={handleQuery}>
-            查询
+            {translateText('tableDesigner.queryPanel.query', 'Query')}
           </span>
         )}
       </div>

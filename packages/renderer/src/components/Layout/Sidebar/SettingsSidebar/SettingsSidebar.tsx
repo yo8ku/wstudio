@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import ikunAvatar from '@/assets/images/ikunAvtar.png';
 import { Icon } from '../../../Icons/Icon';
 import './SettingsSidebar.scss';
@@ -46,47 +47,55 @@ interface CategoryItem {
   children?: SubCategoryItem[];
 }
 
-const categories: CategoryItem[] = [
-  { id: 'commonly-used', label: '常用设置' },
-  { id: 'text-editor', label: '文本编辑器' },
-  { id: 'workbench', label: '工作台' },
-  { id: 'window', label: '窗口' },
-  { id: 'ai', label: 'AI' },
-  { id: 'shortcuts', label: '快捷键' },
-  {
-    id: 'cloud-backup',
-    label: '云端备份',
-    children: [
-      { id: 'cloud-backup-local', label: '本地备份' },
-      { id: 'cloud-backup-webdav', label: 'WebDav' },
-      { id: 'cloud-backup-jianguoyun', label: '坚果云' },
-      { id: 'cloud-backup-gitee', label: 'Gitee' },
-      { id: 'cloud-backup-custom', label: '自定义' },
-    ]
-  },
-  {
-    id: 'data-settings',
-    label: '数据设置',
-    children: [
-      { id: 'data-settings-notion', label: 'Notion' },
-      { id: 'data-settings-yuque', label: '语雀' },
-      { id: 'data-settings-joplin', label: 'Joplin' },
-      { id: 'data-settings-obsidian', label: 'Obsidian' },
-      { id: 'data-settings-siyuan', label: '思源笔记' },
-      { id: 'data-settings-custom', label: '自定义' },
-    ]
-  },
-  { id: 'document-processing', label: '文档处理' },
-  { id: 'application', label: '应用程序' },
-];
-
 export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
   activeCategory,
   onCategoryChange,
 }) => {
+  const { t } = useTranslation();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['cloud-backup', 'data-settings'])
   );
+  const translateText = (key: string): string => String(t(key));
+
+  const categories: CategoryItem[] = [
+    { id: 'commonly-used', label: translateText('settings.categories.commonlyUsed') },
+    { id: 'text-editor', label: translateText('settings.categories.textEditor') },
+    { id: 'workbench', label: translateText('settings.categories.workbench') },
+    { id: 'window', label: translateText('settings.categories.window') },
+    { id: 'ai', label: translateText('settings.categories.ai') },
+    { id: 'shortcuts', label: translateText('settings.categories.shortcuts') },
+    {
+      id: 'cloud-backup',
+      label: translateText('settings.categories.cloudBackup'),
+      children: [
+        { id: 'cloud-backup-local', label: translateText('settings.categories.cloudBackupLocal') },
+        { id: 'cloud-backup-webdav', label: translateText('settings.categories.cloudBackupWebdav') },
+        {
+          id: 'cloud-backup-jianguoyun',
+          label: translateText('settings.categories.cloudBackupJianguoyun'),
+        },
+        { id: 'cloud-backup-gitee', label: translateText('settings.categories.cloudBackupGitee') },
+        { id: 'cloud-backup-custom', label: translateText('settings.categories.cloudBackupCustom') },
+      ]
+    },
+    {
+      id: 'data-settings',
+      label: translateText('settings.categories.dataSettings'),
+      children: [
+        { id: 'data-settings-notion', label: translateText('settings.categories.dataSettingsNotion') },
+        { id: 'data-settings-yuque', label: translateText('settings.categories.dataSettingsYuque') },
+        { id: 'data-settings-joplin', label: translateText('settings.categories.dataSettingsJoplin') },
+        {
+          id: 'data-settings-obsidian',
+          label: translateText('settings.categories.dataSettingsObsidian'),
+        },
+        { id: 'data-settings-siyuan', label: translateText('settings.categories.dataSettingsSiyuan') },
+        { id: 'data-settings-custom', label: translateText('settings.categories.dataSettingsCustom') },
+      ]
+    },
+    { id: 'document-processing', label: translateText('settings.categories.documentProcessing') },
+    { id: 'application', label: translateText('settings.categories.application') },
+  ];
 
   const userInfo = {
     name: 'ikun',

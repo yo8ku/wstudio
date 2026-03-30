@@ -3,6 +3,7 @@
  * Manages multiple terminal sessions, active terminal switching, and the terminal option sidebar.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
 import { Icon } from '../../../Icons';
 import { DeleteIcon } from '../../../Icons/DeleteIcon';
@@ -737,6 +738,39 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   isVisible = true,
   isLiveResizing = false,
 }) => {
+  const { t } = useTranslation();
+  const translateText = useCallback((key: string, defaultValue: string): string => (
+    String(t(key, { defaultValue }))
+  ), [t]);
+  const getTerminalColorLabel = useCallback((colorId: string): string => {
+    switch (colorId) {
+      case 'default':
+        return translateText('terminalPanel.colors.default', '默认颜色');
+      case 'blue':
+        return translateText('terminalPanel.colors.blue', '蓝色');
+      case 'cyan':
+        return translateText('terminalPanel.colors.cyan', '青色');
+      case 'green':
+        return translateText('terminalPanel.colors.green', '绿色');
+      case 'lime':
+        return translateText('terminalPanel.colors.lime', '黄绿');
+      case 'yellow':
+        return translateText('terminalPanel.colors.yellow', '黄色');
+      case 'amber':
+        return translateText('terminalPanel.colors.amber', '琥珀');
+      case 'orange':
+        return translateText('terminalPanel.colors.orange', '橙色');
+      case 'magenta':
+        return translateText('terminalPanel.colors.magenta', '洋红');
+      case 'pink':
+        return translateText('terminalPanel.colors.pink', '粉色');
+      case 'purple':
+        return translateText('terminalPanel.colors.purple', '紫色');
+      case 'red':
+      default:
+        return translateText('terminalPanel.colors.red', '红色');
+    }
+  }, [translateText]);
   const workspacePath = useExplorerStore((state) => state.workspacePath);
   const [resolvedWorkspacePath, setResolvedWorkspacePath] = useState(() => workspacePath.trim());
   const [isWorkspacePathReady, setIsWorkspacePathReady] = useState(() => Boolean(workspacePath.trim()));
@@ -1174,6 +1208,35 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     ];
   }, [handleStartRename, moveTerminalToEditorTab, removeTerminal, setTerminalAccentColor]);
 
+  const translateContextMenuItems = useCallback((items: ContextMenuItem[]): ContextMenuItem[] => (
+    items.map((item) => {
+      switch (item.id) {
+        case 'rename-terminal':
+          return { ...item, label: translateText('terminalPanel.contextMenu.rename', '重命名') };
+        case 'change-terminal-color':
+          return {
+            ...item,
+            label: translateText('terminalPanel.contextMenu.changeColor', '修改颜色'),
+            submenu: item.submenu?.map((submenuItem) => {
+              const colorId = submenuItem.id.startsWith('terminal-color-')
+                ? submenuItem.id.slice('terminal-color-'.length)
+                : submenuItem.id;
+              return {
+                ...submenuItem,
+                label: getTerminalColorLabel(colorId),
+              };
+            }),
+          };
+        case 'move-terminal-to-tab':
+          return { ...item, label: translateText('terminalPanel.contextMenu.moveToTab', '移动到标签页') };
+        case 'kill-terminal':
+          return { ...item, label: translateText('terminalPanel.contextMenu.kill', '杀死终端') };
+        default:
+          return item;
+      }
+    })
+  ), [getTerminalColorLabel, translateText]);
+
   useEffect(() => {
     if (!externalShell || externalShell === shell) {
       return;
@@ -1488,7 +1551,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
                             event.stopPropagation();
                             removeTerminal(entry.id);
                           }}
-                          title="kill"
+                          title={translateText('terminalPanel.actions.kill', '杀死终端')}
                         >
                           <DeleteIcon size={18} />
                         </div>
@@ -1504,7 +1567,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
       {contextMenu && (
         <ContextMenu
-          items={getContextMenuItems(contextMenu.terminalId)}
+          items={translateContextMenuItems(getContextMenuItems(contextMenu.terminalId))}
           position={contextMenu.position}
           horizontalAnchor="right"
           onClose={handleCloseContextMenu}

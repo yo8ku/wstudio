@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DropdownMenu } from '../common/DropdownMenu/DropdownMenu';
+import { useTranslation } from 'react-i18next';
 import { Switch } from '../common/Switch';
 import { Icon } from '../Icons/Icon';
 import { electronStore } from '../../services/ElectronStoreService';
@@ -33,6 +34,12 @@ interface EmbeddingConfigState {
 }
 
 export const EmbeddingConfig: React.FC = () => {
+  const { t } = useTranslation();
+  const translateText = (
+    key: string,
+    defaultValue: string,
+    values?: Record<string, string | number>,
+  ): string => String(t(key, values ? { defaultValue, ...values } : { defaultValue }));
   const [state, setState] = useState<EmbeddingConfigState>({
     providers: [],
     models: [],
@@ -301,7 +308,10 @@ export const EmbeddingConfig: React.FC = () => {
     if (!state.selectedProviderId) {
       setState(prev => ({
         ...prev,
-        testResult: { success: false, message: '请先选择服务商' },
+        testResult: {
+          success: false,
+          message: translateText('embeddingConfigPanel.messages.selectProvider', 'Select a provider first'),
+        },
       }));
       return;
     }
@@ -311,7 +321,10 @@ export const EmbeddingConfig: React.FC = () => {
       if (!isCustomConfigValid()) {
         setState(prev => ({
           ...prev,
-          testResult: { success: false, message: '请填写完整的自定义配置' },
+          testResult: {
+            success: false,
+            message: translateText('embeddingConfigPanel.messages.invalidCustomConfig', 'Complete the custom configuration first'),
+          },
         }));
         return;
       }
@@ -322,7 +335,10 @@ export const EmbeddingConfig: React.FC = () => {
       if (!state.currentModel) {
         setState(prev => ({
           ...prev,
-          testResult: { success: false, message: '请先选择模型' },
+          testResult: {
+            success: false,
+            message: translateText('embeddingConfigPanel.messages.selectModel', 'Select a model first'),
+          },
         }));
         return;
       }
@@ -334,7 +350,10 @@ export const EmbeddingConfig: React.FC = () => {
       if (!state.apiKey.trim()) {
         setState(prev => ({
           ...prev,
-          testResult: { success: false, message: '请先输入 API Key' },
+          testResult: {
+            success: false,
+            message: translateText('embeddingConfigPanel.messages.enterApiKey', 'Enter an API key first'),
+          },
         }));
         return;
       }
@@ -351,7 +370,10 @@ export const EmbeddingConfig: React.FC = () => {
     if (!workspaceResult?.success || !workspaceResult.data) {
       setState(prev => ({
         ...prev,
-        testResult: { success: false, message: '请先打开工作区文件夹' },
+        testResult: {
+          success: false,
+          message: translateText('embeddingConfigPanel.messages.openWorkspaceFirst', 'Open a workspace folder first'),
+        },
       }));
       return;
     }
@@ -370,13 +392,25 @@ export const EmbeddingConfig: React.FC = () => {
         setState(prev => ({
           ...prev,
           isIndexing: false,
-          testResult: { success: true, message: '索引任务已启动，请在状态栏查看进度（如遇 API 错误会在状态栏显示）' },
+          testResult: {
+            success: true,
+            message: translateText(
+              'embeddingConfigPanel.messages.indexStarted',
+              'The indexing task has started. Check the status bar for progress and API errors.',
+            ),
+          },
         }));
       } else {
         setState(prev => ({
           ...prev,
           isIndexing: false,
-          testResult: { success: false, message: result?.error || '启动索引失败' },
+          testResult: {
+            success: false,
+            message: result?.error || translateText(
+              'embeddingConfigPanel.messages.indexStartFailed',
+              'Failed to start indexing',
+            ),
+          },
         }));
       }
     } catch (error) {
@@ -384,10 +418,13 @@ export const EmbeddingConfig: React.FC = () => {
       setState(prev => ({
         ...prev,
         isIndexing: false,
-        testResult: { success: false, message: '启动索引失败' },
+        testResult: {
+          success: false,
+          message: translateText('embeddingConfigPanel.messages.indexStartFailed', 'Failed to start indexing'),
+        },
       }));
     }
-  }, [state.apiKey, state.selectedProviderId, state.currentModel, isCustomConfigValid, saveCustomConfig]);
+  }, [isCustomConfigValid, saveCustomConfig, state.apiKey, state.currentModel, state.selectedProviderId, translateText]);
 
   // 切换自动索引
   const handleAutoIndexToggle = useCallback(async () => {
@@ -403,7 +440,9 @@ export const EmbeddingConfig: React.FC = () => {
   if (state.isLoading) {
     return (
       <div className="embedding-config">
-        <div className="embedding-config__loading">加载中...</div>
+        <div className="embedding-config__loading">
+          {translateText('embeddingConfigPanel.loading', 'Loading...')}
+        </div>
       </div>
     );
   }
@@ -412,17 +451,27 @@ export const EmbeddingConfig: React.FC = () => {
     <div className="embedding-config">
       <div className="embedding-config__header">
         <div className="embedding-config__header-left">
-          <h3 className="embedding-config__title">Embedding 配置</h3>
+          <h3 className="embedding-config__title">
+            {translateText(
+              'workbenchSettings.categories.embeddingConfig.title',
+              'Embedding Configuration',
+            )}
+          </h3>
           <p className="embedding-config__description">
-            配置云端 Embedding API，用于快速索引文件，如果"开启自索引"，启动应用每次都会自动索引新的文件
+            {translateText(
+              'embeddingConfigPanel.description',
+              'Configure the cloud embedding API used for fast file indexing. When automatic indexing is enabled, new files are indexed on startup.',
+            )}
           </p>
         </div>
         <div className="embedding-config__header-right">
-          <span className="embedding-config__auto-index-label">开启自索引</span>
+          <span className="embedding-config__auto-index-label">
+            {translateText('embeddingConfigPanel.autoIndex.label', 'Enable Automatic Indexing')}
+          </span>
           <Switch
             className="embedding-config__switch"
             checked={state.autoIndexEnabled}
-            ariaLabel="切换自动索引"
+            ariaLabel={translateText('embeddingConfigPanel.autoIndex.ariaLabel', 'Toggle automatic indexing')}
             onChange={() => {
               void handleAutoIndexToggle();
             }}
@@ -434,7 +483,9 @@ export const EmbeddingConfig: React.FC = () => {
         {/* 服务商和模型选择 - 横向排列 */}
         <div className="embedding-config__row">
           <div className="embedding-config__field embedding-config__field--inline">
-            <label className="embedding-config__label">服务商</label>
+            <label className="embedding-config__label">
+              {translateText('embeddingConfigPanel.provider.label', 'Provider')}
+            </label>
             <DropdownMenu
               value={state.selectedProviderId}
               onChange={handleProviderChange}
@@ -442,27 +493,31 @@ export const EmbeddingConfig: React.FC = () => {
                 value: provider.id,
                 label: provider.name,
               }))}
-              placeholder="选择服务商"
+              placeholder={translateText('embeddingConfigPanel.provider.placeholder', 'Select a provider')}
               className="embedding-config__dropdown"
             />
           </div>
 
           {state.selectedProviderId !== 'custom' && (
             <div className="embedding-config__field embedding-config__field--model">
-              <label className="embedding-config__label">模型</label>
+              <label className="embedding-config__label">
+                {translateText('embeddingConfigPanel.model.label', 'Model')}
+              </label>
               <DropdownMenu
                 value={state.currentModel?.id || ''}
                 onChange={handleModelChange}
                 groups={[{
-                  groupName: currentProvider?.name || '模型',
+                  groupName: currentProvider?.name || translateText('embeddingConfigPanel.model.groupFallback', 'Models'),
                   items: providerModels.map(model => ({
                     value: model.id,
                     label: model.pricePerMillion === 0
-                      ? `${model.displayName} (免费)`
+                      ? translateText('embeddingConfigPanel.model.freeSuffix', '{{name}} (Free)', {
+                        name: model.displayName,
+                      })
                       : model.displayName,
                   })),
                 }]}
-                placeholder="选择模型"
+                placeholder={translateText('embeddingConfigPanel.model.placeholder', 'Select a model')}
                 className="embedding-config__dropdown"
               />
             </div>
@@ -473,7 +528,12 @@ export const EmbeddingConfig: React.FC = () => {
         {state.selectedProviderId === 'custom' && (
           <div className="embedding-config__custom-section">
             <div className="embedding-config__field">
-              <label className="embedding-config__label">API 端点（需包含完整路径，如 /v1/embeddings）</label>
+              <label className="embedding-config__label">
+                {translateText(
+                  'embeddingConfigPanel.custom.apiEndpointLabel',
+                  'API Endpoint (include the full path, for example /v1/embeddings)',
+                )}
+              </label>
               <input
                 type="text"
                 value={state.customConfig.apiEndpoint}
@@ -488,7 +548,9 @@ export const EmbeddingConfig: React.FC = () => {
             </div>
             <div className="embedding-config__row">
               <div className="embedding-config__field embedding-config__field--inline">
-                <label className="embedding-config__label">模型名称</label>
+                <label className="embedding-config__label">
+                  {translateText('embeddingConfigPanel.custom.modelNameLabel', 'Model Name')}
+                </label>
                 <input
                   type="text"
                   value={state.customConfig.modelName}
@@ -504,7 +566,9 @@ export const EmbeddingConfig: React.FC = () => {
             </div>
             <div className="embedding-config__row">
               <div className="embedding-config__field embedding-config__field--inline">
-                <label className="embedding-config__label">向量维度（不确定可保持默认）</label>
+                <label className="embedding-config__label">
+                  {translateText('embeddingConfigPanel.custom.dimensionsLabel', 'Vector Dimensions (keep the default if unsure)')}
+                </label>
                 <input
                   type="number"
                   value={state.customConfig.dimensions}
@@ -519,7 +583,9 @@ export const EmbeddingConfig: React.FC = () => {
                 />
               </div>
               <div className="embedding-config__field embedding-config__field--inline">
-                <label className="embedding-config__label">最大 Tokens（不确定可保持默认）</label>
+                <label className="embedding-config__label">
+                  {translateText('embeddingConfigPanel.custom.maxTokensLabel', 'Max Tokens (keep the default if unsure)')}
+                </label>
                 <input
                   type="number"
                   value={state.customConfig.maxTokens}
@@ -540,8 +606,16 @@ export const EmbeddingConfig: React.FC = () => {
         {/* 模型信息 */}
         {state.currentModel && state.selectedProviderId !== 'custom' && (
           <div className="embedding-config__model-info">
-            <span>维度: {state.currentModel.dimensions}</span>
-            <span>最大 Tokens: {state.currentModel.maxTokens}</span>
+            <span>
+              {translateText('embeddingConfigPanel.modelInfo.dimensions', 'Dimensions: {{count}}', {
+                count: state.currentModel.dimensions,
+              })}
+            </span>
+            <span>
+              {translateText('embeddingConfigPanel.modelInfo.maxTokens', 'Max Tokens: {{count}}', {
+                count: state.currentModel.maxTokens,
+              })}
+            </span>
             {state.currentModel.description && (
               <span>{state.currentModel.description}</span>
             )}
@@ -551,9 +625,11 @@ export const EmbeddingConfig: React.FC = () => {
         {/* API Key 输入 - Ollama 可选，其他服务商必填 */}
         <div className="embedding-config__field">
           <label className="embedding-config__label">
-            API Key
+            {translateText('embeddingConfigPanel.apiKey.label', 'API Key')}
             {state.selectedProviderId === 'ollama' && (
-              <span className="embedding-config__label-hint">（本地运行可留空）</span>
+              <span className="embedding-config__label-hint">
+                {translateText('embeddingConfigPanel.apiKey.ollamaHint', '(can be left empty for local runtime)')}
+              </span>
             )}
           </label>
           <div className="embedding-config__api-key-row">
@@ -562,7 +638,16 @@ export const EmbeddingConfig: React.FC = () => {
                 type={state.showApiKey ? 'text' : 'password'}
                 value={state.apiKey}
                 onChange={e => setState(prev => ({ ...prev, apiKey: e.target.value, testResult: null }))}
-                placeholder={state.selectedProviderId === 'ollama' ? '本地运行可留空，云端需填写' : `输入 ${currentProvider?.name || ''} API Key`}
+                placeholder={state.selectedProviderId === 'ollama'
+                  ? translateText(
+                    'embeddingConfigPanel.apiKey.placeholderLocal',
+                    'Can be left empty for local runtime; cloud providers require a key',
+                  )
+                  : translateText(
+                    'embeddingConfigPanel.apiKey.placeholderProvider',
+                    'Enter the {{provider}} API key',
+                    { provider: currentProvider?.name || '' },
+                  )}
                 className="embedding-config__input"
                 autoComplete="off"
                 spellCheck={false}
@@ -570,7 +655,9 @@ export const EmbeddingConfig: React.FC = () => {
               <span
                 className="embedding-config__eye-icon"
                 onClick={() => setState(prev => ({ ...prev, showApiKey: !prev.showApiKey }))}
-                title={state.showApiKey ? '隐藏' : '显示'}
+                title={state.showApiKey
+                  ? translateText('embeddingConfigPanel.apiKey.hide', 'Hide')
+                  : translateText('embeddingConfigPanel.apiKey.show', 'Show')}
               >
                 <Icon iconSet="ui" name={state.showApiKey ? 'eye' : 'eye-off'} size={16} />
               </span>
@@ -589,7 +676,9 @@ export const EmbeddingConfig: React.FC = () => {
                   ? undefined : handleStartIndexing
               }
             >
-              {state.isIndexing || state.isGlobalIndexing ? '索引中...' : '立即索引'}
+              {state.isIndexing || state.isGlobalIndexing
+                ? translateText('embeddingConfigPanel.actions.indexing', 'Indexing...')
+                : translateText('embeddingConfigPanel.actions.indexNow', 'Index Now')}
             </div>
           </div>
           {currentProvider?.apiKeyUrl && state.selectedProviderId !== 'ollama' && (
@@ -597,7 +686,9 @@ export const EmbeddingConfig: React.FC = () => {
               className="embedding-config__api-key-link"
               onClick={() => window.electron?.shell?.openExternal(currentProvider.apiKeyUrl)}
             >
-              获取 {currentProvider.name} Key
+              {translateText('embeddingConfigPanel.apiKey.getKey', 'Get {{provider}} Key', {
+                provider: currentProvider.name,
+              })}
             </span>
           )}
         </div>

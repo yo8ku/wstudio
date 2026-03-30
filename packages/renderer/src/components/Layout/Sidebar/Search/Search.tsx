@@ -7,6 +7,7 @@ import React, { startTransition, useEffect, useLayoutEffect, useRef, useState } 
 import { createPortal } from 'react-dom';
 import { parseWorkspaceSearchQuery } from '@note-studio/shared';
 import { LuChevronsUpDown, LuX } from 'react-icons/lu';
+import { useTranslation } from 'react-i18next';
 import { TreeNodeRow } from '../../../Explorer/Common/TreeNode';
 import { TreeView } from '../../../Explorer/Common/TreeView';
 import { Icon } from '../../../Icons/Icon';
@@ -50,7 +51,8 @@ interface SearchHistoryEntry {
 
 interface SearchAssistOption {
   token: string;
-  description: string;
+  translationKey: string;
+  defaultDescription: string;
 }
 
 interface ActivePathAssistState {
@@ -206,22 +208,23 @@ const TAG_SEARCH_TOKEN = 'tag锛?;
 const PATH_SEARCH_TOKEN = 'path\uFF1A';
 const BLOCK_SEARCH_TOKEN = 'block\uFF1A';
 const SEARCH_ASSIST_OPTIONS: readonly SearchAssistOption[] = [
-  { token: PATH_SEARCH_TOKEN, description: '\u5339\u914d\u6587\u4ef6\u8def\u5f84' },
-  { token: 'file\uFF1A', description: '\u5339\u914d\u6587\u4ef6\u540d' },
-  { token: 'tag\uFF1A', description: '\u641c\u7d22\u6807\u7b7e' },
-  { token: BLOCK_SEARCH_TOKEN, description: '\u641c\u7d22\u5757\u5173\u952e\u8bcd' },
+  { token: PATH_SEARCH_TOKEN, translationKey: 'searchPanel.assist.options.path', defaultDescription: 'Match file path' },
+  { token: 'file\uFF1A', translationKey: 'searchPanel.assist.options.file', defaultDescription: 'Match file name' },
+  { token: 'tag\uFF1A', translationKey: 'searchPanel.assist.options.tag', defaultDescription: 'Search tags' },
+  { token: BLOCK_SEARCH_TOKEN, translationKey: 'searchPanel.assist.options.block', defaultDescription: 'Search block keywords' },
 ];
 const TAG_SEARCH_TOKEN = 'tag\uFF1A';
 const SEARCH_SORT_MENU_OPTIONS: readonly {
   readonly mode: SearchSortMode;
-  readonly label: string;
+  readonly translationKey: string;
+  readonly defaultLabel: string;
 }[] = [
-  { mode: 'fileNameAsc', label: '\u6587\u4ef6\u540d(A-Z)' },
-  { mode: 'fileNameDesc', label: '\u6587\u4ef6\u540d(Z-A)' },
-  { mode: 'updatedAtDesc', label: '\u7f16\u8f91\u65f6\u95f4(\u4ece\u65b0\u5230\u65e7)' },
-  { mode: 'updatedAtAsc', label: '\u7f16\u8f91\u65f6\u95f4(\u4ece\u65e7\u5230\u65b0)' },
-  { mode: 'createdAtDesc', label: '\u521b\u5efa\u65f6\u95f4(\u4ece\u65b0\u5230\u65e7)' },
-  { mode: 'createdAtAsc', label: '\u521b\u5efa\u65f6\u95f4(\u4ece\u65e7\u5230\u65b0)' },
+  { mode: 'fileNameAsc', translationKey: 'sidebar.searchSort.fileNameAsc', defaultLabel: 'File Name (A-Z)' },
+  { mode: 'fileNameDesc', translationKey: 'sidebar.searchSort.fileNameDesc', defaultLabel: 'File Name (Z-A)' },
+  { mode: 'updatedAtDesc', translationKey: 'sidebar.searchSort.updatedAtDesc', defaultLabel: 'Updated Time (Newest First)' },
+  { mode: 'updatedAtAsc', translationKey: 'sidebar.searchSort.updatedAtAsc', defaultLabel: 'Updated Time (Oldest First)' },
+  { mode: 'createdAtDesc', translationKey: 'sidebar.searchSort.createdAtDesc', defaultLabel: 'Created Time (Newest First)' },
+  { mode: 'createdAtAsc', translationKey: 'sidebar.searchSort.createdAtAsc', defaultLabel: 'Created Time (Oldest First)' },
 ];
 
 const createBufferedSearchSessionEvents = (): BufferedSearchSessionEvents => ({
@@ -840,6 +843,7 @@ export const Search: React.FC<SearchProps> = ({
   clearActionId = 0,
   collapseAllActionId = 0,
 }) => {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
   const [showReplace, setShowReplace] = useState(false);
@@ -894,6 +898,7 @@ export const Search: React.FC<SearchProps> = ({
   const pendingBatchFlushTimerRef = useRef<number | null>(null);
   const [resultsScrollTop, setResultsScrollTop] = useState(0);
   const [resultsViewportHeight, setResultsViewportHeight] = useState(0);
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
 
   const updateSearchAssistPanelLayout = (): void => {
     const anchorElement = searchInputAnchorRef.current;
@@ -1383,7 +1388,7 @@ export const Search: React.FC<SearchProps> = ({
     const nextExcludePattern = overrides?.excludePattern ?? excludePattern;
 
     if (!window.electron?.workspace?.searchText) {
-      setSearchError('\u5f53\u524d\u73af\u5883\u4e0d\u652f\u6301\u5de5\u4f5c\u533a\u641c\u7d22');
+      setSearchError(translateText('searchPanel.errors.workspaceSearchUnsupported', 'Current environment does not support workspace search'));
       resetSearchResultsState();
       return;
     }
@@ -1401,7 +1406,11 @@ export const Search: React.FC<SearchProps> = ({
 
       if (!response.success || !response.data) {
         resetSearchResultsState();
-        setSearchError(response.error || '\u5de5\u4f5c\u533a\u641c\u7d22\u5931\u8d25');
+        setSearchError(
+          typeof response.error === 'string'
+            ? response.error
+            : translateText('searchPanel.errors.workspaceSearchFailed', 'Workspace search failed')
+        );
         return;
       }
 
@@ -1506,7 +1515,11 @@ export const Search: React.FC<SearchProps> = ({
       if (!response.success || !response.data) {
         awaitingSearchSessionStartRef.current = false;
         resetSearchResultsState();
-        setSearchError(response.error || '\u5de5\u4f5c\u533a\u641c\u7d22\u5931\u8d25');
+        setSearchError(
+          typeof response.error === 'string'
+            ? response.error
+            : translateText('searchPanel.errors.workspaceSearchFailed', 'Workspace search failed')
+        );
         setIsSearching(false);
         return;
       }
@@ -1572,12 +1585,12 @@ export const Search: React.FC<SearchProps> = ({
 
   const executeReplace = async (replaceAll: boolean): Promise<void> => {
     if (!window.electron?.workspace?.replaceText) {
-      setSearchError('\u5f53\u524d\u73af\u5883\u4e0d\u652f\u6301\u5de5\u4f5c\u533a\u66ff\u6362');
+      setSearchError(translateText('searchPanel.errors.workspaceReplaceUnsupported', 'Current environment does not support workspace replace'));
       return;
     }
 
     if (parsedSearchQuery.blockFilters.length > 0) {
-      setSearchError('\u5f53\u524d\u641c\u7d22\u6761\u4ef6\u4e0d\u652f\u6301\u66ff\u6362');
+      setSearchError(translateText('searchPanel.errors.replaceUnsupported', 'Current search conditions do not support replace'));
       /*
       setSearchError('褰撳墠鎼滅储鏉′欢涓嶆敮鎸佹浛鎹?);
       return;
@@ -1590,7 +1603,7 @@ export const Search: React.FC<SearchProps> = ({
       && parsedSearchQuery.tagFilters.length > 0
     );
     if (parsedSearchQuery.textQuery.length === 0 && !supportsTagOnlyReplace) {
-      setSearchError('\u5f53\u524d\u641c\u7d22\u6761\u4ef6\u4e0d\u652f\u6301\u66ff\u6362');
+      setSearchError(translateText('searchPanel.errors.replaceUnsupported', 'Current search conditions do not support replace'));
       return;
     }
 
@@ -1622,7 +1635,11 @@ export const Search: React.FC<SearchProps> = ({
       });
 
       if (!response.success || !response.data) {
-        setSearchError(response.error || '\u5de5\u4f5c\u533a\u66ff\u6362\u5931\u8d25');
+        setSearchError(
+          typeof response.error === 'string'
+            ? response.error
+            : translateText('searchPanel.errors.workspaceReplaceFailed', 'Workspace replace failed')
+        );
         return;
       }
 
@@ -1988,7 +2005,11 @@ export const Search: React.FC<SearchProps> = ({
 
     const fileResult = await window.electron.file.read(result.absolutePath);
     if (!fileResult?.success || !fileResult.data) {
-      setSearchError(fileResult?.error || '\u65e0\u6cd5\u6253\u5f00\u641c\u7d22\u7ed3\u679c');
+      setSearchError(
+        typeof fileResult?.error === 'string'
+          ? fileResult.error
+          : translateText('searchPanel.errors.openResultFailed', 'Unable to open the search result')
+      );
       return;
     }
 
@@ -2179,15 +2200,18 @@ export const Search: React.FC<SearchProps> = ({
 
   const searchSortMenuItems: SidebarHeaderMenuItem[] = SEARCH_SORT_MENU_OPTIONS.map((option) => ({
     id: option.mode,
-    label: option.label,
+    label: translateText(option.translationKey, option.defaultLabel),
     checked: sortMode === option.mode,
     onClick: () => {
       setSortMode(option.mode);
       setIsSortMenuOpen(false);
     },
   }));
-  const activeSortLabel = SEARCH_SORT_MENU_OPTIONS.find((option) => option.mode === sortMode)?.label
-    ?? SEARCH_SORT_MENU_OPTIONS[0].label;
+  const activeSortLabel = (() => {
+    const matchedOption = SEARCH_SORT_MENU_OPTIONS.find((option) => option.mode === sortMode)
+      ?? SEARCH_SORT_MENU_OPTIONS[0];
+    return translateText(matchedOption.translationKey, matchedOption.defaultLabel);
+  })();
 
   useEffect(() => {
     if (searchQuery.length === 0) {
@@ -2265,8 +2289,8 @@ export const Search: React.FC<SearchProps> = ({
                   onPress={() => {
                     void clearSearchAssistQuery();
                   }}
-                  aria-label={'\u6e05\u9664\u641c\u7d22\u9009\u9879'}
-                  title={'\u6e05\u9664\u641c\u7d22\u9009\u9879'}
+                  aria-label={translateText('searchPanel.toolbar.clearSearchOptions', 'Clear Search Filters')}
+                  title={translateText('searchPanel.toolbar.clearSearchOptions', 'Clear Search Filters')}
                 >
                   <LuX size={14} />
                 </PressableControl>
@@ -2275,9 +2299,9 @@ export const Search: React.FC<SearchProps> = ({
                   <PressableControl
                     className={`search-toolbar-field__option ${caseSensitive ? 'is-active' : ''}`}
                     onPress={handleToggleCaseSensitive}
-                    aria-label={'\u533a\u5206\u5927\u5c0f\u5199'}
+                    aria-label={translateText('searchPanel.toolbar.caseSensitive', 'Match Case')}
                     aria-pressed={caseSensitive}
-                    title={'\u533a\u5206\u5927\u5c0f\u5199'}
+                    title={translateText('searchPanel.toolbar.caseSensitive', 'Match Case')}
                   >
                     <SearchToolbarIcon
                       name="caseSensitive"
@@ -2287,9 +2311,9 @@ export const Search: React.FC<SearchProps> = ({
                   <PressableControl
                     className={`search-toolbar-field__option ${wholeWord ? 'is-active' : ''}`}
                     onPress={handleToggleWholeWord}
-                    aria-label={'\u5168\u5b57\u5339\u914d'}
+                    aria-label={translateText('searchPanel.toolbar.wholeWord', 'Match Whole Word')}
                     aria-pressed={wholeWord}
-                    title={'\u5168\u5b57\u5339\u914d'}
+                    title={translateText('searchPanel.toolbar.wholeWord', 'Match Whole Word')}
                   >
                     <SearchToolbarIcon
                       name="wholeWord"
@@ -2299,9 +2323,9 @@ export const Search: React.FC<SearchProps> = ({
                   <PressableControl
                     className={`search-toolbar-field__option ${useRegex ? 'is-active' : ''}`}
                     onPress={handleToggleRegex}
-                    aria-label={'\u4f7f\u7528\u6b63\u5219\u8868\u8fbe\u5f0f'}
+                    aria-label={translateText('searchPanel.toolbar.regex', 'Use Regular Expression')}
                     aria-pressed={useRegex}
-                    title={'\u4f7f\u7528\u6b63\u5219\u8868\u8fbe\u5f0f'}
+                    title={translateText('searchPanel.toolbar.regex', 'Use Regular Expression')}
                   >
                     <SearchToolbarIcon
                       name="regex"
@@ -2319,7 +2343,7 @@ export const Search: React.FC<SearchProps> = ({
               onFocus={handleSearchInputFocus}
               onClick={handleSearchInputClick}
               onKeyDown={handleSearchInputKeyDown}
-              placeholder={'\u641c\u7d22'}
+              placeholder={translateText('searchPanel.toolbar.searchPlaceholder', 'Search')}
               className="search-input"
               rows={1}
               spellCheck={false}
@@ -2334,34 +2358,38 @@ export const Search: React.FC<SearchProps> = ({
               ref={searchAssistPanelRef}
               className="search-assist-panel"
               role="dialog"
-              aria-label={'\u641c\u7d22\u8f85\u52a9'}
+              aria-label={translateText('searchPanel.assist.dialogLabel', 'Search Assistance')}
               style={searchAssistPanelStyle}
             >
               <div className="search-assist-group">
-                <div className="search-assist-group-title">{'\u641c\u7d22\u9009\u9879'}</div>
+                <div className="search-assist-group-title">
+                  {translateText('searchPanel.assist.optionsTitle', 'Search Filters')}
+                </div>
                 {SEARCH_ASSIST_OPTIONS.map((option) => (
                   <PressableControl
                     key={option.token}
                     className="search-assist-item"
                     onMouseDown={event => event.preventDefault()}
                     onPress={() => handleInsertSearchOption(option.token)}
-                    title={option.description}
-                    aria-label={`${option.token} ${option.description}`}
+                    title={translateText(option.translationKey, option.defaultDescription)}
+                    aria-label={`${option.token} ${translateText(option.translationKey, option.defaultDescription)}`}
                   >
                     <span className="search-assist-item-token">{option.token}</span>
-                    <span className="search-assist-item-description">{option.description}</span>
+                    <span className="search-assist-item-description">
+                      {translateText(option.translationKey, option.defaultDescription)}
+                    </span>
                   </PressableControl>
                 ))}
               </div>
               <div className="search-assist-group search-assist-group--history">
                 <div className="search-assist-group-title search-assist-group-title--with-action">
-                  <span>{'\u641c\u7d22\u5386\u53f2'}</span>
+                  <span>{translateText('searchPanel.assist.historyTitle', 'Search History')}</span>
                   <PressableControl
                     className="search-assist-close"
                     onMouseDown={event => event.preventDefault()}
                     onPress={handleClearSearchHistory}
-                    title={'\u6e05\u9664\u641c\u7d22\u5386\u53f2'}
-                    aria-label={'\u6e05\u9664\u641c\u7d22\u5386\u53f2'}
+                    title={translateText('searchPanel.assist.clearHistory', 'Clear Search History')}
+                    aria-label={translateText('searchPanel.assist.clearHistory', 'Clear Search History')}
                   >
                     <LuX size={12} />
                   </PressableControl>
@@ -2375,13 +2403,18 @@ export const Search: React.FC<SearchProps> = ({
                         onMouseDown={event => event.preventDefault()}
                         onPress={() => handleSelectSearchHistory(entry.query)}
                         title={entry.query}
-                        aria-label={`${'\u4f7f\u7528\u641c\u7d22\u5386\u53f2'} ${entry.query}`}
+                        aria-label={String(t('searchPanel.assist.useHistory', {
+                          defaultValue: 'Use Search History {{query}}',
+                          query: entry.query,
+                        }))}
                       >
                         <span className="search-assist-history-query">{entry.query}</span>
                       </PressableControl>
                     ))
                   ) : (
-                    <div className="search-assist-empty">{'\u6682\u65e0\u641c\u7d22\u5386\u53f2'}</div>
+                    <div className="search-assist-empty">
+                      {translateText('searchPanel.assist.emptyHistory', 'No search history yet')}
+                    </div>
                   )}
                 </div>
               </div>
@@ -2392,16 +2425,18 @@ export const Search: React.FC<SearchProps> = ({
               className="search-path-assist-panel"
               role="dialog"
               aria-label={activeTagAssist
-                ? '\u6807\u7b7e\u9009\u62e9'
+                ? translateText('searchPanel.assist.filterDialogLabels.tag', 'Tag Selection')
                 : activeBlockAssist
-                  ? '\u5757\u5173\u952e\u8bcd\u9009\u62e9'
-                  : '\u8def\u5f84\u9009\u62e9'}
+                  ? translateText('searchPanel.assist.filterDialogLabels.block', 'Block Keyword Selection')
+                  : translateText('searchPanel.assist.filterDialogLabels.path', 'Path Selection')}
               style={searchAssistPanelStyle}
             >
               <div className="search-path-assist-list">
                 {activeTagAssist ? (
                   isTagAssistLoading ? (
-                    <div className="search-assist-empty">{'\u52a0\u8f7d\u6807\u7b7e\u4e2d...'}</div>
+                    <div className="search-assist-empty">
+                      {translateText('searchPanel.assist.loadingTags', 'Loading tags...')}
+                    </div>
                   ) : filteredAvailableTags.length > 0 ? (
                     filteredAvailableTags.map((tagName) => (
                       <Tooltip
@@ -2412,19 +2447,24 @@ export const Search: React.FC<SearchProps> = ({
                           className="search-assist-item search-assist-item--history"
                           onMouseDown={event => event.preventDefault()}
                           onPress={() => handleSelectTagSuggestion(tagName)}
-                          aria-label={`${'\u9009\u62e9\u6807\u7b7e'} #${tagName}`}
+                          aria-label={String(t('searchPanel.assist.selectTag', {
+                            defaultValue: 'Select tag {{tag}}',
+                            tag: `#${tagName}`,
+                          }))}
                         >
                           <span className="search-assist-history-query">#{tagName}</span>
                         </PressableControl>
                       </Tooltip>
                     ))
                   ) : (
-                    <div className="search-assist-empty">{'\u6682\u65e0\u53ef\u7528\u6807\u7b7e'}</div>
+                    <div className="search-assist-empty">
+                      {translateText('searchPanel.assist.emptyTags', 'No tags available')}
+                    </div>
                   )
                 ) : activeBlockAssist ? (
                   isBlockAssistLoading ? (
                     <div className="search-assist-empty">
-                      {'\u52a0\u8f7d\u5757\u5173\u952e\u8bcd\u4e2d...'}
+                      {translateText('searchPanel.assist.loadingBlocks', 'Loading block keywords...')}
                     </div>
                   ) : filteredAvailableBlockKeywords.length > 0 ? (
                     filteredAvailableBlockKeywords.map((blockCandidate) => (
@@ -2436,7 +2476,10 @@ export const Search: React.FC<SearchProps> = ({
                           className="search-assist-item search-assist-item--history"
                           onMouseDown={event => event.preventDefault()}
                           onPress={() => handleSelectBlockSuggestion(blockCandidate.keyword)}
-                          aria-label={`${'\u9009\u62e9\u5757\u5173\u952e\u8bcd'} ${blockCandidate.keyword}`}
+                          aria-label={String(t('searchPanel.assist.selectBlock', {
+                            defaultValue: 'Select block keyword {{keyword}}',
+                            keyword: blockCandidate.keyword,
+                          }))}
                         >
                           <span className="search-assist-history-query">{blockCandidate.keyword}</span>
                         </PressableControl>
@@ -2444,7 +2487,7 @@ export const Search: React.FC<SearchProps> = ({
                     ))
                   ) : (
                     <div className="search-assist-empty">
-                      {'\u6682\u65e0\u53ef\u7528\u5757\u5173\u952e\u8bcd'}
+                      {translateText('searchPanel.assist.emptyBlocks', 'No block keywords available')}
                     </div>
                   )
                 ) : filteredWorkspaceRootDirectories.length > 0 ? (
@@ -2455,14 +2498,17 @@ export const Search: React.FC<SearchProps> = ({
                       onMouseDown={event => event.preventDefault()}
                       onPress={() => handleSelectPathSuggestion(rootDirectory)}
                       title={rootDirectory}
-                      aria-label={`${'\u9009\u62e9\u6839\u76ee\u5f55'} ${rootDirectory}`}
+                      aria-label={String(t('searchPanel.assist.selectRootDirectory', {
+                        defaultValue: 'Select root directory {{path}}',
+                        path: rootDirectory,
+                      }))}
                     >
                       <span className="search-assist-history-query">{rootDirectory}</span>
                     </PressableControl>
                   ))
                 ) : (
                   <div className="search-assist-empty">
-                    {'\u6682\u65e0\u53ef\u7528\u7684\u6839\u76ee\u5f55'}
+                    {translateText('searchPanel.assist.emptyRootDirectories', 'No root directories available')}
                   </div>
                 )}
               </div>
@@ -2475,7 +2521,7 @@ export const Search: React.FC<SearchProps> = ({
           onPress={() => setShowReplace(!showReplace)}
           className="toggle-replace-button"
           aria-expanded={showReplace}
-          title={'\u5207\u6362\u66ff\u6362\u533a\u57df'}
+          title={translateText('searchPanel.toolbar.toggleReplace', 'Toggle Replace Panel')}
         >
           <svg
             className={`chevron-icon ${showReplace ? 'expanded' : ''}`}
@@ -2488,7 +2534,7 @@ export const Search: React.FC<SearchProps> = ({
           >
             <path d="m8 6 4 4-4 4" />
           </svg>
-          {'\u66ff\u6362'}
+          {translateText('searchPanel.toolbar.replace', 'Replace')}
         </PressableControl>
       </div>
 
@@ -2500,7 +2546,7 @@ export const Search: React.FC<SearchProps> = ({
               value={replaceQuery}
               onChange={event => setReplaceQuery(event.target.value)}
               onKeyDown={handleReplaceInputKeyDown}
-              placeholder={'\u66ff\u6362'}
+              placeholder={translateText('searchPanel.replace.inputPlaceholder', 'Replace')}
               className="replace-input"
             />
           </div>
@@ -2512,10 +2558,10 @@ export const Search: React.FC<SearchProps> = ({
               }}
               disabled={!canReplaceSelectedResult}
               title={canReplaceSelectedResult
-                ? '\u66ff\u6362\u5f53\u524d\u9009\u4e2d\u7684\u641c\u7d22\u7ed3\u679c'
-                : '\u8bf7\u5148\u9009\u4e2d\u4e00\u6761\u641c\u7d22\u7ed3\u679c'}
+                ? translateText('searchPanel.replace.replaceSelectedTitle', 'Replace the currently selected search result')
+                : translateText('searchPanel.replace.replaceSelectedDisabled', 'Select a search result first')}
             >
-              {'\u66ff\u6362'}
+              {translateText('searchPanel.replace.replaceSelected', 'Replace')}
             </PressableControl>
             <PressableControl
               className="replace-button"
@@ -2524,10 +2570,10 @@ export const Search: React.FC<SearchProps> = ({
               }}
               disabled={!canReplaceAllResults}
               title={canReplaceAllResults
-                ? '\u66ff\u6362\u5f53\u524d\u641c\u7d22\u7ed3\u679c\u4e2d\u7684\u6240\u6709\u5339\u914d'
-                : '\u5f53\u524d\u6ca1\u6709\u53ef\u66ff\u6362\u7684\u641c\u7d22\u7ed3\u679c'}
+                ? translateText('searchPanel.replace.replaceAllTitle', 'Replace all matches in the current search results')
+                : translateText('searchPanel.replace.replaceAllDisabled', 'There are no replaceable search results')}
             >
-              {'\u5168\u90e8\u66ff\u6362'}
+              {translateText('searchPanel.replace.replaceAll', 'Replace All')}
             </PressableControl>
           </div>
         </div>
@@ -2535,7 +2581,7 @@ export const Search: React.FC<SearchProps> = ({
 
       <div className="search-options-section">
         <details>
-          <summary>{'\u641c\u7d22\u8303\u56f4'}</summary>
+          <summary>{translateText('searchPanel.scope.title', 'Search Scope')}</summary>
           <div className="options-content">
             <div className="option-input-wrapper">
               <input
@@ -2544,7 +2590,7 @@ export const Search: React.FC<SearchProps> = ({
                 onChange={event => setIncludePattern(event.target.value)}
                 onKeyDown={handleSearchRangeKeyDown}
                 onBlur={handleSearchRangeBlur}
-                placeholder={'\u8981\u5305\u542b\u7684\u6587\u4ef6\uff0c\u4f8b\u5982 src/**/*.ts,*.md'}
+                placeholder={translateText('searchPanel.scope.includePlaceholder', 'Files to include, for example src/**/*.ts,*.md')}
                 className="option-input"
               />
             </div>
@@ -2555,7 +2601,7 @@ export const Search: React.FC<SearchProps> = ({
                 onChange={event => setExcludePattern(event.target.value)}
                 onKeyDown={handleSearchRangeKeyDown}
                 onBlur={handleSearchRangeBlur}
-                placeholder={'\u8981\u6392\u9664\u7684\u6587\u4ef6\uff0c\u4f8b\u5982 node_modules/**,*.test.ts'}
+                placeholder={translateText('searchPanel.scope.excludePlaceholder', 'Files to exclude, for example node_modules/**,*.test.ts')}
                 className="option-input"
               />
             </div>
@@ -2570,16 +2616,25 @@ export const Search: React.FC<SearchProps> = ({
           <div className="results-list">
             <div className="results-summary">
               <span className="results-summary-text">
-                {'\u627e\u5230 '}
-                {totalResultCount}
-                {' \u4e2a\u7ed3\u679c'}
-                {limitHit ? `\uff0c\u5df2\u8fbe\u5230 ${SEARCH_PANEL_MAX_RESULTS} \u6761\u4e0a\u9650` : ''}
+                {limitHit
+                  ? String(t('searchPanel.results.summaryWithLimit', {
+                    defaultValue: 'Found {{count}} results, reached the limit of {{limit}}',
+                    count: totalResultCount,
+                    limit: SEARCH_PANEL_MAX_RESULTS,
+                  }))
+                  : String(t('searchPanel.results.summary', {
+                    defaultValue: 'Found {{count}} results',
+                    count: totalResultCount,
+                  }))}
               </span>
               <PressableControl
                 ref={searchSortButtonRef}
                 className="results-summary-sort"
                 onPress={handleSortMenuOpen}
-                aria-label={`\u6392\u5e8f\uff0c\u5f53\u524d\u4e3a${activeSortLabel}`}
+                aria-label={String(t('searchPanel.results.sort', {
+                  defaultValue: 'Sort, current: {{label}}',
+                  label: activeSortLabel,
+                }))}
                 title={activeSortLabel}
               >
                 <span className="results-summary-sort-label">{activeSortLabel}</span>

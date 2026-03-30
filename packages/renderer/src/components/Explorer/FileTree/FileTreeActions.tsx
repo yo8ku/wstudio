@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface FileTreeActionsProps {
   onNewFile?: () => void;
@@ -7,22 +8,20 @@ export interface FileTreeActionsProps {
   onCollapse?: () => void;
 }
 
-/**
- * 文件树工具栏
- * 提供新建文件、新建文件夹、刷新等操作
- */
 export const FileTreeActions: React.FC<FileTreeActionsProps> = ({
   onNewFile,
   onNewFolder,
   onRefresh,
   onCollapse,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="file-tree-actions">
       {onNewFile && (
         <button
           className="file-tree-action-button"
-          title="新建文件"
+          title={String(t('explorerView.workspaceMenu.general.newFile', { defaultValue: 'New File' }))}
           onClick={onNewFile}
         >
           📄
@@ -31,7 +30,7 @@ export const FileTreeActions: React.FC<FileTreeActionsProps> = ({
       {onNewFolder && (
         <button
           className="file-tree-action-button"
-          title="新建文件夹"
+          title={String(t('explorerView.workspaceMenu.general.newFolder', { defaultValue: 'New Folder' }))}
           onClick={onNewFolder}
         >
           📁
@@ -40,7 +39,7 @@ export const FileTreeActions: React.FC<FileTreeActionsProps> = ({
       {onRefresh && (
         <button
           className="file-tree-action-button"
-          title="刷新"
+          title={String(t('explorerView.workspaceMenu.general.refresh', { defaultValue: 'Refresh' }))}
           onClick={onRefresh}
         >
           🔄
@@ -49,10 +48,10 @@ export const FileTreeActions: React.FC<FileTreeActionsProps> = ({
       {onCollapse && (
         <button
           className="file-tree-action-button"
-          title="折叠所有"
+          title={String(t('explorerView.workspaceMenu.general.collapseAll', { defaultValue: 'Collapse All' }))}
           onClick={onCollapse}
         >
-          ⊟
+          ▾
         </button>
       )}
     </div>
@@ -60,24 +59,3 @@ export const FileTreeActions: React.FC<FileTreeActionsProps> = ({
 };
 
 export default FileTreeActions;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

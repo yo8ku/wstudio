@@ -37,6 +37,7 @@ import {
   type AIPanelContributionSnapshot,
   type AIPanelSkillContributionEntry,
 } from '@note-studio/shared';
+import { useTranslation } from 'react-i18next';
 import {
   appendActLogBlock,
   appendToolLogBlock as appendToolLogContentBlock,
@@ -61,6 +62,7 @@ import {
   truncateChatSessionTitle,
 } from './chatSessionTitle';
 import { insertTextAtActiveCodeMirrorSelection } from '../../../lib/editor/activeCodeMirrorEditor';
+import { translate } from '../../../i18n';
 import './AIChatPanel.scss';
 
 interface Message {
@@ -100,6 +102,14 @@ interface AIChatPanelProps {
 }
 
 const AI_CHAT_EDITOR_TAB_PATH = 'ai-chat:/main';
+
+type TranslationValue = string | number | boolean;
+
+const translateAiChatText = (
+  key: string,
+  defaultValue: string,
+  values?: Record<string, TranslationValue>,
+): string => String(translate(key, values ? { defaultValue, ...values } : { defaultValue }));
 
 interface SlashCommandItem {
   command: string;
@@ -213,74 +223,121 @@ const shouldPersistMessage = (
   return message.content.trim().length > 0 || Boolean(getPersistedReasoning(message));
 };
 
-const BUILTIN_DECOMPOSITION_RULES: DecompositionRule[] = [
+interface BuiltinDecompositionRuleDefinition {
+  id: string;
+  translationKey:
+    | 'overallStructure'
+    | 'subHeadings'
+    | 'paragraphLayout'
+    | 'sentencePattern'
+    | 'wordChoice'
+    | 'styleTone'
+    | 'transitions'
+    | 'scene'
+    | 'caseEvidence';
+  defaultName: string;
+  defaultInstruction: string;
+}
+
+const BUILTIN_DECOMPOSITION_RULE_DEFINITIONS: BuiltinDecompositionRuleDefinition[] = [
   {
     id: 'overall-structure',
-    name: '整体框架',
-    instruction: '拆解主题目标、主线、信息组织与论证顺序。',
-    enabled: true,
-    builtin: true,
+    translationKey: 'overallStructure',
+    defaultName: 'Overall Structure',
+    defaultInstruction: 'Break down the topic goals, main thread, information organization, and argument order.',
   },
   {
     id: 'sub-headings',
-    name: '小标题',
-    instruction: '提取并评估标题层级、命名方式与信息覆盖是否完整。',
-    enabled: true,
-    builtin: true,
+    translationKey: 'subHeadings',
+    defaultName: 'Sub-headings',
+    defaultInstruction: 'Extract and evaluate the heading hierarchy, naming style, and completeness of information coverage.',
   },
   {
     id: 'paragraph-layout',
-    name: '段落',
-    instruction: '分析段落长度、开合方式、段内逻辑与段间衔接。',
-    enabled: true,
-    builtin: true,
+    translationKey: 'paragraphLayout',
+    defaultName: 'Paragraph Layout',
+    defaultInstruction: 'Analyze paragraph length, opening and closing patterns, internal logic, and transitions between paragraphs.',
   },
   {
     id: 'sentence-pattern',
-    name: '句式',
-    instruction: '识别长短句比例、并列与递进结构、节奏变化。',
-    enabled: true,
-    builtin: true,
+    translationKey: 'sentencePattern',
+    defaultName: 'Sentence Pattern',
+    defaultInstruction: 'Identify the ratio of long and short sentences, parallel and progressive structures, and rhythm changes.',
   },
   {
     id: 'word-choice',
-    name: '用词',
-    instruction: '提取关键词、术语密度、口语化/书面化倾向和情绪色彩。',
-    enabled: true,
-    builtin: true,
+    translationKey: 'wordChoice',
+    defaultName: 'Word Choice',
+    defaultInstruction: 'Extract keywords, term density, spoken or formal tendencies, and emotional tone.',
   },
   {
     id: 'style-tone',
-    name: '风格',
-    instruction: '判断文风语气、作者立场、叙述视角与受众匹配度。',
-    enabled: true,
-    builtin: true,
+    translationKey: 'styleTone',
+    defaultName: 'Style & Tone',
+    defaultInstruction: 'Judge writing style, author stance, narrative perspective, and audience fit.',
   },
   {
     id: 'transitions',
-    name: '过渡词',
-    instruction: '识别连接词和转场方式，检查逻辑跳跃与连贯性。',
-    enabled: true,
-    builtin: true,
+    translationKey: 'transitions',
+    defaultName: 'Transitions',
+    defaultInstruction: 'Identify connectors and scene changes, and check for logical jumps and coherence.',
   },
   {
     id: 'scene',
-    name: '场景',
-    instruction: '标注时空背景、人物关系、事件触发点与情境张力。',
-    enabled: true,
-    builtin: true,
+    translationKey: 'scene',
+    defaultName: 'Scene',
+    defaultInstruction: 'Mark the time-space background, relationships, triggering events, and contextual tension.',
   },
   {
     id: 'case-evidence',
-    name: '案例',
-    instruction: '提取案例类型、证据强度、引用方式与论点支撑关系。',
-    enabled: true,
-    builtin: true,
+    translationKey: 'caseEvidence',
+    defaultName: 'Cases & Evidence',
+    defaultInstruction: 'Extract case types, evidence strength, citation style, and how they support arguments.',
   },
 ];
 
+const createBuiltinDecompositionRules = (): DecompositionRule[] =>
+  BUILTIN_DECOMPOSITION_RULE_DEFINITIONS.map((rule) => ({
+    id: rule.id,
+    name: translateAiChatText(
+      `aiChatPanel.builtinRules.${rule.translationKey}.name`,
+      rule.defaultName,
+    ),
+    instruction: translateAiChatText(
+      `aiChatPanel.builtinRules.${rule.translationKey}.instruction`,
+      rule.defaultInstruction,
+    ),
+    enabled: true,
+    builtin: true,
+  }));
+
 const cloneBuiltinDecompositionRules = (): DecompositionRule[] =>
-  BUILTIN_DECOMPOSITION_RULES.map(rule => ({ ...rule }));
+  createBuiltinDecompositionRules().map(rule => ({ ...rule }));
+
+const syncBuiltinDecompositionRules = (
+  rules: readonly DecompositionRule[],
+): DecompositionRule[] => {
+  const builtinRuleMap = new Map(
+    createBuiltinDecompositionRules().map(rule => [rule.id, rule] as const),
+  );
+
+  return rules.map((rule) => {
+    if (!rule.builtin) {
+      return rule;
+    }
+
+    const nextRule = builtinRuleMap.get(rule.id);
+    if (!nextRule) {
+      return rule;
+    }
+
+    return {
+      ...rule,
+      name: nextRule.name,
+      instruction: nextRule.instruction,
+    };
+  });
+};
 
 const getFileExtension = (filePath: string): string => {
   const normalized = filePath.trim().toLowerCase();
@@ -862,19 +919,40 @@ const simplifyPlanTodoContent = (content: string): string => {
   const kind = inferSimpleStepKind('', content);
   switch (kind) {
     case 'requirement':
-      return '根据需求，列举执行清单';
+      return translateAiChatText(
+        'aiChatPanel.todo.items.requirement',
+        'List the execution checklist based on the request',
+      );
     case 'reference':
-      return '读取文件（参考文章素材）';
+      return translateAiChatText(
+        'aiChatPanel.todo.items.reference',
+        'Read files (reference materials)',
+      );
     case 'decomposition':
-      return '拆解文章素材';
+      return translateAiChatText(
+        'aiChatPanel.todo.items.decomposition',
+        'Break down the article material',
+      );
     case 'outline':
-      return '输出整体结构、文章大纲';
+      return translateAiChatText(
+        'aiChatPanel.todo.items.outline',
+        'Generate the overall structure and outline',
+      );
     case 'writing':
-      return '开始编写（流式写入临时文档）';
+      return translateAiChatText(
+        'aiChatPanel.todo.items.writing',
+        'Start writing (stream to a temporary document)',
+      );
     case 'tool':
-      return '工具调用';
+      return translateAiChatText(
+        'aiChatPanel.todo.items.tool',
+        'Tool call',
+      );
     case 'verify':
-      return '校验与优化';
+      return translateAiChatText(
+        'aiChatPanel.todo.items.verify',
+        'Review and refine',
+      );
     default:
       return trimTodoContent(content);
   }
@@ -953,11 +1031,32 @@ const TOOL_CONTEXT_KEEP_RECENT_MESSAGES = 16;
 const COMPACT_KEEP_RECENT_MESSAGES = 8;
 const COMPACT_SUMMARY_ITEM_LIMIT = 8;
 
-const SLASH_COMMAND_ITEMS: SlashCommandItem[] = [
-  { command: '/compact', description: '压缩历史上下文，保留最近会话', insertText: '/compact' },
-  { command: '/help', description: '查看可用命令说明', insertText: '/help' },
-  { command: '/clear', description: '清空当前对话', insertText: '/clear' },
-];
+const createSlashCommandItems = (): SlashCommandItem[] => ([
+  {
+    command: '/compact',
+    description: translateAiChatText(
+      'aiChatPanel.slashCommands.compactDescription',
+      'Compress earlier history and keep recent messages',
+    ),
+    insertText: '/compact',
+  },
+  {
+    command: '/help',
+    description: translateAiChatText(
+      'aiChatPanel.slashCommands.helpDescription',
+      'Show the list of available commands',
+    ),
+    insertText: '/help',
+  },
+  {
+    command: '/clear',
+    description: translateAiChatText(
+      'aiChatPanel.slashCommands.clearDescription',
+      'Clear the current conversation',
+    ),
+    insertText: '/clear',
+  },
+]);
 
 const normalizeSlashSearchKeyword = (value: string): string => value.trim().toLowerCase();
 
@@ -1169,25 +1268,40 @@ const enforceToolMessageBudget = (messages: ChatMessage[]): { compacted: number;
 
 const buildCompactConversationSummary = (history: Message[]): string => {
   if (history.length === 0) {
-    return '无可压缩的历史消息。';
+    return translateAiChatText(
+      'aiChatPanel.slashCommands.emptySummary',
+      'There is no history to compact.',
+    );
   }
   const normalizedHistory = history
     .map(item => ({ role: item.role, text: normalizeTimelineText(item.content ?? '') }))
     .filter(item => item.text.length > 0);
   if (normalizedHistory.length === 0) {
-    return '无可压缩的历史消息。';
+    return translateAiChatText(
+      'aiChatPanel.slashCommands.emptySummary',
+      'There is no history to compact.',
+    );
   }
 
   const summaryItems: string[] = [];
   for (const item of normalizedHistory.slice(-COMPACT_SUMMARY_ITEM_LIMIT)) {
-    const prefix = item.role === 'user' ? '用户' : '助手';
+    const prefix = item.role === 'user'
+      ? translateAiChatText('aiChatPanel.slashCommands.summaryUserPrefix', 'User')
+      : translateAiChatText('aiChatPanel.slashCommands.summaryAssistantPrefix', 'Assistant');
     const brief = item.text.length > 96 ? `${item.text.slice(0, 96)}...` : item.text;
     summaryItems.push(`- ${prefix}: ${brief}`);
   }
 
   return [
-    `已折叠 ${normalizedHistory.length} 条历史消息，保留最近 ${COMPACT_KEEP_RECENT_MESSAGES} 条原始消息。`,
-    '历史摘要：',
+    translateAiChatText(
+      'aiChatPanel.slashCommands.summaryLead',
+      'Compacted {{count}} earlier message(s) and kept the latest {{keepCount}} original message(s).',
+      { count: normalizedHistory.length, keepCount: COMPACT_KEEP_RECENT_MESSAGES },
+    ),
+    translateAiChatText(
+      'aiChatPanel.slashCommands.summaryHeading',
+      'History summary:',
+    ),
     ...summaryItems,
   ].join('\n');
 };
@@ -1287,11 +1401,11 @@ const getToolIconName = (toolName: string): string => {
 const getToolStatusText = (status: ToolLog['status']): string => {
   switch (status) {
     case 'pending':
-      return '执行中';
+      return translateAiChatText('aiChatPanel.toolEvent.status.pending', 'Running');
     case 'success':
-      return '成功';
+      return translateAiChatText('aiChatPanel.toolEvent.status.success', 'Success');
     case 'error':
-      return '失败';
+      return translateAiChatText('aiChatPanel.toolEvent.status.error', 'Failed');
     default:
       return '';
   }
@@ -1813,7 +1927,10 @@ const collectKnowledgeFileCandidates = (root: KnowledgeItem): KnowledgeFileCandi
 };
 
 // 深度思考图标组件 (Lucide Brain Icon)
-const ThinkingIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+const ThinkingIcon: React.FC<{ size?: number; title?: string }> = ({
+  size = 16,
+  title = 'Supports deep thinking',
+}) => (
   <svg 
     width={size} 
     height={size} 
@@ -1824,9 +1941,9 @@ const ThinkingIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
     strokeLinecap="round"
     strokeLinejoin="round"
     style={{ marginLeft: 6, opacity: 0.8, verticalAlign: 'middle' }}
-    aria-label="支持深度思考"
+    aria-label={title}
   >
-    <title>支持深度思考</title>
+    <title>{title}</title>
     <path d="M12 18V5"/>
     <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/>
     <path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"/>
@@ -1917,7 +2034,7 @@ const DisclosureChevron: React.FC<{ expanded: boolean; className: string }> = ({
 );
 
 const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ toolCalls, thinkingContent, isDeepThinking, isThinkingPhase, isExpanded, onToggle }) => {
-  const headerText = 'Thinking';
+  const headerText = translateAiChatText('aiChatPanel.thinking.title', 'Thinking');
 
   // 进行中时默认展开
   const effectiveExpanded = isThinkingPhase ? true : isExpanded;
@@ -2037,7 +2154,13 @@ function renderMessageBlocks(
 }
 
 export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, onMoveRight, position = 'right', mode = 'sidebar' }) => {
+  const { t, i18n } = useTranslation();
   const isEditorTabMode = mode === 'editor-tab';
+  const translateText = useCallback((
+    key: string,
+    defaultValue: string,
+    values?: Record<string, TranslationValue>,
+  ): string => String(t(key, values ? { defaultValue, ...values } : { defaultValue })), [t]);
   const [messages, setMessages] = useState<Message[]>(() => aiChatPanelRuntimeState.messages);
   const [input, setInput] = useState(() => aiChatPanelRuntimeState.input);
   const [isLoading, setIsLoading] = useState(false);
@@ -2110,6 +2233,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
   const decompositionRulesLoadedRef = useRef(false);
   const writingRulesLoadedRef = useRef(false);
+  const slashCommandItems = useMemo(() => createSlashCommandItems(), [i18n.language]);
+
+  useEffect(() => {
+    setDecompositionRules(prev => syncBuiltinDecompositionRules(prev));
+  }, [i18n.language]);
 
   useEffect(() => {
     aiChatPanelRuntimeState.messages = messages;
@@ -2252,11 +2380,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   );
 
   const filteredBuiltinSlashCommands = useMemo(
-    () => SLASH_COMMAND_ITEMS.filter((command) => matchesSlashSearchKeyword(
+    () => slashCommandItems.filter((command) => matchesSlashSearchKeyword(
       normalizedSlashSearchQuery,
       [command.command, command.description],
     )),
-    [normalizedSlashSearchQuery],
+    [normalizedSlashSearchQuery, slashCommandItems],
   );
 
   const filteredAIPanelCommandContributions = useMemo(
@@ -2299,7 +2427,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     }
 
     if (item.kind === 'skill' && item.requiresConfirmation) {
-      const confirmed = window.confirm(`确定执行技能“${item.title}”吗？`);
+      const confirmed = window.confirm(
+        translateText('aiChatPanel.contribution.confirmSkill', 'Run skill "{{title}}"?', {
+          title: item.title,
+        }),
+      );
       if (!confirmed) {
         return;
       }
@@ -2311,7 +2443,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     });
 
     if (!response.success || !response.data) {
-      toastService.error(response.error?.message ?? `执行“${item.title}”失败`);
+      toastService.error(
+        response.error?.message ?? translateText(
+          'aiChatPanel.contribution.executionFailed',
+          'Failed to run "{{title}}"',
+          { title: item.title },
+        ),
+      );
       return;
     }
 
@@ -2335,11 +2473,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     [writingRuleDocuments],
   );
   const getSelectedModelTabTitle = useCallback((): string => {
-    if (!selectedModel) return '未选择模型';
+    if (!selectedModel) {
+      return translateText('aiChatPanel.chat.unselectedModel', 'No model selected');
+    }
     const selected = availableModels.find(model => model.modelId === selectedModel);
     const displayName = (selected?.displayName || formatModelDisplayName(selectedModel)).trim();
-    return displayName || '未选择模型';
-  }, [availableModels, selectedModel]);
+    return displayName || translateText('aiChatPanel.chat.unselectedModel', 'No model selected');
+  }, [availableModels, selectedModel, translateText]);
   const openInEditorTab = useCallback(() => {
     window.dispatchEvent(new CustomEvent('open-editor-tab', {
       detail: {
@@ -2360,7 +2500,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     const name = newDecompositionRuleName.trim();
     const instruction = newDecompositionRuleInstruction.trim();
     if (!name || !instruction) {
-      toastService.warning('请先输入规则名称和规则说明');
+      toastService.warning(
+        translateText(
+          'decompositionRulesView.toasts.ruleNameInstructionRequired',
+          'Enter both the rule name and instruction first',
+        ),
+      );
       return;
     }
 
@@ -2376,9 +2521,19 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             rule.id === existingRule.id ? { ...rule, enabled: true } : rule,
           ),
         );
-        toastService.success('规则已存在，已自动启用');
+        toastService.success(
+          translateText(
+            'decompositionRulesView.toasts.ruleExistsAutoEnabled',
+            'The rule already exists and has been enabled automatically',
+          ),
+        );
       } else {
-        toastService.info('规则已存在');
+        toastService.info(
+          translateText(
+            'decompositionRulesView.toasts.ruleExists',
+            'The rule already exists',
+          ),
+        );
       }
       return;
     }
@@ -2396,8 +2551,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     ]);
     setNewDecompositionRuleName('');
     setNewDecompositionRuleInstruction('');
-    toastService.success('已添加拆解规则');
-  }, [decompositionRules, newDecompositionRuleInstruction, newDecompositionRuleName]);
+    toastService.success(
+      translateText(
+        'decompositionRulesView.toasts.ruleAdded',
+        'Added the decomposition rule',
+      ),
+    );
+  }, [decompositionRules, newDecompositionRuleInstruction, newDecompositionRuleName, translateText]);
 
   const handleDeleteDecompositionRule = useCallback((ruleId: string) => {
     setDecompositionRules(prev => prev.filter(rule => !(rule.id === ruleId && !rule.builtin)));
@@ -2436,11 +2596,32 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const handleImportWritingRuleDocuments = useCallback(async () => {
     try {
       const dialogResult = await window.electron?.file?.showOpenDialog?.({
-        title: '导入写作规则',
+        title: translateText(
+          'decompositionRulesView.writingDocuments.dialog.title',
+          'Import Writing Rule Documents',
+        ),
         filters: [
-          { name: '规则文档 (*.md, *.txt)', extensions: ['md', 'txt'] },
-          { name: 'Markdown (*.md)', extensions: ['md'] },
-          { name: 'Text (*.txt)', extensions: ['txt'] },
+          {
+            name: translateText(
+              'decompositionRulesView.writingDocuments.dialog.filters.all',
+              'Rule Documents (*.md, *.txt)',
+            ),
+            extensions: ['md', 'txt'],
+          },
+          {
+            name: translateText(
+              'decompositionRulesView.writingDocuments.dialog.filters.markdown',
+              'Markdown (*.md)',
+            ),
+            extensions: ['md'],
+          },
+          {
+            name: translateText(
+              'decompositionRulesView.writingDocuments.dialog.filters.text',
+              'Text (*.txt)',
+            ),
+            extensions: ['txt'],
+          },
         ],
         properties: ['openFile', 'multiSelections'],
       });
@@ -2453,12 +2634,23 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         .map(path => path.trim())
         .filter(path => path.length > 0 && isSupportedRuleDocumentFile(path));
       if (supportedPaths.length === 0) {
-        toastService.error('仅支持导入 .md 或 .txt 文档');
+        toastService.error(
+          translateText(
+            'decompositionRulesView.writingDocuments.toasts.unsupportedFileType',
+            'Only .md and .txt documents can be imported',
+          ),
+        );
         return;
       }
 
       if (supportedPaths.length < dialogResult.filePaths.length) {
-        toastService.warning(`已忽略 ${dialogResult.filePaths.length - supportedPaths.length} 个非 .md/.txt 文件`);
+        toastService.warning(
+          translateText(
+            'decompositionRulesView.writingDocuments.toasts.ignoredUnsupportedFiles',
+            'Ignored {{count}} unsupported file(s)',
+            { count: dialogResult.filePaths.length - supportedPaths.length },
+          ),
+        );
       }
 
       const nextDocuments = writingRuleDocuments.map(document => ({ ...document }));
@@ -2493,23 +2685,46 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       }
 
       if (addedCount === 0 && enabledCount === 0) {
-        toastService.info('没有新的写作规则可导入');
+        toastService.info(
+          translateText(
+            'decompositionRulesView.writingDocuments.toasts.noNewDocuments',
+            'There are no new writing rule documents to import',
+          ),
+        );
         return;
       }
 
       setWritingRuleDocuments(nextDocuments);
 
       if (enabledCount > 0) {
-        toastService.success(`导入完成：新增 ${addedCount} 个文档，启用已有 ${enabledCount} 个文档`);
+        toastService.success(
+          translateText(
+            'decompositionRulesView.writingDocuments.toasts.importCompletedWithEnabledCount',
+            'Import completed: added {{addedCount}} file(s) and enabled {{enabledCount}} existing file(s)',
+            { addedCount, enabledCount },
+          ),
+        );
       } else {
-        toastService.success(`导入完成：新增 ${addedCount} 个写作规则`);
+        toastService.success(
+          translateText(
+            'decompositionRulesView.writingDocuments.toasts.importCompleted',
+            'Import completed: added {{addedCount}} writing rule document(s)',
+            { addedCount },
+          ),
+        );
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      toastService.error(`导入写作规则失败: ${errorMessage}`);
+      toastService.error(
+        translateText(
+          'decompositionRulesView.writingDocuments.toasts.importFailed',
+          'Failed to import writing rule documents: {{message}}',
+          { message: errorMessage },
+        ),
+      );
       console.error('[AIChatPanel] 导入写作规则失败:', error);
     }
-  }, [writingRuleDocuments]);
+  }, [translateText, writingRuleDocuments]);
 
   const handleToggleWritingRuleDocument = useCallback((documentId: string) => {
     setWritingRuleDocuments(prev => prev.map(document =>
@@ -2525,13 +2740,23 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     try {
       const filePath = document.path.trim();
       if (!filePath) {
-        toastService.warning('规则文档路径无效');
+        toastService.warning(
+          translateText(
+            'aiChatPanel.contextMenu.writingRules.invalidPath',
+            'The writing rule document path is invalid',
+          ),
+        );
         return;
       }
 
       const content = await window.electron?.ipcRenderer.invoke('read-file', filePath);
       if (typeof content !== 'string') {
-        toastService.error('读取规则文档失败');
+        toastService.error(
+          translateText(
+            'aiChatPanel.contextMenu.writingRules.readFailed',
+            'Failed to read the writing rule document',
+          ),
+        );
         return;
       }
 
@@ -2547,19 +2772,35 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
       setIsContextMenuOpen(false);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      toastService.error(`打开规则文档失败: ${errorMessage}`);
+      toastService.error(
+        translateText(
+          'aiChatPanel.contextMenu.writingRules.openFailed',
+          'Failed to open the writing rule document: {{message}}',
+          { message: errorMessage },
+        ),
+      );
       console.error('[AIChatPanel] 打开规则文档失败:', error);
     }
-  }, []);
+  }, [translateText]);
 
   const handleClearWritingRuleDocuments = useCallback(() => {
     if (writingRuleDocuments.length === 0) {
-      toastService.info('当前没有可清空的写作规则');
+      toastService.info(
+        translateText(
+          'decompositionRulesView.writingDocuments.toasts.noDocumentsToClear',
+          'There are no writing rule documents to clear',
+        ),
+      );
       return;
     }
     setWritingRuleDocuments([]);
-    toastService.success('已清空写作规则');
-  }, [writingRuleDocuments.length]);
+    toastService.success(
+      translateText(
+        'decompositionRulesView.writingDocuments.toasts.cleared',
+        'Cleared the writing rule documents',
+      ),
+    );
+  }, [translateText, writingRuleDocuments.length]);
 
   const appendActLog = useCallback((
     messageId: string,
@@ -3707,10 +3948,22 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: [
-          '可用命令：',
-          '- `/compact` 压缩历史上下文，保留最近会话',
-          '- `/clear` 清空当前对话',
-          '- `/help` 查看命令说明',
+          translateText(
+            'aiChatPanel.slashCommands.helpResponseTitle',
+            'Available commands:',
+          ),
+          translateText(
+            'aiChatPanel.slashCommands.helpResponseCompact',
+            '- `/compact` Compress earlier history and keep recent messages',
+          ),
+          translateText(
+            'aiChatPanel.slashCommands.helpResponseClear',
+            '- `/clear` Clear the current conversation',
+          ),
+          translateText(
+            'aiChatPanel.slashCommands.helpResponseHelp',
+            '- `/help` Show the list of available commands',
+          ),
         ].join('\n'),
         timestamp: new Date(),
         model: selectedModel,
@@ -3746,7 +3999,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: '当前历史较短，暂不需要压缩。',
+          content: translateText(
+            'aiChatPanel.slashCommands.compactSkipped',
+            'The current history is short, so compression is not needed yet.',
+          ),
           timestamp: new Date(),
           model: selectedModel,
         };
@@ -3758,7 +4014,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         const compactMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: `Context compacted\n${compactSummary}`,
+          content: compactSummary,
           timestamp: new Date(),
           model: selectedModel,
         };
@@ -5207,7 +5463,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             )}
             {changedFiles.length > 0 && (
               <span className="tool-event-card__chip">
-                {changedFiles.length === 1 ? '1 个文件变更' : `${changedFiles.length} 个文件变更`}
+                {translateText(
+                  'aiChatPanel.toolEvent.changedFiles',
+                  '{{count}} file change(s)',
+                  { count: changedFiles.length },
+                )}
               </span>
             )}
           </div>
@@ -5215,21 +5475,29 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
         {paramsText && (
           <div className="tool-event-card__section">
-            <div className="tool-event-card__section-title">参数</div>
+            <div className="tool-event-card__section-title">
+              {translateText('aiChatPanel.toolEvent.sections.parameters', 'Parameters')}
+            </div>
             <pre className="tool-event-card__code">{paramsText}</pre>
           </div>
         )}
 
         <div className="tool-event-card__section">
-          <div className="tool-event-card__section-title">结果</div>
+          <div className="tool-event-card__section-title">
+            {translateText('aiChatPanel.toolEvent.sections.result', 'Result')}
+          </div>
           <pre className={`tool-event-card__code ${tool.name === 'bash' ? 'tool-event-card__code--terminal' : ''}`}>
-            {resultText || (tool.status === 'pending' ? '等待工具返回...' : '无返回内容')}
+            {resultText || (tool.status === 'pending'
+              ? translateText('aiChatPanel.toolEvent.states.waiting', 'Waiting for tool output...')
+              : translateText('aiChatPanel.toolEvent.states.empty', 'No output returned'))}
           </pre>
         </div>
 
         {changedFiles.length > 1 && (
           <div className="tool-event-card__section">
-            <div className="tool-event-card__section-title">变更文件</div>
+            <div className="tool-event-card__section-title">
+              {translateText('aiChatPanel.toolEvent.sections.changedFiles', 'Changed Files')}
+            </div>
             <pre className="tool-event-card__code">{changedFiles.join('\n')}</pre>
           </div>
         )}
@@ -5344,7 +5612,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               title={currentSessionTitle}
               aria-haspopup="menu"
               aria-expanded={isHistoryOpen}
-              aria-label={`历史记录：${currentSessionTitle}`}
+              aria-label={translateText(
+                'aiChatPanel.header.historyAriaLabel',
+                'Chat history: {{title}}',
+                { title: currentSessionTitle },
+              )}
             >
               <Icon name="history" size={14} />
               <span className="history-dropdown-label">{currentSessionTitleLabel}</span>
@@ -5366,14 +5638,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               <PressableControl
                 className="ai-chat-panel-header-action"
                 onPress={createNewChat}
-                title="新建聊天"
+                title={translateText('aiChatPanel.header.actions.newChat', 'New Chat')}
               >
                 <Icon name="plus" size={16} />
               </PressableControl>
               <PressableControl
                 className="ai-chat-panel-header-action"
                 onPress={() => setCurrentView('settings')}
-                title="聊天设置"
+                title={translateText('aiChatPanel.header.actions.settings', 'Chat Settings')}
               >
                 <Icon name="gear" size={16} />
               </PressableControl>
@@ -5381,7 +5653,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               <PressableControl
                 className="ai-chat-panel-header-action"
                 onPress={toggleMaximize}
-                title={isEditorTabMode ? '还原到侧边栏' : '在标签页打开'}
+                title={isEditorTabMode
+                  ? translateText('aiChatPanel.header.actions.restoreToSidebar', 'Restore to Sidebar')
+                  : translateText('aiChatPanel.header.actions.openInTab', 'Open in Tab')}
               >
                 {isEditorTabMode ? (
                   <svg width="16" height="16" viewBox="0 0 24 24">
@@ -5396,7 +5670,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               <PressableControl
                 className="ai-chat-panel-header-action"
                 onPress={handleClosePanel}
-                title="关闭"
+                title={translateText('aiChatPanel.header.actions.close', 'Close')}
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
                   <path d="M1 1l10 10M11 1L1 11" strokeWidth="1"/>
@@ -5407,7 +5681,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             <PressableControl
               className="ai-chat-panel-header-action"
               onPress={() => setCurrentView('chat')}
-              title="关闭"
+              title={translateText('aiChatPanel.header.actions.close', 'Close')}
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
                 <path d="M1 1l10 10M11 1L1 11" strokeWidth="1"/>
@@ -5437,7 +5711,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 handleMoveLeft();
               }}
             >
-              <span>向左移动聊天</span>
+              <span>{translateText('aiChatPanel.header.contextMenu.moveLeft', 'Move Chat to the Left')}</span>
             </div>
           )}
           {position === 'left' && (
@@ -5448,7 +5722,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 handleMoveRight();
               }}
             >
-              <span>向右移动聊天</span>
+              <span>{translateText('aiChatPanel.header.contextMenu.moveRight', 'Move Chat to the Right')}</span>
             </div>
           )}
         </div>,
@@ -5550,7 +5824,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                       {requirementItems.length > 0 && (
                                         <div className="todo-card__section">
                                           <div className="todo-card__section-header">
-                                            <span className="todo-card__section-title">需求拆解</span>
+                                            <span className="todo-card__section-title">
+                                              {translateText('aiChatPanel.todo.sections.requirement', 'Requirement Breakdown')}
+                                            </span>
                                             <span className="todo-card__section-meta">{requirementCompleted}/{requirementItems.length}</span>
                                           </div>
                                           <ul className="todo-card__list">
@@ -5566,7 +5842,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                       {planItems.length > 0 && (
                                         <div className="todo-card__section">
                                           <div className="todo-card__section-header">
-                                            <span className="todo-card__section-title">执行计划</span>
+                                            <span className="todo-card__section-title">
+                                              {translateText('aiChatPanel.todo.sections.plan', 'Execution Plan')}
+                                            </span>
                                             <span className="todo-card__section-meta">{planCompleted}/{planItems.length}</span>
                                           </div>
                                           <ul className="todo-card__list">
@@ -5582,7 +5860,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                                     </div>
                                   ) : (
                                     <div className="todo-card__empty">
-                                      {block.isStreaming ? '正在拆解需求...' : '暂无任务'}
+                                      {block.isStreaming
+                                        ? translateText('aiChatPanel.todo.states.streaming', 'Breaking down requirements...')
+                                        : translateText('aiChatPanel.todo.states.empty', 'No tasks yet')}
                                     </div>
                                   )}
                                 </div>
@@ -5671,8 +5951,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             {showThinkingIndicator && !assistantSections.hasTextContent && (
                               <div className="act-log__item act-log__item--running act-log__item--thinking">
                                 <span className="act-log__dot" />
-                                <span className="act-log__title">Thinking</span>
-                                <span className="act-log__detail">In progress...</span>
+                                <span className="act-log__title">
+                                  {translateText('aiChatPanel.thinking.title', 'Thinking')}
+                                </span>
+                                <span className="act-log__detail">
+                                  {translateText('aiChatPanel.thinking.inProgress', 'In progress...')}
+                                </span>
                               </div>
                             )}
                           </div>
@@ -5729,8 +6013,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             {showThinkingIndicator && message.role === 'assistant' && !assistantRenderContent && !hasThinkingSteps && (
                               <div className="act-log__item act-log__item--running act-log__item--thinking">
                                 <span className="act-log__dot" />
-                                <span className="act-log__title">Thinking</span>
-                                <span className="act-log__detail">In progress...</span>
+                                <span className="act-log__title">
+                                  {translateText('aiChatPanel.thinking.title', 'Thinking')}
+                                </span>
+                                <span className="act-log__detail">
+                                  {translateText('aiChatPanel.thinking.inProgress', 'In progress...')}
+                                </span>
                               </div>
                             )}
                           </div>
@@ -5769,7 +6057,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
               ref={contextButtonRef}
               className={`context-button ${isContextMenuOpen ? 'active' : ''}`}
               onPress={toggleContextMenu}
-              title="命令菜单"
+              title={translateText('aiChatPanel.contextMenu.triggerTitle', 'Command Menu')}
               aria-haspopup="menu"
               aria-expanded={isContextMenuOpen}
             >
@@ -5785,7 +6073,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                     ref={searchInputRef}
                     type="text"
                     className="context-menu-search-input"
-                    placeholder="搜索..."
+                    placeholder={translateText('aiChatPanel.contextMenu.searchPlaceholder', 'Search...')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => {
@@ -5802,34 +6090,48 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                   <>
                     {/* Context groups */}
                     <div className="context-menu-group">
-                      <div className="context-menu-group-title">上下文</div>
+                      <div className="context-menu-group-title">
+                        {translateText('aiChatPanel.contextMenu.groups.context', 'Context')}
+                      </div>
                       <div className="context-menu-item" onClick={() => handleContextMenuItemClick('files')}>
-                        <span className="context-menu-item-text">文件与文件夹</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiReferenceMenu.categories.files', 'Files & Folders')}
+                        </span>
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('knowledge')}>
-                        <span className="context-menu-item-text">知识库</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiReferenceMenu.categories.knowledgeBase', 'Knowledge Base')}
+                        </span>
                         <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('form')}>
-                        <span className="context-menu-item-text">表单</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiReferenceMenu.categories.forms', 'Forms')}
+                        </span>
                         <Icon name="chevron-right" size={12} />
                       </div>
                     </div>
 
                     {/* 模型分组 */}
                     <div className="context-menu-group">
-                      <div className="context-menu-group-title">模型</div>
+                      <div className="context-menu-group-title">
+                        {translateText('aiChatPanel.contextMenu.groups.model', 'Model')}
+                      </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => setSubMenuType('model')}>
-                        <span className="context-menu-item-text">选择模型</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiChatPanel.contextMenu.items.selectModel', 'Select Model')}
+                        </span>
                         <span className="context-menu-item-current">{availableModels.find(m => m.modelId === selectedModel)?.displayName || formatModelDisplayName(selectedModel)}</span>
                         <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-switch" onClick={() => setIsDeepThinkingEnabled(!isDeepThinkingEnabled)}>
-                        <span className="context-menu-item-text">思考</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiChatPanel.contextMenu.items.thinking', 'Thinking')}
+                        </span>
                         <Switch
                           className="context-menu-switch"
                           checked={isDeepThinkingEnabled}
-                          ariaLabel="切换深度思考"
+                          ariaLabel={translateText('aiChatPanel.contextMenu.aria.toggleThinking', 'Toggle deep thinking')}
                           onChange={setIsDeepThinkingEnabled}
                         />
                       </div>
@@ -5837,9 +6139,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
                     {/* Skills group */}
                     <div className="context-menu-group">
-                      <div className="context-menu-group-title">技能</div>
+                      <div className="context-menu-group-title">
+                        {translateText('aiChatPanel.contextMenu.groups.skills', 'Skills')}
+                      </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('skills')}>
-                        <span className="context-menu-item-text">Skills</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiChatPanel.contextMenu.items.skills', 'Skills')}
+                        </span>
                         <Icon name="chevron-right" size={12} />
                       </div>
                       {filteredAIPanelSkillContributions.map((item: AIPanelSkillContributionEntry) => (
@@ -5859,31 +6165,43 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       ))}
                       {isLoadingAIPanelContributions && (
                         <div className="context-menu-empty">
-                          <span className="context-menu-empty-text">正在加载插件技能...</span>
+                          <span className="context-menu-empty-text">
+                            {translateText('aiChatPanel.contextMenu.states.loadingPluginSkills', 'Loading plugin skills...')}
+                          </span>
                         </div>
                       )}
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('memory')}>
-                        <span className="context-menu-item-text">记忆</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiChatPanel.contextMenu.items.memory', 'Memory')}
+                        </span>
                         <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('decompositionRules')}>
-                        <span className="context-menu-item-text">拆解规则</span>
+                        <span className="context-menu-item-text">
+                          {translateText('decompositionRulesView.sections.rules', 'Decomposition Rules')}
+                        </span>
                         {enabledDecompositionRules.length > 0 && <span className="context-menu-item-badge">{enabledDecompositionRules.length}</span>}
                         <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('mcpServer')}>
-                        <span className="context-menu-item-text">MCP server</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiChatPanel.contextMenu.items.mcpServer', 'MCP Server')}
+                        </span>
                         <Icon name="chevron-right" size={12} />
                       </div>
                       <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('writingRules')}>
-                        <span className="context-menu-item-text">写作规则</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiReferenceMenu.categories.rules', 'Writing Rules')}
+                        </span>
                         {enabledWritingRuleDocuments.length > 0 && <span className="context-menu-item-badge">{enabledWritingRuleDocuments.length}</span>}
                         <Icon name="chevron-right" size={12} />
                       </div>
                     </div>
 
                     <div className="context-menu-group">
-                      <div className="context-menu-group-title">命令</div>
+                      <div className="context-menu-group-title">
+                        {translateText('aiChatPanel.contextMenu.groups.commands', 'Commands')}
+                      </div>
                       {filteredBuiltinSlashCommands.map(cmd => (
                           <div
                             key={cmd.command}
@@ -5895,7 +6213,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                           </div>
                         ))}
                       {filteredAIPanelCommandContributions.length > 0 && (
-                        <div className="context-menu-group-section-label">插件命令</div>
+                        <div className="context-menu-group-section-label">
+                          {translateText('aiChatPanel.contextMenu.pluginCommands', 'Plugin Commands')}
+                        </div>
                       )}
                       {filteredAIPanelCommandContributions.map((item: AIPanelCommandContributionEntry) => (
                         <div
@@ -5922,7 +6242,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span>返回</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
                     </div>
 
@@ -5961,7 +6281,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                               >
                                 <AIProviderIconFromModel modelString={model.modelId} size={16} />
                                 <span className="context-menu-item-text">{model.displayName || formatModelDisplayName(model.modelId)}</span>
-                                {model.capabilities?.thinking && <ThinkingIcon size={14} />}
+                                {model.capabilities?.thinking && (
+                                  <ThinkingIcon
+                                    size={14}
+                                    title={translateText(
+                                      'aiChatPanel.thinking.supportsDeepThinking',
+                                      'Supports deep thinking',
+                                    )}
+                                  />
+                                )}
                                 {selectedModel === model.modelId && (
                                   <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
                                     <path d="M11.5 4L5.5 10L2.5 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
@@ -5982,16 +6310,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span>返回</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
                     </div>
                     {isLoadingFiles ? (
                       <div className="context-menu-empty">
-                        <span>加载中...</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.loading', 'Loading...')}</span>
                       </div>
                     ) : filesList.length === 0 ? (
                       <div className="context-menu-empty">
-                        <span>暂无文件</span>
+                        <span>{translateText('aiReferenceMenu.states.noFiles', 'No files or folders yet')}</span>
                       </div>
                     ) : (
                       <div className="context-menu-list">
@@ -6028,16 +6356,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span>返回</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
                     </div>
                     {isLoadingKnowledgeBases ? (
                       <div className="context-menu-empty">
-                        <span>加载中...</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.loading', 'Loading...')}</span>
                       </div>
                     ) : knowledgeBaseList.length === 0 ? (
                       <div className="context-menu-empty">
-                        <span>暂无知识库</span>
+                        <span>{translateText('aiReferenceMenu.states.noKnowledgeBase', 'No knowledge base yet')}</span>
                       </div>
                     ) : (
                       <div className="context-menu-list">
@@ -6074,16 +6402,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span>返回</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
                     </div>
                     {isLoadingForms ? (
                       <div className="context-menu-empty">
-                        <span>加载中...</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.loading', 'Loading...')}</span>
                       </div>
                     ) : formsList.length === 0 ? (
                       <div className="context-menu-empty">
-                        <span>暂无表单</span>
+                        <span>{translateText('aiReferenceMenu.states.noForms', 'No forms yet')}</span>
                       </div>
                     ) : (
                       <div className="context-menu-list">
@@ -6119,14 +6447,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span>返回</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
                     </div>
 
                     <div className="context-menu-group">
                       <div className="context-menu-group-title">Skills</div>
                       <div className="context-menu-item" onClick={handleOpenSkillsMarket}>
-                        <span className="context-menu-item-text">打开 Skills 市场</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiChatPanel.contextMenu.items.openSkillsMarket', 'Open Skills Market')}
+                        </span>
                       </div>
                     </div>
                   </>
@@ -6137,14 +6467,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span>返回</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
                     </div>
 
                     <div className="context-menu-group">
-                      <div className="context-menu-group-title">记忆</div>
+                      <div className="context-menu-group-title">
+                        {translateText('aiChatPanel.contextMenu.groups.memory', 'Memory')}
+                      </div>
                       <div className="context-menu-empty">
-                        <span>当前 AI panel 已切换为普通对话模式，未启用独立记忆。</span>
+                        <span>{translateText('aiChatPanel.contextMenu.memory.empty', 'The AI panel is currently in regular chat mode, so standalone memory is unavailable.')}</span>
                       </div>
                     </div>
                   </>
@@ -6155,16 +6487,18 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span>返回</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
                     </div>
 
                     <div className="context-menu-group">
-                      <div className="context-menu-group-title">拆解规则</div>
+                      <div className="context-menu-group-title">
+                        {translateText('decompositionRulesView.sections.rules', 'Decomposition Rules')}
+                      </div>
                       <div className="context-menu-rule-editor">
                         <input
                           className="context-menu-rule-input"
-                          placeholder="规则名称"
+                          placeholder={translateText('decompositionRulesView.inputs.ruleNamePlaceholder', 'Rule Name')}
                           value={newDecompositionRuleName}
                           onChange={event => setNewDecompositionRuleName(event.target.value)}
                           onKeyDown={event => {
@@ -6176,7 +6510,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         />
                         <input
                           className="context-menu-rule-input"
-                          placeholder="规则说明"
+                          placeholder={translateText('decompositionRulesView.inputs.ruleInstructionPlaceholder', 'Rule Instruction')}
                           value={newDecompositionRuleInstruction}
                           onChange={event => setNewDecompositionRuleInstruction(event.target.value)}
                           onKeyDown={event => {
@@ -6188,24 +6522,32 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         />
                         <div className="context-menu-item" onClick={handleAddDecompositionRule}>
                           <Icon name="file-code" size={14} />
-                          <span className="context-menu-item-text">添加规则</span>
+                          <span className="context-menu-item-text">
+                            {translateText('decompositionRulesView.actions.addRule', 'Add Rule')}
+                          </span>
                         </div>
                         <div className="context-menu-item" onClick={handleOpenDecompositionRulesTab}>
                           <Icon name="file" size={14} />
-                          <span className="context-menu-item-text">在标签页中管理</span>
+                          <span className="context-menu-item-text">
+                            {translateText('aiChatPanel.contextMenu.items.manageInTab', 'Manage in Tab')}
+                          </span>
                         </div>
                         <div className="context-menu-item" onClick={handleResetBuiltinDecompositionRules}>
                           <Icon name="refresh" size={14} />
-                          <span className="context-menu-item-text">恢复默认规则</span>
+                          <span className="context-menu-item-text">
+                            {translateText('decompositionRulesView.actions.resetBuiltinRules', 'Restore Built-in Rules')}
+                          </span>
                         </div>
                       </div>
                     </div>
 
                     <div className="context-menu-group">
-                      <div className="context-menu-group-title">拆解规则列表</div>
+                      <div className="context-menu-group-title">
+                        {translateText('aiChatPanel.contextMenu.groups.decompositionRuleList', 'Decomposition Rule List')}
+                      </div>
                       {decompositionRules.length === 0 ? (
                         <div className="context-menu-empty">
-                          <span>暂无规则</span>
+                          <span>{translateText('decompositionRulesView.states.noRules', 'No rules yet')}</span>
                         </div>
                       ) : (
                         <div className="context-menu-list">
@@ -6220,7 +6562,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                               <Switch
                                 className="context-menu-switch"
                                 checked={rule.enabled}
-                                ariaLabel={`切换拆解规则 ${rule.name}`}
+                                ariaLabel={translateText('decompositionRulesView.aria.toggleRule', 'Toggle decomposition rule {{name}}', { name: rule.name })}
                                 onChange={() => handleToggleDecompositionRule(rule.id)}
                               />
                               {!rule.builtin && (
@@ -6257,17 +6599,19 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span>返回</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
                     </div>
 
                     <div className="context-menu-group">
                       <div className="context-menu-group-title">MCP server</div>
                       <div className="context-menu-empty">
-                        <span>当前 AI panel 保持普通对话模式，未接入 MCP server。</span>
+                        <span>{translateText('aiChatPanel.contextMenu.mcpServer.empty', 'The AI panel is currently in regular chat mode and is not connected to an MCP server.')}</span>
                       </div>
                       <div className="context-menu-item" onClick={handleOpenAIConfigTab}>
-                        <span className="context-menu-item-text">打开 AI 配置</span>
+                        <span className="context-menu-item-text">
+                          {translateText('aiChatPanel.contextMenu.items.openAIConfig', 'Open AI Config')}
+                        </span>
                       </div>
                     </div>
                   </>
@@ -6278,14 +6622,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                           <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span>返回</span>
+                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
                       <div className="context-menu-header-actions">
                         <div
                           role="button"
                           tabIndex={0}
                           className="context-menu-header-action"
-                          title="导入文档"
+                          title={translateText('aiChatPanel.contextMenu.writingRules.importTitle', 'Import Documents')}
                           onClick={handleImportWritingRuleDocuments}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
@@ -6300,7 +6644,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                           role="button"
                           tabIndex={0}
                           className="context-menu-header-action"
-                          title="清空文档"
+                          title={translateText('aiChatPanel.contextMenu.writingRules.clearTitle', 'Clear Documents')}
                           onClick={handleClearWritingRuleDocuments}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
@@ -6317,7 +6661,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                     <div className="context-menu-group">
                       {writingRuleDocuments.length === 0 ? (
                         <div className="context-menu-empty">
-                          <span>暂无规则</span>
+                          <span>{translateText('decompositionRulesView.states.noRules', 'No rules yet')}</span>
                         </div>
                       ) : (
                         <div className="context-menu-list">
@@ -6332,14 +6676,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                               <Switch
                                 className="context-menu-switch"
                                 checked={document.enabled}
-                                ariaLabel={`切换写作规则 ${document.name}`}
+                                ariaLabel={translateText('aiChatPanel.contextMenu.writingRules.toggleAria', 'Toggle writing rule {{name}}', { name: document.name })}
                                 onChange={() => handleToggleWritingRuleDocument(document.id)}
                               />
                               <div
                                 role="button"
                                 tabIndex={0}
                                 className="context-menu-rule-edit"
-                                title="编辑文档"
+                                title={translateText('aiChatPanel.contextMenu.writingRules.editTitle', 'Edit Document')}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   handleEditWritingRuleDocument(document);
@@ -6396,7 +6740,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
           <div className="input-area">
             <PromptInput
               ref={promptInputRef}
-              placeholder="输入消息，使用 @ 引用上下文..."
+              placeholder={translateText('aiChatPanel.promptInput.placeholder', 'Type a message and use @ to reference context...')}
               onChange={(text) => setInput(text)}
               onSubmit={() => handleSend()}
               onAtTrigger={() => {
@@ -6416,7 +6760,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 <PressableControl
                   className="icon-button stop-button"
                   onPress={handleStopGeneration}
-                  title="停止生成"
+                  title={translateText('aiChatPanel.toolbar.stopGeneration', 'Stop Generation')}
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                     <rect x="4" y="4" width="8" height="8" />
@@ -6427,7 +6771,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                 className="icon-button send-button"
                 onPress={handleSend}
                 disabled={!input.trim() || isLoading}
-                title="发送"
+                title={translateText('aiChatPanel.toolbar.send', 'Send')}
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M1 2.5l14 5.5-14 5.5V9l10-1.5L1 6V2.5z"/>

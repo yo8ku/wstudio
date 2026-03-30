@@ -1,141 +1,113 @@
 /**
- * 知识库项组件
- * 功能：渲染单个知识库 * 描述：只显示知识库名称，支持选择、显示元数据、右键菜单等功能
+ * Knowledge base item component.
+ * Renders a single knowledge base or file item with metadata and processing status.
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { KnowledgeItem } from './types';
-import { 
+import {
   FolderIcon,
   getFileIcon,
-  CheckIcon
+  CheckIcon,
 } from './KnowledgeBaseIcons';
 import { KnowledgeBaseContextMenu } from './KnowledgeBaseContextMenu';
 
 interface KnowledgeBaseItemProps {
-  /** 知识库项数据 */
   item: KnowledgeItem;
-  /** 是否展开 */
   isExpanded: boolean;
-  /** 是否选中 */
   isSelected: boolean;
-  /** 缩进层级 */
   level: number;
-  /** 点击事件 */
   onClick: (item: KnowledgeItem) => void;
-  /** 切换展开事件 */
   onToggleExpand: (itemId: string) => void;
-  /** 展开的项ID集合（用于子项） */
   expandedItems?: Set<string>;
-  /** 选中的项ID（用于子项） */
   selectedItemId?: string;
-  /** 修改知识*/
   onEdit?: (item: KnowledgeItem) => void;
-  /** 删除知识*/
   onDelete?: (item: KnowledgeItem) => void;
-  /** 打开设置*/
   onSettings?: (item: KnowledgeItem) => void;
 }
 
-/**
- * 格式化文件大小 */
 const formatFileSize = (bytes?: number): string => {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  if (!bytes) {
+    return '';
+  }
+  if (bytes < 1024) {
+    return `${bytes}B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)}KB`;
+  }
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 };
 
-/**
- * 格式化字 */
-const formatWordCount = (count?: number): string => {
-  if (!count) return '';
-  if (count < 1000) return `${count}字`;
-  return `${(count / 1000).toFixed(1)}k`;
+const formatWordCount = (count: number | undefined, unit: string): string => {
+  if (!count) {
+    return '';
+  }
+  if (count < 1000) {
+    return `${count}${unit}`;
+  }
+  return `${(count / 1000).toFixed(1)}k${unit}`;
 };
 
 export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
   item,
-  isExpanded,
   isSelected,
   level,
   onClick,
-  onToggleExpand,
-  expandedItems,
-  selectedItemId,
   onEdit,
   onDelete,
   onSettings,
 }) => {
-  const FileIcon = getFileIcon(item.metadata?.fileType);
-  
-  // 右键菜单状态
+  const { t } = useTranslation();
+  const fileIcon = getFileIcon(item.metadata?.fileType);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const wordCountUnit = String(t('knowledgeBase.item.wordCountUnit', { defaultValue: ' chars' }));
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // 触发选中
-    onClick(item);
-  };
-
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  };
-
-  const handleCloseContextMenu = () => {
-    setContextMenu(null);
-  };
-
-  const handleEdit = (item: KnowledgeItem) => {
-    onEdit?.(item);
-  };
-
-  const handleDelete = (item: KnowledgeItem) => {
-    onDelete?.(item);
-  };
-
-  const handleSettings = (item: KnowledgeItem) => {
-    onSettings?.(item);
-  };
+  const processingText = item.metadata?.processingStatus === 'completed'
+    ? String(t('knowledgeBase.item.completed', { defaultValue: 'Completed' }))
+    : item.metadata?.processingStatus === 'error'
+      ? String(t('knowledgeBase.item.failed', { defaultValue: 'Failed' }))
+      : String(t('knowledgeBase.item.pending', { defaultValue: 'Pending' }));
 
   return (
     <div className="knowledge-base-item">
       <div
         className={`knowledge-base-item__content ${isSelected ? 'selected' : ''}`}
-        style={{ 
+        style={{
           paddingLeft: `${8 + level * 16}px`,
         }}
-        onClick={handleClick}
-        onContextMenu={handleContextMenu}
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick(item);
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setContextMenu({ x: event.clientX, y: event.clientY });
+        }}
       >
-        {/* 文件/文件夹图标或封面 */}
         <div className="knowledge-base-item__type-icon">
           {item.type === 'folder' && item.metadata?.cover ? (
-            <img 
-              src={item.metadata.cover} 
+            <img
+              src={item.metadata.cover}
               alt={item.title}
               className="knowledge-base-item__cover"
             />
           ) : item.type === 'folder' ? (
             <FolderIcon className="icon-folder" />
           ) : (
-            <FileIcon className="icon-file" />
+            React.createElement(fileIcon, { className: 'icon-file' })
           )}
         </div>
 
-        {/* 标题 */}
-        <div className="knowledge-base-item__title">
-          {item.title}
-        </div>
+        <div className="knowledge-base-item__title">{item.title}</div>
 
-        {/* 元数据*/}
         {item.metadata && (
           <div className="knowledge-base-item__metadata">
             {item.metadata.wordCount && (
               <span className="metadata-text">
-                {formatWordCount(item.metadata.wordCount)}
+                {formatWordCount(item.metadata.wordCount, wordCountUnit)}
               </span>
             )}
             {item.metadata.fileSize && (
@@ -146,7 +118,6 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
           </div>
         )}
 
-        {/* 处理进度指示器（仅文件类型） */}
         {item.type === 'file' && item.metadata?.processingStatus && (
           <div className="knowledge-base-item__processing">
             <div className={`processing-indicator ${item.metadata.processingStatus}`}>
@@ -157,31 +128,25 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
                 <CheckIcon className="processing-check-icon" />
               )}
               <span className="processing-text">
-                {item.metadata.processingStatus === 'processing' 
+                {item.metadata.processingStatus === 'processing'
                   ? `${item.metadata.processingProgress ?? 0}%`
-                  : item.metadata.processingStatus === 'completed'
-                  ? '完成'
-                  : item.metadata.processingStatus === 'error'
-                  ? '失败'
-                  : '等待中'}
+                  : processingText}
               </span>
             </div>
           </div>
         )}
       </div>
 
-      {/* 右键菜单 */}
       {contextMenu && (
         <KnowledgeBaseContextMenu
           item={item}
           position={contextMenu}
-          onClose={handleCloseContextMenu}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onSettings={handleSettings}
+          onClose={() => setContextMenu(null)}
+          onEdit={(currentItem) => onEdit?.(currentItem)}
+          onDelete={(currentItem) => onDelete?.(currentItem)}
+          onSettings={(currentItem) => onSettings?.(currentItem)}
         />
       )}
     </div>
   );
 };
-

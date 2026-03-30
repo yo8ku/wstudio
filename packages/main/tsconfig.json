@@ -12,6 +12,8 @@
       "@note-studio/global-rag/*": ["../global-rag/src/*"],
       "@note-studio/note-system": ["../note-system/src/index.ts"],
       "@note-studio/note-system/*": ["../note-system/src/*"],
+      "@note-studio/plugin-api": ["../plugin-api/src/index.ts"],
+      "@note-studio/plugin-api/*": ["../plugin-api/src/*"],
       "@note-studio/shared": ["../shared/src/index.ts"],
       "@note-studio/shared/*": ["../shared/src/*"],
       "@note-studio/theme": ["../theme/src/index.ts"],

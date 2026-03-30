@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { WorkbenchRuntimeWebviewPanelEntry } from '@note-studio/shared';
 import { Icon } from '../../Icons';
 import { LinksPanel } from './LinksPanel';
@@ -48,12 +49,6 @@ interface PanelTab {
   readonly supportsContextMenu?: boolean;
 }
 
-const BUILTIN_PANEL_TABS: readonly PanelTab[] = [
-  { id: 'links', label: '链接' },
-  { id: 'timeline', label: '时间线' },
-  { id: 'terminal', label: '终端', supportsContextMenu: true },
-] as const;
-
 const VIEWPORT_PADDING = 8;
 const SUBMENU_FALLBACK_WIDTH = 128;
 
@@ -88,6 +83,8 @@ export const Panel: React.FC<PanelProps> = ({
   onPlacementChange,
   runtimeWebviewPanels = [],
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
   const [activeView, setActiveView] = useState<PanelView>(initialActiveView);
   const [height, setHeight] = useState(initialHeight);
   const [width, setWidth] = useState(initialWidth);
@@ -203,7 +200,7 @@ export const Panel: React.FC<PanelProps> = ({
 
     const panelInstanceKey = getPanelInstanceKeyFromView(activeView);
     const stillExists = runtimeWebviewPanels.some(
-      panel => panel.panelInstanceKey === panelInstanceKey,
+      (panel) => panel.panelInstanceKey === panelInstanceKey,
     );
     if (!stillExists) {
       setActiveView('terminal');
@@ -250,7 +247,7 @@ export const Panel: React.FC<PanelProps> = ({
     void workbenchContributionService.disposeWebviewPanel({
       panelInstanceKey,
     }).catch((error) => {
-      console.error('[Panel] 关闭插件 webview 面板失败:', error);
+      console.error('[Panel] Failed to close plugin webview panel:', error);
     }).finally(() => {
       onClose?.();
     });
@@ -259,6 +256,21 @@ export const Panel: React.FC<PanelProps> = ({
   const panelResizeHandleClassName = `panel-container-resize-handle panel-container-resize-handle--${placement}`;
   const shouldRenderResizeHandle = !fullSize;
   const activeRuntimePanelInstanceKey = getPanelInstanceKeyFromView(activeView);
+  const builtinPanelTabs: readonly PanelTab[] = [
+    { id: 'links', label: translateText('panelContainer.tabs.links', '链接') },
+    { id: 'timeline', label: translateText('panelContainer.tabs.timeline', '时间线') },
+    {
+      id: 'terminal',
+      label: translateText('panelContainer.tabs.terminal', '终端'),
+      supportsContextMenu: true,
+    },
+  ];
+  const placementMenuItems: ReadonlyArray<{ id: PanelPlacement; label: string }> = [
+    { id: 'top', label: translateText('panelContainer.placements.top', '上') },
+    { id: 'left', label: translateText('panelContainer.placements.left', '左') },
+    { id: 'right', label: translateText('panelContainer.placements.right', '右') },
+    { id: 'bottom', label: translateText('panelContainer.placements.bottom', '下') },
+  ];
 
   return (
     <div
@@ -297,7 +309,7 @@ export const Panel: React.FC<PanelProps> = ({
         onContextMenu={handleTerminalHeaderContextMenu}
       >
         <div className='panel-container-tabs'>
-          {BUILTIN_PANEL_TABS.map((tab) => (
+          {builtinPanelTabs.map((tab) => (
             <div
               key={tab.id}
               className={`panel-container-tab ${activeView === tab.id ? 'active' : ''}`}
@@ -316,7 +328,7 @@ export const Panel: React.FC<PanelProps> = ({
             <button
               className='panel-container-action-btn'
               onClick={() => setTerminalCreateRequestId((previous) => previous + 1)}
-              title='新建终端'
+              title={translateText('panelContainer.actions.newTerminal', '新建终端')}
             >
               <Icon name='plus' size={14} />
             </button>
@@ -325,7 +337,7 @@ export const Panel: React.FC<PanelProps> = ({
             <button
               className='panel-container-action-btn'
               onClick={handleClosePanel}
-              title='关闭面板'
+              title={translateText('panelContainer.actions.closePanel', '关闭面板')}
             >
               <svg width='16' height='16' viewBox='0 0 16 16' fill='currentColor'>
                 <path d='M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.708-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z' />
@@ -348,7 +360,7 @@ export const Panel: React.FC<PanelProps> = ({
             className='panel-terminal-context-menu-item panel-terminal-context-menu-item--submenu-trigger'
             onMouseEnter={() => setShowMoveSubmenu(true)}
           >
-            <span>面板移动</span>
+            <span>{translateText('panelContainer.contextMenu.movePanel', '移动面板')}</span>
             <span className='panel-terminal-context-menu-arrow'>
               <Icon name='chevron-right' size={12} />
             </span>
@@ -358,16 +370,11 @@ export const Panel: React.FC<PanelProps> = ({
                 className={`panel-terminal-context-submenu panel-terminal-context-submenu--${submenuDirection}`}
                 style={{ top: `${submenuTopOffset}px` }}
               >
-                {[
-                  { id: 'top', label: '上' },
-                  { id: 'left', label: '左' },
-                  { id: 'right', label: '右' },
-                  { id: 'bottom', label: '下' },
-                ].map((item) => (
+                {placementMenuItems.map((item) => (
                   <div
                     key={item.id}
                     className={`panel-terminal-context-menu-item${placement === item.id ? ' selected' : ''}`}
-                    onClick={() => handleMovePanel(item.id as PanelPlacement)}
+                    onClick={() => handleMovePanel(item.id)}
                   >
                     <span>{item.label}</span>
                     {placement === item.id && <span>✓</span>}

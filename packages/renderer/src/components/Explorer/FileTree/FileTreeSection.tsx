@@ -4,6 +4,7 @@
  */
 
 import React, { useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import ExplorerSection, { type ActionButton } from '../ExplorerSection';
 import { FileTreeNode, FileTreeCallbacks } from './types';
 import { InlineInput } from '../Common/InlineInput';
@@ -47,6 +48,9 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   onBlankAreaClick,
   onContainerContextMenu,
 }) => {
+  const { t } = useTranslation();
+  const translateText = (key: string, defaultValue: string): string =>
+    String(t(key, { defaultValue }));
   const scrollbarRef = useRef<CustomScrollbarRef>(null);
   const isRestoringScrollRef = useRef<boolean>(false);
   const scrollSnapFrameRef = useRef<number | null>(null);
@@ -224,7 +228,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     actions.push({
       id: 'new-file',
       icon: <Icon iconSet="ui" name="new-file" size={16} />,
-      tooltip: '\u65b0\u5efa\u6587\u4ef6',
+      tooltip: translateText('explorerView.workspaceMenu.general.newFile', 'New File'),
       onClick: onNewFile,
     });
   }
@@ -233,7 +237,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     actions.push({
       id: 'new-folder',
       icon: <Icon iconSet="ui" name="new-folder" size={16} />,
-      tooltip: '\u65b0\u5efa\u6587\u4ef6\u5939',
+      tooltip: translateText('explorerView.workspaceMenu.general.newFolder', 'New Folder'),
       onClick: onNewFolder,
     });
   }
@@ -242,7 +246,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     actions.push({
       id: 'refresh',
       icon: <Icon iconSet="ui" name="refresh" size={16} />,
-      tooltip: '\u5237\u65b0',
+      tooltip: translateText('explorerView.workspaceMenu.general.refresh', 'Refresh'),
       onClick: onRefresh,
     });
   }
@@ -302,7 +306,9 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
           )}
         >
           <InlineInput
-            placeholder={node.creatingType === 'folder' ? '\u65b0\u5efa\u6587\u4ef6\u5939' : '\u65b0\u5efa\u6587\u4ef6'}
+            placeholder={node.creatingType === 'folder'
+              ? translateText('explorerView.workspaceMenu.general.newFolder', '新建文件夹')
+              : translateText('explorerView.workspaceMenu.general.newFile', '新建文件')}
             onConfirm={(name) => callbacks?.onCreateConfirm?.(node, name)}
             onCancel={() => callbacks?.onCreateCancel?.(node)}
             autoFocus={true}
@@ -330,7 +336,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
           >
             <InlineInput
               initialValue={node.name}
-              placeholder="\u8f93\u5165\u540d\u79f0"
+              placeholder={translateText('explorerView.fileTree.renamePlaceholder', '输入名称')}
               onConfirm={(newName) => callbacks?.onRename?.(node, newName)}
               onCancel={() => callbacks?.onRename?.(node, node.name)}
               autoFocus={true}
@@ -392,7 +398,9 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     }
   };
 
-  const fileTreeTitle = rootPath && rootName ? rootName : '\u6587\u4ef6\u5939';
+  const fileTreeTitle = rootPath && rootName
+    ? rootName
+    : translateText('explorerView.fileTree.defaultRootName', '文件夹');
 
   return (
     <div className="file-tree-section">
@@ -414,7 +422,9 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
         >
           {nodes.length === 0 ? (
             <div className="file-tree-empty">
-              {rootPath ? '\u6587\u4ef6\u5939\u4e3a\u7a7a' : '\u5c1a\u672a\u6253\u5f00\u6587\u4ef6\u5939'}
+              {rootPath
+                ? translateText('explorerView.fileTree.emptyFolder', '文件夹为空')
+                : translateText('explorerView.fileTree.closedWorkspace', '尚未打开文件夹')}
             </div>
           ) : null}
           {nodes.length > 0 && (
@@ -429,4 +439,3 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
 };
 
 export default FileTreeSection;
-

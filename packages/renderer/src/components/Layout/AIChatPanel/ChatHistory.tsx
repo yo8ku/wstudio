@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../../Icons/Icon';
 import { modal, useModalStore } from '../../../stores/modalStore';
 import type { ChatMessageData, ChatSessionData } from '../../../types/electron';
@@ -45,6 +46,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
   source = 'panel',
   inlineQuery,
 }) => {
+  const { t } = useTranslation();
   const [sessions, setSessions] = useState<HistorySession[]>([]);
   const [sessionTitles, setSessionTitles] = useState<Map<string, string>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,6 +57,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
   const menuRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const isModalOpen = useModalStore((state) => state.isOpen);
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
 
   useLayoutEffect(() => {
     if (!isOpen || !buttonRef.current) {
@@ -175,10 +178,13 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
     event.stopPropagation();
 
     modal.confirm({
-      title: '删除对话',
-      description: '确定要删除这段对话吗？删除后将无法恢复。',
-      confirmText: '删除',
-      cancelText: '取消',
+      title: translateText('aiChatPanel.historyMenu.deleteDialog.title', 'Delete Conversation'),
+      description: translateText(
+        'aiChatPanel.historyMenu.deleteDialog.description',
+        'Are you sure you want to delete this conversation? This action cannot be undone.',
+      ),
+      confirmText: translateText('aiChatPanel.historyMenu.deleteDialog.confirm', 'Delete'),
+      cancelText: translateText('aiChatPanel.historyMenu.deleteDialog.cancel', 'Cancel'),
       onConfirm: async () => {
         try {
           if (source === 'inline') {
@@ -269,22 +275,22 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
           type="text"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="搜索历史记录"
+          placeholder={translateText('aiChatPanel.historyMenu.searchPlaceholder', 'Search history')}
         />
       </div>
 
       <div className="chat-history-content">
         {isLoading ? (
           <div className="loading-state">
-            <span>加载中...</span>
+            <span>{translateText('aiChatPanel.historyMenu.loading', 'Loading...')}</span>
           </div>
         ) : sessions.length === 0 ? (
           <div className="empty-state">
-            <span>暂无历史记录</span>
+            <span>{translateText('aiChatPanel.historyMenu.empty', 'No history yet')}</span>
           </div>
         ) : filteredSessions.length === 0 ? (
           <div className="empty-state">
-            <span>未找到匹配的历史记录</span>
+            <span>{translateText('aiChatPanel.historyMenu.noResults', 'No matching history found')}</span>
           </div>
         ) : (
           <div className="session-list">
@@ -305,7 +311,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                 <PressableControl
                   className="delete-button"
                   onPress={(event) => handleDeleteSession(session.id, event)}
-                  title="删除对话"
+                  title={translateText('aiChatPanel.historyMenu.deleteButtonTitle', 'Delete Conversation')}
                 >
                   <Icon name="delete" size={16} iconSet="ui" />
                 </PressableControl>

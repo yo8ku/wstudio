@@ -33,11 +33,20 @@ import { AtReferenceMenu } from './AtReferenceMenu';
 import { tableReferenceService, type FormInfo } from '../../services/tableReference/TableReferenceService';
 import { createTableReferenceExtension } from './TableReferenceWidget';
 import { renderMonacoToElement, unmountMonacoFromElement, updateMonacoTheme, updateMonacoLanguage, getMonacoScrollPosition } from './CodeBlockMonaco';
+import { translate } from '../../i18n';
 import {
   createWorkspaceSearchMatcher,
   findClosestWorkspaceSearchMatchRange,
   type WorkspaceSearchMatchOptions,
 } from '../../utils/workspaceSearchMatch';
+
+type CodeMirrorTranslationValue = string | number | boolean;
+
+const translateCodeMirrorText = (
+  key: string,
+  defaultValue: string,
+  values?: Record<string, CodeMirrorTranslationValue>,
+): string => String(translate(key, values ? { defaultValue, ...values } : { defaultValue }));
 import { useThemeStore } from '../../stores/themeStore';
 import { useCodeBlockStore, applyPendingUpdatesToContent } from '../../stores/codeBlockStore';
 import { themeService } from '../../services/ThemeService';
@@ -3572,7 +3581,7 @@ class ResizableImageWidget extends WidgetType {
           </div>
           <div class="cm-image-card-info">
             <span class="cm-image-card-name">${this.getCleanAlt() !== 'image' ? this.getCleanAlt() : this.getFileName()}</span>
-            <span class="cm-image-card-type">图片</span>
+            <span class="cm-image-card-type">${translateCodeMirrorText('codeMirrorEditor.imageCard.type', 'Image')}</span>
           </div>
         `;
         container.insertBefore(cardDisplay, toolbar);
@@ -3728,7 +3737,7 @@ class ResizableImageWidget extends WidgetType {
         </div>
         <div class="cm-image-card-info">
           <span class="cm-image-card-name">${this.getCleanAlt() !== 'image' ? this.getCleanAlt() : this.getFileName()}</span>
-          <span class="cm-image-card-type">图片</span>
+          <span class="cm-image-card-type">${translateCodeMirrorText('codeMirrorEditor.imageCard.type', 'Image')}</span>
         </div>
       `;
       // 閹绘帒鍙嗛崚鏉挎禈閻楀洣绠ｉ崥?
@@ -5406,12 +5415,31 @@ class VideoWidget extends WidgetType {
     menu.className = 'cm-video-more-menu';
 
     const menuItems = [
-      { label: '本地视频', action: 'local-video' },
-      { label: '在浏览器中打开', action: 'open-external' },
-      { label: '复制原始链接', action: 'copy-url' },
-      { label: '复制视频块', action: 'copy-block' },
-      { label: '移动到...', action: 'move-to' },
-      { label: '删除', action: 'delete', danger: true },
+      {
+        label: translateCodeMirrorText('codeMirrorEditor.videoMenu.localVideo', '本地视频'),
+        action: 'local-video',
+      },
+      {
+        label: translateCodeMirrorText('codeMirrorEditor.videoMenu.openExternal', '在浏览器中打开'),
+        action: 'open-external',
+      },
+      {
+        label: translateCodeMirrorText('codeMirrorEditor.videoMenu.copyOriginalLink', '复制原始链接'),
+        action: 'copy-url',
+      },
+      {
+        label: translateCodeMirrorText('codeMirrorEditor.videoMenu.copyVideoBlock', '复制视频块'),
+        action: 'copy-block',
+      },
+      {
+        label: translateCodeMirrorText('codeMirrorEditor.videoMenu.moveTo', '移动到...'),
+        action: 'move-to',
+      },
+      {
+        label: translateCodeMirrorText('codeMirrorEditor.videoMenu.delete', '删除'),
+        action: 'delete',
+        danger: true,
+      },
     ];
 
     menuItems.forEach(item => {
@@ -7014,7 +7042,7 @@ class CodeBlockWidget extends WidgetType {
     // 婢跺秴鍩楅幐澶愭尦
     const copyBtn = document.createElement('span');
     copyBtn.className = 'cm-code-block-action-btn';
-    copyBtn.title = '复制代码';
+    copyBtn.title = translateCodeMirrorText('codeMirrorEditor.codeBlock.copyCode', '复制代码');
     copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z"/><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1"/></svg>';
     copyBtn.addEventListener('click', () => navigator.clipboard.writeText(this.block.code));
 
@@ -8352,11 +8380,20 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     const selection = view?.state.selection.main;
     const selectedText = selection ? view.state.sliceDoc(selection.from, selection.to) : '';
     const bidirectionalLinkText = buildBidirectionalLinkText(selectedText);
+    const groupLabel = (key: string, defaultValue: string): string => (
+      translateCodeMirrorText(`editorContextMenu.groups.${key}`, defaultValue)
+    );
+    const itemLabel = (key: string, defaultValue: string): string => (
+      translateCodeMirrorText(`editorContextMenu.items.${key}`, defaultValue)
+    );
+    const colorLabel = (key: string, defaultValue: string): string => (
+      translateCodeMirrorText(`editorContextMenu.colors.${key}`, defaultValue)
+    );
 
     return [
       {
         id: 'open-bidirectional-links',
-        label: '打开双向链接',
+        label: itemLabel('openBidirectionalLinks', '打开双向链接'),
         action: () => {
           openBidirectionalLinksPanel();
         },
@@ -8364,7 +8401,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       { id: 'open-bidirectional-links-sep', label: '', separator: true },
       {
         id: 'set-bidirectional-link',
-        label: '设置双链',
+        label: itemLabel('setBidirectionalLink', '设置双链'),
         disabled: !bidirectionalLinkText,
         action: () => {
           if (view && selection && bidirectionalLinkText) {
@@ -8377,7 +8414,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'external-link',
-        label: '外部链接',
+        label: itemLabel('externalLink', '外部链接'),
         action: () => {
           if (view) {
             const { from, to } = view.state.selection.main;
@@ -8392,11 +8429,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       { id: 'sep1', label: '', separator: true },
       {
         id: 'text-format',
-        label: '文本格式',
+        label: groupLabel('textFormat', '文本格式'),
         submenu: [
           {
             id: 'bold',
-            label: '加粗',
+            label: itemLabel('bold', '加粗'),
             shortcut: 'Ctrl+B',
             action: () => {
               if (view) {
@@ -8410,7 +8447,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'italic',
-            label: '斜体',
+            label: itemLabel('italic', '斜体'),
             shortcut: 'Ctrl+I',
             action: () => {
               if (view) {
@@ -8424,7 +8461,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'strikethrough',
-            label: '删除线',
+            label: itemLabel('strikethrough', '删除线'),
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
@@ -8437,7 +8474,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'inline-code',
-            label: '行内代码',
+            label: itemLabel('inlineCode', '行内代码'),
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
@@ -8450,7 +8487,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'comment',
-            label: '注释',
+            label: itemLabel('comment', '注释'),
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
@@ -8463,7 +8500,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'clear-format',
-            label: '清除格式',
+            label: itemLabel('clearFormat', '清除格式'),
             action: () => {
               if (view) {
                 const { from, to } = view.state.selection.main;
@@ -8488,11 +8525,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'color',
-        label: '颜色',
+        label: groupLabel('color', '颜色'),
         submenu: [
           {
             id: 'bg-slate',
-            label: '石板灰',
+            label: colorLabel('bgSlate', '石板灰'),
             color: 'rgba(100, 116, 139, 0.3)',
             action: () => {
               if (view) {
@@ -8502,7 +8539,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-sky',
-        label: '天蓝',
+            label: colorLabel('bgSky', '天蓝'),
             color: 'rgba(56, 189, 248, 0.25)',
             action: () => {
               if (view) {
@@ -8512,7 +8549,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-cyan',
-        label: '青色',
+            label: colorLabel('bgCyan', '青色'),
             color: 'rgba(34, 211, 238, 0.25)',
             action: () => {
               if (view) {
@@ -8522,7 +8559,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-teal',
-        label: '蓝绿',
+            label: colorLabel('bgTeal', '蓝绿'),
             color: 'rgba(45, 212, 191, 0.25)',
             action: () => {
               if (view) {
@@ -8532,7 +8569,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-indigo',
-        label: '靛蓝',
+            label: colorLabel('bgIndigo', '靛蓝'),
             color: 'rgba(129, 140, 248, 0.3)',
             action: () => {
               if (view) {
@@ -8542,7 +8579,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-violet',
-            label: '紫罗兰',
+            label: colorLabel('bgViolet', '紫罗兰'),
             color: 'rgba(167, 139, 250, 0.3)',
             action: () => {
               if (view) {
@@ -8552,7 +8589,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'bg-custom',
-            label: '自定义背景',
+            label: colorLabel('bgCustom', '自定义背景'),
             isCustomColor: true,
             onCustomColorPreview: (color: string) => {
               if (view) {
@@ -8597,7 +8634,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'color-sep', label: '', separator: true },
           {
             id: 'text-red',
-        label: '红色文字',
+            label: colorLabel('textRed', '红色文字'),
             color: '#ff0000',
             action: () => {
               if (view) {
@@ -8607,7 +8644,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-orange',
-        label: '橙色文字',
+            label: colorLabel('textOrange', '橙色文字'),
             color: '#ff8000',
             action: () => {
               if (view) {
@@ -8617,7 +8654,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-green',
-        label: '绿色文字',
+            label: colorLabel('textGreen', '绿色文字'),
             color: '#00cc00',
             action: () => {
               if (view) {
@@ -8627,7 +8664,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-blue',
-        label: '蓝色文字',
+            label: colorLabel('textBlue', '蓝色文字'),
             color: '#0066ff',
             action: () => {
               if (view) {
@@ -8637,7 +8674,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-purple',
-        label: '紫色文字',
+            label: colorLabel('textPurple', '紫色文字'),
             color: '#9900ff',
             action: () => {
               if (view) {
@@ -8647,7 +8684,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'text-custom',
-            label: '自定义文字颜色',
+            label: colorLabel('textCustom', '自定义文字颜色'),
             isCustomColor: true,
             onCustomColorPreview: (color: string) => {
               if (view) {
@@ -8693,11 +8730,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'paragraph',
-        label: '段落设置',
+        label: groupLabel('paragraph', '段落设置'),
         submenu: [
           {
             id: 'h1',
-            label: '标题 1',
+            label: itemLabel('heading1', '标题 1'),
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -8711,7 +8748,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'h2',
-            label: '标题 2',
+            label: itemLabel('heading2', '标题 2'),
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -8725,7 +8762,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'h3',
-            label: '标题 3',
+            label: itemLabel('heading3', '标题 3'),
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -8739,7 +8776,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'quote',
-            label: '引用',
+            label: itemLabel('quote', '引用'),
             action: () => {
               if (view) {
                 const line = view.state.doc.lineAt(view.state.selection.main.head);
@@ -8755,11 +8792,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'insert',
-        label: '插入',
+        label: groupLabel('insert', '插入'),
         submenu: [
           {
             id: 'heading1',
-            label: '标题 1',
+            label: itemLabel('heading1', '标题 1'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8774,7 +8811,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'heading2',
-            label: '标题 2',
+            label: itemLabel('heading2', '标题 2'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8789,7 +8826,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'heading3',
-            label: '标题 3',
+            label: itemLabel('heading3', '标题 3'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8805,7 +8842,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep1', label: '', separator: true },
           {
             id: 'ordered-list',
-            label: '有序列表',
+            label: itemLabel('orderedList', '有序列表'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8820,7 +8857,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'unordered-list',
-            label: '无序列表',
+            label: itemLabel('unorderedList', '无序列表'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8835,7 +8872,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'todo-list',
-            label: '待办清单',
+            label: itemLabel('todoList', '待办清单'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8866,7 +8903,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep2', label: '', separator: true },
           {
             id: 'blockquote',
-            label: '引用',
+            label: itemLabel('quote', '引用'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8881,7 +8918,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'callout',
-            label: '标注',
+            label: itemLabel('callout', '标注'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8895,7 +8932,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep3', label: '', separator: true },
           {
             id: 'code-block',
-            label: '代码块',
+            label: itemLabel('codeBlock', '代码块'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8908,7 +8945,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'table',
-            label: '表格',
+            label: itemLabel('table', '表格'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -8922,7 +8959,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'insert-sep4', label: '', separator: true },
           {
             id: 'video-link',
-            label: '视频链接',
+            label: itemLabel('videoLink', '视频链接'),
             action: () => {
               // 閼惧嘲褰囬崗澶嬬垼娴ｅ秶鐤嗛惃鍕潌楠炴洖娼楅弽?
               if (view) {
@@ -8940,7 +8977,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'database',
-            label: '数据库视图',
+            label: itemLabel('database', '数据库视图'),
             action: () => {
               // 閹垫挸绱戦弫鐗堝祦鎼存捁顔曠拋鈥虫珤閺嶅洨顒锋い?
               window.dispatchEvent(new CustomEvent('open-database-view'));
@@ -8950,11 +8987,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'local-embed',
-        label: '本地嵌入',
+        label: groupLabel('localEmbed', '本地嵌入'),
         submenu: [
           {
             id: 'local-video',
-            label: '本地视频',
+            label: itemLabel('localVideo', '本地视频'),
             action: async () => {
               if (view) {
                 const result = await window.electron?.video?.open();
@@ -8971,7 +9008,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'local-audio',
-            label: '本地音频',
+            label: itemLabel('localAudio', '本地音频'),
             action: () => {
               // TODO: 鐎圭偟骞囬張顒€婀撮棅鎶筋暥閹绘帒鍙?
               console.log('本地音频功能待实现');
@@ -8979,7 +9016,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'local-file',
-            label: '本地文件',
+            label: itemLabel('localFile', '本地文件'),
             action: () => {
               // TODO: 鐎圭偟骞囬張顒€婀撮弬鍥︽閹绘帒鍙?
               console.log('本地文件功能待实现');
@@ -8989,11 +9026,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       },
       {
         id: 'graphics',
-        label: '图形',
+        label: groupLabel('graphics', '图形'),
         submenu: [
           {
             id: 'canvas',
-            label: '画布',
+            label: itemLabel('canvas', '画布'),
             action: () => {
               // TODO: 鐎圭偟骞囬悽缁樻緲閸旂喕鍏?
               console.log('画布功能待实现');
@@ -9001,7 +9038,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           },
           {
             id: 'mindmap',
-            label: '思维导图',
+            label: itemLabel('mindMap', '思维导图'),
             action: () => {
               // TODO: 鐎圭偟骞囬幀婵堟樊鐎电厧娴橀崝鐔诲厴
               console.log('思维导图功能待实现');
@@ -9010,7 +9047,7 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           { id: 'graphics-sep', label: '', separator: true },
           {
             id: 'flowchart',
-            label: '流程图',
+            label: itemLabel('flowchart', '流程图'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -9031,7 +9068,7 @@ flowchart TD
           },
           {
             id: 'sequence',
-            label: '时序图',
+            label: itemLabel('sequenceDiagram', '时序图'),
             action: () => {
               if (view) {
                 const { from } = view.state.selection.main;
@@ -9054,7 +9091,7 @@ sequenceDiagram
       { id: 'sep2', label: '', separator: true },
       {
         id: 'ai-inline-chat',
-        label: 'AI 行内对话',
+        label: itemLabel('aiInlineChat', 'AI 行内对话'),
         shortcut: 'Ctrl+I',
         action: () => {
           if (view) {
@@ -9065,7 +9102,7 @@ sequenceDiagram
       { id: 'sep3', label: '', separator: true },
       {
         id: 'cut',
-        label: '剪切',
+        label: itemLabel('cut', '剪切'),
         shortcut: 'Ctrl+X',
         action: () => {
           document.execCommand('cut');
@@ -9073,7 +9110,7 @@ sequenceDiagram
       },
       {
         id: 'copy',
-        label: '复制',
+        label: itemLabel('copy', '复制'),
         shortcut: 'Ctrl+C',
         action: () => {
           document.execCommand('copy');
@@ -9081,7 +9118,7 @@ sequenceDiagram
       },
       {
         id: 'paste',
-        label: '粘贴',
+        label: itemLabel('paste', '粘贴'),
         shortcut: 'Ctrl+V',
         action: () => {
           document.execCommand('paste');
@@ -9089,7 +9126,7 @@ sequenceDiagram
       },
       {
         id: 'select-all',
-        label: '全选',
+        label: itemLabel('selectAll', '全选'),
         shortcut: 'Ctrl+A',
         action: () => {
           if (view) {
@@ -9412,7 +9449,10 @@ sequenceDiagram
           span.className = 'cm-foldPlaceholder';
           span.textContent = '...';
 
-          span.title = '点击展开折叠内容';
+          span.title = translateCodeMirrorText(
+            'codeMirrorEditor.outline.expandFolded',
+            '点击展开折叠内容',
+          );
           span.onclick = onclick;
           return span;
         },
@@ -9845,9 +9885,15 @@ sequenceDiagram
     <div className={`codemirror-editor ${mode === 'preview' ? 'preview-mode' : 'source-mode'} ${isLargeFileMode ? 'large-file-mode' : ''}`}>
       {isLargeFileMode && (
         <div className="cm-large-file-notice">
-          <span className="cm-large-file-notice-title">大文件模式</span>
+          <span className="cm-large-file-notice-title">
+            {translateCodeMirrorText('codeMirrorEditor.largeFileMode.title', 'Large File Mode')}
+          </span>
           <span className="cm-large-file-notice-text">
-            当前文档约 {largeFileSummary}，已关闭语法增强、嵌入预览、自动补全和自动换行，以减少卡顿。
+            {translateCodeMirrorText(
+              'codeMirrorEditor.largeFileMode.description',
+              'The current document is about {{summary}}. Syntax enhancement, embed preview, autocomplete, and word wrap have been disabled to reduce lag.',
+              { summary: largeFileSummary },
+            )}
           </span>
         </div>
       )}
@@ -9872,13 +9918,13 @@ sequenceDiagram
                     onClick={() => setOutlineTab('headings')}
                   >
                     <Icon name="bookmark" size={14} className="cm-outline-tab-icon" />
-                    大纲
+                    {translateCodeMirrorText('codeMirrorEditor.outline.tabs.headings', '大纲')}
                   </div>
                   <div
                     className={`cm-outline-tab ${outlineTab === 'colors' ? 'active' : ''}`}
                     onClick={() => setOutlineTab('colors')}
                   >
-                    色块
+                    {translateCodeMirrorText('codeMirrorEditor.outline.tabs.colors', '色块')}
                   </div>
                   <div className="cm-outline-tab-spacer" />
                 </>
@@ -9886,7 +9932,9 @@ sequenceDiagram
               <div
                 className="cm-outline-collapse-btn"
                 onClick={() => setIsOutlineCollapsed(!isOutlineCollapsed)}
-                title={isOutlineCollapsed ? '展开大纲' : '折叠大纲'}
+                title={isOutlineCollapsed
+                  ? translateCodeMirrorText('codeMirrorEditor.outline.expand', '展开大纲')
+                  : translateCodeMirrorText('codeMirrorEditor.outline.collapse', '折叠大纲')}
               >
                 <Icon name={isOutlineCollapsed ? 'chevron-left' : 'chevron-right'} size={14} />
               </div>
@@ -9896,7 +9944,9 @@ sequenceDiagram
                 {outlineTab === 'headings' && (
                   <div className="cm-outline-list">
                     {outline.length === 0 ? (
-                      <div className="cm-outline-empty">暂无大纲</div>
+                      <div className="cm-outline-empty">
+                        {translateCodeMirrorText('codeMirrorEditor.outline.emptyHeadings', 'No outline yet')}
+                      </div>
                     ) : (
                       outline.map(item => (
                         <div
@@ -9914,14 +9964,20 @@ sequenceDiagram
                 {outlineTab === 'colors' && (
                   <div className="cm-outline-list">
                     {colorBlocks.length === 0 ? (
-                      <div className="cm-outline-empty">暂无色块</div>
+                      <div className="cm-outline-empty">
+                        {translateCodeMirrorText('codeMirrorEditor.outline.emptyColors', 'No color blocks yet')}
+                      </div>
                     ) : (
                       colorBlocks.map(item => (
                         <div
                           key={item.id}
                           className="cm-outline-item cm-color-block-item"
                           onClick={() => scrollToPosition(item.position)}
-                           title={`第 ${item.lineNumber} 行`}
+                           title={translateCodeMirrorText(
+                             'codeMirrorEditor.outline.lineTitle',
+                             'Line {{lineNumber}}',
+                             { lineNumber: item.lineNumber },
+                           )}
                         >
                           <span
                             className="cm-color-indicator"

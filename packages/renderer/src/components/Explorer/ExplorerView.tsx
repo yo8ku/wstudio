@@ -1,5 +1,6 @@
 ﻿import React, { useCallback, useState } from 'react';
 import { FileTreeSection } from './FileTree/FileTreeSection';
+import { useTranslation } from 'react-i18next';
 import { TimelineSection } from './Timeline/TimelineSection';
 import { FormSection } from './Form';
 import { FileTreeNode } from './FileTree/types';
@@ -150,6 +151,12 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   initialFormExpanded = false,
   onFormExpandedChange,
 }) => {
+  const { t } = useTranslation();
+  const translateText = (
+    key: string,
+    defaultValue: string,
+    values?: Record<string, string>,
+  ): string => String(t(key, values ? { defaultValue, ...values } : { defaultValue }));
   const [selectedTimelineItem, setSelectedTimelineItem] = useState<TimelineItem | null>(null);
   const [contextMenuState, setContextMenuState] = useState<{
     position: { x: number; y: number };
@@ -474,22 +481,22 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       return [
         {
           id: 'open-to-side',
-          label: '在侧边打开',
+          label: translateText('explorerView.workspaceMenu.file.openToSide', 'Open to the Side'),
           onClick: () => emitFileAction('open-to-side', node),
         },
         {
           id: 'add-to-chat',
-          label: '添加到聊天',
+          label: translateText('explorerView.workspaceMenu.file.addToChat', 'Add to Chat'),
           onClick: () => emitFileAction('add-to-chat', node),
         },
         {
           id: 'add-to-new-chat',
-          label: '添加到新的聊天',
+          label: translateText('explorerView.workspaceMenu.file.addToNewChat', 'Add to New Chat'),
           onClick: () => emitFileAction('add-to-new-chat', node),
         },
         {
           id: 'reveal-in-explorer',
-          label: '在资源管理器中打开',
+          label: translateText('explorerView.workspaceMenu.file.openInExplorer', 'Open in Explorer'),
           onClick: () => emitFileAction('reveal-in-explorer', node),
         },
         {
@@ -499,7 +506,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         },
         {
           id: 'open-timeline',
-          label: '打开时间线',
+          label: translateText('explorerView.workspaceMenu.file.openTimeline', 'Open Timeline'),
           onClick: () => emitFileAction('open-timeline', node),
         },
         {
@@ -509,12 +516,12 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         },
         {
           id: 'cut-file',
-          label: '剪切',
+          label: translateText('explorerView.workspaceMenu.file.cut', 'Cut'),
           onClick: () => emitFileAction('cut-file', node),
         },
         {
           id: 'copy-file',
-          label: '复制',
+          label: translateText('explorerView.workspaceMenu.file.copy', 'Copy'),
           onClick: () => emitFileAction('copy-file', node),
         },
         {
@@ -524,12 +531,12 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         },
         {
           id: 'rename-file',
-          label: '重命名',
+          label: translateText('explorerView.workspaceMenu.file.rename', 'Rename'),
           onClick: () => emitFileAction('rename-file', node),
         },
         {
           id: 'delete-file',
-          label: '删除',
+          label: translateText('explorerView.workspaceMenu.file.delete', 'Delete'),
           onClick: () => emitFileAction('delete-file', node),
         },
         {
@@ -539,13 +546,13 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         },
         {
           id: 'index-file',
-          label: '立即索引',
+          label: translateText('explorerView.workspaceMenu.file.indexNow', 'Index Now'),
           disabled: disableIndex,
           onClick: () => emitFileAction('index-file', node),
         },
       ];
     },
-    [emitFileAction]
+    [emitFileAction, translateText]
   );
 
   const buildSelectedFolderMenuItems = useCallback(
@@ -555,7 +562,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       if (onNewFile) {
         items.push({
           id: 'new-file-in-folder',
-          label: '新建文件...',
+          label: translateText('explorerView.workspaceMenu.folder.newFile', 'New File...'),
           onClick: () => emitFileAction('new-file-in-folder', node),
         });
       }
@@ -563,14 +570,14 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       if (onNewFolder) {
         items.push({
           id: 'new-folder-in-folder',
-          label: '新建文件夹...',
+          label: translateText('explorerView.workspaceMenu.folder.newFolder', 'New Folder...'),
           onClick: () => emitFileAction('new-folder-in-folder', node),
         });
       }
 
       items.push({
         id: 'reveal-folder-in-explorer',
-        label: '在资源管理器中打开',
+        label: translateText('explorerView.workspaceMenu.folder.openInExplorer', 'Open in Explorer'),
         onClick: () => emitFileAction('reveal-in-explorer', node),
       });
 
@@ -583,7 +590,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       if (onFolderToggle && node.isExpanded) {
         items.push({
           id: 'collapse-folder',
-          label: '折叠文件夹',
+          label: translateText('explorerView.workspaceMenu.folder.collapseFolder', 'Collapse Folder'),
           onClick: () => onFolderToggle(node),
         });
       }
@@ -591,7 +598,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       if (onCollapseAll) {
         items.push({
           id: 'collapse-all',
-          label: '折叠所有',
+          label: translateText('explorerView.workspaceMenu.folder.collapseAll', 'Collapse All'),
           onClick: () => onCollapseAll(),
         });
       }
@@ -604,13 +611,13 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
       items.push({
         id: 'add-folder-to-chat',
-        label: '添加到聊天',
+        label: translateText('explorerView.workspaceMenu.folder.addToChat', 'Add to Chat'),
         onClick: () => emitFileAction('add-to-chat', node),
       });
 
       items.push({
         id: 'add-folder-to-new-chat',
-        label: '添加到新的聊天',
+        label: translateText('explorerView.workspaceMenu.folder.addToNewChat', 'Add to New Chat'),
         onClick: () => emitFileAction('add-to-new-chat', node),
       });
 
@@ -622,7 +629,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
       items.push({
         id: 'find-in-folder',
-        label: '在文件夹中查找...',
+        label: translateText('explorerView.workspaceMenu.folder.findInFolder', 'Find in Folder...'),
         onClick: () => emitFileAction('find-in-folder', node),
       });
 
@@ -634,19 +641,19 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
       items.push({
         id: 'cut-folder',
-        label: '剪切',
+        label: translateText('explorerView.workspaceMenu.folder.cut', 'Cut'),
         onClick: () => emitFileAction('cut-folder', node),
       });
 
       items.push({
         id: 'copy-folder',
-        label: '复制',
+        label: translateText('explorerView.workspaceMenu.folder.copy', 'Copy'),
         onClick: () => emitFileAction('copy-folder', node),
       });
 
       items.push({
         id: 'paste-folder',
-        label: '粘贴',
+        label: translateText('explorerView.workspaceMenu.folder.paste', 'Paste'),
         onClick: () => emitFileAction('paste-folder', node),
       });
 
@@ -658,13 +665,13 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
       items.push({
         id: 'rename-folder',
-        label: '重命名',
+        label: translateText('explorerView.workspaceMenu.folder.rename', 'Rename'),
         onClick: () => emitFileAction('rename-folder', node),
       });
 
       items.push({
         id: 'delete-folder',
-        label: '删除',
+        label: translateText('explorerView.workspaceMenu.folder.delete', 'Delete'),
         onClick: () => emitFileAction('delete-folder', node),
       });
 
@@ -676,13 +683,13 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
       items.push({
         id: 'index-folder',
-        label: '立即索引',
+        label: translateText('explorerView.workspaceMenu.folder.indexNow', 'Index Now'),
         onClick: () => emitFileAction('index-folder', node),
       });
 
       return items;
     },
-    [emitFileAction, onNewFile, onNewFolder, onFolderToggle, onCollapseAll]
+    [emitFileAction, onNewFile, onNewFolder, onFolderToggle, onCollapseAll, translateText]
   );
 
   const buildGeneralMenuItems = useCallback((): ContextMenuItem[] => {
@@ -690,19 +697,43 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     const utilityItems: ContextMenuItem[] = [];
 
     if (onNewFile) {
-      creationItems.push(createMenuItem('new-file', '新建文件', onNewFile));
+      creationItems.push(
+        createMenuItem(
+          'new-file',
+          translateText('explorerView.workspaceMenu.general.newFile', 'New File'),
+          onNewFile,
+        ),
+      );
     }
 
     if (onNewFolder) {
-      creationItems.push(createMenuItem('new-folder', '新建文件夹', onNewFolder));
+      creationItems.push(
+        createMenuItem(
+          'new-folder',
+          translateText('explorerView.workspaceMenu.general.newFolder', 'New Folder'),
+          onNewFolder,
+        ),
+      );
     }
 
     if (onRefresh) {
-      utilityItems.push(createMenuItem('refresh', '刷新', onRefresh));
+      utilityItems.push(
+        createMenuItem(
+          'refresh',
+          translateText('explorerView.workspaceMenu.general.refresh', 'Refresh'),
+          onRefresh,
+        ),
+      );
     }
 
     if (onCollapseAll) {
-      utilityItems.push(createMenuItem('collapse-all', '折叠所有', onCollapseAll));
+      utilityItems.push(
+        createMenuItem(
+          'collapse-all',
+          translateText('explorerView.workspaceMenu.general.collapseAll', 'Collapse All'),
+          onCollapseAll,
+        ),
+      );
     }
 
     const composedItems: ContextMenuItem[] = [...creationItems];
@@ -717,7 +748,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
     composedItems.push(...utilityItems);
     return composedItems;
-  }, [createMenuItem, onNewFile, onNewFolder, onRefresh, onCollapseAll]);
+  }, [createMenuItem, onNewFile, onNewFolder, onRefresh, onCollapseAll, translateText]);
 
   const closeContextMenu = useCallback(() => {
     setContextMenuState(null);
@@ -727,21 +758,21 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   const buildBookmarkMenuItems = useCallback((item: BookmarkNoteDisplayItem): ContextMenuItem[] => ([
     {
       id: 'bookmark-open-in-new-tab',
-      label: '新标签页中打开',
+      label: translateText('explorerView.bookmarkMenu.openInNewTab', 'Open in New Tab'),
       onClick: () => {
         onBookmarkOpenInNewTab?.(item);
       },
     },
     {
       id: 'bookmark-open-in-split-right',
-      label: '向右分屏打开',
+      label: translateText('explorerView.bookmarkMenu.openInSplitRight', 'Open in Split Right'),
       onClick: () => {
         onBookmarkSplitRightOpen?.(item);
       },
     },
     {
       id: 'bookmark-open-in-new-window',
-      label: '新窗口中打开',
+      label: translateText('explorerView.bookmarkMenu.openInNewWindow', 'Open in New Window'),
       onClick: () => {
         onBookmarkOpenInNewWindow?.(item);
       },
@@ -753,14 +784,14 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     },
     {
       id: 'bookmark-rename',
-      label: '重命名',
+      label: translateText('explorerView.bookmarkMenu.rename', 'Rename'),
       onClick: () => {
         onBookmarkRename?.(item);
       },
     },
     {
       id: 'bookmark-edit',
-      label: '编辑',
+      label: translateText('explorerView.bookmarkMenu.edit', 'Edit'),
       onClick: () => {
         onBookmarkEdit?.(item);
       },
@@ -772,14 +803,14 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     },
     {
       id: 'bookmark-reveal-in-file-tree',
-      label: '文件列表中显示当前文件',
+      label: translateText('explorerView.bookmarkMenu.revealInFileTree', 'Reveal in File Tree'),
       onClick: () => {
         onBookmarkRevealInFileTree?.(item);
       },
     },
     {
       id: 'bookmark-remove',
-      label: '移除',
+      label: translateText('explorerView.bookmarkMenu.remove', 'Remove'),
       onClick: () => {
         onBookmarkRemove?.(item);
       },
@@ -792,6 +823,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     onBookmarkRename,
     onBookmarkRevealInFileTree,
     onBookmarkSplitRightOpen,
+    translateText,
   ]);
 
   const handleBookmarkNoteContextMenu = useCallback((
@@ -850,7 +882,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     if (onNewFile) {
       items.push({
         id: 'new-file',
-        label: '新建文件...',
+        label: translateText('explorerView.workspaceMenu.blank.newFile', 'New File...'),
         onClick: () => {
           onNewFile?.();
         },
@@ -860,7 +892,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     if (onNewFolder) {
       items.push({
         id: 'new-folder',
-        label: '新建文件夹...',
+        label: translateText('explorerView.workspaceMenu.blank.newFolder', 'New Folder...'),
         onClick: () => {
           onNewFolder?.();
         },
@@ -870,7 +902,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     if (rootPath) {
       items.push({
         id: 'reveal-workspace-in-explorer',
-        label: '在资源管理器中打开',
+        label: translateText('explorerView.workspaceMenu.blank.openInExplorer', 'Open in Explorer'),
         onClick: () => {
           const workspaceNode: FileTreeNode = {
             path: rootPath,
@@ -892,7 +924,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     if (onRefresh) {
       items.push({
         id: 'refresh',
-        label: '刷新',
+        label: translateText('explorerView.workspaceMenu.blank.refresh', 'Refresh'),
         onClick: () => {
           onRefresh?.();
         },
@@ -902,7 +934,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     if (onCollapseAll) {
       items.push({
         id: 'collapse-all-folders',
-        label: '折叠所有文件夹',
+        label: translateText('explorerView.workspaceMenu.blank.collapseAllFolders', 'Collapse All Folders'),
         onClick: () => {
           onCollapseAll?.();
         },
@@ -918,7 +950,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     if (rootPath) {
       items.push({
         id: 'find-in-workspace',
-        label: '在文件夹中查找',
+        label: translateText('explorerView.workspaceMenu.blank.findInFolder', 'Find in Folder'),
         onClick: () => {
           const workspaceNode: FileTreeNode = {
             path: rootPath,
@@ -939,7 +971,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 
     items.push({
       id: 'paste',
-      label: '粘贴',
+      label: translateText('explorerView.workspaceMenu.blank.paste', 'Paste'),
       disabled: !hasClipboardData,
       onClick: () => {
         if (rootPath && hasClipboardData) {
@@ -963,7 +995,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     if (rootPath) {
       items.push({
         id: 'copy-path',
-        label: '复制路径',
+        label: translateText('explorerView.workspaceMenu.blank.copyPath', 'Copy Path'),
         onClick: () => {
           emitFileAction('copy-path', {
             path: rootPath,
@@ -978,7 +1010,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     if (rootPath) {
       items.push({
         id: 'copy-relative-path',
-        label: '复制相对路径',
+        label: translateText('explorerView.workspaceMenu.blank.copyRelativePath', 'Copy Relative Path'),
         onClick: () => {
           emitFileAction('copy-relative-path', {
             path: rootPath,
@@ -991,7 +1023,7 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     }
 
     return items;
-  }, [onNewFile, onNewFolder, onRefresh, onCollapseAll, rootPath, rootName, emitFileAction]);
+  }, [onNewFile, onNewFolder, onRefresh, onCollapseAll, rootPath, rootName, emitFileAction, translateText]);
 
   const handleTreeBackgroundContextMenu = useCallback(async (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -1033,11 +1065,20 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     canHandleBookmarkCollapseAction || canHandleOutlineCollapseAction || canHandleWorkspaceHeaderAction;
   const canHandleRevealCurrentFile =
     !isSecondaryViewActive && canRevealCurrentFile && Boolean(onRevealCurrentFile);
-  const bookmarkTitle = isBookmarkViewActive ? '资源管理器' : '书签';
-  const outlineToggleTitle = isOutlineViewActive ? '资源管理器' : '大纲';
+  const bookmarkTitle = isBookmarkViewActive
+    ? translateText('explorerView.headers.explorer', 'Explorer')
+    : translateText('explorerView.headers.bookmarks', 'Bookmarks');
+  const outlineToggleTitle = isOutlineViewActive
+    ? translateText('explorerView.headers.explorer', 'Explorer')
+    : translateText('explorerView.headers.outline', 'Outline');
   const workspaceHeaderActionTitle =
-    !isSecondaryViewActive && showExpandAllAction ? '展开全部' : '折叠全部';
-  const revealCurrentFileTitle = '定位当前文件';
+    !isSecondaryViewActive && showExpandAllAction
+      ? translateText('explorerView.headers.expandAll', 'Expand All')
+      : translateText('explorerView.headers.collapseAll', 'Collapse All');
+  const revealCurrentFileTitle = translateText(
+    'explorerView.headers.revealCurrentFile',
+    'Reveal Current File',
+  );
   const handleBookmarkViewToggleAction = (): void => {
     if (!canHandleBookmarkViewToggle) {
       return;
@@ -1333,14 +1374,22 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
       <AlertDialog open={deleteGroupDialogOpen} onOpenChange={setDeleteGroupDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>鍒犻櫎鍒嗙粍</AlertDialogTitle>
+            <AlertDialogTitle>
+              {translateText('explorerView.dialogs.deleteGroupTitle', 'Delete Group')}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              纭畾瑕佸垹闄ゅ垎缁?"{groupToDelete?.name}" 鍚楋紵璇ュ垎缁勪笅鐨勬墍鏈夎〃鍗曞拰瀛愬垎缁勪篃灏嗚鍒犻櫎锛屾鎿嶄綔鏃犳硶鎾ら攢銆?
+              {translateText(
+                'explorerView.dialogs.deleteGroupDescription',
+                'Are you sure you want to delete group "{{name}}"? All forms and subgroups inside it will also be deleted. This action cannot be undone.',
+                { name: groupToDelete?.name ?? '' },
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>鍙栨秷</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteGroup}>鍒犻櫎</AlertDialogAction>
+            <AlertDialogCancel>{translateText('explorerView.dialogs.cancel', 'Cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteGroup}>
+              {translateText('explorerView.dialogs.delete', 'Delete')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -4,6 +4,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { LuAlignJustify } from 'react-icons/lu';
+import { useTranslation } from 'react-i18next';
 import {
   VscChromeMaximize,
   VscChromeRestore,
@@ -41,7 +42,6 @@ interface MenuConfig {
 type TitleBarControl = 'ai-assistant' | 'sidebar' | 'terminal' | 'minimize' | 'maximize' | 'close';
 
 const TITLEBAR_ICON_SIZE = 16;
-const FILE_MENU_TITLE = '文件';
 
 export const TitleBar: React.FC<TitleBarProps> = ({
   onToggleSidebar,
@@ -51,12 +51,15 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   isTerminalPanelOpen = false,
   windowMode = 'full'
 }) => {
+  const { t } = useTranslation();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [openSubmenus, setOpenSubmenus] = useState<string[]>([]);
   const [isWindowActive, setIsWindowActive] = useState<boolean>(true);
   const [isWindowMaximized, setIsWindowMaximized] = useState<boolean>(false);
   const [hoveredControl, setHoveredControl] = useState<TitleBarControl | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
+  const fileMenuTitle = translateText('titleBar.fileMenu', 'File');
 
   const syncWindowMaximizedState = async (): Promise<void> => {
     const isMaximized = await window.electronAPI?.isWindowMaximized?.();
@@ -200,54 +203,54 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
   const menuConfig: MenuConfig[] = [
     {
-      title: '文件',
+      title: fileMenuTitle,
       items: [
-        { label: '新建文件', shortcut: 'Ctrl+N', action: handleNewFile },
-        { label: '打开文件...', shortcut: 'Ctrl+O', action: handleOpenFile },
-        { label: '打开文件夹...', shortcut: 'Ctrl+K Ctrl+O', action: handleOpenFolder },
+        { label: translateText('titleBar.items.newFile', 'New File'), shortcut: 'Ctrl+N', action: handleNewFile },
+        { label: translateText('titleBar.items.openFile', 'Open File...'), shortcut: 'Ctrl+O', action: handleOpenFile },
+        { label: translateText('titleBar.items.openFolder', 'Open Folder...'), shortcut: 'Ctrl+K Ctrl+O', action: handleOpenFolder },
         {
-          label: '打开最近的文件',
+          label: translateText('titleBar.items.openRecentFiles', 'Open Recent'),
           shortcut: 'Ctrl+R',
           submenu: [
-            { label: '无最近文件' },
+            { label: translateText('titleBar.items.noRecentFiles', 'No Recent Files') },
             { separator: true },
-            { label: '更多...' },
-            { label: '清除最近打开的文件...' }
+            { label: translateText('titleBar.items.more', 'More...') },
+            { label: translateText('titleBar.items.clearRecentFiles', 'Clear Recently Opened...') }
           ]
         },
         { separator: true },
-        { label: '保存', shortcut: 'Ctrl+S', action: handleSave },
-        { label: '另存为...', shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
-        { label: '全部保存', shortcut: 'Ctrl+K S', action: handleSaveAll },
+        { label: translateText('titleBar.items.save', 'Save'), shortcut: 'Ctrl+S', action: handleSave },
+        { label: translateText('titleBar.items.saveAs', 'Save As...'), shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
+        { label: translateText('titleBar.items.saveAll', 'Save All'), shortcut: 'Ctrl+K S', action: handleSaveAll },
         { separator: true },
-        { label: '命令面板...', shortcut: 'Ctrl+Shift+P' },
+        { label: translateText('titleBar.items.commandPalette', 'Command Palette...'), shortcut: 'Ctrl+Shift+P' },
         {
-          label: '查看分块数据',
+          label: translateText('titleBar.items.viewChunkData', 'View Chunk Data'),
           action: () => window.dispatchEvent(new CustomEvent('open-lancedb-view'))
         },
         { separator: true },
         {
-          label: '首选项',
+          label: translateText('titleBar.items.preferences', 'Preferences'),
           submenu: [
-            { label: '设置', shortcut: 'Ctrl+,', action: handleOpenSettings },
-            { label: '键盘快捷方式', shortcut: 'Ctrl+K Ctrl+S' },
-            { label: '配置常用片段' },
+            { label: translateText('titleBar.items.settings', 'Settings'), shortcut: 'Ctrl+,', action: handleOpenSettings },
+            { label: translateText('titleBar.items.keyboardShortcuts', 'Keyboard Shortcuts'), shortcut: 'Ctrl+K Ctrl+S' },
+            { label: translateText('titleBar.items.configureSnippets', 'Configure Snippets') },
             { separator: true },
             {
-              label: '主题',
+              label: translateText('titleBar.items.theme', 'Theme'),
               shortcut: 'Ctrl+K Ctrl+T',
               submenu: [
-                { label: '颜色主题' },
-                { label: '文件图标主题' }
+                { label: translateText('titleBar.items.colorTheme', 'Color Theme') },
+                { label: translateText('titleBar.items.fileIconTheme', 'File Icon Theme') }
               ]
             },
           ]
         },
         { separator: true },
-        { label: '关闭编辑器', shortcut: 'Ctrl+W' },
-        { label: '关闭文件夹', shortcut: 'Ctrl+K F' },
+        { label: translateText('titleBar.items.closeEditor', 'Close Editor'), shortcut: 'Ctrl+W' },
+        { label: translateText('titleBar.items.closeFolder', 'Close Folder'), shortcut: 'Ctrl+K F' },
         { separator: true },
-        { label: '退出', shortcut: 'Alt+F4', action: handleQuit },
+        { label: translateText('titleBar.items.quit', 'Quit'), shortcut: 'Alt+F4', action: handleQuit },
       ]
     },
   ];
@@ -363,7 +366,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   };
 
   const renderMenuTitle = (menuTitle: string): React.ReactNode => {
-    if (menuTitle === FILE_MENU_TITLE) {
+    if (menuTitle === fileMenuTitle) {
       return (
         <LuAlignJustify
           className="titlebar-menu-button-icon"
@@ -388,7 +391,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 onMouseEnter={() => handleMenuHoverEnter(menu.title)}
               >
                 <div
-                  className={`titlebar-menu-button ${menu.title === FILE_MENU_TITLE ? 'titlebar-menu-button--icon' : ''} ${activeMenu === menu.title ? 'active' : ''}`}
+                  className={`titlebar-menu-button ${menu.title === fileMenuTitle ? 'titlebar-menu-button--icon' : ''} ${activeMenu === menu.title ? 'active' : ''}`}
                   onClick={() => handleMenuClick(menu.title)}
                   title={menu.title}
                   aria-label={menu.title}
@@ -418,7 +421,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
               onMouseEnter={() => setHoveredControl('ai-assistant')}
               onMouseLeave={handleControlMouseLeave}
               style={getTitleBarControlStyle('ai-assistant')}
-              title="AI助手"
+              title={translateText('titleBar.controls.aiAssistant', 'AI Assistant')}
             >
               <Icon name="ai-assistant" size={TITLEBAR_ICON_SIZE} />
             </div>
@@ -429,7 +432,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
               onMouseEnter={() => setHoveredControl('sidebar')}
               onMouseLeave={handleControlMouseLeave}
               style={getTitleBarControlStyle('sidebar')}
-              title="侧边栏"
+              title={translateText('titleBar.controls.sidebar', 'Sidebar')}
             >
               {isSidebarOpen ? (
                 <VscLayoutSidebarLeft size={TITLEBAR_ICON_SIZE} />
@@ -444,7 +447,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
               onMouseEnter={() => setHoveredControl('terminal')}
               onMouseLeave={handleControlMouseLeave}
               style={getTitleBarControlStyle('terminal')}
-              title="终端"
+              title={translateText('titleBar.controls.terminal', 'Terminal')}
             >
               {isTerminalPanelOpen ? (
                 <VscLayoutPanel size={TITLEBAR_ICON_SIZE} />
@@ -462,7 +465,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onMouseEnter={() => setHoveredControl('minimize')}
             onMouseLeave={handleControlMouseLeave}
             style={getTitleBarControlStyle('minimize')}
-            title="最小化"
+            title={translateText('titleBar.controls.minimize', 'Minimize')}
           >
             <Icon name="minimize" size={TITLEBAR_ICON_SIZE} />
           </div>
@@ -473,7 +476,9 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onMouseEnter={() => setHoveredControl('maximize')}
             onMouseLeave={handleControlMouseLeave}
             style={getTitleBarControlStyle('maximize')}
-            title={isWindowMaximized ? '还原' : '最大化'}
+            title={isWindowMaximized
+              ? translateText('titleBar.controls.restore', 'Restore')
+              : translateText('titleBar.controls.maximize', 'Maximize')}
           >
             {isWindowMaximized ? (
               <VscChromeRestore size={16} />
@@ -488,7 +493,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onMouseEnter={() => setHoveredControl('close')}
             onMouseLeave={handleControlMouseLeave}
             style={getTitleBarControlStyle('close')}
-            title="关闭"
+            title={translateText('titleBar.controls.close', 'Close')}
           >
             <Icon name="x" size={TITLEBAR_ICON_SIZE} />
           </div>

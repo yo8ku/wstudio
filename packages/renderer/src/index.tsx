@@ -8,6 +8,7 @@ import { BookmarkGroupPickerWindow } from './components/Popup/BookmarkGroupPicke
 import { MainLayout } from './components/Layout/MainLayout';
 import { initIconSystem } from './components/Icons';
 import { NotificationContainer } from './components/Notification';
+import { AppI18nProvider } from './contexts/AppI18nProvider';
 import { Toaster } from './components/ui/sonner';
 import { knowledgeBaseRecoveryService } from './services/KnowledgeBaseRecoveryService';
 import './styles/index.scss';
@@ -182,4 +183,8 @@ if (!rootElement) {
 
 const reactRoot = window.__REACT_ROOT__ ?? ReactDOM.createRoot(rootElement);
 window.__REACT_ROOT__ = reactRoot;
-reactRoot.render(<App />);
+reactRoot.render(
+  <AppI18nProvider>
+    <App />
+  </AppI18nProvider>
+);

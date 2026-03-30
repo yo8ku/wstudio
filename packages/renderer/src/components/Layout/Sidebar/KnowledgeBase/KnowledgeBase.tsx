@@ -1,184 +1,187 @@
 /**
- * 知识库主组件
- * 功能：知识库管理界面的主入口
- * 描述：整合所有知识库子组件，提供完整的知识库管理功能
+ * Knowledge base main component.
+ * Manages knowledge base groups, dialogs, and settings interactions.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { KnowledgeGroup, KnowledgeItem, KnowledgeGroupType, KnowledgeItemMetadata } from './types';
 import { KnowledgeBaseGroup } from './KnowledgeBaseGroup';
 import { CreateKnowledgeDialog, KnowledgeBaseData } from './CreateKnowledgeDialog';
 import { KnowledgeBaseSettingsPanel, KnowledgeBaseSettings } from './KnowledgeBaseSettingsPanel';
 import { knowledgeBaseService } from './knowledgeBaseService';
-import { SearchIcon, RefreshIcon } from './KnowledgeBaseIcons';
+import { RefreshIcon } from './KnowledgeBaseIcons';
 import { modal } from '../../../../stores/modalStore';
 import { toastService } from '../../../../services/ToastService';
 import { VectorStore } from '@note-studio/global-rag';
 import './KnowledgeBase.scss';
 
 export const KnowledgeBase: React.FC = () => {
-  // 状态管理
+  const { t } = useTranslation();
+  const translateText = (
+    key: string,
+    defaultValue: string,
+    values?: Record<string, string>,
+  ): string => String(t(key, values ? { defaultValue, ...values } : { defaultValue }));
+  const translateItemType = useCallback((type: KnowledgeItem['type']): string => (
+    type === 'folder'
+      ? translateText('knowledgeBase.itemTypes.folder', 'Knowledge Base')
+      : translateText('knowledgeBase.itemTypes.file', 'File')
+  ), [translateText]);
+
   const [groups, setGroups] = useState<KnowledgeGroup[]>([
-    { type: 'created', title: '我创建的', expanded: true, items: [] },
+    { type: 'created', title: '', expanded: true, items: [] },
   ]);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [selectedItem, setSelectedItem] = useState<KnowledgeItem | undefined>();
-  const [searchQuery, setSearchQuery] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<KnowledgeItem | undefined>();
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [settingsItem, setSettingsItem] = useState<KnowledgeItem | null>(null);
 
-  // 加载知识库数据
   const loadKnowledgeBase = useCallback(async () => {
     const data = await knowledgeBaseService.loadFromStorage();
     setGroups((prevGroups) =>
       prevGroups.map((group) => ({
         ...group,
         items: data.created,
-      }))
+      })),
     );
   }, []);
 
-  // 删除知识库
   const handleDeleteKnowledge = useCallback(
     async (item: KnowledgeItem) => {
-      // 使用自定义对话框确认删除
       modal.confirm({
-        title: `删除${item.type === 'folder' ? '知识库' : '文件'}`,
-        description: `确定要删除"${item.title}"吗？此操作无法撤销。`,
-        confirmText: '删除',
-        cancelText: '取消',
+        title: translateText('knowledgeBase.main.deleteTitle', 'Delete {{type}}', {
+          type: translateItemType(item.type),
+        }),
+        description: translateText(
+          'knowledgeBase.main.deleteDescription',
+          'Are you sure you want to delete {{type}} "{{title}}"? This action cannot be undone.',
+          {
+            type: translateItemType(item.type),
+            title: item.title,
+          },
+        ),
+        confirmText: translateText('knowledgeBase.main.confirmDelete', 'Delete'),
+        cancelText: translateText('knowledgeBase.main.cancel', 'Cancel'),
         onConfirm: async () => {
           try {
-            // 在删除之前，先找到该文件所属的知识库ID（用于后续触发更新事件）
             const dataBeforeDelete = await knowledgeBaseService.loadFromStorage();
             const findKnowledgeBaseId = (items: KnowledgeItem[], targetId: string): string | null => {
-              for (const kb of items) {
-                if (kb.id === targetId) {
-                  // 如果删除的就是知识库本身
-                  return kb.id;
+              for (const knowledgeBase of items) {
+                if (knowledgeBase.id === targetId) {
+                  return knowledgeBase.id;
                 }
+
                 const findInChildren = (children: KnowledgeItem[], parentId: string): string | null => {
                   for (const child of children) {
                     if (child.id === targetId) {
-                      return parentId; // 返回父知识库ID
+                      return parentId;
                     }
                     if (child.children) {
                       const found = findInChildren(child.children, parentId);
-                      if (found) return found;
+                      if (found) {
+                        return found;
+                      }
                     }
                   }
                   return null;
                 };
-                if (kb.children) {
-                  const found = findInChildren(kb.children, kb.id);
-                  if (found) return found;
+
+                if (knowledgeBase.children) {
+                  const found = findInChildren(knowledgeBase.children, knowledgeBase.id);
+                  if (found) {
+                    return found;
+                  }
                 }
               }
               return null;
             };
-            
+
             const knowledgeBaseId = findKnowledgeBaseId(dataBeforeDelete.created, item.id);
-            
-            // 如果删除的是文件，需要删除物理文件
+
             if (item.type === 'file' && item.path) {
               try {
-                // 调用 IPC 删除物理文件
                 const deleteResult = await window.electron?.ipcRenderer?.invoke('delete-file', item.path);
                 if (!deleteResult?.success) {
-                  console.warn('[KnowledgeBase] 删除物理文件失败:', deleteResult?.error);
-                  // 即使物理文件删除失败，也继续删除数据记录
+                  console.warn('[KnowledgeBase] Failed to delete physical file:', deleteResult?.error);
                 }
               } catch (error) {
-                console.error('[KnowledgeBase] 删除物理文件异常:', error);
-                // 即使物理文件删除失败，也继续删除数据记录
+                console.error('[KnowledgeBase] Failed to delete physical file:', error);
               }
             }
-            
-            // 从存储中删除（等待删除完成）
+
             await knowledgeBaseService.deleteKnowledgeBase(item.id);
-            
-            // 重新加载数据（确保数据已删除）
             await loadKnowledgeBase();
-            
-            // 如果删除的是当前选中项，清除选中状态
+
             if (selectedItem?.id === item.id) {
               setSelectedItem(undefined);
             }
-            
-            // 如果删除的是知识库本身，触发关闭标签页事件
+
             if (item.type === 'folder' && item.id) {
               window.dispatchEvent(new CustomEvent('close-knowledge-tab', {
-                detail: { knowledgeId: item.id }
+                detail: { knowledgeId: item.id },
               }));
             }
-            
-            // 触发知识库更新事件，以便 EditorArea 更新标签页数据
+
             if (knowledgeBaseId) {
               window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
-                detail: { knowledgeId: knowledgeBaseId }
+                detail: { knowledgeId: knowledgeBaseId },
               }));
             }
-            
-            console.log('删除成功:', item.title);
-            toastService.success(`已删除${item.type === 'folder' ? '知识库' : '文件'}"${item.title}"`);
-            
-            // 异步删除向量数据库数据，不阻塞UI
-            // 使用 setTimeout 确保在下一个事件循环中执行，不阻塞当前操作
+
+            toastService.success(translateText('knowledgeBase.main.deleteSuccess', 'Deleted {{type}} "{{title}}"', {
+              type: translateItemType(item.type),
+              title: item.title,
+            }));
+
             setTimeout(async () => {
               try {
                 const vectorStore = new VectorStore();
                 await vectorStore.initialize();
-                
+
                 let vectorIds: string[] = [];
-                
+
                 if (item.type === 'file' && item.path) {
-                  // 如果是文件，根据文件路径查询向量ID
                   vectorIds = await vectorStore.getIdsByMetadata({
-                    filePath: item.path
+                    filePath: item.path,
                   });
                 } else if (item.type === 'folder' && item.id) {
-                  // 如果是知识库，根据知识库ID查询向量ID
                   vectorIds = await vectorStore.getIdsByMetadata({
-                    knowledgeBaseId: item.id
+                    knowledgeBaseId: item.id,
                   });
                 }
-                
-                // 如果有向量ID，删除它们
+
                 if (vectorIds.length > 0) {
-                  // VectorStore.deleteDocuments 接受字符串数组
                   await vectorStore.deleteDocuments(vectorIds);
-                  console.log(`[KnowledgeBase] 已删除 ${vectorIds.length} 个向量数据`);
                 }
               } catch (error) {
-                // 静默处理错误，不影响用户操作
-                console.error('[KnowledgeBase] 删除向量数据失败:', error);
+                console.error('[KnowledgeBase] Failed to delete vector data:', error);
               }
             }, 0);
           } catch (error) {
-            console.error('删除失败:', error);
+            console.error('Failed to delete knowledge item:', error);
             const errorMessage = error instanceof Error ? error.message : String(error);
-            toastService.error(`删除失败: ${errorMessage}`);
+            toastService.error(translateText('knowledgeBase.main.deleteFailed', 'Delete failed: {{message}}', {
+              message: errorMessage,
+            }));
           }
         },
       });
     },
-    [loadKnowledgeBase, selectedItem]
+    [loadKnowledgeBase, selectedItem, translateItemType, translateText],
   );
 
-  // 初始化：从存储加载数据
   useEffect(() => {
     loadKnowledgeBase();
   }, [loadKnowledgeBase]);
 
-  // 监听删除事件（从知识库视图触发）
   useEffect(() => {
     const handleDeleteFromView = (event: Event) => {
       const customEvent = event as CustomEvent<{ itemId: string }>;
       const { itemId } = customEvent.detail;
-      
-      // 查找并删除对应的项
+
       const findAndDeleteItem = (items: KnowledgeItem[]): KnowledgeItem | null => {
         for (const item of items) {
           if (item.id === itemId) {
@@ -187,48 +190,42 @@ export const KnowledgeBase: React.FC = () => {
           }
           if (item.children) {
             const found = findAndDeleteItem(item.children);
-            if (found) return found;
+            if (found) {
+              return found;
+            }
           }
         }
         return null;
       };
-      
-      const createdGroup = groups.find(g => g.type === 'created');
+
+      const createdGroup = groups.find((group) => group.type === 'created');
       if (createdGroup) {
         findAndDeleteItem(createdGroup.items);
       }
     };
 
     window.addEventListener('delete-knowledge-item', handleDeleteFromView as EventListener);
-    
     return () => {
       window.removeEventListener('delete-knowledge-item', handleDeleteFromView as EventListener);
     };
   }, [groups, handleDeleteKnowledge]);
 
-  // 监听知识库更新事件（刷新数据以显示最新的处理状态）
   useEffect(() => {
-    const handleKnowledgeBaseUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<{ knowledgeId: string }>;
-      console.log('[KnowledgeBase] 知识库已更新，重新加载数据:', customEvent.detail.knowledgeId);
-      // 重新加载知识库数据以更新处理状态
+    const handleKnowledgeBaseUpdated = () => {
       loadKnowledgeBase();
     };
 
     window.addEventListener('knowledge-base-updated', handleKnowledgeBaseUpdated as EventListener);
-    
     return () => {
       window.removeEventListener('knowledge-base-updated', handleKnowledgeBaseUpdated as EventListener);
     };
   }, [loadKnowledgeBase]);
 
-  // 监听打开知识库设置事件（从知识库视图触发）
   useEffect(() => {
     const handleOpenKnowledgeSettings = (event: Event) => {
       const customEvent = event as CustomEvent<{ knowledgeId: string }>;
       const { knowledgeId } = customEvent.detail;
-      
-      // 查找对应的知识库项
+
       const findKnowledgeItem = (items: KnowledgeItem[], targetId: string): KnowledgeItem | null => {
         for (const item of items) {
           if (item.id === targetId && item.type === 'folder') {
@@ -236,94 +233,74 @@ export const KnowledgeBase: React.FC = () => {
           }
           if (item.children) {
             const found = findKnowledgeItem(item.children, targetId);
-            if (found) return found;
+            if (found) {
+              return found;
+            }
           }
         }
         return null;
       };
-      
-      const createdGroup = groups.find(g => g.type === 'created');
-      if (createdGroup) {
-        const targetItem = findKnowledgeItem(createdGroup.items, knowledgeId);
-        if (targetItem && targetItem.type === 'folder') {
-          setSettingsItem(targetItem);
-          setShowSettingsPanel(true);
-        } else {
-          console.warn('[KnowledgeBase] 未找到知识库项:', knowledgeId);
-        }
+
+      const createdGroup = groups.find((group) => group.type === 'created');
+      if (!createdGroup) {
+        return;
+      }
+
+      const targetItem = findKnowledgeItem(createdGroup.items, knowledgeId);
+      if (targetItem && targetItem.type === 'folder') {
+        setSettingsItem(targetItem);
+        setShowSettingsPanel(true);
       }
     };
 
     window.addEventListener('open-knowledge-settings', handleOpenKnowledgeSettings as EventListener);
-    
     return () => {
       window.removeEventListener('open-knowledge-settings', handleOpenKnowledgeSettings as EventListener);
     };
   }, [groups]);
 
-  // 切换分组展开状态
   const handleToggleGroupExpanded = useCallback((groupType: KnowledgeGroupType) => {
     setGroups((prevGroups) =>
       prevGroups.map((group) =>
-        group.type === groupType ? { ...group, expanded: !group.expanded } : group
-      )
+        group.type === groupType ? { ...group, expanded: !group.expanded } : group,
+      ),
     );
   }, []);
 
-  // 切换项展开状态
   const handleToggleItemExpanded = useCallback((itemId: string) => {
     setExpandedItems((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(itemId)) {
-        newSet.delete(itemId);
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
       } else {
-        newSet.add(itemId);
+        next.add(itemId);
       }
-      return newSet;
+      return next;
     });
   }, []);
 
-  // 选择项
-  const handleItemClick = useCallback(async (item: KnowledgeItem) => {
-    // 更新选中状态
+  const handleItemClick = useCallback((item: KnowledgeItem) => {
     setSelectedItem(item);
-    
-    // 获取所有项（用于展示知识库视图标签）
+
     const getAllItems = (): KnowledgeItem[] => {
-      const createdGroup = groups.find(g => g.type === 'created');
+      const createdGroup = groups.find((group) => group.type === 'created');
       return createdGroup?.items || [];
     };
-    
-    // 触发打开知识库事件，在编辑器中创建知识库类型标签页
+
     window.dispatchEvent(new CustomEvent('open-knowledge', {
       detail: {
         id: item.id,
-        title: item.title,  // 使用知识库项的标题作为标签页名称
-        description: item.metadata?.description || '',  // 传递知识库描述
-        items: getAllItems(),  // 传递所有知识库项
+        title: item.title,
+        description: item.metadata?.description || '',
+        items: getAllItems(),
         knowledgeData: {
           id: item.id,
-          items: getAllItems()
-        }
-      }
+          items: getAllItems(),
+        },
+      },
     }));
-    
-    console.log('[KnowledgeBase] 打开知识库', item.title);
   }, [groups]);
 
-  // 显示创建对话框
-  const handleShowCreateDialog = useCallback(() => {
-    setEditingItem(undefined);
-    setShowCreateDialog(true);
-  }, []);
-
-  // 关闭对话框
-  const handleCloseDialog = useCallback(() => {
-    setShowCreateDialog(false);
-    setEditingItem(undefined);
-  }, []);
-
-  // 编辑知识库（仅文件夹）
   const handleEditKnowledge = useCallback((item: KnowledgeItem) => {
     if (item.type !== 'folder') {
       return;
@@ -332,17 +309,14 @@ export const KnowledgeBase: React.FC = () => {
     setShowCreateDialog(true);
   }, []);
 
-  // 处理编辑保存
   const handleUpdateKnowledge = useCallback(
     async (id: string, data: KnowledgeBaseData) => {
       try {
-        // 如果上传了新封面，转换为 Base64
         let coverBase64: string | undefined = data.coverBase64;
         if (data.cover) {
           coverBase64 = await knowledgeBaseService.fileToBase64(data.cover);
         }
 
-        // 更新知识库数据（等待更新完成）
         await knowledgeBaseService.updateKnowledgeBase(id, {
           title: data.name,
           metadata: {
@@ -352,48 +326,27 @@ export const KnowledgeBase: React.FC = () => {
           },
         });
 
-        // 重新加载数据（确保数据已更新）
         await loadKnowledgeBase();
-
-        // 关闭对话框
         setShowCreateDialog(false);
         setEditingItem(undefined);
-
-        console.log('更新成功:', data.name);
       } catch (error) {
-        console.error('更新失败:', error);
-        alert('更新失败，请重试');
+        console.error('Failed to update knowledge base:', error);
+        alert(translateText('knowledgeBase.main.updateFailedRetry', 'Update failed. Please try again.'));
       }
     },
-    [loadKnowledgeBase]
+    [loadKnowledgeBase, translateText],
   );
 
-  // 添加到聊天
   const handleAddToChat = useCallback((item: KnowledgeItem) => {
-    // TODO: 实现添加到聊天功能
-    console.log('添加到聊天', item);
-    alert(`已将"${item.title}"添加到聊天上下文`);
-  }, []);
+    console.log('Add knowledge item to chat:', item);
+    alert(translateText('knowledgeBase.main.addToChatSuccess', 'Added "{{title}}" to the chat context', {
+      title: item.title,
+    }));
+  }, [translateText]);
 
-  // 打开设置面板
-  const handleOpenSettings = useCallback((item: KnowledgeItem) => {
-    if (item.type === 'folder') {
-      setSettingsItem(item);
-      setShowSettingsPanel(true);
-    }
-  }, []);
-
-  // 关闭设置面板
-  const handleCloseSettings = useCallback(() => {
-    setShowSettingsPanel(false);
-    setSettingsItem(null);
-  }, []);
-
-  // 保存设置
   const handleSaveSettings = useCallback(
     async (itemId: string, settings: KnowledgeBaseSettings, hasChanged: boolean) => {
       try {
-        // 构建更新对象
         const metadataUpdate: Partial<KnowledgeItemMetadata> = {
           chunkSettings: {
             strategy: settings.strategy,
@@ -408,49 +361,43 @@ export const KnowledgeBase: React.FC = () => {
               childSeparators: settings.childSeparators,
             }),
           },
-          // 如果配置已变更，设置 configChanged 标志；否则清除标志
           configChanged: hasChanged,
         };
-        
-        // 更新知识库设置
+
         await knowledgeBaseService.updateKnowledgeBase(itemId, {
           metadata: metadataUpdate,
         });
 
-        // 重新加载数据（确保数据已更新）
         await loadKnowledgeBase();
-
-        // 触发知识库更新事件，更新标签页标题
         window.dispatchEvent(new CustomEvent('knowledge-base-updated', {
-          detail: { knowledgeId: itemId }
+          detail: { knowledgeId: itemId },
         }));
-
-        // 显示保存成功提示
-        toastService.success('知识库设置已保存');
+        toastService.success(translateText('knowledgeBase.main.settingsSaved', 'Knowledge base settings saved'));
       } catch (error) {
-        console.error('设置保存失败:', error);
-        const errorMessage = error instanceof Error ? error.message : '未知错误';
-        toastService.error(`设置保存失败: ${errorMessage}`);
-        throw error; // 抛出错误，让调用者知道保存失败
+        console.error('Failed to save knowledge base settings:', error);
+        const errorMessage = error instanceof Error
+          ? error.message
+          : translateText('knowledgeBase.main.unknownError', 'Unknown error');
+        toastService.error(translateText('knowledgeBase.main.settingsSaveFailed', 'Failed to save settings: {{message}}', {
+          message: errorMessage,
+        }));
+        throw error;
       }
     },
-    [loadKnowledgeBase]
+    [loadKnowledgeBase, translateText],
   );
 
-  // 处理创建知识库
   const handleCreateKnowledge = useCallback(
     async (data: KnowledgeBaseData) => {
       try {
-        // 创建知识库文件夹
         const knowledgeBaseId = `kb_${Date.now()}`;
         const now = new Date();
-        
-        // 如果有封面，转换为 Base64
+
         let coverBase64: string | undefined;
         if (data.cover) {
           coverBase64 = await knowledgeBaseService.fileToBase64(data.cover);
         }
-        
+
         const folderItem: KnowledgeItem = {
           id: knowledgeBaseId,
           title: data.name,
@@ -462,9 +409,7 @@ export const KnowledgeBase: React.FC = () => {
             description: data.description,
             createdAt: now,
             lastModified: now,
-            // 设置默认嵌入模型
             embeddingModel: 'BAAI/bge-large-zh-v1.5',
-            // 设置默认分块参数（使用父子索引策略）
             chunkSettings: {
               strategy: 'parent-child',
               chunkSize: 1000,
@@ -474,48 +419,30 @@ export const KnowledgeBase: React.FC = () => {
           },
         };
 
-        // 保存到存储（等待保存完成）
         await knowledgeBaseService.addItem(folderItem);
-
-        // 重新加载知识库（确保数据已保存）
         await loadKnowledgeBase();
-
-        // 关闭对话框
         setShowCreateDialog(false);
-
-        console.log(`成功创建知识库 ${data.name}`);
       } catch (error) {
-        console.error('创建知识库失败', error);
+        console.error('Failed to create knowledge base:', error);
       }
     },
-    [loadKnowledgeBase]
+    [loadKnowledgeBase],
   );
-
-  // 刷新知识库
-  const handleRefresh = useCallback(() => {
-    loadKnowledgeBase();
-  }, [loadKnowledgeBase]);
-
-  // 搜索处理
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    // TODO: 实现搜索功能
-  }, []);
-
 
   return (
     <div className="knowledge-base">
       {showSettingsPanel ? (
-        /* 知识库设置面板 */
         <KnowledgeBaseSettingsPanel
           visible={showSettingsPanel}
           item={settingsItem}
-          onClose={handleCloseSettings}
+          onClose={() => {
+            setShowSettingsPanel(false);
+            setSettingsItem(null);
+          }}
           onSave={handleSaveSettings}
         />
       ) : (
         <>
-          {/* 知识库分组列表 */}
           <div className="knowledge-base__content">
             {groups.map((group) => (
               <KnowledgeBaseGroup
@@ -526,40 +453,51 @@ export const KnowledgeBase: React.FC = () => {
                 onToggleGroupExpanded={() => handleToggleGroupExpanded(group.type)}
                 onToggleItemExpanded={handleToggleItemExpanded}
                 onItemClick={handleItemClick}
-                onAddClick={handleShowCreateDialog}
+                onAddClick={() => {
+                  setEditingItem(undefined);
+                  setShowCreateDialog(true);
+                }}
                 onEdit={handleEditKnowledge}
                 onDelete={handleDeleteKnowledge}
                 onAddToChat={handleAddToChat}
-                onSettings={handleOpenSettings}
+                onSettings={(item) => {
+                  if (item.type === 'folder') {
+                    setSettingsItem(item);
+                    setShowSettingsPanel(true);
+                  }
+                }}
               />
             ))}
           </div>
 
-          {/* 底部工具栏 */}
-          <div 
+          <div
             className="knowledge-base__footer"
             style={{ borderColor: 'var(--ws-contrast-border)' }}
           >
             <button
               className="knowledge-base__footer-button"
-              onClick={handleRefresh}
+              onClick={() => {
+                loadKnowledgeBase();
+              }}
               style={{
                 backgroundColor: 'var(--ws-button-background)',
                 color: 'var(--ws-button-foreground)',
               }}
-              title="刷新知识库"
+              title={translateText('knowledgeBase.main.refreshTitle', 'Refresh Knowledge Base')}
             >
               <RefreshIcon className="icon-refresh" />
-              <span>刷新</span>
+              <span>{translateText('knowledgeBase.main.refresh', 'Refresh')}</span>
             </button>
           </div>
         </>
       )}
 
-      {/* 创建/编辑知识库对话框 */}
       <CreateKnowledgeDialog
         visible={showCreateDialog}
-        onClose={handleCloseDialog}
+        onClose={() => {
+          setShowCreateDialog(false);
+          setEditingItem(undefined);
+        }}
         onCreate={handleCreateKnowledge}
         editItem={editingItem}
         onEdit={handleUpdateKnowledge}
@@ -567,4 +505,3 @@ export const KnowledgeBase: React.FC = () => {
     </div>
   );
 };
-

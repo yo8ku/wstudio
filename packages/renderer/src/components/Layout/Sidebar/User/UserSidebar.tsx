@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../../../Icons';
 import { useUserStore } from '../../../../stores/userStore';
 import './UserSidebar.scss';
@@ -15,12 +16,10 @@ interface LoginFormState {
 
 const DEFAULT_ACCOUNT = 'admin';
 const DEFAULT_PASSWORD = '123456';
-const DEFAULT_NICKNAME = '管理员';
 const DEFAULT_MEMBERSHIP_EXPIRY = '5099/01/01';
 const DEFAULT_MEMBERSHIP_START = '2020/01/01';
 const DEFAULT_REGISTER_TIME = '2020/01/01';
 const DEFAULT_IP_ADDRESS = '127.0.0.1';
-const DEFAULT_LOCATION = '重庆';
 
 const initialFormState: LoginFormState = {
   contact: DEFAULT_ACCOUNT,
@@ -28,9 +27,13 @@ const initialFormState: LoginFormState = {
 };
 
 export function UserSidebar(): JSX.Element {
+  const { t } = useTranslation();
   const { isLoggedIn, profile, agreeToPolicy, setAgreeToPolicy, login, logout } = useUserStore();
   const [form, setForm] = useState<LoginFormState>(initialFormState);
   const [errors, setErrors] = useState<{ contact?: string; password?: string; policy?: string }>({});
+  const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
+  const defaultNickname = translateText('userSidebar.defaults.nickname', 'Administrator');
+  const defaultLocation = translateText('userSidebar.defaults.location', 'Chongqing');
 
   const handleChange = (field: keyof LoginFormState) => (event: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
@@ -41,16 +44,16 @@ export function UserSidebar(): JSX.Element {
     const nextErrors: { contact?: string; password?: string; policy?: string } = {};
 
     if (!form.contact.trim()) {
-      nextErrors.contact = '请输入手机号或邮箱';
+      nextErrors.contact = translateText('userSidebar.errors.contactRequired', 'Enter a phone number or email address');
     }
 
     const passwordLength = form.password.trim().length;
     if (passwordLength < 6 || passwordLength > 12) {
-      nextErrors.password = '密码长度需为 6-12 位';
+      nextErrors.password = translateText('userSidebar.errors.passwordLength', 'Password must be 6 to 12 characters');
     }
 
     if (!agreeToPolicy) {
-      nextErrors.policy = '请先阅读并勾选协议';
+      nextErrors.policy = translateText('userSidebar.errors.policyRequired', 'Read and accept the agreement first');
     }
 
     setErrors(nextErrors);
@@ -65,14 +68,14 @@ export function UserSidebar(): JSX.Element {
     if (form.contact !== DEFAULT_ACCOUNT || form.password !== DEFAULT_PASSWORD) {
       setErrors((prev) => ({
         ...prev,
-        contact: '账号或密码错误',
-        password: '账号或密码错误',
+        contact: translateText('userSidebar.errors.invalidCredentials', 'Incorrect account or password'),
+        password: translateText('userSidebar.errors.invalidCredentials', 'Incorrect account or password'),
       }));
       return;
     }
 
     login({
-      nickname: DEFAULT_NICKNAME,
+      nickname: defaultNickname,
       avatar: '/avtar.jpg',
       membership: 'member',
       contact: form.contact,
@@ -80,7 +83,7 @@ export function UserSidebar(): JSX.Element {
       membershipStart: DEFAULT_MEMBERSHIP_START,
       registerTime: DEFAULT_REGISTER_TIME,
       ipAddress: DEFAULT_IP_ADDRESS,
-      location: DEFAULT_LOCATION,
+      location: defaultLocation,
     });
   };
 
@@ -92,25 +95,27 @@ export function UserSidebar(): JSX.Element {
 
   const renderLoginForm = () => (
     <div className="user-sidebar-card">
-      <h2 className="user-sidebar-title">账号登录</h2>
+      <h2 className="user-sidebar-title">{translateText('userSidebar.login.title', 'Account Login')}</h2>
       <div className="user-sidebar-field">
-        <label className="user-sidebar-label">用户名（手机号 / 邮箱）</label>
+        <label className="user-sidebar-label">
+          {translateText('userSidebar.login.contactLabel', 'Username (Phone / Email)')}
+        </label>
         <input
           value={form.contact}
           onChange={handleChange('contact')}
-          placeholder="请输入手机号或邮箱"
+          placeholder={translateText('userSidebar.login.contactPlaceholder', 'Enter a phone number or email address')}
           className="user-sidebar-input"
         />
         {errors.contact && <p className="user-sidebar-error">{errors.contact}</p>}
       </div>
 
       <div className="user-sidebar-field">
-        <label className="user-sidebar-label">密码</label>
+        <label className="user-sidebar-label">{translateText('userSidebar.login.passwordLabel', 'Password')}</label>
         <input
           type="password"
           value={form.password}
           onChange={handleChange('password')}
-          placeholder="请输入 6-12 位密码"
+          placeholder={translateText('userSidebar.login.passwordPlaceholder', 'Enter a 6-12 character password')}
           maxLength={12}
           className="user-sidebar-input"
         />
@@ -118,8 +123,8 @@ export function UserSidebar(): JSX.Element {
       </div>
 
       <div className="user-sidebar-relations">
-        <div className="link" role="button" tabIndex={0}>注册账号</div>
-        <div className="link" role="button" tabIndex={0}>忘记密码？</div>
+        <div className="link" role="button" tabIndex={0}>{translateText('userSidebar.login.register', 'Create Account')}</div>
+        <div className="link" role="button" tabIndex={0}>{translateText('userSidebar.login.forgotPassword', 'Forgot Password?')}</div>
       </div>
 
       <label className="user-sidebar-policy">
@@ -128,13 +133,13 @@ export function UserSidebar(): JSX.Element {
           checked={agreeToPolicy}
           onChange={(event) => setAgreeToPolicy(event.target.checked)}
         />
-        <span>我已阅读并同意 《用户协议》 与 《隐私政策》</span>
+        <span>{translateText('userSidebar.login.policyAgreement', 'I have read and agree to the User Agreement and Privacy Policy')}</span>
       </label>
       {errors.policy && <p className="user-sidebar-error">{errors.policy}</p>}
 
       <div className="user-sidebar-actions">
         <div className="primary" role="button" tabIndex={0} onClick={handleLogin}>
-          登录
+          {translateText('userSidebar.login.submit', 'Log In')}
         </div>
       </div>
     </div>
@@ -142,12 +147,12 @@ export function UserSidebar(): JSX.Element {
 
   const renderProfile = () => (
     <div className="user-sidebar-card">
-      <h2 className="user-sidebar-title">用户信息</h2>
+      <h2 className="user-sidebar-title">{translateText('userSidebar.profile.title', 'User Profile')}</h2>
       {profile && (
         <>
           <div className="user-sidebar-profile">
             <div className="user-sidebar-avatar">
-              <img src={profile.avatar} alt="用户头像" />
+              <img src={profile.avatar} alt={translateText('userSidebar.profile.avatarAlt', 'User Avatar')} />
             </div>
             <div className="user-sidebar-info">
               <p className="user-sidebar-nickname">
@@ -158,7 +163,9 @@ export function UserSidebar(): JSX.Element {
                   {profile.membership === 'member' && (
                     <Icon iconSet="ui" name="crown-svip" className="user-sidebar-membership-icon" />
                   )}
-                  {profile.membership === 'member' ? '会员用户' : '普通用户'}
+                  {profile.membership === 'member'
+                    ? translateText('userSidebar.profile.member', 'Member User')
+                    : translateText('userSidebar.profile.normal', 'Regular User')}
                 </span>
               </p>
               <p className="user-sidebar-contact">{profile.contact}</p>
@@ -167,11 +174,13 @@ export function UserSidebar(): JSX.Element {
 
           {profile.membershipExpiry && (
             <div className="user-sidebar-membership-expiry">
-              <span className="user-sidebar-membership-label">会员到期时间</span>
+              <span className="user-sidebar-membership-label">
+                {translateText('userSidebar.profile.membershipExpiry', 'Membership Expires')}
+              </span>
               <span className="user-sidebar-membership-expiry-value">
                 {profile.membershipExpiry}
                 <span className="user-sidebar-renew" role="button" tabIndex={0}>
-                  续费
+                  {translateText('userSidebar.profile.renew', 'Renew')}
                 </span>
               </span>
             </div>
@@ -179,15 +188,21 @@ export function UserSidebar(): JSX.Element {
 
           <div className="user-sidebar-meta">
             <div>
-              <span className="user-sidebar-meta-label">开通时间</span>
+              <span className="user-sidebar-meta-label">
+                {translateText('userSidebar.profile.membershipStart', 'Activated At')}
+              </span>
               <span className="user-sidebar-meta-value">{profile.membershipStart ?? '-'}</span>
             </div>
             <div>
-              <span className="user-sidebar-meta-label">注册时间</span>
+              <span className="user-sidebar-meta-label">
+                {translateText('userSidebar.profile.registerTime', 'Registered At')}
+              </span>
               <span className="user-sidebar-meta-value">{profile.registerTime ?? '-'}</span>
             </div>
             <div>
-              <span className="user-sidebar-meta-label">IP 地址</span>
+              <span className="user-sidebar-meta-label">
+                {translateText('userSidebar.profile.ipAddress', 'IP Address')}
+              </span>
               <span className="user-sidebar-meta-value">{profile.location ?? profile.ipAddress ?? '-'}</span>
             </div>
           </div>
@@ -196,7 +211,7 @@ export function UserSidebar(): JSX.Element {
 
       <div className="user-sidebar-actions">
         <div className="secondary" role="button" tabIndex={0} onClick={handleLogout}>
-          退出登录
+          {translateText('userSidebar.profile.logout', 'Log Out')}
         </div>
       </div>
     </div>
