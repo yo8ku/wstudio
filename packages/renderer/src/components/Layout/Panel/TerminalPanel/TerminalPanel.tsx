@@ -289,16 +289,13 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
 
     primaryFrameId = requestAnimationFrame(() => {
       session.fit('view:attach:raf-1');
-      session.refreshViewport('view:attach:raf-1');
       secondaryFrameId = requestAnimationFrame(() => {
         session.fit('view:attach:raf-2');
-        session.refreshViewport('view:attach:raf-2');
       });
     });
 
     settleTimerId = setTimeout(() => {
       session.fit('view:attach:settle');
-      session.refreshViewport('view:attach:settle');
     }, 120);
 
     return () => {
@@ -307,18 +304,10 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
       if (settleTimerId) {
         clearTimeout(settleTimerId);
       }
+      attachedRef.current = false;
+      session.detach(currentContainer);
     };
   }, [isVisible, session]);
-
-  useEffect(() => () => {
-    const currentContainer = terminalContainerRef.current;
-    if (!attachedRef.current || !currentContainer) {
-      return;
-    }
-
-    attachedRef.current = false;
-    session.detach(currentContainer);
-  }, [session]);
 
   useEffect(() => {
     if (!attachedRef.current || !isActive || !isVisible) {
@@ -535,10 +524,8 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
 
     primaryFrameId = requestAnimationFrame(() => {
       session.fit('view:active:raf-1');
-      session.refreshViewport('view:active:raf-1');
       secondaryFrameId = requestAnimationFrame(() => {
         session.fit('view:active:raf-2');
-        session.refreshViewport('view:active:raf-2');
       });
     });
 
@@ -547,7 +534,6 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
       ptySyncSuppressedUntilRef.current = Date.now() + TERMINAL_VISIBILITY_SETTLE_RESIZE_DELAY;
       session.ensurePtyCreated();
       session.resize(false, 'view:active:settle-post-create');
-      session.refreshViewport('view:active:settle-post-create');
       session.focus();
     }, TERMINAL_VISIBILITY_SETTLE_RESIZE_DELAY);
 
@@ -1310,30 +1296,6 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const shouldShowSidebar = terminalEntries.length > 1;
   const isSidebarCollapsed = sidebarWidth <= TERMINAL_SIDEBAR_COLLAPSED_WIDTH;
   const isSidebarContextMenuOpen = contextMenu !== null;
-
-  useEffect(() => {
-    if (!isVisible || !activeTerminalEntry) {
-      return;
-    }
-
-    let frameId = 0;
-    let settleTimerId: ReturnType<typeof setTimeout> | null = null;
-
-    frameId = requestAnimationFrame(() => {
-      activeTerminalEntry.session.resize(false, 'view:sidebar-layout-change:raf');
-    });
-
-    settleTimerId = setTimeout(() => {
-      activeTerminalEntry.session.resize(false, 'view:sidebar-layout-change:settle');
-    }, 120);
-
-    return () => {
-      cancelAnimationFrame(frameId);
-      if (settleTimerId) {
-        clearTimeout(settleTimerId);
-      }
-    };
-  }, [activeTerminalEntry, isVisible, shouldShowSidebar, sidebarWidth]);
 
   useEffect(() => {
     if (!shouldShowSidebar) {

@@ -19,10 +19,7 @@ import {
 const getTerminalAPI = () => window.electron?.terminal;
 const TERMINAL_FONT_FAMILY = 'Consolas, "Courier New", monospace';
 const TERMINAL_DEFAULT_FONT_SIZE = 14;
-const TERMINAL_COMPACT_FONT_SIZE = 12;
 const TERMINAL_DEFAULT_LINE_HEIGHT = 1.05;
-const TERMINAL_COMPACT_LINE_HEIGHT = 1;
-const TERMINAL_COMPACT_HEIGHT_THRESHOLD = 280;
 const TERMINAL_MIN_COLS = 2;
 const TERMINAL_MIN_ROWS = 1;
 const TERMINAL_WRITE_BATCH_SIZE = 64 * 1024;
@@ -33,6 +30,9 @@ const TERMINAL_DEBUG_DIAGNOSTICS_ENABLED = true;
 const TERMINAL_DEBUG_LOG_LIMIT = 120;
 const TERMINAL_DEBUG_CODEX_TRACE_DURATION = 8000;
 const TERMINAL_DEBUG_CODEX_OUTPUT_LOG_LIMIT = 24;
+const TERMINAL_CODEX_VIEWPORT_GUARD_DURATION = 4000;
+const TERMINAL_CODEX_VIEWPORT_GUARD_MAX_REPAIRS = 12;
+const TERMINAL_CODEX_PTY_GUARD_MAX_REPAIRS = 4;
 const TERMINAL_SEARCH_SELECTION_BACKGROUND = 'rgba(229, 196, 83, 0.32)';
 const TERMINAL_SEARCH_DECORATIONS = {
   matchBackground: undefined,
@@ -267,11 +267,12 @@ export class TerminalSession {
   private disposeTerminalExitListener: (() => void) | null = null;
   private pendingOutputChunks: string[] = [];
   private outputFlushTimer: number | null = null;
-  private startupScrollTopTimer: number | null = null;
   private createPtyPromise: Promise<void> | null = null;
   private isWritingOutput = false;
   private pendingInputBuffer = '';
   private pendingPtySync = false;
+  private hasNormalizedAlternateViewport = false;
+  private hasForcedAlternateRedraw = false;
   private lastSyncedPtySize: { cols: number; rows: number } | null = null;
   private activeSearchQuery = '';
   private activeSearchOptions: Pick<ISearchOptions, 'caseSensitive' | 'regex' | 'wholeWord'> = {
@@ -291,6 +292,8 @@ export class TerminalSession {
   private diagnosticCommandBuffer = '';
   private diagnosticCodexTraceUntil = 0;
   private diagnosticCodexOutputLogCount = 0;
+  private codexViewportGuardUntil = 0;
+  private codexViewportGuardRepairCount = 0;
   private themeChangeHandler: EventListener | null = null;
   private isDisposed = false;
 
@@ -1408,6 +1411,141 @@ export class TerminalSession {
     });
   }
 
+  private shouldNormalizeAlternateViewport(
+    before: TerminalBufferSnapshot,
+    after: TerminalBufferSnapshot,
+    payload: string,
+  ): boolean {
+    if (after.bufferType !== 'alternate') {
+      this.hasNormalizedAlternateViewport = false;
+      return false;
+    }
+
+    if (before.bufferType !== 'alternate' && after.bufferType === 'alternate') {
+      this.hasNormalizedAlternateViewport = false;
+    }
+
+    if (this.hasNormalizedAlternateViewport) {
+      return false;
+    }
+
+    const enteredAlternateBuffer = before.bufferType !== 'alternate' && after.bufferType === 'alternate';
+    const hasAlternateEnter = (
+      payload.includes('\u001b[?1049h')
+      || payload.includes('\u001b[?1047h')
+      || payload.includes('\u001b[?47h')
+    );
+    const hasFullScreenReset = (
+      (payload.includes('\u001b[2J') || payload.includes('\u001b[3J'))
+      && payload.includes('\u001b[H')
+    );
+    const viewportShifted = (
+      after.viewportY > 0
+      || (after.viewportScrollTop ?? 0) > 0
+    );
+
+    return viewportShifted && (enteredAlternateBuffer || hasAlternateEnter || hasFullScreenReset);
+  }
+
+  private shouldForceAlternateRedraw(
+    before: TerminalBufferSnapshot,
+    after: TerminalBufferSnapshot,
+    payload: string,
+  ): boolean {
+    if (after.bufferType !== 'alternate') {
+      this.hasForcedAlternateRedraw = false;
+      return false;
+    }
+
+    if (before.bufferType !== 'alternate' && after.bufferType === 'alternate') {
+      this.hasForcedAlternateRedraw = false;
+    }
+
+    if (this.hasForcedAlternateRedraw) {
+      return false;
+    }
+
+    return (
+      before.bufferType !== 'alternate'
+      || payload.includes('\u001b[?1049h')
+      || payload.includes('\u001b[?1047h')
+      || payload.includes('\u001b[?47h')
+    );
+  }
+
+  private normalizeAlternateViewport(reason: string): void {
+    this.hasNormalizedAlternateViewport = true;
+
+    window.requestAnimationFrame(() => {
+      if (this.isDisposed || this.terminal.buffer.active.type !== 'alternate') {
+        this.hasNormalizedAlternateViewport = false;
+        return;
+      }
+
+      this.debugLog('viewport:alternate-normalize:before', { reason });
+      this.terminal.scrollToTop();
+      this.scheduleViewportRefresh(`${reason}:refresh`);
+      this.debugLog('viewport:alternate-normalize:after', { reason });
+    });
+  }
+
+  private shouldApplyCodexViewportGuard(after: TerminalBufferSnapshot): boolean {
+    if (after.bufferType !== 'alternate') {
+      return false;
+    }
+
+    if (Date.now() > this.codexViewportGuardUntil) {
+      return false;
+    }
+
+    return this.codexViewportGuardRepairCount < TERMINAL_CODEX_VIEWPORT_GUARD_MAX_REPAIRS;
+  }
+
+  private applyCodexViewportGuard(reason: string, snapshot: TerminalBufferSnapshot): void {
+    this.codexViewportGuardRepairCount += 1;
+
+    window.requestAnimationFrame(() => {
+      if (this.isDisposed || this.terminal.buffer.active.type !== 'alternate') {
+        return;
+      }
+
+      this.debugLog('viewport:codex-guard:apply', {
+        reason,
+        repairCount: this.codexViewportGuardRepairCount,
+        snapshotViewportY: snapshot.viewportY,
+        snapshotBaseY: snapshot.baseY,
+        snapshotViewportScrollTop: snapshot.viewportScrollTop,
+      });
+      this.terminal.scrollToTop();
+      const viewport = this.container?.querySelector('.xterm-viewport');
+      if (viewport instanceof HTMLElement) {
+        viewport.scrollTop = 0;
+      }
+      this.scheduleViewportRefresh(`${reason}:refresh`);
+      if (this.codexViewportGuardRepairCount <= TERMINAL_CODEX_PTY_GUARD_MAX_REPAIRS) {
+        void this.forcePtyResize(this.terminal.cols, this.terminal.rows, `${reason}:force-redraw`);
+      }
+    });
+  }
+
+  private requestAlternateRedraw(reason: string): void {
+    this.hasForcedAlternateRedraw = true;
+
+    window.requestAnimationFrame(() => {
+      if (this.isDisposed || this.terminal.buffer.active.type !== 'alternate') {
+        this.hasForcedAlternateRedraw = false;
+        return;
+      }
+
+      this.debugLog('pty:alternate-redraw:request', {
+        reason,
+        cols: this.terminal.cols,
+        rows: this.terminal.rows,
+      });
+      void this.forcePtyResize(this.terminal.cols, this.terminal.rows, `${reason}:force-redraw`);
+    });
+  }
+
   private trackDiagnosticCommandInput(data: string): void {
     if (!TERMINAL_DEBUG_DIAGNOSTICS_ENABLED || !data) {
       return;
@@ -1424,6 +1562,8 @@ export class TerminalSession {
         if (command === 'codex') {
           this.diagnosticCodexTraceUntil = Date.now() + TERMINAL_DEBUG_CODEX_TRACE_DURATION;
           this.diagnosticCodexOutputLogCount = 0;
+          this.codexViewportGuardUntil = Date.now() + TERMINAL_CODEX_VIEWPORT_GUARD_DURATION;
+          this.codexViewportGuardRepairCount = 0;
           this.debugLog('trace:codex:start', {
             durationMs: TERMINAL_DEBUG_CODEX_TRACE_DURATION,
           });
@@ -1491,6 +1631,11 @@ export class TerminalSession {
       return;
     }
 
+    await this.stabilizeInitialViewport();
+    if (this.isDisposed) {
+      return;
+    }
+
     const spawnCols = Math.max(TERMINAL_MIN_COLS, this.terminal.cols);
     const spawnRows = Math.max(TERMINAL_MIN_ROWS, this.terminal.rows);
     this.debugLog('pty:create:start', {
@@ -1537,7 +1682,6 @@ export class TerminalSession {
       if (this.terminal.cols !== spawnCols || this.terminal.rows !== spawnRows) {
         this.syncPtySize(false, 'pty:create:post-create-size-changed');
       }
-      this.scheduleStartupScrollToTop();
       console.log(`[TerminalSession] terminal created: ${this.id}`);
     } catch (error) {
       console.error('[TerminalSession] failed to create terminal:', error);
@@ -1546,21 +1690,32 @@ export class TerminalSession {
     }
   }
 
-  private scheduleStartupScrollToTop(): void {
-    if (this.startupScrollTopTimer !== null) {
-      window.clearTimeout(this.startupScrollTopTimer);
+  private waitForNextFrame(): Promise<void> {
+    return new Promise((resolve) => {
+      window.requestAnimationFrame(() => {
+        resolve();
+      });
+    });
+  }
+
+  private async stabilizeInitialViewport(): Promise<void> {
+    if (!this.container) {
+      return;
     }
 
-    this.startupScrollTopTimer = window.setTimeout(() => {
-      this.startupScrollTopTimer = null;
-      if (this.isDisposed) {
-        return;
-      }
+    await this.waitForNextFrame();
+    if (this.isDisposed) {
+      return;
+    }
 
-      this.debugLog('viewport:startup-scroll-top:before');
-      this.terminal.scrollToTop();
-      this.debugLog('viewport:startup-scroll-top:after');
-    }, 300);
+    this.fit('pty:create:preflight:frame-1');
+
+    await this.waitForNextFrame();
+    if (this.isDisposed) {
+      return;
+    }
+
+    this.fit('pty:create:preflight:frame-2');
   }
 
   private attachRendererListeners(): void {
@@ -1666,8 +1821,17 @@ export class TerminalSession {
     const beforeSnapshot = this.captureBufferSnapshot();
     this.terminal.write(payload, () => {
       this.isWritingOutput = false;
+      const afterSnapshot = this.captureBufferSnapshot();
+      if (this.shouldNormalizeAlternateViewport(beforeSnapshot, afterSnapshot, payload)) {
+        this.normalizeAlternateViewport('output:alternate-enter');
+      }
+      if (this.shouldForceAlternateRedraw(beforeSnapshot, afterSnapshot, payload)) {
+        this.requestAlternateRedraw('output:alternate-enter');
+      }
+      if (this.shouldApplyCodexViewportGuard(afterSnapshot)) {
+        this.applyCodexViewportGuard('output:codex-guard', afterSnapshot);
+      }
       if (shouldTracePayload) {
-        const afterSnapshot = this.captureBufferSnapshot();
         this.debugLog('output:write:after', this.summarizeDiagnosticPayload(payload));
         this.logBufferTransition('output:buffer-transition', beforeSnapshot, afterSnapshot, this.summarizeDiagnosticPayload(payload));
       }
@@ -1855,10 +2019,6 @@ export class TerminalSession {
     }
 
     this.container = null;
-  }
-
-  public refreshViewport(reason = 'terminal:refresh'): void {
-    this.scheduleViewportRefresh(reason);
   }
 
   private async handlePaste(): Promise<void> {
@@ -2112,10 +2272,8 @@ export class TerminalSession {
   }
 
   private syncLayoutDensity(): boolean {
-    const containerHeight = this.container?.clientHeight ?? 0;
-    const useCompactDensity = containerHeight > 0 && containerHeight <= TERMINAL_COMPACT_HEIGHT_THRESHOLD;
-    const nextFontSize = useCompactDensity ? TERMINAL_COMPACT_FONT_SIZE : TERMINAL_DEFAULT_FONT_SIZE;
-    const nextLineHeight = useCompactDensity ? TERMINAL_COMPACT_LINE_HEIGHT : TERMINAL_DEFAULT_LINE_HEIGHT;
+    const nextFontSize = TERMINAL_DEFAULT_FONT_SIZE;
+    const nextLineHeight = TERMINAL_DEFAULT_LINE_HEIGHT;
     const nextSignature = `${nextFontSize}:${nextLineHeight}`;
     if (nextSignature === this.appliedDensitySignature) {
       return false;
@@ -2126,10 +2284,9 @@ export class TerminalSession {
     this.terminal.options.lineHeight = nextLineHeight;
     this.clearTextureAtlas();
     this.debugLog('terminal:density:applied', {
-      compact: useCompactDensity,
+      compact: false,
       densityFontSize: nextFontSize,
       densityLineHeight: nextLineHeight,
-      densityHeightThreshold: TERMINAL_COMPACT_HEIGHT_THRESHOLD,
     });
     return true;
   }
@@ -2271,11 +2428,6 @@ export class TerminalSession {
     if (this.outputFlushTimer !== null) {
       window.clearTimeout(this.outputFlushTimer);
       this.outputFlushTimer = null;
-    }
-
-    if (this.startupScrollTopTimer !== null) {
-      window.clearTimeout(this.startupScrollTopTimer);
-      this.startupScrollTopTimer = null;
     }
 
     if (this.appearanceRefreshFrame !== null) {

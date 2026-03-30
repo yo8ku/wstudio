@@ -128,23 +128,14 @@
   }
 
   &-view {
-    position: absolute;
-    inset: 0;
-    display: flex;
+    display: none;
     width: 100%;
     height: 100%;
     min-width: 0;
     min-height: 0;
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 0;
 
     &.active {
-      visibility: visible;
-      opacity: 1;
-      pointer-events: auto;
-      z-index: 1;
+      display: flex;
     }
   }
 
@@ -187,12 +178,12 @@
       .xterm-viewport {
         background: var(--ws-panel-background) !important;
         overflow-y: auto !important;
-        scrollbar-width: none;
+        scrollbar-width: thin;
+        scrollbar-color: transparent transparent;
         box-sizing: border-box;
 
         &::-webkit-scrollbar {
-          width: 0 !important;
-          height: 0 !important;
+          width: 14px;
           background: transparent;
         }
 
