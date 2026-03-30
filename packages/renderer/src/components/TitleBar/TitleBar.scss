@@ -6,6 +6,7 @@
   position: relative;
   z-index: 100;
   border-bottom: 1px solid transparent;
+  background-color: var(--ws-titleBar-inactiveBackground);;
   /* 确保位于 AI 输入边框层之上 */
 }
 

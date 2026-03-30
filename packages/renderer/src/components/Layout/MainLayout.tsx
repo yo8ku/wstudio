@@ -888,7 +888,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         {/* 鐘舵€佹爮 */}
         {!isEditorOnlyWindow && (
         <div className='StatusBar' style={{ 
-          backgroundColor:'var(--ws-editor-background)',
+          backgroundColor:'var(--ws-statusBar-background)',
+          color: 'var(--ws-statusBar-foreground)',
           flexShrink: 0, 
           height: '24px', 
           minHeight: '24px',
