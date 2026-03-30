@@ -38,8 +38,11 @@
     gap: 6px;
     min-height: 36px;
     padding: 0 10px;
-    border-radius: 6px;
     background-color: var(--ws-quickInput-background, transparent);
+
+    &:focus-within {
+      border: 1px solid var(--ws-input-border);
+    }
   }
 
   .command-center-icon {
@@ -60,6 +63,7 @@
     outline: none !important;
     background: transparent;
     box-shadow: none !important;
+    border: none !important;
     color: inherit;
     font-size: 13px;
     line-height: 20px;
@@ -116,13 +120,13 @@
     background: transparent;
 
     &:hover {
-      background-color: var(--ws-quickInputList-focusBackground, rgba(128, 128, 128, 0.18));
-      color: var(--ws-quickInputList-focusForeground, var(--ws-editor-foreground));
+      background-color: var(--ws-list-hoverBackground);
+      color: var(--ws-list-hoverForeground);
     }
 
     &.selected {
-      background-color: var(--ws-quickInputList-focusBackground, rgba(128, 128, 128, 0.22));
-      color: var(--ws-quickInputList-focusForeground, var(--ws-editor-foreground));
+      background-color: var(--ws-list-hoverBackground);
+      color: var(--ws-list-hoverForeground);
     }
   }
 
