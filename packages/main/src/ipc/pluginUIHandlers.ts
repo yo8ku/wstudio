@@ -1,16 +1,34 @@
 /**
  * Plugin UI IPC handlers.
- * Exposes read-only plugin layout entry data to the renderer.
+ * Exposes stable no-op plugin layout entry data to the renderer.
  */
 
 import { ipcMain } from 'electron';
-import type { PluginHostService } from '../plugins';
 
 export const PLUGIN_ACTIVITY_BAR_LEFT_CHANNEL = 'plugin-ui:get-activitybar-left-entries';
 export const PLUGIN_ACTIVITY_BAR_LEFT_CHANGED_CHANNEL = 'plugin-ui:activitybar-left-entries-changed';
 export const PLUGIN_INSTALLED_PLUGINS_CHANNEL = 'plugin-ui:get-installed-plugins';
 
-export function registerPluginUIHandlers(pluginHostService: PluginHostService): void {
+interface PluginActivityBarEntry {
+  readonly id: string;
+  readonly title: string;
+  readonly tooltip: string | null;
+  readonly iconPath: string | null;
+}
+
+interface InstalledPluginSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly publisher: string | null;
+  readonly description: string | null;
+  readonly enabled: boolean;
+}
+
+const EMPTY_PLUGIN_ACTIVITY_BAR_ENTRIES: readonly PluginActivityBarEntry[] = [];
+const EMPTY_INSTALLED_PLUGINS: readonly InstalledPluginSummary[] = [];
+
+export function registerPluginUIHandlers(): void {
   try {
     ipcMain.removeHandler(PLUGIN_ACTIVITY_BAR_LEFT_CHANNEL);
   } catch {
@@ -23,6 +41,12 @@ export function registerPluginUIHandlers(pluginHostService: PluginHostService): 
     // Ignore duplicate cleanup during development re-registration.
   }
 
-  ipcMain.handle(PLUGIN_ACTIVITY_BAR_LEFT_CHANNEL, async () => pluginHostService.getActivityBarEntries());
-  ipcMain.handle(PLUGIN_INSTALLED_PLUGINS_CHANNEL, async () => pluginHostService.getInstalledPlugins());
+  ipcMain.handle(
+    PLUGIN_ACTIVITY_BAR_LEFT_CHANNEL,
+    async (): Promise<readonly PluginActivityBarEntry[]> => EMPTY_PLUGIN_ACTIVITY_BAR_ENTRIES,
+  );
+  ipcMain.handle(
+    PLUGIN_INSTALLED_PLUGINS_CHANNEL,
+    async (): Promise<readonly InstalledPluginSummary[]> => EMPTY_INSTALLED_PLUGINS,
+  );
 }

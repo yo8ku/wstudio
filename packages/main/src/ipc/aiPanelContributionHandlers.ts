@@ -8,9 +8,7 @@ import type {
   AIPanelContributionListResponse,
   ExecuteAIPanelContributionRequest,
 } from '@note-studio/shared';
-import { aiPanelActionRegistry } from '../plugins/AIPanelActionRegistry';
-import { aiPanelContributionRegistry } from '../plugins/AIPanelContributionRegistry';
-import { pluginHostManager } from '../plugins/PluginHostManager';
+import { EMPTY_AI_PANEL_CONTRIBUTION_SNAPSHOT } from '@note-studio/shared';
 
 let handlersRegistered = false;
 
@@ -18,10 +16,6 @@ const AI_PANEL_CONTRIBUTION_CHANNELS = [
   'extensions:ai-panel:get-contributions',
   'extensions:ai-panel:execute-item',
 ] as const;
-
-function toErrorMessage(error: Error | string): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function registerAIPanelContributionHandlers(): void {
   if (handlersRegistered) {
@@ -41,22 +35,10 @@ export function registerAIPanelContributionHandlers(): void {
   ipcMain.handle(
     'extensions:ai-panel:get-contributions',
     async (): Promise<AIPanelContributionListResponse> => {
-      try {
-        return {
-          success: true,
-          data: aiPanelContributionRegistry.getSnapshot(),
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error('[AIPanelContribution IPC] failed to get contributions:', error);
-        return {
-          success: false,
-          error: {
-            code: 'AI_PANEL_CONTRIBUTION_LIST_FAILED',
-            message,
-          },
-        };
-      }
+      return {
+        success: true,
+        data: EMPTY_AI_PANEL_CONTRIBUTION_SNAPSHOT,
+      };
     },
   );
 
@@ -64,38 +46,15 @@ export function registerAIPanelContributionHandlers(): void {
     'extensions:ai-panel:execute-item',
     async (
       _event,
-      request: ExecuteAIPanelContributionRequest,
+      _request: ExecuteAIPanelContributionRequest,
     ): Promise<AIPanelContributionExecutionResponse> => {
-      try {
-        const item = aiPanelContributionRegistry.findItem(request);
-
-        if (!item) {
-          return {
-            success: false,
-            error: {
-              code: 'AI_PANEL_CONTRIBUTION_NOT_FOUND',
-              message: `AI panel item not found: ${request.itemId}`,
-            },
-          };
-        }
-
-        await pluginHostManager.activateForAIPanelItem(item);
-
-        return {
-          success: true,
-          data: await aiPanelActionRegistry.execute(item),
-        };
-      } catch (error) {
-        const message = toErrorMessage(error instanceof Error ? error : String(error));
-        console.error('[AIPanelContribution IPC] failed to execute item:', error);
-        return {
-          success: false,
-          error: {
-            code: 'AI_PANEL_CONTRIBUTION_EXECUTION_FAILED',
-            message,
-          },
-        };
-      }
+      return {
+        success: true,
+        data: {
+          type: 'handled',
+          message: 'Legacy plugin platform is temporarily disabled.',
+        },
+      };
     },
   );
 }

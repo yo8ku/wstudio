@@ -4,7 +4,6 @@
  */
 
 import React from 'react';
-import './AIProviderIcon.scss';
 import OpenAiIcon from '../../../svg/OpenAi.svg';
 import ClaudeIcon from '../../../svg/Claude.svg';
 import AzureIcon from '../../../svg/Azure.svg';

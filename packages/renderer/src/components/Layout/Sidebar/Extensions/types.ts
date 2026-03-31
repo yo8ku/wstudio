@@ -1,17 +1,9 @@
-export type LocalExtensionStatus = 'enabled' | 'disabled' | 'update-available';
+/**
+ * Compatibility aliases for existing sidebar extension types.
+ * The standalone ExtensionPanel component now owns the source contracts.
+ */
 
-export interface LocalExtensionItem {
-  readonly id: string;
-  readonly displayName: string;
-  readonly downloadCount: string;
-  readonly description: string;
-  readonly version: string;
-  readonly publisher: string;
-  readonly isOfficialPublisher: boolean;
-  readonly installedAt: string;
-  readonly installPath: string;
-  readonly status: LocalExtensionStatus;
-  readonly iconPath?: string;
-  readonly iconName: string;
-  readonly capabilities: readonly string[];
-}
+export type {
+  ExtensionPanelItem as LocalExtensionItem,
+  ExtensionPanelStatus as LocalExtensionStatus,
+} from '../../../ExtensionPanel';

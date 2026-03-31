@@ -5,7 +5,7 @@
   user-select: none;
   position: relative;
   z-index: 100;
-  border-bottom: 1px solid transparent;
+  border-bottom: 1px solid var(--ws-titleBar-border);
   background-color: var(--ws-titleBar-inactiveBackground);;
   /* 确保位于 AI 输入边框层之上 */
 }

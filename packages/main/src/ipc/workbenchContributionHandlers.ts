@@ -11,12 +11,9 @@ import type {
   WorkbenchContributionListResponse,
   WorkbenchWebviewMutationResponse,
 } from '@note-studio/shared';
-import { pluginHostManager } from '../plugins/PluginHostManager';
-import { broadcastWorkbenchContributionSnapshot } from '../plugins/WorkbenchContributionBroadcaster';
-import { workbenchContributionRegistry } from '../plugins/WorkbenchContributionRegistry';
+import { EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT } from '@note-studio/shared';
 
 let handlersRegistered = false;
-let registrySubscriptionRegistered = false;
 
 const WORKBENCH_CONTRIBUTION_CHANNELS = [
   'extensions:workbench:get-contributions',
@@ -24,10 +21,6 @@ const WORKBENCH_CONTRIBUTION_CHANNELS = [
   'extensions:workbench:webview:post-message',
   'extensions:workbench:webview:dispose-panel',
 ] as const;
-
-function toErrorMessage(error: Error | string): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function registerWorkbenchContributionHandlers(): void {
   if (handlersRegistered) {
@@ -44,31 +37,13 @@ export function registerWorkbenchContributionHandlers(): void {
 
   handlersRegistered = true;
 
-  if (!registrySubscriptionRegistered) {
-    workbenchContributionRegistry.subscribe((snapshot) => {
-      broadcastWorkbenchContributionSnapshot(snapshot);
-    });
-    registrySubscriptionRegistered = true;
-  }
-
   ipcMain.handle(
     'extensions:workbench:get-contributions',
     async (): Promise<WorkbenchContributionListResponse> => {
-      try {
-        return {
-          success: true,
-          data: workbenchContributionRegistry.getSnapshot(),
-        };
-      } catch (error) {
-        console.error('[WorkbenchContribution IPC] failed to get contributions:', error);
-        return {
-          success: false,
-          error: {
-            code: 'WORKBENCH_CONTRIBUTION_LIST_FAILED',
-            message: toErrorMessage(error instanceof Error ? error : String(error)),
-          },
-        };
-      }
+      return {
+        success: true,
+        data: EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT,
+      };
     },
   );
 
@@ -76,26 +51,12 @@ export function registerWorkbenchContributionHandlers(): void {
     'extensions:workbench:execute-command',
     async (
       _event,
-      request: ExecuteWorkbenchCommandRequest,
+      _request: ExecuteWorkbenchCommandRequest,
     ): Promise<WorkbenchCommandExecutionResponse> => {
-      try {
-        return {
-          success: true,
-          data: await pluginHostManager.executeContributedCommand(
-            request.commandId,
-            request.args ?? [],
-          ),
-        };
-      } catch (error) {
-        console.error('[WorkbenchContribution IPC] failed to execute command:', error);
-        return {
-          success: false,
-          error: {
-            code: 'WORKBENCH_COMMAND_EXECUTION_FAILED',
-            message: toErrorMessage(error instanceof Error ? error : String(error)),
-          },
-        };
-      }
+      return {
+        success: true,
+        data: null,
+      };
     },
   );
 
@@ -103,39 +64,11 @@ export function registerWorkbenchContributionHandlers(): void {
     'extensions:workbench:webview:post-message',
     async (
       _event,
-      request: DeliverWorkbenchWebviewMessageRequest,
+      _request: DeliverWorkbenchWebviewMessageRequest,
     ): Promise<WorkbenchWebviewMutationResponse> => {
-      try {
-        const panel = workbenchContributionRegistry.getRuntimeWebviewPanel(request.panelInstanceKey);
-        if (!panel) {
-          return {
-            success: false,
-            error: {
-              code: 'WORKBENCH_WEBVIEW_PANEL_NOT_FOUND',
-              message: `Runtime webview panel not found: ${request.panelInstanceKey}`,
-            },
-          };
-        }
-
-        await pluginHostManager.deliverRuntimeWebviewMessage(
-          panel.extensionId,
-          request.panelInstanceKey,
-          request.message,
-        );
-
-        return {
-          success: true,
-        };
-      } catch (error) {
-        console.error('[WorkbenchContribution IPC] failed to deliver webview message:', error);
-        return {
-          success: false,
-          error: {
-            code: 'WORKBENCH_WEBVIEW_MESSAGE_FAILED',
-            message: toErrorMessage(error instanceof Error ? error : String(error)),
-          },
-        };
-      }
+      return {
+        success: true,
+      };
     },
   );
 
@@ -143,41 +76,11 @@ export function registerWorkbenchContributionHandlers(): void {
     'extensions:workbench:webview:dispose-panel',
     async (
       _event,
-      request: DisposeWorkbenchWebviewPanelRequest,
+      _request: DisposeWorkbenchWebviewPanelRequest,
     ): Promise<WorkbenchWebviewMutationResponse> => {
-      try {
-        const panel = workbenchContributionRegistry.disposeRuntimeWebviewPanel(
-          request.panelInstanceKey,
-        );
-
-        if (!panel) {
-          return {
-            success: false,
-            error: {
-              code: 'WORKBENCH_WEBVIEW_PANEL_NOT_FOUND',
-              message: `Runtime webview panel not found: ${request.panelInstanceKey}`,
-            },
-          };
-        }
-
-        await pluginHostManager.notifyRuntimeWebviewDisposed(
-          panel.extensionId,
-          panel.panelInstanceKey,
-        );
-
-        return {
-          success: true,
-        };
-      } catch (error) {
-        console.error('[WorkbenchContribution IPC] failed to dispose runtime webview panel:', error);
-        return {
-          success: false,
-          error: {
-            code: 'WORKBENCH_WEBVIEW_DISPOSE_FAILED',
-            message: toErrorMessage(error instanceof Error ? error : String(error)),
-          },
-        };
-      }
+      return {
+        success: true,
+      };
     },
   );
 }

@@ -32,14 +32,19 @@ import { registerSkillsMarketHandlers } from './ipc/skillsMarketHandlers';
 import { registerMediaHandlers } from './ipc/mediaHandlers';
 import { registerAIPanelContributionHandlers } from './ipc/aiPanelContributionHandlers';
 import { registerExtensionDevelopmentHandlers } from './ipc/extensionDevelopmentHandlers';
+import { registerPluginUIHandlers } from './ipc/pluginUIHandlers';
 import { registerWorkbenchContributionHandlers } from './ipc/workbenchContributionHandlers';
 import { builtinAI } from './services/builtinAIInstance';
-import { pluginCapabilityRouter } from './plugins/PluginCapabilityRouter';
-import { pluginDiscoveryService } from './plugins/PluginDiscoveryService';
-import { pluginEditorBridge } from './plugins/PluginEditorBridge';
-import { pluginHotReloadService } from './plugins/PluginHotReloadService';
-import { pluginHostManager } from './plugins/PluginHostManager';
-import { workbenchContributionRegistry } from './plugins/WorkbenchContributionRegistry';
+import {
+  aiPanelActionRegistry,
+  aiPanelContributionRegistry,
+  pluginCapabilityRouter,
+  pluginDiscoveryService,
+  pluginEditorBridge,
+  pluginHotReloadService,
+  pluginHostManager,
+  workbenchContributionRegistry,
+} from './services/LegacyPluginPlatformStub';
 
 const settingsManager = new SettingsManager();
 const workspaceManager = new WorkspaceManager();
@@ -63,6 +68,7 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   registerMediaHandlers();
   registerAIPanelContributionHandlers();
   registerExtensionDevelopmentHandlers();
+  registerPluginUIHandlers();
   registerWorkbenchContributionHandlers();
 
   getCodeRunnerService();
@@ -115,8 +121,7 @@ export {
 
 export { SettingsManager } from './config/SettingsManager';
 export type { SettingsSchema, SettingsValue } from './config/SettingsManager';
-export { aiPanelContributionRegistry } from './plugins/AIPanelContributionRegistry';
-export { aiPanelActionRegistry } from './plugins/AIPanelActionRegistry';
+export { aiPanelContributionRegistry, aiPanelActionRegistry };
 export { workbenchContributionRegistry };
 
 export { FileReferenceService } from './services/FileReferenceService';

@@ -88,29 +88,6 @@ importers:
         specifier: ^9.0.1
         version: 9.0.1
 
-  packages/extension-api:
-    dependencies:
-      '@note-studio/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
-
-  packages/extension-runtime:
-    dependencies:
-      '@note-studio/extension-api':
-        specifier: workspace:*
-        version: link:../extension-api
-      '@note-studio/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
-
   packages/global-rag:
     dependencies:
       '@lancedb/lancedb':
@@ -150,18 +127,12 @@ importers:
       '@langchain/textsplitters':
         specifier: ^1.0.1
         version: 1.0.1(@langchain/core@1.1.4)
-      '@note-studio/extension-runtime':
-        specifier: workspace:*
-        version: link:../extension-runtime
       '@note-studio/global-rag':
         specifier: workspace:*
         version: link:../global-rag
       '@note-studio/note-system':
         specifier: workspace:*
         version: link:../note-system
-      '@note-studio/plugin-api':
-        specifier: workspace:*
-        version: link:../plugin-api
       '@note-studio/shared':
         specifier: workspace:*
         version: link:../shared
@@ -239,12 +210,6 @@ importers:
       vitest:
         specifier: ^1.2.0
         version: 1.6.1(@types/node@20.19.19)(lightningcss@1.32.0)(sass-embedded@1.93.2)(sass@1.93.2)
-
-  packages/plugin-api:
-    devDependencies:
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
 
   packages/renderer:
     dependencies:

@@ -15,8 +15,11 @@
     //颜色-AI 面板输入框背景色
     &-inner {
       background-color: var(--ws-input-background);
-
+      &:focus-within {
+        border: 1px solid var(--ws-input-border);
+      }
     }
+
 
     //颜色-聊天面板 工具按钮颜色
     button {
@@ -139,8 +142,8 @@
   }
 
   .dropdown-menu-item {
-    color:var(--ws-dropdown-foreground);
-    
+    color: var(--ws-dropdown-foreground);
+
     &:hover {
       background-color: var(--ws-dropdown-hoverBackground);
       color: var(--ws-dropdown-hoverForeground);

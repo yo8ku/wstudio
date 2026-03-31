@@ -1,23 +1,12 @@
-/**
- * 鍏ㄥ眬鏍峰紡鍏ュ彛鏂囦欢
- *
- * 璁捐鍘熷垯锛氭墍鏈夐鑹查€氳繃 CSS 鍙橀噺绠＄悊锛屽彉閲忓€肩敱涓婚鎻掍欢鎺у埗
- */
 
-/* 缂栬緫鍣?UI 缁勪欢鏍峰紡 */
-@use './_variables.scss';
 @use './_keyframe-animations.scss';
 
-/* 缁勪欢棰滆壊鏍峰紡绠＄悊锛堟寜缁勪欢鎷嗗垎锛?*/
 @use './component/_index.scss';
 
-/* Toast 閫氱煡鏍峰紡 */
 @use './toast.css';
 
-/* Highlight.js 浠ｇ爜楂樹寒鏍峰紡 */
 @use './highlightjs.scss';
 
-/* ==================== 鍏ㄥ眬閲嶇疆 ==================== */
 * {
   margin: 0;
   padding: 0;
