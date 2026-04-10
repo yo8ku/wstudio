@@ -211,6 +211,12 @@ importers:
         specifier: ^1.2.0
         version: 1.6.1(@types/node@20.19.19)(lightningcss@1.32.0)(sass-embedded@1.93.2)(sass@1.93.2)
 
+  packages/plugin:
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   packages/renderer:
     dependencies:
       '@codemirror/autocomplete':

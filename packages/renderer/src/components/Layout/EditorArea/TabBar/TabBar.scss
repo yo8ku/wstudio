@@ -97,14 +97,6 @@
     background-color: var(--ws-tab-hoverBackground, rgba(255, 255, 255, 0.05));
   }
 
-  // 文件图标
-  &-icon {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    opacity: 0.8;
-  }
-
   // 文件名
   &-title {
     flex: 1;
@@ -114,6 +106,10 @@
     text-overflow: ellipsis;
     font-size: 13px;
     line-height: 1.4;
+  }
+
+  &-icon {
+    opacity: 0.9;
   }
 
   // 脏标记（未保存）

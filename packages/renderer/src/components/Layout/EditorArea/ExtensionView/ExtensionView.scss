@@ -20,6 +20,7 @@
   }
 
   &__icon {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -29,6 +30,13 @@
     background: var(--ws-editorWidget-background, var(--ws-panel-background));
     color: var(--ws-descriptionForeground, var(--ws-foreground));
     flex-shrink: 0;
+  }
+
+  &__icon-image {
+    display: block;
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
   }
 
   &__heading {

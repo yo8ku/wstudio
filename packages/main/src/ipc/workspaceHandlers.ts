@@ -1,5 +1,8 @@
 import { ipcMain } from 'electron';
-import { WorkspaceManager } from '../workspace/WorkspaceManager';
+import {
+  WorkspaceManager,
+  type WorkspaceOpenCanvasLayoutItem,
+} from '../workspace/WorkspaceManager';
 import {
   listWorkspaceSearchRootDirectories,
   replaceWorkspaceText,
@@ -32,9 +35,13 @@ const WORKSPACE_CHANNELS = [
   'workspace:get-search-block-keywords',
   'workspace:get-search-tags',
   'workspace:get-recent-files',
+  'workspace:get-open-canvas-files',
+  'workspace:get-open-canvas-layout',
   'workspace:get-last-opened',
   'workspace:add-recent-file',
   'workspace:clear-recent-files',
+  'workspace:set-open-canvas-files',
+  'workspace:set-open-canvas-layout',
   'workspace:search-text',
   'workspace:replace-text',
   'workspace:search-start',
@@ -128,6 +135,30 @@ export const registerWorkspaceHandlers = (workspaceManager: WorkspaceManager): v
     }
   });
 
+  ipcMain.handle('workspace:get-open-canvas-files', async (): Promise<WorkspaceResponse<string[]>> => {
+    try {
+      return {
+        success: true,
+        data: workspaceManager.getOpenCanvasFiles(),
+      };
+    } catch (error) {
+      console.error('[Workspace IPC] failed to get open canvas files:', error);
+      return { success: false, error: toErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('workspace:get-open-canvas-layout', async (): Promise<WorkspaceResponse<WorkspaceOpenCanvasLayoutItem[]>> => {
+    try {
+      return {
+        success: true,
+        data: workspaceManager.getOpenCanvasLayout(),
+      };
+    } catch (error) {
+      console.error('[Workspace IPC] failed to get open canvas layout:', error);
+      return { success: false, error: toErrorMessage(error) };
+    }
+  });
+
   ipcMain.handle('workspace:get-last-opened', async (): Promise<WorkspaceResponse<string | undefined>> => {
     try {
       return {
@@ -159,6 +190,32 @@ export const registerWorkspaceHandlers = (workspaceManager: WorkspaceManager): v
       return { success: true };
     } catch (error) {
       console.error('[Workspace IPC] failed to clear recent files:', error);
+      return { success: false, error: toErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('workspace:set-open-canvas-files', async (
+    _event,
+    filePaths: string[],
+  ): Promise<WorkspaceResponse<void>> => {
+    try {
+      workspaceManager.setOpenCanvasFiles(filePaths);
+      return { success: true };
+    } catch (error) {
+      console.error('[Workspace IPC] failed to set open canvas files:', error);
+      return { success: false, error: toErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('workspace:set-open-canvas-layout', async (
+    _event,
+    layoutItems: WorkspaceOpenCanvasLayoutItem[],
+  ): Promise<WorkspaceResponse<void>> => {
+    try {
+      workspaceManager.setOpenCanvasLayout(layoutItems);
+      return { success: true };
+    } catch (error) {
+      console.error('[Workspace IPC] failed to set open canvas layout:', error);
       return { success: false, error: toErrorMessage(error) };
     }
   });

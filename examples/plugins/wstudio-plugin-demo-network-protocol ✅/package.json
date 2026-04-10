@@ -1,0 +1,28 @@
+{
+  "name": "wstudio-plugin-demo-network-protocol",
+  "version": "1.0.0",
+  "description": "Network and protocol verification demo for WStudio plugin API testing",
+  "author": "WiseAI Team",
+  "license": "MIT",
+  "packageManager": "npm@11.6.2",
+  "main": "./main.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "dev": "node esbuild.config.mjs --watch",
+    "clean": "node -e \"const fs=require('node:fs');['main.js','main.js.map'].forEach((file)=>fs.rmSync(file,{force:true}))\"",
+    "validate": "npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "@note-studio/plugin": "file:../wstudio-plugin-sample/sdk/note-studio-plugin-sdk.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.0.0"
+  }
+}

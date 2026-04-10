@@ -27,6 +27,9 @@ export interface TreeNodeRowProps {
   onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
   onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
   onMouseUp?: React.MouseEventHandler<HTMLDivElement>;
+  draggable?: boolean;
+  onDragStart?: React.DragEventHandler<HTMLDivElement>;
+  onDragEnd?: React.DragEventHandler<HTMLDivElement>;
   leading?: React.ReactNode;
   icon?: React.ReactNode;
   children: React.ReactNode;
@@ -63,6 +66,9 @@ export const TreeNodeRow: React.FC<TreeNodeRowProps> = ({
   onKeyDown,
   onMouseDown,
   onMouseUp,
+  draggable,
+  onDragStart,
+  onDragEnd,
   leading,
   icon,
   children,
@@ -95,6 +101,9 @@ export const TreeNodeRow: React.FC<TreeNodeRowProps> = ({
         onKeyDown={onKeyDown}
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
+        draggable={draggable}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
       >
         {leading}
         {icon}

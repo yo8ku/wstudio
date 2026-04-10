@@ -2,7 +2,7 @@
  * Workbench contribution IPC 处理器。
  */
 
-import { ipcMain } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
 import type {
   DeliverWorkbenchWebviewMessageRequest,
   DisposeWorkbenchWebviewPanelRequest,
@@ -11,9 +11,13 @@ import type {
   WorkbenchContributionListResponse,
   WorkbenchWebviewMutationResponse,
 } from '@note-studio/shared';
-import { EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT } from '@note-studio/shared';
+import {
+  pluginHostManager,
+  workbenchContributionRegistry,
+} from '../services/LegacyPluginPlatformStub';
 
 let handlersRegistered = false;
+let workbenchContributionSubscriptionRegistered = false;
 
 const WORKBENCH_CONTRIBUTION_CHANNELS = [
   'extensions:workbench:get-contributions',
@@ -37,12 +41,21 @@ export function registerWorkbenchContributionHandlers(): void {
 
   handlersRegistered = true;
 
+  if (!workbenchContributionSubscriptionRegistered) {
+    workbenchContributionRegistry.subscribe((snapshot) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.send('extensions:workbench:contributions-changed', snapshot);
+      }
+    });
+    workbenchContributionSubscriptionRegistered = true;
+  }
+
   ipcMain.handle(
     'extensions:workbench:get-contributions',
     async (): Promise<WorkbenchContributionListResponse> => {
       return {
         success: true,
-        data: EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT,
+        data: workbenchContributionRegistry.getSnapshot(),
       };
     },
   );
@@ -51,11 +64,14 @@ export function registerWorkbenchContributionHandlers(): void {
     'extensions:workbench:execute-command',
     async (
       _event,
-      _request: ExecuteWorkbenchCommandRequest,
+      request: ExecuteWorkbenchCommandRequest,
     ): Promise<WorkbenchCommandExecutionResponse> => {
       return {
         success: true,
-        data: null,
+        data: await pluginHostManager.executeContributedCommand(
+          request.commandId,
+          request.args,
+        ),
       };
     },
   );

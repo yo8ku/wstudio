@@ -4,6 +4,7 @@ import { knowledgeBaseService } from '../../../Layout/Sidebar/KnowledgeBase/know
 import { tableReferenceService } from '../../../../services/tableReference/TableReferenceService';
 import { getPromptTemplates } from '../../../../services/PromptTemplateService';
 import { Icon } from '../../../Icons/Icon';
+import { WorkspaceFileIcon } from '../../../WorkspaceFileIcon/WorkspaceFileIcon';
 
 interface WorkspaceTreeEntry {
   name: string;
@@ -58,6 +59,14 @@ function formatRecentFileLabel(filePath: string): React.ReactElement {
   const fileName = getFileName(filePath);
   const truncatedPath = truncatePath(filePath);
   const children: React.ReactNode[] = [
+    React.createElement(WorkspaceFileIcon, {
+      className: 'recent-file-icon',
+      filePath,
+      name: fileName,
+      isDirectory: false,
+      key: 'icon',
+      size: 14,
+    }),
     React.createElement('span', { className: 'recent-file-name', key: 'name' }, fileName)
   ];
 
@@ -104,7 +113,6 @@ async function buildRecentFilesGroup(): Promise<SelectGroup[]> {
       items: recentFiles.map((filePath) => ({
         value: `recent-file-${filePath}`,
         label: formatRecentFileLabel(filePath),
-        icon: React.createElement(Icon, { iconSet: 'ui', name: 'file', size: 14 }),
       })),
     }];
   } catch (error) {
@@ -116,25 +124,30 @@ async function buildRecentFilesGroup(): Promise<SelectGroup[]> {
 function buildCategoryItem(
   value: string,
   label: string,
-  iconName: string,
+  iconName: string | undefined,
   showDivider = false
 ): SelectGroup {
+  const item: SelectItem = {
+    value,
+    label,
+    rightIcon: React.createElement(Icon, { iconSet: 'ui', name: 'chevron-right', size: 14 }),
+  };
+
+  if (iconName) {
+    item.icon = React.createElement(Icon, { iconSet: 'ui', name: iconName, size: 14 });
+  }
+
   return {
     groupName: '',
     showDivider,
-    items: [{
-      value,
-      label,
-      icon: React.createElement(Icon, { iconSet: 'ui', name: iconName, size: 14 }),
-      rightIcon: React.createElement(Icon, { iconSet: 'ui', name: 'chevron-right', size: 14 }),
-    }],
+    items: [item],
   };
 }
 
 export async function buildLevel1MenuItems(): Promise<SelectGroup[]> {
   const groups = await buildRecentFilesGroup();
 
-  groups.push(buildCategoryItem('category-files', LABEL_FILES, 'folder', groups.length > 0));
+  groups.push(buildCategoryItem('category-files', LABEL_FILES, undefined, groups.length > 0));
   groups.push(buildCategoryItem('category-knowledge-base', LABEL_KNOWLEDGE_BASE, 'book-open', true));
   groups.push(buildCategoryItem('category-forms', LABEL_FORMS, 'table-properties', true));
   groups.push(buildCategoryItem('category-rules', LABEL_RULES, 'file-code'));
@@ -154,7 +167,8 @@ async function loadWorkspaceEntries(targetPath: string): Promise<WorkspaceTreeEn
 
 async function buildWorkspaceFileItems(
   targetPath: string,
-  expandedFolders: Set<string>
+  expandedFolders: Set<string>,
+  depth = 0,
 ): Promise<SelectItem[]> {
   const entries = await loadWorkspaceEntries(targetPath);
   const folders = entries.filter((entry) => entry.type === 'directory');
@@ -169,7 +183,6 @@ async function buildWorkspaceFileItems(
         style: {
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
         }
       },
       React.createElement(
@@ -183,19 +196,36 @@ async function buildWorkspaceFileItems(
           }
         },
         React.createElement(Icon, { iconSet: 'ui', name: 'chevron-right', size: 14 })
-      ),
-      React.createElement(Icon, { iconSet: 'ui', name: 'folder', size: 14 })
+      )
     );
 
     items.push({
       value: `folder-${folder.path}`,
       label: createIndentedLabel(folder.name),
-      icon: leftIcon,
+      icon: React.createElement(
+        'span',
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+          }
+        },
+        leftIcon,
+        React.createElement(WorkspaceFileIcon, {
+          filePath: folder.path,
+          name: folder.name,
+          isDirectory: true,
+          expanded: isExpanded,
+          size: 14,
+        }),
+      ),
       dataType: 'folder',
+      depth,
     });
 
     if (isExpanded) {
-      const childItems = await buildWorkspaceFileItems(folder.path, expandedFolders);
+      const childItems = await buildWorkspaceFileItems(folder.path, expandedFolders, depth + 1);
       items.push(...childItems);
     }
   }
@@ -204,8 +234,14 @@ async function buildWorkspaceFileItems(
     items.push({
       value: `file-${file.path}`,
       label: createIndentedLabel(file.name),
-      icon: React.createElement(Icon, { iconSet: 'ui', name: 'file', size: 14 }),
+      icon: React.createElement(WorkspaceFileIcon, {
+        filePath: file.path,
+        name: file.name,
+        isDirectory: false,
+        size: 14,
+      }),
       dataType: 'file',
+      depth,
     });
   }
 
@@ -225,7 +261,6 @@ async function buildFilesGroup(expandedFolders: Set<string>, parentPath?: string
         items: [{
           value: 'no-workspace',
           label: '\u672a\u6253\u5f00\u5de5\u4f5c\u533a',
-          icon: React.createElement(Icon, { iconSet: 'ui', name: 'folder', size: 14 }),
           disabled: true,
         }],
       }];
@@ -240,7 +275,6 @@ async function buildFilesGroup(expandedFolders: Set<string>, parentPath?: string
         items: [{
           value: 'no-files',
           label: '\u6682\u65e0\u6587\u4ef6\u548c\u6587\u4ef6\u5939',
-          icon: React.createElement(Icon, { iconSet: 'ui', name: 'file', size: 14 }),
           disabled: true,
         }],
       }];
@@ -261,7 +295,6 @@ async function buildFilesGroup(expandedFolders: Set<string>, parentPath?: string
       items: [{
         value: 'files-error',
         label: '\u83b7\u53d6\u6587\u4ef6\u5217\u8868\u5931\u8d25',
-        icon: React.createElement(Icon, { iconSet: 'ui', name: 'file', size: 14 }),
         disabled: true,
       }],
     }];

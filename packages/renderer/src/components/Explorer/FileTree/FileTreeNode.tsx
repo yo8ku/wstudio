@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { FileTreeNode as FileTreeNodeType, FileTreeCallbacks } from './types';
 import { InlineInput } from '../Common/InlineInput';
 import { DragDropHandler } from './DragDropHandler';
-import { FileIcon } from './FileIcons';
 import { Icon } from '../../Icons';
 import './FileTreeNode.scss';
 
@@ -139,15 +138,6 @@ export const FileTreeNode: React.FC<FileTreeNodeProps> = ({
               size={16}
             />
           )}
-        </span>
-        <span className="file-tree-icon">
-          <FileIcon
-            fileName={isDirectory ? undefined : node.name}
-            folderName={isDirectory ? node.name : undefined}
-            isFolder={isDirectory}
-            isExpanded={node.isExpanded}
-            size={16}
-          />
         </span>
         {node.isCreating ? (
           <InlineInput

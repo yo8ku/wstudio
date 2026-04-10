@@ -1,12 +1,12 @@
 import React from 'react';
 import { Icon } from '../../Icons/Icon';
+import { WorkspaceFileIcon } from '../../WorkspaceFileIcon/WorkspaceFileIcon';
 
 export interface EditorItemProps {
   name: string;
   path: string;
   isDirty?: boolean;
   isActive?: boolean;
-  icon?: string;
   onClick: () => void;
   onClose: () => void;
 }
@@ -19,7 +19,6 @@ export const EditorItem: React.FC<EditorItemProps> = ({
   path,
   isDirty = false,
   isActive = false,
-  icon = 'file',
   onClick,
   onClose,
 }) => {
@@ -29,7 +28,13 @@ export const EditorItem: React.FC<EditorItemProps> = ({
       onClick={onClick}
       title={path}
     >
-      <span className="editor-item-icon">{icon}</span>
+      <WorkspaceFileIcon
+        filePath={path}
+        name={name}
+        isDirectory={false}
+        size={14}
+        className="editor-item-icon"
+      />
       <span className="editor-item-name">{name}</span>
       <button
         className="editor-item-close"

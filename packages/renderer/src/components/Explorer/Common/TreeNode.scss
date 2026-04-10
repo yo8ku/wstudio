@@ -32,12 +32,6 @@
       flex-shrink: 0;
     }
 
-    .file-tree-icon {
-      font-size: 15px;
-      line-height: 1;
-      flex-shrink: 0;
-    }
-
     .file-tree-name {
       flex: 1;
       font-size: 12px;
@@ -45,6 +39,22 @@
       overflow: hidden;
       text-overflow: ellipsis;
       min-width: 0;
+    }
+
+    .file-tree-extension-badge {
+      flex-shrink: 0;
+      min-width: 32px;
+      padding: 0 6px;
+      height: 16px;
+      line-height: 16px;
+      border-radius: 3px;
+      margin-right: 5px;
+      font-size: 10px;
+      font-weight: 600;
+      text-align: center;
+      text-transform: lowercase;
+      color: var(--ws-file-typeForeground);
+      background-color: var(--ws-file-typeBackground);
     }
 
     &.creating,

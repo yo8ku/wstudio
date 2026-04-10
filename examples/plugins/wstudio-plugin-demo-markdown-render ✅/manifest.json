@@ -1,0 +1,17 @@
+{
+  "id": "wstudio-plugin-demo-markdown-render",
+  "name": "WStudio Plugin Demo Markdown Render",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Markdown render and post processor verification demo for WStudio plugin API testing.",
+  "author": "WiseAI Team",
+  "authorUrl": "https://github.com/arebelamazuera",
+  "homepageUrl": "https://github.com/arebelamazuera/wstudio-api",
+  "repositoryUrl": "https://github.com/arebelamazuera/wstudio-api",
+  "fundingUrl": "https://github.com/sponsors/arebelamazuera",
+  "releaseChannel": "development",
+  "isDesktopOnly": false,
+  "engines": {
+    "wstudio": "^1.0.0"
+  }
+}

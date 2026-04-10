@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
+  DEFAULT_WORKBENCH_FILE_ICON_THEME_ID,
   DEFAULT_WORKBENCH_BACKGROUND_SETTINGS,
   type JsonValue,
   type WorkbenchBackgroundSettings,
@@ -41,6 +42,15 @@ interface SettingDefinition {
   isPluginSetting?: boolean;
 }
 
+interface PluginSettingTabSummary {
+  readonly id: string;
+  readonly pluginId: string;
+  readonly pluginName: string;
+  readonly title: string;
+  readonly preview: string | null;
+  readonly previewLines: readonly string[];
+}
+
 interface SettingsContentProps {
   activeCategory: SettingsCategory;
   onActiveCategoryChange?: (category: SettingsCategory) => void;
@@ -63,11 +73,17 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   const { t } = useTranslation();
   const [settings, setSettings] = useState<Record<string, SettingValue>>({});
   const [pluginSettingDefinitions, setPluginSettingDefinitions] = useState<readonly SettingDefinition[]>([]);
+  const [fileIconThemeOptions, setFileIconThemeOptions] = useState<readonly SettingOptionDefinition[]>([]);
+  const [pluginSettingTabs, setPluginSettingTabs] = useState<readonly PluginSettingTabSummary[]>([]);
   const [jsonContent, setJsonContent] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [modifiedKeys, setModifiedKeys] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>('');
-  const translateText = (key: string): string => String(t(key));
+  const translateText = (key: string, defaultValue?: string): string => (
+    defaultValue === undefined
+      ? String(t(key))
+      : String(t(key, { defaultValue }))
+  );
 
   const syncSettingsState = (nextSettings: Record<string, SettingValue>): void => {
     const normalizedSettings = nextSettings ?? {};
@@ -179,14 +195,6 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
 
     // 工作台
     {
-      key: 'workbench.iconTheme',
-      title: translateText('settings.definitions.workbenchIconTheme.title'),
-      description: translateText('settings.definitions.workbenchIconTheme.description'),
-      type: 'string',
-      category: 'workbench',
-      defaultValue: 'vs-seti',
-    },
-    {
       key: 'workbench.sideBar.location',
       title: translateText('settings.definitions.workbenchSidebarLocation.title'),
       description: translateText('settings.definitions.workbenchSidebarLocation.description'),
@@ -221,6 +229,20 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         blur: DEFAULT_WORKBENCH_BACKGROUND_SETTINGS.blur,
         fit: DEFAULT_WORKBENCH_BACKGROUND_SETTINGS.fit,
       },
+    },
+    {
+      key: 'workbench.fileIconTheme',
+      title: translateText('settings.definitions.workbenchFileIconTheme.title', 'File Icon Theme'),
+      description: translateText(
+        'settings.definitions.workbenchFileIconTheme.description',
+        'Choose which plugin-provided file icon theme is used in file trees.',
+      ),
+      type: 'select',
+      category: 'workbench',
+      options: fileIconThemeOptions.length > 0
+        ? fileIconThemeOptions
+        : [{ label: 'Material File Icons', value: DEFAULT_WORKBENCH_FILE_ICON_THEME_ID }],
+      defaultValue: DEFAULT_WORKBENCH_FILE_ICON_THEME_ID,
     },
 
     {
@@ -331,6 +353,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   useEffect(() => {
     void loadSettings();
     void loadPluginSettings();
+    void loadPluginSettingTabs();
   }, []);
 
   const loadSettings = async () => {
@@ -348,6 +371,12 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   const loadPluginSettings = async (): Promise<void> => {
     try {
       const snapshot = await workbenchContributionService.getContributions();
+      setFileIconThemeOptions(
+        snapshot.fileIconThemes.map(theme => ({
+          label: theme.label,
+          value: theme.id,
+        })),
+      );
       setPluginSettingDefinitions(
         snapshot.settings.map(setting => ({
           key: setting.key,
@@ -363,7 +392,20 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       );
     } catch (error) {
       console.error('加载插件设置定义失败:', error);
+      setFileIconThemeOptions([]);
       setPluginSettingDefinitions([]);
+    }
+  };
+
+  const loadPluginSettingTabs = async (): Promise<void> => {
+    try {
+      const tabs = (
+        await window.electron?.ipcRenderer.invoke('plugin-ui:get-setting-tabs')
+      ) as readonly PluginSettingTabSummary[] | undefined;
+      setPluginSettingTabs(tabs ?? []);
+    } catch (error) {
+      console.error('加载插件设置 tab 失败:', error);
+      setPluginSettingTabs([]);
     }
   };
 
@@ -372,10 +414,15 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     const handleSettingsChanged = (payload: SettingsChangedPayload) => {
       if (payload.reset || payload.imported || (payload.updatedKeys?.length ?? 0) > 0) {
         void loadSettings();
+        void loadPluginSettingTabs();
         return;
       }
 
       const changedKey = payload.key;
+
+      if (typeof changedKey === 'string' && changedKey.startsWith('plugin.data.')) {
+        void loadPluginSettingTabs();
+      }
 
       if (typeof changedKey === 'string' && payload.value !== undefined) {
         setSettings(previousSettings => {
@@ -393,6 +440,20 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     };
 
     const unsubscribe = window.electronAPI?.on?.('settings:changed', handleSettingsChanged);
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.electron?.ipcRenderer.on(
+      'plugin-ui:entries-changed',
+      () => {
+        void loadPluginSettings();
+        void loadPluginSettingTabs();
+      },
+    );
+
     return () => {
       unsubscribe?.();
     };
@@ -479,6 +540,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     'data-settings-siyuan',
     'data-settings-custom',
     'document-processing',
+    'plugins',
     'application'
   ];
 
@@ -503,6 +565,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     'data-settings-siyuan': translateText('settings.categories.dataSettingsSiyuan'),
     'data-settings-custom': translateText('settings.categories.dataSettingsCustom'),
     'document-processing': translateText('settings.categories.documentProcessing'),
+    'plugins': '插件',
     'application': translateText('settings.categories.application'),
   };
 
@@ -649,6 +712,58 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
               {/* 遍历所有分类并显示 */}
               {allCategories.map((category) => {
                 const categorySettings = getCategorySettings(category);
+
+                if (category === 'plugins') {
+                  const filteredPluginTabs = pluginSettingTabs.filter((tab) => {
+                    if (searchQuery.trim().length === 0) {
+                      return true;
+                    }
+
+                    const normalizedQuery = searchQuery.trim().toLowerCase();
+                    return [
+                      tab.title,
+                      tab.pluginName,
+                      tab.pluginId,
+                      tab.preview ?? '',
+                    ].some((value) => value.toLowerCase().includes(normalizedQuery));
+                  });
+
+                  if (filteredPluginTabs.length === 0) return null;
+
+                  return (
+                    <div key={category} id={`category-${category}`} className="category-section">
+                      <h2 className="category-title">{categoryLabels[category]}</h2>
+                      <div className="settings-list">
+                        {filteredPluginTabs.map((tab) => (
+                          <div key={tab.id} className="setting-item">
+                            <div className="setting-row">
+                              <div className="setting-info">
+                                <div className="setting-header">
+                                  <h3 className="setting-title">{tab.title}</h3>
+                                  <span className="setting-source-badge">{tab.pluginName}</span>
+                                </div>
+                                {tab.previewLines.length > 0 ? (
+                                  <div className="plugin-setting-preview-lines">
+                                    {tab.previewLines.map((line, index) => (
+                                      <p key={`${tab.id}:preview:${index}`} className="setting-description">
+                                        {line}
+                                      </p>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="setting-description">
+                                    {tab.preview ?? '该插件已注册设置选项卡。'}
+                                  </p>
+                                )}
+                                <code className="setting-key">{tab.pluginId}</code>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
 
                 if (categorySettings.length === 0) return null;
 

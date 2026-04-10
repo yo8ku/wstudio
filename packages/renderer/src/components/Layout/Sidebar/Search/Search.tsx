@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { TreeNodeRow } from '../../../Explorer/Common/TreeNode';
 import { TreeView } from '../../../Explorer/Common/TreeView';
 import { Icon } from '../../../Icons/Icon';
+import { WorkspaceFileIcon } from '../../../WorkspaceFileIcon/WorkspaceFileIcon';
 import { Tooltip } from '../../../Tooltip/Tooltip';
 import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
 import { PressableControl } from '../../../common/PressableControl';
@@ -2662,6 +2663,7 @@ export const Search: React.FC<SearchProps> = ({
 
                       if (row.type === 'group') {
                         const filterOnlyResult = row.group.isFilterOnly ? row.group.results[0] : null;
+                        const representativeResult = filterOnlyResult ?? row.group.results[0] ?? null;
                         const filterOnlyResultKey = filterOnlyResult
                           ? getSearchResultKey(filterOnlyResult)
                           : '';
@@ -2712,14 +2714,16 @@ export const Search: React.FC<SearchProps> = ({
                                   />
                                 )
                               )}
-                              icon={(
-                                <Icon
-                                  iconSet="ui"
-                                  name="file"
-                                  size={16}
-                                  className="file-tree-icon"
-                                />
-                              )}
+                              icon={representativeResult
+                                ? (
+                                  <WorkspaceFileIcon
+                                    filePath={representativeResult.absolutePath}
+                                    name={representativeResult.title || row.group.label}
+                                    isDirectory={false}
+                                    size={16}
+                                  />
+                                )
+                                : undefined}
                             >
                               <span className="file-tree-name search-result-group-label">
                                 {row.group.isFilterOnly

@@ -1,0 +1,162 @@
+/**
+ * Styles for the first-stage plugin runtime view host.
+ */
+
+.plugin-runtime-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+  background: var(--ws-editor-background, var(--ws-panel-background, transparent));
+  color: inherit;
+}
+
+.plugin-runtime-view__surface {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+  color: inherit;
+}
+
+.plugin-runtime-view--canvas {
+  background: transparent;
+}
+
+.plugin-runtime-view__surface--canvas {
+  display: flex;
+  overflow: hidden;
+  padding: 0;
+  background: transparent;
+}
+
+.plugin-runtime-view__surface--canvas > * {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.plugin-runtime-view__host-chrome {
+  order: -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--ws-border-color, rgba(255, 255, 255, 0.12));
+  background: var(--ws-toolbar-background, var(--ws-editor-background, transparent));
+  color: inherit;
+}
+
+.plugin-runtime-view__host-toolbar,
+.plugin-runtime-view__host-title-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.plugin-runtime-view__host-title-actions {
+  justify-content: flex-end;
+}
+
+.plugin-runtime-view__host-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--ws-border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+  background: var(--ws-toolbar-hoverBackground, rgba(255, 255, 255, 0.06));
+  color: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+
+.plugin-runtime-view__host-action:hover,
+.plugin-runtime-view__host-action:focus-visible {
+  background: var(--ws-list-hoverBackground, rgba(255, 255, 255, 0.1));
+  outline: 1px solid var(--ws-focusBorder, rgba(125, 211, 252, 0.72));
+  outline-offset: 1px;
+}
+
+.plugin-runtime-view__surface > *:first-child {
+  margin-top: 0;
+}
+
+.plugin-runtime-view__surface > *:last-child {
+  margin-bottom: 0;
+}
+
+.plugin-runtime-view__surface [role='button'],
+.plugin-runtime-view__surface .ns-plugin-item-view__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--ws-border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.plugin-runtime-view__surface input,
+.plugin-runtime-view__surface textarea,
+.plugin-runtime-view__surface select {
+  color: inherit;
+  background: var(--ws-input-background, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--ws-border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+}
+
+.plugin-runtime-view__surface textarea[data-role='inline-title-input'][data-custom-scrollbar='true'] {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 211, 252, 0.72) transparent;
+}
+
+.plugin-runtime-view__surface textarea[data-role='inline-title-input'][data-custom-scrollbar='true']::-webkit-scrollbar {
+  width: 6px;
+  height: 0;
+}
+
+.plugin-runtime-view__surface textarea[data-role='inline-title-input'][data-custom-scrollbar='true']::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.plugin-runtime-view__surface textarea[data-role='inline-title-input'][data-custom-scrollbar='true']::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.72);
+}
+
+.plugin-runtime-view__surface textarea[data-role='inline-title-input'][data-custom-scrollbar='true']::-webkit-scrollbar-button,
+.plugin-runtime-view__surface textarea[data-role='inline-title-input'][data-custom-scrollbar='true']::-webkit-scrollbar-corner {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+.plugin-runtime-view--empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.plugin-runtime-view__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+  padding: 24px;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.plugin-runtime-view__empty p {
+  margin: 0;
+}

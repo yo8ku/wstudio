@@ -401,7 +401,9 @@ export class VSCodeCommandCenter {
     this.filteredItems = await this.currentMode.provider(query);
     
     // 对于主题模式且无搜索查询时，自动定位到当前主题
-    const shouldAutoScrollToTheme = this.currentMode.prefix === 'theme:' && query === '';
+    const shouldAutoScrollToTheme =
+      (this.currentMode.prefix === 'theme:' || this.currentMode.prefix === 'file-icon-theme:')
+      && query === '';
     if (shouldAutoScrollToTheme) {
       const currentThemeIndex = this.filteredItems.findIndex(item => 
         !item.isSeparator && item.alwaysShow && item.icon === '✓'

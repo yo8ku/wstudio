@@ -15,6 +15,7 @@ import { DropdownMenu, type DropdownMenuItem, type DropdownMenuGroup } from '../
 import { Switch } from '../../common/Switch';
 import { AIProviderIconFromModel } from '../../Icons/AIProviderIcon';
 import { Icon } from '../../Icons/Icon';
+import { WorkspaceFileIcon } from '../../WorkspaceFileIcon/WorkspaceFileIcon';
 import { EditIcon } from '../../Icons/EditIcon';
 import { createPortal } from 'react-dom';
 import { ChatHistory } from './ChatHistory';
@@ -6341,7 +6342,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                               promptInputRef.current?.focus();
                             }}
                           >
-                            <Icon name={file.type === 'directory' ? 'folder' : 'file'} size={14} />
+                            <WorkspaceFileIcon
+                              filePath={file.path}
+                              name={file.name}
+                              isDirectory={file.type === 'directory'}
+                              size={14}
+                            />
                             <span className="context-menu-item-text">{file.name}</span>
                           </div>
                         ))}

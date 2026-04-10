@@ -12,7 +12,9 @@ import { useActivityBarStore } from '../../../stores/activityBarStore';
 import type { SettingsCategory } from '../Sidebar/SettingsSidebar';
 import { notification } from '../../Notification';
 import { workbenchContributionService } from '../../../services/WorkbenchContributionService';
+import { usePluginUiEntries } from '../../../hooks/usePluginUiEntries';
 import { useWorkbenchMenuContributions } from '../../../hooks/useWorkbenchMenuContributions';
+import { pluginUIService } from '../../../services/PluginUIService';
 
 interface StatusBarProps {}
 
@@ -91,6 +93,7 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
   const [currentTabType, setCurrentTabType] = useState<string | null>('file');
   const [vectorIndexingProgress, setVectorIndexingProgress] = useState<VectorIndexingProgress | null>(null);
   const statusBarMenus = useWorkbenchMenuContributions('statusBar');
+  const pluginStatusBarEntries = usePluginUiEntries('statusBar');
   const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
 
   useEffect(() => {
@@ -200,6 +203,15 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       notification.error(`插件命令执行失败: ${message}`);
+    }
+  };
+
+  const handleExecutePluginEntry = async (entryId: string): Promise<void> => {
+    try {
+      await pluginUIService.executeEntry(entryId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      notification.error(`执行插件入口失败: ${message}`);
     }
   };
 
@@ -336,6 +348,32 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
             >
               <ExtensionEntryIcon menu={menu} />
             </div>
+          ))}
+
+          {pluginStatusBarEntries.map((entry) => (
+            entry.kind === 'statusBarItem' ? (
+              <div
+                key={entry.id}
+                className="status-bar-info-btn status-bar-info-btn--action"
+                title={entry.tooltip ?? entry.title}
+                onClick={() => {
+                  void handleExecutePluginEntry(entry.id);
+                }}
+              >
+                {entry.text ?? entry.title}
+              </div>
+            ) : (
+              <div
+                key={entry.id}
+                className="status-bar-info-btn status-bar-extension-btn status-bar-info-btn--icon status-bar-info-btn--action"
+                title={entry.tooltip ?? entry.title}
+                onClick={() => {
+                  void handleExecutePluginEntry(entry.id);
+                }}
+              >
+                <Icon className="extension-icon" name={entry.icon ?? 'extensions'} size={14} />
+              </div>
+            )
           ))}
 
           <div

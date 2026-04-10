@@ -21,7 +21,6 @@ import { AIChatPanel } from './AIChatPanel/AIChatPanel';
 import { BackgroundImageLayer } from './BackgroundImageLayer/BackgroundImageLayer';
 import { Panel, type PanelPlacement, type PanelView } from './Panel';
 import { VSCodeCommandCenter } from '../../command-center/VSCodeCommandCenter';
-import { IconThemeCommandProvider } from '../../command-center/IconThemeCommandProvider';
 import { ThemeCommandProvider } from '../../command-center/ThemeCommandProvider';
 import { MarkdownCommandProvider } from '../../command-center/MarkdownCommandProvider';
 import { FileCommandProvider } from '../../command-center/FileCommandProvider';
@@ -29,12 +28,14 @@ import { AIConfigCommandProvider } from '../../command-center/AIConfigCommandPro
 import { ExtensionDevelopmentCommandProvider } from '../../command-center/ExtensionDevelopmentCommandProvider';
 import { PluginCommandProvider } from '../../command-center/PluginCommandProvider';
 import { getGlobalCommandCenter, setGlobalCommandCenter } from '../../command-center/GlobalCommandCenter';
-import { IconThemeProvider } from '../../contexts/IconThemeContext';
 import { GlobalModal } from '../GlobalModal';
 import { workbenchContributionService } from '../../services/WorkbenchContributionService';
 import { useThemeStore } from '../../stores/themeStore';
 import { useActivityBarStore } from '../../stores/activityBarStore';
 import { notification } from '../Notification';
+import { usePluginUiEntries } from '../../hooks/usePluginUiEntries';
+import { pluginUIService } from '../../services/PluginUIService';
+import { WorkspaceFileIconThemeBootstrap } from '../WorkspaceFileIcon/WorkspaceFileIconThemeBootstrap';
 
 export type { ActivityBarItem };
 
@@ -229,7 +230,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   
   // 鍏ㄥ眬鍛戒护涓績
   const commandCenterRef = useRef<VSCodeCommandCenter | null>(null);
-  const iconThemeProviderRef = useRef<IconThemeCommandProvider | null>(null);
   const themeProviderRef = useRef<ThemeCommandProvider | null>(null);
   const markdownProviderRef = useRef<MarkdownCommandProvider | null>(null);
   const fileProviderRef = useRef<FileCommandProvider | null>(null);
@@ -237,13 +237,30 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const extensionDevelopmentProviderRef = useRef<ExtensionDevelopmentCommandProvider | null>(null);
   const pluginCommandProviderRef = useRef<PluginCommandProvider | null>(null);
   const panelRevealTokensRef = useRef(new Map<string, number>());
+  const pluginUiEntries = usePluginUiEntries('activityBar');
   const pluginActivityItems = useMemo(
-    () => workbenchContributions.viewContainers.map(container => ({
-      id: toPluginActivityBarItem(container.containerKey),
-      title: container.title,
-      iconPath: container.icon,
-    })),
-    [workbenchContributions.viewContainers],
+    () => {
+      const containerItems = workbenchContributions.viewContainers.map(container => ({
+        id: toPluginActivityBarItem(container.containerKey),
+        title: container.title,
+        iconPath: container.icon,
+      }));
+      const entryItems = pluginUiEntries.map(entry => ({
+        id: toPluginActivityBarItem(`entry:${entry.id}`),
+        title: entry.title,
+        iconPath: null,
+        iconName: entry.icon,
+        onClick: () => {
+          void pluginUIService.executeEntry(entry.id).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            notification.error(`执行插件入口失败: ${message}`);
+          });
+        },
+      }));
+
+      return [...containerItems, ...entryItems];
+    },
+    [pluginUiEntries, workbenchContributions.viewContainers],
   );
 
   const loadWorkbenchContributions = useCallback(async (): Promise<void> => {
@@ -613,7 +630,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     const commandCenter = getGlobalCommandCenter() ?? new VSCodeCommandCenter();
     commandCenterRef.current = commandCenter;
     setGlobalCommandCenter(commandCenter);
-    iconThemeProviderRef.current = new IconThemeCommandProvider(commandCenter);
     themeProviderRef.current = new ThemeCommandProvider(commandCenter);
     markdownProviderRef.current = new MarkdownCommandProvider(commandCenter);
     fileProviderRef.current = new FileCommandProvider(commandCenter);
@@ -623,7 +639,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     
     // 绛夊緟鍛戒护鎻愪緵鑰呭垵濮嬪寲瀹屾垚
     Promise.all([
-      iconThemeProviderRef.current.ensureInitialized(),
       pluginCommandProviderRef.current.ensureInitialized(),
     ]).then(() => {
       console.log('[MainLayout] 全局命令中心初始化完成');
@@ -636,10 +651,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         setGlobalCommandCenter(null);
       }
 
+      themeProviderRef.current?.dispose();
       pluginCommandProviderRef.current?.dispose();
       commandCenter.dispose();
       commandCenterRef.current = null;
-      iconThemeProviderRef.current = null;
       themeProviderRef.current = null;
       markdownProviderRef.current = null;
       fileProviderRef.current = null;
@@ -706,12 +721,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const isTerminalPanelOpen = !isEditorOnlyWindow && isPanelVisible && panelActiveView === 'terminal';
 
   return (
-    <IconThemeProvider>
-      <div 
-        className={`main-layout ${className}${isEditorOnlyWindow ? ' editor-only-window' : ''}`} 
+    <>
+      <div
+        className={`main-layout ${className}${isEditorOnlyWindow ? ' editor-only-window' : ''}`}
         style={mainLayoutStyle}
       >
         <BackgroundImageLayer />
+        <WorkspaceFileIconThemeBootstrap themes={workbenchContributions.fileIconThemes} />
 
         {/* 鏍囬鏍忥紙鍖呭惈鑿滃崟鏍忥級 */}
         <div
@@ -905,7 +921,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
       {/* 鍏ㄥ眬妯℃€佺獥鍙?*/}
       <GlobalModal />
-    </IconThemeProvider>
+    </>
   );
 };
-

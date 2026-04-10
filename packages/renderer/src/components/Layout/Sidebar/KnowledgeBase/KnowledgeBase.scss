@@ -215,28 +215,6 @@
     }
   }
 
-  &__type-icon {
-    width: 16px;
-    height: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-
-    .icon-folder,
-    .icon-file {
-      width: 16px;
-      height: 16px;
-    }
-  }
-
-  &__cover {
-    width: 16px;
-    height: 16px;
-    object-fit: cover;
-    border-radius: 2px;
-  }
-
   &__title {
     flex: 1;
     overflow: hidden;

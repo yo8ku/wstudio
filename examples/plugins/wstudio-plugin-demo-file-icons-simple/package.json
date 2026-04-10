@@ -1,0 +1,12 @@
+{
+  "name": "wstudio-plugin-demo-file-icons-simple",
+  "version": "1.0.0",
+  "description": "Minimal file icon theme demo plugin for WStudio",
+  "author": "WiseAI Team",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "./main.js",
+  "engines": {
+    "node": ">=20"
+  }
+}

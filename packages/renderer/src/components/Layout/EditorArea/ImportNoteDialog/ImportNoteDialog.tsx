@@ -6,8 +6,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import './ImportNoteDialog.scss';
-import { MaterialFileIcon } from '../../../FileIcon/MaterialFileIcon';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
+import { WorkspaceFileIcon } from '../../../WorkspaceFileIcon/WorkspaceFileIcon';
 
 interface NoteFile {
   id: string;
@@ -605,9 +605,13 @@ export const ImportNoteDialog: React.FC<ImportNoteDialogProps> = ({
               <CheckboxUncheckedIcon />
             )}
           </div>
-          {/* 使用应用真实的文件图标系统 */}
-          <MaterialFileIcon fileName={node.name} size={16} />
           <div className="file-content">
+            <WorkspaceFileIcon
+              filePath={node.file.id}
+              name={node.name}
+              isDirectory={false}
+              size={16}
+            />
             <h4 style={{ color: 'var(--ws-editor-foreground)' }}>{node.name}</h4>
           </div>
         </div>
@@ -640,18 +644,18 @@ export const ImportNoteDialog: React.FC<ImportNoteDialogProps> = ({
                 <CheckboxUncheckedIcon />
               )}
             </div>
-            {/* 展开/折叠箭头和文件夹图标 */}
+            {/* 展开/折叠箭头 */}
             <div
               className="folder-toggle-area"
               onClick={() => handleFolderToggle(node.path)}
             >
               <ChevronIcon isExpanded={node.isExpanded ?? true} />
-              {/* 使用应用真实的文件夹图标系统 */}
-              <MaterialFileIcon 
-                folderName={node.name} 
-                isFolder={true} 
-                isOpen={node.isExpanded ?? true} 
-                size={16} 
+              <WorkspaceFileIcon
+                filePath={node.path}
+                name={node.name}
+                isDirectory={true}
+                expanded={node.isExpanded ?? true}
+                size={16}
               />
               <span className="folder-name" style={{ color: 'var(--ws-editor-foreground)' }}>
                 {node.name}

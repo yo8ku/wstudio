@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../../Icons';
 import { SearchInput } from '../../../common/SearchInput';
+import { loadInstalledPluginExtensions, subscribeInstalledPluginExtensions } from './installedPluginExtensions';
 import { MOCK_LOCAL_EXTENSIONS } from './mockExtensions';
 import type { LocalExtensionItem } from './types';
 import './Extensions.scss';
@@ -76,6 +77,22 @@ function matchesSearch(item: LocalExtensionItem, query: string): boolean {
   ].some(value => value.toLowerCase().includes(normalizedQuery));
 }
 
+function mergeExtensions(
+  installedItems: readonly LocalExtensionItem[],
+): readonly LocalExtensionItem[] {
+  const mergedItems = [...installedItems, ...MOCK_LOCAL_EXTENSIONS];
+  const seenIds = new Set<string>();
+
+  return mergedItems.filter((item) => {
+    if (seenIds.has(item.id)) {
+      return false;
+    }
+
+    seenIds.add(item.id);
+    return true;
+  });
+}
+
 function createGroups(items: readonly LocalExtensionItem[]): readonly ExtensionGroup[] {
   return [
     {
@@ -100,6 +117,7 @@ export const Extensions: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarWidth, setSidebarWidth] = useState(0);
   const [selectedExtensionId, setSelectedExtensionId] = useState<string | null>(null);
+  const [installedPluginExtensions, setInstalledPluginExtensions] = useState<readonly LocalExtensionItem[]>([]);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set(DEFAULT_EXPANDED_GROUPS),
   );
@@ -137,7 +155,38 @@ export const Extensions: React.FC = () => {
     };
   }, []);
 
-  const filteredExtensions = MOCK_LOCAL_EXTENSIONS.filter(
+  useEffect(() => {
+    let disposed = false;
+
+    const refreshInstalledPluginExtensions = async (): Promise<void> => {
+      try {
+        const nextExtensions = await loadInstalledPluginExtensions();
+
+        if (!disposed) {
+          setInstalledPluginExtensions(nextExtensions);
+        }
+      } catch (error) {
+        console.error('[Extensions] failed to load installed plugin extensions:', error);
+
+        if (!disposed) {
+          setInstalledPluginExtensions([]);
+        }
+      }
+    };
+
+    void refreshInstalledPluginExtensions();
+
+    const unsubscribe = subscribeInstalledPluginExtensions(() => {
+      void refreshInstalledPluginExtensions();
+    });
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, []);
+
+  const filteredExtensions = mergeExtensions(installedPluginExtensions).filter(
     item => matchesSearch(item, searchQuery),
   );
   const groups = createGroups(filteredExtensions);
@@ -234,18 +283,28 @@ export const Extensions: React.FC = () => {
                               aria-pressed={isSelected}
                               title={item.displayName}
                             >
+                              {iconMode !== 'hidden' && item.badgeImagePath && (
+                                <img
+                                  src={item.badgeImagePath}
+                                  alt=""
+                                  className="extensions-sidebar__item-icon-badge"
+                                  aria-hidden="true"
+                                />
+                              )}
                               <div className="extensions-sidebar__item-icon">
                                 {iconMode !== 'hidden' && (
-                                  item.iconPath ? (
-                                    <img
-                                      src={item.iconPath}
-                                      alt=""
-                                      className="extensions-sidebar__item-icon-image"
-                                      aria-hidden="true"
-                                    />
-                                  ) : (
-                                    <Icon name={item.iconName} size={iconSize} />
-                                  )
+                                  <>
+                                    {item.iconPath ? (
+                                      <img
+                                        src={item.iconPath}
+                                        alt=""
+                                        className="extensions-sidebar__item-icon-image"
+                                        aria-hidden="true"
+                                      />
+                                    ) : (
+                                      <Icon name={item.iconName} size={iconSize} />
+                                    )}
+                                  </>
                                 )}
                               </div>
                               <div className="extensions-sidebar__item-body">

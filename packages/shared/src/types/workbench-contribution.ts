@@ -23,6 +23,8 @@ export const WORKBENCH_SETTING_VALUE_TYPES = [
 
 export type WorkbenchSettingValueType = (typeof WORKBENCH_SETTING_VALUE_TYPES)[number];
 
+export const DEFAULT_WORKBENCH_FILE_ICON_THEME_ID = 'wstudio-builtin-MaterialIcon';
+
 export interface WorkbenchContributionError {
   readonly code: string;
   readonly message: string;
@@ -67,6 +69,23 @@ export interface WorkbenchSettingContributionEntry {
   readonly options: readonly WorkbenchSettingOptionEntry[];
 }
 
+export interface WorkbenchFileIconThemeMappingEntry {
+  readonly icon: string;
+  readonly extensions: readonly string[];
+  readonly fileNames: readonly string[];
+}
+
+export interface WorkbenchFileIconThemeEntry {
+  readonly id: string;
+  readonly extensionId: string;
+  readonly extensionDisplayName: string;
+  readonly label: string;
+  readonly file: string;
+  readonly directory: string;
+  readonly directoryExpanded: string | null;
+  readonly mappings: readonly WorkbenchFileIconThemeMappingEntry[];
+}
+
 export interface WorkbenchViewContainerContributionEntry {
   readonly extensionId: string;
   readonly extensionDisplayName: string;
@@ -107,6 +126,7 @@ export interface WorkbenchContributionSnapshot {
   readonly commands: readonly WorkbenchCommandContributionEntry[];
   readonly menus: readonly WorkbenchMenuContributionEntry[];
   readonly settings: readonly WorkbenchSettingContributionEntry[];
+  readonly fileIconThemes: readonly WorkbenchFileIconThemeEntry[];
   readonly viewContainers: readonly WorkbenchViewContainerContributionEntry[];
   readonly views: readonly WorkbenchViewContributionEntry[];
   readonly runtimeWebviewPanels: readonly WorkbenchRuntimeWebviewPanelEntry[];
@@ -116,6 +136,7 @@ export const EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT: WorkbenchContributionSnapsho
   commands: [],
   menus: [],
   settings: [],
+  fileIconThemes: [],
   viewContainers: [],
   views: [],
   runtimeWebviewPanels: [],

@@ -19,6 +19,8 @@
     "selfParameter": "#ffd580"
   },
   "colors": {
+    "file.typeBackground":"#66ccff17",
+    "file.typeForeground":"#486d7f",
     "focusBorder": "#96a6cc33",
     "foreground": "#96a6cc",
     "disabledForeground": "#96a6cc66",

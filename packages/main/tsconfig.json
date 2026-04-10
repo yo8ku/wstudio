@@ -8,6 +8,8 @@
       "@note-studio/global-rag/*": ["../global-rag/src/*"],
       "@note-studio/note-system": ["../note-system/src/index.ts"],
       "@note-studio/note-system/*": ["../note-system/src/*"],
+      "@note-studio/plugin": ["../plugin/src/index.ts"],
+      "@note-studio/plugin/*": ["../plugin/src/*"],
       "@note-studio/shared": ["../shared/src/index.ts"],
       "@note-studio/shared/*": ["../shared/src/*"],
       "@note-studio/theme": ["../theme/src/index.ts"],

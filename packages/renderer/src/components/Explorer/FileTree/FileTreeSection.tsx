@@ -11,8 +11,19 @@ import { InlineInput } from '../Common/InlineInput';
 import { TreeChildren, TreeNodeRow } from '../Common/TreeNode';
 import { CustomScrollbar, CustomScrollbarRef } from '../../common/CustomScrollbar';
 import { Icon } from '../../Icons/Icon';
+import { WorkspaceFileIcon } from '../../WorkspaceFileIcon/WorkspaceFileIcon';
 import { useExplorerStore } from '../../../stores/explorerStore';
+import { getFileTreeDisplayMeta } from './fileTreeDisplay';
 import './FileTreeSection.scss';
+
+const WORKSPACE_FILE_DRAG_MIME_TYPE = 'application/x-note-studio-file-path';
+
+function normalizeDragPath(value: string): string {
+  return value
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/')
+    .replace(/\/$/, '');
+}
 
 export interface FileTreeSectionProps {
   rootName: string;
@@ -214,14 +225,6 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     };
   }, [nodes, revealRequest]);
 
-  const resolveNodeIconName = (node: FileTreeNode): 'folder' | 'folder-open' | 'file' => {
-    if (node.isDirectory) {
-      return node.isExpanded ? 'folder-open' : 'folder';
-    }
-
-    return 'file';
-  };
-
   const actions: ActionButton[] = [];
 
   if (onNewFile) {
@@ -262,20 +265,66 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
     );
   };
 
-  const renderNodeIcon = (node: FileTreeNode): React.ReactNode => {
-    return (
-      <Icon
-        iconSet="ui"
-        name={resolveNodeIconName(node)}
-        size={16}
-        className="file-tree-icon"
-      />
-    );
-  };
+  const renderNodeIcon = (
+    name: string,
+    filePath: string | null,
+    isDirectory: boolean,
+    expanded = false,
+  ): React.ReactNode => (
+    <WorkspaceFileIcon
+      filePath={filePath}
+      name={name}
+      isDirectory={isDirectory}
+      expanded={expanded}
+      size={16}
+    />
+  );
+
+  const resolveWorkspaceRelativeDragPath = useCallback((filePath: string): string => {
+    const normalizedFilePath = normalizeDragPath(filePath);
+    const normalizedRootPath = normalizeDragPath(rootPath);
+
+    if (normalizedRootPath.length === 0) {
+      return normalizedFilePath.replace(/^\/+/, '');
+    }
+
+    const comparableFilePath = normalizedFilePath.toLowerCase();
+    const comparableRootPath = normalizedRootPath.toLowerCase();
+    const rootPrefix = comparableRootPath.endsWith('/')
+      ? comparableRootPath
+      : `${comparableRootPath}/`;
+
+    if (comparableFilePath.startsWith(rootPrefix)) {
+      return normalizedFilePath.slice(rootPrefix.length);
+    }
+
+    return normalizedFilePath.replace(/^\/+/, '');
+  }, [rootPath]);
+
+  const handleNodeDragStart = useCallback((
+    node: FileTreeNode,
+    event: React.DragEvent<HTMLDivElement>,
+  ): void => {
+    if (node.isDirectory || node.path.trim().length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.dropEffect = 'copy';
+    event.dataTransfer.setData('text/plain', node.path);
+    event.dataTransfer.setData(WORKSPACE_FILE_DRAG_MIME_TYPE, resolveWorkspaceRelativeDragPath(node.path));
+    event.currentTarget.classList.add('dragging');
+  }, [resolveWorkspaceRelativeDragPath]);
+
+  const handleNodeDragEnd = useCallback((event: React.DragEvent<HTMLDivElement>): void => {
+    event.currentTarget.classList.remove('dragging');
+  }, []);
 
   const renderNode = (node: FileTreeNode): React.ReactNode => {
     const isSelected = node.path === selectedFilePath;
     const isContextMenuTarget = node.path === contextMenuSelectionPath;
+    const fileDisplayMeta = node.isDirectory ? null : getFileTreeDisplayMeta(node.name);
 
     if (node.isCreating) {
       return (
@@ -296,13 +345,10 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
             event.preventDefault();
           }}
           leading={<span className="file-tree-chevron" />}
-          icon={(
-            <Icon
-              iconSet="ui"
-              name={node.creatingType === 'folder' ? 'folder' : 'file'}
-              size={16}
-              className="file-tree-icon"
-            />
+          icon={renderNodeIcon(
+            '',
+            null,
+            node.creatingType === 'folder',
           )}
         >
           <InlineInput
@@ -332,7 +378,12 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
               event.preventDefault();
             }}
             leading={node.isDirectory ? renderChevron(Boolean(node.isExpanded)) : <span className="file-tree-chevron" />}
-            icon={renderNodeIcon(node)}
+            icon={renderNodeIcon(
+              node.name,
+              node.path,
+              node.isDirectory,
+              Boolean(node.isExpanded),
+            )}
           >
             <InlineInput
               initialValue={node.name}
@@ -361,6 +412,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
           parentDepth={parentDepth}
           selected={isSelected}
           contextMenuActive={isContextMenuTarget}
+          title={node.name}
           dataFilePath={node.path}
           onClick={(event) => {
             if (node.isDirectory) {
@@ -378,10 +430,23 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
             }
           }}
           onContextMenu={(event) => callbacks?.onContextMenu?.(node, event)}
+          draggable={!node.isDirectory}
+          onDragStart={(event) => handleNodeDragStart(node, event)}
+          onDragEnd={handleNodeDragEnd}
           leading={node.isDirectory ? renderChevron(Boolean(node.isExpanded)) : <span className="file-tree-chevron" />}
-          icon={renderNodeIcon(node)}
+          icon={renderNodeIcon(
+            node.name,
+            node.path,
+            node.isDirectory,
+            Boolean(node.isExpanded),
+          )}
         >
-          <span className="file-tree-name">{node.name}</span>
+          <span className="file-tree-name">
+            {node.isDirectory ? node.name : fileDisplayMeta?.displayName ?? node.name}
+          </span>
+          {!node.isDirectory && fileDisplayMeta?.extensionBadge ? (
+            <span className="file-tree-extension-badge">{fileDisplayMeta.extensionBadge}</span>
+          ) : null}
         </TreeNodeRow>
         {node.isDirectory && node.isExpanded && node.children && (
           <TreeChildren parentDepth={depth}>

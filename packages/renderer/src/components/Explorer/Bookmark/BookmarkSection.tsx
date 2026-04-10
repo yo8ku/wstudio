@@ -11,6 +11,7 @@ import { CustomScrollbar } from '../../common/CustomScrollbar';
 import { ContextMenu, type ContextMenuItem } from '../Common/ContextMenu';
 import { InlineInput } from '../Common/InlineInput';
 import { TreeChildren, TreeNodeRow } from '../Common/TreeNode';
+import { WorkspaceFileIcon } from '../../WorkspaceFileIcon/WorkspaceFileIcon';
 import type { BookmarkGroupItem, BookmarkGroupSection, BookmarkNoteDisplayItem } from './types';
 import './BookmarkSection.scss';
 
@@ -182,7 +183,14 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
           onNoteSelect(item);
         }}
         leading={<span className="file-tree-chevron" />}
-        icon={<Icon name="file" size={16} className="file-tree-icon" />}
+        icon={(
+          <WorkspaceFileIcon
+            filePath={item.note.path}
+            name={item.entry.name}
+            isDirectory={false}
+            size={16}
+          />
+        )}
       >
         <span className="file-tree-name">{item.entry.name}</span>
       </TreeNodeRow>
@@ -200,7 +208,6 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
         creating={true}
         nodeClassName="bookmark-group bookmark-group--creating"
         leading={<span className="file-tree-chevron" />}
-        icon={<Icon name="folder" size={16} className="file-tree-icon" />}
       >
         <InlineInput
           placeholder={labelNewBookmarkGroup}
@@ -262,7 +269,6 @@ export const BookmarkSection: React.FC<BookmarkSectionProps> = ({
               className="file-tree-chevron"
             />
           )}
-          icon={<Icon name="folder" size={16} className="file-tree-icon" />}
         >
           {isEditing ? (
             <InlineInput

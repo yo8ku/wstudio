@@ -10,7 +10,7 @@ import { extensionDevelopmentService } from '../services/ExtensionDevelopmentSer
 export class ExtensionDevelopmentCommandProvider {
   private readonly commandCenter: VSCodeCommandCenter;
 
-  constructor(commandCenter: VSCodeCommandCenter) {
+  public constructor(commandCenter: VSCodeCommandCenter) {
     this.commandCenter = commandCenter;
     this.registerCommands();
   }
@@ -20,23 +20,38 @@ export class ExtensionDevelopmentCommandProvider {
       {
         id: 'development.reloadPlugins',
         label: '开发: 重新加载插件',
-        description: '重新扫描插件目录并重启已激活的插件宿主',
+        description: '重新扫描插件目录并重新加载插件宿主',
         category: '开发',
         execute: async () => {
           try {
             const result = await extensionDevelopmentService.reloadPlugins();
+
             if (result.failureCount > 0) {
               const firstFailure = result.failures[0];
               const failureDetail = firstFailure
-                ? ` 首个失败: ${firstFailure.message}`
+                ? ` 首个扫描失败: ${firstFailure.message}`
                 : '';
+
               notification.warning(
-                `插件已重新加载：${result.registeredCount} 个成功，${result.failureCount} 个失败。${failureDetail}`,
+                `插件已重新加载：扫描到 ${result.registeredCount} 个，启用 ${result.enabledCount} 个，扫描失败 ${result.failureCount} 个。${failureDetail}`,
               );
               return;
             }
 
-            notification.success(`插件已重新加载：共发现 ${result.registeredCount} 个插件。`);
+            if (result.disabledCount > 0) {
+              const firstDisabled = result.disabledPlugins[0];
+              const failureDetail = firstDisabled?.message
+                ? ` 首个未启用原因: ${firstDisabled.message}`
+                : '';
+              notification.warning(
+                `插件已重新加载：扫描到 ${result.registeredCount} 个，启用 ${result.enabledCount} 个，未启用 ${result.disabledCount} 个。${failureDetail}`,
+              );
+              return;
+            }
+
+            notification.success(
+              `插件已重新加载：扫描到 ${result.registeredCount} 个，已全部启用。`,
+            );
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error('[ExtensionDevelopmentCommandProvider] 重新加载插件失败:', error);

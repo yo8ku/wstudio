@@ -7,10 +7,15 @@ import ReactDOM from 'react-dom/client';
 import { BookmarkGroupPickerWindow } from './components/Popup/BookmarkGroupPickerWindow/BookmarkGroupPickerWindow';
 import { MainLayout } from './components/Layout/MainLayout';
 import { initIconSystem } from './components/Icons';
-import { NotificationContainer } from './components/Notification';
+import { NotificationContainer, notification } from './components/Notification';
+import { GlobalPluginMenu } from './components/GlobalPluginMenu';
+import { GlobalPluginSuggestModal } from './components/GlobalPluginSuggestModal';
 import { AppI18nProvider } from './contexts/AppI18nProvider';
 import { Toaster } from './components/ui/sonner';
 import { knowledgeBaseRecoveryService } from './services/KnowledgeBaseRecoveryService';
+import { modal, useModalStore } from './stores/modalStore';
+import { usePluginMenuStore } from './stores/pluginMenuStore';
+import { usePluginSuggestModalStore } from './stores/pluginSuggestModalStore';
 import './styles/index.scss';
 import './styles/aiResponseFormatter.scss';
 
@@ -21,6 +26,7 @@ const isBookmarkGroupPickerPopup = popupView === 'bookmark-group-picker';
 declare global {
   interface Window {
     __REACT_ROOT__?: ReactRoot;
+    __PLUGIN_RUNTIME_BRIDGE_INSTALLED__?: boolean;
   }
 }
 
@@ -152,6 +158,296 @@ function initializeRecoveryService(): void {
   }, 2000);
 }
 
+function installPluginRuntimeBridge(): void {
+  if (window.__PLUGIN_RUNTIME_BRIDGE_INSTALLED__) {
+    return;
+  }
+
+  const ipcRenderer = window.electron?.ipcRenderer;
+
+  if (!ipcRenderer) {
+    return;
+  }
+
+  let pendingMouseUpDispatch: ReturnType<typeof setTimeout> | null = null;
+  let pendingMouseMoveFrame: number | null = null;
+  let pendingMouseMoveEvent:
+    | {
+      readonly clientX: number;
+      readonly clientY: number;
+      readonly button: number;
+    }
+    | null = null;
+
+  ipcRenderer.on(
+    'plugin-runtime:show-notice',
+    (_event: object, payload: { readonly message: string; readonly level: 'success' | 'error' | 'warning' | 'info' }) => {
+      notification[payload.level](payload.message);
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:open-modal',
+    (_event: object, payload: { readonly title: string; readonly description: string | null }) => {
+      modal.info({
+        title: payload.title,
+        description: payload.description ?? undefined,
+        confirmText: '关闭',
+        cancelText: '取消',
+      });
+    },
+  );
+
+  ipcRenderer.on('plugin-runtime:close-modal', () => {
+    useModalStore.getState().closeModal();
+  });
+
+  ipcRenderer.on(
+    'plugin-runtime:open-suggest-modal',
+    (
+      _event: object,
+      payload: {
+        readonly modalId: string;
+        readonly title: string;
+        readonly placeholder: string;
+        readonly query: string;
+        readonly emptyStateText: string;
+        readonly instructions: readonly {
+          readonly command: string;
+          readonly purpose: string;
+        }[];
+        readonly items: readonly {
+          readonly id: string;
+          readonly title: string;
+          readonly description: string | null;
+        }[];
+      },
+    ) => {
+      usePluginSuggestModalStore.getState().openModal(payload);
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:update-suggest-modal',
+    (
+      _event: object,
+      payload: {
+        readonly modalId: string;
+        readonly title: string;
+        readonly placeholder: string;
+        readonly query: string;
+        readonly emptyStateText: string;
+        readonly instructions: readonly {
+          readonly command: string;
+          readonly purpose: string;
+        }[];
+        readonly items: readonly {
+          readonly id: string;
+          readonly title: string;
+          readonly description: string | null;
+        }[];
+      },
+    ) => {
+      usePluginSuggestModalStore.getState().updateModal(payload);
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:close-suggest-modal',
+    (
+      _event: object,
+      payload: {
+        readonly modalId: string;
+      },
+    ) => {
+      usePluginSuggestModalStore.getState().closeModalById(payload.modalId);
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:open-menu',
+    (
+      _event: object,
+      payload: {
+        readonly menuId: string;
+        readonly items: readonly {
+          readonly id: string;
+          readonly title: string;
+          readonly icon: string | null;
+          readonly checked: boolean | null;
+          readonly disabled: boolean;
+          readonly warning: boolean;
+          readonly label: boolean;
+          readonly section: string;
+          readonly separator: boolean;
+        }[];
+        readonly position: {
+          readonly x: number;
+          readonly y: number;
+          readonly width?: number;
+          readonly overlap?: boolean;
+          readonly left?: boolean;
+        } | null;
+        readonly noIcon: boolean;
+        readonly useNativeMenu: boolean;
+      },
+    ) => {
+      usePluginMenuStore.getState().openMenu(payload);
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:close-menu',
+    (
+      _event: object,
+      payload: {
+        readonly menuId: string;
+      },
+    ) => {
+      usePluginMenuStore.getState().closeMenuById(payload.menuId);
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:open-file',
+    (
+      _event: object,
+      payload: {
+        readonly path: string;
+        readonly title: string;
+        readonly language: string;
+        readonly content: string;
+      },
+    ) => {
+      window.dispatchEvent(new CustomEvent('open-editor-tab', {
+        detail: {
+          path: payload.path,
+          title: payload.title,
+          language: payload.language,
+          content: payload.content,
+          type: 'file',
+        },
+      }));
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:open-view',
+    (
+      _event: object,
+      payload: {
+        readonly leafId: string;
+        readonly path: string;
+        readonly sourcePath: string | null;
+        readonly title: string;
+        readonly viewType: string;
+        readonly icon: string | null;
+        readonly html: string;
+        readonly active: boolean;
+      },
+    ) => {
+      window.dispatchEvent(new CustomEvent('open-plugin-view-tab', {
+        detail: payload,
+      }));
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:update-view',
+    (
+      _event: object,
+      payload: {
+        readonly leafId: string;
+        readonly path: string;
+        readonly sourcePath: string | null;
+        readonly title: string;
+        readonly viewType: string;
+        readonly icon: string | null;
+        readonly html: string;
+        readonly active: boolean;
+      },
+    ) => {
+      window.dispatchEvent(new CustomEvent('open-plugin-view-tab', {
+        detail: payload,
+      }));
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:close-view',
+    (
+      _event: object,
+      payload: {
+        readonly leafId: string;
+      },
+    ) => {
+      window.dispatchEvent(new CustomEvent('close-plugin-view-tab', {
+        detail: payload,
+      }));
+    },
+  );
+
+  document.addEventListener('click', () => {
+    ipcRenderer.send('plugin-runtime:dispatch-document-event', {
+      type: 'click',
+    });
+  }, true);
+
+  document.addEventListener('mouseup', (event) => {
+    if (pendingMouseUpDispatch !== null) {
+      clearTimeout(pendingMouseUpDispatch);
+    }
+
+    const eventSnapshot = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      button: event.button,
+    };
+
+    pendingMouseUpDispatch = setTimeout(() => {
+      ipcRenderer.send('plugin-runtime:dispatch-document-event', {
+        type: 'mouseup',
+        clientX: eventSnapshot.clientX,
+        clientY: eventSnapshot.clientY,
+        button: eventSnapshot.button,
+      });
+      pendingMouseUpDispatch = null;
+    }, 40);
+  }, true);
+
+  document.addEventListener('mousemove', (event) => {
+    if (event.buttons === 0) {
+      return;
+    }
+
+    pendingMouseMoveEvent = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      button: event.button,
+    };
+
+    if (pendingMouseMoveFrame !== null) {
+      return;
+    }
+
+    pendingMouseMoveFrame = window.requestAnimationFrame(() => {
+      if (pendingMouseMoveEvent !== null) {
+        ipcRenderer.send('plugin-runtime:dispatch-document-event', {
+          type: 'mousemove',
+          clientX: pendingMouseMoveEvent.clientX,
+          clientY: pendingMouseMoveEvent.clientY,
+          button: pendingMouseMoveEvent.button,
+        });
+      }
+
+      pendingMouseMoveEvent = null;
+      pendingMouseMoveFrame = null;
+    });
+  }, true);
+
+  window.__PLUGIN_RUNTIME_BRIDGE_INSTALLED__ = true;
+}
+
 const App: React.FC = () => {
   if (isBookmarkGroupPickerPopup) {
     return <BookmarkGroupPickerWindow />;
@@ -160,6 +456,8 @@ const App: React.FC = () => {
   return (
     <>
       <MainLayout />
+      <GlobalPluginMenu />
+      <GlobalPluginSuggestModal />
       <NotificationContainer />
       <Toaster />
     </>
@@ -172,6 +470,7 @@ clearOldBackgroundCover();
 installSvgCleanup();
 installDevtoolsShortcut();
 initIconSystem();
+installPluginRuntimeBridge();
 if (!isBookmarkGroupPickerPopup) {
   initializeRecoveryService();
 }

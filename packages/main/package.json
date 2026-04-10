@@ -14,6 +14,7 @@
       "@langchain/textsplitters": "^1.0.1",
       "@note-studio/global-rag": "workspace:*",
       "@note-studio/note-system": "workspace:*",
+      "@note-studio/plugin": "workspace:*",
     "@note-studio/shared": "workspace:*",
     "@note-studio/theme": "workspace:*",
     "better-sqlite3": "^11.0.0",

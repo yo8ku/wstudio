@@ -45,6 +45,10 @@
   gap: 4px;
 }
 
+.titlebar-plugin-controls {
+  max-width: 240px;
+}
+
 .titlebar-window-controls {
   height: 100%;
   gap: 0;
@@ -67,6 +71,10 @@
     background-color: rgba(116, 116, 116, 0.274) !important;
     color: var(--ws-activityBar-foreground);
   }
+}
+
+.titlebar-plugin-button {
+  flex-shrink: 0;
 }
 
 .titlebar-ai-button,

@@ -3,7 +3,6 @@
  */
 
 export { VSCodeCommandCenter } from './VSCodeCommandCenter';
-export { IconThemeCommandProvider } from './IconThemeCommandProvider';
 export { ThemeCommandProvider } from './ThemeCommandProvider';
 export { MarkdownCommandProvider } from './MarkdownCommandProvider';
 export { FileCommandProvider } from './FileCommandProvider';

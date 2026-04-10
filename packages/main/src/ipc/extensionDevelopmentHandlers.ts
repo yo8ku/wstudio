@@ -6,7 +6,10 @@ import { ipcMain } from 'electron';
 import type {
   ExtensionDevelopmentReloadResponse,
 } from '@note-studio/shared';
-import { EMPTY_EXTENSION_DEVELOPMENT_RELOAD_RESULT } from '../services/LegacyPluginPlatformStub';
+import {
+  pluginDiscoveryService,
+  pluginHostManager,
+} from '../services/LegacyPluginPlatformStub';
 
 let handlersRegistered = false;
 
@@ -32,9 +35,30 @@ export function registerExtensionDevelopmentHandlers(): void {
   ipcMain.handle(
     'extensions:development:reload-plugins',
     async (): Promise<ExtensionDevelopmentReloadResponse> => {
+      await pluginHostManager.reloadAll();
+      const summary = pluginDiscoveryService.getLastScanSummary();
+      const installedPlugins = pluginHostManager.getInstalledPlugins();
+      const enabledCount = installedPlugins.filter((plugin) => plugin.enabled).length;
+      const disabledCount = installedPlugins.length - enabledCount;
+      const disabledPlugins = installedPlugins
+        .filter((plugin) => !plugin.enabled)
+        .map((plugin) => ({
+          id: plugin.id,
+          name: plugin.name,
+          message: plugin.failureMessage,
+        }));
+
       return {
         success: true,
-        data: EMPTY_EXTENSION_DEVELOPMENT_RELOAD_RESULT,
+        data: {
+          roots: summary.roots,
+          registeredCount: summary.registeredCount,
+          enabledCount,
+          disabledCount,
+          failureCount: summary.failureCount,
+          failures: summary.failures,
+          disabledPlugins,
+        },
       };
     },
   );

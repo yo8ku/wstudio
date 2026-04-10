@@ -167,6 +167,18 @@
       line-height: 1.4;
     }
 
+    .plugin-setting-preview-lines {
+      margin-bottom: 6px;
+
+      .setting-description {
+        margin-bottom: 4px;
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+    }
+
     .setting-key {
       display: inline-block;
       font-size: 11px;

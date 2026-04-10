@@ -1,0 +1,71 @@
+{
+  "id": "wstudio-plugin-demo-file-icons-simple",
+  "name": "WStudio Plugin Demo File Icons Simple",
+  "author": "WiseAI Team",
+  "version": "1.0.0",
+  "description": "Minimal file icon theme demo plugin for WStudio.",
+  "releaseChannel": "development",
+  "engines": {
+    "wstudio": "^1.0.0",
+    "pluginApi": "^1.0.0"
+  },
+  "keywords": [
+    "demo",
+    "file-icons",
+    "theme",
+    "wstudio"
+  ],
+  "platforms": [
+    "desktop"
+  ],
+  "isDesktopOnly": true,
+  "contributes": {
+    "fileIcons": {
+      "label": "Simple Demo File Icons",
+      "file": "icons/file.svg",
+      "directory": "icons/folder.svg",
+      "directoryExpanded": "icons/folder-open.svg",
+      "mappings": [
+        {
+          "icon": "icons/markdown.svg",
+          "fileNames": [
+            "readme",
+            "readme.md"
+          ],
+          "extensions": [
+            "md",
+            "markdown"
+          ]
+        },
+        {
+          "icon": "icons/json.svg",
+          "fileNames": [
+            "package.json",
+            "tsconfig.json",
+            "jsconfig.json"
+          ],
+          "extensions": [
+            "json",
+            "jsonc"
+          ]
+        },
+        {
+          "icon": "icons/typescript.svg",
+          "extensions": [
+            "ts",
+            "tsx"
+          ]
+        },
+        {
+          "icon": "icons/javascript.svg",
+          "extensions": [
+            "js",
+            "jsx",
+            "mjs",
+            "cjs"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -9,10 +9,10 @@ import { useTranslation } from 'react-i18next';
 import type { KnowledgeItem } from '../../Sidebar/KnowledgeBase/types';
 import { SearchFilterIcon, SortIcon, AddDocumentIcon, ClearIcon, CheckIcon, RefreshIcon, SettingsIcon } from '../../Sidebar/KnowledgeBase/KnowledgeBaseIcons';
 import { AddFileMenu } from '../AddFileMenu';
-import { MaterialFileIcon } from '../../../FileIcon/MaterialFileIcon';
 import { knowledgeBaseService } from '../../Sidebar/KnowledgeBase/knowledgeBaseService';
 import { ragProcessingService } from '../../../../services/RAGProcessingService';
 import { toastService } from '../../../../services/ToastService';
+import { WorkspaceFileIcon } from '../../../WorkspaceFileIcon/WorkspaceFileIcon';
 import './KnowledgeBaseView.scss';
 
 export interface KnowledgeBaseViewProps {
@@ -910,29 +910,6 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     }
   }, [failedFiles, isRetryingFailedFiles, knowledgeId, translateText]);
 
-  // 获取文件图标（使用应用统一的图标系统）
-  const getFileIcon = (item: KnowledgeItem) => {
-    if (item.type === 'folder') {
-      const isExpanded = expandedFolders.has(item.id);
-      return (
-        <MaterialFileIcon
-          folderName={item.title}
-          isFolder={true}
-          isOpen={isExpanded}
-          size={16}
-        />
-      );
-    } else {
-      return (
-        <MaterialFileIcon
-          fileName={item.title}
-          isFolder={false}
-          size={16}
-        />
-      );
-    }
-  };
-
   // 重新上传失败的文件
   const handleRetryFile = useCallback(async (item: KnowledgeItem) => {
     if (!item.path) {
@@ -1014,7 +991,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
         <div key={item.id} className="knowledge-item-wrapper">
           <div
             className={`knowledge-item ${isSelected ? 'selected' : ''}`}
-            style={{ paddingLeft: item.type === 'folder' ? '28px' : '73px' }}
+            style={{ paddingLeft: item.type === 'folder' ? '28px' : '50px' }}
             onClick={() => handleItemClick(item)}
             onDoubleClick={() => handleItemDoubleClick(item)}
           >
@@ -1025,7 +1002,13 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                 </svg>
               </span>
             )}
-            <span className="item-icon">{getFileIcon(item)}</span>
+            <WorkspaceFileIcon
+              filePath={item.path}
+              name={item.title}
+              isDirectory={item.type === 'folder'}
+              expanded={item.type === 'folder' && isExpanded}
+              size={16}
+            />
             <span className="item-title">{item.title}</span>
             {item.type === 'file' && (
               <>
@@ -1298,4 +1281,3 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     </div>
   );
 };
-

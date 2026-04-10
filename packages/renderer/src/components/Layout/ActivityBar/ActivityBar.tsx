@@ -32,7 +32,9 @@ export type ActivityBarItem = BuiltinActivityBarItem | PluginActivityBarItem;
 export interface AdditionalActivityBarItem {
   readonly id: PluginActivityBarItem;
   readonly iconPath: string | null;
+  readonly iconName?: string | null;
   readonly title: string;
+  readonly onClick?: () => void;
 }
 
 export function toPluginActivityBarItem(containerKey: string): PluginActivityBarItem {
@@ -55,10 +57,11 @@ interface ActivityBarProps {
 
 interface ActivityItem {
   readonly id: ActivityBarItem;
-  readonly iconName?: string;
+  readonly iconName?: string | null;
   readonly iconPath?: string | null;
   readonly iconSet?: string;
   readonly title: string;
+  readonly onClick?: () => void;
   readonly visibilityKey?: keyof ActivityBarVisibility;
 }
 
@@ -138,18 +141,32 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
 
   const handleActivityKeyDown = (
     event: React.KeyboardEvent<HTMLDivElement>,
-    item: ActivityBarItem,
+    item: ActivityItem,
   ): void => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      onActivityClick(item);
+      if (item.onClick) {
+        item.onClick();
+        return;
+      }
+
+      onActivityClick(item.id);
     }
   };
 
   const visibleTopActivities = topActivities.filter(
     activity => !activity.visibilityKey || visibility[activity.visibilityKey],
   );
-  const renderedTopActivities = [...visibleTopActivities, ...additionalItems];
+  const renderedTopActivities: readonly ActivityItem[] = [
+    ...visibleTopActivities,
+    ...additionalItems.map((item) => ({
+      id: item.id,
+      iconName: item.iconName ?? null,
+      iconPath: item.iconPath,
+      title: item.title,
+      onClick: item.onClick,
+    })),
+  ];
 
   const renderActivityIcon = (activity: ActivityItem): React.ReactNode => {
     if (activity.id === 'explorer') {
@@ -171,6 +188,16 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       );
     }
 
+    if (activity.iconName) {
+      return (
+        <Icon
+          iconSet={activity.iconSet}
+          name={activity.iconName}
+          size={ACTIVITY_BAR_ICON_SIZE}
+        />
+      );
+    }
+
     return (
       <Icon
         iconSet={activity.iconSet}
@@ -186,14 +213,21 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
         {renderedTopActivities.map(activity => (
           <div
             key={activity.id}
-            onClick={() => onActivityClick(activity.id)}
-            className={`activity-bar-item ${activeItem === activity.id ? 'active' : ''}`}
+            onClick={() => {
+              if (activity.onClick) {
+                activity.onClick();
+                return;
+              }
+
+              onActivityClick(activity.id);
+            }}
+            className={`activity-bar-item ${activity.onClick === undefined && activeItem === activity.id ? 'active' : ''}`}
             role="button"
             tabIndex={0}
             aria-label={activity.title}
-            aria-pressed={activeItem === activity.id}
+            aria-pressed={activity.onClick === undefined && activeItem === activity.id}
             title={activity.title}
-            onKeyDown={event => handleActivityKeyDown(event, activity.id)}
+            onKeyDown={event => handleActivityKeyDown(event, activity)}
           >
             <span className="activity-bar-icon">
               {renderActivityIcon(activity)}
@@ -215,7 +249,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
             aria-label={activity.title}
             aria-pressed={activeItem === activity.id}
             title={activity.title}
-            onKeyDown={event => handleActivityKeyDown(event, activity.id)}
+            onKeyDown={event => handleActivityKeyDown(event, activity)}
           >
             <span className="activity-bar-icon">
               {renderActivityIcon(activity)}

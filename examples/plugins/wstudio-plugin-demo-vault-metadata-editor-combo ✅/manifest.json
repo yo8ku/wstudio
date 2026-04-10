@@ -1,0 +1,17 @@
+{
+  "id": "wstudio-plugin-demo-vault-metadata-editor-combo",
+  "name": "WStudio Plugin Demo Vault Metadata Editor Combo",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Document curation workspace demo covering vault, metadata, and editor together.",
+  "author": "WiseAI Team",
+  "authorUrl": "https://github.com/arebelamazuera",
+  "homepageUrl": "https://github.com/arebelamazuera/wstudio-api",
+  "repositoryUrl": "https://github.com/arebelamazuera/wstudio-api",
+  "fundingUrl": "https://github.com/sponsors/arebelamazuera",
+  "releaseChannel": "development",
+  "isDesktopOnly": false,
+  "engines": {
+    "wstudio": "^1.0.0"
+  }
+}

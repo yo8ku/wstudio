@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Icon } from '../../../Icons';
 import { MOCK_LOCAL_EXTENSIONS } from '../../Sidebar/Extensions/mockExtensions';
+import { loadInstalledPluginExtensions, subscribeInstalledPluginExtensions } from '../../Sidebar/Extensions/installedPluginExtensions';
 import type { LocalExtensionItem } from '../../Sidebar/Extensions/types';
 import './ExtensionView.scss';
 
@@ -24,7 +25,42 @@ function findExtension(extensionPath: string): LocalExtensionItem | null {
 }
 
 export const ExtensionView: React.FC<ExtensionViewProps> = ({ extensionPath }) => {
-  const extension = findExtension(extensionPath);
+  const [installedPluginExtensions, setInstalledPluginExtensions] = useState<readonly LocalExtensionItem[]>([]);
+  const extensionId = getExtensionId(extensionPath);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const refreshInstalledPluginExtensions = async (): Promise<void> => {
+      try {
+        const nextExtensions = await loadInstalledPluginExtensions();
+
+        if (!disposed) {
+          setInstalledPluginExtensions(nextExtensions);
+        }
+      } catch (error) {
+        console.error('[ExtensionView] failed to load installed plugin extensions:', error);
+
+        if (!disposed) {
+          setInstalledPluginExtensions([]);
+        }
+      }
+    };
+
+    void refreshInstalledPluginExtensions();
+
+    const unsubscribe = subscribeInstalledPluginExtensions(() => {
+      void refreshInstalledPluginExtensions();
+    });
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, []);
+
+  const extension = installedPluginExtensions.find(item => item.id === extensionId)
+    ?? findExtension(extensionPath);
 
   if (!extension) {
     return (
@@ -38,7 +74,16 @@ export const ExtensionView: React.FC<ExtensionViewProps> = ({ extensionPath }) =
     <div className="extension-view">
       <header className="extension-view__header">
         <div className="extension-view__icon">
-          <Icon name={extension.iconName} size={26} />
+          {extension.iconPath ? (
+            <img
+              src={extension.iconPath}
+              alt=""
+              className="extension-view__icon-image"
+              aria-hidden="true"
+            />
+          ) : (
+            <Icon name={extension.iconName} size={26} />
+          )}
         </div>
         <div className="extension-view__heading">
           <p className="extension-view__eyebrow">Extension</p>

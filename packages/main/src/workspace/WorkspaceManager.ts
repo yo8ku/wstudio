@@ -5,6 +5,7 @@
 
 import Store from 'electron-store';
 import * as path from 'path';
+import * as fsSync from 'fs';
 import * as fs from 'fs/promises';
 import { app } from 'electron';
 
@@ -13,6 +14,18 @@ interface WorkspaceConfig {
   workspaceDir: string;
   recentFiles: string[];
   lastOpened: string;
+  openCanvasFiles: string[];
+  openCanvasLayout: WorkspaceOpenCanvasLayoutItem[];
+}
+
+const WORKSPACE_CANVAS_PANE_IDS = ['left-top', 'left-bottom', 'right-top', 'right-bottom'] as const;
+
+export type WorkspaceCanvasPaneId = typeof WORKSPACE_CANVAS_PANE_IDS[number];
+
+export interface WorkspaceOpenCanvasLayoutItem {
+  path: string;
+  paneId: WorkspaceCanvasPaneId;
+  active: boolean;
 }
 
 export class WorkspaceManager {
@@ -27,8 +40,144 @@ export class WorkspaceManager {
         workspaceDir: '',
         recentFiles: [],
         lastOpened: '',
+        openCanvasFiles: [],
+        openCanvasLayout: [],
       },
     });
+  }
+
+  private normalizeStoredPath(filePath: string): string {
+    return path.normalize(filePath).toLowerCase();
+  }
+
+  private matchesStoredPathOrDescendant(candidatePath: string, targetPath: string): boolean {
+    const normalizedCandidate = path.normalize(candidatePath);
+    const normalizedTarget = path.normalize(targetPath);
+    const comparableCandidate = this.normalizeStoredPath(normalizedCandidate);
+    const comparableTarget = this.normalizeStoredPath(normalizedTarget);
+
+    return comparableCandidate === comparableTarget
+      || comparableCandidate.startsWith(`${comparableTarget}${path.sep}`);
+  }
+
+  private rewriteStoredPathForRename(candidatePath: string, oldPath: string, newPath: string): string | null {
+    const normalizedCandidate = path.normalize(candidatePath);
+    const normalizedOldPath = path.normalize(oldPath);
+    const normalizedNewPath = path.normalize(newPath);
+    const comparableCandidate = this.normalizeStoredPath(normalizedCandidate);
+    const comparableOldPath = this.normalizeStoredPath(normalizedOldPath);
+
+    if (comparableCandidate === comparableOldPath) {
+      return normalizedNewPath;
+    }
+
+    const descendantPrefix = `${comparableOldPath}${path.sep}`;
+
+    if (!comparableCandidate.startsWith(descendantPrefix)) {
+      return null;
+    }
+
+    const relativeSuffix = normalizedCandidate.slice(normalizedOldPath.length).replace(/^[\\/]+/, '');
+
+    return relativeSuffix.length === 0
+      ? normalizedNewPath
+      : path.join(normalizedNewPath, relativeSuffix);
+  }
+
+  private isCanvasFilePath(filePath: string): boolean {
+    const extension = path.extname(filePath).toLowerCase();
+    return extension === '.canvas' || extension === '.canvs';
+  }
+
+  private resolveStoredFilePath(filePath: string): string {
+    this.ensureWorkspaceDir();
+    return path.isAbsolute(filePath)
+      ? filePath
+      : path.join(this.workspaceDir, filePath);
+  }
+
+  private pathExists(filePath: string): boolean {
+    try {
+      return fsSync.existsSync(filePath);
+    } catch {
+      return false;
+    }
+  }
+
+  private sanitizeCanvasFilePaths(filePaths: readonly string[]): string[] {
+    const seen = new Set<string>();
+    const normalizedPaths: string[] = [];
+
+    for (const filePath of filePaths) {
+      if (typeof filePath !== 'string') {
+        continue;
+      }
+
+      const trimmedPath = filePath.trim();
+      if (trimmedPath.length === 0) {
+        continue;
+      }
+
+      const resolvedPath = this.resolveStoredFilePath(trimmedPath);
+      if (!this.isCanvasFilePath(resolvedPath) || !this.pathExists(resolvedPath)) {
+        continue;
+      }
+
+      const normalizedKey = this.normalizeStoredPath(resolvedPath);
+      if (seen.has(normalizedKey)) {
+        continue;
+      }
+
+      seen.add(normalizedKey);
+      normalizedPaths.push(resolvedPath);
+    }
+
+    return normalizedPaths;
+  }
+
+  private isCanvasPaneId(value: string): value is WorkspaceCanvasPaneId {
+    return WORKSPACE_CANVAS_PANE_IDS.includes(value as WorkspaceCanvasPaneId);
+  }
+
+  private sanitizeCanvasLayoutItems(
+    layoutItems: readonly WorkspaceOpenCanvasLayoutItem[],
+  ): WorkspaceOpenCanvasLayoutItem[] {
+    if (!Array.isArray(layoutItems)) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const normalizedItems: WorkspaceOpenCanvasLayoutItem[] = [];
+
+    for (const item of layoutItems) {
+      if (typeof item?.path !== 'string' || typeof item.paneId !== 'string') {
+        continue;
+      }
+
+      const trimmedPath = item.path.trim();
+      if (trimmedPath.length === 0 || !this.isCanvasPaneId(item.paneId)) {
+        continue;
+      }
+
+      const resolvedPath = this.resolveStoredFilePath(trimmedPath);
+      if (!this.isCanvasFilePath(resolvedPath) || !this.pathExists(resolvedPath)) {
+        continue;
+      }
+
+      const normalizedKey = `${this.normalizeStoredPath(resolvedPath)}::${item.paneId}`;
+      if (seen.has(normalizedKey)) {
+        continue;
+      }
+
+      seen.add(normalizedKey);
+      normalizedItems.push({
+        path: resolvedPath,
+        paneId: item.paneId,
+        active: item.active === true,
+      });
+    }
+
+    return normalizedItems;
   }
 
   private resolveDocumentsPath(): string {
@@ -230,14 +379,115 @@ Note Studio 是一个现代化的笔记应用，支持以下功能：
    * 获取上次打开的文件
    */
   getLastOpenedFile(): string | undefined {
-    return this.store.get('lastOpened') as string | undefined;
+    const storedPath = this.store.get('lastOpened') as string | undefined;
+
+    if (typeof storedPath !== 'string' || storedPath.trim().length === 0) {
+      return undefined;
+    }
+
+    const resolvedPath = this.resolveStoredFilePath(storedPath);
+
+    if (!this.pathExists(resolvedPath)) {
+      this.store.set('lastOpened', '');
+      return undefined;
+    }
+
+    return resolvedPath;
   }
 
   /**
    * 设置上次打开的文件
    */
   setLastOpenedFile(filePath: string): void {
-    this.store.set('lastOpened', filePath);
+    const trimmedPath = filePath.trim();
+
+    if (trimmedPath.length === 0) {
+      this.store.set('lastOpened', '');
+      return;
+    }
+
+    this.store.set('lastOpened', this.resolveStoredFilePath(trimmedPath));
+  }
+
+  getOpenCanvasFiles(): string[] {
+    const storedPaths = this.store.get('openCanvasFiles', []) as string[];
+    const sanitizedPaths = this.sanitizeCanvasFilePaths(storedPaths);
+    const storedSnapshot = JSON.stringify(storedPaths);
+    const sanitizedSnapshot = JSON.stringify(sanitizedPaths);
+
+    if (storedSnapshot !== sanitizedSnapshot) {
+      this.store.set('openCanvasFiles', sanitizedPaths);
+    }
+
+    return sanitizedPaths;
+  }
+
+  setOpenCanvasFiles(filePaths: readonly string[]): void {
+    const normalizedPaths = this.sanitizeCanvasFilePaths(filePaths);
+    this.store.set('openCanvasFiles', normalizedPaths);
+  }
+
+  getOpenCanvasLayout(): WorkspaceOpenCanvasLayoutItem[] {
+    const storedItems = this.store.get('openCanvasLayout', []) as WorkspaceOpenCanvasLayoutItem[];
+    const sanitizedItems = this.sanitizeCanvasLayoutItems(storedItems);
+    const storedSnapshot = JSON.stringify(storedItems);
+    const sanitizedSnapshot = JSON.stringify(sanitizedItems);
+
+    if (storedSnapshot !== sanitizedSnapshot) {
+      this.store.set('openCanvasLayout', sanitizedItems);
+    }
+
+    return sanitizedItems;
+  }
+
+  setOpenCanvasLayout(layoutItems: readonly WorkspaceOpenCanvasLayoutItem[]): void {
+    const normalizedItems = this.sanitizeCanvasLayoutItems(layoutItems);
+    this.store.set('openCanvasLayout', normalizedItems);
+    this.setOpenCanvasFiles(normalizedItems.map((item) => item.path));
+  }
+
+  syncRenamedFilePath(oldPath: string, newPath: string): void {
+    const updatePath = (filePath: string): string => {
+      const rewrittenPath = this.rewriteStoredPathForRename(filePath, oldPath, newPath);
+      return rewrittenPath ?? filePath;
+    };
+
+    const recentFiles = this.getRecentFiles().map(updatePath);
+    const lastOpened = this.getLastOpenedFile();
+    const openCanvasFiles = this.getOpenCanvasFiles().map(updatePath);
+    const openCanvasLayout = this.getOpenCanvasLayout().map((item) => ({
+      ...item,
+      path: updatePath(item.path),
+    }));
+
+    this.store.set('recentFiles', [...new Set(recentFiles)]);
+    if (typeof lastOpened === 'string' && lastOpened.length > 0) {
+      this.store.set('lastOpened', updatePath(lastOpened));
+    }
+    this.setOpenCanvasFiles(openCanvasFiles);
+    this.setOpenCanvasLayout(openCanvasLayout);
+  }
+
+  syncDeletedFilePath(targetPath: string): void {
+    const recentFiles = this.getRecentFiles().filter((filePath) => (
+      !this.matchesStoredPathOrDescendant(filePath, targetPath)
+    ));
+    const lastOpened = this.getLastOpenedFile();
+    const openCanvasFiles = this.getOpenCanvasFiles().filter((filePath) => (
+      !this.matchesStoredPathOrDescendant(filePath, targetPath)
+    ));
+    const openCanvasLayout = this.getOpenCanvasLayout().filter((item) => (
+      !this.matchesStoredPathOrDescendant(item.path, targetPath)
+    ));
+
+    this.store.set('recentFiles', [...new Set(recentFiles)]);
+
+    if (typeof lastOpened === 'string' && this.matchesStoredPathOrDescendant(lastOpened, targetPath)) {
+      this.store.set('lastOpened', '');
+    }
+
+    this.setOpenCanvasFiles(openCanvasFiles);
+    this.setOpenCanvasLayout(openCanvasLayout);
   }
 
   /**

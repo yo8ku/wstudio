@@ -18,5 +18,6 @@ export interface ExtensionPanelItem {
   readonly status: ExtensionPanelStatus;
   readonly iconPath?: string;
   readonly iconName: string;
+  readonly badgeImagePath?: string;
   readonly capabilities: readonly string[];
 }

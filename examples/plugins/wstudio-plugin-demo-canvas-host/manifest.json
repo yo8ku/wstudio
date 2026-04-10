@@ -1,0 +1,17 @@
+{
+  "id": "wstudio-plugin-demo-canvas-host",
+  "name": "WStudio Plugin Demo Canvas Host",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Minimal fake canvas host demo for validating renderer-side plugin view interaction.",
+  "author": "WiseAI Team",
+  "authorUrl": "https://github.com/arebelamazuera",
+  "homepageUrl": "https://github.com/arebelamazuera/wstudio-api",
+  "repositoryUrl": "https://github.com/arebelamazuera/wstudio-api",
+  "fundingUrl": "https://github.com/sponsors/arebelamazuera",
+  "releaseChannel": "development",
+  "isDesktopOnly": false,
+  "engines": {
+    "wstudio": "^1.0.0"
+  }
+}

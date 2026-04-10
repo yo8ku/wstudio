@@ -117,6 +117,7 @@
   }
 
   &__item {
+    position: relative;
     display: flex;
     align-items: flex-start;
     gap: 10px;
@@ -163,6 +164,17 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
+  }
+
+  &__item-icon-badge {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+    pointer-events: none;
   }
 
   &__item-body {
@@ -247,6 +259,13 @@
       height: 40px;
       margin-top: 0;
     }
+
+    .extensions-sidebar__item-icon-badge {
+      top: 0;
+      left: 0;
+      width: 36px;
+      height: 36px;
+    }
   }
 
   &--icon-compact {
@@ -258,6 +277,13 @@
       width: 24px;
       height: 24px;
       margin-top: 0;
+    }
+
+    .extensions-sidebar__item-icon-badge {
+      top: 0;
+      left: 0;
+      width: 24px;
+      height: 24px;
     }
   }
 

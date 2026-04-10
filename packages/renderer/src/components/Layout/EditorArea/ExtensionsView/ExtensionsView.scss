@@ -113,6 +113,33 @@
   gap: 12px;
 }
 
+.extensions-view__card-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.extensions-view__card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--ws-tab-border, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ws-descriptionForeground, var(--ws-editor-foreground));
+  flex-shrink: 0;
+}
+
+.extensions-view__card-icon-image {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
 .extensions-view__card-title-group {
   display: flex;
   flex-wrap: wrap;
@@ -129,6 +156,27 @@
 .extensions-view__card-version {
   font-size: 12px;
   opacity: 0.72;
+}
+
+.extensions-view__channel-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.extensions-view__channel-badge.is-development {
+  color: #f3a83b;
+  background: rgba(243, 168, 59, 0.14);
+}
+
+.extensions-view__channel-badge.is-stable {
+  color: var(--ws-charts-green, #4ec9b0);
+  background: rgba(78, 201, 176, 0.14);
 }
 
 .extensions-view__status {
@@ -170,4 +218,35 @@
   font-size: 13px;
   line-height: 1.5;
   opacity: 0.86;
+}
+
+.extensions-view__card-description--error {
+  color: var(--ws-errorForeground, #f48771);
+  opacity: 1;
+}
+
+.extensions-view__card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.extensions-view__action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ws-tab-border, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+  color: var(--ws-textLink-foreground, var(--ws-editor-foreground));
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.extensions-view__action-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  text-decoration: underline;
 }

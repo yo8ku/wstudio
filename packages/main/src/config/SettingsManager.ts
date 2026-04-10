@@ -10,6 +10,7 @@ import { app } from 'electron';
 import { EventEmitter } from 'events';
 import * as jsonc from 'jsonc-parser';
 import {
+  DEFAULT_WORKBENCH_FILE_ICON_THEME_ID,
   DEFAULT_WORKBENCH_BACKGROUND_SETTINGS,
   type JsonValue,
   type WorkbenchBackgroundSettings,
@@ -21,7 +22,7 @@ export interface SettingsSchema {
   'files.encoding': string;
   'files.eol': '\n' | '\r\n' | 'auto';
   'workbench.colorTheme': string;
-  'workbench.iconTheme'?: string;
+  'workbench.fileIconTheme': string;
   'workbench.background': WorkbenchBackgroundSettings;
 }
 
@@ -74,6 +75,7 @@ const DEFAULT_SETTINGS: SettingsSchema = {
   'files.encoding': 'utf8',
   'files.eol': 'auto',
   'workbench.colorTheme': 'One Dark Pro',
+  'workbench.fileIconTheme': DEFAULT_WORKBENCH_FILE_ICON_THEME_ID,
   'workbench.background': { ...DEFAULT_WORKBENCH_BACKGROUND_SETTINGS },
 };
 export class SettingsManager extends EventEmitter {
@@ -133,6 +135,10 @@ export class SettingsManager extends EventEmitter {
     return key in DEFAULT_SETTINGS;
   }
 
+  private isReservedHostSettingsKey(key: string): boolean {
+    return key.startsWith('workbench.');
+  }
+
   /**
    * 纭繚璁剧疆鏂囦欢瀛樺湪锛屽鏋滀笉瀛樺湪鍒欏垱寤洪粯璁ら厤缃枃浠?
    * 杩欐槸搴旂敤棣栨鍚姩鏃跺啓鍏ュ畬鏁撮厤缃殑鍏抽敭鏂规硶
@@ -178,6 +184,9 @@ export class SettingsManager extends EventEmitter {
   
   // 棰滆壊涓婚
   "workbench.colorTheme": "${DEFAULT_SETTINGS['workbench.colorTheme']}",
+
+  // 鏂囦欢鍥炬爣涓婚
+  "workbench.fileIconTheme": "${DEFAULT_SETTINGS['workbench.fileIconTheme']}",
 
   // 鑳屾櫙鍥剧墖璁剧疆
   "workbench.background": ${JSON.stringify(DEFAULT_SETTINGS['workbench.background'], null, 2).replace(/\n/g, '\n  ')}
@@ -284,6 +293,8 @@ export class SettingsManager extends EventEmitter {
       for (const key of Object.keys(parsed)) {
         if (key in DEFAULT_SETTINGS) {
           filtered[key as keyof SettingsSchema] = parsed[key] as any;
+        } else if (this.isReservedHostSettingsKey(key)) {
+          continue;
         } else {
           // 淇濈暀鎻掍欢閰嶇疆锛堜笉鍦?DEFAULT_SETTINGS 涓殑閿級
           pluginConfig[key] = parsed[key] as JsonValue;
@@ -332,6 +343,8 @@ export class SettingsManager extends EventEmitter {
       for (const key of Object.keys(parsed)) {
         if (key in DEFAULT_SETTINGS) {
           filtered[key as keyof SettingsSchema] = parsed[key] as any;
+        } else if (this.isReservedHostSettingsKey(key)) {
+          continue;
         }
       }
       
@@ -368,6 +381,9 @@ export class SettingsManager extends EventEmitter {
     if (this.isStandardSettingsKey(key)) {
       return this.get(key) as TValue;
     }
+    if (this.isReservedHostSettingsKey(key)) {
+      return defaultValue;
+    }
     // 妫€鏌ユ彃浠堕厤缃?
     const value = this.pluginSettings[key];
     const result = value !== undefined ? (value as TValue) : defaultValue;
@@ -377,6 +393,9 @@ export class SettingsManager extends EventEmitter {
   getSettingValue(key: string): JsonValue | undefined {
     if (this.isStandardSettingsKey(key)) {
       return this.get(key) as JsonValue;
+    }
+    if (this.isReservedHostSettingsKey(key)) {
+      return undefined;
     }
 
     return this.pluginSettings[key];
@@ -487,6 +506,15 @@ export class SettingsManager extends EventEmitter {
         await this.update(key, value as SettingsSchema[typeof key], target);
         return;
       }
+      if (this.isReservedHostSettingsKey(key)) {
+        delete this.pluginSettings[key];
+        if (target === 'user') {
+          await this.saveUserSettings();
+        } else if (target === 'workspace' && this.workspaceSettingsPath) {
+          await this.saveWorkspaceSettings();
+        }
+        return;
+      }
       // 鏇存柊鎻掍欢閰嶇疆
       this.pluginSettings[key] = value;
 
@@ -562,6 +590,13 @@ export class SettingsManager extends EventEmitter {
       await this.update(key, value as SettingsSchema[typeof key], target);
       return;
     }
+    if (this.isReservedHostSettingsKey(key)) {
+      delete this.pluginSettings[key];
+      if (target === 'user') {
+        await this.saveUserSettings();
+      }
+      return;
+    }
 
     if (target === 'workspace') {
       throw new Error('插件设置暂不支持保存到 workspace。');
@@ -582,6 +617,9 @@ export class SettingsManager extends EventEmitter {
         Object.assign(standardUpdates, {
           [key]: value as SettingsSchema[typeof key],
         });
+        continue;
+      }
+      if (this.isReservedHostSettingsKey(key)) {
         continue;
       }
 
@@ -642,6 +680,14 @@ export class SettingsManager extends EventEmitter {
     if (typeof key === 'string') {
       if (this.isStandardSettingsKey(key)) {
         await this.reset(key);
+        return;
+      }
+      if (this.isReservedHostSettingsKey(key)) {
+        delete this.pluginSettings[key];
+        if (target === 'user') {
+          await this.saveUserSettings();
+        }
+        this.emit('reset', key);
         return;
       }
 

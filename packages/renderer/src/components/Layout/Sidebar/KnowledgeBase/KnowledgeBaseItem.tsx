@@ -6,12 +6,9 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KnowledgeItem } from './types';
-import {
-  FolderIcon,
-  getFileIcon,
-  CheckIcon,
-} from './KnowledgeBaseIcons';
+import { CheckIcon } from './KnowledgeBaseIcons';
 import { KnowledgeBaseContextMenu } from './KnowledgeBaseContextMenu';
+import { WorkspaceFileIcon } from '../../../WorkspaceFileIcon/WorkspaceFileIcon';
 
 interface KnowledgeBaseItemProps {
   item: KnowledgeItem;
@@ -60,7 +57,6 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
   onSettings,
 }) => {
   const { t } = useTranslation();
-  const fileIcon = getFileIcon(item.metadata?.fileType);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const wordCountUnit = String(t('knowledgeBase.item.wordCountUnit', { defaultValue: ' chars' }));
 
@@ -87,20 +83,13 @@ export const KnowledgeBaseItem: React.FC<KnowledgeBaseItemProps> = ({
           setContextMenu({ x: event.clientX, y: event.clientY });
         }}
       >
-        <div className="knowledge-base-item__type-icon">
-          {item.type === 'folder' && item.metadata?.cover ? (
-            <img
-              src={item.metadata.cover}
-              alt={item.title}
-              className="knowledge-base-item__cover"
-            />
-          ) : item.type === 'folder' ? (
-            <FolderIcon className="icon-folder" />
-          ) : (
-            React.createElement(fileIcon, { className: 'icon-file' })
-          )}
-        </div>
-
+        <WorkspaceFileIcon
+          filePath={item.path}
+          name={item.title}
+          isDirectory={item.type === 'folder'}
+          size={16}
+          className="knowledge-base-item__icon"
+        />
         <div className="knowledge-base-item__title">{item.title}</div>
 
         {item.metadata && (

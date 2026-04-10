@@ -857,6 +857,17 @@ export const FileExplorer: React.FC = () => {
       console.log('[FileExplorer] 单击打开文件:', node.path);
       
       try {
+        if (node.path.toLowerCase().endsWith('.canvas')) {
+          const opened = await window.electron?.ipcRenderer.invoke(
+            'plugin-runtime:request-open-workspace-file',
+            node.path,
+          );
+
+          if (opened === true) {
+            return;
+          }
+        }
+
         const fallbackLanguage = getEditorLanguageForNote({
           path: node.path,
           title: node.name,
@@ -2171,6 +2182,23 @@ export const FileExplorer: React.FC = () => {
       
       if (result?.success) {
         console.log('[FileExplorer] 重命名成�?', result.data);
+        if (result.data?.path) {
+          if (selectedFilePath === node.path) {
+            setSelectedFilePath(result.data.path);
+          }
+          if (currentActiveFilePath === node.path) {
+            setCurrentActiveFilePath(result.data.path);
+          }
+          try {
+            await window.electron?.ipcRenderer?.invoke(
+              'plugin-runtime:sync-renamed-workspace-file',
+              node.path,
+              result.data.path,
+            );
+          } catch (syncError) {
+            console.error('[FileExplorer] 同步已打开白板重命名状态失败:', syncError);
+          }
+        }
         // 刷新文件�?
         await refreshFileTree(rootFolderPath);
       } else {
@@ -2240,6 +2268,14 @@ export const FileExplorer: React.FC = () => {
 
           if (result?.success) {
             console.log('[FileExplorer] Delete success:', node.path);
+            try {
+              await window.electron?.ipcRenderer?.invoke(
+                'plugin-runtime:sync-deleted-workspace-file',
+                node.path,
+              );
+            } catch (syncError) {
+              console.error('[FileExplorer] 同步已删除白板文件状态失败:', syncError);
+            }
             if (rootFolderPath) {
               await refreshFileTree(rootFolderPath);
             }

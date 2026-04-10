@@ -9,17 +9,49 @@
 import type { VSCodeCommandCenter } from './VSCodeCommandCenter';
 import type { Command, CommandItem } from './CommandTypes';
 import { useThemeStore } from '../stores/themeStore';
-import type { ThemeInfo } from '@note-studio/shared';
-import { THEME_CHANNELS } from '@note-studio/shared';
+import {
+  DEFAULT_WORKBENCH_FILE_ICON_THEME_ID,
+  THEME_CHANNELS,
+  type ThemeInfo,
+  type WorkbenchFileIconThemeEntry,
+} from '@note-studio/shared';
+import { translate } from '../i18n';
+import { workbenchContributionService } from '../services/WorkbenchContributionService';
+import { OPEN_COLOR_THEME_PICKER_EVENT, OPEN_FILE_ICON_THEME_PICKER_EVENT } from './ThemeCommandEvents';
+
+const SELECT_THEME_COMMAND_ID = 'workbench.action.selectTheme';
+const CREATE_CUSTOM_THEME_COMMAND_ID = 'workbench.action.createCustomTheme';
+const SELECT_FILE_ICON_THEME_COMMAND_ID = 'workbench.action.selectFileIconTheme';
+const COLOR_THEME_MODE_PREFIX = 'theme:';
+const CUSTOMIZE_THEME_MODE_PREFIX = 'customize-theme:';
+const FILE_ICON_THEME_MODE_PREFIX = 'file-icon-theme:';
 
 export class ThemeCommandProvider {
-  private commandCenter: VSCodeCommandCenter;
+  private readonly commandCenter: VSCodeCommandCenter;
   private previewThemeId: string | null = null;
   private originalThemeId: string | null = null;
+  private previewFileIconThemeId: string | null = null;
+  private originalFileIconThemeId: string | null = null;
+  private readonly colorThemePickerListener = (): void => {
+    void this.showThemeQuickPick();
+  };
+  private readonly fileIconThemePickerListener = (): void => {
+    void this.showFileIconThemeQuickPick();
+  };
 
   constructor(commandCenter: VSCodeCommandCenter) {
     this.commandCenter = commandCenter;
     this.registerThemeCommands();
+    window.addEventListener(OPEN_COLOR_THEME_PICKER_EVENT, this.colorThemePickerListener);
+    window.addEventListener(OPEN_FILE_ICON_THEME_PICKER_EVENT, this.fileIconThemePickerListener);
+  }
+
+  private translateText(
+    key: string,
+    defaultValue: string,
+    values?: Record<string, string>,
+  ): string {
+    return translate(key, values ? { defaultValue, ...values } : { defaultValue });
   }
 
   /**
@@ -32,24 +64,48 @@ export class ThemeCommandProvider {
 
     // 首选项: 颜色主题
     commands.push({
-      id: 'workbench.action.selectTheme',
-      label: '首选项: 颜色主题',
+      id: SELECT_THEME_COMMAND_ID,
+      label: this.translateText('commandCenter.themeCommands.selectTheme.label', '首选项: 颜色主题'),
       displayId: 'Preferences: Color Theme',
-      description: '选择颜色主题',
-      category: '首选项',
+      description: this.translateText('commandCenter.themeCommands.selectTheme.description', '选择颜色主题'),
+      category: this.translateText('commandCenter.preferencesCategory', '首选项'),
       icon: 'palette',
       execute: async () => {
         await this.showThemeQuickPick();
       }
     });
 
+    commands.push({
+      id: SELECT_FILE_ICON_THEME_COMMAND_ID,
+      label: this.translateText(
+        'commandCenter.themeCommands.selectFileIconTheme.label',
+        '首选项: 文件图标主题',
+      ),
+      displayId: 'Preferences: File Icon Theme',
+      description: this.translateText(
+        'commandCenter.themeCommands.selectFileIconTheme.description',
+        '选择文件图标主题',
+      ),
+      category: this.translateText('commandCenter.preferencesCategory', '首选项'),
+      icon: 'file',
+      execute: async () => {
+        await this.showFileIconThemeQuickPick();
+      },
+    });
+
     // 创建自定义主题
     commands.push({
-      id: 'workbench.action.createCustomTheme',
-      label: '首选项: 创建自定义主题',
+      id: CREATE_CUSTOM_THEME_COMMAND_ID,
+      label: this.translateText(
+        'commandCenter.themeCommands.createCustomTheme.label',
+        '首选项: 创建自定义主题',
+      ),
       displayId: '', // 不显示ID
-      description: '创建一个新的自定义主题配置文件',
-      category: '首选项',
+      description: this.translateText(
+        'commandCenter.themeCommands.createCustomTheme.description',
+        '创建一个新的自定义主题配置文件',
+      ),
+      category: this.translateText('commandCenter.preferencesCategory', '首选项'),
       icon: 'palette',
       execute: async () => {
         await this.createCustomTheme();
@@ -73,9 +129,9 @@ export class ThemeCommandProvider {
 
     // 创建自定义模式用于主题选择
     this.commandCenter.registerMode({
-      prefix: 'theme:',
-      name: 'Select Color Theme',
-      placeholder: '选择颜色主题...',
+      prefix: COLOR_THEME_MODE_PREFIX,
+      name: this.translateText('commandCenter.modes.selectColorTheme', '选择颜色主题'),
+      placeholder: this.translateText('commandCenter.placeholders.selectColorTheme', '选择颜色主题...'),
       icon: 'palette',
       provider: async (query: string) => {
         return this.getThemeItems(query);
@@ -92,7 +148,38 @@ export class ThemeCommandProvider {
     });
 
     // 显示命令中心并切换到主题模式
-    await this.commandCenter.show('theme:');
+    await this.commandCenter.show(COLOR_THEME_MODE_PREFIX);
+  }
+
+  private async showFileIconThemeQuickPick(): Promise<void> {
+    this.originalFileIconThemeId = await this.getActiveFileIconThemeId();
+    this.previewFileIconThemeId = null;
+
+    this.commandCenter.registerMode({
+      prefix: FILE_ICON_THEME_MODE_PREFIX,
+      name: this.translateText('commandCenter.modes.selectFileIconTheme', '选择文件图标主题'),
+      placeholder: this.translateText(
+        'commandCenter.placeholders.selectFileIconTheme',
+        '选择文件图标主题...',
+      ),
+      icon: 'file',
+      provider: async (query: string) => {
+        return this.getFileIconThemeItems(query);
+      },
+      onCancel: async () => {
+        if (
+          this.previewFileIconThemeId
+          && this.originalFileIconThemeId
+          && this.previewFileIconThemeId !== this.originalFileIconThemeId
+        ) {
+          await this.setFileIconTheme(this.originalFileIconThemeId);
+        }
+        this.previewFileIconThemeId = null;
+        this.originalFileIconThemeId = null;
+      },
+    });
+
+    await this.commandCenter.show(FILE_ICON_THEME_MODE_PREFIX);
   }
 
   /**
@@ -114,7 +201,7 @@ export class ThemeCommandProvider {
       if (!query) {
         items.push({
           id: '__light_separator__',
-          label: '浅色主题',
+          label: this.translateText('commandCenter.themeCommands.groups.light', '浅色主题'),
           isSeparator: true
         });
       }
@@ -132,7 +219,7 @@ export class ThemeCommandProvider {
       if (!query) {
         items.push({
           id: '__dark_separator__',
-          label: '深色主题',
+          label: this.translateText('commandCenter.themeCommands.groups.dark', '深色主题'),
           isSeparator: true
         });
       }
@@ -150,7 +237,7 @@ export class ThemeCommandProvider {
       if (!query) {
         items.push({
           id: '__contrast_separator__',
-          label: '高对比度主题',
+          label: this.translateText('commandCenter.themeCommands.groups.contrast', '高对比度主题'),
           isSeparator: true
         });
       }
@@ -176,6 +263,35 @@ export class ThemeCommandProvider {
       theme.id.toLowerCase().includes(query) ||
       (theme.description?.toLowerCase().includes(query) || false)
     );
+  }
+
+  private matchFileIconTheme(theme: WorkbenchFileIconThemeEntry, query: string): boolean {
+    if (!query) {
+      return true;
+    }
+
+    return (
+      theme.extensionDisplayName.toLowerCase().includes(query)
+      || theme.label.toLowerCase().includes(query)
+      || theme.extensionId.toLowerCase().includes(query)
+      || theme.id.toLowerCase().includes(query)
+    );
+  }
+
+  private async getFileIconThemeItems(query: string): Promise<CommandItem[]> {
+    try {
+      const snapshot = await workbenchContributionService.getContributions();
+      const currentThemeId = await this.getActiveFileIconThemeId();
+      const lowerQuery = query.toLowerCase();
+      const themes = [...snapshot.fileIconThemes]
+        .filter(theme => this.matchFileIconTheme(theme, lowerQuery))
+        .sort((left, right) => left.extensionDisplayName.localeCompare(right.extensionDisplayName, 'zh-CN'));
+
+      return themes.map(theme => this.createFileIconThemeItem(theme, currentThemeId));
+    } catch (error) {
+      console.error('[ThemeCommandProvider] 加载文件图标主题失败:', error);
+      return [];
+    }
   }
 
   /**
@@ -210,6 +326,38 @@ export class ThemeCommandProvider {
     };
   }
 
+  private createFileIconThemeItem(
+    theme: WorkbenchFileIconThemeEntry,
+    currentThemeId: string,
+  ): CommandItem {
+    const isCurrent = currentThemeId === theme.id;
+
+    return {
+      id: theme.id,
+      label: theme.extensionDisplayName,
+      description: theme.label,
+      detail: theme.extensionId,
+      displayId: '',
+      icon: isCurrent ? '✓' : undefined,
+      alwaysShow: isCurrent,
+      onPreview: async () => {
+        if (this.previewFileIconThemeId === theme.id) {
+          return;
+        }
+
+        this.previewFileIconThemeId = theme.id;
+        await this.setFileIconTheme(theme.id);
+      },
+      value: {
+        execute: async () => {
+          await this.setFileIconTheme(theme.id);
+          this.previewFileIconThemeId = null;
+          this.originalFileIconThemeId = null;
+        },
+      },
+    };
+  }
+
   /**
    * 创建自定义主题（实际上是选择要覆盖的内置主题）
    */
@@ -222,9 +370,12 @@ export class ThemeCommandProvider {
       
       // 创建主题选择模式
       this.commandCenter.registerMode({
-        prefix: 'customize-theme:',
-        name: 'Select Base Theme to Customize',
-        placeholder: '选择要自定义颜色的基础主题...',
+        prefix: CUSTOMIZE_THEME_MODE_PREFIX,
+        name: this.translateText('commandCenter.modes.selectBaseTheme', '选择要自定义的基础主题'),
+        placeholder: this.translateText(
+          'commandCenter.placeholders.selectBaseTheme',
+          '选择要自定义颜色的基础主题...',
+        ),
         icon: 'palette',
         provider: async (query: string) => {
           const items: CommandItem[] = [];
@@ -235,10 +386,15 @@ export class ThemeCommandProvider {
           
           for (const theme of builtinThemes) {
             if (this.matchTheme(theme, lowerQuery)) {
+              const builtinThemeType = theme.type === 'light'
+                ? this.translateText('commandCenter.themeCommands.builtinThemeType.light', '浅色主题')
+                : theme.type === 'dark'
+                  ? this.translateText('commandCenter.themeCommands.builtinThemeType.dark', '深色主题')
+                  : this.translateText('commandCenter.themeCommands.builtinThemeType.contrast', '高对比度主题');
               items.push({
                 id: theme.id,
                 label: theme.name,
-                description: theme.type === 'light' ? '浅色主题' : '深色主题',
+                description: builtinThemeType,
                 icon: currentTheme?.id === theme.id ? 'check' : 'circle-outline',
                 value: {
                   execute: async () => {
@@ -253,7 +409,7 @@ export class ThemeCommandProvider {
         }
       });
       
-      await this.commandCenter.show('customize-theme:');
+      await this.commandCenter.show(CUSTOMIZE_THEME_MODE_PREFIX);
     } catch (error) {
       console.error('[ThemeCommandProvider] 创建自定义主题失败:', error);
     }
@@ -296,7 +452,11 @@ export class ThemeCommandProvider {
             path: themeConfigPath,
             content: configContent,
             language: 'jsonc',
-            title: `${baseTheme.name} - 颜色覆盖`,
+            title: this.translateText(
+              'commandCenter.themeCommands.overrideTitle',
+              '{{themeName}} - 颜色覆盖',
+              { themeName: baseTheme.name },
+            ),
           },
         })
       );
@@ -332,6 +492,33 @@ export class ThemeCommandProvider {
   public refresh(): void {
     // 如果需要动态更新命令，可以在这里重新注册
     console.log('[ThemeCommandProvider] 刷新命令');
+  }
+
+  public dispose(): void {
+    window.removeEventListener(OPEN_COLOR_THEME_PICKER_EVENT, this.colorThemePickerListener);
+    window.removeEventListener(OPEN_FILE_ICON_THEME_PICKER_EVENT, this.fileIconThemePickerListener);
+    this.commandCenter.unregisterCommands([
+      SELECT_THEME_COMMAND_ID,
+      SELECT_FILE_ICON_THEME_COMMAND_ID,
+      CREATE_CUSTOM_THEME_COMMAND_ID,
+    ]);
+  }
+
+  private async getActiveFileIconThemeId(): Promise<string> {
+    const response = await window.electronAPI?.settings?.get('workbench.fileIconTheme');
+    const themeId = response?.success && typeof response.data === 'string'
+      ? response.data.trim()
+      : '';
+
+    return themeId.length > 0 ? themeId : DEFAULT_WORKBENCH_FILE_ICON_THEME_ID;
+  }
+
+  private async setFileIconTheme(themeId: string): Promise<void> {
+    const response = await window.electronAPI?.settings?.update('workbench.fileIconTheme', themeId);
+
+    if (!response?.success) {
+      throw new Error(response?.error ?? '设置文件图标主题失败');
+    }
   }
 }
 

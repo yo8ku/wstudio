@@ -1,6 +1,6 @@
 /**
  * Extension details entry exports.
- * Route the live view through the standalone mock extension details component.
+ * Route the live view through the installed-plugin aware details component.
  */
 
-export { ExtensionView } from './StaticExtensionView';
+export { ExtensionView } from './ExtensionView';

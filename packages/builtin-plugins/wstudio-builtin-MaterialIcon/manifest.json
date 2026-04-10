@@ -1,0 +1,97 @@
+{
+  "id": "wstudio-builtin-MaterialIcon",
+  "name": "WStudio Builtin Material File Icons",
+  "author": "WiseAI Team",
+  "version": "1.0.0",
+  "description": "Built-in material file icon theme for workspace and knowledge-base trees.",
+  "icon": "assets/logo.png",
+  "engines": {
+    "wstudio": "^1.0.0"
+  },
+  "contributes": {
+    "fileIcons": {
+      "label": "Material File Icons",
+      "file": "icons/file.svg",
+      "directory": "icons/MaterialFolder.svg",
+      "directoryExpanded": "icons/MaterialFolderOpen.svg",
+      "mappings": [
+        {
+          "icon": "icons/readme.svg",
+          "fileNames": ["readme", "readme.md", "readme.txt", "changelog.md"]
+        },
+        {
+          "icon": "icons/license.svg",
+          "fileNames": ["license", "license.md", "license.txt", "unlicense"]
+        },
+        {
+          "icon": "icons/editorconfig.svg",
+          "fileNames": [".editorconfig"]
+        },
+        {
+          "icon": "icons/npm.svg",
+          "fileNames": ["package.json", "package-lock.json", "npm-shrinkwrap.json"]
+        },
+        {
+          "icon": "icons/pnpm.svg",
+          "fileNames": ["pnpm-lock.yaml", "pnpm-workspace.yaml"]
+        },
+        {
+          "icon": "icons/yarn.svg",
+          "fileNames": ["yarn.lock"]
+        },
+        {
+          "icon": "icons/settings.svg",
+          "fileNames": ["settings.json"]
+        },
+        {
+          "icon": "icons/tsconfig.svg",
+          "fileNames": ["tsconfig.json"]
+        },
+        {
+          "icon": "icons/jsconfig.svg",
+          "fileNames": ["jsconfig.json"]
+        },
+        {
+          "icon": "icons/markdown.svg",
+          "extensions": ["md", "markdown", "mdx", "mdsvex"]
+        },
+        {
+          "icon": "icons/react_ts.svg",
+          "extensions": ["tsx"]
+        },
+        {
+          "icon": "icons/react.svg",
+          "extensions": ["jsx"]
+        },
+        {
+          "icon": "icons/typescript.svg",
+          "extensions": ["ts", "cts", "mts"]
+        },
+        {
+          "icon": "icons/javascript.svg",
+          "extensions": ["js", "cjs", "mjs"]
+        },
+        {
+          "icon": "icons/json.svg",
+          "extensions": ["json", "jsonc", "json5", "hjson"]
+        },
+        {
+          "icon": "icons/yaml.svg",
+          "extensions": ["yaml", "yml"]
+        },
+        {
+          "icon": "icons/xml.svg",
+          "extensions": ["xml", "xsd", "xsl", "plist"]
+        },
+        {
+          "icon": "icons/image.svg",
+          "extensions": ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif", "tif", "tiff"]
+        },
+        {
+          "icon": "icons/database.svg",
+          "extensions": ["db", "sqlite", "sql"]
+        }
+      ]
+    }
+  }
+}

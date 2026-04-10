@@ -1,13 +1,13 @@
 /**
- * Select 组件样式
- * 功能：基于 Portal 的下拉选择器样式定义
+ * Select 缁勪欢鏍峰紡
+ * 鍔熻兘锛氬熀浜?Portal 鐨勪笅鎷夐€夋嫨鍣ㄦ牱寮忓畾涔?
  */
 
 .select {
   position: relative;
   width: 100%;
 
-  // 触发器
+  // 瑙﹀彂鍣?
   .select-trigger {
     display: flex;
     align-items: center;
@@ -62,10 +62,10 @@
   }
 }
 
-// 下拉内容（通过 Portal 渲染到 body）
+// 涓嬫媺鍐呭锛堥€氳繃 Portal 娓叉煋鍒?body锛?
 .select-content {
-  position: fixed !important; // 使用 fixed 定位，确保在 Portal 中正确显示
-  z-index: 10000; // 确保在所有元素之上
+  position: fixed !important; // 浣跨敤 fixed 瀹氫綅锛岀‘淇濆湪 Portal 涓纭樉绀?
+  z-index: 10000; // 纭繚鍦ㄦ墍鏈夊厓绱犱箣涓?
   background-color: var(--ws-dropdown-background);
   border-radius: 6px;
   max-height: 430px;
@@ -78,7 +78,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   border: 1px solid var(--ws-dropdown-border);
 
-  // 搜索框
+  // 鎼滅储妗?
   .select-search {
     display: flex;
     align-items: center;
@@ -99,7 +99,7 @@
     }
   }
 
-  // 菜单列表  内联聊天下拉菜单
+  // 鑿滃崟鍒楄〃  鍐呰仈鑱婂ぉ涓嬫媺鑿滃崟
   .select-list,
   .select-list-custom-scrollbar {
     background-color: var(--ws-dropdown-background);
@@ -110,7 +110,7 @@
     padding: 5px;
     background-color: var(--ws-dropdown-background);
 
-    // 隐藏滚动条，但保留滚动功能
+    // 闅愯棌婊氬姩鏉★紝浣嗕繚鐣欐粴鍔ㄥ姛鑳?
     scrollbar-width: none; // Firefox
     -ms-overflow-style: none; // IE/Edge
 
@@ -129,7 +129,7 @@
     }
   }
 
-  // 菜单项
+  // 鑿滃崟椤?
   .select-item {
     display: flex;
     align-items: center;
@@ -195,7 +195,7 @@
     }
   }
 
-  // 分组
+  // 鍒嗙粍
   .select-group {
     .select-group-title {
       padding: 6px 10px;
@@ -208,7 +208,7 @@
     }
   }
 
-  // 空状态
+  // 绌虹姸鎬?
   .select-empty {
     padding: 16px 10px;
     text-align: center;
@@ -222,8 +222,7 @@
   }
 }
 
-// 文件树样式的二级菜单项（文件&文件夹）
-.select-item[data-type='file'],
+// 鏍戝舰閫夋嫨椤癸紙鏂囦欢澶癸級
 .select-item[data-type='folder'] {
   position: relative;
   padding: 1px 8px;
@@ -232,14 +231,14 @@
   font-size: 13px;
   gap: 2px;
 
-  // 根据 depth 动态缩进
+  // 鏍规嵁 depth 鍔ㄦ€佺缉杩?
   @for $i from 0 through 10 {
     &[data-depth='#{$i}'] {
       padding-left: calc(8px + #{$i} * 12px);
     }
   }
 
-  // 文件树图标样式
+  // 鏂囦欢鏍戝浘鏍囨牱寮?
   .select-item-icon {
     display: flex;
     align-items: center;
@@ -248,7 +247,7 @@
     width: auto;
     min-width: 12px;
 
-    // 所有 SVG 图标统一样式
+    // 鎵€鏈?SVG 鍥炬爣缁熶竴鏍峰紡
     svg {
       width: 14px;
       height: 14px;
@@ -257,7 +256,7 @@
       flex-shrink: 0;
     }
 
-    // 如果有多个图标，第一个是折叠图标（chevron），样式稍小
+    // 濡傛灉鏈夊涓浘鏍囷紝绗竴涓槸鎶樺彔鍥炬爣锛坈hevron锛夛紝鏍峰紡绋嶅皬
     svg:first-child:not(:only-child) {
       width: 12px;
       height: 12px;
@@ -266,7 +265,7 @@
     }
   }
 
-  // 标签样式
+  // 鏍囩鏍峰紡
   .select-item-label {
     flex: 1;
     font-size: 12px;
@@ -275,19 +274,19 @@
     text-overflow: ellipsis;
     line-height: 20px;
 
-    // 移除内联样式中的 paddingLeft（因为现在用 CSS 控制）
+    // 绉婚櫎鍐呰仈鏍峰紡涓殑 paddingLeft锛堝洜涓虹幇鍦ㄧ敤 CSS 鎺у埗锛?
     .indented-label {
       padding-left: 0 !important;
     }
   }
 
-  // 悬停效果
+  // 鎮仠鏁堟灉
   &:hover {
     background-color: var(--ws-list-hover-background);
     color: var(--ws-list-hoverForeground);
   }
 
-  // 选中状态
+  // 閫変腑鐘舵€?
   &.selected {
     background-color: var(--ws-list-activeSelectionBackground, var(--ws-list-active-selection-background, var(--list-active-bg, var(--ws-list-hoverBackground, rgba(127, 127, 127, 0.22)))));
     color: var(--ws-list-activeSelectionForeground, var(--ws-list-active-selection-foreground, var(--list-active-fg, var(--ws-foreground))));
@@ -299,29 +298,6 @@
   }
 }
 
-// 文件夹项特殊样式
-.select-item[data-type='folder'] {
-  .select-item-icon {
-    // 文件夹的折叠图标和文件夹图标间距
-    gap: 2px;
-  }
-}
-
-// 文件项特殊样式（没有折叠图标，需要占位以保持对齐）
-.select-item[data-type='file'] {
-  .select-item-icon {
-    // 文件没有折叠图标，添加占位空间以保持与文件夹对齐
-    &::before {
-      content: '';
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      margin-right: 2px;
-    }
-  }
-}
-
-// 表单项样式
 .select-item[data-type='form'] {
   position: relative;
   padding: 1px 8px;
@@ -349,7 +325,7 @@
   }
 }
 
-// 表单字段项样式
+// 琛ㄥ崟瀛楁椤规牱寮?
 .select-item[data-type='form-column'] {
   position: relative;
   padding: 1px 8px;
@@ -358,7 +334,7 @@
   font-size: 13px;
   gap: 2px;
 
-  // 根据 depth 动态缩进
+  // 鏍规嵁 depth 鍔ㄦ€佺缉杩?
   @for $i from 0 through 10 {
     &[data-depth='#{$i}'] {
       padding-left: calc(8px + #{$i} * 20px);
@@ -386,7 +362,7 @@
   box-shadow: 0 0 30px rgb(0 0 0 / 24%);
 }
 
-// 最近文件标签样式
+// 鏈€杩戞枃浠舵爣绛炬牱寮?
 .recent-file-label {
   display: flex;
   align-items: center;
@@ -403,3 +379,4 @@
     opacity: 0.7;
   }
 }
+

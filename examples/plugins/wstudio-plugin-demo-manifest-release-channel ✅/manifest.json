@@ -1,0 +1,22 @@
+{
+  "id": "wstudio-plugin-demo-manifest-release-channel",
+  "name": "WStudio Plugin Demo Manifest Release Channel",
+  "author": "WiseAI Team",
+  "version": "1.0.0",
+  "description": "Verification demo for manifest releaseChannel behavior in WStudio.",
+  "releaseChannel": "development",
+  "engines": {
+    "wstudio": "^1.0.0",
+    "pluginApi": "^1.0.0"
+  },
+  "keywords": [
+    "demo",
+    "manifest",
+    "release-channel",
+    "wstudio"
+  ],
+  "platforms": [
+    "desktop"
+  ],
+  "isDesktopOnly": true
+}

@@ -132,6 +132,14 @@ export interface FileResult {
 
 export type WorkspaceLastOpenedResult = APIResponse<string> | FileResult;
 
+export type WorkspaceCanvasPaneId = 'left-top' | 'left-bottom' | 'right-top' | 'right-bottom';
+
+export interface WorkspaceOpenCanvasLayoutItem {
+  path: string;
+  paneId: WorkspaceCanvasPaneId;
+  active: boolean;
+}
+
 export interface OpenNoteInNewWindowPayload {
   path: string;
   content: string;
@@ -449,9 +457,13 @@ export interface ElectronIPC {
     ) => Promise<APIResponse<WorkspaceSearchBlockCandidate[]>>;
     getSearchTags: (request?: WorkspaceSearchTagRequest) => Promise<APIResponse<string[]>>;
     getRecentFiles: () => Promise<APIResponse<string[]>>;
+    getOpenCanvasFiles: () => Promise<APIResponse<string[]>>;
+    getOpenCanvasLayout: () => Promise<APIResponse<WorkspaceOpenCanvasLayoutItem[]>>;
     getLastOpened: () => Promise<WorkspaceLastOpenedResult>;
     addRecentFile: (filePath: string) => Promise<APIResponse>;
     clearRecentFiles: () => Promise<APIResponse>;
+    setOpenCanvasFiles: (filePaths: string[]) => Promise<APIResponse>;
+    setOpenCanvasLayout: (layoutItems: WorkspaceOpenCanvasLayoutItem[]) => Promise<APIResponse>;
     searchText: (request: WorkspaceTextSearchRequest) => Promise<APIResponse<WorkspaceTextSearchResponse>>;
     replaceText: (request: WorkspaceTextReplaceRequest) => Promise<APIResponse<WorkspaceTextReplaceResponse>>;
     startSearchSession: (request: WorkspaceTextSearchRequest) => Promise<APIResponse<WorkspaceSearchSessionStartResult>>;

@@ -60,16 +60,16 @@ export const enUSResources = {
       commands: 'Commands',
       goToLine: 'Go to Line',
       selectColorTheme: 'Select Color Theme',
-      selectBaseTheme: 'Select Base Theme to Customize',
       selectFileIconTheme: 'Select File Icon Theme',
+      selectBaseTheme: 'Select Base Theme to Customize',
       aiConfig: 'AI Configuration',
     },
     placeholders: {
       commands: 'Type a command name...',
       goToLine: 'Type a line number...',
       selectColorTheme: 'Select color theme...',
-      selectBaseTheme: 'Select a base theme to customize...',
       selectFileIconTheme: 'Select file icon theme...',
+      selectBaseTheme: 'Select a base theme to customize...',
       aiConfig: 'Select an AI configuration to open...',
     },
     status: {
@@ -110,6 +110,10 @@ export const enUSResources = {
         label: 'Preferences: Color Theme',
         description: 'Select a color theme',
       },
+      selectFileIconTheme: {
+        label: 'Preferences: File Icon Theme',
+        description: 'Select a file icon theme',
+      },
       createCustomTheme: {
         label: 'Preferences: Create Custom Theme',
         description: 'Create a new custom theme configuration file',
@@ -125,14 +129,6 @@ export const enUSResources = {
         contrast: 'High Contrast Theme',
       },
       overrideTitle: '{{themeName}} - Color Override',
-    },
-    iconThemeCommands: {
-      selectIconTheme: {
-        label: 'Preferences: File Icon Theme',
-        description: 'Select a file icon theme',
-      },
-      defaultIcons: 'Default Icons',
-      defaultThemeName: 'Default',
     },
     markdownCategory: 'Markdown',
     markdownMessages: {
@@ -2041,10 +2037,6 @@ export const enUSResources = {
       editorLineNumbers: {
         title: 'Line Numbers',
         description: 'Controls how line numbers are rendered.',
-      },
-      workbenchIconTheme: {
-        title: 'Icon Theme',
-        description: 'Specifies the icon theme used by the workbench.',
       },
       workbenchSidebarLocation: {
         title: 'Sidebar Location',

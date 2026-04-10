@@ -14,6 +14,13 @@ import {
   VscLayoutSidebarLeftOff
 } from 'react-icons/vsc';
 import { Icon } from '../Icons';
+import { notification } from '../Notification';
+import { usePluginUiEntries } from '../../hooks/usePluginUiEntries';
+import { pluginUIService } from '../../services/PluginUIService';
+import {
+  OPEN_COLOR_THEME_PICKER_EVENT,
+  OPEN_FILE_ICON_THEME_PICKER_EVENT,
+} from '../../command-center/ThemeCommandEvents';
 import './TitleBar.scss';
 
 interface TitleBarProps {
@@ -58,6 +65,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   const [isWindowMaximized, setIsWindowMaximized] = useState<boolean>(false);
   const [hoveredControl, setHoveredControl] = useState<TitleBarControl | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const pluginTitleBarEntries = usePluginUiEntries('titleBar');
   const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
   const fileMenuTitle = translateText('titleBar.fileMenu', 'File');
 
@@ -127,6 +135,15 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
   const handleClose = (): void => {
     window.electronAPI?.closeWindow();
+  };
+
+  const handleExecutePluginEntry = async (entryId: string): Promise<void> => {
+    try {
+      await pluginUIService.executeEntry(entryId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      notification.error(`执行插件入口失败: ${message}`);
+    }
   };
 
   const handleControlMouseLeave = (): void => {
@@ -201,6 +218,14 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     window.dispatchEvent(new CustomEvent('open-settings'));
   };
 
+  const handleOpenColorThemePicker = (): void => {
+    window.dispatchEvent(new Event(OPEN_COLOR_THEME_PICKER_EVENT));
+  };
+
+  const handleOpenFileIconThemePicker = (): void => {
+    window.dispatchEvent(new Event(OPEN_FILE_ICON_THEME_PICKER_EVENT));
+  };
+
   const menuConfig: MenuConfig[] = [
     {
       title: fileMenuTitle,
@@ -240,8 +265,14 @@ export const TitleBar: React.FC<TitleBarProps> = ({
               label: translateText('titleBar.items.theme', 'Theme'),
               shortcut: 'Ctrl+K Ctrl+T',
               submenu: [
-                { label: translateText('titleBar.items.colorTheme', 'Color Theme') },
-                { label: translateText('titleBar.items.fileIconTheme', 'File Icon Theme') }
+                {
+                  label: translateText('titleBar.items.colorTheme', 'Color Theme'),
+                  action: handleOpenColorThemePicker,
+                },
+                {
+                  label: translateText('titleBar.items.fileIconTheme', 'File Icon Theme'),
+                  action: handleOpenFileIconThemePicker,
+                },
               ]
             },
           ]
@@ -455,6 +486,23 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 <VscLayoutPanelOff size={TITLEBAR_ICON_SIZE} />
               )}
             </div>
+          </div>
+        )}
+
+        {windowMode === 'full' && pluginTitleBarEntries.length > 0 && (
+          <div className="titlebar-control-group titlebar-plugin-controls">
+            {pluginTitleBarEntries.map((entry) => (
+              <div
+                key={entry.id}
+                className="titlebar-ai-button titlebar-plugin-button"
+                onClick={() => {
+                  void handleExecutePluginEntry(entry.id);
+                }}
+                title={entry.tooltip ?? entry.title}
+              >
+                <Icon name={entry.icon ?? 'extensions'} size={TITLEBAR_ICON_SIZE} />
+              </div>
+            ))}
           </div>
         )}
 

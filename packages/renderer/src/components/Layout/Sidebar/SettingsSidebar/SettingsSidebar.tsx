@@ -29,6 +29,7 @@ export type SettingsCategory =
   | 'data-settings-siyuan'
   | 'data-settings-custom'
   | 'document-processing'
+  | 'plugins'
   | 'application';
 
 interface SettingsSidebarProps {
@@ -94,6 +95,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
       ]
     },
     { id: 'document-processing', label: translateText('settings.categories.documentProcessing') },
+    { id: 'plugins', label: '插件' },
     { id: 'application', label: translateText('settings.categories.application') },
   ];
 

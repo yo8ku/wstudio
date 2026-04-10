@@ -533,7 +533,6 @@
   max-height: 350px;
 
   .select-item:hover:not(.selected),
-  .select-item[data-type='file']:hover:not(.selected),
   .select-item[data-type='folder']:hover:not(.selected),
   .select-item[data-type='form']:hover:not(.selected),
   .select-item[data-type='form-column']:hover:not(.selected) {
@@ -545,10 +544,6 @@
   .select-item.selected:hover,
   .select-item.keyboard-highlighted,
   .select-item.keyboard-highlighted:hover,
-  .select-item[data-type='file'].selected,
-  .select-item[data-type='file'].selected:hover,
-  .select-item[data-type='file'].keyboard-highlighted,
-  .select-item[data-type='file'].keyboard-highlighted:hover,
   .select-item[data-type='folder'].selected,
   .select-item[data-type='folder'].selected:hover,
   .select-item[data-type='folder'].keyboard-highlighted,
@@ -606,7 +601,6 @@
 
   &.keyboard-nav {
     .select-item:hover:not(.selected),
-    .select-item[data-type='file']:hover:not(.selected),
     .select-item[data-type='folder']:hover:not(.selected),
     .select-item[data-type='form']:hover:not(.selected),
     .select-item[data-type='form-column']:hover:not(.selected) {

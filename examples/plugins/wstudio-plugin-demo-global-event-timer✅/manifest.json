@@ -1,0 +1,22 @@
+{
+  "id": "wstudio-plugin-demo-global-event-timer",
+  "name": "WStudio Plugin Demo Global Event Timer",
+  "author": "WiseAI Team",
+  "version": "1.0.0",
+  "description": "Verification demo for registerDomEvent and registerInterval cleanup behavior in WStudio.",
+  "releaseChannel": "development",
+  "engines": {
+    "wstudio": "^1.0.0",
+    "pluginApi": "^1.0.0"
+  },
+  "keywords": [
+    "demo",
+    "event",
+    "interval",
+    "wstudio"
+  ],
+  "platforms": [
+    "desktop"
+  ],
+  "isDesktopOnly": true
+}

@@ -9,6 +9,7 @@ import type { WorkbenchNoteMenuContext } from '@note-studio/shared';
 import { useTranslation } from 'react-i18next';
 import { EditorTab } from '../EditorArea';
 import { Icon } from '../../../Icons/Icon';
+import { WorkspaceFileIcon } from '../../../WorkspaceFileIcon/WorkspaceFileIcon';
 import { GroupedContextMenu } from '../GroupedContextMenu/GroupedContextMenu';
 import type { MenuGroup } from '../GroupedContextMenu/GroupedContextMenu';
 import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
@@ -146,6 +147,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
+  const canSplitActiveTab = activeTab?.type === 'file' || activeTab?.type === 'plugin-view';
   const isEditableDocumentTab = (() => {
     if (!activeTab || activeTab.type !== 'file') return false;
     const title = activeTab.title?.trim() || '';
@@ -265,14 +267,6 @@ export const TabBar: React.FC<TabBarProps> = ({
   }, [tabContextMenu, tabs]);
 
   // 鑾峰彇鏂囦欢鍥炬爣锛堢畝鍖栫増锛屼娇鐢ㄩ€氱敤鏂囦欢鍥炬爣锛?
-  const getFileIcon = (language?: string) => {
-    return (
-      <svg className="tab-item-icon" fill="currentColor" viewBox="0 0 16 16">
-        <path d="M13.5 1h-11C1.67 1 1 1.67 1 2.5v11c0 .83.67 1.5 1.5 1.5h11c.83 0 1.5-.67 1.5-1.5v-11c0-.83-.67-1.5-1.5-1.5zm-1 11h-9v-9h9v9z"/>
-      </svg>
-    );
-  };
-
   // 澶勭悊鎵撳紑璁剧疆 JSON
   const handleOpenSettingsJson = async () => {
     try {
@@ -582,6 +576,10 @@ export const TabBar: React.FC<TabBarProps> = ({
               if (confirmed) {
                 try {
                   await window.electron?.ipcRenderer.invoke('delete-file', activeTab.path);
+                  await window.electron?.ipcRenderer.invoke(
+                    'plugin-runtime:sync-deleted-workspace-file',
+                    activeTab.path,
+                  );
                   onTabClose(activeTab.id);
                 } catch (error) {
                   console.error('delete file failed:', error);
@@ -612,6 +610,7 @@ export const TabBar: React.FC<TabBarProps> = ({
     const closeSavedTabIds = tabs.filter(tab => !tab.isDirty).map(tab => tab.id);
     const closeAllTabIds = tabs.map(tab => tab.id);
     const canOperateFile = contextTargetTab.type === 'file' && !!contextTargetTab.path;
+    const canSplitContextTab = contextTargetTab.type === 'file' || contextTargetTab.type === 'plugin-view';
     const relativePathText = canOperateFile
       ? toRelativePath(contextTargetTab.path, workspacePath || '')
       : '';
@@ -758,9 +757,9 @@ export const TabBar: React.FC<TabBarProps> = ({
       {
         id: 'split-right',
         label: translateText('tabBar.contextMenu.splitRight', 'Split Right'),
-        disabled: !canOperateFile || !onSplitToDirection,
+        disabled: !canSplitContextTab || !onSplitToDirection,
         onClick: () => {
-          if (canOperateFile) {
+          if (canSplitContextTab) {
             onSplitToDirection?.(contextTargetTab.id, 'right');
           }
         },
@@ -768,7 +767,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       {
         id: 'split-and-move',
         label: translateText('tabBar.contextMenu.splitAndMove', 'Split and Move'),
-        disabled: !canOperateFile,
+        disabled: !canSplitContextTab,
         submenuType: 'hover',
         submenu: [
           {
@@ -885,9 +884,17 @@ export const TabBar: React.FC<TabBarProps> = ({
               {isActive && <div className="tab-item-border-top" />}
               
               {/* 鏂囦欢鍥炬爣 */}
-              {getFileIcon(tab.language)}
               
               {/* 鏂囦欢鍚?*/}
+              {tab.type === 'file' && (
+                <WorkspaceFileIcon
+                  filePath={tab.path}
+                  name={tab.title}
+                  isDirectory={false}
+                  size={14}
+                  className="tab-item-icon"
+                />
+              )}
               <span className="tab-item-title">
                 {tab.title}
               </span>
@@ -921,9 +928,9 @@ export const TabBar: React.FC<TabBarProps> = ({
           </button>
         )}
         
-        {isEditableDocumentTab && (
+        {(isEditableDocumentTab || canSplitActiveTab) && (
           <>
-            {showSplitEditorAction && (
+            {showSplitEditorAction && canSplitActiveTab && (
             <button 
               className="tab-bar-action-btn"
               title={translateText('tabBar.actions.splitEditor', 'Split Editor')}
@@ -933,14 +940,16 @@ export const TabBar: React.FC<TabBarProps> = ({
             </button>
             )}
             
-            <button 
-              ref={moreButtonRef}
-              className="tab-bar-action-btn"
-              title={translateText('tabBar.actions.moreActions', 'More Actions')}
-              onClick={handleMoreClick}
-            >
-              <Icon name="more-vert" size={16} />
-            </button>
+            {isEditableDocumentTab && (
+              <button
+                ref={moreButtonRef}
+                className="tab-bar-action-btn"
+                title={translateText('tabBar.actions.moreActions', 'More Actions')}
+                onClick={handleMoreClick}
+              >
+                <Icon name="more-vert" size={16} />
+              </button>
+            )}
           </>
         )}
       </div>

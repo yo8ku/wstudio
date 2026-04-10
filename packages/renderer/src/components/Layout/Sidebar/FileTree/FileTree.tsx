@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { WorkspaceFileIcon } from '../../../WorkspaceFileIcon/WorkspaceFileIcon';
 
 interface FileTreeItem {
   name: string;
@@ -218,6 +219,21 @@ export const FileTree: React.FC = () => {
   const handleFileClick = async (path: string) => {
     console.log('[FileTree] 点击文件:', path);
     setSelectedFilePath(path);
+
+    if (path.toLowerCase().endsWith('.canvas')) {
+      try {
+        const opened = await window.electron?.ipcRenderer.invoke(
+          'plugin-runtime:request-open-workspace-file',
+          path,
+        );
+
+        if (opened === true) {
+          return;
+        }
+      } catch (error) {
+        console.error('[FileTree] 通过宿主打开白板文件失败:', error);
+      }
+    }
     
     try {
       // 读取文件内容
@@ -276,19 +292,6 @@ export const FileTree: React.FC = () => {
     }
   };
 
-  const FileIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M13.5 1h-11l-.5.5v13l.5.5h11l.5-.5v-13l-.5-.5zM13 14H3V2h10v12z" />
-      <path d="M5 4h6v1H5V4zm0 2h6v1H5V6zm0 2h6v1H5V8z" />
-    </svg>
-  );
-
-  const FolderIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M14.5 3H7.71l-.85-.85L6.51 2h-5l-.5.5v11l.5.5h13l.5-.5v-10L14.5 3zm-.51 8.49V13h-12V7h4.49l.35-.15.86-.86H14v1.5l-.01 4zm0-6.49h-6.5l-.35.15-.86.86H2v-3h4.29l.85.85.36.15H14l-.01.99z" />
-    </svg>
-  );
-
   const ChevronIcon = ({ isExpanded }: { isExpanded: boolean }) => (
     <svg 
       className="w-4 h-4" 
@@ -345,18 +348,20 @@ export const FileTree: React.FC = () => {
               <span className="chevron">
                 <ChevronIcon isExpanded={item.isExpanded || false} />
               </span>
-              <span className="icon">
-                <FolderIcon />
-              </span>
             </>
           ) : (
             <>
               <span className="chevron-placeholder"></span>
-              <span className="icon">
-                <FileIcon />
-              </span>
             </>
           )}
+          <WorkspaceFileIcon
+            filePath={item.path}
+            name={item.name}
+            isDirectory={item.type === 'folder'}
+            expanded={item.type === 'folder' && Boolean(item.isExpanded)}
+            size={16}
+            className="tree-item-icon"
+          />
           <span className="name">{item.name}</span>
           </div>
           {item.type === 'folder' && item.isExpanded && item.children && (
@@ -405,6 +410,7 @@ export const FileTree: React.FC = () => {
         .file-tree-item {
           display: flex;
           align-items: center;
+          gap: 4px;
           padding: 1px 8px;
           cursor: pointer;
           font-size: 13px;
@@ -424,6 +430,10 @@ export const FileTree: React.FC = () => {
           background: var(--selected-hover-bg, rgba(100, 150, 255, 0.4));
         }
 
+        .tree-item-icon {
+          flex-shrink: 0;
+        }
+
         .chevron {
           display: inline-flex;
           align-items: center;
@@ -438,16 +448,6 @@ export const FileTree: React.FC = () => {
           display: inline-block;
           width: 16px;
           margin-right: 4px;
-        }
-
-        .icon {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          margin-right: 6px;
-          width: 16px;
-          height: 16px;
-          color: var(--ws-sidebar-foreground, currentColor);
         }
 
         .name {

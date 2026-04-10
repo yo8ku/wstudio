@@ -1,6 +1,7 @@
 /**
  * Sidebar extensions entry exports.
- * Route the live UI through the standalone mock panel wrapper.
+ * Use the live sidebar implementation so installed plugins can appear
+ * alongside the temporary mock entries.
  */
 
-export { Extensions } from './MockExtensionsSidebar';
+export { Extensions } from './Extensions';

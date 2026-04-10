@@ -1,0 +1,17 @@
+{
+  "id": "wstudio-plugin-demo-suggest-basic",
+  "name": "WStudio Plugin Demo Suggest Basic",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Template inserter demo for SuggestModal and FuzzySuggestModal.",
+  "author": "WiseAI Team",
+  "authorUrl": "https://github.com/arebelamazuera",
+  "homepageUrl": "https://github.com/arebelamazuera/wstudio-api",
+  "repositoryUrl": "https://github.com/arebelamazuera/wstudio-api",
+  "fundingUrl": "https://github.com/sponsors/arebelamazuera",
+  "releaseChannel": "development",
+  "isDesktopOnly": false,
+  "engines": {
+    "wstudio": "^1.0.0"
+  }
+}

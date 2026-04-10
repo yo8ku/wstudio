@@ -82,17 +82,16 @@
           color: var(--ws-list-inactiveSelectionForeground, var(--ws-list-activeSelectionForeground));
         }
 
-        .editor-item-icon {
-          font-size: 16px;
-          line-height: 1;
-        }
-
         .editor-item-name {
           flex: 1;
           font-size: 13px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+
+        .editor-item-icon {
+          opacity: 0.9;
         }
 
         .editor-item-close {

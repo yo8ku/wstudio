@@ -30,9 +30,11 @@ import { registerFormHandlers } from './ipc/formHandlers';
 import { getCodeRunnerService } from './services/CodeRunnerService';
 import { registerSkillsMarketHandlers } from './ipc/skillsMarketHandlers';
 import { registerMediaHandlers } from './ipc/mediaHandlers';
+import { registerShellHandlers } from './ipc/shellHandlers';
 import { registerAIPanelContributionHandlers } from './ipc/aiPanelContributionHandlers';
 import { registerExtensionDevelopmentHandlers } from './ipc/extensionDevelopmentHandlers';
 import { registerPluginUIHandlers } from './ipc/pluginUIHandlers';
+import { registerPluginRuntimeHandlers } from './ipc/pluginRuntimeHandlers';
 import { registerWorkbenchContributionHandlers } from './ipc/workbenchContributionHandlers';
 import { builtinAI } from './services/builtinAIInstance';
 import {
@@ -66,9 +68,11 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   registerFormHandlers();
   registerSkillsMarketHandlers();
   registerMediaHandlers();
+  registerShellHandlers();
   registerAIPanelContributionHandlers();
   registerExtensionDevelopmentHandlers();
   registerPluginUIHandlers();
+  registerPluginRuntimeHandlers();
   registerWorkbenchContributionHandlers();
 
   getCodeRunnerService();

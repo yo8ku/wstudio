@@ -60,16 +60,16 @@ export const zhCNResources = {
       commands: '命令',
       goToLine: '跳转到行',
       selectColorTheme: '选择颜色主题',
-      selectBaseTheme: '选择要自定义的基础主题',
       selectFileIconTheme: '选择文件图标主题',
+      selectBaseTheme: '选择要自定义的基础主题',
       aiConfig: 'AI 配置',
     },
     placeholders: {
       commands: '输入命令名称...',
       goToLine: '输入行号...',
       selectColorTheme: '选择颜色主题...',
-      selectBaseTheme: '选择要自定义颜色的基础主题...',
       selectFileIconTheme: '选择文件图标主题...',
+      selectBaseTheme: '选择要自定义颜色的基础主题...',
       aiConfig: '选择要打开的 AI 配置...',
     },
     status: {
@@ -110,6 +110,10 @@ export const zhCNResources = {
         label: '首选项: 颜色主题',
         description: '选择颜色主题',
       },
+      selectFileIconTheme: {
+        label: '首选项: 文件图标主题',
+        description: '选择文件图标主题',
+      },
       createCustomTheme: {
         label: '首选项：创建自定义主题',
         description: '创建一个新的自定义主题配置文件',
@@ -125,14 +129,6 @@ export const zhCNResources = {
         contrast: '高对比度主题',
       },
       overrideTitle: '{{themeName}} - 颜色覆盖',
-    },
-    iconThemeCommands: {
-      selectIconTheme: {
-        label: '首选项: 文件图标主题',
-        description: '选择文件图标主题',
-      },
-      defaultIcons: '默认图标',
-      defaultThemeName: '默认',
     },
     markdownCategory: 'Markdown',
     markdownMessages: {
@@ -2001,10 +1997,6 @@ export const zhCNResources = {
       editorLineNumbers: {
         title: '行号',
         description: '控制行号的呈现方式。',
-      },
-      workbenchIconTheme: {
-        title: '图标主题',
-        description: '指定工作台使用的图标主题。',
       },
       workbenchSidebarLocation: {
         title: '侧边栏位置',

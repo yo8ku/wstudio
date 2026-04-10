@@ -11,6 +11,21 @@ const https = require('https');
 const http = require('http');
 const { fileURLToPath } = require('url');
 
+const USER_DATA_DIRECTORY_NAME = 'wstudio';
+
+function configureUserDataPath() {
+  try {
+    const appDataPath = app.getPath('appData');
+    const userDataPath = path.join(appDataPath, USER_DATA_DIRECTORY_NAME);
+    app.setPath('userData', userDataPath);
+    console.log('[Electron] userData path configured:', userDataPath);
+  } catch (error) {
+    console.error('[Electron] Failed to configure userData path:', error);
+  }
+}
+
+configureUserDataPath();
+
 // 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥箓鎳氶埡鍐ｅ亾濞堝灝鏋涚紒璇差儑缁參宕ㄩ婊呯効婵炶揪绲块崕銈夊汲韫囨稒鍊甸柣鐔煎亰濡叉悂鏌涘▎蹇曠闁瑰嘲鍟撮弫鍐焵椤掑嫬绠熼柨鐔哄У閺咁剟鏌涢鐘茬仾闁哄懐顭堥湁婵犙呭Т婵厽鎷呴崜鎻掓闂婎偄娲ゅù鐑芥偡閹捐秮褰掑礂闂傜繝瀛╅梺鎼炲€栫划鎾崇暦濠靛惟闁靛绠戦崜濠氭⒑濮瑰洤鐒洪柣鎾愁槺濡?
 // 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥΟ铏癸紞缂佺姷鎳撻埥澶愬箻瀹曞泦锛勭磼閸欐ê宓嗘慨濠呮椤撳ジ宕熼鐘橈綁鏌ｆ惔锝嗗殌妞わ富鍨跺畷锝堢疀濞戞鐣遍悷婊勭箘濡叉劕鈹戠€ｎ亞鍊為梺缁橆焾缁墽绮?CSP 濠电偛顕慨瀵哥矓閸洖绀夌憸鏃堝蓟閸涱収娼╃€规洖娲ㄩ悾?HTTP 闂備礁鎲＄换鍌滅矓鐎垫瓕濮抽柛娆忣槸缁剁偤鏌℃径瀣仸閻?meta 闂備礁鎼粔鏉懨洪妸鈺婃晢濡炲瀛╂刊濂告煕閹炬鎳忛悗?
 // 闂佽崵濮崑鎾绘煥閺囨浜鹃梺纭咁嚋缁绘繂顕ｉ悽鍓叉晢闁告劦鍠氶崣鎰版煟閻樺弶鎼愰柣掳鍔屽嵄?"This warning will not show up once the app is packaged"
@@ -750,6 +765,15 @@ function createWindow(backgroundColor = '#1e1e1e', options = {}) {
     console.error('[Electron] 婵犵數鍋為幐绋款嚕閸洘鍋傞悗锝庡亝娴溿倖绻涢幋鐐茬劰闁哄被鍊楅埀顒冾潐濞插秹寮插鍛板С?', details.reason, details.exitCode);
   });
   createdWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const isChromiumProtocolNoise = message.includes('Autofill.enable')
+      || message.includes('Autofill.setAddresses')
+      || message.includes('Storage.getStorageKeyForFrame')
+      || message.includes('Frame tree node for given frame not found');
+
+    if (isChromiumProtocolNoise) {
+      return;
+    }
+
     if (level >= 2) { // warning=2, error=3
       console.error(`[Renderer] ${message} (${sourceId}:${line})`);
     }
@@ -817,8 +841,8 @@ app.whenReady().then(async () => {
   // 闂備胶顭堢换瀣归崶顒夋晩闊洦绋掗弲?jsdelivr CDN 闂備礁鎲″缁樻叏閹灐?Monaco Editor 闂備胶鍘ч悺銊у枈瀹ュ拑鑰?
   // frame-src 闂備胶顭堢换瀣归崶顒夋晩闊洦绋戠粈澶愭煟濡厧鍔嬬紒浣峰嵆閹嘲鈻庤箛鏃戞＆濡炪倧绲介悥濂告偘椤曗偓瀹曟﹢骞撻幒妤€褰欓梻浣圭湽閸斿瞼鈧凹鍓涚划濠囨偨缁嬭法顦ч梺闈涱檧闂勫嫮浜搁敓鐘崇厸闁逞屽墴楠炲棜顦抽柣婵勫€濋弻銊モ槈濡崵顔囩紓鍌欑劍濮婂綊鎮烽敐澶婄劦妞ゆ垼娉曢悿鍣妘Tube闂備線娼уΛ鏂款渻閹烘梹顫曟い鎾卞灪閻撯偓闂佸憡鍨崐妤冪矆?
   const cspHeader = process.env.NODE_ENV === 'development'
-    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; worker-src 'self' blob: http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';"
-    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: https://cdn.jsdelivr.net; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: https://player.bilibili.com https://www.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.youku.com; object-src 'none'; base-uri 'self'; form-action 'self';";
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; worker-src 'self' blob: http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: http: https:; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
+    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: http: https:; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: http: https:; object-src 'none'; base-uri 'self'; form-action 'self';";
   
   // 闂備胶鎳撻崵鏍⒔閸曨垰鏄ラ柛娑欐綑缁犮儵鏌嶈閸撶喎顕ｉ崹顐㈢窞濠电姴鍟崕銉╂煙閻撳海鎽犻柡灞诲姂閹崇喖鎮㈤棃鐐叉捣閹风娀骞撻幒婵囧 CSP 闂?
   defaultSession.webRequest.onHeadersReceived((details, callback) => {

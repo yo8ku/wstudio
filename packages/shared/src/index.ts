@@ -7,6 +7,7 @@ export * from './types/ai-panel-contribution';
 export * from './types/extension-development';
 export * from './types/workbench-contribution';
 export * from './types/workbench-menu-context';
+export * from './types/plugin-ui';
 export * from './types/embeddings';
 export * from './types/json';
 export * from './types/extension';
