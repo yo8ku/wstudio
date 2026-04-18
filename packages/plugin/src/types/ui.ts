@@ -4,6 +4,10 @@
 
 import type { Disposable } from './disposable';
 
+/**
+ * Host icon id used by runtime entry points and view chrome.
+ * These resolve through the host SVG icon registry and are not plugin logo image paths.
+ */
 export type IconName = string;
 
 export type HexString = string;
@@ -39,6 +43,7 @@ export const PLUGIN_UI_ENTRY_LOCATIONS = [
   'activityBar',
   'titleBar',
   'statusBar',
+  'editorTabBar',
   'canvasToolbar',
   'canvasTitleBar',
   'canvasContextMenu',
@@ -109,6 +114,10 @@ export function getIcon(iconId: string): SVGSVGElement | null {
 
 export function getIconIds(): readonly IconName[] {
   return [...registeredIcons.keys()];
+}
+
+export function getRegisteredIconSvgContent(iconId: string): string | null {
+  return registeredIcons.get(iconId) ?? null;
 }
 
 export function removeIcon(iconId: string): void {

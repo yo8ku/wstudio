@@ -1,28 +1,68 @@
 /**
- * Demo plugin entry used to verify workspace, leaf, and item view behavior.
- * It now also verifies that plugin ItemView content can interact inside the renderer host.
+ * Demo plugin entry used to verify runtime-only workspace views, settings tabs,
+ * and popover overlays without relying on legacy DOM roots.
  */
 
 import {
+  addIcon,
   ItemView,
   Notice,
   Plugin,
+  PopoverSuggest,
+  type App,
   type JsonObject,
   type PluginFailureContext,
   type ViewStateResult,
   type WorkspaceLeaf,
 } from '@note-studio/plugin';
+import { DemoViewWorkspaceSettingTab } from './settingsTabs';
 
 const DEMO_VIEW_TYPE = 'wstudio-demo-workspace-view';
-const DEMO_TITLE = '工作区视图演示';
+const DEMO_FALLBACK_VIEW_TYPE = 'wstudio-demo-workspace-view-fallback';
+const DEMO_TITLE = 'UI Runtime 示例视图';
+const DEMO_ACTIVITY_BAR_TITLE = 'UI Runtime Demo';
+const DEMO_FALLBACK_TITLE = 'UI Runtime 回退演示视图';
 const OPEN_VIEW_COMMAND_ID = 'open-demo-workspace-view';
+const OPEN_FALLBACK_VIEW_COMMAND_ID = 'open-demo-workspace-view-fallback';
 const ACTIVATE_VIEW_COMMAND_ID = 'activate-demo-workspace-view';
 const TRIGGER_VIEW_ACTION_COMMAND_ID = 'trigger-demo-workspace-view-action';
 const SHOW_SNAPSHOT_COMMAND_ID = 'show-demo-workspace-snapshot';
 const CLOSE_VIEWS_COMMAND_ID = 'close-demo-workspace-views';
+const OPEN_RUNTIME_POPOVER_COMMAND_ID = 'open-demo-runtime-popover';
+const OPEN_RUNTIME_POPOVER_FALLBACK_COMMAND_ID = 'open-demo-runtime-popover-fallback';
+const RUNTIME_POPOVER_SURFACE_ID = 'workspace-runtime-popover-demo';
+const RUNTIME_POPOVER_FAILURE_SURFACE_ID = 'workspace-runtime-popover-demo-failure';
+const RUNTIME_POPOVER_VALUES = ['amber-task', 'azure-note', 'atlas-sheet', 'aurora-board'];
+const DEMO_ICON_ID = 'demo-ui-runtime-view-icon';
+const DEMO_ICON_SVG = `
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect x="16" y="18" width="68" height="64" rx="14" fill="currentColor" opacity="0.18" />
+    <rect x="22" y="24" width="56" height="52" rx="10" fill="none" stroke="currentColor" stroke-width="8" />
+    <path d="M34 62 L50 38 L66 62" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="50" cy="38" r="6" fill="currentColor" />
+  </svg>
+`;
 
 type DemoViewConstructorArgument = string | number | boolean | bigint | symbol | object | null | undefined;
 type DemoTraceHandler = (message: string) => void;
+
+interface DemoViewDefinition {
+  readonly viewType: string;
+  readonly title: string;
+  readonly fallbackDemo: boolean;
+}
+
+const PRIMARY_DEMO_VIEW: DemoViewDefinition = {
+  viewType: DEMO_VIEW_TYPE,
+  title: DEMO_TITLE,
+  fallbackDemo: false,
+};
+
+const FALLBACK_DEMO_VIEW: DemoViewDefinition = {
+  viewType: DEMO_FALLBACK_VIEW_TYPE,
+  title: DEMO_FALLBACK_TITLE,
+  fallbackDemo: true,
+};
 
 function readStringValue(state: JsonObject, key: string, fallback: string): string {
   const value = state[key];
@@ -42,6 +82,17 @@ function isDemoTraceHandler(value: DemoViewConstructorArgument): value is DemoTr
   return typeof value === 'function';
 }
 
+function isDemoViewDefinition(value: DemoViewConstructorArgument): value is DemoViewDefinition {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const candidate = value as DemoViewDefinition;
+  return typeof candidate.viewType === 'string'
+    && typeof candidate.title === 'string'
+    && typeof candidate.fallbackDemo === 'boolean';
+}
+
 function resolveWorkspaceLeaf(args: readonly DemoViewConstructorArgument[]): WorkspaceLeaf {
   const leaf = args[0] ?? null;
 
@@ -56,27 +107,32 @@ function resolveTraceHandler(value: DemoViewConstructorArgument): DemoTraceHandl
   return isDemoTraceHandler(value) ? value : ignoreDemoMessage;
 }
 
+function resolveViewDefinition(value: DemoViewConstructorArgument): DemoViewDefinition {
+  return isDemoViewDefinition(value) ? value : PRIMARY_DEMO_VIEW;
+}
+
 class DemoWorkspaceView extends ItemView {
   private source = '未设置';
   private sequence = 0;
   private stateMessage = '尚未写入状态';
-  private actionEl: HTMLElement | null = null;
   private readonly trace: DemoTraceHandler;
   private readonly notify: DemoTraceHandler;
+  private readonly definition: DemoViewDefinition;
 
   public constructor(...args: DemoViewConstructorArgument[]) {
     super(resolveWorkspaceLeaf(args));
     this.trace = resolveTraceHandler(args[1] ?? null);
     this.notify = resolveTraceHandler(args[2] ?? null);
-    this.icon = 'layout-dashboard';
+    this.definition = resolveViewDefinition(args[3] ?? null);
+    this.icon = DEMO_ICON_ID;
   }
 
   public getViewType(): string {
-    return DEMO_VIEW_TYPE;
+    return this.definition.viewType;
   }
 
   public getDisplayText(): string {
-    return `${DEMO_TITLE} #${this.sequence}`;
+    return `${this.definition.title} #${this.sequence}`;
   }
 
   public getState(): JsonObject {
@@ -91,110 +147,156 @@ class DemoWorkspaceView extends ItemView {
     this.source = readStringValue(state, 'source', this.source);
     this.sequence = readFiniteNumberValue(state, 'sequence', this.sequence);
     this.stateMessage = readStringValue(state, 'stateMessage', this.stateMessage);
-    this.renderViewContent();
     this.trace(
-      `view.setState#${this.sequence} source=${this.source} history=${result.history} message=${this.stateMessage}`,
+      `view.setState#${this.sequence} type=${this.definition.viewType} source=${this.source} history=${result.history} message=${this.stateMessage}`,
     );
   }
 
   public override onOpen(): void {
-    this.trace(`view.onOpen#${this.sequence} leaf=${this.leaf.id}`);
-    this.renderViewContent();
-    this.actionEl = this.addAction('play-circle', '触发视图动作', () => {
-      this.trace(`view.action#${this.sequence} leaf=${this.leaf.id}`);
-      this.notify(`视图内部动作已触发：leaf=${this.leaf.id}, sequence=${this.sequence}`);
-    });
-    this.actionEl.textContent = '触发视图动作';
+    this.trace(`view.onOpen#${this.sequence} type=${this.definition.viewType} leaf=${this.leaf.id}`);
   }
 
   public override onClose(): void {
-    this.trace(`view.onClose#${this.sequence} leaf=${this.leaf.id}`);
-    this.actionEl = null;
+    this.trace(`view.onClose#${this.sequence} type=${this.definition.viewType} leaf=${this.leaf.id}`);
   }
 
   public triggerInternalAction(): boolean {
-    if (this.actionEl === null) {
-      return false;
-    }
-
-    this.actionEl.click();
+    this.trace(`view.action#${this.sequence} leaf=${this.leaf.id}`);
+    this.notify(`视图内部动作已触发：leaf=${this.leaf.id}, sequence=${this.sequence}`);
     return true;
   }
+}
 
-  private renderViewContent(): void {
-    const titleEl = document.createElement('div');
-    titleEl.textContent = `${DEMO_TITLE} #${this.sequence}`;
+class DemoRuntimePopover extends PopoverSuggest<string> {
+  public static readonly runtimeSurfaceId: string = RUNTIME_POPOVER_SURFACE_ID;
 
-    const sourceEl = document.createElement('div');
-    sourceEl.textContent = `来源：${this.source}`;
-
-    const stateEl = document.createElement('div');
-    stateEl.textContent = `状态：${this.stateMessage}`;
-
-    const leafEl = document.createElement('div');
-    leafEl.textContent = `叶子：${this.leaf.id}`;
-
-    const editorLabelEl = document.createElement('div');
-    editorLabelEl.textContent = '在视图内直接编辑状态：';
-
-    const editorInputEl = document.createElement('input');
-    editorInputEl.type = 'text';
-    editorInputEl.value = this.stateMessage;
-    editorInputEl.placeholder = '输入新的状态文本';
-    this.registerDomEvent(editorInputEl, 'input', () => {
-      this.stateMessage = editorInputEl.value.trim().length === 0 ? '未填写状态' : editorInputEl.value;
-      stateEl.textContent = `状态：${this.stateMessage}`;
-      this.trace(`view.input#${this.sequence} value=${this.stateMessage}`);
-    });
-
-    const actionHintEl = document.createElement('div');
-    actionHintEl.textContent = '下方按钮应可直接在视图中点击触发：';
-
-    this.contentEl.replaceChildren(
-      titleEl,
-      sourceEl,
-      stateEl,
-      leafEl,
-      editorLabelEl,
-      editorInputEl,
-      actionHintEl,
-    );
-
-    if (this.actionEl !== null) {
-      this.contentEl.append(this.actionEl);
-    }
+  public constructor(
+    app: App,
+    private readonly onChosen: (value: string) => void,
+    private readonly onTrace: DemoTraceHandler,
+    private readonly onNotice: DemoTraceHandler,
+  ) {
+    super(app);
+    this.setInstructions([
+      { command: 'Click', purpose: 'Select a runtime popover item' },
+      { command: 'Esc', purpose: 'Close the popover' },
+    ]);
   }
+
+  public renderSuggestion(value: string, el: HTMLElement): void {
+    el.textContent = value;
+  }
+
+  public selectSuggestion(value: string, evt: MouseEvent | KeyboardEvent): void {
+    evt.preventDefault();
+    this.onChosen(value);
+    this.onTrace(`popover.choose value=${value}`);
+    this.onNotice(`Runtime popover selected: ${value}`);
+    this.close();
+  }
+
+  public openDemo(): readonly string[] {
+    this.close();
+    this.setSuggestions(RUNTIME_POPOVER_VALUES);
+    this.open();
+    return RUNTIME_POPOVER_VALUES;
+  }
+}
+
+class DemoRuntimePopoverFailure extends DemoRuntimePopover {
+  public static readonly runtimeSurfaceId: string = RUNTIME_POPOVER_FAILURE_SURFACE_ID;
 }
 
 export default class DemoViewWorkspacePlugin extends Plugin {
   private nextSequence = 0;
+  private runtimePopover: DemoRuntimePopover | null = null;
+  private runtimePopoverFailure: DemoRuntimePopoverFailure | null = null;
+  private lastRuntimePopoverValue = 'none';
 
   public onload(): void {
     this.recordTrace('plugin.onload');
-
-    this.registerView(DEMO_VIEW_TYPE, (leaf) => new DemoWorkspaceView(
-      leaf,
-      (message: string) => this.recordTrace(message),
-      (message: string) => {
-        new Notice(message, 2400);
+    addIcon(DEMO_ICON_ID, DEMO_ICON_SVG);
+    this.addSettingTab(new DemoViewWorkspaceSettingTab(this.app, this, {
+      title: 'UI Runtime Demo',
+      description: 'This settings tab is used to verify that ui.settings can render inside an isolated runtime iframe.',
+      verificationHint: 'In the settings center, this tab should render successfully through ui.settings rather than any legacy summary preview.',
+    }));
+    this.addSettingTab(new DemoViewWorkspaceSettingTab(this.app, this, {
+      title: 'UI Runtime Fallback Demo',
+      description: 'This settings tab intentionally fails inside ui.settings so the host can verify the fallback error state.',
+      verificationHint: 'In the settings center, this tab should show a host-managed failure state instead of silently falling back to legacy DOM content.',
+    }));
+    this.runtimePopover = new DemoRuntimePopover(
+      this.app,
+      (value: string) => {
+        this.setRuntimePopoverValue(value);
       },
-    ));
+      (message: string) => {
+        this.recordTrace(message);
+      },
+      (message: string) => {
+        this.showNotice(message);
+      },
+    );
+    this.runtimePopoverFailure = new DemoRuntimePopoverFailure(
+      this.app,
+      (value: string) => {
+        this.setRuntimePopoverValue(value);
+      },
+      (message: string) => {
+        this.recordTrace(message);
+      },
+      (message: string) => {
+        this.showNotice(message);
+      },
+    );
 
-    this.addRibbonIcon('layout-dashboard', DEMO_TITLE, () => {
+    this.registerView(
+      DEMO_VIEW_TYPE,
+      (leaf) => new DemoWorkspaceView(
+        leaf,
+        (message: string) => this.recordTrace(message),
+        (message: string) => {
+          new Notice(message, 2400);
+        },
+      ),
+    );
+
+    this.registerView(
+      DEMO_FALLBACK_VIEW_TYPE,
+      (leaf) => new DemoWorkspaceView(
+        leaf,
+        (message: string) => this.recordTrace(message),
+        (message: string) => {
+          new Notice(message, 2400);
+        },
+        FALLBACK_DEMO_VIEW,
+      ),
+    );
+
+    this.addRibbonIcon(DEMO_ICON_ID, DEMO_ACTIVITY_BAR_TITLE, () => {
       this.runAsyncAction('open-demo-view-from-ribbon', () => this.openDemoView('活动栏入口'));
     }, { location: 'activityBar' });
 
     this.addCommand({
       id: OPEN_VIEW_COMMAND_ID,
-      name: '视图演示：打开自定义视图',
+      name: 'UI Runtime 示例视图：打开',
       callback: () => {
-        this.runAsyncAction('open-demo-view-from-command', () => this.openDemoView('命令中心'));
+        this.runAsyncAction('open-demo-view-from-command', () => this.openDemoView('命令面板'));
+      },
+    });
+
+    this.addCommand({
+      id: OPEN_FALLBACK_VIEW_COMMAND_ID,
+      name: 'UI Runtime 示例视图：打开失败回退演示',
+      callback: () => {
+        this.runAsyncAction('open-demo-view-fallback-from-command', () => this.openFallbackDemoView());
       },
     });
 
     this.addCommand({
       id: ACTIVATE_VIEW_COMMAND_ID,
-      name: '视图演示：激活当前演示视图',
+      name: 'UI Runtime 示例视图：激活当前视图',
       callback: () => {
         this.runAsyncAction('reveal-demo-view', () => this.revealFirstDemoLeaf());
       },
@@ -202,7 +304,7 @@ export default class DemoViewWorkspacePlugin extends Plugin {
 
     this.addCommand({
       id: TRIGGER_VIEW_ACTION_COMMAND_ID,
-      name: '视图演示：触发视图内部动作',
+      name: 'UI Runtime 示例视图：触发内部动作',
       callback: () => {
         this.triggerActiveViewAction();
       },
@@ -210,17 +312,33 @@ export default class DemoViewWorkspacePlugin extends Plugin {
 
     this.addCommand({
       id: SHOW_SNAPSHOT_COMMAND_ID,
-      name: '视图演示：显示工作区快照',
+      name: 'UI Runtime 示例视图：显示工作区快照',
       callback: () => {
-        this.showWorkspaceSnapshot('命令中心');
+        this.showWorkspaceSnapshot('命令面板');
       },
     });
 
     this.addCommand({
       id: CLOSE_VIEWS_COMMAND_ID,
-      name: '视图演示：关闭全部演示视图',
+      name: 'UI Runtime 示例视图：关闭全部视图',
       callback: () => {
         this.runAsyncAction('close-demo-views', () => this.closeDemoViews());
+      },
+    });
+
+    this.addCommand({
+      id: OPEN_RUNTIME_POPOVER_COMMAND_ID,
+      name: 'UI Runtime 示例视图：Runtime Popover Demo',
+      callback: () => {
+        this.openRuntimePopoverDemo();
+      },
+    });
+
+    this.addCommand({
+      id: OPEN_RUNTIME_POPOVER_FALLBACK_COMMAND_ID,
+      name: 'UI Runtime 示例视图：Runtime Popover Fallback Demo',
+      callback: () => {
+        this.openRuntimePopoverFallbackDemo();
       },
     });
   }
@@ -232,16 +350,18 @@ export default class DemoViewWorkspacePlugin extends Plugin {
   public onDisable(): void {
     this.recordTrace('plugin.onDisable');
     this.app.workspace.detachLeavesOfType(DEMO_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(DEMO_FALLBACK_VIEW_TYPE);
   }
 
   public onunload(): void {
     this.recordTrace('plugin.onunload');
     this.app.workspace.detachLeavesOfType(DEMO_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(DEMO_FALLBACK_VIEW_TYPE);
   }
 
   public onFailed(failure: PluginFailureContext): void {
     this.recordTrace(`plugin.onFailed:${failure.operation}`);
-    new Notice(`${DEMO_TITLE} 在 ${failure.operation} 阶段失败。`, 2500);
+    new Notice(`${DEMO_TITLE}：${failure.operation} 阶段出现异常。`, 2500);
   }
 
   private async openDemoView(source: string): Promise<void> {
@@ -254,18 +374,35 @@ export default class DemoViewWorkspacePlugin extends Plugin {
       state: {
         source,
         sequence: this.nextSequence,
-        stateMessage: `由 ${source} 打开`,
+        stateMessage: `${source} 打开`,
       },
     });
     await this.app.workspace.revealLeaf(leaf);
     this.showWorkspaceSnapshot(source);
   }
 
+  private async openFallbackDemoView(): Promise<void> {
+    const leaf = this.app.workspace.getLeaf('tab');
+    this.nextSequence += 1;
+
+    await leaf.setViewState({
+      type: DEMO_FALLBACK_VIEW_TYPE,
+      active: true,
+      state: {
+        source: '失败回退演示',
+        sequence: this.nextSequence,
+        stateMessage: '此视图的 ui.views runtime 会故意失败。',
+      },
+    });
+    await this.app.workspace.revealLeaf(leaf);
+    this.showWorkspaceSnapshot('失败回退演示');
+  }
+
   private async revealFirstDemoLeaf(): Promise<void> {
     const firstDemoLeaf = this.app.workspace.getLeavesOfType(DEMO_VIEW_TYPE)[0] ?? null;
 
     if (firstDemoLeaf === null) {
-      new Notice(`${DEMO_TITLE}：当前没有可激活的演示视图。`, 2200);
+      new Notice(`${DEMO_TITLE}：当前没有可激活的运行时视图。`, 2200);
       this.recordTrace('workspace.revealLeaf.skipped');
       return;
     }
@@ -273,7 +410,7 @@ export default class DemoViewWorkspacePlugin extends Plugin {
     await this.app.workspace.revealLeaf(firstDemoLeaf);
     this.recordTrace(`workspace.revealLeaf leaf=${firstDemoLeaf.id}`);
     new Notice(
-      `${DEMO_TITLE}：已激活 ${firstDemoLeaf.id} / ${firstDemoLeaf.getDisplayText()} / ${firstDemoLeaf.getIcon()}`,
+      `${DEMO_TITLE}：已激活 leaf=${firstDemoLeaf.id} / ${firstDemoLeaf.getDisplayText()} / ${firstDemoLeaf.getIcon()}`,
       2600,
     );
   }
@@ -282,20 +419,19 @@ export default class DemoViewWorkspacePlugin extends Plugin {
     const activeView = this.app.workspace.getActiveViewOfType(DemoWorkspaceView);
 
     if (activeView === null) {
-      new Notice(`${DEMO_TITLE}：当前活动叶子不是演示视图。`, 2200);
+      new Notice(`${DEMO_TITLE}：当前没有激活的示例视图。`, 2200);
       this.recordTrace('view.action.skipped');
       return;
     }
 
-    if (!activeView.triggerInternalAction()) {
-      new Notice(`${DEMO_TITLE}：当前演示视图还没有可触发动作。`, 2200);
-      this.recordTrace('view.action.missing');
-    }
+    activeView.triggerInternalAction();
   }
 
   private async closeDemoViews(): Promise<void> {
-    const beforeCount = this.app.workspace.getLeavesOfType(DEMO_VIEW_TYPE).length;
+    const beforeCount = this.app.workspace.getLeavesOfType(DEMO_VIEW_TYPE).length
+      + this.app.workspace.getLeavesOfType(DEMO_FALLBACK_VIEW_TYPE).length;
     this.app.workspace.detachLeavesOfType(DEMO_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(DEMO_FALLBACK_VIEW_TYPE);
     this.recordTrace(`workspace.detachLeavesOfType before=${beforeCount}`);
 
     const fallbackLeaf = this.app.workspace.getLeaf('tab');
@@ -303,11 +439,11 @@ export default class DemoViewWorkspacePlugin extends Plugin {
       type: 'empty',
       active: true,
       state: {
-        source: '关闭演示视图',
+        source: '关闭示例视图',
       },
     });
     await this.app.workspace.revealLeaf(fallbackLeaf);
-    this.showWorkspaceSnapshot('关闭演示视图');
+    this.showWorkspaceSnapshot('关闭示例视图');
   }
 
   private showWorkspaceSnapshot(source: string): void {
@@ -318,20 +454,59 @@ export default class DemoViewWorkspacePlugin extends Plugin {
 
     const activeLeaf = this.app.workspace.activeLeaf;
     const activeLeafText = activeLeaf === null
-      ? '无'
+      ? 'none'
       : `${activeLeaf.id}/${activeLeaf.getViewState().type}/${activeLeaf.getDisplayText()}`;
     const activeLeafLookup = activeLeaf === null
-      ? '无'
-      : this.app.workspace.getLeafById(activeLeaf.id)?.id ?? '未找到';
-    const demoLeaves = this.app.workspace.getLeavesOfType(DEMO_VIEW_TYPE).length;
-    const snapshot = `source=${source}, active=${activeLeafText}, lookup=${activeLeafLookup}, demoLeaves=${demoLeaves}, allLeaves=${allLeafIds.join('|')}`;
+      ? 'none'
+      : this.app.workspace.getLeafById(activeLeaf.id)?.id ?? 'missing';
+    const demoLeaves = this.app.workspace.getLeavesOfType(DEMO_VIEW_TYPE).length
+      + this.app.workspace.getLeavesOfType(DEMO_FALLBACK_VIEW_TYPE).length;
+    const snapshot = `source=${source}, active=${activeLeafText}, lookup=${activeLeafLookup}, demoLeaves=${demoLeaves}, runtimePopover=${this.lastRuntimePopoverValue}, allLeaves=${allLeafIds.join('|')}`;
 
     this.recordTrace(`workspace.snapshot ${snapshot}`);
     new Notice(`${DEMO_TITLE}：${snapshot}`, 4200);
   }
 
+  private openRuntimePopoverDemo(): void {
+    const runtimePopover = this.requireRuntimePopover();
+    const suggestions = runtimePopover.openDemo();
+    this.recordTrace(`popover.open values=${suggestions.join('|')}`);
+    this.showNotice(`Runtime popover opened with ${suggestions.length} items.`);
+  }
+
+  private openRuntimePopoverFallbackDemo(): void {
+    const runtimePopoverFailure = this.requireRuntimePopoverFailure();
+    const suggestions = runtimePopoverFailure.openDemo();
+    this.recordTrace(`popoverFallback.open values=${suggestions.join('|')}`);
+    this.showNotice(`Runtime popover fallback opened with ${suggestions.length} items.`);
+  }
+
+  private setRuntimePopoverValue(value: string): void {
+    this.lastRuntimePopoverValue = value;
+  }
+
+  private requireRuntimePopover(): DemoRuntimePopover {
+    if (this.runtimePopover === null) {
+      throw new Error('Runtime popover demo is not initialized.');
+    }
+
+    return this.runtimePopover;
+  }
+
+  private requireRuntimePopoverFailure(): DemoRuntimePopoverFailure {
+    if (this.runtimePopoverFailure === null) {
+      throw new Error('Runtime popover fallback demo is not initialized.');
+    }
+
+    return this.runtimePopoverFailure;
+  }
+
   private recordTrace(message: string): void {
     console.log(`[demo-view-workspace] ${message}`);
+  }
+
+  private showNotice(message: string): void {
+    new Notice(message, 2800);
   }
 
   private runAsyncAction(label: string, action: () => Promise<void>): void {

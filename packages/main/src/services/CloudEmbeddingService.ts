@@ -70,11 +70,35 @@ export interface CustomEmbeddingConfig {
 }
 
 /** 持久化配置结构 */
+interface OllamaModelDetails {
+  family?: string;
+  families?: string[];
+  format?: string;
+  parameter_size?: string;
+  quantization_level?: string;
+}
+
+interface OllamaModelTag {
+  name: string;
+  model?: string;
+  digest?: string;
+  size?: number;
+  modified_at?: string;
+  details?: OllamaModelDetails;
+}
+
+interface OllamaTagsResponse {
+  models?: OllamaModelTag[];
+}
+
 interface EmbeddingStoreSchema {
   /** 当前使用的模型 ID */
   currentModelId: string;
+  currentProviderId?: string;
   /** API Key（按服务商存储） */
   apiKeys: Record<string, string>;
+  providerEndpoints?: Record<string, string>;
+  modelDimensions?: Record<string, number>;
   /** 自定义模型配置 */
   customConfig?: CustomEmbeddingConfig;
 }
@@ -83,8 +107,11 @@ interface EmbeddingStoreSchema {
 interface ServiceConfig {
   /** 当前使用的模型 ID */
   modelId: string;
+  currentProviderId?: string;
   /** API Key（按服务商存储） */
   apiKeys: Record<string, string>;
+  providerEndpoints: Record<string, string>;
+  modelDimensions: Record<string, number>;
   /** 自定义模型配置 */
   customConfig?: CustomEmbeddingConfig;
 }
@@ -95,7 +122,10 @@ interface ServiceConfig {
 class CloudEmbeddingServiceClass {
   private config: ServiceConfig = {
     modelId: 'BAAI/bge-m3', // 默认使用硅基流动的免费模型
+    currentProviderId: 'ollama',
     apiKeys: {},
+    providerEndpoints: {},
+    modelDimensions: {},
   };
 
   private store: Store<EmbeddingStoreSchema>;

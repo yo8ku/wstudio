@@ -13,7 +13,7 @@ import {
   VscLayoutSidebarLeft,
   VscLayoutSidebarLeftOff
 } from 'react-icons/vsc';
-import { Icon } from '../Icons';
+import { Icon, PluginUiIcon } from '../Icons';
 import { notification } from '../Notification';
 import { usePluginUiEntries } from '../../hooks/usePluginUiEntries';
 import { pluginUIService } from '../../services/PluginUIService';
@@ -500,7 +500,11 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 }}
                 title={entry.tooltip ?? entry.title}
               >
-                <Icon name={entry.icon ?? 'extensions'} size={TITLEBAR_ICON_SIZE} />
+                <PluginUiIcon
+                  name={entry.icon}
+                  svgContent={entry.iconSvg}
+                  size={TITLEBAR_ICON_SIZE}
+                />
               </div>
             ))}
           </div>

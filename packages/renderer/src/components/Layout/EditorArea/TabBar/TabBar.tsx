@@ -5,18 +5,23 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import type { WorkbenchNoteMenuContext } from '@note-studio/shared';
+import type { PluginUiEntrySnapshot, WorkbenchNoteMenuContext } from '@note-studio/shared';
 import { useTranslation } from 'react-i18next';
 import { EditorTab } from '../EditorArea';
 import { Icon } from '../../../Icons/Icon';
+import { PluginUiIcon } from '../../../Icons';
 import { WorkspaceFileIcon } from '../../../WorkspaceFileIcon/WorkspaceFileIcon';
+import { notification } from '../../../Notification';
 import { GroupedContextMenu } from '../GroupedContextMenu/GroupedContextMenu';
 import type { MenuGroup } from '../GroupedContextMenu/GroupedContextMenu';
 import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
 import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
 import { useExplorerStore } from '../../../../stores/explorerStore';
 import { useNoteEditorSettingsStore } from '../../../../stores/noteEditorSettingsStore';
+import { usePluginUiEntries } from '../../../../hooks/usePluginUiEntries';
 import { useWorkbenchMenuContributions } from '../../../../hooks/useWorkbenchMenuContributions';
+import { pluginUIService } from '../../../../services/PluginUIService';
+import { matchesPluginUiEntryScope } from '../../../../utils/pluginUiScope';
 import {
   executeWorkbenchMenuContribution,
   groupWorkbenchMenuContributions,
@@ -143,11 +148,15 @@ export const TabBar: React.FC<TabBarProps> = ({
   const showLineNumbers = useNoteEditorSettingsStore((state) => state.showLineNumbers);
   const loadNoteEditorSettings = useNoteEditorSettingsStore((state) => state.loadSettings);
   const setShowLineNumbers = useNoteEditorSettingsStore((state) => state.setShowLineNumbers);
+  const editorTabBarPluginEntries = usePluginUiEntries('editorTabBar');
   const noteContextMenus = useWorkbenchMenuContributions('note/context');
   const translateText = (key: string, defaultValue: string): string => String(t(key, { defaultValue }));
   
   const activeTab = tabs.find(tab => tab.id === activeTabId);
   const canSplitActiveTab = activeTab?.type === 'file' || activeTab?.type === 'plugin-view';
+  const activeTabViewType = activeTab?.type === 'plugin-view'
+    ? activeTab.pluginViewData?.viewType ?? null
+    : null;
   const isEditableDocumentTab = (() => {
     if (!activeTab || activeTab.type !== 'file') return false;
     const title = activeTab.title?.trim() || '';
@@ -162,6 +171,18 @@ export const TabBar: React.FC<TabBarProps> = ({
     }
     return false;
   })();
+  const visibleEditorTabBarPluginEntries = useMemo(
+    (): readonly PluginUiEntrySnapshot[] => {
+      if (!activeTab) {
+        return [];
+      }
+
+      return editorTabBarPluginEntries.filter((entry) => (
+        matchesPluginUiEntryScope(entry, activeTabViewType, activeTab.path ?? null)
+      ));
+    },
+    [activeTab, activeTabViewType, editorTabBarPluginEntries],
+  );
 
   useEffect(() => {
     if (!isEditableDocumentTab && showMoreMenu) {
@@ -342,6 +363,15 @@ export const TabBar: React.FC<TabBarProps> = ({
       console.error('[TabBar] 在资源管理器中打开失败:', error);
     }
   }, [onOpenTabInExplorer]);
+
+  const handleExecutePluginEntry = useCallback(async (entryId: string): Promise<void> => {
+    try {
+      await pluginUIService.executeEntry(entryId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      notification.error(`执行插件入口失败: ${message}`);
+    }
+  }, []);
 
   const handleRevealInExplorerViewByTab = useCallback((tab: EditorTab) => {
     if (!tab.path || tab.type !== 'file') {
@@ -918,6 +948,19 @@ export const TabBar: React.FC<TabBarProps> = ({
 
       {/* 鎿嶄綔鎸夐挳鍖哄煙 */}
       <div className="tab-bar-actions">
+        {visibleEditorTabBarPluginEntries.map((entry) => (
+          <button
+            key={entry.id}
+            className="tab-bar-action-btn"
+            onClick={() => {
+              void handleExecutePluginEntry(entry.id);
+            }}
+            title={entry.tooltip ?? entry.title}
+          >
+            <PluginUiIcon name={entry.icon} svgContent={entry.iconSvg} size={16} />
+          </button>
+        ))}
+
         {activeTab?.type === 'settings' && (
           <button 
             className="tab-bar-action-btn"

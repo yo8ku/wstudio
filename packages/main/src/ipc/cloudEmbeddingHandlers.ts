@@ -8,7 +8,7 @@ import {
   cloudEmbeddingService,
   type CustomEmbeddingConfig,
   type EmbeddingResult,
-} from '../services/CloudEmbeddingService';
+} from '../services/CloudEmbeddingServiceRuntime';
 import type {
   EmbeddingModelConfig,
   EmbeddingProviderConfig,
@@ -31,6 +31,8 @@ const CLOUD_EMBEDDING_CHANNELS = [
   'cloud-embedding:get-models',
   'cloud-embedding:set-api-key',
   'cloud-embedding:get-api-key',
+  'cloud-embedding:get-provider-endpoint',
+  'cloud-embedding:set-provider-endpoint',
   'cloud-embedding:set-model',
   'cloud-embedding:get-current-model',
   'cloud-embedding:generate',
@@ -88,7 +90,7 @@ export const registerCloudEmbeddingHandlers = (): void => {
     'cloud-embedding:get-models',
     async (): Promise<CloudEmbeddingResponse<EmbeddingModelConfig[]>> => {
       try {
-        return buildSuccess(cloudEmbeddingService.getAvailableModels());
+        return buildSuccess(await cloudEmbeddingService.getAvailableModels());
       } catch (error) {
         console.error('[CloudEmbedding IPC] Failed to get models:', error);
         return buildFailure(error instanceof Error ? error : String(error));
@@ -122,10 +124,35 @@ export const registerCloudEmbeddingHandlers = (): void => {
   );
 
   ipcMain.handle(
-    'cloud-embedding:set-model',
-    async (_event, modelId: string): Promise<CloudEmbeddingResponse<void>> => {
+    'cloud-embedding:get-provider-endpoint',
+    async (_event, providerId: string): Promise<CloudEmbeddingResponse<string>> => {
       try {
-        cloudEmbeddingService.setModel(modelId);
+        return buildSuccess(cloudEmbeddingService.getProviderEndpoint(providerId));
+      } catch (error) {
+        console.error('[CloudEmbedding IPC] Failed to get provider endpoint:', error);
+        return buildFailure(error instanceof Error ? error : String(error));
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'cloud-embedding:set-provider-endpoint',
+    async (_event, providerId: string, endpoint: string): Promise<CloudEmbeddingResponse<void>> => {
+      try {
+        cloudEmbeddingService.setProviderEndpoint(providerId, endpoint);
+        return buildSuccess(undefined);
+      } catch (error) {
+        console.error('[CloudEmbedding IPC] Failed to set provider endpoint:', error);
+        return buildFailure(error instanceof Error ? error : String(error));
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'cloud-embedding:set-model',
+    async (_event, modelId: string, providerId?: string): Promise<CloudEmbeddingResponse<void>> => {
+      try {
+        cloudEmbeddingService.setModel(modelId, providerId);
         return buildSuccess(undefined);
       } catch (error) {
         console.error('[CloudEmbedding IPC] Failed to set model:', error);

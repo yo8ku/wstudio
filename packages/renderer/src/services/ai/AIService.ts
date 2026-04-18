@@ -7,6 +7,7 @@
 import { 
   AIProvider, 
   AIProviderConfig, 
+  AIModel,
   AIRequestParams, 
   AIResponse, 
   StreamCallback,
@@ -15,6 +16,13 @@ import {
   ModelCapability
 } from '../../types/aiProvider';
 import { aiProviderFactory } from './AIProviderFactory';
+
+interface RefreshableAIProvider extends AIProvider {
+  forceRefreshModels(): Promise<AIModel[]>;
+}
+
+const isRefreshableAIProvider = (provider: AIProvider): provider is RefreshableAIProvider =>
+  typeof (provider as RefreshableAIProvider).forceRefreshModels === 'function';
 
 export class AIService {
   private static instance: AIService;
@@ -75,6 +83,18 @@ export class AIService {
   public async getAvailableModels(): Promise<any[]> {
     if (!this.currentProvider) {
       throw new Error('No AI provider configured');
+    }
+
+    return await this.currentProvider.getAvailableModels();
+  }
+
+  public async refreshAvailableModels(): Promise<AIModel[]> {
+    if (!this.currentProvider) {
+      throw new Error('No AI provider configured');
+    }
+
+    if (isRefreshableAIProvider(this.currentProvider)) {
+      return await this.currentProvider.forceRefreshModels();
     }
 
     return await this.currentProvider.getAvailableModels();

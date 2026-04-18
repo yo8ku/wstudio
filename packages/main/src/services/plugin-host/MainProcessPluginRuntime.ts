@@ -26,12 +26,15 @@ import {
   type UIRegistry,
   type ViewCreator,
 } from '@note-studio/plugin';
+import { getRegisteredIconSvgContent } from '@note-studio/plugin/internal/icons';
 import type { PluginDataStore } from '@note-studio/plugin/types/data';
 import type { SettingsRegistry } from '@note-studio/plugin/types/settings';
+import type { ViewOption } from '@note-studio/plugin/types/bases';
 import type {
   JsonValue as SharedJsonValue,
   PluginUiEntryKind,
   PluginUiEntrySnapshot,
+  PluginUiRuntimeSurfaceDescriptor,
   WorkbenchCommandContributionEntry,
 } from '@note-studio/shared';
 import {
@@ -42,6 +45,8 @@ import {
 import { MainProcessAppFacade, type MainProcessAppFacadeDependencies } from './MainProcessAppFacade';
 import type { SettingsManager } from '../../config/SettingsManager';
 import type { PluginSettingTabSummary } from './types';
+import { runWithPluginExecutionContext } from './pluginExecutionContext';
+import type { PluginSupervisorCommandSnapshot } from './pluginSupervisorProtocol';
 
 export interface PluginRuntimeHostBridge {
   readonly bases: MainProcessBasesRegistry;
@@ -79,6 +84,22 @@ function createDisposable(callback: () => void): Disposable {
       callback();
     },
   };
+}
+
+function resolvePluginUiEntryIconSvg(iconId: string | null): string | null {
+  const normalizedIconId = iconId?.trim() ?? '';
+
+  if (normalizedIconId.length === 0) {
+    return null;
+  }
+
+  const iconSvgContent = getRegisteredIconSvgContent(normalizedIconId);
+
+  if (iconSvgContent === null) {
+    return null;
+  }
+
+  return iconSvgContent.trim().length > 0 ? iconSvgContent : null;
 }
 
 async function invokeComponentLifecycle(
@@ -189,9 +210,11 @@ interface RegisteredPluginUiEntry {
   readonly pluginId: string;
   readonly location: PluginUiEntryLocation;
   readonly kind: PluginUiEntryKind;
+  readonly title: string;
   readonly icon: string | null;
   readonly scope: PluginUiEntryScope | null;
   readonly element: HTMLElement & Disposable;
+  readonly execute: (() => Promise<void>) | null;
 }
 
 export interface BasesViewSnapshot {
@@ -199,7 +222,6 @@ export interface BasesViewSnapshot {
   readonly icon: string;
   readonly textContent: string;
   readonly dataset: Readonly<Record<string, string>>;
-  readonly domSnapshot: readonly string[];
   readonly optionSummary: readonly string[];
 }
 
@@ -207,6 +229,7 @@ const GLOBAL_SETTING_TAB_INTERNAL_ATTACH = Symbol.for('wstudio.settingTab.intern
 
 export class MainProcessCommandRegistry implements CommandRegistry {
   private readonly commands = new Map<string, RegisteredCommandEntry>();
+  private readonly listeners = new Set<() => void>();
 
   public constructor(private readonly getApp: () => MainProcessAppFacade) {}
 
@@ -217,72 +240,116 @@ export class MainProcessCommandRegistry implements CommandRegistry {
       qualifiedId,
       command,
     });
+    this.emitChanged();
 
     return createDisposable(() => {
       this.commands.delete(qualifiedId);
+      this.emitChanged();
     });
   }
 
   public removeCommand(commandId: string): void {
     if (this.commands.delete(commandId)) {
+      this.emitChanged();
       return;
     }
+
+    let changed = false;
 
     for (const [qualifiedId, entry] of [...this.commands.entries()]) {
       if (entry.command.id === commandId) {
         this.commands.delete(qualifiedId);
+        changed = true;
       }
+    }
+
+    if (changed) {
+      this.emitChanged();
     }
   }
 
   public async executeCommand(commandId: string): Promise<void> {
+    await this.tryExecuteCommand(commandId);
+  }
+
+  public shouldPreferSupervisorExecution(commandId: string): boolean {
     const entry = this.resolveCommand(commandId);
 
     if (entry === null) {
-      return;
+      return false;
+    }
+
+    return entry.command.editorCallback === undefined
+      && entry.command.editorCheckCallback === undefined;
+  }
+
+  public async tryExecuteCommand(commandId: string): Promise<boolean> {
+    const entry = this.resolveCommand(commandId);
+
+    if (entry === null) {
+      return false;
     }
 
     if (entry.command.checkCallback !== undefined) {
-      const allowed = await entry.command.checkCallback(false);
+      const allowed = await runWithPluginExecutionContext(entry.pluginId, () => {
+        return entry.command.checkCallback?.(false) ?? true;
+      });
 
       if (allowed === false) {
-        return;
+        return true;
       }
     }
 
     if (entry.command.callback !== undefined) {
-      await entry.command.callback();
-      return;
+      await runWithPluginExecutionContext(entry.pluginId, () => {
+        return entry.command.callback?.();
+      });
+      return true;
     }
 
     if (entry.command.editorCallback === undefined && entry.command.editorCheckCallback === undefined) {
-      return;
+      return true;
     }
 
     const activeEditor = await this.getApp().workspace.refreshActiveEditorState();
 
     if (activeEditor === null || activeEditor.editor === undefined) {
-      return;
+      return true;
     }
 
+    const activeEditorInstance = activeEditor.editor;
+
     if (entry.command.editorCheckCallback !== undefined) {
-      const allowed = await entry.command.editorCheckCallback(false, activeEditor.editor, activeEditor);
+      const allowed = await runWithPluginExecutionContext(entry.pluginId, () => {
+        return entry.command.editorCheckCallback?.(false, activeEditorInstance, activeEditor) ?? true;
+      });
 
       if (allowed === false) {
-        return;
+        return true;
       }
     }
 
     if (entry.command.editorCallback !== undefined) {
-      await entry.command.editorCallback(activeEditor.editor, activeEditor);
+      await runWithPluginExecutionContext(entry.pluginId, () => {
+        return entry.command.editorCallback?.(activeEditorInstance, activeEditor);
+      });
     }
+
+    return true;
   }
 
   public clearPlugin(pluginId: string): void {
+    let changed = false;
+
     for (const [qualifiedId, entry] of [...this.commands.entries()]) {
       if (entry.pluginId === pluginId) {
         this.commands.delete(qualifiedId);
+        changed = true;
       }
+    }
+
+    if (changed) {
+      this.emitChanged();
     }
   }
 
@@ -299,6 +366,16 @@ export class MainProcessCommandRegistry implements CommandRegistry {
     }));
   }
 
+  public getSupervisorCommandSnapshots(): readonly PluginSupervisorCommandSnapshot[] {
+    return [...this.commands.values()].map((entry) => ({
+      pluginId: entry.pluginId,
+      commandId: entry.command.id,
+      title: entry.command.name,
+      category: entry.command.category ?? null,
+      icon: entry.command.icon ?? null,
+    }));
+  }
+
   private resolveCommand(commandId: string): RegisteredCommandEntry | null {
     const direct = this.commands.get(commandId);
 
@@ -308,6 +385,20 @@ export class MainProcessCommandRegistry implements CommandRegistry {
 
     const matches = [...this.commands.values()].filter((entry) => entry.command.id === commandId);
     return matches.length === 1 ? matches[0] : null;
+  }
+
+  public subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private emitChanged(): void {
+    for (const listener of [...this.listeners]) {
+      listener();
+    }
   }
 }
 
@@ -345,7 +436,9 @@ export class MainProcessSettingsRegistry implements SettingsRegistry {
       throw new Error(`Plugin "${pluginId}" registered a setting tab without an attach lifecycle method.`);
     }
 
-    attach.call(settingTab, document.createElement('div'));
+    runWithPluginExecutionContext(pluginId, () => {
+      attach.call(settingTab, document.createElement('div'));
+    });
     const entries = this.tabs.get(pluginId) ?? [];
     this.nextTabId += 1;
     entries.push({
@@ -377,37 +470,19 @@ export class MainProcessSettingsRegistry implements SettingsRegistry {
 
     for (const [pluginId, entries] of this.tabs.entries()) {
       for (const entry of entries) {
-        entry.settingTab.hide();
-        entry.settingTab.display();
-
-        const containerEl = entry.settingTab.containerEl;
-        const previewLines = Array.from(
-          containerEl.querySelectorAll<HTMLElement>('.ns-plugin-setting'),
-        ).map((settingEl) => {
-          const name = settingEl.querySelector<HTMLElement>('.ns-plugin-setting__name')?.textContent?.trim() ?? '';
-          const description = settingEl.querySelector<HTMLElement>('.ns-plugin-setting__desc')?.textContent?.trim() ?? '';
-
-          if (name.length > 0 && description.length > 0) {
-            return `${name}：${description}`;
-          }
-
-          return name.length > 0 ? name : description;
-        }).filter((line) => line.length > 0);
-        const title = containerEl.querySelector('h1')?.textContent?.trim()
-          ?? containerEl.querySelector('h2')?.textContent?.trim()
-          ?? containerEl.querySelector('h3')?.textContent?.trim()
-          ?? resolvePluginDisplayName(pluginId);
-        const previewText = previewLines.length > 0
-          ? previewLines.join('\n')
-          : containerEl.textContent?.trim() ?? '';
+        const constructorName = entry.settingTab.constructor.name.trim();
+        const title = constructorName.length > 0
+          ? constructorName
+          : resolvePluginDisplayName(pluginId);
 
         result.push({
           id: entry.id,
           pluginId,
           pluginName: resolvePluginDisplayName(pluginId),
           title,
-          preview: previewText.length > 0 ? previewText : null,
-          previewLines,
+          preview: null,
+          previewLines: [],
+          runtimeSurface: null,
         });
       }
     }
@@ -415,7 +490,6 @@ export class MainProcessSettingsRegistry implements SettingsRegistry {
     return result;
   }
 }
-
 function createManagedElement(className: string): HTMLElement & Disposable {
   const element = document.createElement('div');
   element.className = className;
@@ -427,33 +501,15 @@ function createManagedElement(className: string): HTMLElement & Disposable {
   return managedElement;
 }
 
-function serializeBasesDomTree(node: Node, depth = 0): readonly string[] {
-  const indent = '  '.repeat(depth);
-
-  if (node instanceof Text) {
-    const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-    return text.length === 0 ? [] : [`${indent}TEXT "${text}"`];
-  }
-
-  if (!(node instanceof HTMLElement)) {
-    return [];
-  }
-
-  const classSuffix = node.className.trim().length === 0
-    ? ''
-    : `.${node.className.trim().split(/\s+/).join('.')}`;
-  const line = `${indent}${node.tagName}${classSuffix}`;
-  const childLines = Array.from(node.childNodes).flatMap((childNode) => serializeBasesDomTree(childNode, depth + 1));
-  return [line, ...childLines];
-}
-
-function summarizeBasesOption(option: import('@note-studio/plugin').ViewOption): readonly string[] {
+function summarizeBasesOption(option: ViewOption): readonly string[] {
   if (option.type === 'group') {
-    const nested = option.items.map((item) => `${item.type}:${item.key}:${item.displayName}`);
-    return [`group:${option.displayName}:${nested.join('|')}`];
+    const groupLabel = option.displayName.trim();
+    const groupLines = groupLabel.length > 0 ? [groupLabel] : [];
+    return [...groupLines, ...option.items.flatMap((item) => summarizeBasesOption(item))];
   }
 
-  return [`${option.type}:${option.key}:${option.displayName}`];
+  const line = option.displayName.trim();
+  return line.length > 0 ? [line] : [];
 }
 
 export class MainProcessUIRegistry implements UIRegistry {
@@ -461,150 +517,131 @@ export class MainProcessUIRegistry implements UIRegistry {
   private readonly listeners = new Set<() => void>();
   private nextEntryId = 0;
 
-  public addRibbonIcon(pluginId: string, spec: import('@note-studio/plugin').RibbonIconSpec): import('@note-studio/plugin').RibbonIconRef {
-    const element = createManagedElement('ns-plugin-ribbon-item') as import('@note-studio/plugin').RibbonIconRef;
-    const entryId = this.createEntryId(pluginId, 'iconButton');
-    element.dataset.pluginId = pluginId;
-    element.dataset.icon = spec.icon;
-    element.dataset.location = spec.location ?? 'activityBar';
-    if (spec.scope?.viewType !== undefined) {
-      element.dataset.scopeViewType = spec.scope.viewType;
-    }
-    if (spec.scope?.fileExtensions !== undefined) {
-      element.dataset.scopeFileExtensions = spec.scope.fileExtensions.join(',');
-    }
+  public addRibbonIcon(
+    pluginId: string,
+    spec: {
+      readonly icon: string;
+      readonly title: string;
+      readonly onClick: (evt: MouseEvent) => Promise<void> | void;
+      readonly location?: PluginUiEntryLocation;
+      readonly scope?: PluginUiEntryScope;
+    },
+  ): HTMLElement & Disposable {
+    this.nextEntryId += 1;
+    const id = `${pluginId}:ui:${this.nextEntryId}`;
+    const element = createManagedElement('ns-plugin-ui-entry');
     element.title = spec.title;
-    element.setAttribute('role', 'button');
-    element.tabIndex = 0;
-    element.textContent = spec.title;
-    element.addEventListener('click', (event) => {
-      void spec.onClick(event as MouseEvent);
-    });
-    this.track({
-      id: entryId,
+    this.entries.set(id, {
+      id,
       pluginId,
       location: spec.location ?? 'activityBar',
       kind: 'iconButton',
+      title: spec.title,
       icon: spec.icon,
       scope: spec.scope ?? null,
       element,
+      execute: async () => {
+        await runWithPluginExecutionContext(pluginId, () => spec.onClick(new MouseEvent('click')));
+      },
     });
-    return element;
+    this.emitChanged();
+    return Object.assign(element, {
+      dispose: (): void => {
+        element.remove();
+        this.entries.delete(id);
+        this.emitChanged();
+      },
+    });
   }
 
   public createStatusBarItem(pluginId: string): StatusBarItem {
-    const element = createManagedElement('ns-plugin-status-bar-item') as StatusBarItem;
-    const entryId = this.createEntryId(pluginId, 'statusBarItem');
-    element.dataset.pluginId = pluginId;
-    element.dataset.location = 'statusBar';
-    element.setText = (text: string): void => {
-      element.textContent = text;
-      this.emitChanged();
-    };
-    element.show = (): void => {
-      element.hidden = false;
-      this.emitChanged();
-    };
-    element.hide = (): void => {
-      element.hidden = true;
-      this.emitChanged();
-    };
-    this.track({
-      id: entryId,
+    this.nextEntryId += 1;
+    const id = `${pluginId}:ui:${this.nextEntryId}`;
+    const element = createManagedElement('ns-plugin-status-bar-item');
+    this.entries.set(id, {
+      id,
       pluginId,
       location: 'statusBar',
       kind: 'statusBarItem',
+      title: '',
       icon: null,
       scope: null,
       element,
+      execute: null,
     });
-    return element;
+    this.emitChanged();
+    return Object.assign(element, {
+      setText: (text: string): void => {
+        element.textContent = text;
+        this.emitChanged();
+      },
+      show: (): void => {
+        element.hidden = false;
+        this.emitChanged();
+      },
+      hide: (): void => {
+        element.hidden = true;
+        this.emitChanged();
+      },
+      dispose: (): void => {
+        element.remove();
+        this.entries.delete(id);
+        this.emitChanged();
+      },
+    });
   }
 
   public getEntries(): readonly PluginUiEntrySnapshot[] {
     return [...this.entries.values()]
-      .filter((entry) => entry.element.hidden !== true)
-      .map((entry) => {
-        const title = this.resolveEntryTitle(entry);
-        return {
-          id: entry.id,
-          pluginId: entry.pluginId,
-          location: entry.location,
-          kind: entry.kind,
-          title,
-          tooltip: entry.element.title.trim().length > 0 ? entry.element.title.trim() : null,
-          text: entry.kind === 'statusBarItem' ? this.resolveStatusBarText(entry.element) : null,
-          icon: entry.icon,
-          scope: entry.scope,
-        };
-      });
+      .filter((entry) => entry.element.hidden === false)
+      .map((entry) => ({
+        id: entry.id,
+        pluginId: entry.pluginId,
+        location: entry.location,
+        kind: entry.kind,
+        title: entry.title,
+        tooltip: entry.title.length > 0 ? entry.title : null,
+        text: entry.kind === 'statusBarItem' ? entry.element.textContent?.trim() ?? '' : null,
+        icon: entry.icon,
+        iconSvg: resolvePluginUiEntryIconSvg(entry.icon),
+        scope: entry.scope,
+      }));
   }
 
-  public executeEntry(entryId: string): boolean {
+  public async executeEntry(entryId: string): Promise<boolean> {
     const entry = this.entries.get(entryId);
 
-    if (entry === undefined) {
+    if (entry === undefined || entry.execute === null) {
       return false;
     }
 
-    entry.element.click();
+    await entry.execute();
     return true;
+  }
+
+  public clearPlugin(pluginId: string): void {
+    let changed = false;
+
+    for (const [id, entry] of [...this.entries.entries()]) {
+      if (entry.pluginId !== pluginId) {
+        continue;
+      }
+
+      entry.element.remove();
+      this.entries.delete(id);
+      changed = true;
+    }
+
+    if (changed) {
+      this.emitChanged();
+    }
   }
 
   public subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
-
     return () => {
       this.listeners.delete(listener);
     };
-  }
-
-  public clearPlugin(pluginId: string): void {
-    for (const entry of [...this.entries.values()]) {
-      if (entry.pluginId === pluginId) {
-        entry.element.dispose();
-      }
-    }
-  }
-
-  private createEntryId(pluginId: string, kind: PluginUiEntryKind): string {
-    this.nextEntryId += 1;
-    return `${pluginId}:${kind}:${this.nextEntryId}`;
-  }
-
-  private resolveEntryTitle(entry: RegisteredPluginUiEntry): string {
-    const title = entry.element.title.trim();
-
-    if (title.length > 0) {
-      return title;
-    }
-
-    const textContent = entry.element.textContent?.trim() ?? '';
-    return textContent.length > 0 ? textContent : entry.pluginId;
-  }
-
-  private resolveStatusBarText(element: HTMLElement): string | null {
-    const textContent = element.textContent?.trim() ?? '';
-    return textContent.length > 0 ? textContent : null;
-  }
-
-  private track(entry: RegisteredPluginUiEntry): void {
-    const originalDispose = entry.element.dispose.bind(entry.element);
-    let disposed = false;
-
-    entry.element.dispose = (): void => {
-      if (disposed) {
-        return;
-      }
-
-      disposed = true;
-      originalDispose();
-      this.entries.delete(entry.id);
-      this.emitChanged();
-    };
-
-    this.entries.set(entry.id, entry);
-    this.emitChanged();
   }
 
   private emitChanged(): void {
@@ -623,7 +660,6 @@ export class MainProcessViewRegistry {
       type,
       creator,
     });
-
     return createDisposable(() => {
       const current = this.entries.get(type);
 
@@ -633,13 +669,12 @@ export class MainProcessViewRegistry {
     });
   }
 
-  public createView(type: string, leaf: import('@note-studio/plugin').WorkspaceLeaf): import('@note-studio/plugin').View | null {
-    const entry = this.entries.get(type);
-    return entry === undefined ? null : entry.creator(leaf);
-  }
-
   public getCreator(type: string): ViewCreator | null {
     return this.entries.get(type)?.creator ?? null;
+  }
+
+  public getPluginId(type: string): string | null {
+    return this.entries.get(type)?.pluginId ?? null;
   }
 
   public clearPlugin(pluginId: string): void {
@@ -652,20 +687,20 @@ export class MainProcessViewRegistry {
 }
 
 export class MainProcessHoverRegistry {
-  private readonly entries = new Map<string, HoverLinkSource>();
+  private readonly sources = new Map<string, HoverLinkSource>();
 
   public registerHoverLinkSource(pluginId: string, id: string, source: HoverLinkSource): Disposable {
     const key = `${pluginId}:${id}`;
-    this.entries.set(key, source);
+    this.sources.set(key, source);
     return createDisposable(() => {
-      this.entries.delete(key);
+      this.sources.delete(key);
     });
   }
 
   public clearPlugin(pluginId: string): void {
-    for (const key of [...this.entries.keys()]) {
+    for (const key of [...this.sources.keys()]) {
       if (key.startsWith(`${pluginId}:`)) {
-        this.entries.delete(key);
+        this.sources.delete(key);
       }
     }
   }
@@ -675,42 +710,36 @@ export class MainProcessExtensionRegistry {
   private readonly entries = new Map<string, RegisteredExtensionEntry>();
 
   public registerExtensions(pluginId: string, extensions: readonly string[], viewType: string): Disposable {
-    const ownedKeys: string[] = [];
+    const normalizedExtensions = extensions
+      .map((extension) => extension.trim().toLowerCase())
+      .filter((extension) => extension.length > 0);
 
-    for (const extension of extensions) {
-      const normalizedExtension = extension.replace(/^\./, '').toLowerCase();
-      const key = `${pluginId}:${normalizedExtension}`;
-      this.entries.set(key, {
+    for (const extension of normalizedExtensions) {
+      this.entries.set(extension, {
         pluginId,
-        extension: normalizedExtension,
+        extension,
         viewType,
       });
-      ownedKeys.push(key);
     }
 
     return createDisposable(() => {
-      for (const key of ownedKeys) {
-        this.entries.delete(key);
+      for (const extension of normalizedExtensions) {
+        const current = this.entries.get(extension);
+        if (current?.pluginId === pluginId && current.viewType === viewType) {
+          this.entries.delete(extension);
+        }
       }
     });
   }
 
   public getViewTypeForExtension(extension: string): string | null {
-    const normalizedExtension = extension.toLowerCase();
-
-    for (const entry of this.entries.values()) {
-      if (entry.extension === normalizedExtension) {
-        return entry.viewType;
-      }
-    }
-
-    return null;
+    return this.entries.get(extension.trim().toLowerCase())?.viewType ?? null;
   }
 
   public clearPlugin(pluginId: string): void {
-    for (const [key, entry] of [...this.entries.entries()]) {
+    for (const [extension, entry] of [...this.entries.entries()]) {
       if (entry.pluginId === pluginId) {
-        this.entries.delete(key);
+        this.entries.delete(extension);
       }
     }
   }
@@ -766,7 +795,6 @@ export class MainProcessBasesRegistry {
         icon: entry.registration.icon,
         textContent: containerEl.textContent?.trim() ?? '',
         dataset: datasetEntries,
-        domSnapshot: serializeBasesDomTree(containerEl),
         optionSummary: (entry.registration.options?.() ?? []).flatMap((option) => summarizeBasesOption(option)),
       };
     } finally {
@@ -860,6 +888,27 @@ export class MainProcessEditorRegistry {
     this.extensions.delete(pluginId);
     this.suggests.delete(pluginId);
   }
+
+  public getRegisteredSuggests(): readonly {
+    readonly pluginId: string;
+    readonly editorSuggest: EditorSuggest<SuggestionValue>;
+  }[] {
+    const entries: Array<{
+      readonly pluginId: string;
+      readonly editorSuggest: EditorSuggest<SuggestionValue>;
+    }> = [];
+
+    for (const [pluginId, suggests] of this.suggests.entries()) {
+      for (const editorSuggest of suggests) {
+        entries.push({
+          pluginId,
+          editorSuggest,
+        });
+      }
+    }
+
+    return entries;
+  }
 }
 
 export class MainProcessProtocolRegistry {
@@ -890,7 +939,9 @@ export class MainProcessProtocolRegistry {
       return false;
     }
 
-    await match.handler(data);
+    await runWithPluginExecutionContext(match.pluginId, () => {
+      return match.handler(data);
+    });
     return true;
   }
 
@@ -932,8 +983,14 @@ export class MainProcessPluginRuntime {
 
     this.app = new MainProcessAppFacade({
       ...dependencies,
-      resolveViewCreator: (type: string) => this.views.getCreator(type),
-      resolveViewTypeForExtension: (extension: string) => this.extensions.getViewTypeForExtension(extension),
+      resolveViewCreator: (type: string) => this.views.getCreator(type) ?? dependencies.resolveViewCreator(type),
+      resolveViewPluginId: (type: string) => this.views.getPluginId(type) ?? dependencies.resolveViewPluginId(type),
+      resolveViewTypeForExtension: (extension: string) => {
+        return this.extensions.getViewTypeForExtension(extension) ?? dependencies.resolveViewTypeForExtension(extension);
+      },
+      resolveViewRuntimeSurface: (type: string): PluginUiRuntimeSurfaceDescriptor | null => {
+        return dependencies.resolveViewRuntimeSurface(type);
+      },
     });
 
     const runtimeHost = this.getHostBridge();

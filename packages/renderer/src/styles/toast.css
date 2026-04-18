@@ -10,13 +10,37 @@
   border: 1px solid var(--ws-notifications-border, #454545) !important;
   /* color: var(--ws-notifications-foreground, #cccccc) !important; */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
-  height: 40px;
-  width: 260px !important;
-  max-height: 150px;
+  min-height: 40px !important;
+  width: min(420px, calc(100vw - 32px)) !important;
+  max-width: min(420px, calc(100vw - 32px)) !important;
   color: #b4b2b2 !important;
   font-size: 12px !important;
   right: 13px !important;
   border-radius: 4px !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  align-items: flex-start !important;
+  position: relative !important;
+  padding: 12px 16px !important;
+}
+
+[data-sonner-toast] [data-content] {
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+  padding-right: 24px !important;
+}
+
+[data-sonner-toast] [data-title],
+[data-sonner-toast] [data-description] {
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  line-height: 1.5 !important;
+}
+
+[data-sonner-toast] [data-title] {
+  padding-right: 4px !important;
 }
 
 /* 成功状�?*/
@@ -58,9 +82,18 @@
 
 /* 关闭按钮 */
 [data-sonner-toast] [data-close-button] {
+  position: absolute !important;
   background-color: transparent !important;
   border: none !important;
   color: var(--ws-notifications-foreground, #cccccc) !important;
+  top: 8px !important;
+  right: 8px !important;
+  width: 16px !important;
+  height: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  transform: none !important;
 }
 
 [data-sonner-toast] [data-close-button]:hover {

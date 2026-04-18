@@ -70,6 +70,10 @@ interface AIModelConfig {
   models?: string[]; // 魔塔社区等服务商的多个模型ID列表
 }
 
+interface FetchModelsOptions {
+  showToast?: boolean;
+}
+
 // 使用 AI_PROVIDERS 生成服务商列表（7种协议）
 const DEFAULT_AI_PROVIDERS_LIST = Object.values(AI_PROVIDERS).map(provider => ({
   id: provider.id,
@@ -167,6 +171,10 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     
     return false;
   }, []);
+
+  const filterChatModels = useCallback((models: ChatModel[]): ChatModel[] => (
+    models.filter(model => !isToolModel(model.id))
+  ), [isToolModel]);
 
   // 获取工具模型 tooltip 说明
   const getToolModelTooltip = useCallback((modelName: string): string => {
@@ -312,6 +320,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
   // 根据模型名称推断提供商
   const getProviderByModelName = useCallback((modelName: string): { id: string; name: string; icon: string } => {
     const lowerName = modelName.toLowerCase();
+    const currentProvider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
     
     // 首先检查是否为工具模型
     if (isToolModel(modelName)) {
@@ -319,6 +328,14 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
         id: 'tool',
         name: translateText('aiConfigView.providers.toolModel', 'Tool Model'),
         icon: '',
+      };
+    }
+
+    if (config.providerId === 'ollama') {
+      return {
+        id: 'ollama',
+        name: currentProvider?.name || 'Ollama',
+        icon: currentProviderIconName,
       };
     }
     
@@ -376,10 +393,9 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     }
     
     // 默认使用当前提供商
-    const provider = AI_PROVIDERS_LIST.find(p => p.id === config.providerId);
     return { 
       id: config.providerId, 
-      name: provider?.name || translateText('aiConfigView.providers.other', 'Other'), 
+      name: currentProvider?.name || translateText('aiConfigView.providers.other', 'Other'), 
       icon: currentProviderIconName 
     };
   }, [AI_PROVIDERS_LIST, currentProviderIconName, config.providerId, isToolModel, translateText]);
@@ -518,7 +534,10 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
   }, []);
 
   // 获取可用模型列表
-  const fetchModels = useCallback(async () => {
+  const fetchModels = useCallback(async (options?: FetchModelsOptions) => {
+    const shouldShowToast = options?.showToast === true;
+    const requiresApiKey = config.providerId !== 'ollama';
+
     console.log('[AIConfigView] fetchModels 调用，当前配置', {
       apiKey: config.apiKey ? '已设置' : '未设置',
       apiEndpoint: config.apiEndpoint,
@@ -531,8 +550,19 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       currentConfigId: currentConfigId
     });
 
-    if (!config.apiKey) {
+    if (requiresApiKey && !config.apiKey.trim()) {
       console.warn('[AIConfigView] API Key 未设置，跳过获取模型列表');
+      if (shouldShowToast) {
+        toastService.error(
+          translateText(
+            'aiConfigView.validation.requiredFields',
+            'Please fill in the following required field(s): {{fields}}',
+            {
+              fields: translateText('aiConfigView.validation.fields.apiKey', 'API Key'),
+            },
+          ),
+        );
+      }
       return;
     }
 
@@ -573,12 +603,12 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       await aiService.setProvider(config.providerId, aiConfig);
       
       // 获取可用模型
-      const models = await aiService.getAvailableModels();
+      const models = await aiService.refreshAvailableModels();
       
       // 从配置文件获取模型的 capabilities
       const configModels = await getProviderModels(config.providerId);
       
-      const newChatModels: ChatModel[] = models.map(model => {
+      const mappedChatModels: ChatModel[] = models.map(model => {
         // 查找配置文件中对应模型的 capabilities 和 name
         const configModel = configModels.find(cm => cm.id === model.id);
         // 保留现有的启用状态，如果没有则默认为 false
@@ -591,6 +621,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
           capabilities: configModel?.capabilities
         };
       });
+      const newChatModels = filterChatModels(mappedChatModels);
       
       console.log('[AIConfigView] 新获取的模型列表:', newChatModels);
       
@@ -608,6 +639,23 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       });
       console.log('[AIConfigView] ✓ 模型已合并到配置列表');
 
+      if (shouldShowToast) {
+        if (newChatModels.length > 0) {
+          toastService.success(
+            translateText('aiConfigView.toasts.localModelsLoaded', 'Loaded {{count}} local model(s).', {
+              count: String(newChatModels.length),
+            }),
+          );
+        } else {
+          toastService.info(
+            translateText(
+              'aiConfigView.toasts.localModelsEmpty',
+              'No local models were found from the current service address.',
+            ),
+          );
+        }
+      }
+
       // 注意：这里不再自动保存配置，而是等待用户手动点击"保存配置"按钮
       // 这样可以避免：
       // 1. 使用临时ID保存配置导致重复
@@ -615,12 +663,32 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       console.log('[AIConfigView] 模型列表已获取，等待用户点击"保存配置"按钮')
     } catch (error) {
       console.error('[AIConfigView] 获取模型列表失败:', error);
+      if (shouldShowToast) {
+        toastService.error(
+          error instanceof Error
+            ? error.message
+            : translateText(
+                'aiConfigView.toasts.localModelsLoadFailed',
+                'Failed to load local models.',
+              ),
+        );
+      }
       // 发生错误时，不清空现有模型列表，只记录错误
       // 这样可以保留已加载的模型
     } finally {
       setLoadingModels(false);
     }
-  }, [config.apiKey, config.apiEndpoint, config.providerId, config.name, config.modelId, currentConfigId]);
+  }, [
+    config.apiKey,
+    config.apiEndpoint,
+    config.providerId,
+    config.name,
+    config.modelId,
+    config.models,
+    currentConfigId,
+    modelEnabledStates,
+    translateText,
+  ]);
 
   // 加载配置
   useEffect(() => {
@@ -650,12 +718,13 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
           console.log('[AIConfigView] 从数据库加载的配置:', loadedConfig);
           
           // 加载配置数据
+          const persistedChatModels = filterChatModels(loadedConfig.chatModels || []);
           const configData: AIModelConfig = {
             name: loadedConfig.name || '',
             apiKey: loadedConfig.apiKey || '',
             apiEndpoint: loadedConfig.apiEndpoint || '',
             providerId: loadedConfig.providerId || 'openai',
-            chatModels: loadedConfig.chatModels || [],
+            chatModels: persistedChatModels,
             modelId: loadedConfig.modelId || '',
             models: loadedConfig.models || []
           };
@@ -664,13 +733,13 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
           setSavedConfig(configData);
 
           // 加载已保存的 chatModels 到 availableModels
-          if (loadedConfig.chatModels && Array.isArray(loadedConfig.chatModels) && loadedConfig.chatModels.length > 0) {
-            console.log('[AIConfigView] 加载已保存的模型列表:', loadedConfig.chatModels);
-            setAvailableModels(loadedConfig.chatModels);
+          if (persistedChatModels.length > 0) {
+            console.log('[AIConfigView] 加载已保存的模型列表:', persistedChatModels);
+            setAvailableModels(persistedChatModels);
             
             // 恢复模型启用状态
             const enabledStates = new Map<string, boolean>();
-            loadedConfig.chatModels.forEach((model: ChatModel) => {
+            persistedChatModels.forEach((model: ChatModel) => {
               if (model.enabled !== undefined) {
                 enabledStates.set(model.id, model.enabled);
                 // 同步到全局服务
@@ -723,7 +792,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     const missingFields: string[] = [];
     
     // 所有提供商都需要的基础必填项
-    if (!config.apiKey || !config.apiKey.trim()) {
+    if (config.providerId !== 'ollama' && (!config.apiKey || !config.apiKey.trim())) {
       missingFields.push(translateText('aiConfigView.validation.fields.apiKey', 'API Key'));
     }
     
@@ -787,7 +856,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
             existingCreatedAt = existingConfig.createdAt;
             // 获取现有的chatModels
             if (existingConfig.chatModels && Array.isArray(existingConfig.chatModels)) {
-              existingChatModels = existingConfig.chatModels;
+              existingChatModels = filterChatModels(existingConfig.chatModels as ChatModel[]);
             }
           }
         } catch (error) {
@@ -797,7 +866,9 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
 
       // 合并chatModels：使用 availableModels（当前显示的模型列表）作为基础
       // 这样可以确保包含最新的启用状态
-      const currentModels = availableModels.length > 0 ? availableModels : (config.chatModels || []);
+      const currentModels = filterChatModels(
+        availableModels.length > 0 ? availableModels : (config.chatModels || [])
+      );
       const mergedChatModels: Array<{ id: string; name: string; displayName?: string; enabled?: boolean; capabilities?: { thinking?: boolean; tool_calls?: string[] } }> = [];
       
       // 先添加现有配置中的模型（保留不在当前列表中的模型）
@@ -852,7 +923,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       });
 
       // 准备保存的模型数据
-      const modelsToSave = availableModels.map(model => ({
+      const modelsToSave = mergedChatModels.map(model => ({
         id: model.id,
         name: model.name,
         displayName: model.displayName,
@@ -930,7 +1001,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
     // 验证必填项
     const missingFields: string[] = [];
     
-    if (!config.apiKey || !config.apiKey.trim()) {
+    if (config.providerId !== 'ollama' && (!config.apiKey || !config.apiKey.trim())) {
       missingFields.push(translateText('aiConfigView.validation.fields.apiKey', 'API Key'));
     }
     
@@ -1058,8 +1129,7 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
       console.error('[AIConfigView] 测试连接失败:', error);
       setTestStatus('error');
       
-      // 测试连接失败时，清空可用模型列表
-      setAvailableModels([]);
+      // 测试连接失败时保留当前模型列表，只重置测试状态
       setHasTestedConnection(false);
       
       // 使用 toast 显示提供商返回的原始错误消息
@@ -1162,10 +1232,15 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                 </button>
               </div>
               <p className="form-hint">
-                {translateText(
-                  'aiConfigView.hints.keepApiKeySafe',
-                  'Keep your API key secure and do not share it with others.',
-                )}
+                {config.providerId === 'ollama'
+                  ? translateText(
+                      'aiConfigView.hints.apiKeyOptionalForLocal',
+                      'Local Ollama does not require an API key. Leave it empty unless your service has enabled authentication.',
+                    )
+                  : translateText(
+                      'aiConfigView.hints.keepApiKeySafe',
+                      'Keep your API key secure and do not share it with others.',
+                    )}
               </p>
             </div>
 
@@ -1230,8 +1305,19 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                   );
                 }
                 // 去掉末尾已有的 /v1/... 路径，只保留 base URL
-                const base = config.apiEndpoint.replace(/\/+$/, '').replace(/\/v1(\/.*)?$/, '');
-                const previewUrl = base + '/v1/chat/completions';
+                const trimmedEndpoint = config.apiEndpoint.replace(/\/+$/, '');
+                const hasFullEndpoint = trimmedEndpoint.includes('/chat/completions')
+                  || trimmedEndpoint.includes('/messages')
+                  || trimmedEndpoint.endsWith('/responses');
+                const base = trimmedEndpoint.replace(/\/v1(\/.*)?$/, '');
+                const previewSuffix = config.providerId === 'anthropic'
+                  ? '/v1/messages'
+                  : config.providerId === 'openai-response'
+                    ? '/v1/responses'
+                    : '/v1/chat/completions';
+                const previewUrl = hasFullEndpoint
+                  ? trimmedEndpoint
+                  : `${base}${previewSuffix}`;
                 return (
                   <p className="form-hint api-endpoint-preview">
                     {translateText('aiConfigView.hints.apiEndpointPreview', 'Preview: {{url}}', {
@@ -1282,12 +1368,29 @@ export const AIConfigView: React.FC<AIConfigViewProps> = ({ configId, configInde
                       translateText('aiConfigView.models.listTitle', 'Model List')
                     )}
                   </span>
-                  
-                  <SearchBox
-                    value={searchKeyword}
-                    onChange={setSearchKeyword}
-                    placeholder={translateText('aiConfigView.models.searchPlaceholder', 'Search models...')}
-                  />
+
+                  <div className="accordion-tools">
+                    {config.providerId === 'ollama' && (
+                      <button
+                        type="button"
+                        className="btn-fetch-local-models"
+                        onClick={() => {
+                          void fetchModels({ showToast: true });
+                        }}
+                        disabled={loadingModels}
+                      >
+                        {loadingModels
+                          ? translateText('aiConfigView.actions.fetchingLocalModels', 'Getting Local Models...')
+                          : translateText('aiConfigView.actions.fetchLocalModels', 'Get Local Models')}
+                      </button>
+                    )}
+
+                    <SearchBox
+                      value={searchKeyword}
+                      onChange={setSearchKeyword}
+                      placeholder={translateText('aiConfigView.models.searchPlaceholder', 'Search models...')}
+                    />
+                  </div>
                 </div>
                 <div className="accordion-content">
                   {availableModels.length > 0 ? (

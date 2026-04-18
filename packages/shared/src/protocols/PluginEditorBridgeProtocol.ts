@@ -12,6 +12,7 @@ import type {
 export const PLUGIN_EDITOR_BRIDGE_CHANNELS = {
   requestState: 'extensions:editor:get-state',
   stateResponse: 'extensions:editor:state-response',
+  stateChanged: 'extensions:editor:state-changed',
   applyTextEdits: 'extensions:editor:apply-text-edits',
   applyTextEditsResponse: 'extensions:editor:apply-text-edits-response',
   performAction: 'extensions:editor:perform-action',
@@ -32,6 +33,19 @@ export interface PluginEditorScrollPayload extends JsonObject {
   readonly clientHeight: number;
 }
 
+export interface PluginEditorCaretRectPayload extends JsonObject {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface PluginEditorStateChangedPayload extends JsonObject {
+  readonly documentUri: string | null;
+}
+
 export interface PluginEditorStateResponsePayload extends JsonObject {
   readonly requestId: string;
   readonly ok: boolean;
@@ -40,6 +54,7 @@ export interface PluginEditorStateResponsePayload extends JsonObject {
   readonly selection: ExtensionHostEditorSelectionPayload | null;
   readonly hasFocus: boolean;
   readonly scroll: PluginEditorScrollPayload | null;
+  readonly caretRect: PluginEditorCaretRectPayload | null;
   readonly error: string | null;
 }
 

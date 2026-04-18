@@ -942,6 +942,11 @@ export const enUSResources = {
       dimensionsLabel: 'Vector Dimensions (keep the default if unsure)',
       maxTokensLabel: 'Max Tokens (keep the default if unsure)',
     },
+    ollama: {
+      endpointLabel: 'Ollama Service Address',
+      endpointPlaceholder: 'For example: http://127.0.0.1:11434',
+      endpointHint: 'Enter the Ollama service address. The model list is loaded dynamically from /api/tags.',
+    },
     modelInfo: {
       dimensions: 'Dimensions: {{count}}',
       maxTokens: 'Max Tokens: {{count}}',
@@ -958,6 +963,8 @@ export const enUSResources = {
     actions: {
       indexNow: 'Index Now',
       indexing: 'Indexing...',
+      refreshModels: 'Refresh Models',
+      refreshingModels: 'Refreshing...',
     },
     messages: {
       selectProvider: 'Select a provider first',
@@ -967,6 +974,9 @@ export const enUSResources = {
       openWorkspaceFirst: 'Open a workspace folder first',
       indexStarted: 'The indexing task has started. Check the status bar for progress and API errors.',
       indexStartFailed: 'Failed to start indexing',
+      ollamaModelsLoaded: 'Loaded {{count}} Ollama model(s).',
+      ollamaModelsEmpty: 'No Ollama models were found at the current service address.',
+      ollamaModelsLoadFailed: 'Failed to load Ollama models from the current service address.',
     },
     providers: {
       openai: 'OpenAI',
@@ -1882,6 +1892,7 @@ export const enUSResources = {
     },
     hints: {
       keepApiKeySafe: 'Keep your API key secure and do not share it with others.',
+      apiKeyOptionalForLocal: 'Local Ollama does not require an API key. Leave it empty unless your service has enabled authentication.',
       azureEndpoint: 'Azure OpenAI requires the full deployment endpoint, for example:',
       apiEndpointRequired: 'Required. Enter the full API endpoint address.',
       apiEndpointOptional: 'Optional. Leave empty to use the default endpoint automatically.',
@@ -1902,6 +1913,8 @@ export const enUSResources = {
     actions: {
       hideApiKey: 'Hide',
       showApiKey: 'Show',
+      fetchLocalModels: 'Get Local Models',
+      fetchingLocalModels: 'Getting Local Models...',
       saving: 'Saving...',
       saveConfig: 'Save Configuration',
       testing: 'Testing...',
@@ -1914,7 +1927,7 @@ export const enUSResources = {
       azureStep2Prefix: 'Authenticate with the',
       azureStep2Suffix: 'header. No Bearer prefix is required.',
       ollamaStep1Prefix: 'Ollama runs locally. The default address is',
-      ollamaStep2: 'No API key is required. Click "Test Connection" to fetch local models.',
+      ollamaStep2: 'No API key is required. Click "Get Local Models" to load locally installed models.',
       openaiResponseStep1Prefix: 'OpenAI Response uses the new',
       openaiResponseStep1Suffix: 'API.',
       openaiResponseStep2: 'Supports built-in tools and multi-turn state management.',
@@ -1937,6 +1950,9 @@ export const enUSResources = {
       saveFailedWithReason: 'Failed to save configuration: {{message}}',
       connectionSuccess: 'Connection successful.',
       connectionFailed: 'Connection failed: unable to reach the AI service.',
+      localModelsLoaded: 'Loaded {{count}} local model(s).',
+      localModelsEmpty: 'No local models were found from the current service address.',
+      localModelsLoadFailed: 'Failed to load local models.',
       unknownError: 'Unknown error',
     },
     providers: {

@@ -88,7 +88,7 @@ export class AnthropicProvider extends BaseAIProvider {
     try {
       const requestBody = this.buildRequestBody(params, true);
       
-      const response = await this.makeRequest(this.config.apiEndpoint, {
+      await this.streamSSERequest(this.config.apiEndpoint, {
         method: 'POST',
         headers: {
           'x-api-key': this.config.apiKey,
@@ -97,9 +97,7 @@ export class AnthropicProvider extends BaseAIProvider {
         },
         body: JSON.stringify(requestBody),
         signal: params.signal // 传递 AbortSignal
-      });
-
-      await this.handleStreamResponse(response, callback, params.signal);
+      }, callback, params.signal);
     } catch (error) {
       // 如果是取消操作，直接返回，不抛出错误
       if (error instanceof Error && error.name === 'AbortError') {

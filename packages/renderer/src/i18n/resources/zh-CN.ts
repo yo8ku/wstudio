@@ -940,6 +940,11 @@ export const zhCNResources = {
       dimensionsLabel: '向量维度（不确定可保持默认）',
       maxTokensLabel: '最大 Tokens（不确定可保持默认）',
     },
+    ollama: {
+      endpointLabel: 'Ollama 服务地址',
+      endpointPlaceholder: '例如：http://127.0.0.1:11434',
+      endpointHint: '填写 Ollama 服务地址，模型列表会从 /api/tags 动态读取。',
+    },
     modelInfo: {
       dimensions: '维度：{{count}}',
       maxTokens: '最大 Tokens：{{count}}',
@@ -956,6 +961,8 @@ export const zhCNResources = {
     actions: {
       indexNow: '立即索引',
       indexing: '索引中...',
+      refreshModels: '刷新模型',
+      refreshingModels: '刷新中...',
     },
     messages: {
       selectProvider: '请先选择服务商',
@@ -965,6 +972,9 @@ export const zhCNResources = {
       openWorkspaceFirst: '请先打开工作区文件夹',
       indexStarted: '索引任务已启动，请在状态栏查看进度和 API 错误。',
       indexStartFailed: '启动索引失败',
+      ollamaModelsLoaded: '已加载 {{count}} 个 Ollama 模型。',
+      ollamaModelsEmpty: '当前服务地址下未发现 Ollama 模型。',
+      ollamaModelsLoadFailed: '无法从当前服务地址加载 Ollama 模型。',
     },
     providers: {
       openai: 'OpenAI',
@@ -1052,6 +1062,7 @@ export const zhCNResources = {
         decompositionRuleList: '拆解规则列表',
         mcpServer: 'MCP Server',
       },
+      decompositionRulesDescription: '规则默认关闭。如果您需要对当前打开的笔记进行拆解，请使用命令 /part，并确保下方需要的规则处于开启状态。',
       items: {
         selectModel: '选择模型',
         thinking: '思考',
@@ -1158,6 +1169,7 @@ export const zhCNResources = {
       send: '发送',
     },
     slashCommands: {
+      partDescription: '对当前打开的笔记进行拆解',
       compactDescription: '压缩较早的历史记录并保留最近的消息',
       helpDescription: '查看可用命令说明',
       clearDescription: '清空当前对话',
@@ -1842,6 +1854,7 @@ export const zhCNResources = {
     },
     hints: {
       keepApiKeySafe: '请妥善保管您的 API Key，不要分享给他人。',
+      apiKeyOptionalForLocal: '本地 Ollama 不需要 API Key；除非你的服务额外启用了鉴权，否则留空即可。',
       azureEndpoint: 'Azure OpenAI 需要填写完整的部署端点，格式如下：',
       apiEndpointRequired: '必填，请输入完整的 API 端点地址。',
       apiEndpointOptional: '可选，留空则自动使用默认地址。',
@@ -1862,6 +1875,8 @@ export const zhCNResources = {
     actions: {
       hideApiKey: '隐藏',
       showApiKey: '显示',
+      fetchLocalModels: '获取本地模型',
+      fetchingLocalModels: '正在获取本地模型...',
       saving: '保存中...',
       saveConfig: '保存配置',
       testing: '测试中...',
@@ -1874,7 +1889,7 @@ export const zhCNResources = {
       azureStep2Prefix: '使用',
       azureStep2Suffix: '请求头认证，无需 Bearer 前缀。',
       ollamaStep1Prefix: 'Ollama 为本地部署，默认地址为',
-      ollamaStep2: '无需填写 API Key，点击“测试连接”获取本地模型列表。',
+      ollamaStep2: '无需填写 API Key，点击“获取本地模型”加载本机已安装的模型列表。',
       openaiResponseStep1Prefix: 'OpenAI Response 使用',
       openaiResponseStep1Suffix: '新版 API。',
       openaiResponseStep2: '支持内置工具和多轮状态管理。',
@@ -1897,6 +1912,9 @@ export const zhCNResources = {
       saveFailedWithReason: '保存失败：{{message}}',
       connectionSuccess: '连接成功！',
       connectionFailed: '连接失败：无法连接到 AI 服务',
+      localModelsLoaded: '已加载 {{count}} 个本地模型。',
+      localModelsEmpty: '当前服务地址下未发现本地模型。',
+      localModelsLoadFailed: '加载本地模型失败。',
       unknownError: '未知错误',
     },
     providers: {

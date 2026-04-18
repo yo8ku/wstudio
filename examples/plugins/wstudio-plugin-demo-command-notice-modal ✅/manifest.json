@@ -19,5 +19,11 @@
   "platforms": [
     "desktop"
   ],
-  "isDesktopOnly": true
+  "isDesktopOnly": true,
+  "ui": {
+    "modals": {
+      "command-demo-modal": "./modal.runtime.js",
+      "command-demo-modal-failure": "./modal.failure.runtime.js"
+    }
+  }
 }

@@ -13,5 +13,16 @@
   "isDesktopOnly": false,
   "engines": {
     "wstudio": "^1.0.0"
+  },
+  "ui": {
+    "views": {
+      "wstudio-demo-workspace-view": "./view.runtime.js",
+      "wstudio-demo-workspace-view-fallback": "./view.failure.runtime.js"
+    },
+    "settings": "./settings.runtime.js",
+    "modals": {
+      "workspace-runtime-popover-demo": "./popover.runtime.js",
+      "workspace-runtime-popover-demo-failure": "./popover.failure.runtime.js"
+    }
   }
 }

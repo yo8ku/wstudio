@@ -53,7 +53,8 @@ const {
   workspaceManager,
   builtinAI,
   pluginEditorBridge,
-  pluginDiscoveryService
+  pluginDiscoveryService,
+  pluginSurfaceViewService
 } = require('./packages/main/dist/main/src/index.js');
 const { ThemeService } = require('./packages/main/dist/main/src/services/ThemeService.js');
 const { registerSettingsHandlers } = require('./packages/main/dist/main/src/ipc/settingsHandlers.js');
@@ -678,6 +679,7 @@ function createWindow(backgroundColor = '#1e1e1e', options = {}) {
 
   mainWindow = createdWindow;
   pluginEditorBridge.setMainWindow(createdWindow);
+  pluginSurfaceViewService.setMainWindow(createdWindow);
   setWindowsAccentBorder(createdWindow, createdWindow.isFocused());
   registerWindowsAccentBorderSync(createdWindow);
 
@@ -745,6 +747,7 @@ function createWindow(backgroundColor = '#1e1e1e', options = {}) {
       mainWindow = fallbackWindow;
       workspaceVectorIndexService.setMainWindow(fallbackWindow);
       pluginEditorBridge.setMainWindow(fallbackWindow);
+      pluginSurfaceViewService.setMainWindow(fallbackWindow);
     }
     // 婵犵數鍋為幐鎼佸箠濡　鏋嶉幖娣妼鐟欙箓鏌熸潏鍓х暠婵炲懌鍊楃槐鎺撶瑹閸喚浠肩紓浣瑰閺呯姴顕ｉ棃娑卞悑闁告侗鍙庡鎶芥⒑濮瑰洤濡奸悗姘煎櫍閹即濡烽埡浣虹厬闂佹寧绻傞幊鎰矚閸ф鐓?
     
@@ -762,9 +765,21 @@ function createWindow(backgroundColor = '#1e1e1e', options = {}) {
 
   // 闂備胶鍎甸弲婊堝垂閻㈢绠氬璺侯焾閳ь剚甯″畷锝嗗緞鐏炶棄鑴梺鍝勵槴閺呮粎绮欓幘璇茬厺闁绘挸娴烽弳锕傛煃閸濆嫬鈧鎯?
   createdWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (pluginEditorBridge && typeof pluginEditorBridge.markRendererUnavailable === 'function') {
+      pluginEditorBridge.markRendererUnavailable(createdWindow.webContents.id);
+    }
     console.error('[Electron] 婵犵數鍋為幐绋款嚕閸洘鍋傞悗锝庡亝娴溿倖绻涢幋鐐茬劰闁哄被鍊楅埀顒冾潐濞插秹寮插鍛板С?', details.reason, details.exitCode);
   });
-  createdWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+  createdWindow.webContents.on('did-start-loading', () => {
+    if (pluginEditorBridge && typeof pluginEditorBridge.markRendererUnavailable === 'function') {
+      pluginEditorBridge.markRendererUnavailable(createdWindow.webContents.id);
+    }
+  });
+  createdWindow.webContents.on('console-message', (event) => {
+    const message = typeof event.message === 'string' ? event.message : '';
+    const level = typeof event.level === 'number' ? event.level : 0;
+    const line = typeof event.lineNumber === 'number' ? event.lineNumber : 0;
+    const sourceId = typeof event.sourceId === 'string' ? event.sourceId : '';
     const isChromiumProtocolNoise = message.includes('Autofill.enable')
       || message.includes('Autofill.setAddresses')
       || message.includes('Storage.getStorageKeyForFrame')
@@ -787,6 +802,7 @@ function createWindow(backgroundColor = '#1e1e1e', options = {}) {
   createdWindow.on('focus', () => {
     mainWindow = createdWindow;
     pluginEditorBridge.setMainWindow(createdWindow);
+    pluginSurfaceViewService.setMainWindow(createdWindow);
     createdWindow.webContents.send('window-focus');
   });
   
@@ -980,6 +996,34 @@ app.whenReady().then(async () => {
       && !path.isAbsolute(relativePath);
   };
 
+  const findDescriptorByExtensionAssetId = (extensionId) => {
+    const exactDescriptor = pluginDiscoveryService.getById(extensionId);
+    if (exactDescriptor) {
+      return exactDescriptor;
+    }
+
+    // Browser protocol requests may normalize the authority casing, so
+    // extension asset lookup must tolerate host names that differ only by case.
+    const normalizedExtensionId = extensionId.trim().toLowerCase();
+    if (normalizedExtensionId.length === 0 || typeof pluginDiscoveryService.getAll !== 'function') {
+      return null;
+    }
+
+    const descriptors = pluginDiscoveryService.getAll();
+    for (const descriptor of descriptors) {
+      if (
+        descriptor
+        && descriptor.manifest
+        && typeof descriptor.manifest.id === 'string'
+        && descriptor.manifest.id.toLowerCase() === normalizedExtensionId
+      ) {
+        return descriptor;
+      }
+    }
+
+    return null;
+  };
+
   const resolveExtensionAssetPath = (requestUrl) => {
     try {
       const parsedUrl = new URL(requestUrl);
@@ -988,7 +1032,7 @@ app.whenReady().then(async () => {
         return null;
       }
 
-      const descriptor = pluginDiscoveryService.getById(extensionId);
+      const descriptor = findDescriptorByExtensionAssetId(extensionId);
       if (!descriptor) {
         return null;
       }
@@ -2105,6 +2149,10 @@ ipcMain.on('window:editor-ready', (event) => {
   const targetWindow = BrowserWindow.fromWebContents(event.sender);
   if (!targetWindow || targetWindow.isDestroyed()) {
     return;
+  }
+
+  if (pluginEditorBridge && typeof pluginEditorBridge.markRendererReady === 'function') {
+    pluginEditorBridge.markRendererReady(targetWindow.webContents.id);
   }
 
   const pendingPayload = pendingOpenNoteWindowPayloads.get(targetWindow.id);

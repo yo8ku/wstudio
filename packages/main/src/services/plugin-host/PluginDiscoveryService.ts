@@ -17,6 +17,7 @@ import {
   type PluginDescriptor,
   type PluginResolvedFileIconTheme,
   type PluginResolvedFileIconThemeMapping,
+  type PluginResolvedUiEntrypoints,
   type PluginScanFailure,
   type PluginScanSummary,
 } from './types';
@@ -26,9 +27,29 @@ const DEFAULT_BUILTIN_PLUGIN_DIRECTORIES = [
   path.join('packages', 'builtin-plugins'),
   path.join('resources', 'builtin-plugins'),
 ] as const;
+const DEFAULT_DEVELOPMENT_EXAMPLE_PLUGIN_IDS = [] as const;
+const DEFAULT_UNBLOCKED_USER_PLUGIN_IDS = [
+  'wstudio-plugin-demo-editor-suggest',
+  'wstudio-plugin-demo-file-icons-simple',
+  'wstudio-plugin-demo-canvas-host',
+] as const;
+const DEFAULT_DEVELOPMENT_PLUGIN_BLOCKED_PREFIXES = [
+  'wstudio-plugin-demo-',
+] as const;
+const DEVELOPMENT_EXAMPLE_PLUGIN_IDS_ENV = 'WSTUDIO_DEVELOPMENT_EXAMPLE_PLUGIN_IDS';
+const DEVELOPMENT_EXAMPLE_PLUGIN_ROOT_ENV = 'WSTUDIO_DEVELOPMENT_EXAMPLE_PLUGIN_ROOT';
 const MANIFEST_FILE_NAME = 'manifest.json';
 const SUPPORTED_ENTRY_CANDIDATES = ['main.js', 'main.cjs', 'main.mjs'] as const;
 const DEFAULT_PLUGIN_ICON_CANDIDATES = ['assets/logo.svg'] as const;
+const SUPPORTED_PLUGIN_LOGO_EXTENSIONS = new Set<string>([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.bmp',
+  '.svg',
+]);
 
 const EMPTY_PLUGIN_SCAN_SUMMARY: PluginScanSummary = {
   roots: [],
@@ -36,6 +57,12 @@ const EMPTY_PLUGIN_SCAN_SUMMARY: PluginScanSummary = {
   failureCount: 0,
   failures: [],
 };
+
+interface ParsedPluginUiManifest {
+  readonly views: Readonly<Record<string, string>>;
+  readonly settings: string | null;
+  readonly modals: Readonly<Record<string, string>>;
+}
 
 function isJsonObject(value: JsonValue): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -85,6 +112,39 @@ function readOptionalStringArray(
   return result.length > 0 ? result : undefined;
 }
 
+function readOptionalStringRecord(
+  source: JsonObject,
+  key: string,
+): Readonly<Record<string, string>> | undefined | null {
+  const value = source[key];
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isJsonObject(value)) {
+    return null;
+  }
+
+  const result: Record<string, string> = {};
+
+  for (const [entryKey, entryValue] of Object.entries(value)) {
+    const normalizedKey = entryKey.trim();
+
+    if (normalizedKey.length === 0) {
+      return null;
+    }
+
+    if (typeof entryValue !== 'string' || entryValue.trim().length === 0) {
+      return null;
+    }
+
+    result[normalizedKey] = entryValue.trim();
+  }
+
+  return result;
+}
+
 function readStringArrayValue(value: JsonValue): readonly string[] | null {
   if (!Array.isArray(value)) {
     return null;
@@ -123,6 +183,44 @@ function readManifestEngines(source: JsonObject): PluginManifestEngines | undefi
   return {
     wstudio,
     pluginApi: readOptionalString(value, 'pluginApi'),
+  };
+}
+
+function readManifestUi(source: JsonObject): ParsedPluginUiManifest | undefined | null {
+  const uiValue = source.ui;
+
+  if (uiValue === undefined) {
+    return undefined;
+  }
+
+  if (!isJsonObject(uiValue)) {
+    return null;
+  }
+
+  const views = readOptionalStringRecord(uiValue, 'views');
+  const modals = readOptionalStringRecord(uiValue, 'modals');
+  const settingsValue = uiValue.settings;
+  const settings = settingsValue === undefined
+    ? null
+    : typeof settingsValue === 'string' && settingsValue.trim().length > 0
+      ? settingsValue.trim()
+      : false;
+
+  if (views === null || modals === null || settings === false) {
+    return null;
+  }
+
+  const resolvedViews = views ?? {};
+  const resolvedModals = modals ?? {};
+
+  if (Object.keys(resolvedViews).length === 0 && Object.keys(resolvedModals).length === 0 && settings === null) {
+    return null;
+  }
+
+  return {
+    views: resolvedViews,
+    settings,
+    modals: resolvedModals,
   };
 }
 
@@ -278,6 +376,10 @@ async function resolvePluginAssetPath(
   return await pathExists(resolvedPath) ? resolvedPath : null;
 }
 
+function isSupportedPluginLogoAssetPath(targetPath: string): boolean {
+  return SUPPORTED_PLUGIN_LOGO_EXTENSIONS.has(path.extname(targetPath).trim().toLowerCase());
+}
+
 async function resolvePluginLogoPath(
   manifest: PluginManifest,
   rootDirectory: string,
@@ -285,15 +387,23 @@ async function resolvePluginLogoPath(
   if (manifest.icon !== undefined) {
     const resolvedManifestIconPath = await resolvePluginAssetPath(rootDirectory, manifest.icon);
 
-    if (resolvedManifestIconPath !== null) {
-      return resolvedManifestIconPath;
+    if (resolvedManifestIconPath === null) {
+      throw new Error('manifest.icon points to a missing asset.');
     }
+
+    if (!isSupportedPluginLogoAssetPath(resolvedManifestIconPath)) {
+      throw new Error(
+        'manifest.icon must point to an image asset (.png, .jpg, .jpeg, .webp, .gif, .bmp, or .svg).',
+      );
+    }
+
+    return resolvedManifestIconPath;
   }
 
   for (const candidate of DEFAULT_PLUGIN_ICON_CANDIDATES) {
     const resolvedCandidatePath = await resolvePluginAssetPath(rootDirectory, candidate);
 
-    if (resolvedCandidatePath !== null) {
+    if (resolvedCandidatePath !== null && isSupportedPluginLogoAssetPath(resolvedCandidatePath)) {
       return resolvedCandidatePath;
     }
   }
@@ -368,9 +478,96 @@ async function resolvePluginFileIconTheme(
   };
 }
 
+async function resolvePluginUiEntrypoints(
+  rootDirectory: string,
+  uiManifest: ParsedPluginUiManifest | undefined,
+): Promise<PluginResolvedUiEntrypoints | null> {
+  if (uiManifest === undefined) {
+    return null;
+  }
+
+  const resolvedViews: Record<string, string> = {};
+  const resolvedModals: Record<string, string> = {};
+
+  for (const [viewId, relativePath] of Object.entries(uiManifest.views)) {
+    const resolvedPath = await resolvePluginAssetPath(rootDirectory, relativePath);
+
+    if (resolvedPath === null) {
+      throw new Error(`ui.views["${viewId}"] points to a missing or out-of-root entry file.`);
+    }
+
+    resolvedViews[viewId] = resolvedPath;
+  }
+
+  for (const [modalId, relativePath] of Object.entries(uiManifest.modals)) {
+    const resolvedPath = await resolvePluginAssetPath(rootDirectory, relativePath);
+
+    if (resolvedPath === null) {
+      throw new Error(`ui.modals["${modalId}"] points to a missing or out-of-root entry file.`);
+    }
+
+    resolvedModals[modalId] = resolvedPath;
+  }
+
+  const resolvedSettings = uiManifest.settings === null
+    ? null
+    : await resolvePluginAssetPath(rootDirectory, uiManifest.settings);
+
+  if (uiManifest.settings !== null && resolvedSettings === null) {
+    throw new Error('ui.settings points to a missing or out-of-root entry file.');
+  }
+
+  return {
+    views: resolvedViews,
+    settings: resolvedSettings,
+    modals: resolvedModals,
+  };
+}
+
 interface ConfiguredPluginRoot {
   readonly path: string;
   readonly createIfMissing: boolean;
+  readonly allowedPluginIds?: ReadonlySet<string>;
+  readonly blockedPluginIdPrefixes?: readonly string[];
+  readonly blockedPluginIdExceptions?: ReadonlySet<string>;
+}
+
+function readDevelopmentExamplePluginIds(): ReadonlySet<string> {
+  const configuredIds = process.env[DEVELOPMENT_EXAMPLE_PLUGIN_IDS_ENV];
+
+  if (typeof configuredIds !== 'string') {
+    return new Set<string>(DEFAULT_DEVELOPMENT_EXAMPLE_PLUGIN_IDS);
+  }
+
+  const normalizedIds = configuredIds
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  return new Set<string>(normalizedIds);
+}
+
+function resolveDevelopmentExampleRoot(): string {
+  const configuredRoot = process.env[DEVELOPMENT_EXAMPLE_PLUGIN_ROOT_ENV];
+
+  if (typeof configuredRoot === 'string' && configuredRoot.trim().length > 0) {
+    return path.resolve(configuredRoot.trim());
+  }
+
+  return path.resolve(resolveProjectPath('examples', 'plugins'));
+}
+
+function matchesAllowedPluginDirectory(
+  entryName: string,
+  allowedPluginIds: ReadonlySet<string>,
+): boolean {
+  for (const pluginId of allowedPluginIds) {
+    if (entryName === pluginId || entryName.startsWith(`${pluginId} `)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function resolveConfiguredPluginRoots(): readonly ConfiguredPluginRoot[] {
@@ -379,6 +576,8 @@ function resolveConfiguredPluginRoots(): readonly ConfiguredPluginRoot[] {
   roots.set(defaultRoot, {
     path: defaultRoot,
     createIfMissing: true,
+    blockedPluginIdPrefixes: [...DEFAULT_DEVELOPMENT_PLUGIN_BLOCKED_PREFIXES],
+    blockedPluginIdExceptions: new Set<string>(DEFAULT_UNBLOCKED_USER_PLUGIN_IDS),
   });
 
   const extraRoots = process.env.WSTUDIO_PLUGIN_ROOTS;
@@ -424,6 +623,16 @@ function resolveConfiguredPluginRoots(): readonly ConfiguredPluginRoot[] {
     }
   }
 
+  const developmentExampleRoot = resolveDevelopmentExampleRoot();
+
+  if (!roots.has(developmentExampleRoot)) {
+    roots.set(developmentExampleRoot, {
+      path: developmentExampleRoot,
+      createIfMissing: false,
+      allowedPluginIds: readDevelopmentExamplePluginIds(),
+    });
+  }
+
   return [...roots.values()];
 }
 
@@ -458,6 +667,13 @@ export class PluginDiscoveryService {
 
       for (const entry of entries) {
         if (!entry.isDirectory()) {
+          continue;
+        }
+
+        if (
+          pluginRootEntry.allowedPluginIds !== undefined
+          && !matchesAllowedPluginDirectory(entry.name, pluginRootEntry.allowedPluginIds)
+        ) {
           continue;
         }
 
@@ -513,6 +729,7 @@ export class PluginDiscoveryService {
         }
 
         const manifest = parsePluginManifest(rootDirectory, manifestJson);
+        const uiManifest = readManifestUi(manifestJson);
 
         if (manifest === null) {
           failures.push(createFailure(
@@ -520,6 +737,23 @@ export class PluginDiscoveryService {
             manifestPath,
             'invalid_manifest_shape',
             'manifest.json is missing required plugin fields or engines.wstudio.',
+          ));
+          continue;
+        }
+
+        if (
+          pluginRootEntry.blockedPluginIdPrefixes?.some((prefix) => manifest.id.startsWith(prefix)) === true
+          && pluginRootEntry.blockedPluginIdExceptions?.has(manifest.id) !== true
+        ) {
+          continue;
+        }
+
+        if (uiManifest === null) {
+          failures.push(createFailure(
+            rootDirectory,
+            manifestPath,
+            'invalid_ui_manifest',
+            'manifest.json contains an invalid ui declaration.',
           ));
           continue;
         }
@@ -538,7 +772,20 @@ export class PluginDiscoveryService {
           continue;
         }
 
-        const iconPath = await resolvePluginLogoPath(manifest, rootDirectory);
+        let iconPath: string | null = null;
+
+        try {
+          iconPath = await resolvePluginLogoPath(manifest, rootDirectory);
+        } catch (error) {
+          failures.push(createFailure(
+            rootDirectory,
+            manifestPath,
+            'invalid_plugin_icon',
+            error instanceof Error ? error.message : 'Invalid manifest.icon asset.',
+          ));
+          continue;
+        }
+
         let fileIconTheme: PluginResolvedFileIconTheme | null = null;
 
         try {
@@ -549,6 +796,20 @@ export class PluginDiscoveryService {
             manifestPath,
             'invalid_file_icon_contribution',
             error instanceof Error ? error.message : 'Invalid contributes.fileIcons contribution.',
+          ));
+          continue;
+        }
+
+        let uiEntrypoints: PluginResolvedUiEntrypoints | null = null;
+
+        try {
+          uiEntrypoints = await resolvePluginUiEntrypoints(rootDirectory, uiManifest);
+        } catch (error) {
+          failures.push(createFailure(
+            rootDirectory,
+            manifestPath,
+            'invalid_ui_entrypoint',
+            error instanceof Error ? error.message : 'Invalid ui entrypoint declaration.',
           ));
           continue;
         }
@@ -591,6 +852,7 @@ export class PluginDiscoveryService {
           entryPath,
           iconPath,
           fileIconTheme,
+          uiEntrypoints,
         });
       }
     }

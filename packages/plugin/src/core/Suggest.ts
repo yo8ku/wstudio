@@ -7,15 +7,18 @@ import type { CloseableComponent } from '../types/closeable';
 import type { EditorSuggestContext, EditorSuggestTriggerInfo } from '../types/editor';
 import type { EditorPosition, Editor } from '../types/editor';
 import { Scope } from '../types/keymap';
+import type { JsonObject, JsonValue } from '../types/json';
 import type {
-  FuzzyMatch,
   Instruction,
   ISuggestOwner,
-  SearchMatchPart,
-  SearchResult,
 } from '../types/suggest';
 import type { TFile } from '../types/vault';
 import { getPluginHostUiBridge } from '../internal/host-ui-bridge';
+import {
+  EDITOR_SUGGEST_INTERNAL_HANDLE_KEY,
+  EDITOR_SUGGEST_INTERNAL_REFRESH,
+  type PluginRuntimeAnchorRect,
+} from '../internal/runtime';
 import { Modal } from './Modal';
 
 function clearElement(target: HTMLElement): void {
@@ -38,75 +41,9 @@ function appendInstruction(target: HTMLElement, instruction: Instruction): void 
   target.append(rowEl);
 }
 
-function renderSearchResult(target: HTMLElement, text: string, result: SearchResult | null): void {
-  clearElement(target);
-
-  if (result === null || result.matches.length === 0) {
-    target.textContent = text;
-    return;
-  }
-
-  let offset = 0;
-
-  for (const match of result.matches) {
-    const [start, end] = match;
-
-    if (start > offset) {
-      target.append(text.slice(offset, start));
-    }
-
-    const markEl = document.createElement('mark');
-    markEl.textContent = text.slice(start, end);
-    target.append(markEl);
-    offset = end;
-  }
-
-  if (offset < text.length) {
-    target.append(text.slice(offset));
-  }
-}
-
-function buildSimpleSearchResult(query: string, text: string): SearchResult | null {
-  const normalizedQuery = query.trim().toLowerCase();
-  const normalizedText = text.toLowerCase();
-
-  if (normalizedQuery.length === 0) {
-    return {
-      score: 0,
-      matches: [],
-    };
-  }
-
-  const start = normalizedText.indexOf(normalizedQuery);
-
-  if (start === -1) {
-    return null;
-  }
-
-  const matches: SearchMatchPart[] = [[start, start + normalizedQuery.length]];
-
+function createSyntheticKeyboardEvent(key: string): KeyboardEvent {
   return {
-    score: normalizedQuery.length / (start + 1),
-    matches,
-  };
-}
-
-function extractRenderedTextParts(target: HTMLElement): readonly string[] {
-  const parts = Array.from(target.children)
-    .map((child) => child.textContent?.trim() ?? '')
-    .filter((part) => part.length > 0);
-
-  if (parts.length > 0) {
-    return parts;
-  }
-
-  const fallbackText = target.textContent?.trim() ?? '';
-  return fallbackText.length === 0 ? [] : [fallbackText];
-}
-
-function createSyntheticSuggestSelectEvent(): KeyboardEvent {
-  return {
-    key: 'Enter',
+    key,
     preventDefault(): void {
       return undefined;
     },
@@ -124,6 +61,12 @@ export abstract class PopoverSuggest<TValue>
   protected readonly suggestionsEl: HTMLElement;
   protected readonly instructionsEl: HTMLElement;
   private opened = false;
+  private hostPopoverId: string | null = null;
+  private closingViaHostBridge = false;
+  private hostPopoverAnchorRect: PluginRuntimeAnchorRect | null = null;
+  private instructions: readonly Instruction[] = [];
+  private suggestions: readonly TValue[] = [];
+  private selectedIndex = -1;
 
   protected constructor(app: App, scope?: Scope) {
     this.app = app;
@@ -143,48 +86,101 @@ export abstract class PopoverSuggest<TValue>
   }
 
   public open(): void {
+    const hostUiBridge = getPluginHostUiBridge();
+
+    if (hostUiBridge === null) {
+      throw new Error('Popover rich UI now requires the plugin host UI bridge and a runtime surface.');
+    }
+
     if (this.opened) {
+      this.syncHostPopover(hostUiBridge);
       return;
     }
 
     this.opened = true;
-
-    if (!this.containerEl.isConnected) {
-      document.body.append(this.containerEl);
-    }
-
     this.containerEl.hidden = false;
+    this.hostPopoverId = hostUiBridge.openPopover({
+      title: 'Plugin suggestions',
+      contentElement: this.containerEl,
+      surfaceId: this.resolveHostRuntimeSurfaceId(),
+      runtimeState: this.resolveHostRuntimeState(),
+      onRuntimeAction: (action) => {
+        this.handleHostRuntimeAction(action);
+      },
+      width: 420,
+      height: 320,
+      anchorRect: this.hostPopoverAnchorRect,
+      interactionMode: this.resolveHostPopoverInteractionMode(),
+      onClose: () => {
+        this.handleHostPopoverClosed();
+      },
+    });
   }
 
   public close(): void {
+    const hostUiBridge = getPluginHostUiBridge();
+
+    if (hostUiBridge !== null && this.hostPopoverId !== null) {
+      if (!this.opened) {
+        return;
+      }
+
+      const popoverId = this.hostPopoverId;
+      this.opened = false;
+      this.containerEl.hidden = true;
+      this.hostPopoverId = null;
+      this.hostPopoverAnchorRect = null;
+      this.closingViaHostBridge = true;
+      hostUiBridge.closePopover(popoverId);
+      return;
+    }
+
     if (!this.opened) {
       return;
     }
 
     this.opened = false;
     this.containerEl.hidden = true;
-    this.containerEl.remove();
+    this.hostPopoverAnchorRect = null;
+    this.selectedIndex = -1;
+  }
+
+  protected setHostPopoverAnchorRect(anchorRect: PluginRuntimeAnchorRect | null): void {
+    this.hostPopoverAnchorRect = anchorRect;
   }
 
   protected setInstructions(instructions: readonly Instruction[]): void {
+    this.instructions = instructions;
     clearElement(this.instructionsEl);
 
     for (const instruction of instructions) {
       appendInstruction(this.instructionsEl, instruction);
     }
+
+    this.notifyHostPopoverUpdated();
   }
 
   protected setSuggestions(values: readonly TValue[]): void {
+    this.suggestions = values;
+    this.selectedIndex = values.length === 0
+      ? -1
+      : this.selectedIndex >= 0 && this.selectedIndex < values.length
+        ? this.selectedIndex
+        : 0;
     clearElement(this.suggestionsEl);
 
-    for (const value of values) {
+    values.forEach((value, index) => {
       const rowEl = document.createElement('div');
       rowEl.className = 'ns-plugin-popover-suggest__item';
       rowEl.setAttribute('role', 'button');
+      rowEl.setAttribute('aria-selected', index === this.selectedIndex ? 'true' : 'false');
       rowEl.tabIndex = 0;
+      rowEl.dataset.selected = index === this.selectedIndex ? 'true' : 'false';
       this.renderSuggestion(value, rowEl);
 
       rowEl.addEventListener('click', (event) => {
+        this.selectedIndex = index;
+        this.syncSuggestionSelectionState();
         this.selectSuggestion(value, event);
       });
 
@@ -194,284 +190,47 @@ export abstract class PopoverSuggest<TValue>
         }
 
         event.preventDefault();
+        this.selectedIndex = index;
+        this.syncSuggestionSelectionState();
         this.selectSuggestion(value, event);
       });
 
       this.suggestionsEl.append(rowEl);
+    });
+
+    this.notifyHostPopoverUpdated();
+  }
+
+  protected moveSelection(direction: -1 | 1): boolean {
+    if (this.suggestions.length === 0) {
+      return false;
     }
+
+    const nextIndex = this.selectedIndex < 0
+      ? 0
+      : (this.selectedIndex + direction + this.suggestions.length) % this.suggestions.length;
+    this.selectedIndex = nextIndex;
+    this.syncSuggestionSelectionState();
+    this.notifyHostPopoverUpdated();
+    return true;
+  }
+
+  protected selectActiveSuggestion(evt: KeyboardEvent): boolean {
+    const value = this.suggestions[this.selectedIndex] ?? this.suggestions[0];
+
+    if (value === undefined) {
+      return false;
+    }
+
+    this.selectSuggestion(value, evt);
+    return true;
   }
 
   public abstract renderSuggestion(value: TValue, el: HTMLElement): void;
 
   public abstract selectSuggestion(value: TValue, evt: MouseEvent | KeyboardEvent): void;
-}
 
-export abstract class SuggestModal<TValue> extends Modal implements ISuggestOwner<TValue> {
-  public limit = 100;
-  public emptyStateText = 'No suggestions';
-  public readonly inputEl: HTMLInputElement;
-  public readonly resultContainerEl: HTMLElement;
-  private readonly instructionsEl: HTMLElement;
-  private instructions: readonly Instruction[] = [];
-  private suggestions: readonly TValue[] = [];
-  private selectedIndex = -1;
-  private hostModalId: string | null = null;
-  private closingViaHostBridge = false;
-
-  protected constructor(app: App) {
-    super(app);
-
-    this.inputEl = document.createElement('input');
-    this.inputEl.className = 'ns-plugin-suggest-modal__input';
-    this.inputEl.type = 'text';
-
-    this.instructionsEl = document.createElement('div');
-    this.instructionsEl.className = 'ns-plugin-suggest-modal__instructions';
-
-    this.resultContainerEl = document.createElement('div');
-    this.resultContainerEl.className = 'ns-plugin-suggest-modal__results';
-
-    this.contentEl.append(this.inputEl, this.instructionsEl, this.resultContainerEl);
-
-    this.inputEl.addEventListener('input', () => {
-      void this.refreshSuggestions();
-    });
-
-    this.inputEl.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        this.moveSelection(1);
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        this.moveSelection(-1);
-        return;
-      }
-
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        this.selectActiveSuggestion(event);
-      }
-    });
-  }
-
-  public override onOpen(): void {
-    if (getPluginHostUiBridge() === null) {
-      this.inputEl.focus();
-    }
-
-    void this.refreshSuggestions();
-  }
-
-  public override open(): void {
-    const hostUiBridge = getPluginHostUiBridge();
-
-    if (hostUiBridge === null) {
-      super.open();
-      return;
-    }
-
-    if (this.opened) {
-      return;
-    }
-
-    this.opened = true;
-    this.hostModalId = hostUiBridge.openSuggestModal({
-      title: this.titleEl.textContent?.trim() ?? '',
-      placeholder: this.inputEl.placeholder,
-      query: this.inputEl.value,
-      emptyStateText: this.emptyStateText,
-      instructions: this.instructions.map((instruction) => ({
-        command: instruction.command,
-        purpose: instruction.purpose,
-      })),
-      items: [],
-      onQueryChange: async (query) => {
-        await this.handleHostQueryChange(query);
-      },
-      onSelect: (itemId) => {
-        this.handleHostSelect(itemId);
-      },
-      onClose: () => {
-        this.handleHostClosed();
-      },
-    });
-
-    void Promise.resolve(this.onOpen());
-  }
-
-  public override close(): void {
-    const hostUiBridge = getPluginHostUiBridge();
-
-    if (hostUiBridge === null || this.hostModalId === null) {
-      super.close();
-      return;
-    }
-
-    if (!this.opened) {
-      return;
-    }
-
-    const modalId = this.hostModalId;
-    this.opened = false;
-    this.hostModalId = null;
-    this.closingViaHostBridge = true;
-    hostUiBridge.closeSuggestModal(modalId);
-    void Promise.resolve(this.onClose());
-  }
-
-  public setPlaceholder(placeholder: string): void {
-    this.inputEl.placeholder = placeholder;
-  }
-
-  public setInstructions(instructions: readonly Instruction[]): void {
-    this.instructions = instructions;
-    clearElement(this.instructionsEl);
-
-    for (const instruction of instructions) {
-      appendInstruction(this.instructionsEl, instruction);
-    }
-  }
-
-  public onNoSuggestion(): void {
-    clearElement(this.resultContainerEl);
-    const emptyEl = document.createElement('div');
-    emptyEl.className = 'ns-plugin-suggest-modal__empty';
-    emptyEl.textContent = this.emptyStateText;
-    this.resultContainerEl.append(emptyEl);
-  }
-
-  public selectSuggestion(value: TValue, evt: MouseEvent | KeyboardEvent): void {
-    this.onChooseSuggestion(value, evt);
-    this.close();
-  }
-
-  public selectActiveSuggestion(evt: MouseEvent | KeyboardEvent): void {
-    const value = this.suggestions[this.selectedIndex] ?? this.suggestions[0];
-
-    if (value === undefined) {
-      return;
-    }
-
-    this.selectSuggestion(value, evt);
-  }
-
-  private async refreshSuggestions(): Promise<void> {
-    const suggestions = await this.getSuggestions(this.inputEl.value);
-    this.suggestions = suggestions.slice(0, this.limit);
-    this.selectedIndex = this.suggestions.length > 0 ? 0 : -1;
-    const hostUiBridge = getPluginHostUiBridge();
-
-    if (hostUiBridge !== null && this.hostModalId !== null) {
-      hostUiBridge.updateSuggestModal({
-        modalId: this.hostModalId,
-        title: this.titleEl.textContent?.trim() ?? '',
-        placeholder: this.inputEl.placeholder,
-        query: this.inputEl.value,
-        emptyStateText: this.emptyStateText,
-        instructions: this.instructions.map((instruction) => ({
-          command: instruction.command,
-          purpose: instruction.purpose,
-        })),
-        items: this.suggestions.map((suggestion, index) => {
-          return this.serializeSuggestionItem(suggestion, index);
-        }),
-      });
-      return;
-    }
-
-    this.renderSuggestions();
-  }
-
-  private renderSuggestions(): void {
-    clearElement(this.resultContainerEl);
-
-    if (this.suggestions.length === 0) {
-      this.onNoSuggestion();
-      return;
-    }
-
-    this.suggestions.forEach((suggestion, index) => {
-      const itemEl = document.createElement('div');
-      itemEl.className = 'ns-plugin-suggest-modal__item';
-      itemEl.setAttribute('role', 'button');
-      itemEl.tabIndex = 0;
-      itemEl.dataset.selected = index === this.selectedIndex ? 'true' : 'false';
-
-      this.renderSuggestion(suggestion, itemEl);
-
-      itemEl.addEventListener('click', (event) => {
-        this.selectedIndex = index;
-        this.selectSuggestion(suggestion, event);
-      });
-
-      itemEl.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') {
-          return;
-        }
-
-        event.preventDefault();
-        this.selectedIndex = index;
-        this.selectSuggestion(suggestion, event);
-      });
-
-      this.resultContainerEl.append(itemEl);
-    });
-  }
-
-  private moveSelection(direction: -1 | 1): void {
-    if (this.suggestions.length === 0) {
-      return;
-    }
-
-    const nextIndex = (this.selectedIndex + direction + this.suggestions.length) % this.suggestions.length;
-    this.selectedIndex = nextIndex;
-
-    Array.from(this.resultContainerEl.children).forEach((child, index) => {
-      if (child instanceof HTMLElement) {
-        child.dataset.selected = index === this.selectedIndex ? 'true' : 'false';
-      }
-    });
-  }
-
-  private serializeSuggestionItem(value: TValue, index: number): {
-    readonly id: string;
-    readonly title: string;
-    readonly description: string | null;
-  } {
-    const previewEl = document.createElement('div');
-    this.renderSuggestion(value, previewEl);
-    const textParts = extractRenderedTextParts(previewEl);
-    const title = textParts[0] ?? `Suggestion ${index + 1}`;
-    const description = textParts.length > 1 ? textParts.slice(1).join(' ') : null;
-
-    return {
-      id: `suggestion-${index}`,
-      title,
-      description,
-    };
-  }
-
-  private async handleHostQueryChange(query: string): Promise<void> {
-    this.inputEl.value = query;
-    await this.refreshSuggestions();
-  }
-
-  private handleHostSelect(itemId: string): void {
-    const itemIndex = Number(itemId.replace('suggestion-', ''));
-    const value = this.suggestions[itemIndex];
-
-    if (value === undefined) {
-      return;
-    }
-
-    this.selectedIndex = itemIndex;
-    this.selectSuggestion(value, createSyntheticSuggestSelectEvent());
-  }
-
-  private handleHostClosed(): void {
+  private handleHostPopoverClosed(): void {
     if (this.closingViaHostBridge) {
       this.closingViaHostBridge = false;
       return;
@@ -482,57 +241,152 @@ export abstract class SuggestModal<TValue> extends Modal implements ISuggestOwne
     }
 
     this.opened = false;
-    this.hostModalId = null;
-    void Promise.resolve(this.onClose());
+    this.hostPopoverId = null;
+    this.hostPopoverAnchorRect = null;
+    this.selectedIndex = -1;
+    this.containerEl.hidden = true;
   }
 
-  public abstract getSuggestions(query: string): readonly TValue[] | Promise<readonly TValue[]>;
+  private syncHostPopover(hostUiBridge: NonNullable<ReturnType<typeof getPluginHostUiBridge>>): void {
+    if (this.hostPopoverId === null) {
+      return;
+    }
 
-  public abstract renderSuggestion(value: TValue, el: HTMLElement): void;
-
-  public abstract onChooseSuggestion(item: TValue, evt: MouseEvent | KeyboardEvent): void;
-}
-
-export abstract class FuzzySuggestModal<TValue> extends SuggestModal<FuzzyMatch<TValue>> {
-  public override getSuggestions(query: string): readonly FuzzyMatch<TValue>[] {
-    return this.getItems()
-      .map((item) => {
-        const match = buildSimpleSearchResult(query, this.getItemText(item));
-
-        if (match === null) {
-          return null;
-        }
-
-        return {
-          item,
-          match,
-        } satisfies FuzzyMatch<TValue>;
-      })
-      .filter((match): match is FuzzyMatch<TValue> => match !== null)
-      .sort((left, right) => right.match.score - left.match.score);
+    hostUiBridge.updatePopover(this.hostPopoverId, {
+      title: 'Plugin suggestions',
+      runtimeState: this.resolveHostRuntimeState(),
+      width: 420,
+      height: 320,
+      anchorRect: this.hostPopoverAnchorRect,
+      interactionMode: this.resolveHostPopoverInteractionMode(),
+    });
   }
 
-  public override renderSuggestion(value: FuzzyMatch<TValue>, el: HTMLElement): void {
-    renderSearchResult(el, this.getItemText(value.item), value.match);
+  private syncSuggestionSelectionState(): void {
+    const suggestionChildren = Array.from(this.suggestionsEl.children);
+
+    suggestionChildren.forEach((child, index) => {
+      if (!(child instanceof HTMLElement)) {
+        return;
+      }
+
+      const selected = index === this.selectedIndex;
+      child.dataset.selected = selected ? 'true' : 'false';
+      child.setAttribute('aria-selected', selected ? 'true' : 'false');
+
+      if (selected) {
+        child.scrollIntoView?.({
+          block: 'nearest',
+        });
+      }
+    });
   }
 
-  public override onChooseSuggestion(
-    item: FuzzyMatch<TValue>,
-    evt: MouseEvent | KeyboardEvent,
-  ): void {
-    this.onChooseItem(item.item, evt);
+  protected resolveHostPopoverInteractionMode(): 'default' | 'editorSuggest' {
+    return 'default';
   }
 
-  public abstract getItems(): readonly TValue[];
+  protected resolveHostRuntimeState(): JsonValue | null {
+    const renderedSuggestions = Array.from(this.suggestionsEl.children).flatMap((child) => {
+      if (!(child instanceof HTMLElement)) {
+        return [];
+      }
 
-  public abstract getItemText(item: TValue): string;
+      const text = child.textContent?.trim() ?? '';
+      return text.length > 0 ? [text] : [];
+    });
 
-  public abstract onChooseItem(item: TValue, evt: MouseEvent | KeyboardEvent): void;
+    return {
+      title: 'Plugin suggestions',
+      suggestions: renderedSuggestions,
+      selectedIndex: this.selectedIndex,
+      interactionMode: this.resolveHostPopoverInteractionMode(),
+      instructions: this.instructions.map((instruction) => ({
+        command: instruction.command,
+        purpose: instruction.purpose,
+      })),
+    };
+  }
+
+  private resolveHostRuntimeSurfaceId(): string | null {
+    const constructorRef = this.constructor as {
+      readonly runtimeSurfaceId?: string;
+      readonly name?: string;
+    };
+    const configuredSurfaceId = constructorRef.runtimeSurfaceId;
+
+    if (typeof configuredSurfaceId === 'string' && configuredSurfaceId.trim().length > 0) {
+      return configuredSurfaceId.trim();
+    }
+
+    const inferredSurfaceId = constructorRef.name?.trim() ?? '';
+    return inferredSurfaceId.length > 0 ? inferredSurfaceId : null;
+  }
+
+  private notifyHostPopoverUpdated(): void {
+    const hostUiBridge = getPluginHostUiBridge();
+
+    if (hostUiBridge === null || this.hostPopoverId === null || !this.opened) {
+      return;
+    }
+
+    this.syncHostPopover(hostUiBridge);
+  }
+
+  private handleHostRuntimeAction(action: JsonValue | null): void {
+    if (action === null || Array.isArray(action) || typeof action !== 'object') {
+      return;
+    }
+
+    const actionObject = action as JsonObject;
+    const actionType = actionObject.type;
+
+    if (actionType === 'close') {
+      this.close();
+      return;
+    }
+
+    if (actionType === 'move-selection') {
+      const directionValue = actionObject.direction;
+
+      if (directionValue === 1 || directionValue === -1) {
+        this.moveSelection(directionValue);
+      }
+
+      return;
+    }
+
+    if (actionType === 'select-active') {
+      this.selectActiveSuggestion(createSyntheticKeyboardEvent('Enter'));
+      return;
+    }
+
+    if (actionType !== 'select-index') {
+      return;
+    }
+
+    const indexValue = actionObject.index;
+
+    if (typeof indexValue !== 'number' || !Number.isInteger(indexValue)) {
+      return;
+    }
+
+    const targetValue = this.suggestions[indexValue];
+
+    if (targetValue === undefined) {
+      return;
+    }
+
+    this.selectedIndex = indexValue;
+    this.syncSuggestionSelectionState();
+    this.selectSuggestion(targetValue, createSyntheticKeyboardEvent('Enter'));
+  }
 }
 
 export abstract class EditorSuggest<TValue> extends PopoverSuggest<TValue> {
   public context: EditorSuggestContext | null = null;
   public limit = 100;
+  private refreshSequence = 0;
 
   protected constructor(app: App) {
     super(app);
@@ -551,6 +405,61 @@ export abstract class EditorSuggest<TValue> extends PopoverSuggest<TValue> {
   public abstract getSuggestions(
     context: EditorSuggestContext,
   ): readonly TValue[] | Promise<readonly TValue[]>;
+
+  protected override resolveHostPopoverInteractionMode(): 'default' | 'editorSuggest' {
+    return 'editorSuggest';
+  }
+
+  public override close(): void {
+    this.context = null;
+    this.refreshSequence += 1;
+    this.setHostPopoverAnchorRect(null);
+    super.close();
+  }
+
+  public async [EDITOR_SUGGEST_INTERNAL_REFRESH](options: {
+    readonly context: EditorSuggestContext;
+    readonly anchorRect: PluginRuntimeAnchorRect | null;
+  }): Promise<boolean> {
+    const refreshSequence = ++this.refreshSequence;
+    this.context = options.context;
+    this.setHostPopoverAnchorRect(options.anchorRect);
+    const suggestions = (await this.getSuggestions(options.context)).slice(0, this.limit);
+
+    if (refreshSequence !== this.refreshSequence) {
+      return false;
+    }
+
+    if (suggestions.length === 0) {
+      this.close();
+      return false;
+    }
+
+    this.setSuggestions(suggestions);
+    this.open();
+    return true;
+  }
+
+  public [EDITOR_SUGGEST_INTERNAL_HANDLE_KEY](key: string): boolean {
+    if (key === 'ArrowDown') {
+      return this.moveSelection(1);
+    }
+
+    if (key === 'ArrowUp') {
+      return this.moveSelection(-1);
+    }
+
+    if (key === 'Enter') {
+      return this.selectActiveSuggestion(createSyntheticKeyboardEvent('Enter'));
+    }
+
+    if (key === 'Escape') {
+      this.close();
+      return true;
+    }
+
+    return false;
+  }
 }
 
 export abstract class AbstractInputSuggest<TValue> extends PopoverSuggest<TValue> {

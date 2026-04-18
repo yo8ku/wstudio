@@ -23,6 +23,7 @@ import {
   type PluginEditorApplyTextEditsResponsePayload,
   type PluginEditorPerformActionRequestPayload,
   type PluginEditorPerformActionResponsePayload,
+  type PluginEditorStateChangedPayload,
   type PluginEditorStateRequestPayload,
   type PluginEditorStateResponsePayload,
 } from '@note-studio/shared';
@@ -48,6 +49,8 @@ export type LegacyPluginDescriptor = PluginDescriptor;
 
 export interface LegacyPluginEditorBridge extends MainProcessEditorBridge {
   setMainWindow(mainWindow: BrowserWindow | null): void;
+  markRendererReady(webContentsId: number): void;
+  markRendererUnavailable(webContentsId: number): void;
 }
 
 export interface LegacyPluginDiscoveryService {
@@ -71,11 +74,12 @@ export interface LegacyPluginCapabilityRouter {
 export interface LegacyPluginHostManager {
   initialize(): Promise<void>;
   reloadAll(): Promise<void>;
+  shutdown(): Promise<void>;
   getInstalledPlugins(): readonly InstalledPluginSummary[];
   getPluginSettingTabs(): readonly PluginSettingTabSummary[];
   getWorkbenchContributionSnapshot(): WorkbenchContributionSnapshot;
   getPluginUiEntries(): readonly PluginUiEntrySnapshot[];
-  executePluginUiEntry(entryId: string): boolean;
+  executePluginUiEntry(entryId: string): Promise<boolean>;
   subscribePluginUiEntries(listener: () => void): () => void;
   activateForAIPanelItem(item: AIPanelContributionEntry): Promise<void>;
   executeContributedCommand(
@@ -129,6 +133,8 @@ export const EMPTY_EXTENSION_DEVELOPMENT_RELOAD_RESULT: ExtensionDevelopmentRelo
 
 class PluginEditorBridgeService implements LegacyPluginEditorBridge {
   private mainWindow: BrowserWindow | null = null;
+  private rendererReadyWebContentsId: number | null = null;
+  private lastKnownDocumentUri: string | null = null;
   private readonly stateRequests = new Map<string, {
     readonly resolve: (payload: PluginEditorStateResponsePayload) => void;
     readonly reject: (error: Error) => void;
@@ -144,11 +150,31 @@ class PluginEditorBridgeService implements LegacyPluginEditorBridge {
     readonly reject: (error: Error) => void;
     readonly timer: NodeJS.Timeout;
   }>();
+  private readonly stateChangeListeners = new Set<() => void>();
 
   public constructor() {
     ipcMain.on(PLUGIN_EDITOR_BRIDGE_CHANNELS.stateResponse, (_event, payload: PluginEditorStateResponsePayload) => {
       this.resolvePendingRequest(this.stateRequests, payload.requestId, payload);
     });
+    ipcMain.on(
+      PLUGIN_EDITOR_BRIDGE_CHANNELS.stateChanged,
+      (event, payload: PluginEditorStateChangedPayload) => {
+        if (payload.documentUri !== null && typeof payload.documentUri !== 'string') {
+          return;
+        }
+
+        const targetWindow = this.requireMainWindow();
+        if (targetWindow !== null && targetWindow.webContents.id === event.sender.id) {
+          this.rendererReadyWebContentsId = event.sender.id;
+        }
+
+        this.lastKnownDocumentUri = payload.documentUri;
+
+        for (const listener of [...this.stateChangeListeners]) {
+          listener();
+        }
+      },
+    );
     ipcMain.on(
       PLUGIN_EDITOR_BRIDGE_CHANNELS.applyTextEditsResponse,
       (_event, payload: PluginEditorApplyTextEditsResponsePayload) => {
@@ -165,10 +191,34 @@ class PluginEditorBridgeService implements LegacyPluginEditorBridge {
 
   public setMainWindow(mainWindow: BrowserWindow | null): void {
     this.mainWindow = mainWindow;
+    this.rendererReadyWebContentsId = null;
+    this.lastKnownDocumentUri = null;
   }
 
   public getMainWindow(): BrowserWindow | null {
     return this.mainWindow;
+  }
+
+  public markRendererReady(webContentsId: number): void {
+    const targetWindow = this.requireMainWindow();
+
+    if (targetWindow === null || targetWindow.webContents.id !== webContentsId) {
+      return;
+    }
+
+    this.rendererReadyWebContentsId = webContentsId;
+  }
+
+  public markRendererUnavailable(webContentsId: number): void {
+    if (this.rendererReadyWebContentsId !== webContentsId) {
+      return;
+    }
+
+    this.rendererReadyWebContentsId = null;
+  }
+
+  public getLastKnownDocumentUri(): string | null {
+    return this.lastKnownDocumentUri;
   }
 
   public async requestState(documentUri: string | null): Promise<PluginEditorStateSnapshot | null> {
@@ -178,12 +228,18 @@ class PluginEditorBridgeService implements LegacyPluginEditorBridge {
       return null;
     }
 
+    if (!this.isRendererReady(targetWindow)) {
+      return null;
+    }
+
+    const requestDocumentUri = documentUri ?? this.lastKnownDocumentUri;
+
     const payload = await this.sendRequest<PluginEditorStateResponsePayload, PluginEditorStateRequestPayload>(
       this.stateRequests,
       PLUGIN_EDITOR_BRIDGE_CHANNELS.requestState,
       {
         requestId: this.createRequestId('state'),
-        documentUri,
+        documentUri: requestDocumentUri,
       },
       targetWindow,
     );
@@ -196,7 +252,7 @@ class PluginEditorBridgeService implements LegacyPluginEditorBridge {
       return null;
     }
 
-    return {
+    const snapshot: PluginEditorStateSnapshot = {
       documentUri: payload.documentUri,
       content: payload.content,
       selection: payload.selection === null
@@ -223,13 +279,27 @@ class PluginEditorBridgeService implements LegacyPluginEditorBridge {
             clientWidth: payload.scroll.clientWidth,
             clientHeight: payload.scroll.clientHeight,
           },
+      caretRect: payload.caretRect === null
+        ? null
+        : {
+            left: payload.caretRect.left,
+            top: payload.caretRect.top,
+            right: payload.caretRect.right,
+            bottom: payload.caretRect.bottom,
+            width: payload.caretRect.width,
+          height: payload.caretRect.height,
+        },
     };
+
+    this.lastKnownDocumentUri = snapshot.documentUri;
+
+    return snapshot;
   }
 
   public async applyTextEdits(documentUri: string, edits: readonly PluginEditorTextEdit[]): Promise<void> {
     const targetWindow = this.requireMainWindow();
 
-    if (targetWindow === null) {
+    if (targetWindow === null || !this.isRendererReady(targetWindow)) {
       return;
     }
 
@@ -263,7 +333,7 @@ class PluginEditorBridgeService implements LegacyPluginEditorBridge {
   public async performAction(request: PluginEditorActionRequest): Promise<void> {
     const targetWindow = this.requireMainWindow();
 
-    if (targetWindow === null) {
+    if (targetWindow === null || !this.isRendererReady(targetWindow)) {
       return;
     }
 
@@ -282,12 +352,24 @@ class PluginEditorBridgeService implements LegacyPluginEditorBridge {
     }
   }
 
+  public subscribeStateChanges(listener: () => void): () => void {
+    this.stateChangeListeners.add(listener);
+
+    return () => {
+      this.stateChangeListeners.delete(listener);
+    };
+  }
+
   private requireMainWindow(): BrowserWindow | null {
     if (this.mainWindow === null || this.mainWindow.isDestroyed()) {
       return null;
     }
 
     return this.mainWindow;
+  }
+
+  private isRendererReady(targetWindow: BrowserWindow): boolean {
+    return this.rendererReadyWebContentsId === targetWindow.webContents.id;
   }
 
   private createRequestId(prefix: string): string {

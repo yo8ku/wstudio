@@ -12,8 +12,9 @@ import type { PaneMenuSource, ViewState, ViewStateResult, WorkspaceLeaf } from '
 
 export abstract class View extends Component {
   public readonly app: App;
-  public readonly leaf: WorkspaceLeaf;
   public readonly containerEl: HTMLElement;
+  public readonly contentEl: HTMLElement;
+  public readonly leaf: WorkspaceLeaf;
   public icon: IconName = '';
   public navigation = true;
   public scope: Scope | null = null;
@@ -21,8 +22,9 @@ export abstract class View extends Component {
   protected constructor(leaf: WorkspaceLeaf) {
     super();
     this.app = leaf.app;
-    this.leaf = leaf;
     this.containerEl = leaf.containerEl;
+    this.contentEl = leaf.containerEl;
+    this.leaf = leaf;
   }
 
   public abstract getViewType(): string;
@@ -75,11 +77,8 @@ export abstract class View extends Component {
 }
 
 export abstract class ItemView extends View {
-  public readonly contentEl: HTMLElement;
-
   protected constructor(leaf: WorkspaceLeaf) {
     super(leaf);
-    this.contentEl = this.containerEl;
   }
 
   public getViewState(): ViewState {
@@ -87,31 +86,5 @@ export abstract class ItemView extends View {
       type: this.getViewType(),
       state: this.getState(),
     };
-  }
-
-  public addAction(
-    icon: IconName,
-    title: string,
-    callback: (event: MouseEvent) => Promise<void> | void,
-  ): HTMLElement {
-    const actionEl = document.createElement('div');
-    actionEl.className = 'ns-plugin-item-view__action';
-    actionEl.dataset.icon = icon;
-    actionEl.title = title;
-    actionEl.setAttribute('role', 'button');
-    actionEl.tabIndex = 0;
-    this.registerDomEvent(actionEl, 'click', (event) => {
-      void callback(event);
-    });
-    this.registerDomEvent(actionEl, 'keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') {
-        return;
-      }
-
-      event.preventDefault();
-      actionEl.click();
-    });
-    this.contentEl.append(actionEl);
-    return actionEl;
   }
 }

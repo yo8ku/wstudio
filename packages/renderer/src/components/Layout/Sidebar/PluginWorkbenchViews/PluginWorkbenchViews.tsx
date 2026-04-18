@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { WorkbenchViewContributionEntry } from '@note-studio/shared';
+import { PluginSandboxFrame, PLUGIN_SANDBOX_PERMISSION_PRESETS } from '../../../common/PluginSandboxFrame';
 import './PluginWorkbenchViews.scss';
 
 interface PluginWorkbenchViewsProps {
@@ -84,12 +85,12 @@ export const PluginWorkbenchViews: React.FC<PluginWorkbenchViewsProps> = ({ view
               key={view.viewKey}
               className={`plugin-workbench-views-panel${isActive ? ' is-active' : ' is-hidden'}`}
             >
-              <iframe
+              <PluginSandboxFrame
                 className="plugin-workbench-views-frame"
                 title={view.title}
                 src={view.webviewHtml ? undefined : (view.webviewEntryUrl ?? undefined)}
                 srcDoc={view.webviewHtml ?? undefined}
-                sandbox="allow-scripts allow-same-origin allow-forms"
+                sandboxPermissions={PLUGIN_SANDBOX_PERMISSION_PRESETS.workbenchView}
               />
             </div>
           );

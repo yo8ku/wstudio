@@ -102,6 +102,13 @@ pnpm build:electron
 - `@note-studio/plugin-system` - 插件系统
 - `@note-studio/knowledge-base` - 知识库系统（RAG、向量搜索）
 
+
+## 关于项目
+
+- 本项目由我一个人开发调试，目前存在非常多不足和bug，由于精力、时间有限，所以开发进度十分的缓慢！如果你对此项目也感兴趣，可以联系项目发起人wx 80310134！
+- 当前README 仅仅作为参考，有很多功能做了大的修改，具体架构以实际项目为准！
+
+
 ## 🤝 贡献
 
 欢迎贡献代码、报告问题或提出建议！
@@ -125,6 +132,8 @@ pnpm build:electron
 - [GitHub 仓库](https://github.com/yo8ku/WiseAI-Note-Studio)
 - [问题反馈](https://github.com/yo8ku/WiseAI-Note-Studio/issues)
 - [文档中心](./docs/README.md)
+- [插件开发包](https://github.com/arebelamazuera/wstudio-sample-plugin)
+- [插件系统API](https://github.com/arebelamazuera/wstudio-api)
 
 ---
 

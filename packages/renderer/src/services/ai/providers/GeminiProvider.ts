@@ -289,7 +289,7 @@ export class GeminiProvider extends BaseAIProvider {
           max_tokens: requestBody.max_tokens
         });
 
-        const response = await fetch(`${GEMINI_OPENAI_BASE_URL}/chat/completions`, {
+        const response = await this.makeRequest(`${GEMINI_OPENAI_BASE_URL}/chat/completions`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.config.apiKey}`,
@@ -301,7 +301,7 @@ export class GeminiProvider extends BaseAIProvider {
 
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`API error ${response.status}: ${errorText}`);
+          throw new Error(errorText || `HTTP ${response.status}: ${response.statusText}`);
         }
 
         if (!response.body) {

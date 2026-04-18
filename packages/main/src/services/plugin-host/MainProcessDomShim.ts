@@ -1,12 +1,22 @@
-/**
+﻿/**
  * Minimal DOM shim for main-process plugin loading.
  * It intentionally supports the subset of DOM APIs required by the plugin SDK and React plugin mounting.
  */
 
+import {
+  getCurrentPluginExecutionContextPluginId,
+  runWithPluginExecutionContext,
+} from './pluginExecutionContext';
+
 type HostNode = HostElement | HostDocumentFragment | HostCharacterData | string;
 
 type HostEventListener = (event: HostEvent) => void;
+type RegisteredHostEventListener = {
+  readonly listener: HostEventListener;
+  readonly pluginId: string | null;
+};
 type HostMutationListener = () => void;
+const SVG_NAMESPACE_URI = 'http://www.w3.org/2000/svg';
 type HostElementEventRequest = {
   readonly type: string;
   readonly key?: string;
@@ -45,6 +55,20 @@ let activeHostPointerCapture:
   | null = null;
 
 const PLUGIN_RUNTIME_NODE_ID_ATTRIBUTE = 'data-plugin-runtime-node-id';
+
+function dispatchRegisteredHostEventListener(
+  registeredListener: RegisteredHostEventListener,
+  event: HostEvent,
+): void {
+  if (registeredListener.pluginId === null) {
+    registeredListener.listener(event);
+    return;
+  }
+
+  runWithPluginExecutionContext(registeredListener.pluginId, () => {
+    registeredListener.listener(event);
+  });
+}
 
 function scheduleHostMutationListener(listener: HostMutationListener): void {
   pendingHostMutationListeners.add(listener);
@@ -213,6 +237,16 @@ class HostEvent {
 
   public stopPropagation(): void {
     return undefined;
+  }
+}
+
+class HostMouseEvent extends HostEvent {
+  public constructor(type: string, init?: MouseEventInit) {
+    super(type, null, {
+      clientX: init?.clientX,
+      clientY: init?.clientY,
+      button: init?.button,
+    });
   }
 }
 
@@ -431,6 +465,7 @@ class HostElement {
   public readonly classList: HostClassList;
   public parentElement: HostElement | null = null;
   public className = '';
+  public id = '';
   public hidden = false;
   public isConnected = false;
   public title = '';
@@ -445,7 +480,7 @@ class HostElement {
   public readonly runtimeNodeId: string;
 
   private readonly attributes = new Map<string, string>();
-  private readonly listeners = new Map<string, Set<HostEventListener>>();
+  private readonly listeners = new Map<string, Map<HostEventListener, RegisteredHostEventListener>>();
 
   public constructor(
     tagName: string,
@@ -619,6 +654,12 @@ class HostElement {
   public setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
 
+    if (name === 'id') {
+      this.id = value;
+      emitHostMutation(this);
+      return;
+    }
+
     if (name === 'class') {
       this.classList.set(value);
       return;
@@ -637,11 +678,21 @@ class HostElement {
   }
 
   public getAttribute(name: string): string | null {
+    if (name === 'id') {
+      return this.id.length > 0 ? this.id : null;
+    }
+
     return this.attributes.get(name) ?? null;
   }
 
   public removeAttribute(name: string): void {
     this.attributes.delete(name);
+
+    if (name === 'id') {
+      this.id = '';
+      emitHostMutation(this);
+      return;
+    }
 
     if (name === 'class') {
       this.classList.set('');
@@ -670,13 +721,17 @@ class HostElement {
 
   public addEventListener(type: string, listener: HostEventListener): void {
     const listeners = this.listeners.get(type);
+    const registeredListener: RegisteredHostEventListener = {
+      listener,
+      pluginId: getCurrentPluginExecutionContextPluginId(),
+    };
 
     if (listeners === undefined) {
-      this.listeners.set(type, new Set([listener]));
+      this.listeners.set(type, new Map([[listener, registeredListener]]));
       return;
     }
 
-    listeners.add(listener);
+    listeners.set(listener, registeredListener);
   }
 
   public removeEventListener(type: string, listener: HostEventListener): void {
@@ -698,8 +753,8 @@ class HostElement {
     const listeners = this.listeners.get(event.type);
 
     if (listeners !== undefined) {
-      for (const listener of [...listeners]) {
-        listener(event);
+      for (const registeredListener of [...listeners.values()]) {
+        dispatchRegisteredHostEventListener(registeredListener, event);
       }
     }
 
@@ -801,6 +856,7 @@ class HostElement {
         : new HostElement(this.tagName.toLowerCase(), this.ownerDocument, this.namespaceURI);
 
     clone.className = this.className;
+    clone.id = this.id;
     clone.hidden = this.hidden;
     clone.title = this.title;
     clone.tabIndex = this.tabIndex;
@@ -890,21 +946,46 @@ class HostHTMLIFrameElement extends HostElement {
 
 class HostSVGSVGElement extends HostElement {
   public constructor(ownerDocument: HostDocument) {
-    super('svg', ownerDocument, 'http://www.w3.org/2000/svg');
+    super('svg', ownerDocument, SVG_NAMESPACE_URI);
   }
+}
+
+function findHostElementById(root: HostElement, elementId: string): HostElement | null {
+  if (root.id === elementId) {
+    return root;
+  }
+
+  for (const child of root.childNodes) {
+    if (!(child instanceof HostElement)) {
+      continue;
+    }
+
+    const matchedChild = findHostElementById(child, elementId);
+
+    if (matchedChild !== null) {
+      return matchedChild;
+    }
+  }
+
+  return null;
 }
 
 class HostDocument {
   public readonly nodeType = 9;
   public readonly nodeName = '#document';
+  public readonly defaultView: Window;
+  public readonly head: HostElement;
   public readonly body: HostElement;
   public readonly documentElement: HostElement;
-  private readonly listeners = new Map<string, Set<HostEventListener>>();
+  private readonly listeners = new Map<string, Map<HostEventListener, RegisteredHostEventListener>>();
 
   public constructor() {
+    this.defaultView = globalThis as object as Window;
+    this.documentElement = new HostElement('html', this);
+    this.documentElement.isConnected = true;
+    this.head = new HostElement('head', this);
     this.body = new HostElement('body', this);
-    this.body.isConnected = true;
-    this.documentElement = this.body;
+    this.documentElement.append(this.head, this.body);
   }
 
   public get activeElement(): HostElement {
@@ -912,11 +993,13 @@ class HostDocument {
   }
 
   public createElement(tagName: string): HostElement {
-    if (tagName.toLowerCase() === 'svg') {
+    const normalizedTagName = tagName.toLowerCase();
+
+    if (normalizedTagName === 'svg') {
       return new HostSVGSVGElement(this);
     }
 
-    if (tagName.toLowerCase() === 'iframe') {
+    if (normalizedTagName === 'iframe') {
       return new HostHTMLIFrameElement(this);
     }
 
@@ -924,8 +1007,12 @@ class HostDocument {
   }
 
   public createElementNS(namespaceUri: string, tagName: string): HostElement {
-    if (namespaceUri === 'http://www.w3.org/2000/svg' || tagName.toLowerCase() === 'svg') {
-      return new HostSVGSVGElement(this);
+    const normalizedTagName = tagName.toLowerCase();
+
+    if (namespaceUri === SVG_NAMESPACE_URI) {
+      return normalizedTagName === 'svg'
+        ? new HostSVGSVGElement(this)
+        : new HostElement(tagName, this, SVG_NAMESPACE_URI);
     }
 
     return this.createElement(tagName);
@@ -943,15 +1030,23 @@ class HostDocument {
     return new HostCommentNode(this, value);
   }
 
+  public getElementById(elementId: string): HostElement | null {
+    return findHostElementById(this.documentElement, elementId);
+  }
+
   public addEventListener(type: string, listener: HostEventListener): void {
     const listeners = this.listeners.get(type);
+    const registeredListener: RegisteredHostEventListener = {
+      listener,
+      pluginId: getCurrentPluginExecutionContextPluginId(),
+    };
 
     if (listeners === undefined) {
-      this.listeners.set(type, new Set([listener]));
+      this.listeners.set(type, new Map([[listener, registeredListener]]));
       return;
     }
 
-    listeners.add(listener);
+    listeners.set(listener, registeredListener);
   }
 
   public removeEventListener(type: string, listener: HostEventListener): void {
@@ -973,8 +1068,8 @@ class HostDocument {
     const listeners = this.listeners.get(event.type);
 
     if (listeners !== undefined) {
-      for (const listener of [...listeners]) {
-        listener(event);
+      for (const registeredListener of [...listeners.values()]) {
+        dispatchRegisteredHostEventListener(registeredListener, event);
       }
     }
 
@@ -982,11 +1077,11 @@ class HostDocument {
   }
 
   public querySelector<TElement extends HostElement>(selector: string): TElement | null {
-    return this.body.querySelector(selector);
+    return this.documentElement.querySelector(selector);
   }
 
   public querySelectorAll<TElement extends HostElement>(selector: string): TElement[] {
-    return this.body.querySelectorAll(selector);
+    return this.documentElement.querySelectorAll(selector);
   }
 }
 
@@ -1148,6 +1243,7 @@ export function installMainProcessDomShim(): void {
   }
 
   const document = new HostDocument();
+  const hostWindow = globalThis as typeof globalThis & Window;
 
   Object.defineProperty(globalThis, 'document', {
     configurable: true,
@@ -1158,6 +1254,27 @@ export function installMainProcessDomShim(): void {
     configurable: true,
     value: globalThis as object as Window,
   });
+
+  if (typeof hostWindow.addEventListener !== 'function') {
+    Object.defineProperty(globalThis, 'addEventListener', {
+      configurable: true,
+      value: (): void => undefined,
+    });
+  }
+
+  if (typeof hostWindow.removeEventListener !== 'function') {
+    Object.defineProperty(globalThis, 'removeEventListener', {
+      configurable: true,
+      value: (): void => undefined,
+    });
+  }
+
+  if (typeof hostWindow.getSelection !== 'function') {
+    Object.defineProperty(globalThis, 'getSelection', {
+      configurable: true,
+      value: (): Selection | null => null,
+    });
+  }
 
   Object.defineProperty(globalThis, 'HTMLElement', {
     configurable: true,
@@ -1217,6 +1334,11 @@ export function installMainProcessDomShim(): void {
   Object.defineProperty(globalThis, 'Document', {
     configurable: true,
     value: HostDocument as object as typeof Document,
+  });
+
+  Object.defineProperty(globalThis, 'MouseEvent', {
+    configurable: true,
+    value: HostMouseEvent as object as typeof MouseEvent,
   });
 
   Object.defineProperty(globalThis, 'Comment', {
@@ -1376,3 +1498,5 @@ export function subscribeHostElementMutations(
 export function serializeHostElementToHtml(root: HTMLElement): string {
   return serializeHostNodeToHtml(root as object as HostElement);
 }
+
+

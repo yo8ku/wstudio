@@ -1,33 +1,42 @@
+import type { PluginRuntimeAnchorRect } from './runtime';
+import type { JsonValue } from '../types/json';
+
 export type PluginRuntimeNoticeLevel = 'success' | 'error' | 'warning' | 'info';
 
 export interface PluginRuntimeNoticePayload {
   readonly message: string;
   readonly level: PluginRuntimeNoticeLevel;
+  readonly duration?: number;
 }
 
 export interface PluginRuntimeModalPayload {
   readonly title: string;
-  readonly description: string | null;
+  readonly titleElement: HTMLElement;
+  readonly contentElement: HTMLElement;
+  readonly surfaceId?: string | null;
+  readonly onClose?: () => void;
 }
 
-export interface PluginRuntimeSuggestInstructionPayload {
-  readonly command: string;
-  readonly purpose: string;
-}
-
-export interface PluginRuntimeSuggestItemPayload {
-  readonly id: string;
+export interface PluginRuntimePopoverPayload {
   readonly title: string;
-  readonly description: string | null;
+  readonly contentElement: HTMLElement;
+  readonly surfaceId?: string | null;
+  readonly runtimeState?: JsonValue | null;
+  readonly onRuntimeAction?: (action: JsonValue | null) => void;
+  readonly width?: number;
+  readonly height?: number;
+  readonly anchorRect?: PluginRuntimeAnchorRect | null;
+  readonly interactionMode?: 'default' | 'editorSuggest';
+  readonly onClose?: () => void;
 }
 
-export interface PluginRuntimeSuggestModalVisualPayload {
-  readonly title: string;
-  readonly placeholder: string;
-  readonly query: string;
-  readonly emptyStateText: string;
-  readonly instructions: readonly PluginRuntimeSuggestInstructionPayload[];
-  readonly items: readonly PluginRuntimeSuggestItemPayload[];
+export interface PluginRuntimePopoverUpdatePayload {
+  readonly title?: string;
+  readonly runtimeState?: JsonValue | null;
+  readonly width?: number;
+  readonly height?: number;
+  readonly anchorRect?: PluginRuntimeAnchorRect | null;
+  readonly interactionMode?: 'default' | 'editorSuggest';
 }
 
 export interface PluginRuntimeMenuItemPayload {
@@ -61,17 +70,11 @@ export interface PluginRuntimeMenuPayload {
 
 export interface PluginHostUiBridge {
   showNotice(payload: PluginRuntimeNoticePayload): void;
-  openModal(payload: PluginRuntimeModalPayload): void;
-  closeModal(): void;
-  openSuggestModal(payload: PluginRuntimeSuggestModalVisualPayload & {
-    readonly onQueryChange: (query: string) => Promise<void> | void;
-    readonly onSelect: (itemId: string) => void;
-    readonly onClose?: () => void;
-  }): string;
-  updateSuggestModal(payload: PluginRuntimeSuggestModalVisualPayload & {
-    readonly modalId: string;
-  }): void;
-  closeSuggestModal(modalId: string): void;
+  openModal(payload: PluginRuntimeModalPayload): string;
+  closeModal(modalId: string): void;
+  openPopover(payload: PluginRuntimePopoverPayload): string;
+  updatePopover(popoverId: string, payload: PluginRuntimePopoverUpdatePayload): void;
+  closePopover(popoverId: string): void;
   openMenu(payload: PluginRuntimeMenuPayload): string;
   closeMenu(menuId: string): void;
 }

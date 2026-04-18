@@ -13,6 +13,7 @@ import {
 const DEMO_TITLE = '命令、通知与模态框演示';
 const SHOW_NOTICE_COMMAND_ID = 'show-command-notice-demo';
 const OPEN_MODAL_COMMAND_ID = 'open-command-modal-demo';
+const OPEN_FAILURE_MODAL_COMMAND_ID = 'open-command-modal-failure-demo';
 const SHOW_SNAPSHOT_COMMAND_ID = 'show-command-modal-snapshot';
 
 interface DemoCounters {
@@ -28,13 +29,14 @@ function createInitialCounters(): DemoCounters {
 }
 
 class CommandDemoModal extends Modal {
+  public static readonly runtimeSurfaceId = 'command-demo-modal';
+
   public constructor(
     app: App,
     private readonly sequence: number,
   ) {
     super(app);
     this.setTitle(`命令模态框 #${sequence}`);
-    this.setContent(`这是第 ${sequence} 次通过命令中心打开模态框。`);
   }
 
   public override onOpen(): void {
@@ -43,6 +45,26 @@ class CommandDemoModal extends Modal {
 
   public override onClose(): void {
     console.log(`[demo-command-notice-modal] modal.close#${this.sequence}`);
+  }
+}
+
+class CommandFallbackDemoModal extends Modal {
+  public static readonly runtimeSurfaceId = 'command-demo-modal-failure';
+
+  public constructor(
+    app: App,
+    private readonly sequence: number,
+  ) {
+    super(app);
+    this.setTitle(`UI Runtime failure demo modal #${sequence}`);
+  }
+
+  public override onOpen(): void {
+    console.log(`[demo-command-notice-modal] modal.fallback.open#${this.sequence}`);
+  }
+
+  public override onClose(): void {
+    console.log(`[demo-command-notice-modal] modal.fallback.close#${this.sequence}`);
   }
 }
 
@@ -65,6 +87,14 @@ export default class CommandNoticeModalDemoPlugin extends Plugin {
       name: '命令演示：打开模态框',
       callback: () => {
         this.openDemoModal();
+      },
+    });
+
+    this.addCommand({
+      id: OPEN_FAILURE_MODAL_COMMAND_ID,
+      name: 'Command demo: open modal failure demo',
+      callback: () => {
+        this.openFallbackDemoModal();
       },
     });
 
@@ -112,6 +142,17 @@ export default class CommandNoticeModalDemoPlugin extends Plugin {
     this.recordTrace(`modal.command#${this.counters.modalOpens}`);
     new Notice(`即将打开模态框，第 ${this.counters.modalOpens} 次。`, 2000);
     new CommandDemoModal(this.app, this.counters.modalOpens).open();
+  }
+
+  private openFallbackDemoModal(): void {
+    this.counters = {
+      modalOpens: this.counters.modalOpens + 1,
+      notices: this.counters.notices + 1,
+    };
+
+    this.recordTrace(`modal.failure.command#${this.counters.modalOpens}`);
+    new Notice(`Failure demo modal ${this.counters.modalOpens} will open.`, 2000);
+    new CommandFallbackDemoModal(this.app, this.counters.modalOpens).open();
   }
 
   private showSnapshotNotice(): void {

@@ -22,6 +22,11 @@
       "types": "./dist/cjs/internal/runtime.d.ts",
       "require": "./dist/cjs/internal/runtime.js",
       "import": "./dist/esm/internal/runtime.js"
+    },
+    "./internal/icons": {
+      "types": "./dist/cjs/internal/icons.d.ts",
+      "require": "./dist/cjs/internal/icons.js",
+      "import": "./dist/esm/internal/icons.js"
     }
   },
   "keywords": [

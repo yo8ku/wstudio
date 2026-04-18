@@ -50,7 +50,10 @@ import {
   type ViewCreator,
   type ViewState,
 } from '@note-studio/plugin';
-import type { JsonValue as SharedJsonValue } from '@note-studio/shared';
+import type {
+  JsonValue as SharedJsonValue,
+  PluginUiRuntimeSurfaceDescriptor,
+} from '@note-studio/shared';
 import {
   COMPONENT_INTERNAL_LOAD,
   COMPONENT_INTERNAL_UNLOAD,
@@ -66,25 +69,24 @@ import type { WorkspaceManager } from '../../workspace/WorkspaceManager';
 import type {
   MainProcessEditorBridge,
   PluginEditorActionRequest,
+  PluginEditorCaretRectSnapshot,
   PluginEditorPoint,
   PluginEditorRange as PluginEditorBridgeRange,
   PluginEditorSelectionSnapshot,
   PluginEditorStateSnapshot,
   PluginEditorTextEdit,
 } from './types';
-import {
-  dispatchHostElementEvent,
-  serializeHostElementToHtml,
-  subscribeHostElementMutations,
-} from './MainProcessDomShim';
 import { MainProcessUrlMetadataService } from './MainProcessUrlMetadataService';
+import { runWithPluginExecutionContext } from './pluginExecutionContext';
 
 export interface MainProcessAppFacadeDependencies {
   readonly settingsManager: SettingsManager;
   readonly workspaceManager: WorkspaceManager;
   readonly editorBridge: MainProcessEditorBridge;
   readonly resolveViewCreator: (type: string) => ViewCreator | null;
+  readonly resolveViewPluginId: (type: string) => string | null;
   readonly resolveViewTypeForExtension: (extension: string) => string | null;
+  readonly resolveViewRuntimeSurface: (type: string) => PluginUiRuntimeSurfaceDescriptor | null;
 }
 
 type ComponentLifecycleMethodName = 'load' | 'unload';
@@ -382,6 +384,10 @@ function getPluginRuntimeEditorLanguage(file: TFile): string {
   return file.extension === 'md' || file.extension === 'markdown'
     ? 'markdown'
     : 'plaintext';
+}
+
+function isPluginEditorBridgeTimeoutError(error: Error): boolean {
+  return error.message.startsWith('Plugin editor bridge request timed out:');
 }
 
 function buildPluginRuntimeViewPath(leafId: string, viewType: string): string {
@@ -1351,6 +1357,7 @@ class MainProcessEditorProxy extends Editor {
       selection: null,
       hasFocus: false,
       scroll: null,
+      caretRect: null,
     };
   }
 
@@ -2196,6 +2203,17 @@ class MainProcessEmptyView extends View {
   }
 }
 
+type ViewContainerBindings = View & {
+  containerEl?: HTMLElement;
+  contentEl?: HTMLElement;
+};
+
+function bindPluginViewElements(view: View, containerEl: HTMLElement): void {
+  const compatibleView = view as ViewContainerBindings;
+  compatibleView.containerEl = containerEl;
+  compatibleView.contentEl = containerEl;
+}
+
 class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
   public readonly app: App;
   public readonly id: string;
@@ -2208,14 +2226,18 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
   private pinned = false;
   private ephemeralState: JsonValue | null = null;
   private rendererViewVisible = false;
+  private rendererViewRuntimeActive = false;
   private rendererViewMutationUnsubscribe: (() => void) | null = null;
+  private readonly pendingSupervisorViewInstanceIds = new Map<string, string>();
 
   public constructor(
     app: App,
     parent: WorkspaceTabs,
     id: string,
     private readonly resolveViewCreator: (type: string) => ViewCreator | null,
+    private readonly resolveViewPluginId: (type: string) => string | null,
     private readonly resolveViewTypeForExtension: (extension: string) => string | null,
+    private readonly resolveViewRuntimeSurface: (type: string) => PluginUiRuntimeSurfaceDescriptor | null,
     private readonly resolveAbsoluteVaultPath: (filePath: string) => string,
     private readonly notifyFileOpened: (
       file: TFile,
@@ -2230,6 +2252,7 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
     this.containerEl = document.createElement('div');
     this.containerEl.className = 'ns-plugin-workspace-leaf';
     this.view = new MainProcessEmptyView(this);
+    bindPluginViewElements(this.view, this.containerEl);
   }
 
   public async openFile(file: TFile, openState?: OpenViewState): Promise<void> {
@@ -2253,11 +2276,44 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
 
   public async open(view: View): Promise<View> {
     this.disposeRendererPluginViewBridge();
-    await invokeComponentLifecycle(this.view, COMPONENT_INTERNAL_UNLOAD, 'unload');
+    const previousView = this.view;
+    await this.runWithViewPluginExecutionContext(previousView.getViewType(), async () => {
+      await invokeComponentLifecycle(previousView, COMPONENT_INTERNAL_UNLOAD, 'unload');
+    });
+    bindPluginViewElements(view, this.containerEl);
     this.view = view;
-    await invokeComponentLifecycle(this.view, COMPONENT_INTERNAL_LOAD, 'load');
+    await this.runWithViewPluginExecutionContext(this.view.getViewType(), async () => {
+      await invokeComponentLifecycle(this.view, COMPONENT_INTERNAL_LOAD, 'load');
+    });
     this.ensureRendererPluginViewBridge();
     return this.view;
+  }
+
+  public registerPendingSupervisorViewInstanceToken(viewType: string, pendingViewInstanceId: string): void {
+    const normalizedViewType = viewType.trim();
+    const normalizedPendingViewInstanceId = pendingViewInstanceId.trim();
+
+    if (normalizedViewType.length === 0 || normalizedPendingViewInstanceId.length === 0) {
+      return;
+    }
+
+    this.pendingSupervisorViewInstanceIds.set(normalizedViewType, normalizedPendingViewInstanceId);
+  }
+
+  public consumePendingSupervisorViewInstanceToken(viewType: string): string | null {
+    const normalizedViewType = viewType.trim();
+
+    if (normalizedViewType.length === 0) {
+      return null;
+    }
+
+    const pendingViewInstanceId = this.pendingSupervisorViewInstanceIds.get(normalizedViewType) ?? null;
+
+    if (pendingViewInstanceId !== null) {
+      this.pendingSupervisorViewInstanceIds.delete(normalizedViewType);
+    }
+
+    return pendingViewInstanceId;
   }
 
   public getViewState(): ViewState {
@@ -2273,11 +2329,15 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
       const creator = this.resolveViewCreator(viewState.type);
       const nextView = creator === null
         ? new MainProcessEmptyView(this, viewState.type, viewState.type)
-        : creator(this);
+        : await this.runWithViewPluginExecutionContext(viewState.type, async () => {
+          return creator(this);
+        });
       await this.open(nextView);
     }
 
-    await this.view.setState(viewState.state ?? {}, { history: true });
+    await this.runWithViewPluginExecutionContext(this.view.getViewType(), async () => {
+      await this.view.setState(viewState.state ?? {}, { history: true });
+    });
 
     if (viewState.pinned !== undefined) {
       this.setPinned(viewState.pinned);
@@ -2325,6 +2385,9 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
 
   public detach(): void {
     this.disposeRendererPluginViewBridge();
+    void this.runWithViewPluginExecutionContext(this.view.getViewType(), async () => {
+      await invokeComponentLifecycle(this.view, COMPONENT_INTERNAL_UNLOAD, 'unload');
+    });
     this.containerEl.remove();
   }
 
@@ -2337,7 +2400,9 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
   }
 
   public onResize(): void {
-    this.view.onResize();
+    void this.runWithViewPluginExecutionContext(this.view.getViewType(), async () => {
+      this.view.onResize();
+    });
     this.syncRendererPluginView(false);
   }
 
@@ -2367,31 +2432,31 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
       readonly dataTransferWorkspaceFilePath?: string;
     },
   ): boolean {
-    if (!this.shouldRenderInRenderer()) {
-      return false;
+    void runtimeNodeId;
+    void request;
+    return false;
+  }
+
+  public markRendererRuntimeSurfaceActive(): void {
+    if (!this.shouldRenderInRenderer() || this.rendererViewRuntimeActive) {
+      return;
     }
 
-    return dispatchHostElementEvent(this.containerEl, runtimeNodeId, request);
+    if (this.resolveViewRuntimeSurface(this.view.getViewType()) === null) {
+      return;
+    }
+
+    this.rendererViewRuntimeActive = true;
   }
 
   private ensureRendererPluginViewBridge(): void {
-    if (!this.shouldRenderInRenderer()) {
-      this.disposeRendererPluginViewBridge();
-      return;
-    }
-
-    if (this.rendererViewMutationUnsubscribe !== null) {
-      return;
-    }
-
-    this.rendererViewMutationUnsubscribe = subscribeHostElementMutations(this.containerEl, () => {
-      this.syncRendererPluginView(false);
-    });
+    return;
   }
 
   private disposeRendererPluginViewBridge(): void {
     this.rendererViewMutationUnsubscribe?.();
     this.rendererViewMutationUnsubscribe = null;
+    this.rendererViewRuntimeActive = false;
 
     if (!this.rendererViewVisible) {
       return;
@@ -2412,7 +2477,7 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
       return;
     }
 
-    this.ensureRendererPluginViewBridge();
+    const runtimeSurface = this.resolveViewRuntimeSurface(this.view.getViewType());
 
     const payload = {
       leafId: this.id,
@@ -2421,7 +2486,7 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
       title: this.getDisplayText(),
       viewType: this.view.getViewType(),
       icon: this.getIcon().trim().length > 0 ? this.getIcon() : null,
-      html: serializeHostElementToHtml(this.containerEl),
+      runtimeSurface,
       active,
     };
 
@@ -2451,6 +2516,19 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
       ? sourcePath
       : this.resolveAbsoluteVaultPath(sourcePath);
   }
+
+  private async runWithViewPluginExecutionContext<TValue>(
+    viewType: string,
+    operation: () => Promise<TValue>,
+  ): Promise<TValue> {
+    const pluginId = this.resolveViewPluginId(viewType);
+
+    if (pluginId === null) {
+      return await operation();
+    }
+
+    return await runWithPluginExecutionContext(pluginId, operation);
+  }
 }
 
 export class MainProcessWorkspace extends Workspace {
@@ -2474,7 +2552,9 @@ export class MainProcessWorkspace extends Workspace {
     private readonly appInstance: App,
     private readonly editorBridge: MainProcessEditorBridge,
     private readonly resolveViewCreator: (type: string) => ViewCreator | null,
+    private readonly resolveViewPluginId: (type: string) => string | null,
     private readonly resolveViewTypeForExtension: (extension: string) => string | null,
+    private readonly resolveViewRuntimeSurface: (type: string) => PluginUiRuntimeSurfaceDescriptor | null,
     private readonly vaultInstance: MainProcessVault,
     private readonly workspaceManager: WorkspaceManager,
   ) {
@@ -2616,6 +2696,16 @@ export class MainProcessWorkspace extends Workspace {
     }
   }
 
+  public markLeafRuntimeSurfaceActive(leafId: string): void {
+    const leaf = this.leaves.get(leafId);
+
+    if (!(leaf instanceof MainProcessWorkspaceLeaf)) {
+      return;
+    }
+
+    leaf.markRendererRuntimeSurfaceActive();
+  }
+
   public dispatchRendererEventToLeaf(
     leafId: string,
     runtimeNodeId: string,
@@ -2695,8 +2785,26 @@ export class MainProcessWorkspace extends Workspace {
     return this.activeEditor?.file ?? null;
   }
 
-  public async refreshActiveEditorState(): Promise<MarkdownFileInfo | null> {
-    const snapshot = await this.editorBridge.requestState(null);
+  public getActiveEditorCaretRect(): PluginEditorCaretRectSnapshot | null {
+    return this.activeEditorState?.caretRect ?? null;
+  }
+
+  public async refreshActiveEditorState(documentUri: string | null = null): Promise<MarkdownFileInfo | null> {
+    let snapshot: PluginEditorStateSnapshot | null;
+
+    try {
+      snapshot = await this.editorBridge.requestState(documentUri);
+    } catch (error) {
+      const normalizedError = error instanceof Error ? error : new Error(String(error));
+
+      if (!isPluginEditorBridgeTimeoutError(normalizedError)) {
+        console.warn('[MainProcessWorkspace] Failed to refresh active editor state.', normalizedError);
+      }
+
+      this.activeEditor = null;
+      this.activeEditorState = null;
+      return null;
+    }
 
     if (snapshot === null) {
       this.activeEditor = null;
@@ -3012,7 +3120,9 @@ export class MainProcessWorkspace extends Workspace {
       this.rootTabs,
       `leaf-${this.nextLeafId}`,
       this.resolveViewCreator,
+      this.resolveViewPluginId,
       this.resolveViewTypeForExtension,
+      this.resolveViewRuntimeSurface,
       (filePath) => this.vaultInstance.resolveAbsolutePath(filePath),
       (
         file: TFile,
@@ -3196,7 +3306,9 @@ export class MainProcessAppFacade extends App {
       this,
       dependencies.editorBridge,
       dependencies.resolveViewCreator,
+      dependencies.resolveViewPluginId,
       dependencies.resolveViewTypeForExtension,
+      dependencies.resolveViewRuntimeSurface,
       this.vault,
       dependencies.workspaceManager,
     );

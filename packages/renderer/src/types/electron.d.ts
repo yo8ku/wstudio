@@ -535,7 +535,9 @@ export interface ElectronIPC {
     getModels: () => Promise<APIResponse<EmbeddingModelConfig[]>>;
     setApiKey: (providerId: string, apiKey: string) => Promise<APIResponse>;
     getApiKey: (providerId: string) => Promise<APIResponse<string | undefined>>;
-    setModel: (modelId: string) => Promise<APIResponse>;
+    getProviderEndpoint: (providerId: string) => Promise<APIResponse<string>>;
+    setProviderEndpoint: (providerId: string, endpoint: string) => Promise<APIResponse>;
+    setModel: (modelId: string, providerId?: string) => Promise<APIResponse>;
     getCurrentModel: () => Promise<APIResponse<EmbeddingModelConfig | undefined>>;
     generate: (text: string) => Promise<APIResponse<EmbeddingResult>>;
     generateBatch: (texts: string[]) => Promise<APIResponse<EmbeddingResult>>;
@@ -706,7 +708,9 @@ export interface NoteStudioAPI {
     getModels: () => Promise<APIResponse<EmbeddingModelConfig[]>>;
     setApiKey: (providerId: string, apiKey: string) => Promise<APIResponse>;
     getApiKey: (providerId: string) => Promise<APIResponse<string | undefined>>;
-    setModel: (modelId: string) => Promise<APIResponse>;
+    getProviderEndpoint: (providerId: string) => Promise<APIResponse<string>>;
+    setProviderEndpoint: (providerId: string, endpoint: string) => Promise<APIResponse>;
+    setModel: (modelId: string, providerId?: string) => Promise<APIResponse>;
     getCurrentModel: () => Promise<APIResponse<EmbeddingModelConfig | undefined>>;
     generate: (text: string) => Promise<APIResponse<EmbeddingResult>>;
     generateBatch: (texts: string[]) => Promise<APIResponse<EmbeddingResult>>;

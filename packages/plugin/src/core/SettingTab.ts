@@ -8,25 +8,18 @@ import type { Plugin } from './Plugin';
 
 export abstract class SettingTab {
   public readonly app: App;
-  public containerEl!: HTMLElement;
-  private attached = false;
 
   public constructor(app: App) {
     this.app = app;
   }
 
-  public [SETTING_TAB_INTERNAL_ATTACH](containerEl: HTMLElement): void {
-    this.containerEl = containerEl;
-    this.attached = true;
+  public [SETTING_TAB_INTERNAL_ATTACH](_containerEl: HTMLElement): void {
+    return undefined;
   }
 
   public abstract display(): Promise<void> | void;
 
   public hide(): Promise<void> | void {
-    if (this.attached) {
-      this.containerEl.replaceChildren();
-    }
-
     return undefined;
   }
 }

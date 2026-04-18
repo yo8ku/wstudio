@@ -30,6 +30,35 @@ const EMPTY_META: ActiveCodeMirrorEditorMeta = {
 };
 
 let activeBridge: ActiveCodeMirrorEditorBridge | null = null;
+const activeEditorStateListeners = new Set<() => void>();
+let activeEditorStateNotificationScheduled = false;
+
+function flushActiveEditorStateListeners(): void {
+  activeEditorStateNotificationScheduled = false;
+
+  for (const listener of [...activeEditorStateListeners]) {
+    listener();
+  }
+}
+
+function scheduleActiveEditorStateNotification(): void {
+  if (activeEditorStateNotificationScheduled) {
+    return;
+  }
+
+  activeEditorStateNotificationScheduled = true;
+
+  if (typeof globalThis.requestAnimationFrame === 'function') {
+    globalThis.requestAnimationFrame(() => {
+      flushActiveEditorStateListeners();
+    });
+    return;
+  }
+
+  setTimeout(() => {
+    flushActiveEditorStateListeners();
+  }, 0);
+}
 
 export const setActiveCodeMirrorEditor = (
   view: EditorView,
@@ -44,11 +73,13 @@ export const setActiveCodeMirrorEditor = (
       language: meta?.language ?? null,
     },
   };
+  scheduleActiveEditorStateNotification();
 };
 
 export const clearActiveCodeMirrorEditor = (view: EditorView): void => {
   if (activeBridge?.view === view) {
     activeBridge = null;
+    scheduleActiveEditorStateNotification();
   }
 };
 
@@ -85,6 +116,18 @@ export const getActiveCodeMirrorCursorPosition = (): ActiveCodeMirrorCursorPosit
     lineNumber: line.number,
     column: (head - line.from) + 1,
   };
+};
+
+export const subscribeActiveCodeMirrorEditorStateChanges = (listener: () => void): (() => void) => {
+  activeEditorStateListeners.add(listener);
+
+  return () => {
+    activeEditorStateListeners.delete(listener);
+  };
+};
+
+export const notifyActiveCodeMirrorEditorStateChanged = (): void => {
+  scheduleActiveEditorStateNotification();
 };
 
 export const insertTextAtActiveCodeMirrorSelection = (text: string): boolean => {

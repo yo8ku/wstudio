@@ -2,7 +2,7 @@
  * Main process service initialization entry.
  */
 
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { SettingsManager } from './config/SettingsManager';
 import { WorkspaceManager } from './workspace/WorkspaceManager';
 import { registerStoreHandlers } from './ipc/storeHandlers';
@@ -31,12 +31,16 @@ import { getCodeRunnerService } from './services/CodeRunnerService';
 import { registerSkillsMarketHandlers } from './ipc/skillsMarketHandlers';
 import { registerMediaHandlers } from './ipc/mediaHandlers';
 import { registerShellHandlers } from './ipc/shellHandlers';
+import { registerAIProxyHandlers } from './ipc/aiProxyHandlers';
+import { registerCloudEmbeddingHandlers } from './ipc/cloudEmbeddingHandlers';
 import { registerAIPanelContributionHandlers } from './ipc/aiPanelContributionHandlers';
 import { registerExtensionDevelopmentHandlers } from './ipc/extensionDevelopmentHandlers';
 import { registerPluginUIHandlers } from './ipc/pluginUIHandlers';
 import { registerPluginRuntimeHandlers } from './ipc/pluginRuntimeHandlers';
+import { registerPluginSurfaceHandlers } from './ipc/pluginSurfaceHandlers';
 import { registerWorkbenchContributionHandlers } from './ipc/workbenchContributionHandlers';
 import { builtinAI } from './services/builtinAIInstance';
+import { pluginSurfaceViewService } from './services/plugin-surface/PluginSurfaceViewService';
 import {
   aiPanelActionRegistry,
   aiPanelContributionRegistry,
@@ -50,8 +54,21 @@ import {
 
 const settingsManager = new SettingsManager();
 const workspaceManager = new WorkspaceManager();
+let pluginHostShutdownHookInstalled = false;
+
+function installPluginHostShutdownHook(): void {
+  if (pluginHostShutdownHookInstalled) {
+    return;
+  }
+
+  pluginHostShutdownHookInstalled = true;
+  app.once('before-quit', () => {
+    void pluginHostManager.shutdown();
+  });
+}
 
 export async function initializeExtensions(mainWindow?: BrowserWindow | null): Promise<void> {
+  installPluginHostShutdownHook();
   registerStoreHandlers();
   registerSettingsHandlers(settingsManager, workspaceManager, mainWindow || null);
   registerFileHandlers(settingsManager);
@@ -69,10 +86,13 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   registerSkillsMarketHandlers();
   registerMediaHandlers();
   registerShellHandlers();
+  registerAIProxyHandlers();
+  registerCloudEmbeddingHandlers();
   registerAIPanelContributionHandlers();
   registerExtensionDevelopmentHandlers();
   registerPluginUIHandlers();
   registerPluginRuntimeHandlers();
+  registerPluginSurfaceHandlers();
   registerWorkbenchContributionHandlers();
 
   getCodeRunnerService();
@@ -91,6 +111,7 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
     console.log('[Main] Skip workspace index window binding because mainWindow is null');
   }
   pluginEditorBridge.setMainWindow(mainWindow || null);
+  pluginSurfaceViewService.setMainWindow(mainWindow || null);
 
   console.log('[Main] RAG services initialized');
 
@@ -121,6 +142,7 @@ export {
   pluginEditorBridge,
   pluginHostManager,
   pluginHotReloadService,
+  pluginSurfaceViewService,
 };
 
 export { SettingsManager } from './config/SettingsManager';

@@ -65,7 +65,10 @@
   width: 20px;
   height: 20px;
   cursor: pointer;
+  padding: 0;
+  border: 0;
   border-radius: 3px;
+  background: transparent;
   color: var(--ws-descriptionForeground);
 
   &:hover {

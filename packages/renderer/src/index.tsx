@@ -4,18 +4,18 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import type { PluginUiRuntimeSurfaceDescriptor } from '@note-studio/shared';
 import { BookmarkGroupPickerWindow } from './components/Popup/BookmarkGroupPickerWindow/BookmarkGroupPickerWindow';
 import { MainLayout } from './components/Layout/MainLayout';
 import { initIconSystem } from './components/Icons';
 import { NotificationContainer, notification } from './components/Notification';
 import { GlobalPluginMenu } from './components/GlobalPluginMenu';
-import { GlobalPluginSuggestModal } from './components/GlobalPluginSuggestModal';
+import { GlobalPluginOverlayFrames } from './components/GlobalPluginOverlayFrames';
 import { AppI18nProvider } from './contexts/AppI18nProvider';
 import { Toaster } from './components/ui/sonner';
 import { knowledgeBaseRecoveryService } from './services/KnowledgeBaseRecoveryService';
-import { modal, useModalStore } from './stores/modalStore';
 import { usePluginMenuStore } from './stores/pluginMenuStore';
-import { usePluginSuggestModalStore } from './stores/pluginSuggestModalStore';
+import { usePluginOverlayFrameStore } from './stores/pluginOverlayFrameStore';
 import './styles/index.scss';
 import './styles/aiResponseFormatter.scss';
 
@@ -181,86 +181,81 @@ function installPluginRuntimeBridge(): void {
 
   ipcRenderer.on(
     'plugin-runtime:show-notice',
-    (_event: object, payload: { readonly message: string; readonly level: 'success' | 'error' | 'warning' | 'info' }) => {
-      notification[payload.level](payload.message);
-    },
-  );
-
-  ipcRenderer.on(
-    'plugin-runtime:open-modal',
-    (_event: object, payload: { readonly title: string; readonly description: string | null }) => {
-      modal.info({
-        title: payload.title,
-        description: payload.description ?? undefined,
-        confirmText: '关闭',
-        cancelText: '取消',
-      });
-    },
-  );
-
-  ipcRenderer.on('plugin-runtime:close-modal', () => {
-    useModalStore.getState().closeModal();
-  });
-
-  ipcRenderer.on(
-    'plugin-runtime:open-suggest-modal',
     (
       _event: object,
       payload: {
-        readonly modalId: string;
+        readonly message: string;
+        readonly level: 'success' | 'error' | 'warning' | 'info';
+        readonly duration?: number;
+      },
+    ) => {
+      notification[payload.level](payload.message, payload.duration);
+    },
+  );
+
+  ipcRenderer.on(
+    'plugin-runtime:open-overlay-frame',
+    (
+      _event: object,
+      payload: {
+        readonly overlayId: string;
         readonly title: string;
-        readonly placeholder: string;
-        readonly query: string;
-        readonly emptyStateText: string;
-        readonly instructions: readonly {
-          readonly command: string;
-          readonly purpose: string;
-        }[];
-        readonly items: readonly {
-          readonly id: string;
-          readonly title: string;
-          readonly description: string | null;
-        }[];
+        readonly runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
+        readonly width?: number;
+        readonly height?: number;
+        readonly closeOnBackdrop?: boolean;
+        readonly chrome?: 'dialog' | 'popover';
+        readonly interactionMode?: 'default' | 'editorSuggest';
+        readonly anchorRect?: {
+          readonly left: number;
+          readonly top: number;
+          readonly right: number;
+          readonly bottom: number;
+          readonly width: number;
+          readonly height: number;
+        } | null;
       },
     ) => {
-      usePluginSuggestModalStore.getState().openModal(payload);
+      usePluginOverlayFrameStore.getState().openOverlay(payload);
     },
   );
 
   ipcRenderer.on(
-    'plugin-runtime:update-suggest-modal',
+    'plugin-runtime:update-overlay-frame',
     (
       _event: object,
       payload: {
-        readonly modalId: string;
+        readonly overlayId: string;
         readonly title: string;
-        readonly placeholder: string;
-        readonly query: string;
-        readonly emptyStateText: string;
-        readonly instructions: readonly {
-          readonly command: string;
-          readonly purpose: string;
-        }[];
-        readonly items: readonly {
-          readonly id: string;
-          readonly title: string;
-          readonly description: string | null;
-        }[];
+        readonly runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
+        readonly width?: number;
+        readonly height?: number;
+        readonly closeOnBackdrop?: boolean;
+        readonly chrome?: 'dialog' | 'popover';
+        readonly interactionMode?: 'default' | 'editorSuggest';
+        readonly anchorRect?: {
+          readonly left: number;
+          readonly top: number;
+          readonly right: number;
+          readonly bottom: number;
+          readonly width: number;
+          readonly height: number;
+        } | null;
       },
     ) => {
-      usePluginSuggestModalStore.getState().updateModal(payload);
+      usePluginOverlayFrameStore.getState().updateOverlay(payload);
     },
   );
 
   ipcRenderer.on(
-    'plugin-runtime:close-suggest-modal',
+    'plugin-runtime:close-overlay-frame',
     (
       _event: object,
       payload: {
-        readonly modalId: string;
+        readonly overlayId: string;
       },
     ) => {
-      usePluginSuggestModalStore.getState().closeModalById(payload.modalId);
+      usePluginOverlayFrameStore.getState().closeOverlayById(payload.overlayId);
     },
   );
 
@@ -342,7 +337,7 @@ function installPluginRuntimeBridge(): void {
         readonly title: string;
         readonly viewType: string;
         readonly icon: string | null;
-        readonly html: string;
+        readonly runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
         readonly active: boolean;
       },
     ) => {
@@ -363,7 +358,7 @@ function installPluginRuntimeBridge(): void {
         readonly title: string;
         readonly viewType: string;
         readonly icon: string | null;
-        readonly html: string;
+        readonly runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
         readonly active: boolean;
       },
     ) => {
@@ -457,7 +452,7 @@ const App: React.FC = () => {
     <>
       <MainLayout />
       <GlobalPluginMenu />
-      <GlobalPluginSuggestModal />
+      <GlobalPluginOverlayFrames />
       <NotificationContainer />
       <Toaster />
     </>

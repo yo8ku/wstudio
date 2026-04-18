@@ -8,6 +8,8 @@ export * from './types/extension-development';
 export * from './types/workbench-contribution';
 export * from './types/workbench-menu-context';
 export * from './types/plugin-ui';
+export * from './types/plugin-ui-runtime';
+export * from './types/plugin-surface';
 export * from './types/embeddings';
 export * from './types/json';
 export * from './types/extension';

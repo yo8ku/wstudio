@@ -27,6 +27,7 @@ import { tags } from '@lezer/highlight';
 import { foldEffect, unfoldEffect } from '@codemirror/language';
 import { Icon } from '../Icons';
 import { CodeMirrorContextMenu, ContextMenuItem } from './components/CodeMirrorContextMenu';
+import { CodeMirrorSearchToolbar, type CodeMirrorSearchOptionKey } from './components/CodeMirrorSearchToolbar';
 import { VideoLinkInput } from './components/VideoLinkInput';
 import { inlineAIChatField, openInlineAIChat, closeInlineAIChat, isInlineAIChatOpen } from './InlineAIChat';
 import { AtReferenceMenu } from './AtReferenceMenu';
@@ -53,9 +54,11 @@ import { themeService } from '../../services/ThemeService';
 import { codeRunnerService } from '../../services/CodeRunnerService';
 import type { SupportedLanguage } from '../../services/CodeRunnerService';
 import type { LinkAnchorSuggestionItem, LinkTargetSuggestionItem } from '../../types/electron';
+import { usePluginOverlayFrameStore } from '../../stores/pluginOverlayFrameStore';
 import {
   clearActiveCodeMirrorEditor,
   getActiveCodeMirrorEditorMeta,
+  notifyActiveCodeMirrorEditorStateChanged,
   setActiveCodeMirrorEditor,
 } from '../../lib/editor/activeCodeMirrorEditor';
 import { openBidirectionalLinksPanel } from '../../utils/noteLinking';
@@ -76,7 +79,279 @@ export type EditorMode = 'source' | 'preview';
 
 const LARGE_FILE_CHARACTER_THRESHOLD = 250 * 1024;
 const LARGE_FILE_CHANGE_SYNC_DELAY_MS = 180;
+const CODEMIRROR_SEARCH_HIGHLIGHT_LIMIT = 500;
+const PLUGIN_RUNTIME_HANDLE_EDITOR_SUGGEST_KEY_CHANNEL = 'plugin-runtime:handle-editor-suggest-key';
 const activeLineDecoration = Decoration.line({ class: 'cm-activeLine' });
+const codeMirrorSearchMatchDecoration = Decoration.mark({ class: 'cm-search-match' });
+const codeMirrorSearchActiveMatchDecoration = Decoration.mark({ class: 'cm-search-match cm-search-match-active' });
+
+interface CodeMirrorSearchMatch {
+  readonly from: number;
+  readonly to: number;
+}
+
+interface CodeMirrorSearchOptions {
+  readonly caseSensitive: boolean;
+  readonly wholeWord: boolean;
+  readonly useRegex: boolean;
+}
+
+interface CodeMirrorSearchInternalState extends CodeMirrorSearchOptions {
+  readonly visible: boolean;
+  readonly query: string;
+  readonly matches: readonly CodeMirrorSearchMatch[];
+  readonly activeIndex: number;
+  readonly regexValid: boolean;
+}
+
+interface CodeMirrorSearchRenderState extends CodeMirrorSearchOptions {
+  readonly visible: boolean;
+  readonly query: string;
+  readonly resultCount: number;
+  readonly activeIndex: number;
+  readonly regexValid: boolean;
+}
+
+interface CodeMirrorSearchHighlightState {
+  readonly matches: readonly CodeMirrorSearchMatch[];
+  readonly activeIndex: number;
+  readonly decorations: DecorationSet;
+}
+
+const EMPTY_CODEMIRROR_SEARCH_MATCHES: readonly CodeMirrorSearchMatch[] = [];
+
+const createEmptyCodeMirrorSearchState = (): CodeMirrorSearchInternalState => ({
+  visible: false,
+  query: '',
+  caseSensitive: false,
+  wholeWord: false,
+  useRegex: false,
+  matches: EMPTY_CODEMIRROR_SEARCH_MATCHES,
+  activeIndex: -1,
+  regexValid: true,
+});
+
+const createCodeMirrorSearchRenderState = (
+  state: CodeMirrorSearchInternalState,
+): CodeMirrorSearchRenderState => ({
+  visible: state.visible,
+  query: state.query,
+  caseSensitive: state.caseSensitive,
+  wholeWord: state.wholeWord,
+  useRegex: state.useRegex,
+  resultCount: state.matches.length,
+  activeIndex: state.activeIndex,
+  regexValid: state.regexValid,
+});
+
+const createCodeMirrorSearchOptions = (
+  state: Pick<CodeMirrorSearchInternalState, 'caseSensitive' | 'wholeWord' | 'useRegex'>,
+): CodeMirrorSearchOptions => ({
+  caseSensitive: state.caseSensitive,
+  wholeWord: state.wholeWord,
+  useRegex: state.useRegex,
+});
+
+const setCodeMirrorSearchHighlightsEffect = StateEffect.define<{
+  readonly matches: readonly CodeMirrorSearchMatch[];
+  readonly activeIndex: number;
+}>();
+
+const buildCodeMirrorSearchDecorations = (
+  matches: readonly CodeMirrorSearchMatch[],
+  activeIndex: number,
+): DecorationSet => {
+  if (matches.length === 0) {
+    return Decoration.none;
+  }
+
+  const builder = new RangeSetBuilder<Decoration>();
+  matches.forEach((match, index) => {
+    builder.add(
+      match.from,
+      match.to,
+      index === activeIndex
+        ? codeMirrorSearchActiveMatchDecoration
+        : codeMirrorSearchMatchDecoration,
+    );
+  });
+  return builder.finish();
+};
+
+const codeMirrorSearchHighlightsField = StateField.define<CodeMirrorSearchHighlightState>({
+  create() {
+    return {
+      matches: EMPTY_CODEMIRROR_SEARCH_MATCHES,
+      activeIndex: -1,
+      decorations: Decoration.none,
+    };
+  },
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(setCodeMirrorSearchHighlightsEffect)) {
+        return {
+          matches: effect.value.matches,
+          activeIndex: effect.value.activeIndex,
+          decorations: buildCodeMirrorSearchDecorations(
+            effect.value.matches,
+            effect.value.activeIndex,
+          ),
+        };
+      }
+    }
+
+    if (!transaction.docChanged) {
+      return value;
+    }
+
+    return {
+      ...value,
+      decorations: value.decorations.map(transaction.changes),
+    };
+  },
+  provide: field => EditorView.decorations.from(field, value => value.decorations),
+});
+
+const escapeCodeMirrorSearchQuery = (value: string): string => (
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+);
+
+const buildCodeMirrorSearchExpression = (
+  query: string,
+  options: CodeMirrorSearchOptions,
+): RegExp | null => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const source = options.useRegex
+    ? normalizedQuery
+    : escapeCodeMirrorSearchQuery(normalizedQuery);
+  const pattern = options.wholeWord
+    ? `\\b(?:${source})\\b`
+    : source;
+
+  try {
+    return new RegExp(pattern, options.caseSensitive ? 'g' : 'gi');
+  } catch {
+    return null;
+  }
+};
+
+const findCodeMirrorSearchMatches = (
+  docText: string,
+  query: string,
+  options: CodeMirrorSearchOptions,
+): {
+  readonly matches: readonly CodeMirrorSearchMatch[];
+  readonly regexValid: boolean;
+} => {
+  const normalizedQuery = query.trim();
+  const expression = buildCodeMirrorSearchExpression(query, options);
+  const regexValid = expression !== null || !options.useRegex || normalizedQuery.length === 0;
+  if (!expression) {
+    return {
+      matches: EMPTY_CODEMIRROR_SEARCH_MATCHES,
+      regexValid,
+    };
+  }
+
+  const matches: CodeMirrorSearchMatch[] = [];
+  let nextMatch = expression.exec(docText);
+  while (nextMatch && matches.length < CODEMIRROR_SEARCH_HIGHLIGHT_LIMIT) {
+    const matchedText = nextMatch[0];
+    if (!matchedText) {
+      expression.lastIndex += 1;
+      nextMatch = expression.exec(docText);
+      continue;
+    }
+
+    matches.push({
+      from: nextMatch.index,
+      to: nextMatch.index + matchedText.length,
+    });
+    nextMatch = expression.exec(docText);
+  }
+
+  return {
+    matches,
+    regexValid: true,
+  };
+};
+
+const areCodeMirrorSearchOptionsEqual = (
+  left: CodeMirrorSearchOptions,
+  right: CodeMirrorSearchOptions,
+): boolean => (
+  left.caseSensitive === right.caseSensitive
+  && left.wholeWord === right.wholeWord
+  && left.useRegex === right.useRegex
+);
+
+const resolveCodeMirrorSearchInitialIndex = (
+  matches: readonly CodeMirrorSearchMatch[],
+  cursorPosition: number,
+): number => {
+  const nextIndex = matches.findIndex((match) => cursorPosition <= match.to);
+  return nextIndex >= 0 ? nextIndex : 0;
+};
+
+const resolveCodeMirrorSearchState = (
+  previousState: CodeMirrorSearchInternalState,
+  view: EditorView,
+  nextVisible: boolean,
+  nextQuery: string,
+  nextOptions: CodeMirrorSearchOptions,
+  navigation: 'initial' | 'next' | 'previous' | 'preserve',
+): CodeMirrorSearchInternalState => {
+  const normalizedQuery = nextQuery.trim();
+  const { matches, regexValid } = findCodeMirrorSearchMatches(
+    view.state.doc.toString(),
+    nextQuery,
+    nextOptions,
+  );
+
+  if (!normalizedQuery || !regexValid || matches.length === 0) {
+    return {
+      visible: nextVisible,
+      query: nextQuery,
+      ...nextOptions,
+      matches,
+      activeIndex: -1,
+      regexValid,
+    };
+  }
+
+  const currentOptions = createCodeMirrorSearchOptions(previousState);
+  const queryStable = previousState.query.trim() === normalizedQuery
+    && areCodeMirrorSearchOptionsEqual(currentOptions, nextOptions);
+  let activeIndex = resolveCodeMirrorSearchInitialIndex(
+    matches,
+    view.state.selection.main.from,
+  );
+
+  if (navigation === 'preserve' && queryStable && previousState.activeIndex >= 0) {
+    activeIndex = Math.min(previousState.activeIndex, matches.length - 1);
+  }
+
+  if (navigation === 'next' && queryStable && previousState.activeIndex >= 0) {
+    activeIndex = (previousState.activeIndex + 1) % matches.length;
+  }
+
+  if (navigation === 'previous' && queryStable && previousState.activeIndex >= 0) {
+    activeIndex = (previousState.activeIndex - 1 + matches.length) % matches.length;
+  }
+
+  return {
+    visible: nextVisible,
+    query: nextQuery,
+    ...nextOptions,
+    matches,
+    activeIndex,
+    regexValid: true,
+  };
+};
 
 class ActiveLineGutterMarker extends GutterMarker {
   elementClass = 'cm-activeLineGutter';
@@ -8174,6 +8449,11 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
     from: number;
     to: number;
   } | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchStateRef = useRef<CodeMirrorSearchInternalState>(createEmptyCodeMirrorSearchState());
+  const [searchToolbarState, setSearchToolbarState] = useState<CodeMirrorSearchRenderState>(
+    () => createCodeMirrorSearchRenderState(searchStateRef.current),
+  );
 
   useEffect(() => {
     void loadNoteEditorSettings();
@@ -8246,6 +8526,211 @@ export const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
       flushPendingLargeFileSync();
     }, LARGE_FILE_CHANGE_SYNC_DELAY_MS);
   }, [clearPendingLargeFileSync, flushPendingLargeFileSync, isLargeFileMode]);
+
+  const commitCodeMirrorSearchState = useCallback((
+    view: EditorView | null,
+    nextState: CodeMirrorSearchInternalState,
+    options: {
+      readonly revealActiveMatch?: boolean;
+      readonly focusEditor?: boolean;
+    } = {},
+  ): void => {
+    searchStateRef.current = nextState;
+    setSearchToolbarState(createCodeMirrorSearchRenderState(nextState));
+
+    if (!view) {
+      return;
+    }
+
+    const effects = [setCodeMirrorSearchHighlightsEffect.of({
+      matches: nextState.matches,
+      activeIndex: nextState.activeIndex,
+    })];
+    const activeMatch = nextState.activeIndex >= 0
+      ? nextState.matches[nextState.activeIndex]
+      : null;
+
+    if (options.revealActiveMatch && activeMatch) {
+      view.dispatch({
+        effects,
+        selection: {
+          anchor: activeMatch.from,
+          head: activeMatch.to,
+        },
+        scrollIntoView: true,
+      });
+    } else {
+      view.dispatch({ effects });
+    }
+
+    if (options.focusEditor) {
+      view.focus();
+    }
+  }, []);
+
+  const closeCodeMirrorSearch = useCallback((focusEditor = true): void => {
+    commitCodeMirrorSearchState(
+      viewRef.current,
+      createEmptyCodeMirrorSearchState(),
+      { focusEditor },
+    );
+  }, [commitCodeMirrorSearchState]);
+
+  const updateCodeMirrorSearch = useCallback((
+    view: EditorView,
+    query: string,
+    options: CodeMirrorSearchOptions,
+    navigation: 'initial' | 'next' | 'previous' | 'preserve',
+    nextVisible: boolean,
+    revealActiveMatch = false,
+  ): CodeMirrorSearchInternalState => {
+    const nextState = resolveCodeMirrorSearchState(
+      searchStateRef.current,
+      view,
+      nextVisible,
+      query,
+      options,
+      navigation,
+    );
+    commitCodeMirrorSearchState(view, nextState, { revealActiveMatch });
+    return nextState;
+  }, [commitCodeMirrorSearchState]);
+
+  const openCodeMirrorSearch = useCallback((view?: EditorView | null): boolean => {
+    const targetView = view ?? viewRef.current;
+    if (!targetView) {
+      return false;
+    }
+
+    const selection = targetView.state.selection.main;
+    const selectedText = selection.empty
+      ? ''
+      : targetView.state.doc.sliceString(selection.from, selection.to).trim();
+    const currentState = searchStateRef.current;
+    const nextQuery = selectedText || currentState.query;
+    const nextState = resolveCodeMirrorSearchState(
+      currentState,
+      targetView,
+      true,
+      nextQuery,
+      createCodeMirrorSearchOptions(currentState),
+      'initial',
+    );
+
+    commitCodeMirrorSearchState(targetView, nextState, {
+      revealActiveMatch: nextQuery.trim().length > 0,
+    });
+
+    window.requestAnimationFrame(() => {
+      const input = searchInputRef.current;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    });
+    return true;
+  }, [commitCodeMirrorSearchState]);
+
+  const navigateCodeMirrorSearch = useCallback((
+    direction: 'next' | 'previous',
+    view?: EditorView | null,
+  ): boolean => {
+    const targetView = view ?? viewRef.current;
+    if (!targetView) {
+      return false;
+    }
+
+    const currentState = searchStateRef.current;
+    if (!currentState.query.trim()) {
+      return openCodeMirrorSearch(targetView);
+    }
+
+    const nextState = updateCodeMirrorSearch(
+      targetView,
+      currentState.query,
+      createCodeMirrorSearchOptions(currentState),
+      direction,
+      currentState.visible,
+      true,
+    );
+    return nextState.activeIndex >= 0;
+  }, [openCodeMirrorSearch, updateCodeMirrorSearch]);
+
+  const handleCodeMirrorSearchQueryChange = useCallback((value: string): void => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+
+    updateCodeMirrorSearch(
+      view,
+      value,
+      createCodeMirrorSearchOptions(searchStateRef.current),
+      'initial',
+      true,
+      value.trim().length > 0,
+    );
+  }, [updateCodeMirrorSearch]);
+
+  const toggleCodeMirrorSearchOption = useCallback((option: CodeMirrorSearchOptionKey): void => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+
+    const currentState = searchStateRef.current;
+    const nextOptions: CodeMirrorSearchOptions = {
+      ...createCodeMirrorSearchOptions(currentState),
+      [option]: !currentState[option],
+    };
+
+    updateCodeMirrorSearch(
+      view,
+      currentState.query,
+      nextOptions,
+      'initial',
+      true,
+      currentState.query.trim().length > 0,
+    );
+  }, [updateCodeMirrorSearch]);
+
+  const handleCodeMirrorSearchInputKeyDown = useCallback((
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ): void => {
+    event.stopPropagation();
+
+    if (event.altKey && !event.ctrlKey && !event.metaKey) {
+      const key = event.key.toLowerCase();
+      if (key === 'c') {
+        event.preventDefault();
+        toggleCodeMirrorSearchOption('caseSensitive');
+        return;
+      }
+      if (key === 'w') {
+        event.preventDefault();
+        toggleCodeMirrorSearchOption('wholeWord');
+        return;
+      }
+      if (key === 'r') {
+        event.preventDefault();
+        toggleCodeMirrorSearchOption('useRegex');
+        return;
+      }
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeCodeMirrorSearch();
+      return;
+    }
+
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    event.preventDefault();
+    navigateCodeMirrorSearch(event.shiftKey ? 'previous' : 'next');
+  }, [closeCodeMirrorSearch, navigateCodeMirrorSearch, toggleCodeMirrorSearchOption]);
 
   // 閸忔娊妫存稉濠佺瑓閺傚洩褰嶉崡?
   const closeContextMenu = useCallback(() => {
@@ -9339,6 +9824,26 @@ sequenceDiagram
     if (!containerRef.current) return;
 
     const updateListener = EditorView.updateListener.of((update) => {
+      if (
+        update.docChanged
+        || update.selectionSet
+        || update.focusChanged
+        || update.geometryChanged
+        || update.viewportChanged
+      ) {
+        notifyActiveCodeMirrorEditorStateChanged();
+      }
+
+      if (update.docChanged && searchStateRef.current.query.trim()) {
+        updateCodeMirrorSearch(
+          update.view,
+          searchStateRef.current.query,
+          createCodeMirrorSearchOptions(searchStateRef.current),
+          'preserve',
+          searchStateRef.current.visible,
+        );
+      }
+
       if (update.docChanged && isLargeFileMode) {
         schedulePendingLargeFileSync();
         setAtReferenceMenu(prev => (
@@ -9392,12 +9897,39 @@ sequenceDiagram
       }
     });
 
+    const codeMirrorSearchKeymap = Prec.highest(
+      keymap.of([
+        {
+          key: 'Mod-f',
+          preventDefault: true,
+          run: (targetView) => openCodeMirrorSearch(targetView),
+        },
+        {
+          key: 'F3',
+          preventDefault: true,
+          run: (targetView) => {
+            navigateCodeMirrorSearch('next', targetView);
+            return true;
+          },
+        },
+        {
+          key: 'Shift-F3',
+          preventDefault: true,
+          run: (targetView) => {
+            navigateCodeMirrorSearch('previous', targetView);
+            return true;
+          },
+        },
+      ]),
+    );
+
     // 閺嶈宓佸Ο鈥崇础閸愬啿鐣鹃弰顖氭儊娴ｈ法鏁ゆ０鍕潔鐟佸懘銈伴崳?
     const lineNumberExtension = showLineNumbers ? lineNumbers() : null;
 
     let extensions = [
       activeLineHighlightExtension,
       activeLineGutterHighlightExtension,
+      codeMirrorSearchHighlightsField,
       history(),
       markdown(),
       autocompletion({
@@ -9407,6 +9939,7 @@ sequenceDiagram
       }),
       syntaxHighlighting(customHighlightStyle),
       indentUnit.of('  '), // 2 缁岀儤鐗哥紓鈺勭箻
+      codeMirrorSearchKeymap,
       customKeymap, // 閼奉亜鐣炬稊澶愭暛閻╂ɑ妲х亸鍕杹閸︺劑绮拋銈夋暛閻╂ɑ妲х亸鍕閸撳稄绱濈涵顔荤箽娴兼ê鍘涙径鍕倞
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       updateListener,
@@ -9483,8 +10016,10 @@ sequenceDiagram
       extensions = [
         activeLineHighlightExtension,
         activeLineGutterHighlightExtension,
+        codeMirrorSearchHighlightsField,
         history(),
         indentUnit.of('  '),
+        codeMirrorSearchKeymap,
         customKeymap,
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         updateListener,
@@ -9527,6 +10062,15 @@ sequenceDiagram
     });
 
     viewRef.current = view;
+    if (searchStateRef.current.query.trim()) {
+      updateCodeMirrorSearch(
+        view,
+        searchStateRef.current.query,
+        createCodeMirrorSearchOptions(searchStateRef.current),
+        'preserve',
+        searchStateRef.current.visible,
+      );
+    }
 
     sanitizeCodeMirrorLineFontFamily(view.dom);
     let cmLineFontObserver: MutationObserver | null = null;
@@ -9583,8 +10127,11 @@ sequenceDiagram
     flushPendingLargeFileSync,
     isLargeFileMode,
     mode,
+    navigateCodeMirrorSearch,
+    openCodeMirrorSearch,
     schedulePendingLargeFileSync,
     showLineNumbers,
+    updateCodeMirrorSearch,
     updateOutline,
     wikilinkCompletionSource,
   ]);
@@ -9616,12 +10163,14 @@ sequenceDiagram
       path: filePath,
       language,
     });
+    notifyActiveCodeMirrorEditorStateChanged();
 
     return () => {
       if (globalEditorView === view) {
         globalEditorView = null;
       }
       clearActiveCodeMirrorEditor(view);
+      notifyActiveCodeMirrorEditorStateChanged();
     };
   }, [filePath, isActive, language, tabId, title]);
 
@@ -9639,14 +10188,67 @@ sequenceDiagram
         path: filePath,
         language,
       });
+      notifyActiveCodeMirrorEditorStateChanged();
+    };
+
+    const handleFocusOut = () => {
+      notifyActiveCodeMirrorEditorStateChanged();
+    };
+
+    const handleScroll = () => {
+      notifyActiveCodeMirrorEditorStateChanged();
     };
 
     view.dom.addEventListener('focusin', handleFocusIn);
+    view.dom.addEventListener('focusout', handleFocusOut);
+    view.scrollDOM.addEventListener('scroll', handleScroll);
 
     return () => {
       view.dom.removeEventListener('focusin', handleFocusIn);
+      view.dom.removeEventListener('focusout', handleFocusOut);
+      view.scrollDOM.removeEventListener('scroll', handleScroll);
     };
   }, [filePath, language, tabId, title]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+
+    const handleEditorSuggestKeyDown = (event: KeyboardEvent) => {
+      const activeOverlay = usePluginOverlayFrameStore.getState().overlays.at(-1);
+
+      if (
+        activeOverlay?.interactionMode !== 'editorSuggest'
+        || (
+          event.key !== 'ArrowDown'
+          && event.key !== 'ArrowUp'
+          && event.key !== 'Enter'
+          && event.key !== 'Escape'
+        )
+      ) {
+        return;
+      }
+
+      if (window.electron?.ipcRenderer === undefined) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      void window.electron.ipcRenderer.invoke(PLUGIN_RUNTIME_HANDLE_EDITOR_SUGGEST_KEY_CHANNEL, {
+        key: event.key,
+      });
+    };
+
+    view.dom.addEventListener('keydown', handleEditorSuggestKeyDown, true);
+
+    return () => {
+      view.dom.removeEventListener('keydown', handleEditorSuggestKeyDown, true);
+    };
+  }, [filePath, language, tabId, title]);
+
   useEffect(() => {
     const view = viewRef.current;
     if (!view) {
@@ -9881,6 +10483,33 @@ sequenceDiagram
     };
   }, []);
 
+  const searchHasQuery = searchToolbarState.query.trim().length > 0;
+  const searchCanNavigate = (
+    searchHasQuery
+    && searchToolbarState.regexValid
+    && searchToolbarState.resultCount > 0
+  );
+  const searchStatusTone: 'default' | 'error' = (
+    searchHasQuery
+    && (!searchToolbarState.regexValid || searchToolbarState.resultCount === 0)
+  )
+    ? 'error'
+    : 'default';
+  const searchResultLabel = !searchHasQuery
+    ? translateCodeMirrorText('codeMirrorEditor.search.status.empty', '无结果')
+    : !searchToolbarState.regexValid
+      ? translateCodeMirrorText('codeMirrorEditor.search.status.invalidRegex', '正则无效')
+      : searchToolbarState.resultCount === 0
+        ? translateCodeMirrorText('codeMirrorEditor.search.status.noResults', '无结果')
+        : translateCodeMirrorText(
+            'codeMirrorEditor.search.status.matches',
+            '{{current}} / {{total}}',
+            {
+              current: searchToolbarState.activeIndex + 1,
+              total: searchToolbarState.resultCount,
+            },
+          );
+
   return (
     <div className={`codemirror-editor ${mode === 'preview' ? 'preview-mode' : 'source-mode'} ${isLargeFileMode ? 'large-file-mode' : ''}`}>
       {isLargeFileMode && (
@@ -9898,6 +10527,39 @@ sequenceDiagram
         </div>
       )}
       <div className="cm-main-content">
+        {searchToolbarState.visible && (
+          <CodeMirrorSearchToolbar
+            query={searchToolbarState.query}
+            caseSensitive={searchToolbarState.caseSensitive}
+            wholeWord={searchToolbarState.wholeWord}
+            useRegex={searchToolbarState.useRegex}
+            resultLabel={searchResultLabel}
+            statusTone={searchStatusTone}
+            canNavigate={searchCanNavigate}
+            inputRef={searchInputRef}
+            texts={{
+              placeholder: translateCodeMirrorText('codeMirrorEditor.search.placeholder', '搜索'),
+              matchCase: translateCodeMirrorText('codeMirrorEditor.search.matchCase', '匹配大小写'),
+              wholeWord: translateCodeMirrorText('codeMirrorEditor.search.wholeWord', '全字匹配'),
+              useRegex: translateCodeMirrorText('codeMirrorEditor.search.useRegex', '使用正则表达式'),
+              previousResult: translateCodeMirrorText('codeMirrorEditor.search.previousResult', '上一个结果'),
+              nextResult: translateCodeMirrorText('codeMirrorEditor.search.nextResult', '下一个结果'),
+              closeSearch: translateCodeMirrorText('codeMirrorEditor.search.close', '关闭搜索'),
+            }}
+            onQueryChange={handleCodeMirrorSearchQueryChange}
+            onInputKeyDown={handleCodeMirrorSearchInputKeyDown}
+            onToggleOption={toggleCodeMirrorSearchOption}
+            onPrevious={() => {
+              navigateCodeMirrorSearch('previous');
+            }}
+            onNext={() => {
+              navigateCodeMirrorSearch('next');
+            }}
+            onClose={() => {
+              closeCodeMirrorSearch();
+            }}
+          />
+        )}
         <div className="cm-editor-container" ref={containerRef} />
         {showOutline && (
           <div 
@@ -10030,6 +10692,3 @@ sequenceDiagram
 };
 
 export default CodeMirrorEditor;
-
-
-

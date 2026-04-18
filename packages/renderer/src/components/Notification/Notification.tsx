@@ -19,13 +19,14 @@ const NotificationItemComponent: React.FC<NotificationItemProps> = ({ item, onCl
   return (
     <div className={`notification-item notification-${item.type}`}>
       <span className="notification-message">{item.message}</span>
-      <span
+      <button
+        type="button"
         className="notification-close"
         onClick={() => onClose(item.id)}
         title={String(t('notification.close', { defaultValue: 'Close' }))}
       >
         <CloseIcon size={14} />
-      </span>
+      </button>
     </div>
   );
 };

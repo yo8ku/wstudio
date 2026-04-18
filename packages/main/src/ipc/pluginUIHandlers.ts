@@ -117,7 +117,7 @@ export function registerPluginUIHandlers(): void {
       _event,
       request: ExecutePluginUiEntryRequest,
     ): Promise<ExecutePluginUiEntryResponse> => {
-      const executed = pluginHostManager.executePluginUiEntry(request.entryId);
+      const executed = await pluginHostManager.executePluginUiEntry(request.entryId);
 
       if (!executed) {
         return {

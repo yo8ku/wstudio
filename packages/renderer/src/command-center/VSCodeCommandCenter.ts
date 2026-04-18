@@ -12,9 +12,22 @@
 
 import type { Command, CommandMode, CommandItem, CommandHistory } from './CommandTypes';
 import { electronStore } from '../services/ElectronStoreService';
+import { setPluginSurfaceCommandCenterPreviewSnapshot } from '../stores/pluginSurfaceCommandCenterPreviewStore';
 
 const HISTORY_KEY = 'command-history';
 const MAX_HISTORY = 20;
+const PLUGIN_SURFACE_SET_COMMAND_CENTER_VISIBILITY_CHANNEL = 'plugin-surface:set-command-center-visibility';
+const PLUGIN_SURFACE_CAPTURE_COMMAND_CENTER_PREVIEWS_CHANNEL = 'plugin-surface:capture-command-center-previews';
+
+interface PluginSurfaceOperationResponse {
+  readonly success: boolean;
+}
+
+interface PluginSurfaceCommandCenterPreviewResponse extends PluginSurfaceOperationResponse {
+  readonly previews: Readonly<Record<string, string>>;
+}
+
+type PluginSurfaceCommandCenterPreviewMap = Readonly<Record<string, string>>;
 
 export class VSCodeCommandCenter {
   private container: HTMLElement | null = null;
@@ -181,27 +194,39 @@ export class VSCodeCommandCenter {
     if (this.isVisible) return;
 
     console.log('[CommandCenter] 显示命令面板');
-    this.createDOM();
     this.isVisible = true;
+    this.createDOM();
+    const surfacePreviewPreparation = this.preparePluginSurfacePreviewForCommandCenter();
 
-    const mode = this.modes.get(initialMode);
-    if (mode) {
-      await this.switchMode(mode);
-      if (this.input) {
-        // 如果模式配置了隐藏前缀，则不显示前缀
-        this.input.value = mode.hidePrefix ? '' : initialMode;
+    try {
+      const mode = this.modes.get(initialMode);
+      if (mode) {
+        await this.switchMode(mode);
+        if (this.input) {
+          // 如果模式配置了隐藏前缀，则不显示前缀
+          this.input.value = mode.hidePrefix ? '' : initialMode;
+        }
       }
+
+      this.attachEvents();
+      
+      setTimeout(() => {
+        this.input?.focus();
+        if (this.input && this.input.value) {
+          const pos = this.input.value.length;
+          this.input.setSelectionRange(pos, pos);
+        }
+      }, 0);
+
+      await surfacePreviewPreparation;
+      await this.updatePluginSurfaceVisibilityForCommandCenter(true);
+    } catch (error) {
+      this.cleanup();
+      this.isVisible = false;
+      this.clearPluginSurfacePreviewForCommandCenter();
+      void this.updatePluginSurfaceVisibilityForCommandCenter(false);
+      throw error;
     }
-
-    this.attachEvents();
-    
-    setTimeout(() => {
-      this.input?.focus();
-      if (this.input && this.input.value) {
-        const pos = this.input.value.length;
-        this.input.setSelectionRange(pos, pos);
-      }
-    }, 0);
   }
 
   async hide(confirmed: boolean = false): Promise<void> {
@@ -215,6 +240,9 @@ export class VSCodeCommandCenter {
     
     this.cleanup();
     this.isVisible = false;
+    await this.updatePluginSurfaceVisibilityForCommandCenter(false);
+    await this.waitForNextPaint();
+    this.clearPluginSurfacePreviewForCommandCenter();
   }
 
   toggle(initialMode?: string): void {
@@ -765,6 +793,112 @@ export class VSCodeCommandCenter {
   }
 
   // ============ 工具方法 ============
+
+  private async updatePluginSurfaceVisibilityForCommandCenter(visible: boolean): Promise<void> {
+    try {
+      const response = await window.electron?.ipcRenderer.invoke(
+        PLUGIN_SURFACE_SET_COMMAND_CENTER_VISIBILITY_CHANNEL,
+        { visible },
+      ) as PluginSurfaceOperationResponse | undefined;
+
+      if (response?.success === true) {
+        return;
+      }
+    } catch (error) {
+      console.error('[CommandCenter] Failed to sync plugin surface visibility:', error);
+    }
+  }
+
+  private async preparePluginSurfacePreviewForCommandCenter(): Promise<void> {
+    try {
+      const response = await window.electron?.ipcRenderer.invoke(
+        PLUGIN_SURFACE_CAPTURE_COMMAND_CENTER_PREVIEWS_CHANNEL,
+      ) as PluginSurfaceCommandCenterPreviewResponse | undefined;
+      const previews = response?.success === true
+        ? response.previews
+        : {};
+
+      await this.preloadPluginSurfacePreviewImages(previews);
+      setPluginSurfaceCommandCenterPreviewSnapshot({
+        visible: true,
+        previews,
+      });
+      await this.waitForNextPaint();
+    } catch (error) {
+      this.clearPluginSurfacePreviewForCommandCenter();
+      console.error('[CommandCenter] Failed to prepare plugin surface previews:', error);
+    }
+  }
+
+  private clearPluginSurfacePreviewForCommandCenter(): void {
+    setPluginSurfaceCommandCenterPreviewSnapshot({
+      visible: false,
+      previews: {},
+    });
+  }
+
+  private async preloadPluginSurfacePreviewImages(
+    previews: PluginSurfaceCommandCenterPreviewMap,
+  ): Promise<void> {
+    await Promise.all(Object.values(previews).map(async (dataUrl) => {
+      await this.preloadPluginSurfacePreviewImage(dataUrl);
+    }));
+  }
+
+  private async preloadPluginSurfacePreviewImage(dataUrl: string): Promise<void> {
+    if (dataUrl.length === 0) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      const image = new Image();
+      let settled = false;
+      const settle = (): void => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        image.onload = null;
+        image.onerror = null;
+        resolve();
+      };
+      const decodeIfNeeded = (): void => {
+        if (typeof image.decode === 'function') {
+          void image.decode().then(() => {
+            settle();
+          }).catch(() => {
+            settle();
+          });
+          return;
+        }
+
+        settle();
+      };
+
+      image.onload = (): void => {
+        decodeIfNeeded();
+      };
+      image.onerror = (): void => {
+        settle();
+      };
+      image.src = dataUrl;
+
+      if (image.complete) {
+        decodeIfNeeded();
+      }
+    });
+  }
+
+  private async waitForNextPaint(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+  }
 
   private escapeHtml(text: string): string {
     const div = document.createElement('div');

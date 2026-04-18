@@ -1,6 +1,6 @@
-/**
- * 设置内容区域组件
- * 设置内容区，包含顶部工具栏和设置列表
+﻿/**
+ * 璁剧疆鍐呭鍖哄煙缁勪欢
+ * 璁剧疆鍐呭鍖猴紝鍖呭惈椤堕儴宸ュ叿鏍忓拰璁剧疆鍒楄〃
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -8,6 +8,7 @@ import {
   DEFAULT_WORKBENCH_FILE_ICON_THEME_ID,
   DEFAULT_WORKBENCH_BACKGROUND_SETTINGS,
   type JsonValue,
+  type PluginUiRuntimeSurfaceDescriptor,
   type WorkbenchBackgroundSettings,
 } from '@note-studio/shared';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +19,7 @@ import { EmbeddingConfig } from '@/components/EmbeddingConfig';
 import { BackgroundImageSettings } from '@/components/Settings/BackgroundImageSettings/BackgroundImageSettings';
 import { APP_LANGUAGE_SETTING_KEY, DEFAULT_APP_LANGUAGE } from '@/i18n';
 import { workbenchContributionService } from '@/services/WorkbenchContributionService';
+import { PluginSettingTabRuntimeCard } from './PluginSettingTabRuntimeCard';
 import './SettingsContent.scss';
 
 type SettingValue = JsonValue;
@@ -49,6 +51,7 @@ interface PluginSettingTabSummary {
   readonly title: string;
   readonly preview: string | null;
   readonly previewLines: readonly string[];
+  readonly runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
 }
 
 interface SettingsContentProps {
@@ -91,9 +94,9 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     setJsonContent(JSON.stringify(normalizedSettings, null, 2));
   };
 
-  // 设置定义（根据分类组织）
+  // 璁剧疆瀹氫箟锛堟牴鎹垎绫荤粍缁囷級
   const settingDefinitions: SettingDefinition[] = [
-    // 常用设置
+    // 甯哥敤璁剧疆
     {
       key: 'editor.fontSize',
       title: translateText('settings.definitions.editorFontSize.title'),
@@ -137,7 +140,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       defaultValue: 'One Dark Pro',
     },
 
-    // 文本编辑
+    // 鏂囨湰缂栬緫
     {
       key: 'editor.lineHeight',
       title: translateText('settings.definitions.editorLineHeight.title'),
@@ -193,7 +196,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       defaultValue: 'on',
     },
 
-    // 工作台
+    // Workbench
     {
       key: 'workbench.sideBar.location',
       title: translateText('settings.definitions.workbenchSidebarLocation.title'),
@@ -215,7 +218,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       defaultValue: true,
     },
 
-    // 窗口
+    // 绐楀彛
     {
       key: 'workbench.background',
       title: translateText('settings.definitions.workbenchBackground.title'),
@@ -288,7 +291,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       category: 'ai',
       defaultValue: true,
     },
-    // Embedding 配置（特殊处理，使用自定义组件）
+    // Embedding 閰嶇疆锛堢壒娈婂鐞嗭紝浣跨敤鑷畾涔夌粍浠讹級
     {
       key: 'embedding.config',
       title: translateText('settings.definitions.embeddingConfig.title'),
@@ -310,7 +313,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     },
   ];
 
-  // 加载设置
+  // 鍔犺浇璁剧疆
   const allSettingDefinitions = [...settingDefinitions, ...pluginSettingDefinitions];
 
   const serializeSelectValue = (value: SettingValue): string => JSON.stringify(value);
@@ -363,7 +366,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         syncSettingsState((result.data as Record<string, SettingValue> | undefined) ?? {});
       }
     } catch (error) {
-      console.error('加载设置失败:', error);
+      console.error('鍔犺浇璁剧疆澶辫触:', error);
       setError(translateText('settings.errors.loadSettings'));
     }
   };
@@ -391,7 +394,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         })),
       );
     } catch (error) {
-      console.error('加载插件设置定义失败:', error);
+      console.error('鍔犺浇鎻掍欢璁剧疆瀹氫箟澶辫触:', error);
       setFileIconThemeOptions([]);
       setPluginSettingDefinitions([]);
     }
@@ -404,12 +407,12 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       ) as readonly PluginSettingTabSummary[] | undefined;
       setPluginSettingTabs(tabs ?? []);
     } catch (error) {
-      console.error('加载插件设置 tab 失败:', error);
+      console.error('鍔犺浇鎻掍欢璁剧疆 tab 澶辫触:', error);
       setPluginSettingTabs([]);
     }
   };
 
-  // 监听设置变化
+  // 鐩戝惉璁剧疆鍙樺寲
   useEffect(() => {
     const handleSettingsChanged = (payload: SettingsChangedPayload) => {
       if (payload.reset || payload.imported || (payload.updatedKeys?.length ?? 0) > 0) {
@@ -459,7 +462,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     };
   }, []);
 
-  // 更新设置
+  // 鏇存柊璁剧疆
   const updateSetting = async (key: string, value: SettingValue) => {
     try {
       const result = await window.electronAPI?.settings?.update(key, value);
@@ -470,13 +473,13 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         setError(typeof result?.error === 'string' ? result.error : translateText('settings.errors.updateSetting'));
       }
     } catch (error) {
-      console.error('更新设置失败:', error);
+      console.error('鏇存柊璁剧疆澶辫触:', error);
       setError(translateText('settings.errors.updateSetting'));
     }
   };
 
 
-  // 重置设置
+  // 閲嶇疆璁剧疆
   const handleReset = async (key?: string) => {
     try {
       const result = await window.electronAPI?.settings?.reset(key);
@@ -493,18 +496,18 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         }
       }
     } catch (error) {
-      console.error('重置设置失败:', error);
+      console.error('閲嶇疆璁剧疆澶辫触:', error);
       setError(translateText('settings.errors.resetSetting'));
     }
   };
 
-  // 根据分类过滤设置
+  // 鏍规嵁鍒嗙被杩囨护璁剧疆
   const getCategorySettings = useCallback((category: SettingsCategory) => {
     return allSettingDefinitions.filter(def => {
-      // 根据分类过滤
+      // 鏍规嵁鍒嗙被杩囨护
       if (def.category !== category) return false;
       
-      // 根据搜索过滤
+      // 鏍规嵁鎼滅储杩囨护
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
@@ -518,7 +521,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     });
   }, [allSettingDefinitions, searchQuery]);
 
-  // 所有分类列表
+  // All categories
   const allCategories: SettingsCategory[] = [
     'commonly-used',
     'text-editor', 
@@ -565,20 +568,20 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     'data-settings-siyuan': translateText('settings.categories.dataSettingsSiyuan'),
     'data-settings-custom': translateText('settings.categories.dataSettingsCustom'),
     'document-processing': translateText('settings.categories.documentProcessing'),
-    'plugins': '插件',
+    'plugins': '鎻掍欢',
     'application': translateText('settings.categories.application'),
   };
 
-  // 使用 IntersectionObserver 监听滚动并自动选中对应分类
+  // 浣跨敤 IntersectionObserver 鐩戝惉婊氬姩骞惰嚜鍔ㄩ€変腑瀵瑰簲鍒嗙被
   useEffect(() => {
     if (!scrollContainerRef?.current || !onActiveCategoryChange) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        // 找到当前可见且在视口顶部的分类
+        // Find the top-most visible category
         const visibleEntries = entries.filter(entry => entry.isIntersecting);
         if (visibleEntries.length > 0) {
-          // 按照在视口中的位置排序，选择最靠近顶部的
+          // Choose the category closest to the viewport top
           visibleEntries.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
           const topEntry = visibleEntries[0];
           const categoryId = topEntry.target.id.replace('category-', '') as SettingsCategory;
@@ -587,12 +590,12 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       },
       {
         root: scrollContainerRef.current,
-        rootMargin: '-20% 0px -70% 0px', // 当分类进入视口上方20%时触发
+        rootMargin: '-20% 0px -70% 0px', // Activate when category enters the upper viewport
         threshold: 0
       }
     );
 
-    // 观察所有分类区域
+    // Observe all category sections
     const categoryElements = scrollContainerRef.current.querySelectorAll('[id^="category-"]');
     categoryElements.forEach(element => observer.observe(element));
 
@@ -602,7 +605,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     };
   }, [scrollContainerRef, onActiveCategoryChange]);
 
-  // 渲染设置控件
+  // 娓叉煋璁剧疆鎺т欢
   const renderSettingControl = (def: SettingDefinition) => {
     const value = (settings ?? {})[def.key] ?? def.defaultValue;
 
@@ -659,7 +662,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         );
 
       case 'object':
-        // 特殊处理：Embedding 配置使用自定义组件
+        // Embedding config uses a dedicated component
         if (def.key === 'embedding.config') {
           return <EmbeddingConfig />;
         }
@@ -684,10 +687,10 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     }
   };
 
-  // 渲染主界面
+  // Render main view
   return (
     <div className="settings-content">
-      {/* 顶部工具栏*/}
+      {/* Toolbar */}
       <div className="settings-toolbar">
         <SearchInput
           value={searchQuery}
@@ -698,9 +701,9 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
         />
       </div>
 
-      {/* 内容区域 */}
+      {/* 鍐呭鍖哄煙 */}
       <div className="content-area">
-        {/* UI 模式 - 显示所有分类 */}
+        {/* UI 妯″紡 - 鏄剧ず鎵€鏈夊垎绫?*/}
         <div className="content-scroll" ref={scrollContainerRef}>
             <div className="content-inner">
               {error && (
@@ -709,7 +712,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                 </div>
               )}
 
-              {/* 遍历所有分类并显示 */}
+              {/* 閬嶅巻鎵€鏈夊垎绫诲苟鏄剧ず */}
               {allCategories.map((category) => {
                 const categorySettings = getCategorySettings(category);
 
@@ -725,6 +728,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                       tab.pluginName,
                       tab.pluginId,
                       tab.preview ?? '',
+                      tab.previewLines.join(' '),
                     ].some((value) => value.toLowerCase().includes(normalizedQuery));
                   });
 
@@ -735,30 +739,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                       <h2 className="category-title">{categoryLabels[category]}</h2>
                       <div className="settings-list">
                         {filteredPluginTabs.map((tab) => (
-                          <div key={tab.id} className="setting-item">
-                            <div className="setting-row">
-                              <div className="setting-info">
-                                <div className="setting-header">
-                                  <h3 className="setting-title">{tab.title}</h3>
-                                  <span className="setting-source-badge">{tab.pluginName}</span>
-                                </div>
-                                {tab.previewLines.length > 0 ? (
-                                  <div className="plugin-setting-preview-lines">
-                                    {tab.previewLines.map((line, index) => (
-                                      <p key={`${tab.id}:preview:${index}`} className="setting-description">
-                                        {line}
-                                      </p>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <p className="setting-description">
-                                    {tab.preview ?? '该插件已注册设置选项卡。'}
-                                  </p>
-                                )}
-                                <code className="setting-key">{tab.pluginId}</code>
-                              </div>
-                            </div>
-                          </div>
+                          <PluginSettingTabRuntimeCard key={tab.id} tab={tab} />
                         ))}
                       </div>
                     </div>
@@ -774,7 +755,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                       {categorySettings.map((def) => {
                         const isModified = modifiedKeys.has(def.key);
                         
-                        // 特殊处理：object 类型（如 Embedding 配置）使用自定义组件，占据整行
+                        // Object settings use full-width custom controls
                         if (def.type === 'object') {
                           return (
                             <div key={def.key} className="setting-item setting-item--full">
@@ -820,7 +801,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
                 );
               })}
 
-              {/* 页脚 */}
+              {/* 椤佃剼 */}
               <footer className="settings-footer">
                 <div className="settings-footer__content">
                   <div className="settings-footer__brand">
@@ -857,3 +838,5 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
     </div>
   );
 };
+
+

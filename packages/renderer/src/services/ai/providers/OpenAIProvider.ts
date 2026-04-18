@@ -39,11 +39,14 @@ export class OpenAIProvider extends BaseAIProvider {
   }
 
   setConfig(config: AIProviderConfig): void {
-    const raw = config.apiEndpoint || 'https://api.openai.com/v1/chat/completions';
+    const raw = (config.apiEndpoint || 'https://api.openai.com/v1/chat/completions').trim();
     // 如果只填了 base URL（没有 /v1/chat/completions），自动补全
-    const endpoint = raw.includes('/chat/completions')
-      ? raw
-      : raw.replace(/\/+$/, '') + '/v1/chat/completions';
+    const normalized = raw.replace(/\/+$/, '');
+    const endpoint = normalized.includes('/chat/completions')
+      ? normalized
+      : normalized.endsWith('/v1')
+        ? `${normalized}/chat/completions`
+        : `${normalized}/v1/chat/completions`;
     super.setConfig({ ...config, apiEndpoint: endpoint });
   }
 
@@ -249,16 +252,14 @@ export class OpenAIProvider extends BaseAIProvider {
     try {
       const requestBody = this.buildRequestBody(params, true);
       
-      const response = await this.makeRequest(this.config.apiEndpoint, {
+      await this.streamSSERequest(this.config.apiEndpoint, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.config.apiKey}`
         },
         body: JSON.stringify(requestBody),
         signal: params.signal // 传递 AbortSignal
-      });
-
-      await this.handleStreamResponse(response, callback, params.signal);
+      }, callback, params.signal);
     } catch (error) {
       // 如果是取消操作，直接返回，不抛出错误
       if (error instanceof Error && error.name === 'AbortError') {

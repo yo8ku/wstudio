@@ -13,9 +13,19 @@
   border-right: 1px solid var(--ws-sideBar-border);
   position: relative;
 
+  &-main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    min-height: 0;
+  }
+
   &-top {
     display: flex;
     flex-direction: column;
+    align-items: center;
   }
 
   &-spacer {
@@ -25,13 +35,81 @@
   &-bottom {
     display: flex;
     flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+  }
+
+  &-plugin-group {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    min-height: 0;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--ws-sideBar-border, rgba(255, 255, 255, 0.08));
+  }
+
+  &-plugin-group--overflowing {
+    padding-top: 6px;
+  }
+
+  &-plugin-scroll {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--ws-scrollbarSlider-background, rgba(255, 255, 255, 0.24)) transparent;
+  }
+
+  &-plugin-scroll::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &-plugin-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &-plugin-scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: var(--ws-scrollbarSlider-background, rgba(255, 255, 255, 0.24));
+  }
+
+  &-plugin-scroll-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 18px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--ws-activityBar-inactiveForeground, inherit);
+    cursor: pointer;
+  }
+
+  &-plugin-scroll-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  &-plugin-scroll-button:not(:disabled):hover,
+  &-plugin-scroll-button:not(:disabled):focus-visible {
+    color: var(--ws-activityBar-foreground, inherit);
+    outline: none;
   }
 
   &-item {
     position: relative;
     width: 25px;
     height: 25px;
-    margin-top: 10px;
+    margin-top: 8px;
     border: none;
     cursor: pointer;
     display: flex;
@@ -39,6 +117,11 @@
     justify-content: center;
   }
 
+  &-top > .activity-bar-item:first-child,
+  &-bottom > .activity-bar-item:first-child,
+  &-plugin-scroll > .activity-bar-item:first-child {
+    margin-top: 0;
+  }
 
   &-icon {
     display: flex;

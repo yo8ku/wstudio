@@ -1,5 +1,5 @@
 /**
- * Rebuilds and packs the plugin SDK into the external sample starter, then reinstalls its dependencies.
+ * Packs the published wstudio-api SDK into the external sample starter, then reinstalls its dependencies.
  */
 
 const fs = require('node:fs');
@@ -7,10 +7,10 @@ const path = require('node:path');
 const cp = require('node:child_process');
 
 const projectRoot = path.resolve(__dirname, '../..');
-const sdkRoot = path.join(projectRoot, 'packages', 'plugin');
-const sampleRoot = path.join(projectRoot, 'examples', 'plugins', 'wstudio-plugin-sample');
+const sdkRoot = path.join(projectRoot, '..', 'wstudio-api');
+const sampleRoot = path.join(projectRoot, '..', 'wstudio-sample-plugin');
 const sdkOutputRoot = path.join(sampleRoot, 'sdk');
-const stableTarballPath = path.join(sdkOutputRoot, 'note-studio-plugin-sdk.tgz');
+const stableTarballPath = path.join(sdkOutputRoot, 'wstudio-api.tgz');
 
 function resolveCommand(binary) {
   return process.platform === 'win32' ? `${binary}.cmd` : binary;
@@ -53,7 +53,6 @@ function packSdk() {
   ensureDirectory(sdkOutputRoot);
   cleanPackedTarballs();
 
-  run('pnpm', ['--filter', '@note-studio/plugin', 'build'], projectRoot);
   run('npm', ['pack', '--pack-destination', sdkOutputRoot], sdkRoot);
 
   const tarballs = fs
@@ -90,11 +89,6 @@ function packSdk() {
 
 function installSampleDependencies() {
   run('npm', ['install', '--ignore-scripts', '--force'], sampleRoot);
-  run(
-    'npm',
-    ['install', '--ignore-scripts', '--force', './sdk/note-studio-plugin-sdk.tgz'],
-    sampleRoot,
-  );
 }
 
 function main() {

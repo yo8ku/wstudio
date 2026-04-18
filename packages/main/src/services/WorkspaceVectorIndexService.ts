@@ -20,7 +20,7 @@ import * as crypto from 'crypto';
 import * as os from 'os';
 import { BrowserWindow, app } from 'electron';
 import { workspaceIndexDatabase } from './WorkspaceIndexDatabase';
-import { cloudEmbeddingService, EmbeddingResult } from './CloudEmbeddingService';
+import { cloudEmbeddingService, EmbeddingResult } from './CloudEmbeddingServiceRuntime';
 import { getElectronStore } from './ElectronStoreService';
 
 /**

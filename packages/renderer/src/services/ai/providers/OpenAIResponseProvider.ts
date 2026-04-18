@@ -123,14 +123,12 @@ export class OpenAIResponseProvider extends BaseAIProvider {
         stream: true,
       };
 
-      const response = await this.makeRequest(endpoint, {
+      await this.streamSSERequest(endpoint, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
         body: JSON.stringify(body),
         signal: params.signal,
-      });
-
-      await this.handleStreamResponse(response, callback, params.signal);
+      }, callback, params.signal);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return;
       this.handleError(error, 'Failed to generate text stream');

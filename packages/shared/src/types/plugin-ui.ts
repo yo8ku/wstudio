@@ -6,6 +6,7 @@ export const PLUGIN_UI_ENTRY_LOCATIONS = [
   'activityBar',
   'titleBar',
   'statusBar',
+  'editorTabBar',
   'canvasToolbar',
   'canvasTitleBar',
   'canvasContextMenu',
@@ -34,6 +35,7 @@ export interface PluginUiEntrySnapshot {
   readonly tooltip: string | null;
   readonly text: string | null;
   readonly icon: string | null;
+  readonly iconSvg: string | null;
   readonly scope: PluginUiEntryScope | null;
 }
 

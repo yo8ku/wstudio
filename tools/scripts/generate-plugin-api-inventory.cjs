@@ -43,7 +43,7 @@ const categoryRules = [
       'demo-ui-entry',
       'demo-command-notice-modal',
       'demo-menu-context',
-      'demo-suggest-basic',
+      'demo-editor-suggest',
     ],
     modules: new Set([
       'core/Control.ts',
@@ -63,7 +63,7 @@ const categoryRules = [
     title: 'P0 设置、Manifest 与持久化',
     description:
       '覆盖插件清单、设置页、设置项、保存与读取数据，以及与发布形态相关的元数据约束。',
-    demos: ['demo-settings-persistence', 'demo-manifest-release-channel'],
+    demos: ['demo-view-workspace', 'demo-manifest-release-channel'],
     modules: new Set([
       'core/Setting.ts',
       'core/SettingTab.ts',
@@ -76,7 +76,7 @@ const categoryRules = [
     title: 'P1 App、Workspace 与视图系统',
     description:
       '覆盖 App 宿主对象、工作区、视图、文件视图、工作台贡献以及与布局相关的能力。',
-    demos: ['demo-view-workspace', 'demo-workspace-leaf-routing'],
+    demos: ['demo-view-workspace'],
     modules: new Set([
       'core/FileView.ts',
       'core/View.ts',

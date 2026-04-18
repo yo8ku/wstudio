@@ -44,6 +44,7 @@ interface MainLayoutProps {
 }
 
 const WINDOW_BACKGROUND_FALLBACK = '#1e1e1e';
+const COMMAND_CENTER_SHOW_CHANNEL = 'command-center:show';
 
 type RGBAColor = {
   red: number;
@@ -237,6 +238,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   const extensionDevelopmentProviderRef = useRef<ExtensionDevelopmentCommandProvider | null>(null);
   const pluginCommandProviderRef = useRef<PluginCommandProvider | null>(null);
   const panelRevealTokensRef = useRef(new Map<string, number>());
+  const openCommandCenter = useCallback((): void => {
+    void commandCenterRef.current?.show('>');
+  }, []);
   const pluginUiEntries = usePluginUiEntries('activityBar');
   const pluginActivityItems = useMemo(
     () => {
@@ -250,6 +254,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         title: entry.title,
         iconPath: null,
         iconName: entry.icon,
+        iconSvg: entry.iconSvg,
         onClick: () => {
           void pluginUIService.executeEntry(entry.id).catch((error) => {
             const message = error instanceof Error ? error.message : String(error);
@@ -664,6 +669,26 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     };
   }, [isEditorOnlyWindow]);
 
+  useEffect(() => {
+    if (isEditorOnlyWindow) {
+      return undefined;
+    }
+
+    const ipcRenderer = window.electron?.ipcRenderer;
+    if (!ipcRenderer) {
+      return undefined;
+    }
+
+    const unsubscribe = ipcRenderer.on(COMMAND_CENTER_SHOW_CHANNEL, () => {
+      console.log('[MainLayout] 收到主进程命令中心打开请求');
+      openCommandCenter();
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [isEditorOnlyWindow, openCommandCenter]);
+
   // 鐩戝惉蹇嵎閿?
   useEffect(() => {
     if (isEditorOnlyWindow) {
@@ -675,7 +700,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       if (e.key === 'F1') {
         e.preventDefault();
         console.log('[MainLayout] F1 閿寜涓嬶紝鎵撳紑鍛戒护闈㈡澘');
-        commandCenterRef.current?.show('>');
+        openCommandCenter();
         return;
       }
 
@@ -683,7 +708,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'P') {
         e.preventDefault();
         console.log('[MainLayout] Ctrl+Shift+P 鎸変笅锛屾墦寮€鍛戒护闈㈡澘');
-        commandCenterRef.current?.show('>');
+        openCommandCenter();
         return;
       }
 
@@ -703,7 +728,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleTerminalPanel, isEditorOnlyWindow, isPanelVisible]);
+  }, [handleToggleTerminalPanel, isEditorOnlyWindow, isPanelVisible, openCommandCenter]);
 
   // 浣跨敤 useMemo 浼樺寲鏍峰紡瀵硅薄锛岄伩鍏嶆瘡娆℃覆鏌撻兘鍒涘缓鏂板璞?
   const mainLayoutStyle = useMemo(() => ({

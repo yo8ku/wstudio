@@ -134,9 +134,9 @@ export abstract class WorkspaceWindow extends WorkspaceContainer {
 
 export abstract class WorkspaceLeaf extends WorkspaceItem {
   public abstract readonly app: App;
+  public abstract readonly containerEl: HTMLElement;
   public abstract readonly id: string;
   public abstract override parent: WorkspaceTabs | WorkspaceMobileDrawer;
-  public abstract readonly containerEl: HTMLElement;
   public abstract hoverPopover: HoverPopover | null;
   public abstract readonly isDeferred: boolean;
   public abstract view: View;
@@ -193,7 +193,6 @@ export abstract class Workspace extends Events {
   public abstract rootSplit: WorkspaceRoot;
   public abstract activeLeaf: WorkspaceLeaf | null;
   public abstract activeEditor: MarkdownFileInfo | null;
-  public abstract containerEl: HTMLElement;
   public abstract layoutReady: boolean;
 
   public abstract onLayoutReady(callback: () => void): void;

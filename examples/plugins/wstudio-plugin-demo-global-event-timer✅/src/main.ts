@@ -27,6 +27,7 @@ function createSessionId(): string {
 }
 
 export default class GlobalEventTimerDemoPlugin extends Plugin {
+  private static readonly TRACE_HISTORY_LIMIT = 24;
   private counters: DemoCounters = createInitialCounters();
   private readonly sessionId = createSessionId();
   private readonly trace: string[] = [];
@@ -114,8 +115,10 @@ export default class GlobalEventTimerDemoPlugin extends Plugin {
   }
 
   private recordTrace(message: string): void {
-    const entry = `[demo-global-event-timer][${this.sessionId}] ${message}`;
     this.trace.push(message);
-    console.log(entry);
+
+    if (this.trace.length > GlobalEventTimerDemoPlugin.TRACE_HISTORY_LIMIT) {
+      this.trace.splice(0, this.trace.length - GlobalEventTimerDemoPlugin.TRACE_HISTORY_LIMIT);
+    }
   }
 }

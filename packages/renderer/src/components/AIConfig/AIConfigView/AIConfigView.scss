@@ -278,8 +278,34 @@
             font-size: 14px;
           }
 
-          .search-box {
+          .accordion-tools {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
             margin-left: 12px;
+            min-width: 0;
+            flex-wrap: wrap;
+          }
+
+          .btn-fetch-local-models {
+            padding: 6px 10px;
+            border: 1px solid var(--ws-input-border);
+            border-radius: 3px;
+            background: var(--ws-button-secondary-background, transparent);
+            color: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+
+            &:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+          }
+
+          .search-box {
+            margin-left: 0;
           }
         }
 

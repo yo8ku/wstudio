@@ -2,6 +2,7 @@
  * Internal runtime symbols used by the host to drive plugin and component lifecycle without widening the public SDK surface.
  */
 
+import type { EditorSuggestContext } from '../types/editor';
 import type { PluginFailureContext, PluginLifecycleSnapshot } from '../types/lifecycle';
 
 export const COMPONENT_INTERNAL_LOAD = Symbol.for('wstudio.component.internal.load');
@@ -14,7 +15,18 @@ export const PLUGIN_INTERNAL_DISABLE = Symbol.for('wstudio.plugin.internal.disab
 export const PLUGIN_INTERNAL_UNLOAD = Symbol.for('wstudio.plugin.internal.unload');
 export const PLUGIN_INTERNAL_FAIL = Symbol.for('wstudio.plugin.internal.fail');
 export const PLUGIN_INTERNAL_GET_SNAPSHOT = Symbol.for('wstudio.plugin.internal.getSnapshot');
+export const EDITOR_SUGGEST_INTERNAL_REFRESH = Symbol.for('wstudio.editorSuggest.internal.refresh');
+export const EDITOR_SUGGEST_INTERNAL_HANDLE_KEY = Symbol.for('wstudio.editorSuggest.internal.handleKey');
 export const SETTING_TAB_INTERNAL_ATTACH = Symbol.for('wstudio.settingTab.internal.attach');
+
+export interface PluginRuntimeAnchorRect {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly width: number;
+  readonly height: number;
+}
 
 export interface InternalComponentRuntime {
   [COMPONENT_INTERNAL_LOAD](): Promise<void>;
@@ -30,6 +42,14 @@ export interface InternalPluginRuntime {
   [PLUGIN_INTERNAL_UNLOAD](): Promise<void>;
   [PLUGIN_INTERNAL_FAIL](error: Error): Promise<PluginFailureContext>;
   [PLUGIN_INTERNAL_GET_SNAPSHOT](): PluginLifecycleSnapshot;
+}
+
+export interface InternalEditorSuggestRuntime {
+  [EDITOR_SUGGEST_INTERNAL_REFRESH](options: {
+    readonly context: EditorSuggestContext;
+    readonly anchorRect: PluginRuntimeAnchorRect | null;
+  }): Promise<boolean>;
+  [EDITOR_SUGGEST_INTERNAL_HANDLE_KEY](key: string): boolean;
 }
 
 export interface InternalSettingTabRuntime {

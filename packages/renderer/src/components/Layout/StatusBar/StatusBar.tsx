@@ -7,6 +7,7 @@ import type { WorkbenchMenuContributionEntry } from '@note-studio/shared';
 import { useTranslation } from 'react-i18next';
 import './StatusBar.scss';
 import { Icon } from '../../Icons/Icon';
+import { PluginUiIcon } from '../../Icons';
 import { ThemedMaskIcon } from '../../Icons/ThemedMaskIcon';
 import { useActivityBarStore } from '../../../stores/activityBarStore';
 import type { SettingsCategory } from '../Sidebar/SettingsSidebar';
@@ -371,7 +372,12 @@ export const StatusBar: React.FC<StatusBarProps> = () => {
                   void handleExecutePluginEntry(entry.id);
                 }}
               >
-                <Icon className="extension-icon" name={entry.icon ?? 'extensions'} size={14} />
+                <PluginUiIcon
+                  className="extension-icon"
+                  name={entry.icon}
+                  svgContent={entry.iconSvg}
+                  size={14}
+                />
               </div>
             )
           ))}

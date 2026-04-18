@@ -1,1 +1,0 @@
-export { GlobalPluginSuggestModal } from './GlobalPluginSuggestModal';

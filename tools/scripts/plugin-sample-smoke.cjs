@@ -1,5 +1,6 @@
 /**
  * Smoke test for the external-facing WStudio sample plugin starter.
+ * The starter is runtime-only for rich UI surfaces.
  */
 
 const fs = require('node:fs');
@@ -13,6 +14,8 @@ const projectRoot = path.resolve(__dirname, '../..');
 const sampleRoot = path.resolve(projectRoot, '..', 'wstudio-sample-plugin');
 const sampleEntryPath = path.join(sampleRoot, 'main.js');
 const sampleManifestPath = path.join(sampleRoot, 'manifest.json');
+const sampleSettingsRuntimePath = path.join(sampleRoot, 'settings.runtime.js');
+const sampleModalRuntimePath = path.join(sampleRoot, 'modal.runtime.js');
 const pluginSdkEntryPath = path.join(projectRoot, 'packages', 'plugin', 'src', 'index.ts');
 const runtimeSymbolsPath = path.join(projectRoot, 'packages', 'plugin', 'src', 'internal', 'runtime.ts');
 const domShimPath = path.join(
@@ -72,20 +75,56 @@ function loadSamplePluginModule() {
   }
 }
 
-function createFakeApp(manifest) {
+function createFakeApp() {
   const appState = {
+    bridgeNotices: [],
+    closedModalIds: [],
     commandMap: new Map(),
-    savedData: null,
-    settingTabs: [],
-    ribbonIcons: [],
-    ribbonIconCallbacks: [],
-    statusItems: [],
-    registeredViews: 0,
-    registeredExtensions: 0,
-    markdownProcessors: 0,
     intervalHandles: [],
     clearedIntervalHandles: [],
+    openedModals: [],
+    ribbonIcons: [],
+    ribbonIconCallbacks: [],
+    savedData: null,
+    settingTabs: [],
+    statusItems: [],
   };
+
+  const hostBridge = {
+    showNotice(payload) {
+      appState.bridgeNotices.push(payload);
+    },
+    openModal(payload) {
+      const modalId = `modal-${appState.openedModals.length + 1}`;
+      appState.openedModals.push({
+        id: modalId,
+        payload,
+      });
+      return modalId;
+    },
+    closeModal(modalId) {
+      appState.closedModalIds.push(modalId);
+      const openedModal = appState.openedModals.find((modal) => modal.id === modalId);
+      openedModal?.payload.onClose?.();
+    },
+    openPopover() {
+      return 'popover-1';
+    },
+    updatePopover() {
+      return undefined;
+    },
+    closePopover() {
+      return undefined;
+    },
+    openMenu() {
+      return 'menu-1';
+    },
+    closeMenu() {
+      return undefined;
+    },
+  };
+
+  globalThis.__wstudioPluginHostUiBridge = hostBridge;
 
   const runtime = {
     bases: {
@@ -132,10 +171,7 @@ function createFakeApp(manifest) {
     },
     extensions: {
       registerExtensions() {
-        appState.registeredExtensions += 1;
-        return createDisposable(() => {
-          appState.registeredExtensions -= 1;
-        });
+        return createDisposable(() => undefined);
       },
     },
     hover: {
@@ -145,16 +181,10 @@ function createFakeApp(manifest) {
     },
     markdown: {
       registerPostProcessor() {
-        appState.markdownProcessors += 1;
-        return createDisposable(() => {
-          appState.markdownProcessors -= 1;
-        });
+        return createDisposable(() => undefined);
       },
       registerCodeBlockProcessor() {
-        appState.markdownProcessors += 1;
-        return createDisposable(() => {
-          appState.markdownProcessors -= 1;
-        });
+        return createDisposable(() => undefined);
       },
     },
     protocols: {
@@ -167,8 +197,8 @@ function createFakeApp(manifest) {
         const containerEl = document.createElement('div');
         settingTab[SETTING_TAB_INTERNAL_ATTACH](containerEl);
         appState.settingTabs.push({
-          settingTab,
           containerEl,
+          settingTab,
         });
         return createDisposable(() => {
           void settingTab.hide();
@@ -193,10 +223,7 @@ function createFakeApp(manifest) {
     },
     views: {
       registerView() {
-        appState.registeredViews += 1;
-        return createDisposable(() => {
-          appState.registeredViews -= 1;
-        });
+        return createDisposable(() => undefined);
       },
     },
   };
@@ -222,15 +249,27 @@ function createFakeApp(manifest) {
   return {
     app,
     appState,
-    manifest,
   };
 }
 
 async function main() {
   assert.ok(fs.existsSync(sampleEntryPath), 'Sample plugin entry is missing.');
   assert.ok(fs.existsSync(sampleManifestPath), 'Sample plugin manifest is missing.');
+  assert.ok(fs.existsSync(sampleSettingsRuntimePath), 'Sample settings runtime entry is missing.');
+  assert.ok(fs.existsSync(sampleModalRuntimePath), 'Sample modal runtime entry is missing.');
 
   const manifest = JSON.parse(fs.readFileSync(sampleManifestPath, 'utf8'));
+  assert.equal(
+    manifest.ui?.settings,
+    './settings.runtime.js',
+    'Sample plugin should declare ui.settings runtime entry.',
+  );
+  assert.equal(
+    manifest.ui?.modals?.['sample-simple-modal'],
+    './modal.runtime.js',
+    'Sample plugin should declare ui.modals.sample-simple-modal runtime entry.',
+  );
+
   const samplePluginModule = loadSamplePluginModule();
   const capturedLogs = [];
   const originalConsoleLog = console.log;
@@ -238,6 +277,7 @@ async function main() {
   const originalClearInterval = global.clearInterval;
   const originalDocumentAddEventListener = document.addEventListener.bind(document);
   const originalDocumentRemoveEventListener = document.removeEventListener.bind(document);
+  const originalHostBridge = globalThis.__wstudioPluginHostUiBridge;
   const documentClickListeners = new Set();
 
   console.log = (...args) => {
@@ -250,7 +290,7 @@ async function main() {
     'Sample plugin default export must extend the SDK Plugin base class.',
   );
 
-  const { app, appState } = createFakeApp(manifest);
+  const { app, appState } = createFakeApp();
 
   global.setInterval = (callback, timeout, ...args) => {
     const handle = {
@@ -293,27 +333,21 @@ async function main() {
     assert.equal(appState.settingTabs.length, 1, 'Sample plugin should register one setting tab.');
     assert.equal(appState.ribbonIcons.length, 1, 'Sample plugin should create one ribbon icon.');
     assert.equal(appState.statusItems.length, 0, 'Sample plugin should not create status bar items.');
-    assert.equal(appState.registeredViews, 0, 'Sample plugin should not register custom views.');
-    assert.equal(appState.registeredExtensions, 0, 'Sample plugin should not register view extensions.');
-    assert.equal(appState.markdownProcessors, 0, 'Sample plugin should not register markdown processors.');
     assert.equal(appState.intervalHandles.length, 1, 'Sample plugin should register one global interval.');
 
     const [registeredTab] = appState.settingTabs;
     registeredTab.settingTab.display();
-    assert.ok(
-      registeredTab.containerEl.textContent.includes('WStudio Plugin Sample'),
-      'Setting tab display should render plugin title.',
-    );
-    assert.ok(
-      registeredTab.containerEl.textContent.includes('Ribbon Notice Message'),
-      'Setting tab display should render the sample setting option.',
+    assert.equal(
+      registeredTab.containerEl.childNodes.length,
+      0,
+      'Sample setting tab shell should not render legacy DOM content.',
     );
 
     await appState.ribbonIconCallbacks[0]();
-    assert.ok(document.body.children.length > 0, 'Ribbon icon click should add DOM content to the body.');
-    assert.ok(
-      document.body.textContent.includes('Sample ribbon icon clicked.'),
-      'Ribbon icon click should show the configured notice message.',
+    assert.equal(
+      appState.bridgeNotices.at(-1)?.message,
+      'Sample ribbon icon clicked.',
+      'Ribbon icon click should show the configured host notice message.',
     );
 
     await plugin.updateRibbonNoticeMessage('Updated notice from smoke test.');
@@ -323,28 +357,24 @@ async function main() {
       'Updating the sample setting should persist the new notice message.',
     );
 
-    const bodyChildCountBeforeModal = document.body.children.length;
-    await appState.commandMap.get('open-simple-modal').callback();
-    await new Promise((resolve) => {
-      setTimeout(resolve, 20);
-    });
+    await appState.ribbonIconCallbacks[0]();
     assert.equal(
-      document.body.children.length,
-      bodyChildCountBeforeModal + 1,
-      'Modal command should append a modal container to the document body.',
+      appState.bridgeNotices.at(-1)?.message,
+      'Updated notice from smoke test.',
+      'Ribbon icon should use the persisted runtime-only notice message.',
     );
-    const modalOverlay = document.body.children[document.body.children.length - 1];
-    assert.ok(
-      modalOverlay.textContent.includes('Simple Modal'),
-      'Modal command should render the modal title.',
+
+    await appState.commandMap.get('open-simple-modal').callback();
+    assert.equal(appState.openedModals.length, 1, 'Modal command should open one runtime modal.');
+    assert.equal(
+      appState.openedModals[0].payload.surfaceId,
+      'sample-simple-modal',
+      'Modal command should open the declared runtime modal surface.',
     );
-    assert.ok(
-      modalOverlay.textContent.includes('Updated notice from smoke test.'),
-      'Modal content should reflect the persisted ribbon notice message.',
-    );
-    assert.ok(
-      modalOverlay.textContent.includes('This modal is rendered by React.'),
-      'Modal content should be rendered by the built-in React starter.',
+    assert.equal(
+      appState.openedModals[0].payload.title,
+      'Simple Modal',
+      'Modal command should keep the expected modal title.',
     );
 
     for (const listener of documentClickListeners) {
@@ -357,6 +387,7 @@ async function main() {
         listener.handleEvent(new Event('click'));
       }
     }
+
     assert.ok(capturedLogs.includes('click'), 'Global click event should log "click".');
 
     appState.intervalHandles[0].callback(...appState.intervalHandles[0].args);
@@ -376,6 +407,7 @@ async function main() {
     global.clearInterval = originalClearInterval;
     document.addEventListener = originalDocumentAddEventListener;
     document.removeEventListener = originalDocumentRemoveEventListener;
+    globalThis.__wstudioPluginHostUiBridge = originalHostBridge;
   }
 
   console.log('wstudio-plugin-sample smoke test passed');

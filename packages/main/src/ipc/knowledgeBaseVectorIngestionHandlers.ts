@@ -6,7 +6,7 @@
 import { ipcMain } from 'electron';
 import { KnowledgeBaseVectorIngestionService } from '../services/KnowledgeBaseVectorIngestionService.js';
 import { VectorIngestionOptions } from '@note-studio/global-rag';
-import { cloudEmbeddingService } from '../services/CloudEmbeddingService.js';
+import { cloudEmbeddingService } from '../services/CloudEmbeddingServiceRuntime.js';
 
 /**
  * 云端 Embedding API 适配器

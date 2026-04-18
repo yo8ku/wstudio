@@ -3,6 +3,7 @@
  */
 
 import type { PluginManifest, PluginReleaseChannel } from '@note-studio/plugin';
+import type { PluginUiRuntimeSurfaceDescriptor } from '@note-studio/shared';
 
 export interface PluginScanFailure {
   readonly rootDirectory: string;
@@ -25,6 +26,13 @@ export interface PluginDescriptor {
   readonly entryPath: string | null;
   readonly iconPath: string | null;
   readonly fileIconTheme: PluginResolvedFileIconTheme | null;
+  readonly uiEntrypoints: PluginResolvedUiEntrypoints | null;
+}
+
+export interface PluginResolvedUiEntrypoints {
+  readonly views: Readonly<Record<string, string>>;
+  readonly settings: string | null;
+  readonly modals: Readonly<Record<string, string>>;
 }
 
 export interface PluginResolvedFileIconThemeMapping {
@@ -64,6 +72,7 @@ export interface PluginSettingTabSummary {
   readonly title: string;
   readonly preview: string | null;
   readonly previewLines: readonly string[];
+  readonly runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
 }
 
 export interface PluginEditorPoint {
@@ -91,12 +100,22 @@ export interface PluginEditorScrollSnapshot {
   readonly clientHeight: number;
 }
 
+export interface PluginEditorCaretRectSnapshot {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface PluginEditorStateSnapshot {
   readonly documentUri: string;
   readonly content: string;
   readonly selection: PluginEditorSelectionSnapshot | null;
   readonly hasFocus: boolean;
   readonly scroll: PluginEditorScrollSnapshot | null;
+  readonly caretRect: PluginEditorCaretRectSnapshot | null;
 }
 
 export interface PluginEditorTextEdit {
@@ -134,6 +153,8 @@ export type PluginEditorActionRequest =
 
 export interface MainProcessEditorBridge {
   requestState(documentUri: string | null): Promise<PluginEditorStateSnapshot | null>;
+  getLastKnownDocumentUri(): string | null;
   applyTextEdits(documentUri: string, edits: readonly PluginEditorTextEdit[]): Promise<void>;
   performAction(request: PluginEditorActionRequest): Promise<void>;
+  subscribeStateChanges(listener: () => void): () => void;
 }

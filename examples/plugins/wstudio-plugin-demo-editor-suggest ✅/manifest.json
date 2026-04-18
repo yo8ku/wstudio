@@ -11,6 +11,12 @@
   "fundingUrl": "https://github.com/sponsors/arebelamazuera",
   "releaseChannel": "development",
   "isDesktopOnly": false,
+  "ui": {
+    "modals": {
+      "editor-suggest-runtime-popover": "./popover.runtime.js",
+      "editor-suggest-runtime-popover-failure": "./popover.failure.runtime.js"
+    }
+  },
   "engines": {
     "wstudio": "^1.0.0"
   }

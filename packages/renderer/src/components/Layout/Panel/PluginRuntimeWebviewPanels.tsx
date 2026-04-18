@@ -5,6 +5,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { JsonValue, WorkbenchRuntimeWebviewPanelEntry } from '@note-studio/shared';
 import { webviewService } from '../../../services/WebviewService';
+import { PluginSandboxFrame, PLUGIN_SANDBOX_PERMISSION_PRESETS } from '../../common/PluginSandboxFrame';
 
 interface PluginRuntimeWebviewPanelsProps {
   readonly panels: readonly WorkbenchRuntimeWebviewPanelEntry[];
@@ -128,7 +129,7 @@ export const PluginRuntimeWebviewPanels: React.FC<PluginRuntimeWebviewPanelsProp
           >
             <div className='panel-container-plugin-webview'>
               {shouldRenderIframe ? (
-                <iframe
+                <PluginSandboxFrame
                   ref={(element) => {
                     iframeRefs.current.set(panel.panelInstanceKey, element);
                     if (!element) {
@@ -138,7 +139,7 @@ export const PluginRuntimeWebviewPanels: React.FC<PluginRuntimeWebviewPanelsProp
                   className='panel-container-plugin-webview-frame'
                   src={panel.webviewHtml ? undefined : panel.webviewEntryUrl}
                   srcDoc={panel.webviewHtml ?? undefined}
-                  sandbox='allow-scripts allow-same-origin'
+                  sandboxPermissions={PLUGIN_SANDBOX_PERMISSION_PRESETS.runtimeWebviewPanel}
                   title={panel.title}
                   onLoad={() => {
                     loadedPanelsRef.current.add(panel.panelInstanceKey);

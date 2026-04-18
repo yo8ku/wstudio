@@ -4,6 +4,8 @@
 
 export { Icon } from './Icon';
 export type { IconProps } from './Icon';
+export { PluginUiIcon } from './PluginUiIcon';
+export type { PluginUiIconProps } from './PluginUiIcon';
 
 export { iconRegistry } from './IconRegistry';
 export type { IconComponent, IconSet } from './IconRegistry';

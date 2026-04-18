@@ -30,7 +30,7 @@ import { type KnowledgeItem } from '../Sidebar/KnowledgeBase/types';
 import { toastService } from '../../../services/ToastService';
 import { aiPanelContributionService } from '../../../services/AIPanelContributionService';
 import { getAssistantChatSystemPromptAsync } from '../../../services/ai/SystemPrompt';
-import { PromptInput, type PromptInputRef } from '../EditorArea/AIInput/PromptInput';
+import { TipTapInput, type TipTapInputRef } from '../EditorArea/AIZoneWidget/TipTapInput';
 import {
   EMPTY_AI_PANEL_CONTRIBUTION_SNAPSHOT,
   type AIPanelCommandContributionEntry,
@@ -116,6 +116,16 @@ interface SlashCommandItem {
   command: string;
   description: string;
   insertText: string;
+}
+
+type ContextMenuMode = 'browse' | 'slash';
+
+interface SlashCommandMenuItem {
+  key: string;
+  title: string;
+  description: string;
+  multiline: boolean;
+  onSelect: () => void;
 }
 
 interface DecompositionRule {
@@ -1042,6 +1052,14 @@ const createSlashCommandItems = (): SlashCommandItem[] => ([
     insertText: '/compact',
   },
   {
+    command: '/part',
+    description: translateAiChatText(
+      'aiChatPanel.slashCommands.partDescription',
+      'Decompose the currently open note',
+    ),
+    insertText: '/part',
+  },
+  {
     command: '/help',
     description: translateAiChatText(
       'aiChatPanel.slashCommands.helpDescription',
@@ -1060,6 +1078,20 @@ const createSlashCommandItems = (): SlashCommandItem[] => ([
 ]);
 
 const normalizeSlashSearchKeyword = (value: string): string => value.trim().toLowerCase();
+
+const resolveSlashCommandQuery = (value: string): string | null => {
+  const trimmedStart = value.trimStart();
+  if (!trimmedStart.startsWith('/')) {
+    return null;
+  }
+
+  const commandBody = trimmedStart.slice(1);
+  if (/\s/.test(commandBody)) {
+    return null;
+  }
+
+  return commandBody;
+};
 
 const matchesSlashSearchKeyword = (
   keyword: string,
@@ -2167,8 +2199,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [isLoading, setIsLoading] = useState(false);
   const isMaximized = false;
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
-  const [subMenuType, setSubMenuType] = useState<'none' | 'model' | 'knowledge' | 'form' | 'decompositionRules' | 'writingRules' | 'files' | 'skills' | 'memory' | 'mcpServer'>('none');
+  const [subMenuType, setSubMenuType] = useState<'none' | 'model' | 'knowledge' | 'form' | 'decompositionRules' | 'writingRules' | 'files' | 'skills' | 'memory'>('none');
+  const [contextMenuMode, setContextMenuMode] = useState<ContextMenuMode>('browse');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeSlashMenuIndex, setActiveSlashMenuIndex] = useState(0);
   const [aiPanelContributions, setAiPanelContributions] = useState<AIPanelContributionSnapshot>(
     EMPTY_AI_PANEL_CONTRIBUTION_SNAPSHOT,
   );
@@ -2201,16 +2235,17 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const [selectedKbs, setSelectedKbs] = useState<Array<{ id: string; title: string }>>([]); // 用户选中的知识库
   const [selectedForms, setSelectedForms] = useState<Array<{ id: string; name: string }>>([]); // 用户选中的表单
   const [writingRuleDocuments, setWritingRuleDocuments] = useState<WritingRuleDocument[]>([]);
-  const [newDecompositionRuleName, setNewDecompositionRuleName] = useState('');
-  const [newDecompositionRuleInstruction, setNewDecompositionRuleInstruction] = useState('');
   const [decompositionRules, setDecompositionRules] = useState<DecompositionRule[]>(() => cloneBuiltinDecompositionRules());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器 ref
   const panelRef = useRef<HTMLDivElement>(null);
-  const promptInputRef = useRef<PromptInputRef>(null);
+  const promptInputRef = useRef<TipTapInputRef>(null);
+  const suppressSlashMenuRef = useRef(false);
+  const lastInsertedSlashCommandRef = useRef<string>('');
   const contextButtonRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const slashMenuItemRefs = useRef<Array<HTMLDivElement | null>>([]);
   const headerRef = useRef<HTMLDivElement>(null);
   const headerContextMenuRef = useRef<HTMLDivElement>(null);
   const historyButtonRef = useRef<HTMLDivElement>(null);
@@ -2342,6 +2377,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const closeSlashContextMenu = useCallback(() => {
     setIsContextMenuOpen(false);
     setSubMenuType('none');
+    setContextMenuMode('browse');
     setSearchQuery('');
     promptInputRef.current?.focus();
   }, []);
@@ -2370,14 +2406,26 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   }, [isContextMenuOpen, loadAIPanelContributions]);
 
   const handleInsertSlashCommand = useCallback((insertText: string) => {
+    suppressSlashMenuRef.current = true;
+    lastInsertedSlashCommandRef.current = insertText;
     promptInputRef.current?.setText(insertText);
     setInput(insertText);
     closeSlashContextMenu();
   }, [closeSlashContextMenu]);
 
+  const slashCommandQuery = useMemo(
+    () => (contextMenuMode === 'slash' ? resolveSlashCommandQuery(input) ?? '' : ''),
+    [contextMenuMode, input],
+  );
+
+  const effectiveMenuSearchQuery = useMemo(
+    () => (contextMenuMode === 'slash' ? slashCommandQuery : searchQuery),
+    [contextMenuMode, searchQuery, slashCommandQuery],
+  );
+
   const normalizedSlashSearchQuery = useMemo(
-    () => normalizeSlashSearchKeyword(searchQuery),
-    [searchQuery],
+    () => normalizeSlashSearchKeyword(effectiveMenuSearchQuery),
+    [effectiveMenuSearchQuery],
   );
 
   const filteredBuiltinSlashCommands = useMemo(
@@ -2418,6 +2466,39 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     )),
     [aiPanelContributions.skills, normalizedSlashSearchQuery],
   );
+
+  const isSlashContextMenuMode = contextMenuMode === 'slash';
+
+  useEffect(() => {
+    const currentSlashQuery = resolveSlashCommandQuery(input);
+
+    if (suppressSlashMenuRef.current) {
+      if (input === lastInsertedSlashCommandRef.current) {
+        return;
+      }
+      suppressSlashMenuRef.current = false;
+      lastInsertedSlashCommandRef.current = '';
+    }
+
+    if (currentSlashQuery === null) {
+      if (contextMenuMode === 'slash') {
+        setContextMenuMode('browse');
+        setSubMenuType('none');
+        setIsContextMenuOpen(false);
+      }
+      return;
+    }
+
+    if (!isContextMenuOpen) {
+      setIsContextMenuOpen(true);
+    }
+    if (contextMenuMode !== 'slash') {
+      setContextMenuMode('slash');
+    }
+    if (subMenuType !== 'none') {
+      setSubMenuType('none');
+    }
+  }, [contextMenuMode, input, isContextMenuOpen, subMenuType]);
 
   const handleExecuteAIPanelContribution = useCallback(async (
     item: AIPanelContributionEntry,
@@ -2468,6 +2549,134 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     }
   }, [closeSlashContextMenu, handleInsertSlashCommand]);
 
+  const slashCommandMenuItems = useMemo<SlashCommandMenuItem[]>(
+    () => [
+      ...filteredBuiltinSlashCommands.map((cmd) => ({
+        key: cmd.command,
+        title: cmd.command,
+        description: cmd.description,
+        multiline: false,
+        onSelect: () => handleInsertSlashCommand(cmd.insertText),
+      })),
+      ...filteredAIPanelCommandContributions.map((item) => ({
+        key: item.itemId,
+        title: item.title,
+        description: item.description,
+        multiline: true,
+        onSelect: () => {
+          void handleExecuteAIPanelContribution(item);
+        },
+      })),
+    ],
+    [
+      filteredAIPanelCommandContributions,
+      filteredBuiltinSlashCommands,
+      handleExecuteAIPanelContribution,
+      handleInsertSlashCommand,
+    ],
+  );
+
+  useEffect(() => {
+    if (!isSlashContextMenuMode || !isContextMenuOpen || subMenuType !== 'none') {
+      setActiveSlashMenuIndex(0);
+      return;
+    }
+
+    setActiveSlashMenuIndex((currentIndex) => {
+      if (slashCommandMenuItems.length === 0) {
+        return 0;
+      }
+      return Math.min(currentIndex, slashCommandMenuItems.length - 1);
+    });
+  }, [isContextMenuOpen, isSlashContextMenuMode, slashCommandMenuItems.length, subMenuType]);
+
+  useEffect(() => {
+    if (!isSlashContextMenuMode || !isContextMenuOpen) {
+      return;
+    }
+
+    const targetItem = slashMenuItemRefs.current[activeSlashMenuIndex];
+    targetItem?.scrollIntoView({ block: 'nearest' });
+  }, [activeSlashMenuIndex, isContextMenuOpen, isSlashContextMenuMode]);
+
+  const handleSlashMenuNavigate = useCallback((direction: 'up' | 'down') => {
+    if (!isSlashContextMenuMode || !isContextMenuOpen || subMenuType !== 'none') {
+      return;
+    }
+
+    if (slashCommandMenuItems.length === 0) {
+      return;
+    }
+
+    setActiveSlashMenuIndex((currentIndex) => {
+      if (direction === 'up') {
+        return currentIndex <= 0 ? slashCommandMenuItems.length - 1 : currentIndex - 1;
+      }
+      return currentIndex >= slashCommandMenuItems.length - 1 ? 0 : currentIndex + 1;
+    });
+  }, [isContextMenuOpen, isSlashContextMenuMode, slashCommandMenuItems, subMenuType]);
+
+  const handleSlashMenuSelect = useCallback(() => {
+    if (!isSlashContextMenuMode || !isContextMenuOpen || subMenuType !== 'none') {
+      return;
+    }
+
+    slashCommandMenuItems[activeSlashMenuIndex]?.onSelect();
+  }, [
+    activeSlashMenuIndex,
+    isContextMenuOpen,
+    isSlashContextMenuMode,
+    slashCommandMenuItems,
+    subMenuType,
+  ]);
+
+  useEffect(() => {
+    if (!isSlashContextMenuMode || !isContextMenuOpen || subMenuType !== 'none') {
+      return;
+    }
+
+    const handleDocumentKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        event.stopPropagation();
+        handleSlashMenuNavigate('up');
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        event.stopPropagation();
+        handleSlashMenuNavigate('down');
+        return;
+      }
+
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        handleSlashMenuSelect();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSlashContextMenu();
+      }
+    };
+
+    document.addEventListener('keydown', handleDocumentKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleDocumentKeyDown, true);
+    };
+  }, [
+    closeSlashContextMenu,
+    handleSlashMenuNavigate,
+    handleSlashMenuSelect,
+    isContextMenuOpen,
+    isSlashContextMenuMode,
+    subMenuType,
+  ]);
+
   const enabledDecompositionRules = getEnabledDecompositionRules(decompositionRules);
   const enabledWritingRuleDocuments = useMemo(
     () => writingRuleDocuments.filter(document => document.enabled && document.path.trim().length > 0),
@@ -2497,78 +2706,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     ));
   }, []);
 
-  const handleAddDecompositionRule = useCallback(() => {
-    const name = newDecompositionRuleName.trim();
-    const instruction = newDecompositionRuleInstruction.trim();
-    if (!name || !instruction) {
-      toastService.warning(
-        translateText(
-          'decompositionRulesView.toasts.ruleNameInstructionRequired',
-          'Enter both the rule name and instruction first',
-        ),
-      );
-      return;
-    }
-
-    const identityKey = buildRuleIdentityKey(name, instruction);
-    const existingRule = decompositionRules.find(
-      rule => buildRuleIdentityKey(rule.name, rule.instruction) === identityKey,
-    );
-
-    if (existingRule) {
-      if (!existingRule.enabled) {
-        setDecompositionRules(prev =>
-          prev.map(rule =>
-            rule.id === existingRule.id ? { ...rule, enabled: true } : rule,
-          ),
-        );
-        toastService.success(
-          translateText(
-            'decompositionRulesView.toasts.ruleExistsAutoEnabled',
-            'The rule already exists and has been enabled automatically',
-          ),
-        );
-      } else {
-        toastService.info(
-          translateText(
-            'decompositionRulesView.toasts.ruleExists',
-            'The rule already exists',
-          ),
-        );
-      }
-      return;
-    }
-
-    const uniqueSeed = `${name}|${instruction}|${Date.now().toString()}`;
-    setDecompositionRules(prev => [
-      ...prev,
-      {
-        id: `custom-${hashText(uniqueSeed)}`,
-        name,
-        instruction,
-        enabled: true,
-        builtin: false,
-      },
-    ]);
-    setNewDecompositionRuleName('');
-    setNewDecompositionRuleInstruction('');
-    toastService.success(
-      translateText(
-        'decompositionRulesView.toasts.ruleAdded',
-        'Added the decomposition rule',
-      ),
-    );
-  }, [decompositionRules, newDecompositionRuleInstruction, newDecompositionRuleName, translateText]);
-
   const handleDeleteDecompositionRule = useCallback((ruleId: string) => {
     setDecompositionRules(prev => prev.filter(rule => !(rule.id === ruleId && !rule.builtin)));
-  }, []);
-
-  const handleResetBuiltinDecompositionRules = useCallback(() => {
-    setDecompositionRules(prev => {
-      const customRules = prev.filter(rule => !rule.builtin);
-      return [...cloneBuiltinDecompositionRules(), ...customRules];
-    });
   }, []);
 
   const handleOpenDecompositionRulesTab = useCallback(() => {
@@ -2586,12 +2725,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
     setSubMenuType('none');
     setIsContextMenuOpen(false);
     window.dispatchEvent(new Event('open-skill-market'));
-  }, []);
-
-  const handleOpenAIConfigTab = useCallback(() => {
-    setSubMenuType('none');
-    setIsContextMenuOpen(false);
-    window.dispatchEvent(new CustomEvent('open-ai-config'));
   }, []);
 
   const handleImportWritingRuleDocuments = useCallback(async () => {
@@ -3808,6 +3941,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
   const toggleContextMenu = () => {
     const newState = !isContextMenuOpen;
     setIsContextMenuOpen(newState);
+    setContextMenuMode('browse');
     
     // Focus search input when opening the menu.
     if (newState) {
@@ -3903,9 +4037,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
         break;
       case 'memory':
         setSubMenuType('memory');
-        break;
-      case 'mcpServer':
-        setSubMenuType('mcpServer');
         break;
       case 'writingRules':
         setSubMenuType('writingRules');
@@ -6068,145 +6199,144 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
             {/* Context menu */}
             {isContextMenuOpen && (
               <div ref={contextMenuRef} className="context-menu">
-                {/* Search bar (sticky) */}
-                <div className="context-menu-search">
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    className="context-menu-search-input"
-                    placeholder={translateText('aiChatPanel.contextMenu.searchPlaceholder', 'Search...')}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && searchQuery.trim()) {
-                        handleContextMenuItemClick('search');
-                      }
-                    }}
-                  />
-                </div>
+                {!isSlashContextMenuMode && (
+                  <div className="context-menu-search">
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      className="context-menu-search-input"
+                      placeholder={translateText('aiChatPanel.contextMenu.searchPlaceholder', 'Search...')}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && searchQuery.trim()) {
+                          handleContextMenuItemClick('search');
+                        }
+                      }}
+                    />
+                  </div>
+                )}
 
                 {/* 滚动内容区域 */}
                 <div className="context-menu-content">
                 {subMenuType === 'none' ? (
                   <>
-                    {/* Context groups */}
-                    <div className="context-menu-group">
-                      <div className="context-menu-group-title">
-                        {translateText('aiChatPanel.contextMenu.groups.context', 'Context')}
-                      </div>
-                      <div className="context-menu-item" onClick={() => handleContextMenuItemClick('files')}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiReferenceMenu.categories.files', 'Files & Folders')}
-                        </span>
-                      </div>
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('knowledge')}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiReferenceMenu.categories.knowledgeBase', 'Knowledge Base')}
-                        </span>
-                        <Icon name="chevron-right" size={12} />
-                      </div>
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('form')}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiReferenceMenu.categories.forms', 'Forms')}
-                        </span>
-                        <Icon name="chevron-right" size={12} />
-                      </div>
-                    </div>
-
-                    {/* 模型分组 */}
-                    <div className="context-menu-group">
-                      <div className="context-menu-group-title">
-                        {translateText('aiChatPanel.contextMenu.groups.model', 'Model')}
-                      </div>
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => setSubMenuType('model')}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiChatPanel.contextMenu.items.selectModel', 'Select Model')}
-                        </span>
-                        <span className="context-menu-item-current">{availableModels.find(m => m.modelId === selectedModel)?.displayName || formatModelDisplayName(selectedModel)}</span>
-                        <Icon name="chevron-right" size={12} />
-                      </div>
-                      <div className="context-menu-item context-menu-item-switch" onClick={() => setIsDeepThinkingEnabled(!isDeepThinkingEnabled)}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiChatPanel.contextMenu.items.thinking', 'Thinking')}
-                        </span>
-                        <Switch
-                          className="context-menu-switch"
-                          checked={isDeepThinkingEnabled}
-                          ariaLabel={translateText('aiChatPanel.contextMenu.aria.toggleThinking', 'Toggle deep thinking')}
-                          onChange={setIsDeepThinkingEnabled}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Skills group */}
-                    <div className="context-menu-group">
-                      <div className="context-menu-group-title">
-                        {translateText('aiChatPanel.contextMenu.groups.skills', 'Skills')}
-                      </div>
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('skills')}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiChatPanel.contextMenu.items.skills', 'Skills')}
-                        </span>
-                        <Icon name="chevron-right" size={12} />
-                      </div>
-                      {filteredAIPanelSkillContributions.map((item: AIPanelSkillContributionEntry) => (
-                        <div
-                          key={item.itemId}
-                          className="context-menu-item context-menu-item-multiline"
-                          onClick={() => {
-                            void handleExecuteAIPanelContribution(item);
-                          }}
-                          title={item.description}
-                        >
-                          <div className="context-menu-item-content">
-                            <span className="context-menu-item-text">{item.title}</span>
-                            <span className="context-menu-item-description">{item.description}</span>
+                    {!isSlashContextMenuMode && (
+                      <>
+                        <div className="context-menu-group">
+                          <div className="context-menu-group-title">
+                            {translateText('aiChatPanel.contextMenu.groups.context', 'Context')}
+                          </div>
+                          <div className="context-menu-item" onClick={() => handleContextMenuItemClick('files')}>
+                            <span className="context-menu-item-text">
+                              {translateText('aiReferenceMenu.categories.files', 'Files & Folders')}
+                            </span>
+                          </div>
+                          <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('knowledge')}>
+                            <span className="context-menu-item-text">
+                              {translateText('aiReferenceMenu.categories.knowledgeBase', 'Knowledge Base')}
+                            </span>
+                            <Icon name="chevron-right" size={12} />
+                          </div>
+                          <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('form')}>
+                            <span className="context-menu-item-text">
+                              {translateText('aiReferenceMenu.categories.forms', 'Forms')}
+                            </span>
+                            <Icon name="chevron-right" size={12} />
                           </div>
                         </div>
-                      ))}
-                      {isLoadingAIPanelContributions && (
-                        <div className="context-menu-empty">
-                          <span className="context-menu-empty-text">
-                            {translateText('aiChatPanel.contextMenu.states.loadingPluginSkills', 'Loading plugin skills...')}
-                          </span>
+
+                        <div className="context-menu-group">
+                          <div className="context-menu-group-title">
+                            {translateText('aiChatPanel.contextMenu.groups.model', 'Model')}
+                          </div>
+                          <div className="context-menu-item context-menu-item-arrow" onClick={() => setSubMenuType('model')}>
+                            <span className="context-menu-item-text">
+                              {translateText('aiChatPanel.contextMenu.items.selectModel', 'Select Model')}
+                            </span>
+                            <span className="context-menu-item-current">{availableModels.find(m => m.modelId === selectedModel)?.displayName || formatModelDisplayName(selectedModel)}</span>
+                            <Icon name="chevron-right" size={12} />
+                          </div>
+                          <div className="context-menu-item context-menu-item-switch" onClick={() => setIsDeepThinkingEnabled(!isDeepThinkingEnabled)}>
+                            <span className="context-menu-item-text">
+                              {translateText('aiChatPanel.contextMenu.items.thinking', 'Thinking')}
+                            </span>
+                            <Switch
+                              className="context-menu-switch"
+                              checked={isDeepThinkingEnabled}
+                              ariaLabel={translateText('aiChatPanel.contextMenu.aria.toggleThinking', 'Toggle deep thinking')}
+                              onChange={setIsDeepThinkingEnabled}
+                            />
+                          </div>
                         </div>
-                      )}
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('memory')}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiChatPanel.contextMenu.items.memory', 'Memory')}
-                        </span>
-                        <Icon name="chevron-right" size={12} />
-                      </div>
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('decompositionRules')}>
-                        <span className="context-menu-item-text">
-                          {translateText('decompositionRulesView.sections.rules', 'Decomposition Rules')}
-                        </span>
-                        {enabledDecompositionRules.length > 0 && <span className="context-menu-item-badge">{enabledDecompositionRules.length}</span>}
-                        <Icon name="chevron-right" size={12} />
-                      </div>
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('mcpServer')}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiChatPanel.contextMenu.items.mcpServer', 'MCP Server')}
-                        </span>
-                        <Icon name="chevron-right" size={12} />
-                      </div>
-                      <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('writingRules')}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiReferenceMenu.categories.rules', 'Writing Rules')}
-                        </span>
-                        {enabledWritingRuleDocuments.length > 0 && <span className="context-menu-item-badge">{enabledWritingRuleDocuments.length}</span>}
-                        <Icon name="chevron-right" size={12} />
-                      </div>
-                    </div>
+
+                        <div className="context-menu-group">
+                          <div className="context-menu-group-title">
+                            {translateText('aiChatPanel.contextMenu.groups.skills', 'Skills')}
+                          </div>
+                          <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('skills')}>
+                            <span className="context-menu-item-text">
+                              {translateText('aiChatPanel.contextMenu.items.skills', 'Skills')}
+                            </span>
+                            <Icon name="chevron-right" size={12} />
+                          </div>
+                          {filteredAIPanelSkillContributions.map((item: AIPanelSkillContributionEntry) => (
+                            <div
+                              key={item.itemId}
+                              className="context-menu-item context-menu-item-multiline"
+                              onClick={() => {
+                                void handleExecuteAIPanelContribution(item);
+                              }}
+                              title={item.description}
+                            >
+                              <div className="context-menu-item-content">
+                                <span className="context-menu-item-text">{item.title}</span>
+                                <span className="context-menu-item-description">{item.description}</span>
+                              </div>
+                            </div>
+                          ))}
+                          {isLoadingAIPanelContributions && (
+                            <div className="context-menu-empty">
+                              <span className="context-menu-empty-text">
+                                {translateText('aiChatPanel.contextMenu.states.loadingPluginSkills', 'Loading plugin skills...')}
+                              </span>
+                            </div>
+                          )}
+                          <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('memory')}>
+                            <span className="context-menu-item-text">
+                              {translateText('aiChatPanel.contextMenu.items.memory', 'Memory')}
+                            </span>
+                            <Icon name="chevron-right" size={12} />
+                          </div>
+                          <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('decompositionRules')}>
+                            <span className="context-menu-item-text">
+                              {translateText('decompositionRulesView.sections.rules', 'Decomposition Rules')}
+                            </span>
+                            {enabledDecompositionRules.length > 0 && <span className="context-menu-item-badge">{enabledDecompositionRules.length}</span>}
+                            <Icon name="chevron-right" size={12} />
+                          </div>
+                          <div className="context-menu-item context-menu-item-arrow" onClick={() => handleContextMenuItemClick('writingRules')}>
+                            <span className="context-menu-item-text">
+                              {translateText('aiReferenceMenu.categories.rules', 'Writing Rules')}
+                            </span>
+                            {enabledWritingRuleDocuments.length > 0 && <span className="context-menu-item-badge">{enabledWritingRuleDocuments.length}</span>}
+                            <Icon name="chevron-right" size={12} />
+                          </div>
+                        </div>
+                      </>
+                    )}
 
                     <div className="context-menu-group">
                       <div className="context-menu-group-title">
                         {translateText('aiChatPanel.contextMenu.groups.commands', 'Commands')}
                       </div>
-                      {filteredBuiltinSlashCommands.map(cmd => (
+                      {filteredBuiltinSlashCommands.map((cmd, index) => (
                           <div
                             key={cmd.command}
-                            className="context-menu-item"
+                            ref={(element) => {
+                              slashMenuItemRefs.current[index] = element;
+                            }}
+                            className={`context-menu-item${isSlashContextMenuMode && activeSlashMenuIndex === index ? ' keyboard-active' : ''}`}
                             onClick={() => handleInsertSlashCommand(cmd.insertText)}
                             title={cmd.description}
                           >
@@ -6218,10 +6348,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                           {translateText('aiChatPanel.contextMenu.pluginCommands', 'Plugin Commands')}
                         </div>
                       )}
-                      {filteredAIPanelCommandContributions.map((item: AIPanelCommandContributionEntry) => (
+                      {filteredAIPanelCommandContributions.map((item: AIPanelCommandContributionEntry, index) => {
+                        const itemIndex = filteredBuiltinSlashCommands.length + index;
+                        return (
                         <div
                           key={item.itemId}
-                          className="context-menu-item context-menu-item-multiline"
+                          ref={(element) => {
+                            slashMenuItemRefs.current[itemIndex] = element;
+                          }}
+                          className={`context-menu-item context-menu-item-multiline${isSlashContextMenuMode && activeSlashMenuIndex === itemIndex ? ' keyboard-active' : ''}`}
                           onClick={() => {
                             void handleExecuteAIPanelContribution(item);
                           }}
@@ -6232,7 +6367,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                             <span className="context-menu-item-description">{item.description}</span>
                           </div>
                         </div>
-                      ))}
+                      );
+                      })}
                     </div>
                   </>
                 ) : subMenuType === 'model' ? (
@@ -6495,61 +6631,30 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                         </svg>
                         <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
                       </div>
-                    </div>
-
-                    <div className="context-menu-group">
-                      <div className="context-menu-group-title">
-                        {translateText('decompositionRulesView.sections.rules', 'Decomposition Rules')}
-                      </div>
-                      <div className="context-menu-rule-editor">
-                        <input
-                          className="context-menu-rule-input"
-                          placeholder={translateText('decompositionRulesView.inputs.ruleNamePlaceholder', 'Rule Name')}
-                          value={newDecompositionRuleName}
-                          onChange={event => setNewDecompositionRuleName(event.target.value)}
-                          onKeyDown={event => {
-                            if (event.key === 'Enter') {
+                      <div className="context-menu-header-actions">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className="context-menu-header-button"
+                          onClick={handleOpenDecompositionRulesTab}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault();
-                              handleAddDecompositionRule();
+                              handleOpenDecompositionRulesTab();
                             }
                           }}
-                        />
-                        <input
-                          className="context-menu-rule-input"
-                          placeholder={translateText('decompositionRulesView.inputs.ruleInstructionPlaceholder', 'Rule Instruction')}
-                          value={newDecompositionRuleInstruction}
-                          onChange={event => setNewDecompositionRuleInstruction(event.target.value)}
-                          onKeyDown={event => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault();
-                              handleAddDecompositionRule();
-                            }
-                          }}
-                        />
-                        <div className="context-menu-item" onClick={handleAddDecompositionRule}>
-                          <Icon name="file-code" size={14} />
-                          <span className="context-menu-item-text">
-                            {translateText('decompositionRulesView.actions.addRule', 'Add Rule')}
-                          </span>
-                        </div>
-                        <div className="context-menu-item" onClick={handleOpenDecompositionRulesTab}>
-                          <Icon name="file" size={14} />
-                          <span className="context-menu-item-text">
-                            {translateText('aiChatPanel.contextMenu.items.manageInTab', 'Manage in Tab')}
-                          </span>
-                        </div>
-                        <div className="context-menu-item" onClick={handleResetBuiltinDecompositionRules}>
-                          <Icon name="refresh" size={14} />
-                          <span className="context-menu-item-text">
-                            {translateText('decompositionRulesView.actions.resetBuiltinRules', 'Restore Built-in Rules')}
-                          </span>
+                        >
+                          {translateText('decompositionRulesView.actions.addRule', 'Add Rule')}
                         </div>
                       </div>
                     </div>
 
                     <div className="context-menu-group">
-                      <div className="context-menu-group-title">
-                        {translateText('aiChatPanel.contextMenu.groups.decompositionRuleList', 'Decomposition Rule List')}
+                      <div className="context-menu-group-description">
+                        {translateText(
+                          'aiChatPanel.contextMenu.decompositionRulesDescription',
+                          'Rules are disabled by default. If you need to decompose the currently open note, use /part and make sure the required rules below are enabled.',
+                        )}
                       </div>
                       {decompositionRules.length === 0 ? (
                         <div className="context-menu-empty">
@@ -6597,29 +6702,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
                       )}
                     </div>
 
-                  </>
-                ) : subMenuType === 'mcpServer' ? (
-                  <>
-                    <div className="context-menu-header">
-                      <div className="context-menu-back" onClick={() => setSubMenuType('none')}>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <span>{translateText('aiChatPanel.contextMenu.common.back', 'Back')}</span>
-                      </div>
-                    </div>
-
-                    <div className="context-menu-group">
-                      <div className="context-menu-group-title">MCP server</div>
-                      <div className="context-menu-empty">
-                        <span>{translateText('aiChatPanel.contextMenu.mcpServer.empty', 'The AI panel is currently in regular chat mode and is not connected to an MCP server.')}</span>
-                      </div>
-                      <div className="context-menu-item" onClick={handleOpenAIConfigTab}>
-                        <span className="context-menu-item-text">
-                          {translateText('aiChatPanel.contextMenu.items.openAIConfig', 'Open AI Config')}
-                        </span>
-                      </div>
-                    </div>
                   </>
                 ) : subMenuType === 'writingRules' ? (
                   <>
@@ -6744,17 +6826,21 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ onClose, onMoveLeft, o
 
           {/* Input area */}
           <div className="input-area">
-            <PromptInput
+            <TipTapInput
               ref={promptInputRef}
               placeholder={translateText('aiChatPanel.promptInput.placeholder', 'Type a message and use @ to reference context...')}
               onChange={(text) => setInput(text)}
               onSubmit={() => handleSend()}
               onAtTrigger={() => {
+                setContextMenuMode('browse');
                 setIsContextMenuOpen(true);
                 setSubMenuType('none');
               }}
-              onAtCancel={() => setIsContextMenuOpen(false)}
+              onAtCancel={closeSlashContextMenu}
               isAtMenuOpen={isContextMenuOpen}
+              onAtMenuNavigate={handleSlashMenuNavigate}
+              onAtMenuSelect={handleSlashMenuSelect}
+              onAtMenuBack={closeSlashContextMenu}
               className={isLoading ? 'disabled' : ''}
             />
           </div>

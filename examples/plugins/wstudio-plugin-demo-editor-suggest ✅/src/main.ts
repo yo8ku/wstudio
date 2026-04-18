@@ -1,51 +1,30 @@
 /**
- * Demo plugin entry used to verify editor suggest, regular suggest modal, and fuzzy suggest modal behavior.
+ * Demo plugin entry used to verify runtime-only editor suggest and runtime
+ * popover flows.
  */
 
 import {
   EditorSuggest,
-  FuzzySuggestModal,
   Notice,
   Plugin,
-  SuggestModal,
+  PopoverSuggest,
   type App,
   type Editor,
   type EditorPosition,
   type EditorSuggestContext,
   type EditorSuggestTriggerInfo,
-  type FuzzyMatch,
-  type MarkdownFileInfo,
   type PluginFailureContext,
   type TFile,
 } from '@note-studio/plugin';
 
 const DEMO_TITLE = '输入建议演示';
-const REGULAR_MODAL_QUERY = 'a';
-const FUZZY_MODAL_QUERY = 'ap';
-
+const EDITOR_SUGGEST_TRIGGER_PREFIX = ';';
+const EDITOR_SUGGEST_TRIGGER_PREFIX_FULLWIDTH = '；';
+const EDITOR_SUGGEST_TRIGGER_EXAMPLE = ';a';
+const EDITOR_SUGGEST_TRIGGER_EXAMPLE_FULLWIDTH = '；a';
 const EDITOR_SUGGEST_VALUES = ['apple', 'apricot', 'atlas', 'azure'];
-const REGULAR_MODAL_VALUES = ['alpha-note', 'atlas-doc', 'amber-card', 'beta-sheet'];
-const FUZZY_MODAL_VALUES = ['apple', 'apricot', 'grape', 'paper'];
-
-function createSyntheticKeyboardEvent(): KeyboardEvent {
-  return {
-    key: 'Enter',
-    preventDefault(): void {
-      return undefined;
-    },
-    stopPropagation(): void {
-      return undefined;
-    },
-  } as KeyboardEvent;
-}
-
-function formatPosition(position: EditorPosition): string {
-  return `${position.line}:${position.ch}`;
-}
-
-function summarizeValues(values: readonly string[]): string {
-  return values.length === 0 ? '无' : values.join(' | ');
-}
+const RUNTIME_POPOVER_QUERY = 'a';
+const RUNTIME_POPOVER_VALUES = ['autumn-board', 'azure-note', 'amber-task', 'atlas-sheet'];
 
 function filterValues(values: readonly string[], query: string): readonly string[] {
   const normalizedQuery = query.trim().toLowerCase();
@@ -63,13 +42,19 @@ function getLinePrefix(editor: Editor, cursor: EditorPosition): string {
 }
 
 function getSuggestReplacementPrefix(context: EditorSuggestContext): string {
-  const triggerText = context.editor.getRange(context.start, context.end);
-  return triggerText.startsWith('::') ? '::' : '@';
+  const lineText = context.editor.getLine(context.start.line);
+  const typedPrefix = lineText.slice(context.start.ch, context.start.ch + 1);
+
+  if (typedPrefix === EDITOR_SUGGEST_TRIGGER_PREFIX_FULLWIDTH) {
+    return EDITOR_SUGGEST_TRIGGER_PREFIX_FULLWIDTH;
+  }
+
+  return EDITOR_SUGGEST_TRIGGER_PREFIX;
 }
 
 function resolveEditorTrigger(editor: Editor, cursor: EditorPosition): EditorSuggestTriggerInfo | null {
   const prefix = getLinePrefix(editor, cursor);
-  const match = /(?:@|::)([a-z-]*)$/i.exec(prefix);
+  const match = /[;；]([a-z-]*)$/i.exec(prefix);
 
   if (match === null) {
     return null;
@@ -88,17 +73,35 @@ function resolveEditorTrigger(editor: Editor, cursor: EditorPosition): EditorSug
   };
 }
 
-interface EditorSuggestSnapshot {
-  readonly trigger: EditorSuggestTriggerInfo;
-  readonly suggestions: readonly string[];
-}
-
 class DemoEditorSuggest extends EditorSuggest<string> {
+  private static runtimeMode: 'runtime' | 'fallback' = 'runtime';
+  private static readonly runtimeSurfaceIds = {
+    runtime: 'editor-suggest-runtime-popover',
+    fallback: 'editor-suggest-runtime-popover-failure',
+  } as const;
+
+  public static get runtimeSurfaceId(): string {
+    return DemoEditorSuggest.runtimeSurfaceIds[DemoEditorSuggest.runtimeMode];
+  }
+
+  public static setRuntimeMode(mode: 'runtime' | 'fallback'): void {
+    DemoEditorSuggest.runtimeMode = mode;
+  }
+
+  public static getRuntimeMode(): 'runtime' | 'fallback' {
+    return DemoEditorSuggest.runtimeMode;
+  }
+
   public constructor(
     app: App,
     private readonly owner: EditorSuggestDemoPlugin,
   ) {
     super(app);
+    this.setInstructions([
+      { command: '↑/↓', purpose: '在编辑器中切换当前建议' },
+      { command: 'Enter', purpose: '在编辑器中选择当前建议' },
+      { command: 'Esc', purpose: '在编辑器中关闭建议弹层' },
+    ]);
   }
 
   public onTrigger(
@@ -118,443 +121,179 @@ class DemoEditorSuggest extends EditorSuggest<string> {
   }
 
   public renderSuggestion(value: string, el: HTMLElement): void {
-    el.textContent = `@${value}`;
+    el.textContent = `${EDITOR_SUGGEST_TRIGGER_PREFIX}${value}`;
   }
 
   public selectSuggestion(value: string, evt: MouseEvent | KeyboardEvent): void {
     evt.preventDefault();
 
     if (this.context === null) {
-      this.owner.showNotice('当前没有可应用的编辑器建议。', 2600);
+      this.owner.showNotice('当前没有可用的编辑器建议上下文。', 2600);
       return;
     }
 
     const replacementPrefix = getSuggestReplacementPrefix(this.context);
     this.context.editor.replaceRange(`${replacementPrefix}${value}`, this.context.start, this.context.end);
     this.context.editor.focus();
-    this.owner.setEditorAppliedValue(value);
-    this.owner.recordTrace(`editorSuggest.select value=${value}`);
+    this.owner.onEditorApplied(value);
     this.close();
-  }
-
-  public inspect(editor: Editor, file: TFile | null): EditorSuggestSnapshot | null {
-    const cursor = editor.getCursor();
-    const trigger = this.onTrigger(cursor, editor, file);
-
-    if (trigger === null || file === null) {
-      return null;
-    }
-
-    const context: EditorSuggestContext = {
-      ...trigger,
-      editor,
-      file,
-    };
-
-    this.context = context;
-
-    return {
-      trigger,
-      suggestions: this.getSuggestions(context).slice(0, this.limit),
-    };
-  }
-
-  public applyFirst(editor: Editor, file: TFile | null): string | null {
-    const snapshot = this.inspect(editor, file);
-
-    if (snapshot === null) {
-      return null;
-    }
-
-    const firstSuggestion = snapshot.suggestions[0];
-
-    if (firstSuggestion === undefined) {
-      return null;
-    }
-
-    this.selectSuggestion(firstSuggestion, createSyntheticKeyboardEvent());
-    return firstSuggestion;
   }
 }
 
-class DemoSuggestModal extends SuggestModal<string> {
+class DemoRuntimePopover extends PopoverSuggest<string> {
+  public static readonly runtimeSurfaceId: string = 'editor-suggest-runtime-popover';
+
   public constructor(
     app: App,
     private readonly owner: EditorSuggestDemoPlugin,
   ) {
     super(app);
-    this.setTitle('普通建议模态框');
-    this.setPlaceholder('输入字母以过滤建议');
     this.setInstructions([
-      { command: 'Enter', purpose: '选择当前建议' },
-      { command: 'Esc', purpose: '关闭模态框' },
+      { command: 'Click', purpose: '选择一条 runtime 建议' },
+      { command: 'Esc', purpose: '关闭弹层' },
     ]);
-  }
-
-  public getSuggestions(query: string): readonly string[] {
-    return filterValues(REGULAR_MODAL_VALUES, query);
   }
 
   public renderSuggestion(value: string, el: HTMLElement): void {
     el.textContent = value;
   }
 
-  public onChooseSuggestion(item: string, evt: MouseEvent | KeyboardEvent): void {
+  public selectSuggestion(value: string, evt: MouseEvent | KeyboardEvent): void {
     evt.preventDefault();
-    this.owner.setRegularModalValue(item);
-    this.owner.recordTrace(`suggestModal.choose value=${item}`);
-    this.owner.showNotice(`普通建议第一项已选择：${item}`, 2800);
+    this.owner.onRuntimePopoverSelected(value);
+    this.owner.showNotice(`Runtime popover 已选择：${value}`, 2800);
+    this.close();
   }
 
   public openWithQuery(query: string): readonly string[] {
     this.close();
-    this.inputEl.value = query;
-    return this.renderPreviewAndOpen(query);
-  }
-
-  public chooseFirst(query: string): string | null {
-    const suggestions = this.renderPreview(query);
-    const firstSuggestion = suggestions[0];
-
-    if (firstSuggestion === undefined) {
-      return null;
-    }
-
-    this.selectSuggestion(firstSuggestion, createSyntheticKeyboardEvent());
-    return firstSuggestion;
-  }
-
-  private renderPreviewAndOpen(query: string): readonly string[] {
-    const suggestions = this.renderPreview(query);
+    const suggestions = filterValues(RUNTIME_POPOVER_VALUES, query);
+    this.setSuggestions(suggestions);
     this.open();
-    return suggestions;
-  }
-
-  private renderPreview(query: string): readonly string[] {
-    const suggestions = this.getSuggestions(query).slice(0, this.limit);
-    this.resultContainerEl.replaceChildren();
-
-    if (suggestions.length === 0) {
-      this.onNoSuggestion();
-      return suggestions;
-    }
-
-    for (const suggestion of suggestions) {
-      const itemEl = document.createElement('div');
-      this.renderSuggestion(suggestion, itemEl);
-      this.resultContainerEl.append(itemEl);
-    }
-
     return suggestions;
   }
 }
 
-class DemoFuzzySuggestModal extends FuzzySuggestModal<string> {
-  public constructor(
-    app: App,
-    private readonly owner: EditorSuggestDemoPlugin,
-  ) {
-    super(app);
-    this.setTitle('模糊建议模态框');
-    this.setPlaceholder('输入字母以模糊匹配');
-    this.setInstructions([
-      { command: 'Enter', purpose: '选择当前模糊建议' },
-      { command: 'Esc', purpose: '关闭模态框' },
-    ]);
-  }
-
-  public getItems(): readonly string[] {
-    return FUZZY_MODAL_VALUES;
-  }
-
-  public getItemText(item: string): string {
-    return item;
-  }
-
-  public onChooseItem(item: string, evt: MouseEvent | KeyboardEvent): void {
-    evt.preventDefault();
-    this.owner.setFuzzyModalValue(item);
-    this.owner.recordTrace(`fuzzySuggestModal.choose value=${item}`);
-    this.owner.showNotice(`模糊建议第一项已选择：${item}`, 2800);
-  }
-
-  public openWithQuery(query: string): readonly FuzzyMatch<string>[] {
-    this.close();
-    this.inputEl.value = query;
-    return this.renderPreviewAndOpen(query);
-  }
-
-  public chooseFirst(query: string): string | null {
-    const suggestions = this.renderPreview(query);
-    const firstSuggestion = suggestions[0];
-
-    if (firstSuggestion === undefined) {
-      return null;
-    }
-
-    this.selectSuggestion(firstSuggestion, createSyntheticKeyboardEvent());
-    return firstSuggestion.item;
-  }
-
-  private renderPreviewAndOpen(query: string): readonly FuzzyMatch<string>[] {
-    const suggestions = this.renderPreview(query);
-    this.open();
-    return suggestions;
-  }
-
-  private renderPreview(query: string): readonly FuzzyMatch<string>[] {
-    const suggestions = this.getSuggestions(query).slice(0, this.limit);
-    this.resultContainerEl.replaceChildren();
-
-    if (suggestions.length === 0) {
-      this.onNoSuggestion();
-      return suggestions;
-    }
-
-    for (const suggestion of suggestions) {
-      const itemEl = document.createElement('div');
-      this.renderSuggestion(suggestion, itemEl);
-      this.resultContainerEl.append(itemEl);
-    }
-
-    return suggestions;
-  }
+class DemoRuntimePopoverFailure extends DemoRuntimePopover {
+  public static readonly runtimeSurfaceId: string = 'editor-suggest-runtime-popover-failure';
 }
 
 export default class EditorSuggestDemoPlugin extends Plugin {
   private editorSuggestDemo: DemoEditorSuggest | null = null;
-  private regularSuggestModal: DemoSuggestModal | null = null;
-  private fuzzySuggestModal: DemoFuzzySuggestModal | null = null;
-  private lastEditorQuery = '无';
-  private lastEditorSuggestions = '无';
-  private lastEditorAppliedValue = '无';
-  private lastRegularModalValue = '无';
-  private lastFuzzyModalValue = '无';
+  private runtimePopover: DemoRuntimePopover | null = null;
+  private runtimePopoverFailure: DemoRuntimePopoverFailure | null = null;
 
   public onload(): void {
-    this.recordTrace('plugin.onload');
-
+    DemoEditorSuggest.setRuntimeMode('runtime');
     this.editorSuggestDemo = new DemoEditorSuggest(this.app, this);
-    this.regularSuggestModal = new DemoSuggestModal(this.app, this);
-    this.fuzzySuggestModal = new DemoFuzzySuggestModal(this.app, this);
+    this.runtimePopover = new DemoRuntimePopover(this.app, this);
+    this.runtimePopoverFailure = new DemoRuntimePopoverFailure(this.app, this);
 
     this.registerEditorSuggest(this.editorSuggestDemo);
 
     this.addRibbonIcon('list-filter', DEMO_TITLE, () => {
-      this.showNotice('请在编辑器里输入 @a，然后执行输入建议演示相关命令。', 3200);
+      this.showNotice(
+        `请在 Markdown 编辑器输入 ${EDITOR_SUGGEST_TRIGGER_EXAMPLE}。中文全角标点也支持 ${EDITOR_SUGGEST_TRIGGER_EXAMPLE_FULLWIDTH}。`,
+        4200,
+      );
     }, { location: 'activityBar' });
 
     this.addCommand({
-      id: 'show-editor-suggest-snapshot',
-      name: '输入建议演示：显示编辑器建议快照',
-      editorCallback: (editor, context) => {
-        this.showEditorSuggestSnapshot(editor, context);
-      },
-    });
-
-    this.addCommand({
-      id: 'apply-first-editor-suggest',
-      name: '输入建议演示：应用第一个编辑器建议',
-      editorCallback: (editor, context) => {
-        this.applyFirstEditorSuggest(editor, context);
-      },
-    });
-
-    this.addCommand({
-      id: 'open-regular-suggest-modal',
-      name: '输入建议演示：打开普通建议模态框',
+      id: 'enable-runtime-editor-suggest',
+      name: 'EditorSuggest Runtime Demo：启用成功态',
       callback: () => {
-        this.openRegularSuggestModal();
+        this.setEditorSuggestRuntimeMode('runtime');
       },
     });
 
     this.addCommand({
-      id: 'choose-first-regular-suggest',
-      name: '输入建议演示：选择普通建议第一项',
+      id: 'enable-runtime-editor-suggest-fallback',
+      name: 'EditorSuggest Runtime Demo：启用失败回退态',
       callback: () => {
-        this.chooseFirstRegularSuggest();
+        this.setEditorSuggestRuntimeMode('fallback');
       },
     });
 
     this.addCommand({
-      id: 'open-fuzzy-suggest-modal',
-      name: '输入建议演示：打开模糊建议模态框',
+      id: 'open-runtime-popover-demo',
+      name: 'Runtime Popover Demo：打开运行时弹层演示',
       callback: () => {
-        this.openFuzzySuggestModal();
+        this.openRuntimePopoverDemo();
       },
     });
 
     this.addCommand({
-      id: 'choose-first-fuzzy-suggest',
-      name: '输入建议演示：选择模糊建议第一项',
+      id: 'open-runtime-popover-fallback-demo',
+      name: 'Runtime Popover Fallback Demo：打开回退演示',
       callback: () => {
-        this.chooseFirstFuzzySuggest();
-      },
-    });
-
-    this.addCommand({
-      id: 'show-editor-suggest-demo-snapshot',
-      name: '输入建议演示：显示快照',
-      callback: () => {
-        this.showSnapshot();
+        this.openRuntimePopoverFallbackDemo();
       },
     });
   }
 
   public onEnable(): void {
-    this.recordTrace('plugin.onEnable');
+    return undefined;
   }
 
   public onDisable(): void {
-    this.recordTrace('plugin.onDisable');
+    return undefined;
   }
 
   public onunload(): void {
-    this.recordTrace('plugin.onunload');
+    return undefined;
   }
 
   public onFailed(failure: PluginFailureContext): void {
-    this.recordTrace(`plugin.onFailed:${failure.operation}`);
     this.showNotice(`在 ${failure.operation} 阶段出现异常。`, 2600);
   }
 
-  public setEditorAppliedValue(value: string): void {
-    this.lastEditorAppliedValue = value;
+  public onEditorApplied(value: string): void {
+    this.showNotice(`EditorSuggest 已写回：${value}`, 2600);
   }
 
-  public setRegularModalValue(value: string): void {
-    this.lastRegularModalValue = value;
-  }
-
-  public setFuzzyModalValue(value: string): void {
-    this.lastFuzzyModalValue = value;
+  public onRuntimePopoverSelected(value: string): void {
+    this.showNotice(`Runtime popover 已写回：${value}`, 2600);
   }
 
   public showNotice(message: string, timeout = 2400): void {
     new Notice(`${DEMO_TITLE}：${message}`, timeout);
   }
 
-  public recordTrace(message: string): void {
-    console.log(`[demo-editor-suggest] ${message}`);
+  private setEditorSuggestRuntimeMode(mode: 'runtime' | 'fallback'): void {
+    DemoEditorSuggest.setRuntimeMode(mode);
+    this.showNotice(
+      mode === 'runtime'
+        ? `已切换到 EditorSuggest runtime 成功态。请在 Markdown 编辑器输入 ${EDITOR_SUGGEST_TRIGGER_EXAMPLE} 验证。`
+        : `已切换到 EditorSuggest runtime 失败回退态。请在 Markdown 编辑器输入 ${EDITOR_SUGGEST_TRIGGER_EXAMPLE} 或 ${EDITOR_SUGGEST_TRIGGER_EXAMPLE_FULLWIDTH} 验证失败回退。`,
+      4200,
+    );
   }
 
-  private showEditorSuggestSnapshot(editor: Editor, context: MarkdownFileInfo): void {
-    const editorSuggestDemo = this.requireEditorSuggest();
-    const snapshot = editorSuggestDemo.inspect(editor, context.file ?? null);
+  private openRuntimePopoverDemo(): void {
+    const runtimePopover = this.requireRuntimePopover();
+    const suggestions = runtimePopover.openWithQuery(RUNTIME_POPOVER_QUERY);
+    this.showNotice(`Runtime popover 已打开：${suggestions.join(' | ')}`, 3600);
+  }
 
-    if (snapshot === null) {
-      this.recordTrace('editorSuggest.snapshot missed');
-      this.showNotice('当前光标前没有可触发的编辑器建议，请先输入 ::a。', 2800);
-      return;
+  private openRuntimePopoverFallbackDemo(): void {
+    const runtimePopoverFailure = this.requireRuntimePopoverFailure();
+    const suggestions = runtimePopoverFailure.openWithQuery(RUNTIME_POPOVER_QUERY);
+    this.showNotice(`Runtime popover 回退演示已打开：${suggestions.join(' | ')}`, 3600);
+  }
+
+  private requireRuntimePopover(): DemoRuntimePopover {
+    if (this.runtimePopover === null) {
+      throw new Error('Runtime popover demo is not initialized.');
     }
 
-    this.lastEditorQuery = snapshot.trigger.query || '空查询';
-    this.lastEditorSuggestions = summarizeValues(snapshot.suggestions);
-
-    const summary = [
-      `file=${context.file?.path ?? '无文件'}`,
-      `query=${snapshot.trigger.query || '空查询'}`,
-      `start=${formatPosition(snapshot.trigger.start)}`,
-      `end=${formatPosition(snapshot.trigger.end)}`,
-      `suggestions=${this.lastEditorSuggestions}`,
-    ].join(', ');
-
-    this.recordTrace(`editorSuggest.snapshot ${summary}`);
-    this.showNotice(summary, 4200);
+    return this.runtimePopover;
   }
 
-  private applyFirstEditorSuggest(editor: Editor, context: MarkdownFileInfo): void {
-    const editorSuggestDemo = this.requireEditorSuggest();
-    const appliedValue = editorSuggestDemo.applyFirst(editor, context.file ?? null);
-
-    if (appliedValue === null) {
-      this.recordTrace('editorSuggest.apply skipped');
-      this.showNotice('当前没有可应用的编辑器建议，请先输入 ::a。', 2800);
-      return;
+  private requireRuntimePopoverFailure(): DemoRuntimePopoverFailure {
+    if (this.runtimePopoverFailure === null) {
+      throw new Error('Runtime popover fallback demo is not initialized.');
     }
 
-    this.recordTrace(`editorSuggest.apply value=${appliedValue}`);
-    this.showNotice(`已应用第一个编辑器建议：@${appliedValue}`, 3200);
-  }
-
-  private openRegularSuggestModal(): void {
-    const regularSuggestModal = this.requireRegularSuggestModal();
-    const suggestions = regularSuggestModal.openWithQuery(REGULAR_MODAL_QUERY);
-    const summary = `query=${REGULAR_MODAL_QUERY}, suggestions=${summarizeValues(suggestions)}`;
-
-    this.recordTrace(`suggestModal.open ${summary}`);
-    this.showNotice(`普通建议模态框已打开，${summary}`, 3600);
-  }
-
-  private chooseFirstRegularSuggest(): void {
-    const regularSuggestModal = this.requireRegularSuggestModal();
-    const chosenValue = regularSuggestModal.chooseFirst(REGULAR_MODAL_QUERY);
-
-    if (chosenValue === null) {
-      this.recordTrace('suggestModal.choose skipped');
-      this.showNotice('普通建议列表为空。', 2600);
-      return;
-    }
-
-    this.recordTrace(`suggestModal.choose first=${chosenValue}`);
-  }
-
-  private openFuzzySuggestModal(): void {
-    const fuzzySuggestModal = this.requireFuzzySuggestModal();
-    const suggestions = fuzzySuggestModal.openWithQuery(FUZZY_MODAL_QUERY);
-    const summary = `query=${FUZZY_MODAL_QUERY}, suggestions=${summarizeValues(suggestions.map((item) => item.item))}`;
-
-    this.recordTrace(`fuzzySuggestModal.open ${summary}`);
-    this.showNotice(`模糊建议模态框已打开，${summary}`, 3600);
-  }
-
-  private chooseFirstFuzzySuggest(): void {
-    const fuzzySuggestModal = this.requireFuzzySuggestModal();
-    const chosenValue = fuzzySuggestModal.chooseFirst(FUZZY_MODAL_QUERY);
-
-    if (chosenValue === null) {
-      this.recordTrace('fuzzySuggestModal.choose skipped');
-      this.showNotice('模糊建议列表为空。', 2600);
-      return;
-    }
-
-    this.recordTrace(`fuzzySuggestModal.choose first=${chosenValue}`);
-  }
-
-  private showSnapshot(): void {
-    const summary = [
-      `editorQuery=${this.lastEditorQuery}`,
-      `editorSuggestions=${this.lastEditorSuggestions}`,
-      `editorApplied=${this.lastEditorAppliedValue}`,
-      `regularModal=${this.lastRegularModalValue}`,
-      `fuzzyModal=${this.lastFuzzyModalValue}`,
-    ].join(', ');
-
-    this.recordTrace(`snapshot ${summary}`);
-    this.showNotice(summary, 4200);
-  }
-
-  private requireEditorSuggest(): DemoEditorSuggest {
-    if (this.editorSuggestDemo === null) {
-      throw new Error('Editor suggest demo is not initialized.');
-    }
-
-    return this.editorSuggestDemo;
-  }
-
-  private requireRegularSuggestModal(): DemoSuggestModal {
-    if (this.regularSuggestModal === null) {
-      throw new Error('Regular suggest modal is not initialized.');
-    }
-
-    return this.regularSuggestModal;
-  }
-
-  private requireFuzzySuggestModal(): DemoFuzzySuggestModal {
-    if (this.fuzzySuggestModal === null) {
-      throw new Error('Fuzzy suggest modal is not initialized.');
-    }
-
-    return this.fuzzySuggestModal;
+    return this.runtimePopoverFailure;
   }
 }
