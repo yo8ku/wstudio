@@ -4,9 +4,11 @@ node_modules/
 
 .vscode
 
+
+
 examples/
 
-Obsidian_plugin/
+Obsidian_plugin/plugins/*
 
 *.txt
 *.md
@@ -93,6 +95,7 @@ tempResource/
 .env
 .env.local
 .env.*.local
+.env.example
 
 # Turbo (Turborepo 缓存)
 .turbo/
