@@ -4,6 +4,8 @@ node_modules/
 
 .vscode
 
+examples/
+
 LaenceDBView/
 
 *.txt
@@ -94,6 +96,7 @@ tempResource/
 
 # Turbo (Turborepo 缓存)
 .turbo/
+Obsidian_plugin/
 
 # Coverage (测试覆盖率报告)
 coverage/
