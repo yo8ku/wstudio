@@ -8,7 +8,7 @@ node_modules/
 
 examples/
 
-Obsidian_plugin/plugins/*
+Obsidian_plugin/
 
 *.txt
 *.md
@@ -90,6 +90,7 @@ reflog.txt
 tempResouce/
 tempResource/
 
+log/
 
 # Environment variables (环境变量 - 敏感信息)
 .env
