@@ -6,7 +6,7 @@ node_modules/
 
 
 
-examples/
+examples/*/
 
 Obsidian_plugin/plugins/*
 
