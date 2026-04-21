@@ -337,8 +337,10 @@ function installPluginRuntimeBridge(): void {
         readonly title: string;
         readonly viewType: string;
         readonly icon: string | null;
+        readonly pageIconUrl: string | null;
         readonly runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
         readonly active: boolean;
+        readonly loading: boolean;
       },
     ) => {
       window.dispatchEvent(new CustomEvent('open-plugin-view-tab', {
@@ -358,8 +360,10 @@ function installPluginRuntimeBridge(): void {
         readonly title: string;
         readonly viewType: string;
         readonly icon: string | null;
+        readonly pageIconUrl: string | null;
         readonly runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
         readonly active: boolean;
+        readonly loading: boolean;
       },
     ) => {
       window.dispatchEvent(new CustomEvent('open-plugin-view-tab', {

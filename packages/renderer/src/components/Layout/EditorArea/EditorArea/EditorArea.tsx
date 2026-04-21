@@ -132,7 +132,9 @@ export interface EditorTab {
     leafId: string;
     viewType: string;
     icon: string | null;
+    pageIconUrl: string | null;
     runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
+    loading: boolean;
     sourcePath?: string | null;
   };
 }
@@ -159,6 +161,7 @@ const TAB_DRAG_MIME = 'application/x-note-studio-tab';
 const CANVAS_RUNTIME_FILE_EXTENSIONS = ['.canvas', '.canvs'] as const;
 const EDITOR_PANE_IDS: readonly EditorPaneId[] = ['left-top', 'left-bottom', 'right-top', 'right-bottom'];
 const EDITOR_BRIDGE_PANE_ORDER: EditorPaneId[] = ['left-top', 'right-top', 'left-bottom', 'right-bottom'];
+const PLUGIN_VIEW_REACTIVATION_SUPPRESSION_MS = 600;
 
 interface EditorTabsStateItem {
   id: string;
@@ -216,8 +219,10 @@ interface OpenPluginViewDetail {
   title: string;
   viewType: string;
   icon: string | null;
+  pageIconUrl: string | null;
   runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
   active: boolean;
+  loading: boolean;
 }
 
 interface ClosePluginViewDetail {
@@ -449,6 +454,10 @@ const getMostRecentTabId = (history: string[], currentTabs: EditorTab[]): string
   return currentTabs[0]?.id ?? null;
 };
 
+interface IpcInvokeErrorLike {
+  readonly message?: string;
+}
+
 const buildExtraSplitTabId = (paneId: string): string => `extra-split-${paneId}`;
 
 const dedupePluginViewTabs = (items: readonly EditorTab[]): EditorTab[] => {
@@ -544,6 +553,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const persistedOpenCanvasFilesRef = useRef<string>('');
   const pendingPluginViewPaneBySourcePathRef = useRef<Map<string, PendingPluginViewPaneTarget[]>>(new Map());
   const pluginViewPaneByLeafIdRef = useRef<Map<string, EditorPaneId>>(new Map());
+  const syncedPluginViewLeafIdRef = useRef<string | null>(null);
+  const suppressIncomingPluginActivationUntilRef = useRef<number>(0);
   const initialRestoreCompletedRef = useRef<boolean>(false);
   const tabsRef = useRef<EditorTab[]>([]);
   const rightTabsRef = useRef<EditorTab[]>([]);
@@ -1521,29 +1532,34 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     if (existingTabResult) {
       const { paneId, tab } = existingTabResult;
       pluginViewPaneByLeafIdRef.current.set(detail.leafId, paneId);
-      setPaneTabs(paneId, prev => prev.map(item => (
-        item.id === tab.id
-          ? {
-              ...item,
-              title: detail.title,
-              path: detail.path,
-              pluginViewData: {
-                leafId: detail.leafId,
-                viewType: detail.viewType,
-                icon: detail.icon,
-                runtimeSurface: detail.runtimeSurface,
-                sourcePath: detail.sourcePath,
-              },
-            }
+      const shouldSuppressIncomingActivation = detail.active
+        && syncedPluginViewLeafIdRef.current !== detail.leafId
+        && suppressIncomingPluginActivationUntilRef.current > Date.now();
+        setPaneTabs(paneId, prev => prev.map(item => (
+          item.id === tab.id
+            ? {
+                ...item,
+                title: detail.title,
+                path: detail.path,
+                pluginViewData: {
+                  leafId: detail.leafId,
+                  viewType: detail.viewType,
+                  icon: detail.icon,
+                  pageIconUrl: detail.pageIconUrl ?? (detail.loading ? item.pluginViewData?.pageIconUrl ?? null : null),
+                  runtimeSurface: detail.runtimeSurface,
+                  loading: detail.loading,
+                  sourcePath: detail.sourcePath,
+                },
+              }
             : item
       )));
 
-      if (detail.active) {
+      if (detail.active && !shouldSuppressIncomingActivation) {
         setPaneActiveTabId(paneId, tab.id);
         setFocusedPaneId(paneId);
       }
 
-      if (detail.active) {
+      if (detail.active && !shouldSuppressIncomingActivation) {
         if (detail.sourcePath) {
           window.dispatchEvent(new CustomEvent('editor-active-file-change', {
             detail: { path: detail.sourcePath }
@@ -1597,7 +1613,9 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         leafId: detail.leafId,
         viewType: detail.viewType,
         icon: detail.icon,
+        pageIconUrl: detail.pageIconUrl,
         runtimeSurface: detail.runtimeSurface,
+        loading: detail.loading,
         sourcePath: detail.sourcePath,
       },
     };
@@ -1634,19 +1652,21 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             return tab;
           }
 
-          return {
-            ...tab,
-            id: newTab.id,
-            title: detail.title,
-            path: detail.path,
-            pluginViewData: {
-              leafId: detail.leafId,
-              viewType: detail.viewType,
-              icon: detail.icon,
-              runtimeSurface: detail.runtimeSurface,
-              sourcePath: detail.sourcePath,
-            },
-          };
+            return {
+              ...tab,
+              id: newTab.id,
+              title: detail.title,
+              path: detail.path,
+              pluginViewData: {
+                leafId: detail.leafId,
+                viewType: detail.viewType,
+                icon: detail.icon,
+                pageIconUrl: detail.pageIconUrl ?? (detail.loading ? tab.pluginViewData?.pageIconUrl ?? null : null),
+                runtimeSurface: detail.runtimeSurface,
+                loading: detail.loading,
+                sourcePath: detail.sourcePath,
+              },
+            };
         });
     });
     if (shouldActivateNewTab) {
@@ -3840,17 +3860,45 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
   }, [activeTab?.language, activeTabId]);
 
-  const requestPluginViewActivation = useCallback((tab: EditorTab | undefined): void => {
-    const leafId = tab?.pluginViewData?.leafId;
+  const clearActivePluginViewSelection = useCallback((): void => {
+    const ipcRenderer = window.electron?.ipcRenderer;
 
-    if (!leafId) {
+    if (!ipcRenderer) {
       return;
     }
 
-    void window.electron?.ipcRenderer.invoke('plugin-runtime:request-activate-view', {
-      leafId,
+    void ipcRenderer.invoke('plugin-runtime:clear-active-view').catch((error: IpcInvokeErrorLike) => {
+      const message = typeof error.message === 'string' ? error.message : '';
+
+      // Older main-process bundles may not have this IPC channel until Electron restarts.
+      if (message.includes("No handler registered for 'plugin-runtime:clear-active-view'")) {
+        return;
+      }
+
+      console.error('[EditorArea] Failed to clear active plugin view selection.', error);
     });
   }, []);
+
+  const syncPluginViewSelection = useCallback((tab: EditorTab | null | undefined): void => {
+    const leafId = tab?.type === 'plugin-view'
+      ? (tab.pluginViewData?.leafId ?? null)
+      : null;
+
+    if (syncedPluginViewLeafIdRef.current === leafId) {
+      return;
+    }
+
+    syncedPluginViewLeafIdRef.current = leafId;
+
+    if (leafId === null) {
+      suppressIncomingPluginActivationUntilRef.current = Date.now() + PLUGIN_VIEW_REACTIVATION_SUPPRESSION_MS;
+      clearActivePluginViewSelection();
+      return;
+    }
+
+    suppressIncomingPluginActivationUntilRef.current = 0;
+    void window.electron?.ipcRenderer.invoke('plugin-runtime:request-activate-view', { leafId });
+  }, [clearActivePluginViewSelection]);
 
   const requestPluginViewClose = useCallback((tab: EditorTab | undefined): void => {
     const leafId = tab?.pluginViewData?.leafId;
@@ -3863,6 +3911,28 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       leafId,
     });
   }, []);
+
+  useEffect(() => {
+    const focusedActiveTab = focusedPaneId === 'left-top'
+      ? activeTab ?? null
+      : focusedPaneId === 'left-bottom'
+        ? (leftBottomTabs.find((tab) => tab.id === leftBottomActiveTabId) ?? null)
+        : focusedPaneId === 'right-top'
+          ? (rightTabs.find((tab) => tab.id === rightActiveTabId) ?? null)
+          : (rightBottomTabs.find((tab) => tab.id === rightBottomActiveTabId) ?? null);
+
+    syncPluginViewSelection(focusedActiveTab);
+  }, [
+    activeTab,
+    focusedPaneId,
+    leftBottomActiveTabId,
+    leftBottomTabs,
+    rightActiveTabId,
+    rightBottomActiveTabId,
+    rightBottomTabs,
+    rightTabs,
+    syncPluginViewSelection,
+  ]);
 
   const splitPluginViewToPane = useCallback(async (
     tab: EditorTab,
@@ -3945,9 +4015,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       console.log('[EditorArea] 閺嶅洨顒锋い闈涘瀼閹?', clickedTabPath);
     }
 
-    if (clickedTab?.type === 'plugin-view') {
-      requestPluginViewActivation(clickedTab);
-    }
+    syncPluginViewSelection(clickedTab);
     
     // 婵″倹鐏夐弰顖濄€冮弽鑹邦啎鐠佲€虫珤閺嶅洨顒锋い纰夌礉闁氨鐓℃笟褑绔熼弽蹇旀纯閺傛媽銆冮崡鏇⑩偓澶夎厬閻樿埖鈧?
     if (clickedTab?.type === 'table-designer' && clickedTab?.formId) {
@@ -4225,9 +4293,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       }));
     }
 
-    if (clickedTab.type === 'plugin-view') {
-      requestPluginViewActivation(clickedTab);
-    }
+    syncPluginViewSelection(clickedTab);
   };
 
   const handleLeftBottomTabClick = (tabId: string) => {
@@ -4245,7 +4311,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         detail: { path: clickedTabPath }
       }));
     }
-    requestPluginViewActivation(clickedTab);
+    syncPluginViewSelection(clickedTab);
   };
 
   const handleRightBottomTabClick = (tabId: string) => {
@@ -4263,7 +4329,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         detail: { path: clickedTabPath }
       }));
     }
-    requestPluginViewActivation(clickedTab);
+    syncPluginViewSelection(clickedTab);
   };
 
   const closeTabByPane = useCallback((paneId: EditorPaneId, tabId: string) => {

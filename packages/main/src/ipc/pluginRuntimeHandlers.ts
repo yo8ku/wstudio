@@ -1,4 +1,5 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, Menu, ipcMain } from 'electron';
+import type { MenuItemConstructorOptions } from 'electron';
 import type {
   JsonValue,
   PluginUiRuntimeEditorActionRequest,
@@ -33,6 +34,7 @@ export const PLUGIN_RUNTIME_SELECT_MENU_ITEM_CHANNEL = 'plugin-runtime:select-me
 export const PLUGIN_RUNTIME_MENU_HIDDEN_CHANNEL = 'plugin-runtime:menu-hidden';
 export const PLUGIN_RUNTIME_REQUEST_CLOSE_VIEW_CHANNEL = 'plugin-runtime:request-close-view';
 export const PLUGIN_RUNTIME_REQUEST_ACTIVATE_VIEW_CHANNEL = 'plugin-runtime:request-activate-view';
+export const PLUGIN_RUNTIME_CLEAR_ACTIVE_VIEW_CHANNEL = 'plugin-runtime:clear-active-view';
 export const PLUGIN_RUNTIME_REQUEST_OPEN_WORKSPACE_FILE_CHANNEL = 'plugin-runtime:request-open-workspace-file';
 export const PLUGIN_RUNTIME_SYNC_RENAMED_WORKSPACE_FILE_CHANNEL = 'plugin-runtime:sync-renamed-workspace-file';
 export const PLUGIN_RUNTIME_SYNC_DELETED_WORKSPACE_FILE_CHANNEL = 'plugin-runtime:sync-deleted-workspace-file';
@@ -67,8 +69,10 @@ export interface PluginRuntimeViewPayload {
   readonly title: string;
   readonly viewType: string;
   readonly icon: string | null;
+  readonly pageIconUrl: string | null;
   readonly runtimeSurface: PluginUiRuntimeSurfaceDescriptor | null;
   readonly active: boolean;
+  readonly loading: boolean;
 }
 
 export interface PluginRuntimeOverlayFramePayload {
@@ -222,6 +226,9 @@ interface ActivePluginRuntimeMenu {
   readonly pluginId: string | null;
   readonly onSelect: (itemId: string) => void;
   readonly onHide: (() => void) | null;
+  nativeMenu: Menu | null;
+  nativeMenuWindow: BrowserWindow | null;
+  hidden: boolean;
 }
 
 interface ActivePluginRuntimeOverlayFrame {
@@ -259,6 +266,7 @@ const activePluginRuntimeMenus = new Map<string, ActivePluginRuntimeMenu>();
 const activePluginRuntimeOverlayFrames = new Map<string, ActivePluginRuntimeOverlayFrame>();
 let pluginRuntimeViewRequestBridge: {
   activateView(leafId: string): Promise<void> | void;
+  clearActiveView(): Promise<void> | void;
   closeView(leafId: string): Promise<void> | void;
   markViewRuntimeActive(leafId: string): Promise<void> | void;
   markOverlayRuntimeActive(overlayId: string): Promise<void> | void;
@@ -412,6 +420,7 @@ export function closePluginRuntimeOverlayFrame(overlayId: string): void {
 export function configurePluginRuntimeViewRequestBridge(
   bridge: {
     activateView(leafId: string): Promise<void> | void;
+    clearActiveView(): Promise<void> | void;
     closeView(leafId: string): Promise<void> | void;
     markViewRuntimeActive(leafId: string): Promise<void> | void;
     markOverlayRuntimeActive(overlayId: string): Promise<void> | void;
@@ -462,11 +471,101 @@ export function openPluginRuntimeMenu(
   nextPluginRuntimeMenuId += 1;
   const menuId = `plugin-runtime-menu-${nextPluginRuntimeMenuId}`;
 
-  activePluginRuntimeMenus.set(menuId, {
+  const activeMenu: ActivePluginRuntimeMenu = {
     pluginId: getCurrentPluginExecutionContextPluginId(),
     onSelect: payload.onSelect,
     onHide: payload.onHide ?? null,
-  });
+    nativeMenu: null,
+    nativeMenuWindow: null,
+    hidden: false,
+  };
+
+  activePluginRuntimeMenus.set(menuId, activeMenu);
+
+  if (payload.useNativeMenu) {
+    const nativeMenuWindow = BrowserWindow.getFocusedWindow();
+
+    if (nativeMenuWindow !== null) {
+      const nativeMenu = Menu.buildFromTemplate(payload.items.map((item) => {
+        if (item.separator) {
+          return {
+            type: 'separator',
+          } satisfies MenuItemConstructorOptions;
+        }
+
+        return {
+          id: item.id,
+          type: item.checked === null ? 'normal' : 'checkbox',
+          label: item.title,
+          enabled: !item.disabled,
+          checked: item.checked ?? false,
+          click: (): void => {
+            const currentMenu = activePluginRuntimeMenus.get(menuId);
+
+            if (currentMenu === undefined) {
+              return;
+            }
+
+            activePluginRuntimeMenus.delete(menuId);
+            try {
+              if (currentMenu.pluginId === null) {
+                currentMenu.onSelect(item.id);
+              } else {
+                runWithPluginExecutionContext(currentMenu.pluginId, () => {
+                  currentMenu.onSelect(item.id);
+                });
+              }
+            } finally {
+              if (!currentMenu.hidden) {
+                currentMenu.hidden = true;
+                if (currentMenu.pluginId === null) {
+                  currentMenu.onHide?.();
+                } else {
+                  runWithPluginExecutionContext(currentMenu.pluginId, () => {
+                    currentMenu.onHide?.();
+                  });
+                }
+              }
+            }
+          },
+        } satisfies MenuItemConstructorOptions;
+      }));
+
+      activeMenu.nativeMenu = nativeMenu;
+      activeMenu.nativeMenuWindow = nativeMenuWindow;
+
+      nativeMenu.once('menu-will-close', () => {
+        const currentMenu = activePluginRuntimeMenus.get(menuId);
+
+        if (currentMenu === undefined) {
+          return;
+        }
+
+        activePluginRuntimeMenus.delete(menuId);
+        currentMenu.nativeMenu = null;
+        currentMenu.nativeMenuWindow = null;
+
+        if (!currentMenu.hidden) {
+          currentMenu.hidden = true;
+          if (currentMenu.pluginId === null) {
+            currentMenu.onHide?.();
+          } else {
+            runWithPluginExecutionContext(currentMenu.pluginId, () => {
+              currentMenu.onHide?.();
+            });
+          }
+        }
+      });
+
+      nativeMenu.popup({
+        window: nativeMenuWindow,
+        x: payload.position === null ? undefined : Math.round(payload.position.x),
+        y: payload.position === null ? undefined : Math.round(payload.position.y),
+      });
+
+      return menuId;
+    }
+  }
 
   broadcastPluginRuntimeMessage(PLUGIN_RUNTIME_OPEN_MENU_CHANNEL, {
     menuId,
@@ -487,17 +586,38 @@ export function closePluginRuntimeMenu(menuId: string): void {
   }
 
   activePluginRuntimeMenus.delete(menuId);
-  broadcastPluginRuntimeMessage(PLUGIN_RUNTIME_CLOSE_MENU_CHANNEL, {
-    menuId,
-  });
-  if (activeMenu.pluginId === null) {
-    activeMenu.onHide?.();
+  if (activeMenu.nativeMenu !== null) {
+    activeMenu.nativeMenu.closePopup(activeMenu.nativeMenuWindow ?? undefined);
+    activeMenu.nativeMenu = null;
+    activeMenu.nativeMenuWindow = null;
+
+    if (!activeMenu.hidden) {
+      activeMenu.hidden = true;
+      if (activeMenu.pluginId === null) {
+        activeMenu.onHide?.();
+      } else {
+        runWithPluginExecutionContext(activeMenu.pluginId, () => {
+          activeMenu.onHide?.();
+        });
+      }
+    }
     return;
   }
 
-  runWithPluginExecutionContext(activeMenu.pluginId, () => {
-    activeMenu.onHide?.();
+  broadcastPluginRuntimeMessage(PLUGIN_RUNTIME_CLOSE_MENU_CHANNEL, {
+    menuId,
   });
+  if (!activeMenu.hidden) {
+    activeMenu.hidden = true;
+    if (activeMenu.pluginId === null) {
+      activeMenu.onHide?.();
+      return;
+    }
+
+    runWithPluginExecutionContext(activeMenu.pluginId, () => {
+      activeMenu.onHide?.();
+    });
+  }
 }
 
 export function registerPluginRuntimeHandlers(): void {
@@ -861,6 +981,14 @@ export function registerPluginRuntimeHandlers(): void {
     PLUGIN_RUNTIME_REQUEST_ACTIVATE_VIEW_CHANNEL,
     async (_event, request: PluginRuntimeViewRequest) => {
       await pluginRuntimeViewRequestBridge?.activateView(request.leafId);
+      return true;
+    },
+  );
+
+  ipcMain.handle(
+    PLUGIN_RUNTIME_CLEAR_ACTIVE_VIEW_CHANNEL,
+    async () => {
+      await pluginRuntimeViewRequestBridge?.clearActiveView();
       return true;
     },
   );

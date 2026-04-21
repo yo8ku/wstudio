@@ -38,9 +38,11 @@ import { registerExtensionDevelopmentHandlers } from './ipc/extensionDevelopment
 import { registerPluginUIHandlers } from './ipc/pluginUIHandlers';
 import { registerPluginRuntimeHandlers } from './ipc/pluginRuntimeHandlers';
 import { registerPluginSurfaceHandlers } from './ipc/pluginSurfaceHandlers';
+import { registerUrlBrowserDownloadHandlers } from './ipc/urlBrowserDownloadHandlers';
 import { registerWorkbenchContributionHandlers } from './ipc/workbenchContributionHandlers';
 import { builtinAI } from './services/builtinAIInstance';
 import { pluginSurfaceViewService } from './services/plugin-surface/PluginSurfaceViewService';
+import { urlBrowserDownloadService } from './services/UrlBrowserDownloadService';
 import {
   aiPanelActionRegistry,
   aiPanelContributionRegistry,
@@ -93,7 +95,9 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
   registerPluginUIHandlers();
   registerPluginRuntimeHandlers();
   registerPluginSurfaceHandlers();
+  registerUrlBrowserDownloadHandlers();
   registerWorkbenchContributionHandlers();
+  urlBrowserDownloadService.initialize();
 
   getCodeRunnerService();
   console.log('[Main] Code runner initialized');

@@ -85,6 +85,37 @@
     background-color: var(--ws-tab-activeBorderTop, var(--tab-active-border-top, #007acc));
   }
 
+  &.loading::before,
+  &.loading::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 4px;
+    height: 2px;
+    border-radius: 999px;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  &.loading::before {
+    background: color-mix(
+      in srgb,
+      var(--ws-tab-activeBorderTop, var(--tab-active-border-top, #007acc)) 22%,
+      transparent
+    );
+  }
+
+  &.loading::after {
+    background: color-mix(
+      in srgb,
+      var(--ws-tab-activeBorderTop, var(--tab-active-border-top, #007acc)) 92%,
+      white 8%
+    );
+    transform-origin: left center;
+    animation: tab-item-loading-line 1.05s ease-in-out infinite;
+  }
+
   // 活动标签样式
   &.active {
     background-color: var(--ws-tab-activeBackground, var(--tab-active-bg, #1e1e1e));
@@ -110,6 +141,49 @@
 
   &-icon {
     opacity: 0.9;
+  }
+
+  &-plugin-icon-slot {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &-plugin-fallback-icon {
+    position: absolute;
+    inset: 0;
+
+    &.hidden {
+      opacity: 0;
+    }
+  }
+
+  &-page-icon {
+    width: 14px;
+    height: 14px;
+    position: absolute;
+    inset: 0;
+    display: block;
+    object-fit: contain;
+    border-radius: 4px;
+    opacity: 0;
+    pointer-events: none;
+
+    &.ready {
+      opacity: 1;
+    }
+  }
+
+  &-page-icon-preload {
+    width: 0;
+    height: 0;
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
   }
 
   // 脏标记（未保存）
@@ -157,6 +231,32 @@
   &:not(.active):not(.hovered) &-close {
     opacity: 0;
     pointer-events: none;
+  }
+}
+
+@keyframes tab-item-loading-line {
+  0% {
+    transform: scaleX(0);
+    opacity: 0.35;
+    transform-origin: left center;
+  }
+
+  45% {
+    transform: scaleX(1);
+    opacity: 1;
+    transform-origin: left center;
+  }
+
+  55% {
+    transform: scaleX(1);
+    opacity: 1;
+    transform-origin: right center;
+  }
+
+  100% {
+    transform: scaleX(0);
+    opacity: 0.35;
+    transform-origin: right center;
   }
 }
 

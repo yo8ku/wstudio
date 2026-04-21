@@ -114,7 +114,7 @@ export function buildPluginSurfaceBootstrapDocument(): string {
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; frame-src http: https: about: blob: data:; img-src data: blob: wstudio-extension: local-file:; style-src 'unsafe-inline'; script-src 'unsafe-inline' wstudio-extension: local-file: data: blob:; font-src data: wstudio-extension: local-file:;"
+      content="default-src 'none'; frame-src http: https: about: blob: data:; img-src http: https: data: blob: wstudio-extension: local-file:; style-src 'unsafe-inline'; script-src 'unsafe-inline' wstudio-extension: local-file: data: blob:; font-src data: wstudio-extension: local-file:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>plugin-surface</title>

@@ -2214,7 +2214,41 @@ function bindPluginViewElements(view: View, containerEl: HTMLElement): void {
   compatibleView.contentEl = containerEl;
 }
 
-class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
+function isSharedJsonRecord(value: SharedJsonValue | null): value is { readonly [key: string]: SharedJsonValue } {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeRuntimeSurfaceState(
+  baseState: SharedJsonValue | null,
+  viewState: SharedJsonValue | null,
+): SharedJsonValue | null {
+  if (isSharedJsonRecord(baseState) && isSharedJsonRecord(viewState)) {
+    return {
+      ...baseState,
+      ...viewState,
+    };
+  }
+
+  return viewState ?? baseState;
+}
+
+function resolveViewLoadingState(viewState: SharedJsonValue | null): boolean {
+  if (!isSharedJsonRecord(viewState)) {
+    return false;
+  }
+
+  return viewState.loading === true;
+}
+
+function resolveViewPageIconUrl(viewState: SharedJsonValue | null): string | null {
+  if (!isSharedJsonRecord(viewState) || typeof viewState.pageIconUrl !== 'string') {
+    return null;
+  }
+
+  return viewState.pageIconUrl.trim().length > 0 ? viewState.pageIconUrl : null;
+}
+
+export class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
   public readonly app: App;
   public readonly id: string;
   public override parent: WorkspaceTabs;
@@ -2410,6 +2444,15 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
     this.syncRendererPluginView(true);
   }
 
+  public deactivateInRenderer(): void {
+    this.syncRendererPluginView(false);
+  }
+
+  public refreshRendererRuntimeSurface(runtimeStateOverride: SharedJsonValue | null): void {
+    const activeLeafId = this.app.workspace.activeLeaf?.id ?? null;
+    this.syncRendererPluginView(activeLeafId === this.id, runtimeStateOverride);
+  }
+
   public dispatchRendererEvent(
     runtimeNodeId: string,
     request: {
@@ -2471,13 +2514,27 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
     return viewType !== 'empty' && this.resolveViewCreator(viewType) !== null;
   }
 
-  private syncRendererPluginView(active: boolean): void {
+  private syncRendererPluginView(
+    active: boolean,
+    runtimeStateOverride?: SharedJsonValue | null,
+  ): void {
     if (!this.shouldRenderInRenderer()) {
       this.disposeRendererPluginViewBridge();
       return;
     }
 
-    const runtimeSurface = this.resolveViewRuntimeSurface(this.view.getViewType());
+    const baseRuntimeSurface = this.resolveViewRuntimeSurface(this.view.getViewType());
+    const viewState = this.view.getState() as SharedJsonValue;
+    const runtimeSurface = baseRuntimeSurface === null
+      ? null
+      : {
+          ...baseRuntimeSurface,
+          state: runtimeStateOverride === undefined
+            ? mergeRuntimeSurfaceState(baseRuntimeSurface.state, viewState)
+            : runtimeStateOverride,
+        };
+    const loading = resolveViewLoadingState(viewState);
+    const pageIconUrl = resolveViewPageIconUrl(viewState);
 
     const payload = {
       leafId: this.id,
@@ -2486,8 +2543,10 @@ class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
       title: this.getDisplayText(),
       viewType: this.view.getViewType(),
       icon: this.getIcon().trim().length > 0 ? this.getIcon() : null,
+      pageIconUrl,
       runtimeSurface,
       active,
+      loading,
     };
 
     if (this.rendererViewVisible) {
@@ -2660,6 +2719,15 @@ export class MainProcessWorkspace extends Workspace {
   ): void {
     void paramsOrPushHistory;
     void focus;
+    const previousActiveLeaf = this.activeLeaf;
+
+    if (
+      previousActiveLeaf instanceof MainProcessWorkspaceLeaf
+      && previousActiveLeaf.id !== leaf.id
+    ) {
+      previousActiveLeaf.deactivateInRenderer();
+    }
+
     this.activeLeaf = leaf;
     if (leaf instanceof MainProcessWorkspaceLeaf) {
       leaf.activateInRenderer();
@@ -2704,6 +2772,23 @@ export class MainProcessWorkspace extends Workspace {
     }
 
     leaf.markRendererRuntimeSurfaceActive();
+  }
+
+  public clearActiveLeaf(): void {
+    const previousActiveLeaf = this.activeLeaf;
+
+    if (previousActiveLeaf === null) {
+      return;
+    }
+
+    if (previousActiveLeaf instanceof MainProcessWorkspaceLeaf) {
+      previousActiveLeaf.deactivateInRenderer();
+    }
+
+    this.activeLeaf = null;
+    this.activeEditor = null;
+    this.activeEditorState = null;
+    this.trigger('active-leaf-change', null);
   }
 
   public dispatchRendererEventToLeaf(

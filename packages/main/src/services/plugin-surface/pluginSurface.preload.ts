@@ -114,7 +114,8 @@ type PluginSurfaceHostRequestMethod =
   | 'data-load'
   | 'data-save'
   | 'data-delete'
-  | 'settings-get-tabs';
+  | 'settings-get-tabs'
+  | 'url-browser-download-action';
 
 type PluginSurfaceHostRequestPayload =
   | JsonValue
@@ -178,6 +179,7 @@ const PLUGIN_RUNTIME_DATA_LOAD_CHANNEL = 'plugin-runtime:data-load';
 const PLUGIN_RUNTIME_DATA_SAVE_CHANNEL = 'plugin-runtime:data-save';
 const PLUGIN_RUNTIME_DATA_DELETE_CHANNEL = 'plugin-runtime:data-delete';
 const PLUGIN_RUNTIME_SETTINGS_GET_TABS_CHANNEL = 'plugin-runtime:settings-get-tabs';
+const URL_BROWSER_DOWNLOAD_ACTION_CHANNEL = 'url-browser:download-action';
 const PLUGIN_SURFACE_SHOW_NOTICE_CHANNEL = 'plugin-surface:show-notice';
 
 const pluginSurfaceContext = parsePluginSurfaceContextArgument(process.argv);
@@ -419,6 +421,13 @@ const pluginSurfaceBridge: PluginSurfacePreloadBridge = {
         pluginId: pluginSurfaceContext.pluginId,
       });
       return null;
+    }
+
+    if (method === 'url-browser-download-action') {
+      return await ipcRenderer.invoke(
+        URL_BROWSER_DOWNLOAD_ACTION_CHANNEL,
+        payload,
+      ) as boolean;
     }
 
     if (pluginSurfaceContext === null) {

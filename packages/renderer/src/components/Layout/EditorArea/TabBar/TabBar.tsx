@@ -52,6 +52,7 @@ export interface TabBarProps {
 }
 
 const normalizePath = (value: string): string => value.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+const PLUGIN_VIEW_LOADING_VISUAL_MIN_DURATION_MS = 420;
 
 const getLastSegment = (value: string): string => {
   const segments = normalizePath(value).split('/').filter(Boolean);
@@ -141,6 +142,9 @@ export const TabBar: React.FC<TabBarProps> = ({
   const previousTabIdsRef = useRef<string[]>([]);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [moreMenuPosition, setMoreMenuPosition] = useState({ x: 0, y: 0 });
+  const [loadedPluginViewTabIconUrls, setLoadedPluginViewTabIconUrls] = useState<Record<string, string>>({});
+  const [visiblePluginViewLoadingTabIds, setVisiblePluginViewLoadingTabIds] = useState<Record<string, boolean>>({});
+  const pluginViewLoadingHideTimersRef = useRef<Record<string, number>>({});
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const [codeMirrorMode, setCodeMirrorMode] = useState<'source' | 'preview'>('source');
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
@@ -193,6 +197,119 @@ export const TabBar: React.FC<TabBarProps> = ({
   useEffect(() => {
     void loadNoteEditorSettings();
   }, [loadNoteEditorSettings]);
+
+  useEffect(() => {
+    const activeTabIds = new Set(tabs.map((tab) => tab.id));
+
+    setLoadedPluginViewTabIconUrls((prev) => {
+      let hasChanges = false;
+      const next: Record<string, string> = {};
+
+      for (const [tabId, iconUrl] of Object.entries(prev)) {
+        if (!activeTabIds.has(tabId)) {
+          hasChanges = true;
+          continue;
+        }
+
+        next[tabId] = iconUrl;
+      }
+
+      return hasChanges ? next : prev;
+    });
+
+  }, [tabs]);
+
+  useEffect(() => {
+    const activePluginViewTabIds = new Set<string>();
+
+    setVisiblePluginViewLoadingTabIds((prev) => {
+      let hasChanges = false;
+      const next: Record<string, boolean> = { ...prev };
+
+      for (const tab of tabs) {
+        if (tab.type !== 'plugin-view') {
+          continue;
+        }
+
+        activePluginViewTabIds.add(tab.id);
+        const isLoading = tab.pluginViewData?.loading === true;
+        const pendingHideTimer = pluginViewLoadingHideTimersRef.current[tab.id];
+
+        if (isLoading) {
+          if (pendingHideTimer !== undefined) {
+            window.clearTimeout(pendingHideTimer);
+            delete pluginViewLoadingHideTimersRef.current[tab.id];
+          }
+
+          if (next[tab.id] !== true) {
+            next[tab.id] = true;
+            hasChanges = true;
+          }
+
+          continue;
+        }
+
+        if (
+          next[tab.id] === true
+          && pendingHideTimer === undefined
+        ) {
+          pluginViewLoadingHideTimersRef.current[tab.id] = window.setTimeout(() => {
+            delete pluginViewLoadingHideTimersRef.current[tab.id];
+            setVisiblePluginViewLoadingTabIds((current) => {
+              if (current[tab.id] !== true) {
+                return current;
+              }
+
+              const nextCurrent: Record<string, boolean> = { ...current };
+              delete nextCurrent[tab.id];
+              return nextCurrent;
+            });
+          }, PLUGIN_VIEW_LOADING_VISUAL_MIN_DURATION_MS);
+        }
+      }
+
+      for (const [tabId, timerId] of Object.entries(pluginViewLoadingHideTimersRef.current)) {
+        if (activePluginViewTabIds.has(tabId)) {
+          continue;
+        }
+
+        window.clearTimeout(timerId);
+        delete pluginViewLoadingHideTimersRef.current[tabId];
+      }
+
+      for (const tabId of Object.keys(next)) {
+        if (activePluginViewTabIds.has(tabId)) {
+          continue;
+        }
+
+        delete next[tabId];
+        hasChanges = true;
+      }
+
+      return hasChanges ? next : prev;
+    });
+  }, [tabs]);
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of Object.values(pluginViewLoadingHideTimersRef.current)) {
+        window.clearTimeout(timerId);
+      }
+
+      pluginViewLoadingHideTimersRef.current = {};
+    };
+  }, []);
+
+  const handlePluginViewPageIconLoad = useCallback((tabId: string, iconUrl: string): void => {
+    setLoadedPluginViewTabIconUrls((prev) => (
+      prev[tabId] === iconUrl
+        ? prev
+        : {
+          ...prev,
+          [tabId]: iconUrl,
+        }
+    ));
+  }, []);
 
   const handleTabBarWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const scrollContainer = scrollContainerRef.current?.getContentElement();
@@ -895,12 +1012,31 @@ export const TabBar: React.FC<TabBarProps> = ({
         {tabs.map((tab) => {
           const isActive = activeTabId === tab.id;
           const isHovered = hoveredTabId === tab.id;
+          const isPluginViewLoading = tab.type === 'plugin-view' && (
+            tab.pluginViewData?.loading === true
+            || visiblePluginViewLoadingTabIds[tab.id] === true
+          );
+          const requestedPluginViewPageIconUrl = tab.type === 'plugin-view'
+            && typeof tab.pluginViewData?.pageIconUrl === 'string'
+            && tab.pluginViewData.pageIconUrl.trim().length > 0
+            ? tab.pluginViewData.pageIconUrl.trim()
+            : null;
+          const loadedPluginViewPageIconUrl = tab.type === 'plugin-view'
+            ? loadedPluginViewTabIconUrls[tab.id] ?? null
+            : null;
+          const displayedPluginViewPageIconUrl = loadedPluginViewPageIconUrl ?? requestedPluginViewPageIconUrl;
+          const needsPluginViewPageIconPreload = (
+            requestedPluginViewPageIconUrl !== null
+            && requestedPluginViewPageIconUrl !== loadedPluginViewPageIconUrl
+            && loadedPluginViewPageIconUrl !== null
+          );
+          const shouldShowPluginViewPageIcon = displayedPluginViewPageIconUrl !== null;
           
           return (
             <div
               key={tab.id}
               data-tab-id={tab.id}
-              className={`tab-item ${isActive ? 'active' : ''} ${isHovered ? 'hovered' : ''} ${tab.isDirty ? 'dirty' : ''} ${tab.isPreview ? 'preview' : ''}`}
+              className={`tab-item ${isActive ? 'active' : ''} ${isHovered ? 'hovered' : ''} ${tab.isDirty ? 'dirty' : ''} ${tab.isPreview ? 'preview' : ''} ${isPluginViewLoading ? 'loading' : ''}`}
               onClick={() => handleTabClick(tab.id)}
               draggable={!!dragGroupId}
               onDragStart={(event) => handleTabDragStart(event, tab.id)}
@@ -924,6 +1060,33 @@ export const TabBar: React.FC<TabBarProps> = ({
                   size={14}
                   className="tab-item-icon"
                 />
+              )}
+              {tab.type === 'plugin-view' && (
+                <span className="tab-item-plugin-icon-slot">
+                  <PluginUiIcon
+                    name={tab.pluginViewData?.icon}
+                    size={14}
+                    className={`tab-item-icon tab-item-plugin-fallback-icon${shouldShowPluginViewPageIcon ? ' hidden' : ''}`}
+                  />
+                  {displayedPluginViewPageIconUrl !== null && (
+                    <img
+                      src={displayedPluginViewPageIconUrl}
+                      alt=""
+                      className={`tab-item-page-icon${shouldShowPluginViewPageIcon ? ' ready' : ''}`}
+                      draggable={false}
+                      onLoad={() => handlePluginViewPageIconLoad(tab.id, displayedPluginViewPageIconUrl)}
+                    />
+                  )}
+                  {needsPluginViewPageIconPreload && requestedPluginViewPageIconUrl !== null && (
+                    <img
+                      src={requestedPluginViewPageIconUrl}
+                      alt=""
+                      className="tab-item-page-icon-preload"
+                      draggable={false}
+                      onLoad={() => handlePluginViewPageIconLoad(tab.id, requestedPluginViewPageIconUrl)}
+                    />
+                  )}
+                </span>
               )}
               <span className="tab-item-title">
                 {tab.title}

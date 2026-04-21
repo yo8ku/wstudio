@@ -64,7 +64,10 @@ import type {
   PluginDescriptor,
   PluginSettingTabSummary,
 } from './types';
-import type { MainProcessAppFacadeDependencies } from './MainProcessAppFacade';
+import {
+  MainProcessWorkspaceLeaf,
+  type MainProcessAppFacadeDependencies,
+} from './MainProcessAppFacade';
 import {
   closePluginRuntimeMenu,
   closePluginRuntimeOverlayFrame,
@@ -74,6 +77,10 @@ import {
   openPluginRuntimeOverlayFrame,
   updatePluginRuntimeOverlayFrame,
 } from '../../ipc/pluginRuntimeHandlers';
+import {
+  URL_BROWSER_VIEW_TYPE,
+  urlBrowserDownloadService,
+} from '../UrlBrowserDownloadService';
 
 interface PluginModuleNamespace {
   readonly default?: PluginConstructor;
@@ -852,6 +859,7 @@ export class PluginHostManager {
   private pluginUiUnsubscribe: (() => void) | null = null;
   private pluginCommandUnsubscribe: (() => void) | null = null;
   private editorBridgeUnsubscribe: (() => void) | null = null;
+  private urlBrowserDownloadUnsubscribe: (() => void) | null = null;
   private activeEditorSuggest: EditorSuggest<SuggestionValue> | null = null;
   private activeEditorSuggestPluginId: string | null = null;
   private pendingEditorSuggestRefreshTimer: NodeJS.Timeout | null = null;
@@ -903,6 +911,8 @@ export class PluginHostManager {
   }
 
   public async shutdown(): Promise<void> {
+    this.urlBrowserDownloadUnsubscribe?.();
+    this.urlBrowserDownloadUnsubscribe = null;
     await this.unloadAllPlugins();
     await this.pluginSupervisorService.shutdown();
   }
@@ -1048,7 +1058,9 @@ export class PluginHostManager {
       surfaceKind: 'view',
       surfaceId: viewType,
       entryUrl,
-      state: null,
+      state: viewType === URL_BROWSER_VIEW_TYPE
+        ? urlBrowserDownloadService.buildRuntimeState()
+        : null,
     };
   }
 
@@ -1234,6 +1246,8 @@ export class PluginHostManager {
     this.pluginCommandUnsubscribe = null;
     this.editorBridgeUnsubscribe?.();
     this.editorBridgeUnsubscribe = null;
+    this.urlBrowserDownloadUnsubscribe?.();
+    this.urlBrowserDownloadUnsubscribe = null;
     this.clearPendingEditorSuggestRefresh();
     this.closeActiveEditorSuggest();
 
@@ -1252,10 +1266,32 @@ export class PluginHostManager {
       resolveViewTypeForExtension: (extension: string) => this.resolveRegisteredViewTypeForExtension(extension),
       resolveViewRuntimeSurface: (type: string) => this.resolveViewRuntimeSurface(type),
     });
+    this.urlBrowserDownloadUnsubscribe = urlBrowserDownloadService.subscribe(() => {
+      const workspace = this.runtime?.app.workspace;
+
+      if (workspace === null || workspace === undefined) {
+        return;
+      }
+
+      const browserLeaves = workspace.getLeavesOfType(URL_BROWSER_VIEW_TYPE);
+
+      for (const leaf of browserLeaves) {
+        if (!(leaf instanceof MainProcessWorkspaceLeaf)) {
+          continue;
+        }
+
+        leaf.refreshRendererRuntimeSurface(
+          urlBrowserDownloadService.mergeRuntimeState(leaf.view.getState() as JsonValue),
+        );
+      }
+    });
     configurePluginRuntimeViewRequestBridge({
       activateView: async (leafId: string) => {
         this.runtime?.app.workspace.activateLeafById(leafId);
         pluginSurfaceViewService.bringSurfaceToFront(`leaf:${leafId}`);
+      },
+      clearActiveView: async () => {
+        this.runtime?.app.workspace.clearActiveLeaf();
       },
       closeView: async (leafId: string) => {
         this.runtime?.app.workspace.detachLeafById(leafId);
