@@ -23,6 +23,7 @@ import type { SettingsManager } from '../../config/SettingsManager';
 import type { MainProcessAppFacade } from './MainProcessAppFacade';
 import type { BasesViewSnapshot } from './MainProcessPluginRuntime';
 import type { PluginDescriptor, PluginSettingTabSummary } from './types';
+import { URL_BROWSER_VIEW_TYPE } from '../UrlBrowserDownloadService';
 import {
   descriptorToSupervisorSnapshot,
   type PluginSupervisorChildMessage,
@@ -94,6 +95,26 @@ function resolveWorkspaceLeafMode(
   }
 
   return hostApp.workspace.getLeaf();
+}
+
+export function resolveWorkspaceLeafForViewStateRequest(
+  hostApp: MainProcessAppFacade,
+  request: Extract<PluginSupervisorHostRequestPayload, { readonly kind: 'workspace:leaf-set-view-state' }>,
+  existingLeaf: WorkspaceLeaf | null,
+): WorkspaceLeaf {
+  if (request.viewType === URL_BROWSER_VIEW_TYPE) {
+    if (existingLeaf?.getViewState().type === request.viewType) {
+      return existingLeaf;
+    }
+
+    const [singletonLeaf] = hostApp.workspace.getLeavesOfType(request.viewType);
+
+    if (singletonLeaf !== undefined) {
+      return singletonLeaf;
+    }
+  }
+
+  return existingLeaf ?? resolveWorkspaceLeafMode(hostApp, request.newLeafMode);
 }
 
 function registerPendingSupervisorViewInstanceToken(
@@ -1434,7 +1455,11 @@ export class PluginSupervisorService {
         const existingLeaf = request.leafId === null
           ? null
           : hostApp.workspace.getLeafById(request.leafId);
-        const targetLeaf = existingLeaf ?? resolveWorkspaceLeafMode(hostApp, request.newLeafMode);
+        const targetLeaf = resolveWorkspaceLeafForViewStateRequest(
+          hostApp,
+          request,
+          existingLeaf,
+        );
         registerPendingSupervisorViewInstanceToken(
           targetLeaf,
           request.viewType,
