@@ -504,6 +504,7 @@ export function buildPluginSurfaceBootstrapDocument(): string {
           activateView: () => invokeHost('activate-view', null).then(() => undefined),
           closeView: () => invokeHost('close-view', null).then(() => undefined),
           closeOverlay: () => invokeHost('close-overlay', null).then(() => undefined),
+          showOpenDialog: (options) => invokeHost('file-show-open-dialog', options),
           overlay: {
             dispatchAction: (action) => invokeHost('dispatch-overlay-action', action).then(() => undefined),
           },

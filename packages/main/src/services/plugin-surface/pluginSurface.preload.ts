@@ -105,6 +105,7 @@ type PluginSurfaceHostRequestMethod =
   | 'activate-view'
   | 'close-view'
   | 'close-overlay'
+  | 'file-show-open-dialog'
   | 'dispatch-overlay-action'
   | 'open-workspace-file'
   | 'load-entry-source'
@@ -133,6 +134,15 @@ type PluginSurfaceHostRequestPayload =
       readonly options?: {
         readonly forceNewLeaf?: boolean;
       };
+    }
+  | {
+      readonly title?: string;
+      readonly defaultPath?: string;
+      readonly filters?: readonly {
+        readonly name: string;
+        readonly extensions: readonly string[];
+      }[];
+      readonly properties?: readonly ('openFile' | 'openDirectory' | 'multiSelections')[];
     }
   | {
       readonly documentUri: string | null;
@@ -331,6 +341,10 @@ const pluginSurfaceBridge: PluginSurfacePreloadBridge = {
         overlayId: pluginSurfaceContext.overlayId,
       });
       return null;
+    }
+
+    if (method === 'file-show-open-dialog') {
+      return await ipcRenderer.invoke('file:show-open-dialog', payload) as JsonValue;
     }
 
     if (method === 'dispatch-overlay-action') {

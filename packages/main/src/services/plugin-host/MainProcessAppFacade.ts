@@ -2961,6 +2961,10 @@ export class MainProcessWorkspace extends Workspace {
     return [...this.leaves.values()].filter((leaf) => leaf.view.getViewType() === viewType);
   }
 
+  public async getTabs(): Promise<readonly WorkspaceLeaf[]> {
+    return [...this.leaves.values()];
+  }
+
   public detachLeavesOfType(viewType: string): void {
     let removedActiveLeaf = false;
 

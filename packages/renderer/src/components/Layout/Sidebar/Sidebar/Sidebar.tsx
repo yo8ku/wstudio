@@ -360,7 +360,11 @@ export function Sidebar({
 
     switch (activeView) {
       case 'explorer':
-        return <FileExplorer />;
+        return (
+          <FileExplorer
+            resourceExplorerItems={workbenchContributions?.resourceExplorerItems ?? []}
+          />
+        );
       case 'search':
         return (
           <Search

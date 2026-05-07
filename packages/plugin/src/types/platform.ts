@@ -164,7 +164,7 @@ class ManagedRequestUrlResponsePromise implements RequestUrlResponsePromise {
   }
 }
 
-export const apiVersion = '1.0.0';
+export const apiVersion = '1.2.0';
 
 class ManagedMomentDuration implements MomentDuration {
   private readonly milliseconds: number;

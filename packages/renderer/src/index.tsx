@@ -65,10 +65,14 @@ function clearOldBackgroundCover(): void {
   });
 }
 
+let svgCleanupTimer: number | null = null;
+
 function removeAbnormalSVGs(): void {
-  const allSVGs = document.querySelectorAll('svg');
+  const allSVGs = document.querySelectorAll<SVGElement>('svg:not([data-wstudio-svg-cleanup-checked="true"])');
 
   allSVGs.forEach((svg) => {
+    svg.dataset.wstudioSvgCleanupChecked = 'true';
+
     if (svg.closest('.cm-mermaid-svg-wrapper') || svg.closest('.cm-mermaid-container')) {
       return;
     }
@@ -95,23 +99,36 @@ function removeAbnormalSVGs(): void {
   });
 }
 
+function nodeContainsSvg(node: Node): boolean {
+  if (node.nodeName === 'svg' || node.nodeName === 'SVG') {
+    return true;
+  }
+
+  return node instanceof HTMLElement && node.querySelector('svg') !== null;
+}
+
+function scheduleSvgCleanup(delayMs = 120): void {
+  if (svgCleanupTimer !== null) {
+    return;
+  }
+
+  svgCleanupTimer = window.setTimeout(() => {
+    svgCleanupTimer = null;
+    removeAbnormalSVGs();
+  }, delayMs);
+}
+
 function installSvgCleanup(): void {
-  removeAbnormalSVGs();
-  window.setInterval(removeAbnormalSVGs, 2000);
+  scheduleSvgCleanup(250);
 
   const observer = new MutationObserver((mutations) => {
-    const needCheck = mutations.some((mutation) => {
-      return Array.from(mutation.addedNodes).some((node) => {
-        if (node.nodeName === 'svg' || node.nodeName === 'SVG') {
-          return true;
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (nodeContainsSvg(node)) {
+          scheduleSvgCleanup();
+          return;
         }
-
-        return node instanceof HTMLElement && node.querySelector('svg') !== null;
-      });
-    });
-
-    if (needCheck) {
-      window.setTimeout(removeAbnormalSVGs, 50);
+      }
     }
   });
 
@@ -152,10 +169,26 @@ function installDevtoolsShortcut(): void {
 
 function initializeRecoveryService(): void {
   window.setTimeout(() => {
-    knowledgeBaseRecoveryService.initialize().catch((error) => {
-      console.error('[renderer] failed to initialize knowledge base recovery service', error);
-    });
-  }, 2000);
+    const initialize = () => {
+      knowledgeBaseRecoveryService.initialize().catch((error) => {
+        console.error('[renderer] failed to initialize knowledge base recovery service', error);
+      });
+    };
+
+    const requestIdleCallback = (window as unknown as {
+      requestIdleCallback?: (
+        callback: () => void,
+        options?: { timeout?: number },
+      ) => number;
+    }).requestIdleCallback;
+
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback.call(window, initialize, { timeout: 10000 });
+      return;
+    }
+
+    window.setTimeout(initialize, 4000);
+  }, 8000);
 }
 
 function installPluginRuntimeBridge(): void {

@@ -5,10 +5,15 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { EditorView } from '@codemirror/view';
+import type { WorkbenchResourceExplorerItemContributionEntry } from '@note-studio/shared';
 import { VscInfo } from 'react-icons/vsc';
 import { ExplorerView } from '../../../Explorer';
 import { Icon } from '../../../Icons/Icon';
-import type { FileTreeNode, OutlineNode as ExplorerOutlineNode } from '../../../Explorer';
+import type {
+  FileTreeNode,
+  OutlineNode as ExplorerOutlineNode,
+  ResourceFolderExplorerItem,
+} from '../../../Explorer';
 import type { BookmarkEntryItem, BookmarkGroupItem, BookmarkGroupSection, BookmarkNoteDisplayItem } from '../../../Explorer/Bookmark/types';
 import {
   AlertDialog,
@@ -41,8 +46,35 @@ interface FileSystemTreeEntry {
   name: string;
   path: string;
   type: string;
+  isExpanded?: boolean;
   children?: FileSystemTreeEntry[];
 }
+
+export interface FileExplorerProps {
+  readonly resourceExplorerItems?: readonly WorkbenchResourceExplorerItemContributionEntry[];
+}
+
+interface ResourceFolderConfigItem {
+  id: string;
+  name: string;
+  path: string;
+  workspacePath: string;
+}
+
+const toFileTreeNodes = (
+  entries: FileSystemTreeEntry[],
+  depth: number,
+  resolveExpanded: (entry: FileSystemTreeEntry) => boolean,
+): FileTreeNode[] => entries.map((entry) => ({
+  name: entry.name,
+  path: entry.path,
+  isDirectory: entry.type === 'directory',
+  isExpanded: resolveExpanded(entry),
+  depth,
+  children: entry.children
+    ? toFileTreeNodes(entry.children, depth + 1, resolveExpanded)
+    : [],
+}));
 
 const findOutlineNodeById = (
   nodes: ExplorerOutlineNode[],
@@ -144,7 +176,9 @@ const collectDefaultCollapsedBookmarkGroupPickerIds = (groups: BookmarkGroupItem
     .map((group) => group.id);
 };
 
-export const FileExplorer: React.FC = () => {
+export const FileExplorer: React.FC<FileExplorerProps> = ({
+  resourceExplorerItems = [],
+}) => {
   const normalizePath = (value: string): string => value.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
   const stripBookmarkFileExtension = (value: string, path: string): string => {
     const trimmedValue = value.trim();
@@ -209,6 +243,9 @@ export const FileExplorer: React.FC = () => {
   // 文件树状�?- 优先使用 store 中的数据
   const [fileTree, setFileTree] = useState<FileTreeNode[]>(storeFileTreeData || []);
   const fileTreeRef = useRef<FileTreeNode[]>(storeFileTreeData || []);
+  const [resourceFolderItems, setResourceFolderItems] = useState<ResourceFolderConfigItem[]>([]);
+  const [resourceExplorerItemNodes, setResourceExplorerItemNodes] = useState<Record<string, FileTreeNode[]>>({});
+  const [isCreatingResourceFolderItem, setIsCreatingResourceFolderItem] = useState<boolean>(false);
   const [rootFolderPath, setRootFolderPath] = useState<string>(storeWorkspacePath);
   const [rootFolderName, setRootFolderName] = useState<string>('');
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
@@ -272,6 +309,84 @@ export const FileExplorer: React.FC = () => {
 
     return 'collapse-all';
   }, [fileTree]);
+
+  const currentResourceFolderItems = useMemo(
+    () => resourceFolderItems.filter((item) => (
+      Boolean(rootFolderPath) && normalizePath(item.workspacePath) === normalizePath(rootFolderPath)
+    )),
+    [resourceFolderItems, rootFolderPath],
+  );
+
+  const resourceFolderPathSet = useMemo(() => new Set(
+    currentResourceFolderItems.map((item) => normalizePath(item.path)),
+  ), [currentResourceFolderItems]);
+
+  const primaryFileTreeNodes = useMemo(
+    () => fileTree.filter((node) => !resourceFolderPathSet.has(normalizePath(node.path))),
+    [fileTree, resourceFolderPathSet],
+  );
+
+  const resourceFolderExplorerItems = useMemo<ResourceFolderExplorerItem[]>(() => {
+    const rootNodeByPath = new Map<string, FileTreeNode>();
+    for (const node of fileTree) {
+      rootNodeByPath.set(normalizePath(node.path), node);
+    }
+
+    const items = currentResourceFolderItems.map((item): ResourceFolderExplorerItem => {
+      const node = rootNodeByPath.get(normalizePath(item.path));
+      return {
+        id: item.id,
+        name: node?.name ?? item.name,
+        path: item.path,
+        nodes: node?.children ?? [],
+      };
+    });
+
+    if (!isCreatingResourceFolderItem) {
+      return items;
+    }
+
+    return [
+      {
+        id: 'resource-folder-item-creating',
+        name: '',
+        path: '',
+        nodes: [],
+        isCreating: true,
+      },
+      ...items,
+    ];
+  }, [currentResourceFolderItems, fileTree, isCreatingResourceFolderItem]);
+
+  const resourceExplorerFolderItems = useMemo<ResourceFolderExplorerItem[]>(() => (
+    resourceExplorerItems.map((item): ResourceFolderExplorerItem => ({
+      id: item.itemKey,
+      name: item.title,
+      path: item.directoryPath,
+      nodes: resourceExplorerItemNodes[item.itemKey] ?? [],
+    }))
+  ), [resourceExplorerItemNodes, resourceExplorerItems]);
+
+  const persistResourceFolderItems = useCallback(async (
+    nextItems: ResourceFolderConfigItem[],
+  ): Promise<void> => {
+    const currentConfig = await electronStore.get('explorer-config') ?? {};
+    await electronStore.set('explorer-config', {
+      ...currentConfig,
+      resourceFolderItems: nextItems,
+    });
+  }, []);
+
+  const addResourceFolderItem = useCallback((item: ResourceFolderConfigItem): void => {
+    setResourceFolderItems((previousItems) => {
+      const nextItems = [
+        item,
+        ...previousItems.filter((previousItem) => normalizePath(previousItem.path) !== normalizePath(item.path)),
+      ];
+      void persistResourceFolderItems(nextItems);
+      return nextItems;
+    });
+  }, [persistResourceFolderItems]);
   
   // 同步 fileTree �?ref �?store
   useEffect(() => {
@@ -421,22 +536,14 @@ export const FileExplorer: React.FC = () => {
         console.log('[FileExplorer] File tree loaded.', result.data);
         
         // 转换后端返回的数据结构为前端使用的结构，并添�?depth 属�?
-        const convertToFileTreeNode = (item: any, depth: number = 0): FileTreeNode => {
-          const isExpanded = preserveExpandedState && expandedPaths.has(item.path) 
-            ? true 
-            : (item.isExpanded || false);
-          
-          return {
-            name: item.name,
-            path: item.path,
-            isDirectory: item.type === 'directory',
-            isExpanded: isExpanded,
-            depth: depth,
-            children: item.children?.map((child: any) => convertToFileTreeNode(child, depth + 1)) || []
-          };
-        };
-        
-        const treeData = result.data.map((item: any) => convertToFileTreeNode(item, 0));
+        const treeEntries = result.data as FileSystemTreeEntry[];
+        const treeData = toFileTreeNodes(
+          treeEntries,
+          0,
+          (entry) => preserveExpandedState && expandedPaths.has(entry.path)
+            ? true
+            : Boolean(entry.isExpanded),
+        );
         setFileTree(treeData);
         fileTreeRef.current = treeData; // 同步更新 ref
         setRootFolderPath(folderPath);
@@ -461,19 +568,12 @@ export const FileExplorer: React.FC = () => {
                       
                       if (expandResult?.success && expandResult.data) {
                         const parentDepth = node.depth || 0;
-                        const convertToFileTreeNode = (item: any, depth: number): FileTreeNode => {
-                          const childIsExpanded = expandedPaths.has(item.path);
-                          return {
-                            name: item.name,
-                            path: item.path,
-                            isDirectory: item.type === 'directory',
-                            isExpanded: childIsExpanded,
-                            depth: depth,
-                            children: item.children?.map((child: any) => convertToFileTreeNode(child, depth + 1)) || []
-                          };
-                        };
-                        
-                        const children = expandResult.data.map((item: any) => convertToFileTreeNode(item, parentDepth + 1));
+                        const childEntries = expandResult.data as FileSystemTreeEntry[];
+                        const children = toFileTreeNodes(
+                          childEntries,
+                          parentDepth + 1,
+                          (entry) => expandedPaths.has(entry.path),
+                        );
                         
                         // 更新树结�?
                         setFileTree(prevTree => {
@@ -646,6 +746,10 @@ export const FileExplorer: React.FC = () => {
       if (config?.bookmarkEntries) {
         setBookmarkEntries(config.bookmarkEntries);
       }
+
+      if (config?.resourceFolderItems) {
+        setResourceFolderItems(config.resourceFolderItems);
+      }
     };
     loadConfig();
   }, []);
@@ -803,16 +907,12 @@ export const FileExplorer: React.FC = () => {
           
           // 转换数据结构，设置子节点�?depth
           const parentDepth = node.depth || 0;
-          const convertToFileTreeNode = (item: any, depth: number): FileTreeNode => ({
-            name: item.name,
-            path: item.path,
-            isDirectory: item.type === 'directory',
-            isExpanded: item.isExpanded || false,
-            depth: depth,
-            children: item.children?.map((child: any) => convertToFileTreeNode(child, depth + 1)) || []
-          });
-          
-          const children = result.data.map((item: any) => convertToFileTreeNode(item, parentDepth + 1));
+          const childEntries = result.data as FileSystemTreeEntry[];
+          const children = toFileTreeNodes(
+            childEntries,
+            parentDepth + 1,
+            (entry) => Boolean(entry.isExpanded),
+          );
           
           // 更新树结构，添加子项
           const updateTreeWithChildren = (items: FileTreeNode[]): FileTreeNode[] => {
@@ -843,6 +943,144 @@ export const FileExplorer: React.FC = () => {
       });
     }
   }, [rootFolderPath, setFileTreeData]);
+
+  const handleResourceFolderExpandedChange = useCallback(async (
+    itemId: string,
+    expanded: boolean,
+  ): Promise<void> => {
+    if (!expanded || !rootFolderPath) {
+      return;
+    }
+
+    const item = resourceFolderItems.find((candidate) => candidate.id === itemId);
+    if (!item) {
+      return;
+    }
+
+    const currentNode = fileTreeRef.current.find((node) => normalizePath(node.path) === normalizePath(item.path));
+    if (currentNode?.children && currentNode.children.length > 0) {
+      return;
+    }
+
+    const result = await window.electron?.folder?.expand(item.path, rootFolderPath);
+    if (!result?.success || !result.data) {
+      return;
+    }
+
+    const children = toFileTreeNodes(
+      result.data as FileSystemTreeEntry[],
+      1,
+      (entry) => Boolean(entry.isExpanded),
+    );
+
+    setFileTree((previousTree) => {
+      const nextTree = previousTree.map((node) => {
+        if (normalizePath(node.path) !== normalizePath(item.path)) {
+          return node;
+        }
+
+        return {
+          ...node,
+          isExpanded: true,
+          children,
+        };
+      });
+      fileTreeRef.current = nextTree;
+      return nextTree;
+    });
+  }, [resourceFolderItems, rootFolderPath]);
+
+  const loadResourceExplorerFolderItem = useCallback(async (
+    itemId: string,
+  ): Promise<void> => {
+    const item = resourceExplorerItems.find((candidate) => candidate.itemKey === itemId);
+    if (!item || item.directoryPath.trim().length === 0) {
+      return;
+    }
+
+    const result = await window.electron?.folder?.readTree(item.directoryPath);
+    if (!result?.success || !result.data) {
+      return;
+    }
+
+    const nodes = toFileTreeNodes(
+      result.data as FileSystemTreeEntry[],
+      0,
+      (entry) => Boolean(entry.isExpanded),
+    );
+
+    setResourceExplorerItemNodes((previousNodes) => ({
+      ...previousNodes,
+      [itemId]: nodes,
+    }));
+  }, [resourceExplorerItems]);
+
+  const handleResourceExplorerFolderExpandedChange = useCallback(async (
+    itemId: string,
+    expanded: boolean,
+  ): Promise<void> => {
+    if (!expanded) {
+      return;
+    }
+
+    const currentNodes = resourceExplorerItemNodes[itemId] ?? [];
+    if (currentNodes.length > 0) {
+      return;
+    }
+
+    await loadResourceExplorerFolderItem(itemId);
+  }, [loadResourceExplorerFolderItem, resourceExplorerItemNodes]);
+
+  const handleResourceExplorerFolderToggle = useCallback(async (
+    itemId: string,
+    node: FileTreeNode,
+  ): Promise<void> => {
+    if (!node.isDirectory) {
+      return;
+    }
+
+    const item = resourceExplorerItems.find((candidate) => candidate.itemKey === itemId);
+    if (!item) {
+      return;
+    }
+
+    let nextChildren: FileTreeNode[] | null = null;
+
+    if (!node.isExpanded && (node.children?.length ?? 0) === 0) {
+      const result = await window.electron?.folder?.expand(node.path, item.directoryPath);
+      if (result?.success && result.data) {
+        nextChildren = toFileTreeNodes(
+          result.data as FileSystemTreeEntry[],
+          (node.depth || 0) + 1,
+          (entry) => Boolean(entry.isExpanded),
+        );
+      }
+    }
+
+    const updateTree = (nodes: FileTreeNode[]): FileTreeNode[] => nodes.map((entry) => {
+      if (entry.path === node.path && entry.isDirectory) {
+        return {
+          ...entry,
+          isExpanded: !entry.isExpanded,
+          children: nextChildren ?? entry.children,
+        };
+      }
+
+      if (entry.children) {
+        return {
+          ...entry,
+          children: updateTree(entry.children),
+        };
+      }
+
+      return entry;
+    });
+
+    setResourceExplorerItemNodes((previousNodes) => ({
+      ...previousNodes,
+      [itemId]: updateTree(previousNodes[itemId] ?? []),
+    }));
+  }, [resourceExplorerItems]);
 
   // 处理文件/文件夹点击（单击选中，文件同时打开�?
   const handleFileClick = useCallback(async (node: FileTreeNode) => {
@@ -1241,6 +1479,52 @@ export const FileExplorer: React.FC = () => {
     }
     addCreatingNodeInFolder(targetFolderPath, 'file');
   }, [addCreatingNodeInFolder, findNodeByPath, selectedFilePath]);
+
+  const handleNewNote = useCallback(() => {
+    console.log('[FileExplorer] New note action triggered.');
+    if (!rootFolderPath) {
+      toastService.warning('请先导入项目');
+      return;
+    }
+
+    setSelectedFilePath('');
+    setIsCreatingResourceFolderItem(true);
+  }, [rootFolderPath]);
+
+  const handleCancelCreateResourceFolderItem = useCallback((): void => {
+    setIsCreatingResourceFolderItem(false);
+  }, []);
+
+  const handleCreateResourceFolderItem = useCallback(async (name: string): Promise<void> => {
+    if (!rootFolderPath || !name.trim()) {
+      setIsCreatingResourceFolderItem(false);
+      return;
+    }
+
+    const createFolder = window.electron?.folder?.createFolder;
+    if (!createFolder) {
+      toastService.error('当前环境不支持新建笔记');
+      setIsCreatingResourceFolderItem(false);
+      return;
+    }
+
+    const folderName = name.trim();
+    const result = await createFolder(rootFolderPath, folderName);
+    if (!result?.success || !result.data?.path) {
+      toastService.error(result?.error || '新建笔记失败');
+      setIsCreatingResourceFolderItem(false);
+      return;
+    }
+
+    addResourceFolderItem({
+      id: result.data.path,
+      name: result.data.name || folderName,
+      path: result.data.path,
+      workspacePath: rootFolderPath,
+    });
+    setIsCreatingResourceFolderItem(false);
+    await refreshFileTree(rootFolderPath);
+  }, [addResourceFolderItem, refreshFileTree, rootFolderPath]);
 
   // 处理新建文件夹（在根目录�?
   const handleNewFolder = useCallback(() => {
@@ -2438,6 +2722,25 @@ export const FileExplorer: React.FC = () => {
     };
   }, [addCreatingNodeInFolder, startRename, handleDelete, handleRevealInExplorer, handleIndexFile, handleIndexFolder]);
 
+  const handleImportProject = useCallback(async (): Promise<void> => {
+    if (rootFolderPath) {
+      return;
+    }
+
+    try {
+      const result = await window.electron?.folder?.open();
+      if (result?.success && result.data) {
+        window.dispatchEvent(
+          new CustomEvent('folder-opened', {
+            detail: { path: result.data.path },
+          }),
+        );
+      }
+    } catch (error) {
+      console.error('[FileExplorer] 导入项目失败:', error);
+    }
+  }, [rootFolderPath]);
+
   const bookmarkDialogTitle = bookmarkDialogMode === 'create'
     ? '添加书签'
     : bookmarkDialogMode === 'rename'
@@ -2450,7 +2753,7 @@ export const FileExplorer: React.FC = () => {
       <ExplorerView
         rootName={rootFolderName}
         rootPath={rootFolderPath}
-        fileTreeNodes={fileTree}
+        fileTreeNodes={primaryFileTreeNodes}
         outlineNodes={outlineNodes}
         selectedOutlineNode={selectedOutlineNode}
         selectedFilePath={selectedFilePath}
@@ -2469,6 +2772,7 @@ export const FileExplorer: React.FC = () => {
         onFolderToggle={handleFolderToggle}
         onNewFile={handleNewFile}
         onNewFolder={handleNewFolder}
+        onNewNote={handleNewNote}
         onRefresh={() => {
           // 刷新时保持当前状态，只更新新�?删除的文件，不闪�?
           if (rootFolderPath) {
@@ -2511,6 +2815,22 @@ export const FileExplorer: React.FC = () => {
         onCreateCancel={handleCreateCancel}
         onRename={handleRename}
         onBlankAreaClick={handleBlankAreaClick}
+        onImportProject={rootFolderPath ? undefined : handleImportProject}
+        onCreateResourceFolderItem={(name): void => {
+          void handleCreateResourceFolderItem(name);
+        }}
+        onCancelCreateResourceFolderItem={handleCancelCreateResourceFolderItem}
+        onResourceFolderExpandedChange={(itemId, expanded): void => {
+          void handleResourceFolderExpandedChange(itemId, expanded);
+        }}
+        resourceFolderItems={resourceFolderExplorerItems}
+        resourceExplorerFolderItems={resourceExplorerFolderItems}
+        onResourceExplorerFolderExpandedChange={(itemId, expanded): void => {
+          void handleResourceExplorerFolderExpandedChange(itemId, expanded);
+        }}
+        onResourceExplorerFolderToggle={(itemId, node): void => {
+          void handleResourceExplorerFolderToggle(itemId, node);
+        }}
         initialFormExpanded={initialFormExpanded}
         onFormExpandedChange={async (expanded) => {
           const currentConfig = await electronStore.get('explorer-config') ?? {};
@@ -2604,4 +2924,3 @@ export const FileExplorer: React.FC = () => {
     </>
   );
 };
-

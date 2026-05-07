@@ -21,6 +21,7 @@ export interface PluginSupervisorDescriptorSnapshot {
   readonly entryPath: string | null;
   readonly manifestPath: string;
   readonly uiEntrypoints: PluginDescriptor['uiEntrypoints'];
+  readonly runtimeOwner: PluginSupervisorPluginRuntimeOwner;
 }
 
 export interface PluginSupervisorCommandSnapshot {
@@ -40,6 +41,16 @@ export interface PluginSupervisorSettingTabSnapshot {
 export interface PluginSupervisorViewSnapshot {
   readonly pluginId: string;
   readonly viewType: string;
+}
+
+export interface PluginSupervisorResourceExplorerItemSnapshot {
+  readonly pluginId: string;
+  readonly itemId: string;
+  readonly title: string;
+  readonly icon: string | null;
+  readonly viewType: string;
+  readonly directoryPath: string;
+  readonly retainContextWhenHidden: boolean;
 }
 
 export interface PluginSupervisorViewInstanceSnapshot {
@@ -110,6 +121,14 @@ export interface PluginSupervisorShutdownMessage {
   readonly type: 'shutdown';
   readonly data: {
     readonly requestId: string;
+  };
+}
+
+export interface PluginSupervisorStartPluginMessage {
+  readonly type: 'start-plugin';
+  readonly data: {
+    readonly requestId: string;
+    readonly pluginId: string;
   };
 }
 
@@ -202,6 +221,9 @@ export type PluginSupervisorHostRequestPayload =
       readonly kind: 'workspace:get-snapshot';
     }
   | {
+      readonly kind: 'workspace:get-tabs';
+    }
+  | {
       readonly kind: 'storage:snapshot-local';
     }
   | {
@@ -270,6 +292,10 @@ export type PluginSupervisorHostResponsePayload =
   | {
       readonly kind: 'workspace:get-snapshot';
       readonly snapshot: PluginSupervisorWorkspaceSnapshot;
+    }
+  | {
+      readonly kind: 'workspace:get-tabs';
+      readonly tabs: readonly PluginSupervisorWorkspaceLeafSnapshot[];
     }
   | {
       readonly kind: 'storage:snapshot-local';
@@ -344,6 +370,7 @@ export type PluginSupervisorParentControlMessage =
   | PluginSupervisorSyncDescriptorsMessage
   | PluginSupervisorSyncCommandsMessage
   | PluginSupervisorShutdownMessage
+  | PluginSupervisorStartPluginMessage
   | PluginSupervisorExecuteCommandMessage
   | PluginSupervisorExecuteProtocolMessage
   | PluginSupervisorExecuteBasesViewMessage
@@ -393,6 +420,14 @@ export interface PluginSupervisorShutdownCompleteMessage {
   };
 }
 
+export interface PluginSupervisorPluginStartedMessage {
+  readonly type: 'plugin-started';
+  readonly data: {
+    readonly requestId: string;
+    readonly handled: boolean;
+  };
+}
+
 export interface PluginSupervisorErrorMessage {
   readonly type: 'error';
   readonly data: {
@@ -419,6 +454,13 @@ export interface PluginSupervisorViewsUpdatedMessage {
   readonly type: 'views-updated';
   readonly data: {
     readonly views: readonly PluginSupervisorViewSnapshot[];
+  };
+}
+
+export interface PluginSupervisorResourceExplorerItemsUpdatedMessage {
+  readonly type: 'resource-explorer-items-updated';
+  readonly data: {
+    readonly items: readonly PluginSupervisorResourceExplorerItemSnapshot[];
   };
 }
 
@@ -530,11 +572,13 @@ export type PluginSupervisorChildMessage =
   | PluginSupervisorSyncCompleteMessage
   | PluginSupervisorCommandsSyncCompleteMessage
   | PluginSupervisorShutdownCompleteMessage
+  | PluginSupervisorPluginStartedMessage
   | PluginSupervisorErrorMessage
   | PluginSupervisorHostRequestMessage
   | PluginSupervisorCommandsUpdatedMessage
   | PluginSupervisorSettingTabsUpdatedMessage
   | PluginSupervisorViewsUpdatedMessage
+  | PluginSupervisorResourceExplorerItemsUpdatedMessage
   | PluginSupervisorExtensionsUpdatedMessage
   | PluginSupervisorUiEntriesUpdatedMessage
   | PluginSupervisorRuntimeStatesUpdatedMessage
@@ -559,6 +603,7 @@ export interface PluginSupervisorStateSnapshot {
 
 export function descriptorToSupervisorSnapshot(
   descriptor: PluginDescriptor,
+  runtimeOwner: PluginSupervisorPluginRuntimeOwner,
 ): PluginSupervisorDescriptorSnapshot {
   return {
     pluginId: descriptor.manifest.id,
@@ -568,5 +613,6 @@ export function descriptorToSupervisorSnapshot(
     entryPath: descriptor.entryPath,
     manifestPath: descriptor.manifestPath,
     uiEntrypoints: descriptor.uiEntrypoints,
+    runtimeOwner,
   };
 }

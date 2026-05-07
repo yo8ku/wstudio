@@ -36,6 +36,19 @@ body.window-resizing .main-layout {
   background-color: var(--ws-editor-background, #1e1e1e) !important;
 }
 
+body.window-resizing * {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+body.window-resizing .editor-tab-content,
+body.window-resizing .sidebar-content,
+body.window-resizing .ai-chat-panel-messages,
+body.window-resizing .terminal-panel-content,
+body.window-resizing .plugin-setting-tab-card__frame {
+  contain: paint;
+}
+
 body.window-resizing #background-image-layer {
   filter: none !important;
   transform: translateZ(0) scale(1.02) !important;

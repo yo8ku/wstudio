@@ -1,9 +1,23 @@
 ﻿import { beforeAll, describe, expect, it } from 'vitest';
 import { ItemView, addIcon, removeIcon } from '@note-studio/plugin';
-import type { App, JsonValue, OpenViewState, TFile, View, ViewState, WorkspaceTabs } from '@note-studio/plugin';
+import type {
+  App,
+  JsonValue,
+  OpenViewState,
+  ResourceExplorerItemRegistration,
+  TFile,
+  View,
+  ViewState,
+  WorkspaceTabs,
+} from '@note-studio/plugin';
+import type { SettingsManager } from '../../config/SettingsManager';
 import { WorkspaceLeaf } from '@note-studio/plugin';
 import { installMainProcessDomShim, serializeHostElementToHtml } from './MainProcessDomShim';
-import { MainProcessCommandRegistry, MainProcessUIRegistry } from './MainProcessPluginRuntime';
+import {
+  MainProcessCommandRegistry,
+  MainProcessResourceExplorerItemRegistry,
+  MainProcessUIRegistry,
+} from './MainProcessPluginRuntime';
 
 const TEST_ICON_ID = 'main-process-plugin-runtime-test-icon';
 const TEST_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" /></svg>';
@@ -102,6 +116,33 @@ class TestWorkspaceLeaf extends WorkspaceLeaf {
     return undefined;
   }
 }
+
+const createMemorySettingsManager = (): SettingsManager => {
+  const values: Record<string, JsonValue> = {};
+  const manager: Pick<SettingsManager, 'getPluginSetting' | 'updatePluginSetting'> = {
+    getPluginSetting<TValue extends JsonValue>(
+      key: string,
+      defaultValue?: TValue,
+    ): TValue | undefined {
+      const value = values[key];
+      return value === undefined ? defaultValue : value as TValue;
+    },
+    async updatePluginSetting(
+      key: string,
+      value: JsonValue,
+    ): Promise<void> {
+      values[key] = value;
+    },
+  };
+
+  return manager as SettingsManager;
+};
+
+const waitForAsyncPersistence = async (): Promise<void> => {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+};
 
 describe('MainProcessUIRegistry', () => {
   beforeAll(() => {
@@ -287,3 +328,58 @@ describe('MainProcessCommandRegistry', () => {
   });
 });
 
+describe('MainProcessResourceExplorerItemRegistry', () => {
+  it('ignores legacy resource explorer item registrations without crashing plugin load', () => {
+    const settingsManager = createMemorySettingsManager();
+    const registry = new MainProcessResourceExplorerItemRegistry(settingsManager);
+
+    const legacyRegistration = {
+      title: 'Legacy Item',
+      viewType: 'legacy-view',
+    } as ResourceExplorerItemRegistration;
+
+    expect(() => {
+      registry.registerResourceExplorerItem('plugin.test', 'legacy', legacyRegistration);
+    }).not.toThrow();
+
+    expect(registry.getContributions(
+      (pluginId) => `Plugin ${pluginId}`,
+      () => null,
+    )).toEqual([]);
+  });
+
+  it('remembers local directory items for host-rendered resource explorer contributions', async () => {
+    const settingsManager = createMemorySettingsManager();
+    const registry = new MainProcessResourceExplorerItemRegistry(settingsManager);
+
+    const disposable = registry.registerResourceExplorerItem('plugin.test', 'notes', {
+      title: 'Notes',
+      path: 'C:/Users/me/Documents/Notes',
+      icon: 'folder',
+    });
+
+    await waitForAsyncPersistence();
+
+    const restoredRegistry = new MainProcessResourceExplorerItemRegistry(settingsManager);
+    const contributions = restoredRegistry.getContributions(
+      (pluginId) => `Plugin ${pluginId}`,
+      () => null,
+    );
+
+    expect(contributions).toEqual([{
+      extensionId: 'plugin.test',
+      extensionDisplayName: 'Plugin plugin.test',
+      itemKey: 'plugin.test:notes',
+      itemId: 'notes',
+      title: 'Notes',
+      icon: 'folder',
+      viewType: '',
+      directoryPath: 'C:/Users/me/Documents/Notes',
+      webviewEntryUrl: null,
+      webviewHtml: null,
+      retainContextWhenHidden: false,
+    }]);
+
+    disposable.dispose();
+  });
+});

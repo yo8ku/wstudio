@@ -49,6 +49,8 @@ interface PluginRuntimeViewProps {
   readonly viewType: string;
   readonly sourcePath?: string | null;
   readonly runtimeSurface?: PluginUiRuntimeSurfaceDescriptor | null;
+  readonly markRuntimeActive?: boolean;
+  readonly showScopedHostChrome?: boolean;
 }
 
 function isCanvasRuntimeView(viewType: string, sourcePath: string | null | undefined): boolean {
@@ -89,6 +91,8 @@ export const PluginRuntimeView: React.FC<PluginRuntimeViewProps> = ({
   viewType,
   sourcePath,
   runtimeSurface = null,
+  markRuntimeActive = true,
+  showScopedHostChrome = true,
 }) => {
   const canvasRuntimeView = React.useMemo(
     () => isCanvasRuntimeView(viewType, sourcePath),
@@ -235,7 +239,8 @@ export const PluginRuntimeView: React.FC<PluginRuntimeViewProps> = ({
         setEntrypointError(snapshot.error);
 
         if (
-          runtimeActivationReportedRef.current
+          !markRuntimeActive
+          || runtimeActivationReportedRef.current
           || (snapshot.status !== 'module-loaded' && snapshot.status !== 'rendered')
         ) {
           return;
@@ -249,7 +254,7 @@ export const PluginRuntimeView: React.FC<PluginRuntimeViewProps> = ({
     );
 
     return unsubscribe ?? (() => undefined);
-  }, [hasRuntimeSurfaceDescriptor, leafId, pluginSurfaceInstanceId]);
+  }, [hasRuntimeSurfaceDescriptor, leafId, markRuntimeActive, pluginSurfaceInstanceId]);
 
   React.useEffect(() => {
     if (guestSurfaceState === null) {
@@ -396,6 +401,7 @@ export const PluginRuntimeView: React.FC<PluginRuntimeViewProps> = ({
     }
 
     let animationFrameId = 0;
+    let resizeSettledTimerId: number | null = null;
 
     const syncBounds = (): void => {
       const activeRuntimeSurface = runtimeSurfaceDescriptorRef.current;
@@ -411,7 +417,25 @@ export const PluginRuntimeView: React.FC<PluginRuntimeViewProps> = ({
       });
     };
 
+    const isHostWindowResizing = (): boolean => document.body.classList.contains('window-resizing');
+
+    const scheduleSettledBoundsSync = (): void => {
+      if (resizeSettledTimerId !== null) {
+        window.clearTimeout(resizeSettledTimerId);
+      }
+
+      resizeSettledTimerId = window.setTimeout(() => {
+        resizeSettledTimerId = null;
+        scheduleBoundsSync();
+      }, 220);
+    };
+
     const scheduleBoundsSync = (): void => {
+      if (isHostWindowResizing()) {
+        scheduleSettledBoundsSync();
+        return;
+      }
+
       if (animationFrameId !== 0) {
         return;
       }
@@ -434,6 +458,9 @@ export const PluginRuntimeView: React.FC<PluginRuntimeViewProps> = ({
     return () => {
       if (animationFrameId !== 0) {
         window.cancelAnimationFrame(animationFrameId);
+      }
+      if (resizeSettledTimerId !== null) {
+        window.clearTimeout(resizeSettledTimerId);
       }
 
       resizeObserver.disconnect();
@@ -505,7 +532,9 @@ export const PluginRuntimeView: React.FC<PluginRuntimeViewProps> = ({
           />
         )}
       </div>
-      {!canvasRuntimeView && (scopedCanvasToolbarEntries.length > 0 || scopedCanvasTitleBarEntries.length > 0) && (
+      {showScopedHostChrome
+        && !canvasRuntimeView
+        && (scopedCanvasToolbarEntries.length > 0 || scopedCanvasTitleBarEntries.length > 0) && (
         <div className="plugin-runtime-view__host-chrome">
           {scopedCanvasToolbarEntries.length > 0 && (
             <div className="plugin-runtime-view__host-toolbar">
@@ -522,5 +551,3 @@ export const PluginRuntimeView: React.FC<PluginRuntimeViewProps> = ({
     </div>
   );
 };
-
-

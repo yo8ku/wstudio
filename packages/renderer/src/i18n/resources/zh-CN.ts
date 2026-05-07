@@ -1635,6 +1635,16 @@ export const zhCNResources = {
         copyRelativePath: '复制相对路径',
       },
     },
+    project: {
+      import: '导入项目',
+    },
+    fileTree: {
+      renamePlaceholder: '输入名称',
+      defaultRootName: '项目',
+      emptyFolder: '文件夹为空',
+      closedProject: '尚未导入项目',
+      closedWorkspace: '尚未打开文件夹',
+    },
     dialogs: {
       deleteGroupTitle: '删除分组',
       deleteGroupDescription: '确定要删除分组 "{{name}}" 吗？该分组下的所有表单和子分组也将被删除，此操作无法撤销。',

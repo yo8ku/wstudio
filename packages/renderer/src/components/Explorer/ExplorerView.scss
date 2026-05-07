@@ -86,6 +86,10 @@
     border-radius: 0;
   }
 
+  > .custom-scrollbar-track {
+    z-index: 12;
+  }
+
   .custom-scrollbar-thumb {
     border-radius: 0;
     background: var(--ws-scrollbarSlider-background, rgba(121, 121, 121, 0.45));
@@ -106,7 +110,6 @@
     flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
-    gap: 8px;
   }
 
   .custom-scrollbar-content > .open-editors-section,
@@ -117,8 +120,21 @@
   .custom-scrollbar-content > .outline-section {
     border: none;
     border-radius: 0;
-    overflow: hidden;
+    overflow: visible;
     min-width: 0;
+  }
+
+  .explorer-section-accordion,
+  .explorer-section-item {
+    overflow: visible;
+  }
+
+  .explorer-section-header-wrapper,
+  .accordion-header {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    background-color: var(--ws-sideBar-background, var(--ws-editor-background, transparent));
   }
 
   .custom-scrollbar-content > .open-editors-section,
@@ -132,6 +148,16 @@
   .custom-scrollbar-content > .outline-section {
     flex: 1 1 auto;
     min-height: 0;
+  }
+
+  .custom-scrollbar-content > .file-tree-section.file-tree-section--collapsed {
+    flex: 0 0 auto;
+    min-height: auto;
+  }
+
+  .custom-scrollbar-content > .file-tree-section.file-tree-section--expanded {
+    flex: 0 0 auto;
+    min-height: auto;
   }
 
   .custom-scrollbar-content > .outline-section.outline-section--expanded {

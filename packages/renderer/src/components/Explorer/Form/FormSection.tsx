@@ -27,6 +27,10 @@ export interface FormSectionProps {
   selectedFormId?: string;
   /** 閫変腑鐨勫垎缁処D */
   selectedGroupId?: string;
+  /** 鍙楁帶鐨勫睍寮€鐘舵€?*/
+  expanded?: boolean;
+  /** 榛樿灞曞紑鐘舵€?*/
+  defaultExpanded?: boolean;
   /** 鐐瑰嚮琛ㄥ崟椤?*/
   onFormClick?: (item: FormItem) => void;
   /** 鍙屽嚮琛ㄥ崟椤?*/
@@ -64,6 +68,8 @@ export const FormSection: React.FC<FormSectionProps> = ({
   groups = [],
   selectedFormId,
   selectedGroupId,
+  expanded,
+  defaultExpanded = false,
   onFormClick,
   onFormDoubleClick,
   onGroupClick,
@@ -82,7 +88,9 @@ export const FormSection: React.FC<FormSectionProps> = ({
   const translateText = useCallback((key: string, defaultValue: string): string => (
     String(t(key, { defaultValue }))
   ), [t]);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
+  const isControlledExpanded = expanded !== undefined;
+  const isExpanded = expanded ?? internalExpanded;
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   // 鍙抽敭鑿滃崟鐘舵€?
   const [contextMenuState, setContextMenuState] = useState<{
@@ -213,7 +221,9 @@ export const FormSection: React.FC<FormSectionProps> = ({
       // 濡傛灉楂樺害浣庝簬鎶樺彔闃堝€硷紝鑷姩鎶樺彔
       if (newHeight < COLLAPSE_THRESHOLD) {
         setIsResizing(false);
-        setIsExpanded(false);
+        if (!isControlledExpanded) {
+          setInternalExpanded(false);
+        }
         onExpandedChange?.(false);
         return;
       }
@@ -237,7 +247,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing, onExpandedChange]);
+  }, [isResizing, isControlledExpanded, onExpandedChange]);
 
   // 鏋勫缓鍒嗙粍鍙抽敭鑿滃崟
   const buildGroupContextMenu = useCallback((group: FormGroupItem): ContextMenuItem[] => {
@@ -442,9 +452,11 @@ export const FormSection: React.FC<FormSectionProps> = ({
     },
   ];
 
-  const handleExpandChange = (expanded: boolean) => {
-    setIsExpanded(expanded);
-    onExpandedChange?.(expanded);
+  const handleExpandChange = (nextExpanded: boolean) => {
+    if (!isControlledExpanded) {
+      setInternalExpanded(nextExpanded);
+    }
+    onExpandedChange?.(nextExpanded);
   };
 
   // 娓叉煋鍒嗙粍椤?
@@ -605,4 +617,3 @@ export const FormSection: React.FC<FormSectionProps> = ({
 };
 
 export default FormSection;
-

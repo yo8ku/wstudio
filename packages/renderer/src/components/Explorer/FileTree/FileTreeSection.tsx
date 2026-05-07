@@ -3,7 +3,7 @@
  * Renders workspace files and folders, header actions, and node interactions.
  */
 
-import React, { useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import React, { useRef, useEffect, useCallback, useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ExplorerSection, { type ActionButton } from '../ExplorerSection';
 import { FileTreeNode, FileTreeCallbacks } from './types';
@@ -40,8 +40,14 @@ export interface FileTreeSectionProps {
   onNewFolder?: () => void;
   onRefresh?: () => void;
   onExpandedChange?: (expanded: boolean) => void;
+  onImportProject?: () => void;
   onBlankAreaClick?: () => void;
   onContainerContextMenu?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  rootCreating?: boolean;
+  rootCreatePlaceholder?: string;
+  showEmptyState?: boolean;
+  onRootCreateConfirm?: (name: string) => void;
+  onRootCreateCancel?: () => void;
 }
 
 export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
@@ -56,8 +62,14 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   onNewFolder,
   onRefresh,
   onExpandedChange,
+  onImportProject,
   onBlankAreaClick,
   onContainerContextMenu,
+  rootCreating = false,
+  rootCreatePlaceholder,
+  showEmptyState = true,
+  onRootCreateConfirm,
+  onRootCreateCancel,
 }) => {
   const { t } = useTranslation();
   const translateText = (key: string, defaultValue: string): string =>
@@ -66,6 +78,7 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   const isRestoringScrollRef = useRef<boolean>(false);
   const scrollSnapFrameRef = useRef<number | null>(null);
   const treeAnchorRef = useRef<{ path: string; offsetTop: number } | null>(null);
+  const [isSectionExpanded, setIsSectionExpanded] = useState(false);
   const { fileTreeScrollTop, setFileTreeScrollTop, workspacePath } = useExplorerStore();
 
   const handleScroll = useCallback((scrollTop: number) => {
@@ -128,6 +141,20 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   useEffect(() => {
     scrollbarRef.current?.updateScrollbar();
   }, [nodes]);
+
+  useEffect(() => {
+    if (!isSectionExpanded) {
+      return;
+    }
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      scrollbarRef.current?.updateScrollbar();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [isSectionExpanded]);
 
   useLayoutEffect(() => {
     const pendingAnchor = treeAnchorRef.current;
@@ -226,6 +253,15 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
   }, [nodes, revealRequest]);
 
   const actions: ActionButton[] = [];
+
+  if (!rootPath && onImportProject) {
+    actions.push({
+      id: 'import-project',
+      icon: <Icon iconSet="ui" name="folder-open" size={16} />,
+      tooltip: translateText('explorerView.project.import', '导入项目'),
+      onClick: onImportProject,
+    });
+  }
 
   if (onNewFile) {
     actions.push({
@@ -465,17 +501,39 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
 
   const fileTreeTitle = rootPath && rootName
     ? rootName
-    : translateText('explorerView.fileTree.defaultRootName', '文件夹');
+    : translateText('explorerView.fileTree.defaultRootName', '项目');
+
+  const handleSectionExpandChange = (expanded: boolean): void => {
+    if (rootCreating) {
+      return;
+    }
+
+    setIsSectionExpanded(expanded);
+    onExpandedChange?.(expanded);
+  };
+
+  const titleContent = rootCreating ? (
+    <span className="explorer-section-title-edit">
+      <InlineInput
+        placeholder={rootCreatePlaceholder ?? translateText('explorerView.workspaceMenu.general.newFolder', '新建文件夹')}
+        onConfirm={(name) => onRootCreateConfirm?.(name)}
+        onCancel={() => onRootCreateCancel?.()}
+        autoFocus={true}
+      />
+    </span>
+  ) : undefined;
 
   return (
-    <div className="file-tree-section">
+    <div className={`file-tree-section ${isSectionExpanded ? 'file-tree-section--expanded' : 'file-tree-section--collapsed'}`}>
       <ExplorerSection
         title={fileTreeTitle}
-        defaultExpanded={true}
+        titleContent={titleContent}
+        defaultExpanded={false}
+        showToggleIcon={!rootCreating}
         preserveTitleCase={true}
         toggleIconMode="folder-on-idle"
-        actions={actions}
-        onExpandChange={onExpandedChange}
+        actions={rootCreating ? [] : actions}
+        onExpandChange={handleSectionExpandChange}
       >
         <CustomScrollbar
           ref={scrollbarRef}
@@ -485,11 +543,11 @@ export const FileTreeSection: React.FC<FileTreeSectionProps> = ({
           onClick={handleContentClick}
           onContextMenu={onContainerContextMenu}
         >
-          {nodes.length === 0 ? (
+          {showEmptyState && nodes.length === 0 ? (
             <div className="file-tree-empty">
               {rootPath
                 ? translateText('explorerView.fileTree.emptyFolder', '文件夹为空')
-                : translateText('explorerView.fileTree.closedWorkspace', '尚未打开文件夹')}
+                : translateText('explorerView.fileTree.closedProject', '尚未导入项目')}
             </div>
           ) : null}
           {nodes.length > 0 && (

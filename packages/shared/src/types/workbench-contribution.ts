@@ -110,6 +110,20 @@ export interface WorkbenchViewContributionEntry {
   readonly retainContextWhenHidden: boolean;
 }
 
+export interface WorkbenchResourceExplorerItemContributionEntry {
+  readonly extensionId: string;
+  readonly extensionDisplayName: string;
+  readonly itemKey: string;
+  readonly itemId: string;
+  readonly title: string;
+  readonly icon: string | null;
+  readonly viewType: string;
+  readonly directoryPath: string;
+  readonly webviewEntryUrl: string | null;
+  readonly webviewHtml: string | null;
+  readonly retainContextWhenHidden: boolean;
+}
+
 export interface WorkbenchRuntimeWebviewPanelEntry {
   readonly extensionId: string;
   readonly extensionDisplayName: string;
@@ -129,6 +143,7 @@ export interface WorkbenchContributionSnapshot {
   readonly fileIconThemes: readonly WorkbenchFileIconThemeEntry[];
   readonly viewContainers: readonly WorkbenchViewContainerContributionEntry[];
   readonly views: readonly WorkbenchViewContributionEntry[];
+  readonly resourceExplorerItems: readonly WorkbenchResourceExplorerItemContributionEntry[];
   readonly runtimeWebviewPanels: readonly WorkbenchRuntimeWebviewPanelEntry[];
 }
 
@@ -139,6 +154,7 @@ export const EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT: WorkbenchContributionSnapsho
   fileIconThemes: [],
   viewContainers: [],
   views: [],
+  resourceExplorerItems: [],
   runtimeWebviewPanels: [],
 };
 

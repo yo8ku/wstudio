@@ -23,6 +23,15 @@ const hostSyncedCommands = new Map();
 const supervisorOwnedCommands = new Map();
 const supervisorOwnedSettingTabs = new Map();
 const supervisorOwnedViews = new Map();
+const supervisorOwnedResourceExplorerItems = new Map();
+const resourceExplorerItemUnsupportedStyleFields = Object.freeze([
+  'style',
+  'styles',
+  'class',
+  'className',
+  'css',
+  'cssText',
+]);
 const supervisorOwnedExtensions = new Map();
 const supervisorOwnedProtocols = new Map();
 const supervisorOwnedUiEntries = new Map();
@@ -47,6 +56,7 @@ const PLUGIN_INTERNAL_LOAD = Symbol.for('wstudio.plugin.internal.load');
 const PLUGIN_INTERNAL_ENABLE = Symbol.for('wstudio.plugin.internal.enable');
 const PLUGIN_INTERNAL_UNLOAD = Symbol.for('wstudio.plugin.internal.unload');
 const PLUGIN_INTERNAL_FAIL = Symbol.for('wstudio.plugin.internal.fail');
+const SUPERVISOR_PLUGIN_PRIME_YIELD_MS = 120;
 let nextHostRequestId = 0;
 let hostIsDarkMode = null;
 let pluginSdkAliasInstalled = false;
@@ -1287,6 +1297,35 @@ function createSupervisorWorkspace(pluginSdk) {
         .filter((leaf) => leaf.getViewState().type === normalizedViewType);
     }
 
+    async getTabs() {
+      const response = await requestHost({
+        kind: 'workspace:get-tabs',
+      });
+
+      if (response.kind !== 'workspace:get-tabs') {
+        throw new Error('Plugin supervisor workspace received an unexpected get-tabs response.');
+      }
+
+      const activeLeafId = this.activeLeaf?.id ?? '';
+      const tabs = [];
+
+      for (const leafSnapshot of response.tabs) {
+        const leafId = normalizeString(leafSnapshot?.id).trim();
+
+        if (leafId.length === 0) {
+          continue;
+        }
+
+        const leaf = this.leafRegistry.get(leafId)
+          ?? this.pendingLeafReferences.get(leafId)
+          ?? new SupervisorWorkspaceLeaf(this.app, 'default', this);
+        leaf.applySnapshot(leafSnapshot, activeLeafId);
+        tabs.push(leaf);
+      }
+
+      return tabs;
+    }
+
     getActiveViewOfType(type) {
       const activeView = this.activeLeaf?.view ?? null;
 
@@ -1520,6 +1559,32 @@ function createViewSnapshot(pluginId, viewType) {
   };
 }
 
+function createResourceExplorerItemSnapshot(pluginId, itemId, registration) {
+  const normalizedIcon = normalizeString(registration?.icon).trim();
+  const normalizedDirectoryPath = normalizeString(registration?.path).trim();
+  const ignoredStyleFields = resourceExplorerItemUnsupportedStyleFields.filter((field) => (
+    registration !== null
+    && typeof registration === 'object'
+    && Object.prototype.hasOwnProperty.call(registration, field)
+  ));
+
+  if (ignoredStyleFields.length > 0) {
+    console.warn(
+      `[PluginSupervisor] Ignoring style fields on resource explorer item "${normalizeString(pluginId)}:${normalizeString(itemId).trim()}": ${ignoredStyleFields.join(', ')}`,
+    );
+  }
+
+  return {
+    pluginId: normalizeString(pluginId),
+    itemId: normalizeString(itemId).trim(),
+    title: normalizeString(registration?.title).trim(),
+    icon: normalizedIcon.length > 0 ? normalizedIcon : null,
+    viewType: normalizeString(registration?.viewType).trim(),
+    directoryPath: normalizedDirectoryPath,
+    retainContextWhenHidden: registration?.retainContextWhenHidden === true,
+  };
+}
+
 function createExtensionSnapshot(pluginId, extension, viewType) {
   return {
     pluginId: normalizeString(pluginId),
@@ -1571,6 +1636,7 @@ const SUPERVISOR_SUPPORTED_CONTRIBUTION_KIND = Object.freeze({
   SETTING_TAB: 'setting-tab',
   PROTOCOL: 'protocol',
   UI_ENTRY: 'ui-entry',
+  RESOURCE_EXPLORER_ITEM: 'resource-explorer-item',
 });
 
 const SUPERVISOR_UNSUPPORTED_CONTRIBUTION_KIND = Object.freeze({
@@ -1589,6 +1655,8 @@ const SUPERVISOR_UNSUPPORTED_CONTRIBUTION_KIND = Object.freeze({
   STATUS_BAR_ITEM: 'status-bar-item',
   INVALID_VIEW: 'invalid-view',
   VIEW: 'view',
+  INVALID_RESOURCE_EXPLORER_ITEM: 'invalid-resource-explorer-item',
+  RESOURCE_EXPLORER_ITEM: 'resource-explorer-item',
 });
 
 function createSupervisorRuntimeProfile(descriptor) {
@@ -1606,6 +1674,7 @@ function createSupervisorRuntimeProfile(descriptor) {
     nextUiEntryId: 0,
     settingTabSnapshots: new Map(),
     viewSnapshots: new Map(),
+    resourceExplorerItemSnapshots: new Map(),
     extensionSnapshots: new Map(),
     protocolSnapshots: new Map(),
     uiEntrySnapshots: new Map(),
@@ -1631,6 +1700,8 @@ function noteSupervisorUnsupportedContribution(profile, contributionKind) {
     case SUPERVISOR_UNSUPPORTED_CONTRIBUTION_KIND.STATUS_BAR_ITEM:
     case SUPERVISOR_UNSUPPORTED_CONTRIBUTION_KIND.INVALID_VIEW:
     case SUPERVISOR_UNSUPPORTED_CONTRIBUTION_KIND.VIEW:
+    case SUPERVISOR_UNSUPPORTED_CONTRIBUTION_KIND.INVALID_RESOURCE_EXPLORER_ITEM:
+    case SUPERVISOR_UNSUPPORTED_CONTRIBUTION_KIND.RESOURCE_EXPLORER_ITEM:
       break;
     default:
       throw new Error(`Unsupported supervisor contribution kind: ${normalizeString(contributionKind)}.`);
@@ -1661,6 +1732,12 @@ function addSupervisorSupportedContribution(profile, contributionKind, entryKey 
       return;
     case SUPERVISOR_SUPPORTED_CONTRIBUTION_KIND.UI_ENTRY:
       profile.uiEntryCount += 1;
+      return;
+    case SUPERVISOR_SUPPORTED_CONTRIBUTION_KIND.RESOURCE_EXPLORER_ITEM:
+      if (entryKey === null || entryValue === null) {
+        throw new Error('Resource explorer item contribution requires a snapshot key and value.');
+      }
+      profile.resourceExplorerItemSnapshots.set(entryKey, entryValue);
       return;
     default:
       throw new Error(`Unsupported supervisor supported contribution kind: ${normalizeString(contributionKind)}.`);
@@ -1694,6 +1771,14 @@ function removeSupervisorSupportedContribution(profile, contributionKind, entryK
     case SUPERVISOR_SUPPORTED_CONTRIBUTION_KIND.UI_ENTRY:
       profile.uiEntryCount = Math.max(profile.uiEntryCount - 1, 0);
       return;
+    case SUPERVISOR_SUPPORTED_CONTRIBUTION_KIND.RESOURCE_EXPLORER_ITEM:
+      if (entryKey === null) {
+        throw new Error('Resource explorer item contribution removal requires a snapshot key.');
+      }
+      if (expectedValue === null || profile.resourceExplorerItemSnapshots.get(entryKey) === expectedValue) {
+        profile.resourceExplorerItemSnapshots.delete(entryKey);
+      }
+      return;
     default:
       throw new Error(`Unsupported supervisor supported contribution kind: ${normalizeString(contributionKind)}.`);
   }
@@ -1705,6 +1790,7 @@ function hasSupervisorOwnerEligibleContribution(profile) {
     || profile.settingTabSnapshots.size > 0
     || profile.protocolSnapshots.size > 0
     || profile.viewSnapshots.size > 0
+    || profile.resourceExplorerItemSnapshots.size > 0
     || profile.uiEntryCount > 0;
 }
 
@@ -1810,6 +1896,26 @@ function createSupervisorCommandRuntime(profile, pluginSdk) {
       if (supervisorOwnedViews.get(viewType) !== snapshot) {
         supervisorOwnedViews.set(viewType, snapshot);
         publishViews();
+      }
+    }
+  };
+
+  const syncResourceExplorerItemSnapshot = (itemKey, snapshot) => {
+    if (snapshot === null) {
+      profile.resourceExplorerItemSnapshots.delete(itemKey);
+
+      if (isRuntimeOwnedBySupervisor() && supervisorOwnedResourceExplorerItems.delete(itemKey)) {
+        publishResourceExplorerItems();
+      }
+      return;
+    }
+
+    profile.resourceExplorerItemSnapshots.set(itemKey, snapshot);
+
+    if (isRuntimeOwnedBySupervisor()) {
+      if (supervisorOwnedResourceExplorerItems.get(itemKey) !== snapshot) {
+        supervisorOwnedResourceExplorerItems.set(itemKey, snapshot);
+        publishResourceExplorerItems();
       }
     }
   };
@@ -2167,6 +2273,45 @@ function createSupervisorCommandRuntime(profile, pluginSdk) {
         });
       },
     },
+    resourceExplorer: {
+      registerResourceExplorerItem(pluginId, itemId, registration) {
+        const normalizedItemId = normalizeString(itemId).trim();
+        const normalizedTitle = normalizeString(registration?.title).trim();
+        const normalizedDirectoryPath = normalizeString(registration?.path).trim();
+
+        if (
+          normalizedItemId.length === 0
+          || normalizedTitle.length === 0
+          || normalizedDirectoryPath.length === 0
+        ) {
+          noteSupervisorUnsupportedContribution(
+            profile,
+            SUPERVISOR_UNSUPPORTED_CONTRIBUTION_KIND.INVALID_RESOURCE_EXPLORER_ITEM,
+          );
+          return createNoopDisposable();
+        }
+
+        const itemKey = `${normalizeString(pluginId)}:${normalizedItemId}`;
+        const snapshot = createResourceExplorerItemSnapshot(pluginId, normalizedItemId, registration);
+        addSupervisorSupportedContribution(
+          profile,
+          SUPERVISOR_SUPPORTED_CONTRIBUTION_KIND.RESOURCE_EXPLORER_ITEM,
+          itemKey,
+          snapshot,
+        );
+        syncResourceExplorerItemSnapshot(itemKey, snapshot);
+
+        return createDisposable(() => {
+          syncResourceExplorerItemSnapshot(itemKey, null);
+          removeSupervisorSupportedContribution(
+            profile,
+            SUPERVISOR_SUPPORTED_CONTRIBUTION_KIND.RESOURCE_EXPLORER_ITEM,
+            itemKey,
+            snapshot,
+          );
+        });
+      },
+    },
     ui: {
       addRibbonIcon(pluginId, spec) {
         profile.nextUiEntryId += 1;
@@ -2410,11 +2555,12 @@ function syncDescriptorRuntimeStates(descriptors) {
       const currentDescriptorKey = pluginRuntimeDescriptorKeys.get(descriptor.pluginId) ?? null;
 
       if (!pluginRuntimeStates.has(descriptor.pluginId) || currentDescriptorKey !== descriptorKey) {
+        const runtimeOwner = resolveDescriptorRuntimeOwner(descriptor);
         pluginRuntimeStates.set(descriptor.pluginId, {
           pluginId: descriptor.pluginId,
           status: 'idle',
           failureMessage: null,
-          owner: 'main',
+          owner: runtimeOwner,
         });
         pluginRuntimeDescriptorKeys.set(descriptor.pluginId, descriptorKey);
         changed = true;
@@ -2477,6 +2623,15 @@ function publishViews() {
     type: 'views-updated',
     data: {
       views: [...supervisorOwnedViews.values()],
+    },
+  });
+}
+
+function publishResourceExplorerItems() {
+  sendMessage({
+    type: 'resource-explorer-items-updated',
+    data: {
+      items: [...supervisorOwnedResourceExplorerItems.values()],
     },
   });
 }
@@ -2549,6 +2704,21 @@ function removeSupervisorOwnedViewsForPlugin(pluginId) {
 
   if (changed) {
     publishViews();
+  }
+}
+
+function removeSupervisorOwnedResourceExplorerItemsForPlugin(pluginId) {
+  let changed = false;
+
+  for (const itemKey of [...supervisorOwnedResourceExplorerItems.keys()]) {
+    if ((supervisorOwnedResourceExplorerItems.get(itemKey)?.pluginId ?? null) === pluginId) {
+      supervisorOwnedResourceExplorerItems.delete(itemKey);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    publishResourceExplorerItems();
   }
 }
 
@@ -2630,6 +2800,21 @@ function commitSupervisorOwnedViews(record) {
 
   if (changed) {
     publishViews();
+  }
+}
+
+function commitSupervisorOwnedResourceExplorerItems(record) {
+  let changed = false;
+
+  for (const [itemKey, itemSnapshot] of record.resourceExplorerItemSnapshots.entries()) {
+    if (supervisorOwnedResourceExplorerItems.get(itemKey) !== itemSnapshot) {
+      supervisorOwnedResourceExplorerItems.set(itemKey, itemSnapshot);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    publishResourceExplorerItems();
   }
 }
 
@@ -2736,6 +2921,7 @@ async function unloadLoadedPluginRuntime(record, reason) {
     removeSupervisorOwnedCommandsForPlugin(record.pluginId);
     removeSupervisorOwnedSettingTabsForPlugin(record.pluginId);
     removeSupervisorOwnedViewsForPlugin(record.pluginId);
+    removeSupervisorOwnedResourceExplorerItemsForPlugin(record.pluginId);
     removeSupervisorOwnedExtensionsForPlugin(record.pluginId);
     removeSupervisorOwnedProtocolsForPlugin(record.pluginId);
     removeSupervisorOwnedUiEntriesForPlugin(record.pluginId);
@@ -2800,23 +2986,51 @@ async function shutdownLoadedPluginRuntimes() {
   }
 }
 
-function shouldAttemptSupervisorOwnership(descriptor) {
-  if (typeof descriptor?.entryPath !== 'string' || descriptor.entryPath.trim().length === 0) {
-    return false;
+function resolveDescriptorRuntimeOwner(descriptor) {
+  return descriptor?.runtimeOwner === 'supervisor' ? 'supervisor' : 'main';
+}
+
+function shouldLoadPluginInSupervisor(descriptor) {
+  return resolveDescriptorRuntimeOwner(descriptor) === 'supervisor'
+    && typeof descriptor?.entryPath === 'string'
+    && descriptor.entryPath.trim().length > 0;
+}
+
+function resolveDescriptorForViewType(viewType) {
+  const normalizedViewType = normalizeString(viewType).trim();
+
+  if (normalizedViewType.length === 0) {
+    return null;
   }
 
-  const runtimeModals = descriptor?.uiEntrypoints?.modals ?? {};
-  return Object.keys(runtimeModals).length === 0;
+  const registeredView = supervisorOwnedViews.get(normalizedViewType) ?? null;
+
+  if (registeredView !== null) {
+    return descriptorRegistry.get(registeredView.pluginId) ?? null;
+  }
+
+  for (const descriptor of descriptorRegistry.values()) {
+    if (!shouldLoadPluginInSupervisor(descriptor)) {
+      continue;
+    }
+
+    if (descriptor?.uiEntrypoints?.views?.[normalizedViewType] !== undefined) {
+      return descriptor;
+    }
+  }
+
+  return null;
 }
 
 async function ensureSupervisorPluginRuntimeLoaded(descriptor, options = {}) {
   const probeOwnership = options.probeOwnership === true;
+  const descriptorRuntimeOwner = resolveDescriptorRuntimeOwner(descriptor);
 
   if (typeof descriptor?.entryPath !== 'string' || descriptor.entryPath.trim().length === 0) {
     return {
       record: null,
-      fallbackToMain: true,
-      owner: 'main',
+      fallbackToMain: descriptorRuntimeOwner === 'main',
+      owner: descriptorRuntimeOwner,
     };
   }
 
@@ -2877,7 +3091,9 @@ async function ensureSupervisorPluginRuntimeLoaded(descriptor, options = {}) {
     const normalizedError = error instanceof Error
       ? error
       : new Error(`Plugin "${descriptor.pluginId}" failed during supervisor runtime bootstrap.`);
-    const fallbackToMain = canFallbackToMainForStage(executionState.stage);
+    const fallbackToMain = descriptorRuntimeOwner === 'supervisor'
+      ? false
+      : canFallbackToMainForStage(executionState.stage);
 
     try {
       await unload.call(instance);
@@ -2897,7 +3113,7 @@ async function ensureSupervisorPluginRuntimeLoaded(descriptor, options = {}) {
       }
     }
 
-    if (!probeOwnership && !fallbackToMain && (pluginRuntimeStates.get(descriptor.pluginId)?.owner ?? 'main') === 'supervisor') {
+    if (!probeOwnership && descriptorRuntimeOwner === 'supervisor') {
       setPluginRuntimeState(descriptor.pluginId, 'failed', normalizedError.message, 'supervisor');
       emitNonFatalError(normalizedError.message);
     } else {
@@ -2907,11 +3123,13 @@ async function ensureSupervisorPluginRuntimeLoaded(descriptor, options = {}) {
     return {
       record: null,
       fallbackToMain,
-      owner: 'main',
+      owner: descriptorRuntimeOwner,
     };
   }
 
-  const owner = resolveSupervisorRuntimeOwner(runtimeProfile);
+  const owner = descriptorRuntimeOwner === 'supervisor'
+    ? 'supervisor'
+    : resolveSupervisorRuntimeOwner(runtimeProfile);
 
   const record = {
     pluginId: descriptor.pluginId,
@@ -2924,6 +3142,7 @@ async function ensureSupervisorPluginRuntimeLoaded(descriptor, options = {}) {
     commandSnapshots: runtimeProfile.commandSnapshots,
     settingTabSnapshots: runtimeProfile.settingTabSnapshots,
     viewSnapshots: runtimeProfile.viewSnapshots,
+    resourceExplorerItemSnapshots: runtimeProfile.resourceExplorerItemSnapshots,
     extensionSnapshots: runtimeProfile.extensionSnapshots,
     protocolSnapshots: runtimeProfile.protocolSnapshots,
     uiEntrySnapshots: runtimeProfile.uiEntrySnapshots,
@@ -2935,6 +3154,7 @@ async function ensureSupervisorPluginRuntimeLoaded(descriptor, options = {}) {
     commitSupervisorOwnedCommands(record);
     commitSupervisorOwnedSettingTabs(record);
     commitSupervisorOwnedViews(record);
+    commitSupervisorOwnedResourceExplorerItems(record);
     commitSupervisorOwnedExtensions(record);
     commitSupervisorOwnedProtocols(record);
     commitSupervisorOwnedUiEntries(record);
@@ -2948,35 +3168,6 @@ async function ensureSupervisorPluginRuntimeLoaded(descriptor, options = {}) {
     fallbackToMain: false,
     owner,
   };
-}
-
-async function primeSupervisorOwnedRuntimes(descriptors) {
-  for (const descriptor of descriptors) {
-    if (!shouldAttemptSupervisorOwnership(descriptor)) {
-      continue;
-    }
-
-    let loadResult = {
-      record: null,
-      fallbackToMain: true,
-      owner: 'main',
-    };
-
-    try {
-      loadResult = await ensureSupervisorPluginRuntimeLoaded(descriptor, {
-        probeOwnership: true,
-      });
-    } catch {
-      setPluginRuntimeState(descriptor.pluginId, 'idle', null, 'main');
-      continue;
-    }
-
-    if (loadResult.record === null || loadResult.owner === 'supervisor') {
-      continue;
-    }
-
-    await unloadLoadedPluginRuntime(loadResult.record, 'probe-main-owned');
-  }
 }
 
 async function executePluginCommandInSupervisorRuntime(descriptor, commandId) {
@@ -3594,7 +3785,6 @@ async function handleSyncDescriptors(message) {
   }
 
   syncDescriptorRuntimeStates(descriptors);
-  await primeSupervisorOwnedRuntimes(descriptors);
 
   sendMessage({
     type: 'sync-complete',
@@ -3604,6 +3794,37 @@ async function handleSyncDescriptors(message) {
     },
   });
   publishCommands();
+}
+
+async function handleStartPlugin(message) {
+  const requestId = normalizeString(message?.data?.requestId);
+  const pluginId = normalizeString(message?.data?.pluginId).trim();
+  const descriptor = pluginId.length === 0
+    ? null
+    : descriptorRegistry.get(pluginId) ?? null;
+
+  let handled = false;
+
+  if (descriptor !== null && shouldLoadPluginInSupervisor(descriptor)) {
+    try {
+      const loadResult = await ensureSupervisorPluginRuntimeLoaded(descriptor);
+      handled = loadResult.record !== null;
+    } catch (error) {
+      emitNonFatalError(
+        error instanceof Error
+          ? error.message
+          : `Plugin "${pluginId}" failed during supervisor activation.`,
+      );
+    }
+  }
+
+  sendMessage({
+    type: 'plugin-started',
+    data: {
+      requestId,
+      handled,
+    },
+  });
 }
 
 function handleSyncCommands(message) {
@@ -3852,10 +4073,7 @@ async function handleOpenViewInstance(message) {
   const leafId = normalizeString(message?.data?.leafId);
   const viewType = normalizeString(message?.data?.viewType);
   const pendingViewInstanceId = normalizeString(message?.data?.pendingViewInstanceId);
-  const registeredView = supervisorOwnedViews.get(viewType) ?? null;
-  const descriptor = registeredView === null
-    ? null
-    : descriptorRegistry.get(registeredView.pluginId) ?? null;
+  const descriptor = resolveDescriptorForViewType(viewType);
 
   let result = {
     handled: false,
@@ -3893,10 +4111,7 @@ async function handleUpdateViewInstance(message) {
   const requestId = normalizeString(message?.data?.requestId);
   const leafId = normalizeString(message?.data?.leafId);
   const viewType = normalizeString(message?.data?.viewType);
-  const registeredView = supervisorOwnedViews.get(viewType) ?? null;
-  const descriptor = registeredView === null
-    ? null
-    : descriptorRegistry.get(registeredView.pluginId) ?? null;
+  const descriptor = resolveDescriptorForViewType(viewType);
 
   let result = {
     handled: false,
@@ -4020,6 +4235,9 @@ async function handleMessage(message) {
       return;
     case 'sync-descriptors':
       await handleSyncDescriptors(message);
+      return;
+    case 'start-plugin':
+      await handleStartPlugin(message);
       return;
     case 'sync-commands':
       handleSyncCommands(message);

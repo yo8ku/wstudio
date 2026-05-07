@@ -28,6 +28,14 @@ import './ExplorerView.scss';
 
 type WorkspaceHeaderActionMode = 'collapse-all' | 'expand-all';
 
+export interface ResourceFolderExplorerItem {
+  readonly id: string;
+  readonly name: string;
+  readonly path: string;
+  readonly nodes: readonly FileTreeNode[];
+  readonly isCreating?: boolean;
+}
+
 export interface ExplorerViewProps {
   // 鏂囦欢鏍?
   rootName?: string;
@@ -62,6 +70,7 @@ export interface ExplorerViewProps {
   // 鏂囦欢鏍戞搷浣?
   onNewFile?: () => void;
   onNewFolder?: () => void;
+  onNewNote?: () => void;
   onRefresh?: () => void;
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
@@ -89,8 +98,16 @@ export interface ExplorerViewProps {
   onCreateCancel?: (node: FileTreeNode) => void;
   onRename?: (node: FileTreeNode, newName: string) => void;
   onBlankAreaClick?: () => void;
+  onImportProject?: () => void;
+  onCreateResourceFolderItem?: (name: string) => void;
+  onCancelCreateResourceFolderItem?: () => void;
+  onResourceFolderExpandedChange?: (itemId: string, expanded: boolean) => void;
+  onResourceExplorerFolderExpandedChange?: (itemId: string, expanded: boolean) => void;
+  onResourceExplorerFolderToggle?: (itemId: string, node: FileTreeNode) => void;
   initialFormExpanded?: boolean;
   onFormExpandedChange?: (expanded: boolean) => void;
+  resourceFolderItems?: readonly ResourceFolderExplorerItem[];
+  resourceExplorerFolderItems?: readonly ResourceFolderExplorerItem[];
 }
 
 /**
@@ -148,8 +165,16 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   onCreateCancel,
   onRename,
   onBlankAreaClick,
+  onImportProject,
+  onCreateResourceFolderItem,
+  onCancelCreateResourceFolderItem,
+  onResourceFolderExpandedChange,
+  onResourceExplorerFolderExpandedChange,
+  onResourceExplorerFolderToggle,
   initialFormExpanded = false,
   onFormExpandedChange,
+  resourceFolderItems = [],
+  resourceExplorerFolderItems = [],
 }) => {
   const { t } = useTranslation();
   const translateText = (
@@ -166,9 +191,13 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
   const [contextMenuSelectionPath, setContextMenuSelectionPath] = useState<string | null>(null);
   
   // 杩借釜灞曞紑/鎶樺彔鐘舵€?
-  const [isFileTreeExpanded, setIsFileTreeExpanded] = useState(true);
-  const [isTimelineExpanded, setIsTimelineExpanded] = useState(false);
+  const [, setIsFileTreeExpanded] = useState(true);
+  const [, setIsTimelineExpanded] = useState(false);
   const [isFormExpanded, setIsFormExpanded] = useState(initialFormExpanded);
+
+  React.useEffect(() => {
+    setIsFormExpanded(initialFormExpanded);
+  }, [initialFormExpanded]);
 
   // 琛ㄥ崟鐘舵€?
   const [formGroups, setFormGroups] = useState<import('./Form/types').FormGroupItem[]>([]);
@@ -1042,6 +1071,17 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
     });
   }, [buildBlankAreaMenuItems, onBlankAreaClick]);
 
+  const handleExplorerBlankContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenuSelectionPath(null);
+    onBlankAreaClick?.();
+  }, [onBlankAreaClick]);
+
   // 澶勭悊鏃堕棿绾块」鐐瑰嚮
   const handleTimelineItemClick = (item: TimelineItem) => {
     setSelectedTimelineItem(item);
@@ -1264,7 +1304,11 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
         </div>
       </div>
 
-      <CustomScrollbar className="explorer-view-content" scrollbarWidth={10}>
+      <CustomScrollbar
+        className="explorer-view-content"
+        scrollbarWidth={10}
+        onContextMenu={handleExplorerBlankContextMenu}
+      >
         {isBookmarkViewActive ? (
           <BookmarkSection
             groupedItems={groupedBookmarkItems}
@@ -1315,16 +1359,47 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
               onNewFolder={fileTreeNodes.length === 0 && !rootPath ? undefined : onNewFolder}
               onRefresh={onRefresh}
               onExpandedChange={setIsFileTreeExpanded}
+              onImportProject={rootPath ? undefined : onImportProject}
               onBlankAreaClick={onBlankAreaClick}
               onContainerContextMenu={handleTreeBackgroundContextMenu}
             />
 
-            {/* 琛ㄥ崟 */}
+            {resourceFolderItems.map((item) => (
+              <FileTreeSection
+                key={item.id}
+                rootName={item.name}
+                rootPath={item.path}
+                nodes={[...item.nodes]}
+                selectedFilePath={selectedFilePath}
+                revealRequest={fileTreeRevealRequest}
+                contextMenuSelectionPath={contextMenuSelectionPath || undefined}
+                callbacks={{
+                  onFileClick: handleFileClick,
+                  onFileDoubleClick: handleFileDoubleClick,
+                  onFolderToggle: handleFolderToggle,
+                  onContextMenu: handleFileContextMenu,
+                  onCreateConfirm: onCreateConfirm,
+                  onCreateCancel: onCreateCancel,
+                  onRename: onRename,
+                }}
+                onExpandedChange={(expanded): void => {
+                  onResourceFolderExpandedChange?.(item.id, expanded);
+                }}
+                onBlankAreaClick={onBlankAreaClick}
+                rootCreating={item.isCreating}
+                rootCreatePlaceholder={translateText('explorerView.workspaceMenu.general.newFolder', '新建文件夹')}
+                showEmptyState={false}
+                onRootCreateConfirm={onCreateResourceFolderItem}
+                onRootCreateCancel={onCancelCreateResourceFolderItem}
+              />
+            ))}
+
             <FormSection
               forms={forms}
               groups={formGroups}
               selectedFormId={selectedFormId}
               selectedGroupId={selectedGroupId}
+              expanded={isFormExpanded}
               onFormClick={handleFormClick}
               onFormDoubleClick={handleFormDoubleClick}
               onGroupClick={handleGroupClick}
@@ -1342,6 +1417,34 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
               onRenameGroup={handleRenameGroup}
               onDeleteGroup={handleDeleteGroup}
             />
+
+            {resourceExplorerFolderItems.map((item) => (
+              <FileTreeSection
+                key={item.id}
+                rootName={item.name}
+                rootPath={item.path}
+                nodes={[...item.nodes]}
+                selectedFilePath={selectedFilePath}
+                revealRequest={fileTreeRevealRequest}
+                contextMenuSelectionPath={contextMenuSelectionPath ?? undefined}
+                callbacks={{
+                  onFileClick: handleFileClick,
+                  onFileDoubleClick: handleFileDoubleClick,
+                  onFolderToggle: (node): void => {
+                    onResourceExplorerFolderToggle?.(item.id, node);
+                  },
+                  onContextMenu: handleFileContextMenu,
+                  onCreateConfirm: onCreateConfirm,
+                  onCreateCancel: onCreateCancel,
+                  onRename: onRename,
+                }}
+                onExpandedChange={(expanded): void => {
+                  onResourceExplorerFolderExpandedChange?.(item.id, expanded);
+                }}
+                onBlankAreaClick={onBlankAreaClick}
+                showEmptyState={false}
+              />
+            ))}
 
             {/* 鏃堕棿绾?*/}
             {timelineItems.length > 0 && (
@@ -1398,5 +1501,3 @@ export const ExplorerView: React.FC<ExplorerViewProps> = ({
 };
 
 export default ExplorerView;
-
-

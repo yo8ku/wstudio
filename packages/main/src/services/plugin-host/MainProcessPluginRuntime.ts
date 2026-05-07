@@ -20,6 +20,7 @@ import {
   type MarkdownPostProcessor,
   type PluginUiEntryScope,
   type PluginUiEntryLocation,
+  type ResourceExplorerItemRegistration,
   type SettingTab,
   type StatusBarItem,
   type SuggestionValue,
@@ -36,6 +37,7 @@ import type {
   PluginUiEntrySnapshot,
   PluginUiRuntimeSurfaceDescriptor,
   WorkbenchCommandContributionEntry,
+  WorkbenchResourceExplorerItemContributionEntry,
 } from '@note-studio/shared';
 import {
   COMPONENT_INTERNAL_LOAD,
@@ -47,6 +49,11 @@ import type { SettingsManager } from '../../config/SettingsManager';
 import type { PluginSettingTabSummary } from './types';
 import { runWithPluginExecutionContext } from './pluginExecutionContext';
 import type { PluginSupervisorCommandSnapshot } from './pluginSupervisorProtocol';
+import {
+  persistentResourceExplorerItemToContribution,
+  readPersistentResourceExplorerItems,
+  rememberPersistentResourceExplorerItem,
+} from './PersistentResourceExplorerItems';
 
 export interface PluginRuntimeHostBridge {
   readonly bases: MainProcessBasesRegistry;
@@ -57,6 +64,7 @@ export interface PluginRuntimeHostBridge {
   readonly hover: MainProcessHoverRegistry;
   readonly markdown: MainProcessMarkdownRegistry;
   readonly protocols: MainProcessProtocolRegistry;
+  readonly resourceExplorer: MainProcessResourceExplorerItemRegistry;
   readonly settings: MainProcessSettingsRegistry;
   readonly ui: MainProcessUIRegistry;
   readonly views: MainProcessViewRegistry;
@@ -203,6 +211,16 @@ interface RegisteredBasesEntry {
   readonly pluginId: string;
   readonly viewId: string;
   readonly registration: BasesViewRegistration;
+}
+
+export interface RegisteredResourceExplorerItemEntry {
+  readonly pluginId: string;
+  readonly itemId: string;
+  readonly title: string;
+  readonly icon: string | null;
+  readonly viewType: string;
+  readonly directoryPath: string;
+  readonly retainContextWhenHidden: boolean;
 }
 
 interface RegisteredPluginUiEntry {
@@ -686,6 +704,147 @@ export class MainProcessViewRegistry {
   }
 }
 
+export class MainProcessResourceExplorerItemRegistry {
+  private readonly entries = new Map<string, RegisteredResourceExplorerItemEntry>();
+  private readonly listeners = new Set<() => void>();
+  private static readonly unsupportedStyleFields = [
+    'style',
+    'styles',
+    'class',
+    'className',
+    'css',
+    'cssText',
+  ] as const;
+
+  public constructor(private readonly settingsManager: SettingsManager) {}
+
+  public registerResourceExplorerItem(
+    pluginId: string,
+    itemId: string,
+    registration: ResourceExplorerItemRegistration,
+  ): Disposable {
+    type UnsupportedStyleField = typeof MainProcessResourceExplorerItemRegistry.unsupportedStyleFields[number];
+    type RegistrationWithUnsupportedStyleFields = ResourceExplorerItemRegistration
+      & Partial<Record<UnsupportedStyleField, string | object | readonly string[]>>;
+
+    const normalizedItemId = itemId.trim();
+    const runtimeRegistration: Partial<ResourceExplorerItemRegistration> = registration ?? {};
+    const normalizedTitle = runtimeRegistration.title?.trim() ?? '';
+    const normalizedDirectoryPath = runtimeRegistration.path?.trim() ?? '';
+    const normalizedViewType = runtimeRegistration.viewType?.trim() ?? '';
+    const registrationWithUnsupportedStyleFields = runtimeRegistration as RegistrationWithUnsupportedStyleFields;
+    const unsupportedStyleFields = MainProcessResourceExplorerItemRegistry.unsupportedStyleFields.filter((field) => (
+      registrationWithUnsupportedStyleFields[field] !== undefined
+    ));
+
+    if (normalizedItemId.length === 0) {
+      console.warn(`[PluginRuntime] Ignoring resource explorer item from plugin "${pluginId}" without an id.`);
+      return createDisposable(() => undefined);
+    }
+
+    if (normalizedTitle.length === 0) {
+      console.warn(
+        `[PluginRuntime] Ignoring resource explorer item "${pluginId}:${normalizedItemId}" without a title.`,
+      );
+      return createDisposable(() => undefined);
+    }
+
+    if (normalizedDirectoryPath.length === 0) {
+      console.warn(
+        `[PluginRuntime] Ignoring resource explorer item "${pluginId}:${normalizedItemId}" without a path.`,
+      );
+      return createDisposable(() => undefined);
+    }
+
+    if (unsupportedStyleFields.length > 0) {
+      console.warn(
+        `[PluginRuntime] Ignoring style fields on resource explorer item "${pluginId}:${normalizedItemId}": ${unsupportedStyleFields.join(', ')}`,
+      );
+    }
+
+    const key = `${pluginId}:${normalizedItemId}`;
+    const entry: RegisteredResourceExplorerItemEntry = {
+      pluginId,
+      itemId: normalizedItemId,
+      title: normalizedTitle,
+      icon: runtimeRegistration.icon?.trim() || null,
+      viewType: normalizedViewType,
+      directoryPath: normalizedDirectoryPath,
+      retainContextWhenHidden: runtimeRegistration.retainContextWhenHidden === true,
+    };
+    this.entries.set(key, entry);
+    void rememberPersistentResourceExplorerItem(this.settingsManager, entry).catch((error: Error) => {
+      console.error('[PluginRuntime] Failed to remember resource explorer item:', {
+        pluginId,
+        itemId: normalizedItemId,
+        message: error.message,
+      });
+    });
+    this.emitChanged();
+
+    return createDisposable(() => {
+      if (this.entries.get(key) !== entry) {
+        return;
+      }
+
+      this.entries.delete(key);
+      this.emitChanged();
+    });
+  }
+
+  public getContributions(
+    resolvePluginDisplayName: (pluginId: string) => string,
+    _resolvePluginViewRuntimeSurface: (
+      pluginId: string,
+      viewType: string,
+    ) => PluginUiRuntimeSurfaceDescriptor | null,
+  ): readonly WorkbenchResourceExplorerItemContributionEntry[] {
+    const mergedEntries = new Map<string, RegisteredResourceExplorerItemEntry>();
+
+    for (const entry of readPersistentResourceExplorerItems(this.settingsManager)) {
+      mergedEntries.set(`${entry.pluginId}:${entry.itemId}`, entry);
+    }
+
+    for (const entry of this.entries.values()) {
+      mergedEntries.set(`${entry.pluginId}:${entry.itemId}`, entry);
+    }
+
+    return [...mergedEntries.values()].map((entry) => (
+      persistentResourceExplorerItemToContribution(entry, resolvePluginDisplayName)
+    ));
+  }
+
+  public clearPlugin(pluginId: string): void {
+    let changed = false;
+
+    for (const [key, entry] of [...this.entries.entries()]) {
+      if (entry.pluginId !== pluginId) {
+        continue;
+      }
+
+      this.entries.delete(key);
+      changed = true;
+    }
+
+    if (changed) {
+      this.emitChanged();
+    }
+  }
+
+  public subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private emitChanged(): void {
+    for (const listener of [...this.listeners]) {
+      listener();
+    }
+  }
+}
+
 export class MainProcessHoverRegistry {
   private readonly sources = new Map<string, HoverLinkSource>();
 
@@ -966,6 +1125,7 @@ export class MainProcessPluginRuntime {
   public readonly markdown: MainProcessMarkdownRegistry;
   public readonly editors: MainProcessEditorRegistry;
   public readonly protocols: MainProcessProtocolRegistry;
+  public readonly resourceExplorer: MainProcessResourceExplorerItemRegistry;
   public readonly app: MainProcessAppFacade;
 
   public constructor(dependencies: MainProcessAppFacadeDependencies) {
@@ -980,6 +1140,7 @@ export class MainProcessPluginRuntime {
     this.markdown = new MainProcessMarkdownRegistry();
     this.editors = new MainProcessEditorRegistry();
     this.protocols = new MainProcessProtocolRegistry();
+    this.resourceExplorer = new MainProcessResourceExplorerItemRegistry(dependencies.settingsManager);
 
     this.app = new MainProcessAppFacade({
       ...dependencies,
@@ -1011,6 +1172,7 @@ export class MainProcessPluginRuntime {
       hover: this.hover,
       markdown: this.markdown,
       protocols: this.protocols,
+      resourceExplorer: this.resourceExplorer,
       settings: this.settings,
       ui: this.ui,
       views: this.views,
@@ -1021,6 +1183,19 @@ export class MainProcessPluginRuntime {
     resolvePluginDisplayName: (pluginId: string) => string,
   ): readonly WorkbenchCommandContributionEntry[] {
     return this.commands.getCommandContributions(resolvePluginDisplayName);
+  }
+
+  public getResourceExplorerItemContributions(
+    resolvePluginDisplayName: (pluginId: string) => string,
+    resolvePluginViewRuntimeSurface: (
+      pluginId: string,
+      viewType: string,
+    ) => PluginUiRuntimeSurfaceDescriptor | null,
+  ): readonly WorkbenchResourceExplorerItemContributionEntry[] {
+    return this.resourceExplorer.getContributions(
+      resolvePluginDisplayName,
+      resolvePluginViewRuntimeSurface,
+    );
   }
 
   public getSettingTabSummaries(
@@ -1040,5 +1215,6 @@ export class MainProcessPluginRuntime {
     this.markdown.clearPlugin(pluginId);
     this.editors.clearPlugin(pluginId);
     this.protocols.clearPlugin(pluginId);
+    this.resourceExplorer.clearPlugin(pluginId);
   }
 }

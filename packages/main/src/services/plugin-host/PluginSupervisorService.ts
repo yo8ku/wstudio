@@ -18,6 +18,7 @@ import type {
   JsonValue as SharedJsonValue,
   PluginUiEntrySnapshot,
   WorkbenchCommandContributionEntry,
+  WorkbenchResourceExplorerItemContributionEntry,
 } from '@note-studio/shared';
 import type { SettingsManager } from '../../config/SettingsManager';
 import type { MainProcessAppFacade } from './MainProcessAppFacade';
@@ -32,6 +33,7 @@ import {
   type PluginSupervisorExtensionSnapshot,
   type PluginSupervisorHostResponsePayload,
   type PluginSupervisorPluginRuntimeSnapshot,
+  type PluginSupervisorResourceExplorerItemSnapshot,
   type PluginSupervisorSettingTabSnapshot,
   type PluginSupervisorViewInstanceSnapshot,
   type PluginSupervisorViewSnapshot,
@@ -44,6 +46,8 @@ import {
   type PluginSupervisorWorkspaceSnapshot,
 } from './pluginSupervisorProtocol';
 import { emitPluginRuntimeNotice } from '../../ipc/pluginRuntimeHandlers';
+import { rememberPersistentResourceExplorerItem } from './PersistentResourceExplorerItems';
+import { resolvePluginRuntimeOwner } from './pluginRuntimeOwnership';
 
 interface PendingSupervisorRequest {
   readonly type:
@@ -51,6 +55,7 @@ interface PendingSupervisorRequest {
     | 'sync-complete'
     | 'commands-sync-complete'
     | 'shutdown-complete'
+    | 'plugin-started'
     | 'command-executed'
     | 'protocol-executed'
     | 'bases-view-rendered'
@@ -191,16 +196,7 @@ function createWorkspaceSnapshot(hostApp: MainProcessAppFacade): PluginSuperviso
   const leaves: PluginSupervisorWorkspaceLeafSnapshot[] = [];
 
   hostApp.workspace.iterateAllLeaves((leaf) => {
-    const viewState = leaf.getViewState();
-    leaves.push({
-      id: leaf.id,
-      viewType: viewState.type,
-      pinned: viewState.pinned === true,
-      state: normalizeJsonObject(viewState.state ?? null),
-      ephemeralState: toSharedJsonValue(leaf.getEphemeralState()),
-      displayText: leaf.getDisplayText(),
-      icon: leaf.getIcon(),
-    });
+    leaves.push(createWorkspaceLeafSnapshot(leaf));
   });
 
   return {
@@ -211,6 +207,20 @@ function createWorkspaceSnapshot(hostApp: MainProcessAppFacade): PluginSuperviso
   };
 }
 
+function createWorkspaceLeafSnapshot(leaf: WorkspaceLeaf): PluginSupervisorWorkspaceLeafSnapshot {
+  const viewState = leaf.getViewState();
+
+  return {
+    id: leaf.id,
+    viewType: viewState.type,
+    pinned: viewState.pinned === true,
+    state: normalizeJsonObject(viewState.state ?? null),
+    ephemeralState: toSharedJsonValue(leaf.getEphemeralState()),
+    displayText: leaf.getDisplayText(),
+    icon: leaf.getIcon(),
+  };
+}
+
 export class PluginSupervisorService {
   private child: UtilityProcess | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -218,6 +228,7 @@ export class PluginSupervisorService {
   private readonly commandContributionListeners = new Set<() => void>();
   private readonly settingTabListeners = new Set<() => void>();
   private readonly viewRegistrationListeners = new Set<() => void>();
+  private readonly resourceExplorerItemListeners = new Set<() => void>();
   private readonly pluginUiEntryListeners = new Set<() => void>();
   private readonly pluginRuntimeStateListeners = new Set<() => void>();
   private readonly pendingRequests = new Map<string, PendingSupervisorRequest>();
@@ -226,6 +237,7 @@ export class PluginSupervisorService {
   private remoteCommands: readonly PluginSupervisorCommandSnapshot[] = [];
   private remoteSettingTabs: readonly PluginSupervisorSettingTabSnapshot[] = [];
   private remoteViews: readonly PluginSupervisorViewSnapshot[] = [];
+  private remoteResourceExplorerItems: readonly PluginSupervisorResourceExplorerItemSnapshot[] = [];
   private remoteExtensions: readonly PluginSupervisorExtensionSnapshot[] = [];
   private remoteUiEntries: readonly PluginUiEntrySnapshot[] = [];
   private remotePluginRuntimeStates: readonly PluginSupervisorPluginRuntimeSnapshot[] = [];
@@ -292,6 +304,14 @@ export class PluginSupervisorService {
     };
   }
 
+  public subscribeResourceExplorerItems(listener: () => void): () => void {
+    this.resourceExplorerItemListeners.add(listener);
+
+    return () => {
+      this.resourceExplorerItemListeners.delete(listener);
+    };
+  }
+
   public subscribePluginUiEntries(listener: () => void): () => void {
     this.pluginUiEntryListeners.add(listener);
 
@@ -339,6 +359,32 @@ export class PluginSupervisorService {
     return this.remoteViews.find((entry) => entry.viewType === viewType)?.pluginId ?? null;
   }
 
+  public getResourceExplorerItemContributions(
+    resolvePluginDisplayName: (pluginId: string) => string,
+    _resolvePluginViewRuntimeSurface: (
+      pluginId: string,
+      viewType: string,
+    ) => {
+      readonly entryUrl: string;
+    } | null,
+  ): readonly WorkbenchResourceExplorerItemContributionEntry[] {
+    return this.remoteResourceExplorerItems.map((item) => {
+      return {
+        extensionId: item.pluginId,
+        extensionDisplayName: resolvePluginDisplayName(item.pluginId),
+        itemKey: `${item.pluginId}:${item.itemId}`,
+        itemId: item.itemId,
+        title: item.title,
+        icon: item.icon,
+        viewType: item.viewType,
+        directoryPath: item.directoryPath,
+        webviewEntryUrl: null,
+        webviewHtml: null,
+        retainContextWhenHidden: item.retainContextWhenHidden,
+      };
+    });
+  }
+
   public getViewTypeForExtension(extension: string): string | null {
     const normalizedExtension = extension.trim().toLowerCase();
 
@@ -355,7 +401,9 @@ export class PluginSupervisorService {
 
   public async initialize(descriptors: readonly PluginDescriptor[]): Promise<void> {
     this.shuttingDown = false;
-    this.cachedDescriptors = descriptors.map((descriptor) => descriptorToSupervisorSnapshot(descriptor));
+    this.cachedDescriptors = descriptors.map((descriptor) => {
+      return descriptorToSupervisorSnapshot(descriptor, resolvePluginRuntimeOwner(descriptor));
+    });
     await this.ensureChildReady();
     const message = await this.syncCachedDescriptors();
 
@@ -373,7 +421,9 @@ export class PluginSupervisorService {
   }
 
   public async syncDiscoveredPlugins(descriptors: readonly PluginDescriptor[]): Promise<void> {
-    this.cachedDescriptors = descriptors.map((descriptor) => descriptorToSupervisorSnapshot(descriptor));
+    this.cachedDescriptors = descriptors.map((descriptor) => {
+      return descriptorToSupervisorSnapshot(descriptor, resolvePluginRuntimeOwner(descriptor));
+    });
     await this.ensureChildReady();
     const message = await this.syncCachedDescriptors();
 
@@ -414,6 +464,7 @@ export class PluginSupervisorService {
       this.updateRemoteCommands([]);
       this.updateRemoteSettingTabs([]);
       this.updateRemoteViews([]);
+      this.updateRemoteResourceExplorerItems([]);
       this.updateRemoteExtensions([]);
       this.updateRemoteUiEntries([]);
       this.updateRemotePluginRuntimeStates([]);
@@ -452,10 +503,40 @@ export class PluginSupervisorService {
       this.updateRemoteCommands([]);
       this.updateRemoteSettingTabs([]);
       this.updateRemoteViews([]);
+      this.updateRemoteResourceExplorerItems([]);
       this.updateRemoteExtensions([]);
       this.updateRemoteUiEntries([]);
       this.updateRemotePluginRuntimeStates([]);
     }
+  }
+
+  public async startPlugin(pluginId: string): Promise<boolean> {
+    const normalizedPluginId = pluginId.trim();
+
+    if (normalizedPluginId.length === 0) {
+      return false;
+    }
+
+    await this.ensureChildReady();
+
+    if (this.child === null) {
+      return false;
+    }
+
+    const requestId = this.createRequestId('start-plugin');
+    const response = await this.sendRequest({
+      type: 'start-plugin',
+      data: {
+        requestId,
+        pluginId: normalizedPluginId,
+      },
+    }, 'plugin-started');
+
+    if (response.type !== 'plugin-started') {
+      throw new Error('Plugin supervisor returned an unexpected plugin start response.');
+    }
+
+    return response.data.handled;
   }
 
   public async executeRemoteCommand(
@@ -996,6 +1077,11 @@ export class PluginSupervisorService {
       return;
     }
 
+    if (message.type === 'resource-explorer-items-updated') {
+      this.updateRemoteResourceExplorerItems(message.data.items);
+      return;
+    }
+
     if (message.type === 'extensions-updated') {
       this.updateRemoteExtensions(message.data.extensions);
       return;
@@ -1058,6 +1144,10 @@ export class PluginSupervisorService {
     }
 
     if (message.type === 'shutdown-complete') {
+      return message.data.requestId;
+    }
+
+    if (message.type === 'plugin-started') {
       return message.data.requestId;
     }
 
@@ -1144,6 +1234,7 @@ export class PluginSupervisorService {
     this.updateRemoteCommands([]);
     this.updateRemoteSettingTabs([]);
     this.updateRemoteViews([]);
+    this.updateRemoteResourceExplorerItems([]);
     this.updateRemoteExtensions([]);
     this.updateRemoteUiEntries([]);
     this.updateRemotePluginRuntimeStates([]);
@@ -1282,6 +1373,37 @@ export class PluginSupervisorService {
     }
   }
 
+  private updateRemoteResourceExplorerItems(
+    items: readonly PluginSupervisorResourceExplorerItemSnapshot[],
+  ): void {
+    this.remoteResourceExplorerItems = items;
+    const settingsManager = this.getSettingsManager();
+
+    if (settingsManager !== null) {
+      for (const item of items) {
+        void rememberPersistentResourceExplorerItem(settingsManager, {
+          pluginId: item.pluginId,
+          itemId: item.itemId,
+          title: item.title,
+          icon: item.icon,
+          directoryPath: item.directoryPath,
+          viewType: item.viewType,
+          retainContextWhenHidden: item.retainContextWhenHidden,
+        }).catch((error: Error) => {
+          console.error('[PluginSupervisorService] Failed to remember resource explorer item:', {
+            pluginId: item.pluginId,
+            itemId: item.itemId,
+            message: error.message,
+          });
+        });
+      }
+    }
+
+    for (const listener of [...this.resourceExplorerItemListeners]) {
+      listener();
+    }
+  }
+
   private updateRemoteExtensions(extensions: readonly PluginSupervisorExtensionSnapshot[]): void {
     this.remoteExtensions = extensions;
   }
@@ -1343,6 +1465,21 @@ export class PluginSupervisorService {
         return {
           kind: 'workspace:get-snapshot',
           snapshot: createWorkspaceSnapshot(hostApp),
+        };
+      }
+      case 'workspace:get-tabs': {
+        if (hostApp === null) {
+          throw new Error('Plugin supervisor host request requires host app runtime, but it is not ready.');
+        }
+
+        const tabs: PluginSupervisorWorkspaceLeafSnapshot[] = [];
+        hostApp.workspace.iterateAllLeaves((leaf) => {
+          tabs.push(createWorkspaceLeafSnapshot(leaf));
+        });
+
+        return {
+          kind: 'workspace:get-tabs',
+          tabs,
         };
       }
       case 'storage:snapshot-local': {

@@ -81,6 +81,12 @@ interface StoreSchema {
       name: string;
       groupId: string | null;
     }>;
+    resourceFolderItems?: Array<{
+      id: string;
+      name: string;
+      path: string;
+      workspacePath: string;
+    }>;
   };
 
   // AI 聊天设置
@@ -281,4 +287,3 @@ class ElectronStoreService {
 // 导出单例实例
 export const electronStore = ElectronStoreService.getInstance();
 export type { StoreSchema };
-

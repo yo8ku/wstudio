@@ -118,12 +118,28 @@ export interface PluginUiOpenWorkspaceFileOptions {
   readonly forceNewLeaf?: boolean;
 }
 
+export interface PluginUiShowOpenDialogOptions {
+  readonly title?: string;
+  readonly defaultPath?: string;
+  readonly filters?: readonly {
+    readonly name: string;
+    readonly extensions: readonly string[];
+  }[];
+  readonly properties?: readonly ('openFile' | 'openDirectory' | 'multiSelections')[];
+}
+
+export interface PluginUiShowOpenDialogResult {
+  readonly canceled: boolean;
+  readonly filePaths: readonly string[];
+}
+
 export interface PluginUiHostBridge {
   showNotice(payload: PluginUiHostNoticePayload): Promise<void>;
   executeCommand(commandId: string, args?: readonly JsonValue[]): Promise<JsonValue | null>;
   activateView(): Promise<void>;
   closeView(): Promise<void>;
   closeOverlay(): Promise<void>;
+  showOpenDialog(options: PluginUiShowOpenDialogOptions): Promise<PluginUiShowOpenDialogResult>;
   openWorkspaceFile(path: string, options?: PluginUiOpenWorkspaceFileOptions): Promise<boolean>;
   readonly overlay: {
     dispatchAction(action: JsonValue | null): Promise<void>;

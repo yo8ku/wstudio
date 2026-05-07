@@ -1663,10 +1663,14 @@ export const enUSResources = {
         copyRelativePath: 'Copy Relative Path',
       },
     },
+    project: {
+      import: 'Import Project',
+    },
     fileTree: {
       renamePlaceholder: 'Enter a name',
-      defaultRootName: 'Folder',
+      defaultRootName: 'Project',
       emptyFolder: 'This folder is empty',
+      closedProject: 'No project imported',
       closedWorkspace: 'No folder is open',
     },
     dialogs: {

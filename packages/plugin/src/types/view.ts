@@ -279,6 +279,8 @@ export abstract class Workspace extends Events {
 
   public abstract getLeavesOfType(viewType: string): readonly WorkspaceLeaf[];
 
+  public abstract getTabs(): Promise<readonly WorkspaceLeaf[]>;
+
   public abstract detachLeavesOfType(viewType: string): void;
 
   public abstract revealLeaf(leaf: WorkspaceLeaf): Promise<void>;

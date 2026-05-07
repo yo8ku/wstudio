@@ -49,6 +49,7 @@ Module._resolveFilename = function(request, parent, isMain) {
 
 const {
   initializeExtensions,
+  startDeferredExtensionHost,
   settingsManager,
   workspaceManager,
   builtinAI,
@@ -71,6 +72,7 @@ const logIconPath = path.join(__dirname, 'log', 'log.png');
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
 const DEV_SERVER_MAX_RETRIES = 8;
 const DEV_SERVER_RETRY_DELAY_MS = 750;
+const OPEN_DEVTOOLS_ON_START = /^(1|true|yes|on)$/i.test(process.env.WSTUDIO_OPEN_DEVTOOLS || '');
 const BOOKMARK_GROUP_PICKER_HTML_FILE = 'bookmark-group-picker.html';
 const BOOKMARK_GROUP_PICKER_QUERY = {
   popup: 'bookmark-group-picker'
@@ -436,7 +438,7 @@ function createBookmarkGroupPickerWindow(sourceWindow) {
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: true,
       allowRunningInsecureContent: false,
-      backgroundThrottling: false
+      backgroundThrottling: true
     }
   });
   setWindowsAccentBorder(popupWindow, false);
@@ -673,7 +675,7 @@ function createWindow(backgroundColor = '#1e1e1e', options = {}) {
       webSecurity: true,
       allowRunningInsecureContent: false,
       webviewTag: true, // 闂備礁鎲￠崙褰掑垂閹惰棄鏋?webview 闂備礁鎼粔鏉懨洪妸鈺婃晢闁绘垼濮ら弲顒傗偓鍏夊亾闁逞屽墴瀵偊濡堕崱娆樻锤闁硅壈鎻槐鏇㈠Χ閻㈠憡鐓曢煫鍥ь儏閸斻儲銇勯銏╁剱闁挎稒鍔欓獮瀣倷閺夋垵鏅╅梻浣姐€€閸嬫捇鏌熼鍡楀瑜?
-      backgroundThrottling: false // 缂傚倷绀侀崐鐑芥嚄閸洖鏋侀柕鍫濐槸鐟欙箓骞栫划鍏夊亾閹惰棄褰欓梻浣哄帶閹碱偊宕愰崷顓犵焾闁挎洖鍊归弲顒傗偓鍏夊亾闁逞屽墴閸ㄦ儳螣閼姐倐鏀冲┑鐘绘涧閻楀繘鎯岄幒鏃傜＜闁哄啯鍨甸悘鐘绘煕濡崵鐭掔€殿喕绮欏畷鍫曨敆娓氬﹦纭€闂備胶绮崹鎶芥倿閿曞偆鏁嗘繝濠傜墛閺?
+      backgroundThrottling: true
     }
   });
 
@@ -691,7 +693,14 @@ function createWindow(backgroundColor = '#1e1e1e', options = {}) {
 
   // 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥箓鎳氶埡鍐ｅ亾濞堝灝鏋涘Δ鐘茬箳濡叉劖瀵奸弶鎴狀槷闂佺粯顭囬崕銈囩矈?Vite 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥附绻濋埀顒勫炊椤掆偓缁€澶愭煃閵夈劍鐝柣?
   let resizeStateResetTimer = null;
+  let resizeStateActive = false;
   const emitResizeState = (isResizing) => {
+    if (resizeStateActive === isResizing) {
+      return;
+    }
+
+    resizeStateActive = isResizing;
+
     if (createdWindow.isDestroyed()) {
       return;
     }
@@ -727,7 +736,7 @@ function createWindow(backgroundColor = '#1e1e1e', options = {}) {
 
   if (process.env.NODE_ENV === 'development') {
     console.log(`[Electron] 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥箓鎳氶埡鍐ｅ亾濞堝灝鏋涘Δ鐘茬箳濡叉劖瀵奸弶鎴狀槷闂佺粯顭囬崕銈囩矈?Vite 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥附绻濋埀顒勫炊椤掆偓缁€澶愭煃閵夈劍鐝柣?${DEV_SERVER_URL}`);
-    void loadRendererWindow(createdWindow, { query: startupQuery }, true);
+    void loadRendererWindow(createdWindow, { query: startupQuery }, OPEN_DEVTOOLS_ON_START);
   } else {
     // 闂備焦鐪归崹濠氬窗瀹ュ棭娈介柛銉仜閻旂厧鐏崇€规洖娲ㄩ、鍛存⒑閹稿海鈯曢柤鍦亾閹便劑鎮欑€涙ê顫￠梺鍏间航閸庢娊鍩€椤掑鐏犳い鏇熺懇瀹曨偊宕熼鈧埀顒傛暬閺岋綁濡搁妷銉痪闂佸搫顑呴崯鎾极?
     console.log('[Electron] Production mode: loading built renderer files.');
@@ -1181,7 +1190,7 @@ app.whenReady().then(async () => {
   // 闂?闂備胶顭堢换鎰版偋閸℃稑鍨傞柛顭戝亝閸欏繘鎮楅敐搴濈盎妞ゆ泦鍥ㄧ厵缁剧増蓱濞呭懘鏌ｉ銏⑿ら柛鏍ㄧ墵閹筹繝濡堕崶褏鍘烽梻浣瑰缁嬫垿鎮ф繝鍥ф瀬闁绘劕鎼粈鍐倶閻愭潙鍔ゆい锝嗙叀閺?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶褔妫峰銈庡幗鐢偟绮?
   // 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥ鍡楀缂佺姵鍨甸—鍐Χ閸偄娈┑鐘亾妞ゅ繐鐗嗙粈鍡樼箾閹寸儐鐒界紒鎲嬪缁辨帡骞囬褎鐣堕悷婊呭缁嬫帞绮欐繝鍕ㄥ亾閿濆簼绨绘い銈呮噺缁绘稒寰勯崼婵嗩瀳闂?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶褔妫峰銈庡幗鐢偟绮堟径鎰厱婵ê澧介悾閬嶆煕椤垵鐏犻柕鍡樺浮瀹曪絾寰勭仦钘夎劘闂佸搫顦弲婊呯矙閹捐鐓濋柛蹇曞帶椤曡鲸鎱ㄥ鍡楀箺闁哄棭浜弻?"No handler registered" 闂傚倷鐒︾€笛囨偡閵娾晩鏁?
   try {
-    await initializeExtensions(null); // 闂備礁鎼Λ妤呭磹閻熼偊娓婚柛灞剧〒閳绘梻鈧箍鍎辩€氼噣鎮欐繝鍥ㄢ拺妞ゆ劧绲界粭褔鏌ｅ☉鏍у姦鐎规洩缍侀弫鎰疀閺囩媭妲烽梻浣侯焾缁绘劙鎮ф繝鍥ф瀬闁绘劗鍎ら弲?IPC 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崶銊︽?
+    await initializeExtensions(null, { deferPluginHost: true });
     
     // 濠电偠鎻紞鈧繛澶嬫礋瀵偊濡堕崱鈺備粯濠碘槅鍨遍娆撳触閸ヮ剚鐓犻柛鎰级濠€鐗堢箾閸涱喚鎳囬柟铏箘閹风姾顦寸紒鈧崟顐熸闁圭偓鍓氶悡鍏笺亜閿濆嫮鐭欓柟顔垮Г濞煎繘濡搁…鎴炶埞闂備礁鎼張顒勫箲娴ｇ儤宕叉俊顖濆亹閻瑩鎮楅敐搴″⒒闁告埃鍋撻梻浣藉吹閸嬫稑螞鐎靛憡顫?
     const backgroundColor = await resolveInitialWindowBackgroundColor();
@@ -1208,6 +1217,9 @@ app.whenReady().then(async () => {
     const sendReadyEvent = () => {
       if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send('main-process:ready');
+      }
+      if (typeof startDeferredExtensionHost === 'function') {
+        startDeferredExtensionHost(2800);
       }
     };
     

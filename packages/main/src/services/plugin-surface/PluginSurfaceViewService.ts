@@ -35,6 +35,7 @@ interface ManagedPluginSurfaceView {
   readonly view: WebContentsView;
   readonly detachFailureHandlers: () => void;
   readonly desiredVisible: boolean;
+  bounds: Rectangle;
 }
 
 interface PluginSurfaceHostWindow {
@@ -73,6 +74,15 @@ function normalizeBounds(bounds: Rectangle): Rectangle {
     width: normalizeDimension(bounds.width),
     height: normalizeDimension(bounds.height),
   };
+}
+
+function boundsEqual(left: Rectangle, right: Rectangle): boolean {
+  return (
+    left.x === right.x
+    && left.y === right.y
+    && left.width === right.width
+    && left.height === right.height
+  );
 }
 
 function resolveSurfacePartition(surfaceInstanceId: string): string {
@@ -177,6 +187,7 @@ export class PluginSurfaceViewService {
       state: request.surface.state,
       theme: request.theme,
     };
+    const initialBounds = normalizeBounds(request.bounds);
     const managedSurface: ManagedPluginSurfaceView = {
       surfaceInstanceId,
       surface: request.surface,
@@ -184,10 +195,11 @@ export class PluginSurfaceViewService {
       view,
       detachFailureHandlers,
       desiredVisible: request.visible ?? false,
+      bounds: initialBounds,
     };
 
     targetWindow.contentView.addChildView(view);
-    view.setBounds(normalizeBounds(request.bounds));
+    view.setBounds(initialBounds);
     this.attachedSurfaces.set(surfaceInstanceId, managedSurface);
     this.applyManagedSurfaceVisibility(managedSurface);
 
@@ -215,7 +227,13 @@ export class PluginSurfaceViewService {
       return false;
     }
 
-    record.view.setBounds(normalizeBounds(bounds));
+    const nextBounds = normalizeBounds(bounds);
+    if (boundsEqual(record.bounds, nextBounds)) {
+      return true;
+    }
+
+    record.bounds = nextBounds;
+    record.view.setBounds(nextBounds);
     return true;
   }
 

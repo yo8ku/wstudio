@@ -35,6 +35,7 @@ export * from './types/platform';
 export * from './types/plugin-ui-runtime';
 export * from './types/protocol';
 export * from './types/render';
+export * from './types/resource-explorer';
 export * from './types/shell';
 export * from './types/ui';
 export * from './types/url-metadata';

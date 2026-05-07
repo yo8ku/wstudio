@@ -366,7 +366,6 @@ export const TerminalSessionView: React.FC<TerminalSessionViewProps> = ({
         }
 
         if (isWindowResizingRef.current) {
-          session.fit('view:resize-observer:window-resize');
           return;
         }
 

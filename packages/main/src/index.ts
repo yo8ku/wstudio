@@ -57,6 +57,16 @@ import {
 const settingsManager = new SettingsManager();
 const workspaceManager = new WorkspaceManager();
 let pluginHostShutdownHookInstalled = false;
+let pluginHostInitializationPromise: Promise<void> | null = null;
+let pluginHostInitialized = false;
+let deferredPluginHostTimer: NodeJS.Timeout | null = null;
+let themeServiceInitializationPromise: Promise<void> | null = null;
+let themeServiceInitialized = false;
+let deferredThemeServiceTimer: NodeJS.Timeout | null = null;
+
+export interface InitializeExtensionsOptions {
+  readonly deferPluginHost?: boolean;
+}
 
 function installPluginHostShutdownHook(): void {
   if (pluginHostShutdownHookInstalled) {
@@ -69,7 +79,52 @@ function installPluginHostShutdownHook(): void {
   });
 }
 
-export async function initializeExtensions(mainWindow?: BrowserWindow | null): Promise<void> {
+async function initializeThemeService(): Promise<void> {
+  if (themeServiceInitialized) {
+    return;
+  }
+
+  if (themeServiceInitializationPromise !== null) {
+    await themeServiceInitializationPromise;
+    return;
+  }
+
+  if (deferredThemeServiceTimer !== null) {
+    clearTimeout(deferredThemeServiceTimer);
+    deferredThemeServiceTimer = null;
+  }
+
+  const themeService = ThemeService.getInstance();
+  themeServiceInitializationPromise = themeService.initialize().then(() => {
+    themeServiceInitialized = true;
+  }).finally(() => {
+    themeServiceInitializationPromise = null;
+  });
+
+  await themeServiceInitializationPromise;
+}
+
+function startDeferredThemeService(delayMs = 1000): void {
+  if (
+    themeServiceInitialized
+    || themeServiceInitializationPromise !== null
+    || deferredThemeServiceTimer !== null
+  ) {
+    return;
+  }
+
+  deferredThemeServiceTimer = setTimeout(() => {
+    deferredThemeServiceTimer = null;
+    void initializeThemeService().catch((error) => {
+      console.error('[Main] Deferred theme service initialization failed:', error);
+    });
+  }, Math.max(0, delayMs));
+}
+
+export async function initializeExtensions(
+  mainWindow?: BrowserWindow | null,
+  options: InitializeExtensionsOptions = {},
+): Promise<void> {
   installPluginHostShutdownHook();
   registerStoreHandlers();
   registerSettingsHandlers(settingsManager, workspaceManager, mainWindow || null);
@@ -104,8 +159,11 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
 
   registerTerminalHandlers();
 
-  const themeService = ThemeService.getInstance();
-  await themeService.initialize();
+  if (options.deferPluginHost === true) {
+    startDeferredThemeService(1000);
+  } else {
+    await initializeThemeService();
+  }
   await workspaceManager.initialize();
 
   if (mainWindow) {
@@ -131,10 +189,58 @@ export async function initializeExtensions(mainWindow?: BrowserWindow | null): P
     editorBridge: pluginEditorBridge,
   });
   console.log('[Main] Plugin capability router configured');
-  await pluginHostManager.initialize();
-  console.log('[Main] Plugin host initialized');
-  await pluginHotReloadService.start();
-  console.log('[Main] Plugin hot reload initialized');
+
+  if (options.deferPluginHost === true) {
+    console.log('[Main] Plugin host initialization deferred.');
+    return;
+  }
+
+  await initializeExtensionHost();
+}
+
+export async function initializeExtensionHost(): Promise<void> {
+  if (pluginHostInitialized) {
+    return;
+  }
+
+  if (pluginHostInitializationPromise !== null) {
+    await pluginHostInitializationPromise;
+    return;
+  }
+
+  if (deferredPluginHostTimer !== null) {
+    clearTimeout(deferredPluginHostTimer);
+    deferredPluginHostTimer = null;
+  }
+
+  pluginHostInitializationPromise = (async () => {
+    await pluginHostManager.initialize();
+    pluginHostInitialized = true;
+    console.log('[Main] Plugin host initialized');
+    await pluginHotReloadService.start();
+    console.log('[Main] Plugin hot reload initialized');
+  })().finally(() => {
+    pluginHostInitializationPromise = null;
+  });
+
+  await pluginHostInitializationPromise;
+}
+
+export function startDeferredExtensionHost(delayMs = 1200): void {
+  if (
+    pluginHostInitialized
+    || pluginHostInitializationPromise !== null
+    || deferredPluginHostTimer !== null
+  ) {
+    return;
+  }
+
+  deferredPluginHostTimer = setTimeout(() => {
+    deferredPluginHostTimer = null;
+    void initializeExtensionHost().catch((error) => {
+      console.error('[Main] Deferred plugin host initialization failed:', error);
+    });
+  }, Math.max(0, delayMs));
 }
 
 export {

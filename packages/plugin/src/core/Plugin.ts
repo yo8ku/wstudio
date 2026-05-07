@@ -30,6 +30,10 @@ import type {
 } from '../types/markdown';
 import type { AppProtocolHandler } from '../types/protocol';
 import type { HoverLinkSource } from '../types/render';
+import type {
+  ResourceExplorerItemRegistration,
+  ResourceExplorerItemRegistry,
+} from '../types/resource-explorer';
 import type { SettingsRegistry } from '../types/settings';
 import type { SuggestionValue } from '../types/suggest';
 import {
@@ -118,6 +122,7 @@ interface PluginRuntimeHost {
   readonly hover: PluginHoverRegistry;
   readonly markdown: PluginMarkdownRegistry;
   readonly protocols: PluginProtocolRegistry;
+  readonly resourceExplorer: ResourceExplorerItemRegistry;
   readonly settings: SettingsRegistry;
   readonly ui: UIRegistry;
   readonly views: PluginViewRegistry;
@@ -184,6 +189,19 @@ export abstract class Plugin extends Component {
 
   registerView(type: string, viewCreator: ViewCreator): void {
     this.registerDisposable(this.runtime.views.registerView(this.manifest.id, type, viewCreator));
+  }
+
+  registerResourceExplorerItem(
+    itemId: string,
+    registration: ResourceExplorerItemRegistration,
+  ): void {
+    this.registerDisposable(
+      this.runtime.resourceExplorer.registerResourceExplorerItem(
+        this.manifest.id,
+        itemId,
+        registration,
+      ),
+    );
   }
 
   registerHoverLinkSource(id: string, source: HoverLinkSource): void {

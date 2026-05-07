@@ -6,10 +6,46 @@
 .file-tree-section {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   overflow: hidden;
   min-height: 0;
   background-color: transparent;
+
+  &--expanded {
+    flex: 0 0 auto;
+    min-height: auto;
+
+    .explorer-section-accordion,
+    .explorer-section-item {
+      flex: 0 0 auto;
+      min-height: auto;
+      overflow: visible;
+    }
+
+    .explorer-section-content {
+      flex: 0 0 auto;
+      min-height: auto;
+      overflow: visible;
+    }
+
+    .file-tree-content {
+      display: block;
+      flex: none;
+      min-height: auto;
+      overflow: visible;
+    }
+
+    .file-tree-content .custom-scrollbar-content {
+      display: block;
+      flex: none;
+      min-height: auto;
+    }
+  }
+
+  &--collapsed {
+    flex: 0 0 auto;
+    min-height: auto;
+  }
 
   .explorer-section-accordion {
     display: flex;
@@ -63,4 +99,3 @@
     background-color: var(--ws-editor-background, rgba(127, 127, 127, 0.08));
   }
 }
-

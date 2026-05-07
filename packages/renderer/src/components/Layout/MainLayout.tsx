@@ -404,8 +404,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
   useEffect(() => {
     let resizeTimeoutId: number | null = null;
     const ipcRenderer = window.electron?.ipcRenderer;
+    let isResizeClassApplied = false;
 
     const setResizingState = (isResizing: boolean) => {
+      if (isResizeClassApplied === isResizing) {
+        return;
+      }
+
+      isResizeClassApplied = isResizing;
       document.body.classList.toggle('window-resizing', isResizing);
     };
 
@@ -420,14 +426,20 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       }, 180);
     };
 
-    const handleResizeActivity = () => {
+    const handleResizeActivity = (shouldScheduleClear = true) => {
       setResizingState(true);
-      scheduleClearResizingState();
+      if (shouldScheduleClear) {
+        scheduleClearResizingState();
+      }
+    };
+
+    const handleWindowResizeActivity = () => {
+      handleResizeActivity(true);
     };
 
     const removeResizeStateListener = ipcRenderer?.on?.('window:resize-state-changed', (_event, isResizing) => {
       if (isResizing) {
-        handleResizeActivity();
+        handleResizeActivity(false);
         return;
       }
 
@@ -439,10 +451,15 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
       setResizingState(false);
     });
 
-    window.addEventListener('resize', handleResizeActivity);
+    const shouldUseWindowResizeFallback = typeof ipcRenderer?.on !== 'function';
+    if (shouldUseWindowResizeFallback) {
+      window.addEventListener('resize', handleWindowResizeActivity);
+    }
 
     return () => {
-      window.removeEventListener('resize', handleResizeActivity);
+      if (shouldUseWindowResizeFallback) {
+        window.removeEventListener('resize', handleWindowResizeActivity);
+      }
       removeResizeStateListener?.();
       if (resizeTimeoutId !== null) {
         window.clearTimeout(resizeTimeoutId);

@@ -41,6 +41,7 @@ import type {
   PluginUiRuntimeSurfaceDescriptor,
   WorkbenchCommandContributionEntry,
   WorkbenchContributionSnapshot,
+  WorkbenchResourceExplorerItemContributionEntry,
 } from '@note-studio/shared';
 import { EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT } from '@note-studio/shared';
 import {
@@ -49,6 +50,7 @@ import {
 import { MainProcessPluginRuntime } from './MainProcessPluginRuntime';
 import { PluginDiscoveryService } from './PluginDiscoveryService';
 import { PluginSupervisorService } from './PluginSupervisorService';
+import { resolvePluginRuntimeOwner } from './pluginRuntimeOwnership';
 import { pluginSurfaceViewService } from '../plugin-surface/PluginSurfaceViewService';
 import type {
   PluginSupervisorPluginRuntimeSnapshot,
@@ -81,6 +83,10 @@ import {
   URL_BROWSER_VIEW_TYPE,
   urlBrowserDownloadService,
 } from '../UrlBrowserDownloadService';
+import {
+  persistentResourceExplorerItemToContribution,
+  readPersistentResourceExplorerItems,
+} from './PersistentResourceExplorerItems';
 
 interface PluginModuleNamespace {
   readonly default?: PluginConstructor;
@@ -133,10 +139,18 @@ type PluginInternalMethod =
   | PluginFailureMethod
   | PluginSnapshotMethod;
 
+const PLUGIN_STARTUP_YIELD_MS = 120;
+
 export interface PluginHostManagerDependencies {
   readonly settingsManager: MainProcessAppFacadeDependencies['settingsManager'];
   readonly workspaceManager: MainProcessAppFacadeDependencies['workspaceManager'];
   readonly editorBridge: MainProcessEditorBridge;
+}
+
+function waitForPluginStartupYield(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, PLUGIN_STARTUP_YIELD_MS);
+  });
 }
 
 function toPluginAssetUrl(
@@ -215,10 +229,7 @@ function resolveInstalledPluginSupervisorOverlay(
   readonly enabled: boolean;
   readonly failureMessage: string | null;
 } {
-  if (
-    supervisorRuntimeState?.owner === 'supervisor'
-    && supervisorRuntimeState.status === 'enabled'
-  ) {
+  if (supervisorRuntimeState?.owner === 'supervisor' && supervisorRuntimeState.status !== 'failed') {
     return {
       enabled: true,
       failureMessage: null,
@@ -344,6 +355,7 @@ class SupervisorBackedView extends PluginSdk.View {
     leaf: PluginSdk.WorkspaceLeaf,
     private readonly viewType: string,
     private readonly pluginSupervisorService: PluginSupervisorService,
+    private readonly activateRuntime: (() => Promise<void>) | null = null,
   ) {
     super(leaf);
     this.displayText = viewType;
@@ -363,6 +375,10 @@ class SupervisorBackedView extends PluginSdk.View {
   }
 
   public override async onOpen(): Promise<void> {
+    if (this.activateRuntime !== null) {
+      await this.activateRuntime();
+    }
+
     const snapshot = await this.pluginSupervisorService.openRemoteViewInstance(
       this.leaf.id,
       this.viewType,
@@ -496,6 +512,22 @@ function mergeWorkbenchCommandContributions(
 
       if (!mergedEntries.has(contributionKey)) {
         mergedEntries.set(contributionKey, entry);
+      }
+    }
+  }
+
+  return [...mergedEntries.values()];
+}
+
+function mergeWorkbenchResourceExplorerItemContributions(
+  ...sources: readonly (readonly WorkbenchResourceExplorerItemContributionEntry[])[]
+): readonly WorkbenchResourceExplorerItemContributionEntry[] {
+  const mergedEntries = new Map<string, WorkbenchResourceExplorerItemContributionEntry>();
+
+  for (const source of sources) {
+    for (const entry of source) {
+      if (!mergedEntries.has(entry.itemKey)) {
+        mergedEntries.set(entry.itemKey, entry);
       }
     }
   }
@@ -858,6 +890,7 @@ export class PluginHostManager {
   private pluginUiNotificationBatchDepth = 0;
   private pluginUiUnsubscribe: (() => void) | null = null;
   private pluginCommandUnsubscribe: (() => void) | null = null;
+  private pluginResourceExplorerUnsubscribe: (() => void) | null = null;
   private editorBridgeUnsubscribe: (() => void) | null = null;
   private urlBrowserDownloadUnsubscribe: (() => void) | null = null;
   private activeEditorSuggest: EditorSuggest<SuggestionValue> | null = null;
@@ -885,6 +918,9 @@ export class PluginHostManager {
       this.emitPluginUiEntriesChanged();
     });
     this.pluginSupervisorService.subscribePluginUiEntries(() => {
+      this.emitPluginUiEntriesChanged();
+    });
+    this.pluginSupervisorService.subscribeResourceExplorerItems(() => {
       this.emitPluginUiEntriesChanged();
     });
     this.pluginSupervisorService.subscribePluginRuntimeStates(() => {
@@ -925,6 +961,12 @@ export class PluginHostManager {
     const resolvePluginDisplayName = (pluginId: string): string => {
       return this.discoveryService.getById(pluginId)?.manifest.name ?? pluginId;
     };
+    const settingsManager = this.getDependencies()?.settingsManager ?? null;
+    const persistentResourceExplorerItems = settingsManager === null
+      ? []
+      : readPersistentResourceExplorerItems(settingsManager).map((item) => (
+        persistentResourceExplorerItemToContribution(item, resolvePluginDisplayName)
+      ));
 
     const fileIconThemes = this.discoveryService.getAll().flatMap((descriptor) => {
       if (descriptor.fileIconTheme === null) {
@@ -953,6 +995,13 @@ export class PluginHostManager {
       return {
         ...EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT,
         commands: this.pluginSupervisorService.getCommandContributions(resolvePluginDisplayName),
+        resourceExplorerItems: mergeWorkbenchResourceExplorerItemContributions(
+          this.pluginSupervisorService.getResourceExplorerItemContributions(
+            resolvePluginDisplayName,
+            (pluginId, viewType) => this.resolvePluginViewRuntimeSurface(pluginId, viewType),
+          ),
+          persistentResourceExplorerItems,
+        ),
         fileIconThemes,
       };
     }
@@ -962,6 +1011,17 @@ export class PluginHostManager {
       commands: mergeWorkbenchCommandContributions(
         this.pluginSupervisorService.getCommandContributions(resolvePluginDisplayName),
         this.runtime.getCommandContributions(resolvePluginDisplayName),
+      ),
+      resourceExplorerItems: mergeWorkbenchResourceExplorerItemContributions(
+        this.pluginSupervisorService.getResourceExplorerItemContributions(
+          resolvePluginDisplayName,
+          (pluginId, viewType) => this.resolvePluginViewRuntimeSurface(pluginId, viewType),
+        ),
+        this.runtime.getResourceExplorerItemContributions(
+          resolvePluginDisplayName,
+          (pluginId, viewType) => this.resolvePluginViewRuntimeSurface(pluginId, viewType),
+        ),
+        persistentResourceExplorerItems,
       ),
       fileIconThemes,
     };
@@ -1009,11 +1069,18 @@ export class PluginHostManager {
       return true;
     }
 
+    const remoteEntry = this.pluginSupervisorService.getPluginUiEntries()
+      .find((entry) => entry.id === entryId) ?? null;
+
+    if (remoteEntry !== null) {
+      await this.startSupervisorOwnedPluginIfNeeded(remoteEntry.pluginId);
+    }
+
     return await this.pluginSupervisorService.executeRemoteUiEntry(entryId);
   }
 
   private resolveRegisteredViewCreator(viewType: string): PluginSdk.ViewCreator | null {
-    const pluginId = this.pluginSupervisorService.getPluginIdForViewType(viewType);
+    const pluginId = this.resolveRegisteredViewPluginId(viewType);
 
     if (
       pluginId === null
@@ -1024,13 +1091,41 @@ export class PluginHostManager {
     }
 
     return (leaf: PluginSdk.WorkspaceLeaf) => {
-      return new SupervisorBackedView(leaf, viewType, this.pluginSupervisorService);
+      return new SupervisorBackedView(
+        leaf,
+        viewType,
+        this.pluginSupervisorService,
+        async () => {
+          await this.startSupervisorOwnedPluginIfNeeded(pluginId);
+        },
+      );
     };
   }
 
   private resolveRegisteredViewPluginId(viewType: string): string | null {
     return this.runtime?.views.getPluginId(viewType)
-      ?? this.pluginSupervisorService.getPluginIdForViewType(viewType);
+      ?? this.pluginSupervisorService.getPluginIdForViewType(viewType)
+      ?? this.resolveDiscoveredSupervisorViewPluginId(viewType);
+  }
+
+  private resolveDiscoveredSupervisorViewPluginId(viewType: string): string | null {
+    const normalizedViewType = viewType.trim();
+
+    if (normalizedViewType.length === 0) {
+      return null;
+    }
+
+    for (const descriptor of this.discoveryService.getAll()) {
+      if (resolvePluginRuntimeOwner(descriptor) !== 'supervisor') {
+        continue;
+      }
+
+      if (descriptor.uiEntrypoints?.views[normalizedViewType] !== undefined) {
+        return descriptor.manifest.id;
+      }
+    }
+
+    return null;
   }
 
   private resolveRegisteredViewTypeForExtension(extension: string): string | null {
@@ -1045,8 +1140,17 @@ export class PluginHostManager {
       return null;
     }
 
+    return this.resolvePluginViewRuntimeSurface(pluginId, viewType);
+  }
+
+  private resolvePluginViewRuntimeSurface(
+    pluginId: string,
+    viewType: string,
+  ): PluginUiRuntimeSurfaceDescriptor | null {
+    const normalizedViewType = viewType.trim();
+
     const descriptor = this.discoveryService.getById(pluginId);
-    const entryPath = descriptor?.uiEntrypoints?.views[viewType] ?? null;
+    const entryPath = descriptor?.uiEntrypoints?.views[normalizedViewType] ?? null;
     const entryUrl = descriptor === undefined ? null : toPluginAssetUrl(descriptor, entryPath);
 
     if (entryUrl === null) {
@@ -1056,9 +1160,9 @@ export class PluginHostManager {
     return {
       pluginId,
       surfaceKind: 'view',
-      surfaceId: viewType,
+      surfaceId: normalizedViewType,
       entryUrl,
-      state: viewType === URL_BROWSER_VIEW_TYPE
+      state: normalizedViewType === URL_BROWSER_VIEW_TYPE
         ? urlBrowserDownloadService.buildRuntimeState()
         : null,
     };
@@ -1244,6 +1348,8 @@ export class PluginHostManager {
     this.pluginUiUnsubscribe = null;
     this.pluginCommandUnsubscribe?.();
     this.pluginCommandUnsubscribe = null;
+    this.pluginResourceExplorerUnsubscribe?.();
+    this.pluginResourceExplorerUnsubscribe = null;
     this.editorBridgeUnsubscribe?.();
     this.editorBridgeUnsubscribe = null;
     this.urlBrowserDownloadUnsubscribe?.();
@@ -1399,6 +1505,7 @@ export class PluginHostManager {
         }
       }
 
+      await this.startSupervisorOwnedPluginIfNeeded(pluginId);
       const remoteResult = await this.pluginSupervisorService.executeRemoteBasesView(pluginId, viewId);
       return remoteResult.snapshot;
     });
@@ -1407,6 +1514,9 @@ export class PluginHostManager {
     });
     this.pluginCommandUnsubscribe = this.runtime.commands.subscribe(() => {
       void this.syncSupervisorCommands();
+      this.emitPluginUiEntriesChanged();
+    });
+    this.pluginResourceExplorerUnsubscribe = this.runtime.resourceExplorer.subscribe(() => {
       this.emitPluginUiEntriesChanged();
     });
     this.editorBridgeUnsubscribe = dependencies.editorBridge.subscribeStateChanges(() => {
@@ -1430,16 +1540,41 @@ export class PluginHostManager {
   }
 
   private async loadDiscoveredPlugins(): Promise<void> {
+    let loadedPluginCount = 0;
+
     for (const descriptor of this.discoveryService.getAll()) {
-      if (this.pluginSupervisorService.isPluginOwnedBySupervisor(descriptor.manifest.id)) {
+      if (!this.shouldLoadPluginInMainProcess(descriptor)) {
         continue;
       }
 
+      if (loadedPluginCount > 0) {
+        await waitForPluginStartupYield();
+      }
+
       await this.loadPlugin(descriptor);
+      loadedPluginCount += 1;
     }
 
     this.refreshInstalledPlugins();
     this.scheduleActiveEditorSuggestRefresh();
+  }
+
+  private shouldLoadPluginInMainProcess(descriptor: PluginDescriptor): boolean {
+    return resolvePluginRuntimeOwner(descriptor) === 'main';
+  }
+
+  private async startSupervisorOwnedPluginIfNeeded(pluginId: string): Promise<void> {
+    const descriptor = this.discoveryService.getById(pluginId);
+
+    if (
+      descriptor === undefined
+      || this.shouldLoadPluginInMainProcess(descriptor)
+      || descriptor.entryPath === null
+    ) {
+      return;
+    }
+
+    await this.pluginSupervisorService.startPlugin(pluginId);
   }
 
   private async loadPlugin(descriptor: PluginDescriptor): Promise<void> {

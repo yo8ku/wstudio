@@ -226,6 +226,7 @@ export const PluginSettingTabRuntimeCard: React.FC<PluginSettingTabRuntimeCardPr
     }
 
     let animationFrameId = 0;
+    let resizeSettledTimerId: number | null = null;
 
     const syncBounds = (): void => {
       void window.electron?.ipcRenderer.invoke(PLUGIN_SURFACE_UPDATE_BOUNDS_CHANNEL, {
@@ -240,7 +241,25 @@ export const PluginSettingTabRuntimeCard: React.FC<PluginSettingTabRuntimeCardPr
       });
     };
 
+    const isHostWindowResizing = (): boolean => document.body.classList.contains('window-resizing');
+
+    const scheduleSettledBoundsSync = (): void => {
+      if (resizeSettledTimerId !== null) {
+        window.clearTimeout(resizeSettledTimerId);
+      }
+
+      resizeSettledTimerId = window.setTimeout(() => {
+        resizeSettledTimerId = null;
+        scheduleBoundsSync();
+      }, 220);
+    };
+
     const scheduleBoundsSync = (): void => {
+      if (isHostWindowResizing()) {
+        scheduleSettledBoundsSync();
+        return;
+      }
+
       if (animationFrameId !== 0) {
         return;
       }
@@ -263,6 +282,9 @@ export const PluginSettingTabRuntimeCard: React.FC<PluginSettingTabRuntimeCardPr
     return () => {
       if (animationFrameId !== 0) {
         window.cancelAnimationFrame(animationFrameId);
+      }
+      if (resizeSettledTimerId !== null) {
+        window.clearTimeout(resizeSettledTimerId);
       }
 
       resizeObserver.disconnect();

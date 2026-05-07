@@ -7,6 +7,8 @@ import { create } from 'zustand';
 import type { ThemeData, ThemeInfo } from '@note-studio/shared';
 import { themeService } from '../services/ThemeService';
 
+let deferredThemeListTimer: number | null = null;
+
 /**
  * 主题状态接口
  */
@@ -42,36 +44,43 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // 加载主题列表
-      const themes = await themeService.getAllThemes();
-      
-      // 加载当前主题
-      let currentTheme = await themeService.getCurrentTheme();
-
-      // 如果没有当前主题，使用第一个可用主题作为默认主题
-      if (!currentTheme && themes.length > 0) {
-        console.log('[ThemeStore] 没有当前主题，使用第一个可用主题作为默认主题');
-        const defaultThemeId = themes[0].id;
-        await themeService.setTheme(defaultThemeId);
-        currentTheme = await themeService.getCurrentTheme();
-      }
+      const currentTheme = await themeService.getCurrentTheme();
 
       set({
-        themeList: themes,
         currentTheme,
         isLoading: false,
       });
 
-      // 应用主题到 DOM
       if (currentTheme) {
         get().applyThemeToDOM(currentTheme);
-      } else {
-        console.warn('[ThemeStore] 警告：没有可用的主题');
       }
 
-      console.log('[ThemeStore] 初始化完成');
-      console.log('[ThemeStore] 主题列表数量:', themes.length);
-      console.log('[ThemeStore] 当前主题:', currentTheme?.id);
+      if (deferredThemeListTimer === null) {
+        deferredThemeListTimer = window.setTimeout(() => {
+          deferredThemeListTimer = null;
+          void (async () => {
+            const themes = await themeService.getAllThemes();
+            let nextCurrentTheme = get().currentTheme;
+
+            if (!nextCurrentTheme && themes.length > 0) {
+              const defaultThemeId = themes[0].id;
+              await themeService.setTheme(defaultThemeId);
+              nextCurrentTheme = await themeService.getCurrentTheme();
+            }
+
+            set({
+              themeList: themes,
+              currentTheme: nextCurrentTheme,
+            });
+
+            if (nextCurrentTheme) {
+              get().applyThemeToDOM(nextCurrentTheme);
+            }
+          })().catch((error) => {
+            console.error('[ThemeStore] Deferred theme list load failed:', error);
+          });
+        }, 2400);
+      }
     } catch (error) {
       console.error('[ThemeStore] 初始化失败:', error);
       set({
@@ -218,4 +227,3 @@ if (typeof window !== 'undefined') {
     useThemeStore.setState({ themeList: event.detail });
   }) as EventListener);
 }
-

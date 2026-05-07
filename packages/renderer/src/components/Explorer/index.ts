@@ -3,7 +3,7 @@
 
 // 主容器
 export { ExplorerView } from './ExplorerView';
-export type { ExplorerViewProps } from './ExplorerView';
+export type { ExplorerViewProps, ResourceFolderExplorerItem } from './ExplorerView';
 
 // 文件树
 export { FileTreeSection } from './FileTree/FileTreeSection';

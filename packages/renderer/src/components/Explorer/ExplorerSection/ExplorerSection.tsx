@@ -17,11 +17,14 @@ export interface ActionButton {
 
 export interface ExplorerSectionProps {
   title: string;
+  titleContent?: React.ReactNode;
   icon?: React.ReactNode;
+  idleIcon?: React.ReactNode;
   defaultExpanded?: boolean;
   expanded?: boolean;
+  showToggleIcon?: boolean;
   preserveTitleCase?: boolean;
-  toggleIconMode?: 'default' | 'folder-on-idle' | 'form-on-idle' | 'editors-on-idle';
+  toggleIconMode?: 'default' | 'folder-on-idle' | 'form-on-idle' | 'editors-on-idle' | 'custom-on-idle';
   actions?: ActionButton[];
   children: React.ReactNode;
   onExpandChange?: (expanded: boolean) => void;
@@ -29,9 +32,12 @@ export interface ExplorerSectionProps {
 
 const ExplorerSection: React.FC<ExplorerSectionProps> = ({
   title,
+  titleContent,
   icon,
+  idleIcon,
   defaultExpanded = true,
   expanded: controlledExpanded,
+  showToggleIcon = true,
   preserveTitleCase = false,
   toggleIconMode = 'default',
   actions = [],
@@ -45,6 +51,7 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
   const useFolderIdleIcon = toggleIconMode === 'folder-on-idle';
   const useFormIdleIcon = toggleIconMode === 'form-on-idle';
   const useEditorsIdleIcon = toggleIconMode === 'editors-on-idle';
+  const useCustomIdleIcon = toggleIconMode === 'custom-on-idle';
 
   const handleToggle = () => {
     const nextExpanded = !isExpanded;
@@ -78,33 +85,46 @@ const ExplorerSection: React.FC<ExplorerSectionProps> = ({
               useFormIdleIcon ? 'explorer-section-trigger--form-idle' : ''
             } ${
               useEditorsIdleIcon ? 'explorer-section-trigger--editors-idle' : ''
+            } ${
+              useCustomIdleIcon ? 'explorer-section-trigger--custom-idle' : ''
+            } ${
+              isExpanded ? 'explorer-section-trigger--expanded' : ''
             }`}
             onClick={handleToggle}
           >
-            <span className="explorer-section-toggle-icon">
-              {useFolderIdleIcon && (
-                <Icon name="folder" size={15} className="explorer-section-folder-icon" />
-              )}
-              {useFormIdleIcon && (
-                <Icon name="table-properties" size={15} className="explorer-section-form-icon" />
-              )}
-              {useEditorsIdleIcon && (
-                <Icon name="files-folder" size={15} className="explorer-section-editors-icon" />
-              )}
-              <Icon
-                name={isExpanded ? 'chevron-down' : 'chevron-right'}
-                size={15}
-                className="explorer-section-chevron"
-              />
-            </span>
+            {showToggleIcon && (
+              <span className="explorer-section-toggle-icon">
+                {useFolderIdleIcon && (
+                  <Icon name="folder" size={15} className="explorer-section-folder-icon" />
+                )}
+                {useFormIdleIcon && (
+                  <Icon name="table-properties" size={15} className="explorer-section-form-icon" />
+                )}
+                {useEditorsIdleIcon && (
+                  <Icon name="files-folder" size={15} className="explorer-section-editors-icon" />
+                )}
+                {useCustomIdleIcon && (
+                  <span className="explorer-section-custom-idle-icon">
+                    {idleIcon}
+                  </span>
+                )}
+                <Icon
+                  name={isExpanded ? 'chevron-down' : 'chevron-right'}
+                  size={15}
+                  className="explorer-section-chevron"
+                />
+              </span>
+            )}
             {icon && <span className="explorer-section-icon">{icon}</span>}
-            <span
-              className={`explorer-section-title-text ${
-                preserveTitleCase ? 'explorer-section-title-text--preserve-case' : ''
-              }`}
-            >
-              {title}
-            </span>
+            {titleContent ?? (
+              <span
+                className={`explorer-section-title-text ${
+                  preserveTitleCase ? 'explorer-section-title-text--preserve-case' : ''
+                }`}
+              >
+                {title}
+              </span>
+            )}
           </div>
           {actions.length > 0 && (
             <div className="explorer-section-actions">
