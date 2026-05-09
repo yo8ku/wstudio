@@ -137,6 +137,8 @@ export const ExtensionsView: React.FC = () => {
               const fundingUrl = canOpenExternalLink(plugin.fundingUrl)
                 ? plugin.fundingUrl
                 : null;
+              const isErrorDisabled = !plugin.enabled && plugin.failureMessage !== null;
+              const isManuallyDisabled = !plugin.enabled && plugin.failureMessage === null;
 
               return (
                 <div key={plugin.id} className="extensions-view__card">
@@ -168,11 +170,15 @@ export const ExtensionsView: React.FC = () => {
                       </div>
                     </div>
                     <span
-                      className={`extensions-view__status ${plugin.enabled ? 'is-enabled' : 'is-disabled'}`}
+                      className={`extensions-view__status ${plugin.enabled ? 'is-enabled' : isErrorDisabled ? 'is-error' : 'is-disabled'}`}
                     >
                       {plugin.enabled
                         ? t('extensionsView.status.enabled')
-                        : t('extensionsView.status.disabled')}
+                        : isErrorDisabled
+                          ? '异常停用'
+                          : isManuallyDisabled
+                            ? t('extensionsView.status.disabled')
+                            : t('extensionsView.status.disabled')}
                     </span>
                   </div>
                   <div className="extensions-view__meta">
@@ -183,7 +189,7 @@ export const ExtensionsView: React.FC = () => {
                   <p className="extensions-view__card-description">
                     {plugin.description ?? t('extensionsView.states.noDescription')}
                   </p>
-                  {!plugin.enabled && plugin.failureMessage !== null && (
+                  {isErrorDisabled && (
                     <p className="extensions-view__card-description extensions-view__card-description--error">
                       {plugin.failureMessage}
                     </p>

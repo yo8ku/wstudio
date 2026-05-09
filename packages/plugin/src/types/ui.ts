@@ -57,11 +57,17 @@ export interface PluginUiEntryScope {
 }
 
 export interface RibbonIconOptions {
+  /**
+   * Stable local entry id used to align runtime registration with
+   * `manifest.contributes.uiEntries`.
+   */
+  readonly id?: string;
   readonly location?: PluginUiEntryLocation;
   readonly scope?: PluginUiEntryScope;
 }
 
 export interface RibbonIconSpec {
+  readonly id?: string;
   readonly icon: IconName;
   readonly title: string;
   readonly onClick: RibbonClickHandler;

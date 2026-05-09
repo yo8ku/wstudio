@@ -3,6 +3,7 @@
  */
 
 import type { PluginManifestUi } from './plugin-ui-runtime';
+import type { PluginUiEntryLocation, PluginUiEntryScope } from './ui';
 
 export interface PluginManifestEngines {
   readonly wstudio: string;
@@ -23,8 +24,27 @@ export interface PluginManifestFileIconContribution {
   readonly mappings?: readonly PluginManifestFileIconMapping[];
 }
 
+export interface PluginManifestUiEntryContribution {
+  /**
+   * Stable local entry id. Runtime `addRibbonIcon(..., { id })` should reuse the same id.
+   */
+  readonly id: string;
+  readonly title: string;
+  /**
+   * Host icon id available before the plugin runtime starts.
+   */
+  readonly icon?: string;
+  /**
+   * Optional SVG asset path resolved relative to the plugin root and inlined by the host.
+   */
+  readonly iconPath?: string;
+  readonly location?: PluginUiEntryLocation;
+  readonly scope?: PluginUiEntryScope;
+}
+
 export interface PluginManifestContributes {
   readonly fileIcons?: PluginManifestFileIconContribution;
+  readonly uiEntries?: readonly PluginManifestUiEntryContribution[];
 }
 
 export const PLUGIN_RELEASE_CHANNELS = [

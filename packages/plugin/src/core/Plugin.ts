@@ -28,6 +28,7 @@ import type {
   MarkdownCodeBlockProcessor,
   MarkdownPostProcessor,
 } from '../types/markdown';
+import type { PluginUiActionHandler } from '../types/plugin-ui-runtime';
 import type { AppProtocolHandler } from '../types/protocol';
 import type { HoverLinkSource } from '../types/render';
 import type {
@@ -113,6 +114,14 @@ interface PluginProtocolRegistry {
   ): Disposable;
 }
 
+interface PluginUiLogicRegistry {
+  registerUiAction(
+    pluginId: string,
+    actionId: string,
+    handler: PluginUiActionHandler,
+  ): Disposable;
+}
+
 interface PluginRuntimeHost {
   readonly bases: PluginBasesRegistry;
   readonly commands: CommandRegistry;
@@ -120,6 +129,7 @@ interface PluginRuntimeHost {
   readonly editors: PluginEditorRegistry;
   readonly extensions: PluginExtensionRegistry;
   readonly hover: PluginHoverRegistry;
+  readonly logic: PluginUiLogicRegistry;
   readonly markdown: PluginMarkdownRegistry;
   readonly protocols: PluginProtocolRegistry;
   readonly resourceExplorer: ResourceExplorerItemRegistry;
@@ -156,6 +166,7 @@ export abstract class Plugin extends Component {
     options?: RibbonIconOptions,
   ): HTMLElement {
     const ribbonIcon = this.runtime.ui.addRibbonIcon(this.manifest.id, {
+      id: options?.id,
       icon,
       title,
       onClick,
@@ -181,6 +192,12 @@ export abstract class Plugin extends Component {
 
   removeCommand(commandId: string): void {
     this.runtime.commands.removeCommand(commandId);
+  }
+
+  registerUiAction(actionId: string, handler: PluginUiActionHandler): void {
+    this.registerDisposable(
+      this.runtime.logic.registerUiAction(this.manifest.id, actionId, handler),
+    );
   }
 
   addSettingTab<TSettingTab extends PluginSettingTab<this>>(settingTab: TSettingTab): void {

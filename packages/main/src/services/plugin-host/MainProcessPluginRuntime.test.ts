@@ -215,10 +215,26 @@ describe('MainProcessUIRegistry', () => {
       expect(entries).toHaveLength(1);
       expect(entries[0]?.icon).toBe(TEST_ICON_ID);
       expect(entries[0]?.iconSvg).toContain('<svg');
-      expect(entries[0]?.iconSvg).toContain('viewBox="0 0 10 10"');
-    } finally {
-      removeIcon(TEST_ICON_ID);
-    }
+    expect(entries[0]?.iconSvg).toContain('viewBox="0 0 10 10"');
+  } finally {
+    removeIcon(TEST_ICON_ID);
+  }
+  });
+
+  it('uses explicit ribbon entry ids when provided by the plugin runtime', () => {
+    const registry = new MainProcessUIRegistry();
+
+    registry.addRibbonIcon('plugin.test', {
+      id: 'launch',
+      icon: 'beaker',
+      title: 'Launch',
+      onClick: () => undefined,
+    });
+
+    const entries = registry.getEntries();
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe('plugin.test:ui:launch');
   });
 
   it('serializes nested svg elements with their original tag names', () => {

@@ -44,6 +44,7 @@ export const PLUGIN_RUNTIME_MARK_OVERLAY_RUNTIME_ACTIVE_CHANNEL = 'plugin-runtim
 export const PLUGIN_RUNTIME_EDITOR_GET_STATE_CHANNEL = 'plugin-runtime:editor-get-state';
 export const PLUGIN_RUNTIME_EDITOR_APPLY_TEXT_EDITS_CHANNEL = 'plugin-runtime:editor-apply-text-edits';
 export const PLUGIN_RUNTIME_EDITOR_PERFORM_ACTION_CHANNEL = 'plugin-runtime:editor-perform-action';
+export const PLUGIN_RUNTIME_INVOKE_LOGIC_ACTION_CHANNEL = 'plugin-runtime:invoke-logic-action';
 export const PLUGIN_RUNTIME_DATA_LOAD_CHANNEL = 'plugin-runtime:data-load';
 export const PLUGIN_RUNTIME_DATA_SAVE_CHANNEL = 'plugin-runtime:data-save';
 export const PLUGIN_RUNTIME_DATA_DELETE_CHANNEL = 'plugin-runtime:data-delete';
@@ -168,6 +169,11 @@ interface PluginRuntimeDataSaveRequest extends PluginRuntimePluginScopedRequest 
   readonly data: JsonValue | null;
 }
 
+interface PluginRuntimeInvokeLogicActionRequest extends PluginRuntimePluginScopedRequest {
+  readonly actionId: string;
+  readonly payload: JsonValue | null;
+}
+
 interface PluginRuntimeDispatchViewEventRequest extends PluginRuntimeViewRequest {
   readonly nodeId: string;
   readonly type: string;
@@ -274,6 +280,7 @@ let pluginRuntimeViewRequestBridge: {
   getEditorState(documentUri: string | null): Promise<PluginUiRuntimeEditorStateSnapshot | null> | PluginUiRuntimeEditorStateSnapshot | null;
   applyEditorTextEdits(documentUri: string, edits: readonly PluginUiRuntimeEditorTextEdit[]): Promise<void> | void;
   performEditorAction(request: PluginUiRuntimeEditorActionRequest): Promise<void> | void;
+  invokePluginUiAction(pluginId: string, actionId: string, payload: JsonValue | null): Promise<JsonValue | null> | JsonValue | null;
   loadPluginData(pluginId: string): Promise<JsonValue | null> | JsonValue | null;
   savePluginData(pluginId: string, data: JsonValue | null): Promise<void> | void;
   deletePluginData(pluginId: string): Promise<void> | void;
@@ -428,6 +435,7 @@ export function configurePluginRuntimeViewRequestBridge(
     getEditorState(documentUri: string | null): Promise<PluginUiRuntimeEditorStateSnapshot | null> | PluginUiRuntimeEditorStateSnapshot | null;
     applyEditorTextEdits(documentUri: string, edits: readonly PluginUiRuntimeEditorTextEdit[]): Promise<void> | void;
     performEditorAction(request: PluginUiRuntimeEditorActionRequest): Promise<void> | void;
+    invokePluginUiAction(pluginId: string, actionId: string, payload: JsonValue | null): Promise<JsonValue | null> | JsonValue | null;
     loadPluginData(pluginId: string): Promise<JsonValue | null> | JsonValue | null;
     savePluginData(pluginId: string, data: JsonValue | null): Promise<void> | void;
     deletePluginData(pluginId: string): Promise<void> | void;
@@ -861,6 +869,29 @@ export function registerPluginRuntimeHandlers(): void {
 
       await pluginRuntimeViewRequestBridge.performEditorAction(request.request);
       return true;
+    },
+  );
+
+  ipcMain.handle(
+    PLUGIN_RUNTIME_INVOKE_LOGIC_ACTION_CHANNEL,
+    async (_event, request: PluginRuntimeInvokeLogicActionRequest) => {
+      if (
+        pluginRuntimeViewRequestBridge === null
+        || request === null
+        || typeof request !== 'object'
+        || typeof request.pluginId !== 'string'
+        || request.pluginId.trim().length === 0
+        || typeof request.actionId !== 'string'
+        || request.actionId.trim().length === 0
+      ) {
+        return null;
+      }
+
+      return await pluginRuntimeViewRequestBridge.invokePluginUiAction(
+        request.pluginId,
+        request.actionId,
+        request.payload ?? null,
+      );
     },
   );
 

@@ -133,6 +133,14 @@ export interface PluginUiShowOpenDialogResult {
   readonly filePaths: readonly string[];
 }
 
+export type PluginUiActionHandler = (
+  payload: JsonValue | null,
+) => Promise<JsonValue | null> | JsonValue | null;
+
+export interface PluginUiLogicBridge {
+  invoke(actionId: string, payload?: JsonValue | null): Promise<JsonValue | null>;
+}
+
 export interface PluginUiHostBridge {
   showNotice(payload: PluginUiHostNoticePayload): Promise<void>;
   executeCommand(commandId: string, args?: readonly JsonValue[]): Promise<JsonValue | null>;
@@ -141,6 +149,7 @@ export interface PluginUiHostBridge {
   closeOverlay(): Promise<void>;
   showOpenDialog(options: PluginUiShowOpenDialogOptions): Promise<PluginUiShowOpenDialogResult>;
   openWorkspaceFile(path: string, options?: PluginUiOpenWorkspaceFileOptions): Promise<boolean>;
+  readonly logic: PluginUiLogicBridge;
   readonly overlay: {
     dispatchAction(action: JsonValue | null): Promise<void>;
   };

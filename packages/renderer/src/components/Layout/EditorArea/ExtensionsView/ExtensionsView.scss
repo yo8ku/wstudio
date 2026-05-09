@@ -197,6 +197,11 @@
   opacity: 0.65;
 }
 
+.extensions-view__status.is-error {
+  color: var(--ws-errorForeground, #f48771);
+  background: color-mix(in srgb, var(--ws-errorForeground, #f48771) 12%, transparent);
+}
+
 .extensions-view__meta {
   display: flex;
   flex-wrap: wrap;

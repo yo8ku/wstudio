@@ -18,6 +18,7 @@ import type {
   SearchResult,
   SearchResultContainer,
 } from './suggest';
+import { LOCAL_MEDIA_PROTOCOL_ROOT_PREFIX } from './local-media';
 
 type DebounceArgument =
   | string
@@ -164,7 +165,7 @@ class ManagedRequestUrlResponsePromise implements RequestUrlResponsePromise {
   }
 }
 
-export const apiVersion = '1.2.0';
+export const apiVersion = '1.4.0';
 
 class ManagedMomentDuration implements MomentDuration {
   private readonly milliseconds: number;
@@ -358,7 +359,7 @@ export const Platform = {
   isWin,
   isLinux,
   isSafari,
-  resourcePathPrefix: isMobile ? 'file:///' : 'app://local/',
+  resourcePathPrefix: isMobile ? 'file:///' : LOCAL_MEDIA_PROTOCOL_ROOT_PREFIX,
 };
 
 function compareVersions(left: string, right: string): number {

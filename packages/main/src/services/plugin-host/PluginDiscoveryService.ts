@@ -9,24 +9,24 @@ import type {
   PluginManifest,
   PluginManifestEngines,
   PluginManifestFileIconContribution,
+  PluginManifestUiEntryContribution,
   PluginReleaseChannel,
+  PluginUiEntryScope,
 } from '@note-studio/plugin';
+import { PLUGIN_UI_ENTRY_LOCATIONS } from '@note-studio/plugin';
 import type { JsonObject, JsonValue } from '@note-studio/shared';
 import { resolveProjectPath } from '../../utils/projectRoot';
 import {
   type PluginDescriptor,
   type PluginResolvedFileIconTheme,
   type PluginResolvedFileIconThemeMapping,
+  type PluginResolvedStaticUiEntry,
   type PluginResolvedUiEntrypoints,
   type PluginScanFailure,
   type PluginScanSummary,
 } from './types';
 
 const DEFAULT_PLUGIN_DIRECTORY_NAME = 'plugins';
-const DEFAULT_BUILTIN_PLUGIN_DIRECTORIES = [
-  path.join('packages', 'builtin-plugins'),
-  path.join('resources', 'builtin-plugins'),
-] as const;
 const DEFAULT_DEVELOPMENT_EXAMPLE_PLUGIN_IDS = [] as const;
 const DEFAULT_UNBLOCKED_USER_PLUGIN_IDS = [
   'wstudio-plugin-demo-editor-suggest',
@@ -38,6 +38,11 @@ const DEFAULT_DEVELOPMENT_PLUGIN_BLOCKED_PREFIXES = [
 ] as const;
 const DEVELOPMENT_EXAMPLE_PLUGIN_IDS_ENV = 'WSTUDIO_DEVELOPMENT_EXAMPLE_PLUGIN_IDS';
 const DEVELOPMENT_EXAMPLE_PLUGIN_ROOT_ENV = 'WSTUDIO_DEVELOPMENT_EXAMPLE_PLUGIN_ROOT';
+const BUILTIN_FILE_ICON_THEME_PLUGIN_ID = 'wstudio-builtin-MaterialIcon';
+const BUILTIN_FILE_ICON_THEME_PLUGIN_DIRECTORIES = [
+  path.join('packages', 'builtin-plugins', BUILTIN_FILE_ICON_THEME_PLUGIN_ID),
+  path.join('resources', 'builtin-plugins', BUILTIN_FILE_ICON_THEME_PLUGIN_ID),
+] as const;
 const MANIFEST_FILE_NAME = 'manifest.json';
 const SUPPORTED_ENTRY_CANDIDATES = ['main.js', 'main.cjs', 'main.mjs'] as const;
 const DEFAULT_PLUGIN_ICON_CANDIDATES = ['assets/logo.svg'] as const;
@@ -50,6 +55,8 @@ const SUPPORTED_PLUGIN_LOGO_EXTENSIONS = new Set<string>([
   '.bmp',
   '.svg',
 ]);
+const SUPPORTED_PLUGIN_UI_ICON_ASSET_EXTENSIONS = new Set<string>(['.svg']);
+const VALID_PLUGIN_UI_ENTRY_LOCATIONS = new Set<string>(PLUGIN_UI_ENTRY_LOCATIONS);
 
 const EMPTY_PLUGIN_SCAN_SUMMARY: PluginScanSummary = {
   roots: [],
@@ -110,6 +117,20 @@ function readOptionalStringArray(
     .map((item) => item.trim());
 
   return result.length > 0 ? result : undefined;
+}
+
+function readPluginUiEntryScopeValue(source: JsonObject): PluginUiEntryScope | undefined {
+  const viewType = readOptionalString(source, 'viewType');
+  const fileExtensions = readOptionalStringArray(source, 'fileExtensions');
+
+  if (viewType === undefined && fileExtensions === undefined) {
+    return undefined;
+  }
+
+  return {
+    viewType,
+    fileExtensions,
+  };
 }
 
 function readOptionalStringRecord(
@@ -274,12 +295,16 @@ function readManifestContributes(source: JsonObject): PluginManifest['contribute
   }
 
   const fileIcons = readManifestFileIconContribution(contributesValue);
+  const uiEntries = readManifestUiEntryContributions(contributesValue);
 
-  if (fileIcons === undefined) {
+  if (fileIcons === undefined && uiEntries === undefined) {
     return undefined;
   }
 
-  return { fileIcons };
+  return {
+    fileIcons,
+    uiEntries,
+  };
 }
 
 function readManifestFileIconContribution(
@@ -330,6 +355,71 @@ function readManifestFileIconContribution(
     directoryExpanded: readOptionalString(fileIconsValue, 'directoryExpanded'),
     mappings,
   };
+}
+
+function readManifestUiEntryContributions(
+  source: JsonObject,
+): readonly PluginManifestUiEntryContribution[] | undefined {
+  const uiEntriesValue = source.uiEntries;
+
+  if (!Array.isArray(uiEntriesValue)) {
+    return undefined;
+  }
+
+  const entries: PluginManifestUiEntryContribution[] = [];
+
+  for (const item of uiEntriesValue) {
+    if (!isJsonObject(item)) {
+      return undefined;
+    }
+
+    const id = readRequiredString(item, 'id');
+    const title = readRequiredString(item, 'title');
+
+    if (id === null || title === null) {
+      return undefined;
+    }
+
+    const icon = readOptionalString(item, 'icon');
+    const iconPath = readOptionalString(item, 'iconPath');
+
+    if (icon === undefined && iconPath === undefined) {
+      return undefined;
+    }
+
+    const rawLocation = readOptionalString(item, 'location');
+
+    if (rawLocation !== undefined && !VALID_PLUGIN_UI_ENTRY_LOCATIONS.has(rawLocation)) {
+      return undefined;
+    }
+
+    const scopeValue = item.scope;
+
+    if (scopeValue !== undefined && !isJsonObject(scopeValue)) {
+      return undefined;
+    }
+
+    const scope = scopeValue === undefined
+      ? undefined
+      : readPluginUiEntryScopeValue(scopeValue);
+
+    if (scopeValue !== undefined && scope === undefined) {
+      return undefined;
+    }
+
+    const location = rawLocation as PluginManifestUiEntryContribution['location'];
+
+    entries.push({
+      id,
+      title,
+      icon,
+      iconPath,
+      location,
+      scope,
+    });
+  }
+
+  return entries.length > 0 ? entries : undefined;
 }
 
 function createFailure(
@@ -524,6 +614,48 @@ async function resolvePluginUiEntrypoints(
   };
 }
 
+function isSupportedPluginUiIconAssetPath(targetPath: string): boolean {
+  return SUPPORTED_PLUGIN_UI_ICON_ASSET_EXTENSIONS.has(path.extname(targetPath).trim().toLowerCase());
+}
+
+async function resolvePluginStaticUiEntries(
+  rootDirectory: string,
+  contributions: readonly PluginManifestUiEntryContribution[] | undefined,
+): Promise<readonly PluginResolvedStaticUiEntry[]> {
+  if (contributions === undefined) {
+    return [];
+  }
+
+  const entries: PluginResolvedStaticUiEntry[] = [];
+
+  for (const contribution of contributions) {
+    const iconPath = contribution.iconPath === undefined
+      ? null
+      : await resolvePluginAssetPath(rootDirectory, contribution.iconPath);
+
+    if (contribution.iconPath !== undefined && iconPath === null) {
+      throw new Error(`contributes.uiEntries["${contribution.id}"].iconPath points to a missing or out-of-root SVG asset.`);
+    }
+
+    if (iconPath !== null && !isSupportedPluginUiIconAssetPath(iconPath)) {
+      throw new Error(`contributes.uiEntries["${contribution.id}"].iconPath must point to an SVG asset.`);
+    }
+
+    const iconSvg = iconPath === null ? null : (await readFile(iconPath, 'utf8')).trim();
+
+    entries.push({
+      id: contribution.id,
+      title: contribution.title,
+      icon: contribution.icon ?? null,
+      iconSvg: iconSvg === null || iconSvg.length === 0 ? null : iconSvg,
+      location: contribution.location ?? 'activityBar',
+      scope: contribution.scope ?? null,
+    });
+  }
+
+  return entries;
+}
+
 interface ConfiguredPluginRoot {
   readonly path: string;
   readonly createIfMissing: boolean;
@@ -555,6 +687,68 @@ function resolveDevelopmentExampleRoot(): string {
   }
 
   return path.resolve(resolveProjectPath('examples', 'plugins'));
+}
+
+function resolveBuiltinFileIconThemePluginRootCandidates(): readonly string[] {
+  const roots = new Set<string>();
+  const appPath = app.getAppPath();
+
+  for (const directory of BUILTIN_FILE_ICON_THEME_PLUGIN_DIRECTORIES) {
+    roots.add(path.resolve(resolveProjectPath(directory)));
+    roots.add(path.resolve(appPath, directory));
+  }
+
+  if (typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0) {
+    roots.add(path.resolve(process.resourcesPath, 'builtin-plugins', BUILTIN_FILE_ICON_THEME_PLUGIN_ID));
+
+    for (const directory of BUILTIN_FILE_ICON_THEME_PLUGIN_DIRECTORIES) {
+      roots.add(path.resolve(process.resourcesPath, directory));
+      roots.add(path.resolve(process.resourcesPath, 'app.asar.unpacked', directory));
+    }
+  }
+
+  return [...roots];
+}
+
+async function resolveBuiltinFileIconThemes(): Promise<readonly PluginResolvedFileIconTheme[]> {
+  for (const rootDirectory of resolveBuiltinFileIconThemePluginRootCandidates()) {
+    const manifestPath = path.join(rootDirectory, MANIFEST_FILE_NAME);
+
+    if (!await pathExists(manifestPath)) {
+      continue;
+    }
+
+    try {
+      const manifestText = await readFile(manifestPath, 'utf8');
+      const manifestJson = JSON.parse(manifestText) as JsonValue;
+
+      if (!isJsonObject(manifestJson)) {
+        console.error(
+          `[PluginDiscoveryService] Builtin file icon theme manifest at "${manifestPath}" is not a JSON object.`,
+        );
+        continue;
+      }
+
+      const manifest = parsePluginManifest(rootDirectory, manifestJson);
+
+      if (manifest === null) {
+        console.error(
+          `[PluginDiscoveryService] Builtin file icon theme manifest at "${manifestPath}" is invalid.`,
+        );
+        continue;
+      }
+
+      const fileIconTheme = await resolvePluginFileIconTheme(manifest, rootDirectory);
+      return fileIconTheme === null ? [] : [fileIconTheme];
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : `Builtin file icon theme "${BUILTIN_FILE_ICON_THEME_PLUGIN_ID}" failed to load.`;
+      console.error('[PluginDiscoveryService] Failed to load builtin file icon theme:', message);
+    }
+  }
+
+  return [];
 }
 
 function matchesAllowedPluginDirectory(
@@ -598,31 +792,6 @@ function resolveConfiguredPluginRoots(): readonly ConfiguredPluginRoot[] {
     }
   }
 
-  const builtinRootCandidates = [
-    ...DEFAULT_BUILTIN_PLUGIN_DIRECTORIES.map((directory) => resolveProjectPath(directory)),
-    ...DEFAULT_BUILTIN_PLUGIN_DIRECTORIES.map((directory) => path.resolve(app.getAppPath(), directory)),
-    ...(
-      typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0
-        ? [
-            path.resolve(process.resourcesPath, 'builtin-plugins'),
-            ...DEFAULT_BUILTIN_PLUGIN_DIRECTORIES.map((directory) => path.resolve(process.resourcesPath, directory)),
-            ...DEFAULT_BUILTIN_PLUGIN_DIRECTORIES.map((directory) => path.resolve(process.resourcesPath, 'app.asar.unpacked', directory)),
-          ]
-        : []
-    ),
-  ];
-
-  for (const candidate of builtinRootCandidates) {
-    const resolvedCandidate = path.resolve(candidate);
-
-    if (!roots.has(resolvedCandidate)) {
-      roots.set(resolvedCandidate, {
-        path: resolvedCandidate,
-        createIfMissing: false,
-      });
-    }
-  }
-
   const developmentExampleRoot = resolveDevelopmentExampleRoot();
 
   if (!roots.has(developmentExampleRoot)) {
@@ -639,6 +808,7 @@ function resolveConfiguredPluginRoots(): readonly ConfiguredPluginRoot[] {
 export class PluginDiscoveryService {
   private configuredRoots: readonly string[] = [];
   private resolvedRoots: readonly string[] = [];
+  private builtinFileIconThemes: readonly PluginResolvedFileIconTheme[] = [];
   private descriptors = new Map<string, PluginDescriptor>();
   private lastScanSummary: PluginScanSummary = EMPTY_PLUGIN_SCAN_SUMMARY;
 
@@ -772,6 +942,20 @@ export class PluginDiscoveryService {
           continue;
         }
 
+        if (
+          isJsonObject(manifestJson.contributes)
+          && hasOwnProperty(manifestJson.contributes, 'uiEntries')
+          && manifest.contributes?.uiEntries === undefined
+        ) {
+          failures.push(createFailure(
+            rootDirectory,
+            manifestPath,
+            'invalid_ui_entry_contribution',
+            'manifest.json contains an invalid contributes.uiEntries declaration.',
+          ));
+          continue;
+        }
+
         let iconPath: string | null = null;
 
         try {
@@ -810,6 +994,23 @@ export class PluginDiscoveryService {
             manifestPath,
             'invalid_ui_entrypoint',
             error instanceof Error ? error.message : 'Invalid ui entrypoint declaration.',
+          ));
+          continue;
+        }
+
+        let staticUiEntries: readonly PluginResolvedStaticUiEntry[] = [];
+
+        try {
+          staticUiEntries = await resolvePluginStaticUiEntries(
+            rootDirectory,
+            manifest.contributes?.uiEntries,
+          );
+        } catch (error) {
+          failures.push(createFailure(
+            rootDirectory,
+            manifestPath,
+            'invalid_ui_entry_contribution',
+            error instanceof Error ? error.message : 'Invalid contributes.uiEntries contribution.',
           ));
           continue;
         }
@@ -853,9 +1054,12 @@ export class PluginDiscoveryService {
           iconPath,
           fileIconTheme,
           uiEntrypoints,
+          staticUiEntries,
         });
       }
     }
+
+    this.builtinFileIconThemes = await resolveBuiltinFileIconThemes();
 
     this.configuredRoots = configuredRoots;
     this.resolvedRoots = resolvedRoots;
@@ -886,6 +1090,10 @@ export class PluginDiscoveryService {
     return [...this.descriptors.values()].sort((left, right) => {
       return left.manifest.name.localeCompare(right.manifest.name, 'zh-CN');
     });
+  }
+
+  public getBuiltinFileIconThemes(): readonly PluginResolvedFileIconTheme[] {
+    return this.builtinFileIconThemes;
   }
 
   public getLastScanSummary(): PluginScanSummary {

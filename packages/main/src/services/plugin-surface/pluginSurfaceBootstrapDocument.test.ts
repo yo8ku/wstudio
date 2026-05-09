@@ -82,4 +82,11 @@ describe('pluginSurfaceBootstrapDocument', () => {
 
     expect(document).toContain("frame-src http: https: about: blob: data:");
   });
+
+  it('allows plugin-safe local media URLs inside plugin surfaces', () => {
+    const document = buildPluginSurfaceBootstrapDocument();
+
+    expect(document).toContain('img-src http: https: data: blob: wstudio-extension: local-file: local-media:;');
+    expect(document).toContain('media-src http: https: data: blob: wstudio-extension: local-file: local-media:;');
+  });
 });

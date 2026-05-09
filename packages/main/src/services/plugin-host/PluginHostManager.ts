@@ -1,21 +1,20 @@
 /**
  * Main-process plugin host manager stage 2.
- * It loads plugin entry modules, instantiates plugins, and drives lifecycle transitions against the host runtime bridge.
+ * It owns plugin discovery state, host bridges, and supervisor-backed plugin
+ * lifecycle coordination without directly instantiating third-party plugin code
+ * in the Electron main process.
  */
 
 import Module = require('node:module');
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { app } from 'electron';
 import * as PluginSdk from '@note-studio/plugin';
 import {
-  Plugin,
   type JsonValue as PluginJsonValue,
   type AppProtocolData,
   type EditorSuggest,
   type EditorSuggestContext,
-  type PluginConstructor,
-  type PluginFailureContext,
   type PluginReleaseChannel,
   type SuggestionValue,
 } from '@note-studio/plugin';
@@ -23,14 +22,8 @@ import {
   EDITOR_SUGGEST_INTERNAL_REFRESH,
   EDITOR_SUGGEST_INTERNAL_HANDLE_KEY,
   type InternalEditorSuggestRuntime,
-  PLUGIN_INTERNAL_ENABLE,
-  PLUGIN_INTERNAL_FAIL,
-  PLUGIN_INTERNAL_GET_SNAPSHOT,
-  PLUGIN_INTERNAL_LOAD,
-  PLUGIN_INTERNAL_UNLOAD,
   type PluginRuntimeAnchorRect,
 } from '@note-studio/plugin/internal/runtime';
-import type { PluginLifecycleSnapshot } from '@note-studio/plugin';
 import type {
   AIPanelContributionEntry,
   JsonValue,
@@ -41,6 +34,7 @@ import type {
   PluginUiRuntimeSurfaceDescriptor,
   WorkbenchCommandContributionEntry,
   WorkbenchContributionSnapshot,
+  WorkbenchFileIconThemeEntry,
   WorkbenchResourceExplorerItemContributionEntry,
 } from '@note-studio/shared';
 import { EMPTY_WORKBENCH_CONTRIBUTION_SNAPSHOT } from '@note-studio/shared';
@@ -51,9 +45,15 @@ import { MainProcessPluginRuntime } from './MainProcessPluginRuntime';
 import { PluginDiscoveryService } from './PluginDiscoveryService';
 import { PluginSupervisorService } from './PluginSupervisorService';
 import { resolvePluginRuntimeOwner } from './pluginRuntimeOwnership';
-import { pluginSurfaceViewService } from '../plugin-surface/PluginSurfaceViewService';
+import {
+  descriptorToStaticPluginUiEntrySnapshots,
+  mergeStaticPluginUiEntries,
+  resolveStaticPluginUiEntryExecutionTarget,
+} from './pluginStaticUiEntries';
 import type {
   PluginSupervisorPluginRuntimeSnapshot,
+  PluginSupervisorWorkspaceEventPayload,
+  PluginSupervisorWorkspaceLeafSnapshot,
   PluginSupervisorViewInstanceSnapshot,
 } from './pluginSupervisorProtocol';
 import {
@@ -64,6 +64,7 @@ import type {
   InstalledPluginSummary,
   MainProcessEditorBridge,
   PluginDescriptor,
+  PluginResolvedFileIconTheme,
   PluginSettingTabSummary,
 } from './types';
 import {
@@ -87,16 +88,6 @@ import {
   persistentResourceExplorerItemToContribution,
   readPersistentResourceExplorerItems,
 } from './PersistentResourceExplorerItems';
-
-interface PluginModuleNamespace {
-  readonly default?: PluginConstructor;
-}
-
-interface LoadedPluginRecord {
-  readonly descriptor: PluginDescriptor;
-  readonly instance: Plugin;
-  readonly snapshot: PluginLifecycleSnapshot;
-}
 
 interface PluginRuntimeDomOverlayOptions {
   readonly title: string;
@@ -131,15 +122,9 @@ type ModuleWithInternals = typeof Module & {
   _load(request: string, parent: NodeJS.Module | null, isMain: boolean): object;
 };
 
-type PluginLifecycleVoidMethod = () => Promise<void>;
-type PluginFailureMethod = (error: Error) => Promise<PluginFailureContext>;
-type PluginSnapshotMethod = () => PluginLifecycleSnapshot;
-type PluginInternalMethod =
-  | PluginLifecycleVoidMethod
-  | PluginFailureMethod
-  | PluginSnapshotMethod;
-
 const PLUGIN_STARTUP_YIELD_MS = 120;
+const DISABLED_PLUGIN_IDS_SETTING_KEY = 'plugin.host.disabledIds';
+const USER_PLUGIN_DIRECTORY_NAME = 'plugins';
 
 export interface PluginHostManagerDependencies {
   readonly settingsManager: MainProcessAppFacadeDependencies['settingsManager'];
@@ -200,10 +185,32 @@ function toLocalFileAssetUrl(assetPath: string | null): string | null {
   return `local-file://${protocolPath}`;
 }
 
+function fileIconThemeToWorkbenchEntry(
+  fileIconTheme: PluginResolvedFileIconTheme,
+): WorkbenchFileIconThemeEntry {
+  return {
+    id: fileIconTheme.id,
+    extensionId: fileIconTheme.extensionId,
+    extensionDisplayName: fileIconTheme.extensionDisplayName,
+    label: fileIconTheme.label,
+    file: toLocalFileAssetUrl(fileIconTheme.fileIconPath) ?? '',
+    directory: toLocalFileAssetUrl(fileIconTheme.directoryIconPath) ?? '',
+    directoryExpanded: fileIconTheme.directoryExpandedIconPath === null
+      ? null
+      : toLocalFileAssetUrl(fileIconTheme.directoryExpandedIconPath),
+    mappings: fileIconTheme.mappings.map((mapping) => ({
+      icon: toLocalFileAssetUrl(mapping.iconPath) ?? '',
+      extensions: mapping.extensions,
+      fileNames: mapping.fileNames,
+    })),
+  };
+}
+
 function descriptorToInstalledPluginSummary(
   descriptor: PluginDescriptor,
   enabled: boolean,
   failureMessage: string | null,
+  canUninstall: boolean,
 ): InstalledPluginSummary {
   const releaseChannel: PluginReleaseChannel = descriptor.manifest.releaseChannel ?? 'stable';
 
@@ -212,23 +219,45 @@ function descriptorToInstalledPluginSummary(
     name: descriptor.manifest.name,
     version: descriptor.manifest.version,
     publisher: descriptor.manifest.author,
+    publisherUrl: descriptor.manifest.authorUrl
+      ?? descriptor.manifest.homepageUrl
+      ?? descriptor.manifest.repositoryUrl
+      ?? descriptor.manifest.fundingUrl
+      ?? null,
     description: descriptor.manifest.description,
     fundingUrl: descriptor.manifest.fundingUrl ?? null,
     iconPath: toPluginAssetUrl(descriptor, descriptor.iconPath),
     releaseChannel,
     enabled,
     failureMessage,
+    canUninstall,
   };
+}
+
+function isPathInsideDirectory(rootDirectory: string, targetPath: string): boolean {
+  const relativePath = path.relative(rootDirectory, targetPath);
+
+  return relativePath.length > 0
+    && !relativePath.startsWith('..')
+    && !path.isAbsolute(relativePath);
 }
 
 function resolveInstalledPluginSupervisorOverlay(
   enabled: boolean,
   failureMessage: string | null,
   supervisorRuntimeState: PluginSupervisorPluginRuntimeSnapshot | null,
+  temporarilyDisabledMessage: string | null,
 ): {
   readonly enabled: boolean;
   readonly failureMessage: string | null;
 } {
+  if (temporarilyDisabledMessage !== null) {
+    return {
+      enabled: false,
+      failureMessage: temporarilyDisabledMessage,
+    };
+  }
+
   if (supervisorRuntimeState?.owner === 'supervisor' && supervisorRuntimeState.status !== 'failed') {
     return {
       enabled: true,
@@ -307,6 +336,25 @@ function toSharedJsonValue(value: PluginJsonValue | null): JsonValue | null {
   }
 
   return normalizedObject;
+}
+
+function toSupervisorWorkspaceLeafSnapshot(
+  leaf: PluginSdk.WorkspaceLeaf,
+): PluginSupervisorWorkspaceLeafSnapshot {
+  const viewState = leaf.getViewState();
+  const normalizedState = toSharedJsonValue(viewState.state ?? null);
+
+  return {
+    id: leaf.id,
+    viewType: viewState.type,
+    pinned: viewState.pinned === true,
+    state: normalizedState !== null && !Array.isArray(normalizedState) && typeof normalizedState === 'object'
+      ? normalizedState
+      : null,
+    ephemeralState: toSharedJsonValue(leaf.getEphemeralState() as PluginJsonValue | null),
+    displayText: leaf.getDisplayText(),
+    icon: leaf.getIcon(),
+  };
 }
 
 function toPluginJsonObject(value: JsonValue | null): Record<string, PluginJsonValue> {
@@ -435,10 +483,6 @@ class SupervisorBackedView extends PluginSdk.View {
   }
 }
 
-function normalizeError(error: Error | null, fallbackMessage: string): Error {
-  return error instanceof Error ? error : new Error(fallbackMessage);
-}
-
 function isSharedJsonPrimitive(value: JsonValue): value is string | number | boolean | null {
   return value === null
     || typeof value === 'string'
@@ -540,22 +584,6 @@ const HOST_PLUGIN_SDK_ALIASES = new Set<string>([
   '@note-studio/plugin',
   'wstudio-api',
 ]);
-const GLOBAL_PLUGIN_INTERNAL_LOAD = Symbol.for('wstudio.plugin.internal.load');
-const GLOBAL_PLUGIN_INTERNAL_ENABLE = Symbol.for('wstudio.plugin.internal.enable');
-const GLOBAL_PLUGIN_INTERNAL_UNLOAD = Symbol.for('wstudio.plugin.internal.unload');
-const GLOBAL_PLUGIN_INTERNAL_FAIL = Symbol.for('wstudio.plugin.internal.fail');
-const GLOBAL_PLUGIN_INTERNAL_GET_SNAPSHOT = Symbol.for('wstudio.plugin.internal.getSnapshot');
-
-function resolvePluginMethod<TMethod extends PluginInternalMethod>(
-  instance: Plugin,
-  primaryKey: symbol,
-  fallbackKey: symbol,
-): TMethod | null {
-  const methodBag = instance as Plugin & Partial<Record<symbol, PluginInternalMethod>>;
-  const candidate = methodBag[primaryKey] ?? methodBag[fallbackKey];
-  return typeof candidate === 'function' ? candidate as TMethod : null;
-}
-
 function installPluginSdkAlias(): void {
   if (pluginSdkAliasInstalled) {
     return;
@@ -883,9 +911,9 @@ function installPluginHostBasesBridge(
 
 export class PluginHostManager {
   private readonly loadFailures = new Map<string, Error>();
-  private readonly loadedPlugins = new Map<string, LoadedPluginRecord>();
   private readonly pluginUiListeners = new Set<() => void>();
   private installedPlugins: readonly InstalledPluginSummary[] = [];
+  private supervisorBootstrapPromise: Promise<void> | null = null;
   private pendingPluginUiNotification = false;
   private pluginUiNotificationBatchDepth = 0;
   private pluginUiUnsubscribe: (() => void) | null = null;
@@ -893,6 +921,7 @@ export class PluginHostManager {
   private pluginResourceExplorerUnsubscribe: (() => void) | null = null;
   private editorBridgeUnsubscribe: (() => void) | null = null;
   private urlBrowserDownloadUnsubscribe: (() => void) | null = null;
+  private workspaceEventUnsubscribe: (() => void) | null = null;
   private activeEditorSuggest: EditorSuggest<SuggestionValue> | null = null;
   private activeEditorSuggestPluginId: string | null = null;
   private pendingEditorSuggestRefreshTimer: NodeJS.Timeout | null = null;
@@ -932,29 +961,103 @@ export class PluginHostManager {
     await this.runWithBatchedPluginUiNotifications(async () => {
       await this.initializeRuntime();
       await this.initializePluginSupervisor();
-      await this.loadDiscoveredPlugins();
+      this.synchronizeDiscoveredPluginState();
     });
+    this.scheduleSupervisorOwnedPluginStartup();
   }
 
   public async reloadAll(): Promise<void> {
+    await this.waitForPendingSupervisorBootstrap();
     await this.runWithBatchedPluginUiNotifications(async () => {
       await this.unloadAllPlugins();
       await this.discoveryService.reload();
       await this.initializeRuntime();
       await this.initializePluginSupervisor();
-      await this.loadDiscoveredPlugins();
+      this.synchronizeDiscoveredPluginState();
     });
+    this.scheduleSupervisorOwnedPluginStartup();
   }
 
   public async shutdown(): Promise<void> {
     this.urlBrowserDownloadUnsubscribe?.();
     this.urlBrowserDownloadUnsubscribe = null;
+    await this.waitForPendingSupervisorBootstrap();
     await this.unloadAllPlugins();
     await this.pluginSupervisorService.shutdown();
   }
 
   public getInstalledPlugins(): readonly InstalledPluginSummary[] {
     return this.installedPlugins;
+  }
+
+  public async setPluginEnabled(pluginId: string, enabled: boolean): Promise<void> {
+    const normalizedPluginId = pluginId.trim();
+
+    if (normalizedPluginId.length === 0) {
+      throw new Error('Plugin id is required.');
+    }
+
+    if (this.discoveryService.getById(normalizedPluginId) === undefined) {
+      throw new Error(`Plugin "${normalizedPluginId}" is not installed.`);
+    }
+
+    const clearedTemporaryDisable = this.pluginSupervisorService.clearTemporarilyDisabledPlugin(normalizedPluginId);
+
+    if (this.isPluginEnabled(normalizedPluginId) === enabled) {
+      if (enabled && clearedTemporaryDisable) {
+        await this.reloadAll();
+      }
+
+      return;
+    }
+
+    await this.persistPluginEnabledState(normalizedPluginId, enabled);
+    await this.reloadAll();
+  }
+
+  public async uninstallPlugin(pluginId: string): Promise<void> {
+    const normalizedPluginId = pluginId.trim();
+
+    if (normalizedPluginId.length === 0) {
+      throw new Error('Plugin id is required.');
+    }
+
+    const descriptor = this.discoveryService.getById(normalizedPluginId);
+
+    if (descriptor === undefined) {
+      throw new Error(`Plugin "${normalizedPluginId}" is not installed.`);
+    }
+
+    if (!this.canUninstallPlugin(descriptor)) {
+      throw new Error(`Plugin "${normalizedPluginId}" cannot be uninstalled from the managed plugin directory.`);
+    }
+
+    const pluginDirectory = path.resolve(descriptor.rootDirectory);
+    let uninstallError: Error | null = null;
+
+    await this.waitForPendingSupervisorBootstrap();
+    await this.runWithBatchedPluginUiNotifications(async () => {
+      await this.unloadAllPlugins();
+
+      try {
+        await fs.rm(pluginDirectory, { recursive: true, force: true });
+      } catch (error) {
+        uninstallError = error instanceof Error
+          ? error
+          : new Error(`Plugin "${normalizedPluginId}" could not be uninstalled.`);
+      }
+
+      await this.persistPluginEnabledState(normalizedPluginId, true);
+      await this.discoveryService.reload();
+      await this.initializeRuntime();
+      await this.initializePluginSupervisor();
+      this.synchronizeDiscoveredPluginState();
+    });
+    this.scheduleSupervisorOwnedPluginStartup();
+
+    if (uninstallError !== null) {
+      throw uninstallError;
+    }
   }
 
   public getWorkbenchContributionSnapshot(): WorkbenchContributionSnapshot {
@@ -968,28 +1071,18 @@ export class PluginHostManager {
         persistentResourceExplorerItemToContribution(item, resolvePluginDisplayName)
       ));
 
-    const fileIconThemes = this.discoveryService.getAll().flatMap((descriptor) => {
-      if (descriptor.fileIconTheme === null) {
-        return [];
-      }
+    const fileIconThemes = [
+      ...this.discoveryService.getBuiltinFileIconThemes().map(fileIconThemeToWorkbenchEntry),
+      ...this.discoveryService.getAll().flatMap((descriptor) => {
+        if (!this.isPluginEnabled(descriptor.manifest.id)) {
+          return [];
+        }
 
-      return [{
-        id: descriptor.fileIconTheme.id,
-        extensionId: descriptor.fileIconTheme.extensionId,
-        extensionDisplayName: descriptor.fileIconTheme.extensionDisplayName,
-        label: descriptor.fileIconTheme.label,
-        file: toLocalFileAssetUrl(descriptor.fileIconTheme.fileIconPath) ?? '',
-        directory: toLocalFileAssetUrl(descriptor.fileIconTheme.directoryIconPath) ?? '',
-        directoryExpanded: descriptor.fileIconTheme.directoryExpandedIconPath === null
-          ? null
-          : toLocalFileAssetUrl(descriptor.fileIconTheme.directoryExpandedIconPath),
-        mappings: descriptor.fileIconTheme.mappings.map((mapping) => ({
-          icon: toLocalFileAssetUrl(mapping.iconPath) ?? '',
-          extensions: mapping.extensions,
-          fileNames: mapping.fileNames,
-        })),
-      }];
-    });
+        return descriptor.fileIconTheme === null
+          ? []
+          : [fileIconThemeToWorkbenchEntry(descriptor.fileIconTheme)];
+      }),
+    ];
 
     if (this.runtime === null) {
       return {
@@ -1056,10 +1149,10 @@ export class PluginHostManager {
   }
 
   public getPluginUiEntries(): readonly PluginUiEntrySnapshot[] {
-    const remoteEntries = this.pluginSupervisorService.getPluginUiEntries();
-    const mainEntries = this.runtime?.ui.getEntries() ?? [];
-
-    return [...remoteEntries, ...mainEntries];
+    return mergeStaticPluginUiEntries(
+      this.getStaticPluginUiEntries(),
+      this.getDynamicPluginUiEntries(),
+    );
   }
 
   public async executePluginUiEntry(entryId: string): Promise<boolean> {
@@ -1074,9 +1167,47 @@ export class PluginHostManager {
 
     if (remoteEntry !== null) {
       await this.startSupervisorOwnedPluginIfNeeded(remoteEntry.pluginId);
+      return await this.pluginSupervisorService.executeRemoteUiEntry(remoteEntry.id);
     }
 
-    return await this.pluginSupervisorService.executeRemoteUiEntry(entryId);
+    const staticEntry = this.getStaticPluginUiEntries()
+      .find((entry) => entry.id === entryId) ?? null;
+
+    if (staticEntry === null) {
+      return false;
+    }
+
+    await this.startSupervisorOwnedPluginIfNeeded(staticEntry.pluginId);
+    const runtimeEntries = this.getDynamicPluginUiEntries();
+    const executionTargetId = resolveStaticPluginUiEntryExecutionTarget(staticEntry, runtimeEntries);
+
+    if (executionTargetId === null) {
+      return false;
+    }
+
+    const handledByMainAfterActivation = await this.runtime?.ui.executeEntry(executionTargetId) ?? false;
+
+    if (handledByMainAfterActivation) {
+      return true;
+    }
+
+    return await this.pluginSupervisorService.executeRemoteUiEntry(executionTargetId);
+  }
+
+  private getDynamicPluginUiEntries(): readonly PluginUiEntrySnapshot[] {
+    const remoteEntries = this.pluginSupervisorService.getPluginUiEntries();
+    const mainEntries = this.runtime?.ui.getEntries() ?? [];
+
+    return [...remoteEntries, ...mainEntries];
+  }
+
+  private getStaticPluginUiEntries(): readonly PluginUiEntrySnapshot[] {
+    return this.discoveryService.getAll()
+      .filter((descriptor) => (
+        this.isPluginEnabled(descriptor.manifest.id)
+        && resolvePluginRuntimeOwner(descriptor) === 'supervisor'
+      ))
+      .flatMap((descriptor) => descriptorToStaticPluginUiEntrySnapshots(descriptor));
   }
 
   private resolveRegisteredViewCreator(viewType: string): PluginSdk.ViewCreator | null {
@@ -1084,7 +1215,6 @@ export class PluginHostManager {
 
     if (
       pluginId === null
-      || !this.pluginSupervisorService.isPluginOwnedBySupervisor(pluginId)
       || this.resolveViewRuntimeSurface(viewType) === null
     ) {
       return null;
@@ -1116,7 +1246,10 @@ export class PluginHostManager {
     }
 
     for (const descriptor of this.discoveryService.getAll()) {
-      if (resolvePluginRuntimeOwner(descriptor) !== 'supervisor') {
+      if (
+        !this.isPluginEnabled(descriptor.manifest.id)
+        || resolvePluginRuntimeOwner(descriptor) !== 'supervisor'
+      ) {
         continue;
       }
 
@@ -1306,6 +1439,50 @@ export class PluginHostManager {
     return result.handled ? result.result : null;
   }
 
+  private async invokePluginUiAction(
+    pluginId: string,
+    actionId: string,
+    payload: JsonValue | null,
+  ): Promise<JsonValue | null> {
+    const normalizedPluginId = pluginId.trim();
+    const normalizedActionId = actionId.trim();
+
+    if (normalizedPluginId.length === 0 || normalizedActionId.length === 0) {
+      throw new Error('插件 UI 逻辑调用缺少 pluginId 或 actionId。');
+    }
+
+    if (!this.isPluginEnabled(normalizedPluginId)) {
+      throw new Error(`插件 "${normalizedPluginId}" 当前未启用。`);
+    }
+
+    if (this.runtime !== null) {
+      const mainResult = await this.runtime.logic.invokeUiAction(
+        normalizedPluginId,
+        normalizedActionId,
+        toPluginJsonValue(payload),
+      );
+
+      if (mainResult.handled) {
+        return toSharedJsonValue(mainResult.result);
+      }
+    }
+
+    await this.startSupervisorOwnedPluginIfNeeded(normalizedPluginId);
+    const remoteResult = await this.pluginSupervisorService.executeRemoteUiAction(
+      normalizedPluginId,
+      normalizedActionId,
+      payload,
+    );
+
+    if (remoteResult.handled) {
+      return remoteResult.result;
+    }
+
+    throw new Error(
+      `插件 "${normalizedPluginId}" 未注册 UI 逻辑动作 "${normalizedActionId}"。`,
+    );
+  }
+
   public async deliverRuntimeWebviewMessage(
     _extensionId: string,
     _panelInstanceKey: string,
@@ -1343,7 +1520,6 @@ export class PluginHostManager {
       return this.resolvePopoverRuntimeSurface(pluginId, popoverSurfaceId, runtimeState);
     });
     this.loadFailures.clear();
-    this.loadedPlugins.clear();
     this.pluginUiUnsubscribe?.();
     this.pluginUiUnsubscribe = null;
     this.pluginCommandUnsubscribe?.();
@@ -1354,6 +1530,8 @@ export class PluginHostManager {
     this.editorBridgeUnsubscribe = null;
     this.urlBrowserDownloadUnsubscribe?.();
     this.urlBrowserDownloadUnsubscribe = null;
+    this.workspaceEventUnsubscribe?.();
+    this.workspaceEventUnsubscribe = null;
     this.clearPendingEditorSuggestRefresh();
     this.closeActiveEditorSuggest();
 
@@ -1372,6 +1550,7 @@ export class PluginHostManager {
       resolveViewTypeForExtension: (extension: string) => this.resolveRegisteredViewTypeForExtension(extension),
       resolveViewRuntimeSurface: (type: string) => this.resolveViewRuntimeSurface(type),
     });
+    this.workspaceEventUnsubscribe = this.subscribeSupervisorWorkspaceEvents(this.runtime.app.workspace);
     this.urlBrowserDownloadUnsubscribe = urlBrowserDownloadService.subscribe(() => {
       const workspace = this.runtime?.app.workspace;
 
@@ -1394,7 +1573,6 @@ export class PluginHostManager {
     configurePluginRuntimeViewRequestBridge({
       activateView: async (leafId: string) => {
         this.runtime?.app.workspace.activateLeafById(leafId);
-        pluginSurfaceViewService.bringSurfaceToFront(`leaf:${leafId}`);
       },
       clearActiveView: async () => {
         this.runtime?.app.workspace.clearActiveLeaf();
@@ -1404,7 +1582,6 @@ export class PluginHostManager {
       },
       markViewRuntimeActive: async (leafId: string) => {
         this.runtime?.app.workspace.markLeafRuntimeSurfaceActive(leafId);
-        pluginSurfaceViewService.bringSurfaceToFront(`leaf:${leafId}`);
       },
       markOverlayRuntimeActive: async (overlayId: string) => {
         markPluginRuntimeDomOverlaySurfaceActive(overlayId);
@@ -1423,6 +1600,9 @@ export class PluginHostManager {
       },
       performEditorAction: async (request: PluginUiRuntimeEditorActionRequest) => {
         await dependencies.editorBridge.performAction(request);
+      },
+      invokePluginUiAction: async (pluginId: string, actionId: string, payload: JsonValue | null) => {
+        return await this.invokePluginUiAction(pluginId, actionId, payload);
       },
       loadPluginData: async (pluginId: string) => {
         const value = await this.runtime?.data.loadData<PluginJsonValue>(pluginId) ?? null;
@@ -1539,28 +1719,64 @@ export class PluginHostManager {
     }
   }
 
-  private async loadDiscoveredPlugins(): Promise<void> {
-    let loadedPluginCount = 0;
-
-    for (const descriptor of this.discoveryService.getAll()) {
-      if (!this.shouldLoadPluginInMainProcess(descriptor)) {
-        continue;
-      }
-
-      if (loadedPluginCount > 0) {
-        await waitForPluginStartupYield();
-      }
-
-      await this.loadPlugin(descriptor);
-      loadedPluginCount += 1;
-    }
-
+  private synchronizeDiscoveredPluginState(): void {
     this.refreshInstalledPlugins();
     this.scheduleActiveEditorSuggestRefresh();
   }
 
-  private shouldLoadPluginInMainProcess(descriptor: PluginDescriptor): boolean {
-    return resolvePluginRuntimeOwner(descriptor) === 'main';
+  private scheduleSupervisorOwnedPluginStartup(): void {
+    const startupPromise = this.startDiscoveredSupervisorPlugins()
+      .catch((error) => {
+        const message = error instanceof Error
+          ? error.message
+          : 'Failed to start discovered supervisor-owned plugins.';
+        console.error('[PluginHostManager] discovered supervisor plugin startup failed:', message);
+      })
+      .finally(() => {
+        if (this.supervisorBootstrapPromise === startupPromise) {
+          this.supervisorBootstrapPromise = null;
+        }
+      });
+
+    this.supervisorBootstrapPromise = startupPromise;
+  }
+
+  private async waitForPendingSupervisorBootstrap(): Promise<void> {
+    if (this.supervisorBootstrapPromise !== null) {
+      await this.supervisorBootstrapPromise;
+    }
+  }
+
+  private async startDiscoveredSupervisorPlugins(): Promise<void> {
+    let startupCount = 0;
+
+    for (const descriptor of this.discoveryService.getAll()) {
+      if (
+        !this.isPluginEnabled(descriptor.manifest.id)
+        || resolvePluginRuntimeOwner(descriptor) !== 'supervisor'
+        || descriptor.entryPath === null
+      ) {
+        continue;
+      }
+
+      if (startupCount > 0) {
+        await waitForPluginStartupYield();
+      }
+
+      try {
+        await this.pluginSupervisorService.startPlugin(descriptor.manifest.id);
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : `Plugin "${descriptor.manifest.id}" failed during host startup.`;
+        console.error(
+          `[PluginHostManager] failed to start supervisor-owned plugin "${descriptor.manifest.id}":`,
+          message,
+        );
+      }
+
+      startupCount += 1;
+    }
   }
 
   private async startSupervisorOwnedPluginIfNeeded(pluginId: string): Promise<void> {
@@ -1568,7 +1784,8 @@ export class PluginHostManager {
 
     if (
       descriptor === undefined
-      || this.shouldLoadPluginInMainProcess(descriptor)
+      || !this.isPluginEnabled(pluginId)
+      || resolvePluginRuntimeOwner(descriptor) !== 'supervisor'
       || descriptor.entryPath === null
     ) {
       return;
@@ -1577,143 +1794,44 @@ export class PluginHostManager {
     await this.pluginSupervisorService.startPlugin(pluginId);
   }
 
-  private async loadPlugin(descriptor: PluginDescriptor): Promise<void> {
-    if (this.runtime === null) {
-      return;
-    }
-
-    if (descriptor.entryPath === null) {
-      return;
-    }
-
-    this.clearPluginModuleCache(descriptor.rootDirectory);
-
-    let instance: Plugin | null = null;
-
-    try {
-      const pluginModule = await this.loadPluginModule(descriptor.entryPath);
-      const pluginConstructor = pluginModule.default;
-
-      if (pluginConstructor === undefined) {
-        throw new Error(`Plugin "${descriptor.manifest.id}" does not export a default plugin class.`);
-      }
-
-      instance = new pluginConstructor(this.runtime.app, descriptor.manifest);
-
-      if (!(instance instanceof Plugin)) {
-        throw new Error(`Plugin "${descriptor.manifest.id}" must extend the host Plugin base class.`);
-      }
-
-      const load = resolvePluginMethod<PluginLifecycleVoidMethod>(
-        instance,
-        PLUGIN_INTERNAL_LOAD,
-        GLOBAL_PLUGIN_INTERNAL_LOAD,
-      );
-      const enable = resolvePluginMethod<PluginLifecycleVoidMethod>(
-        instance,
-        PLUGIN_INTERNAL_ENABLE,
-        GLOBAL_PLUGIN_INTERNAL_ENABLE,
-      );
-      const getSnapshot = resolvePluginMethod<PluginSnapshotMethod>(
-        instance,
-        PLUGIN_INTERNAL_GET_SNAPSHOT,
-        GLOBAL_PLUGIN_INTERNAL_GET_SNAPSHOT,
-      );
-
-      if (load === null || enable === null || getSnapshot === null) {
-        throw new Error(`Plugin "${descriptor.manifest.id}" is missing internal lifecycle handlers.`);
-      }
-
-      await runWithPluginExecutionContext(descriptor.manifest.id, async () => {
-        await load.call(instance);
-        await enable.call(instance);
-      });
-
-      this.loadedPlugins.set(descriptor.manifest.id, {
-        descriptor,
-        instance,
-        snapshot: getSnapshot.call(instance),
-      });
-    } catch (error) {
-      const normalizedError = normalizeError(
-        error instanceof Error ? error : null,
-        `Plugin "${descriptor.manifest.id}" failed to load.`,
-      );
-      console.error(`[PluginHostManager] plugin "${descriptor.manifest.id}" failed to load:`, normalizedError);
-      this.loadFailures.set(descriptor.manifest.id, normalizedError);
-
-      if (instance !== null) {
-        try {
-          const fail = resolvePluginMethod<PluginFailureMethod>(
-            instance,
-            PLUGIN_INTERNAL_FAIL,
-            GLOBAL_PLUGIN_INTERNAL_FAIL,
-          );
-
-          if (fail !== null) {
-            await runWithPluginExecutionContext(descriptor.manifest.id, async () => {
-              await fail.call(instance, normalizedError);
-            });
-          }
-        } catch {
-          // Ignore secondary failure notifications so host reload can continue.
-        }
-      }
-
-      this.runtime.clearPlugin(descriptor.manifest.id);
-    }
-  }
-
   private async unloadAllPlugins(): Promise<void> {
-    if (this.runtime === null) {
-      return;
-    }
-
     this.clearPendingEditorSuggestRefresh();
     this.closeActiveEditorSuggest();
-
-    for (const record of [...this.loadedPlugins.values()].reverse()) {
-      try {
-        const unload = resolvePluginMethod<PluginLifecycleVoidMethod>(
-          record.instance,
-          PLUGIN_INTERNAL_UNLOAD,
-          GLOBAL_PLUGIN_INTERNAL_UNLOAD,
-        );
-
-        if (unload !== null) {
-          await runWithPluginExecutionContext(record.descriptor.manifest.id, async () => {
-            await unload.call(record.instance);
-          });
-        }
-      } catch {
-        // Best-effort teardown during reload.
-      }
-
-      this.runtime.clearPlugin(record.descriptor.manifest.id);
-    }
-
-    this.loadedPlugins.clear();
+    this.workspaceEventUnsubscribe?.();
+    this.workspaceEventUnsubscribe = null;
+    this.runtime = null;
     this.installedPlugins = [];
     this.emitPluginUiEntriesChanged();
   }
 
-  private async loadPluginModule(entryPath: string): Promise<PluginModuleNamespace> {
-    if (entryPath.endsWith('.mjs')) {
-      return import(pathToFileURL(entryPath).toString()) as Promise<PluginModuleNamespace>;
-    }
+  private subscribeSupervisorWorkspaceEvents(workspace: PluginSdk.Workspace): () => void {
+    const activeLeafChangeRef = workspace.on('active-leaf-change', (leaf: PluginSdk.WorkspaceLeaf | null) => {
+      const event: PluginSupervisorWorkspaceEventPayload = {
+        kind: 'active-leaf-change',
+        leafId: leaf?.id ?? null,
+        leafSnapshot: leaf === null ? null : toSupervisorWorkspaceLeafSnapshot(leaf),
+        activeFilePath: workspace.getActiveFile()?.path ?? null,
+      };
 
-    const requireForEntry = Module.createRequire(entryPath);
-    return requireForEntry(entryPath) as PluginModuleNamespace;
-  }
+      this.pluginSupervisorService.pushWorkspaceEvent(event);
+    });
+    const fileOpenRef = workspace.on('file-open', (file: PluginSdk.TFile | null) => {
+      const activeLeaf = workspace.activeLeaf;
+      const event: PluginSupervisorWorkspaceEventPayload = {
+        kind: 'file-open',
+        leafId: activeLeaf?.id ?? null,
+        leafSnapshot: activeLeaf === null ? null : toSupervisorWorkspaceLeafSnapshot(activeLeaf),
+        filePath: file?.path ?? null,
+        lastOpenFiles: workspace.getLastOpenFiles(),
+      };
 
-  private clearPluginModuleCache(rootDirectory: string): void {
-    const normalizedRoot = rootDirectory.replace(/\\/g, '/').toLowerCase();
+      this.pluginSupervisorService.pushWorkspaceEvent(event);
+    });
 
-    for (const cachedPath of Object.keys(require.cache)) {
-      if (cachedPath.replace(/\\/g, '/').toLowerCase().startsWith(normalizedRoot)) {
-        delete require.cache[cachedPath];
-      }
-    }
+    return () => {
+      workspace.offref(activeLeafChangeRef);
+      workspace.offref(fileOpenRef);
+    };
   }
 
   private clearPendingEditorSuggestRefresh(): void {
@@ -1948,22 +2066,95 @@ export class PluginHostManager {
 
   private refreshInstalledPlugins(): void {
     this.installedPlugins = this.discoveryService.getAll().map((descriptor) => {
-      const loaded = this.loadedPlugins.get(descriptor.manifest.id);
+      const pluginEnabled = this.isPluginEnabled(descriptor.manifest.id);
       const failure = this.loadFailures.get(descriptor.manifest.id);
       const supervisorRuntimeState = this.pluginSupervisorService.getPluginRuntimeState(descriptor.manifest.id);
+      const temporarilyDisabledMessage = this.pluginSupervisorService.getTemporarilyDisabledPluginMessage(
+        descriptor.manifest.id,
+      );
+      const canUninstall = this.canUninstallPlugin(descriptor);
+
+      if (!pluginEnabled) {
+        return descriptorToInstalledPluginSummary(
+          descriptor,
+          false,
+          null,
+          canUninstall,
+        );
+      }
+
       const runtimeState = resolveInstalledPluginSupervisorOverlay(
-        descriptor.entryPath === null || loaded?.snapshot.state === 'enabled',
+        true,
         failure?.message ?? null,
         supervisorRuntimeState,
+        temporarilyDisabledMessage,
       );
 
       return descriptorToInstalledPluginSummary(
         descriptor,
         runtimeState.enabled,
         runtimeState.failureMessage,
+        canUninstall,
       );
     });
     this.emitPluginUiEntriesChanged();
+  }
+
+  private isPluginEnabled(pluginId: string): boolean {
+    return !this.getDisabledPluginIds().has(pluginId);
+  }
+
+  private getDisabledPluginIds(): ReadonlySet<string> {
+    const settingsManager = this.getDependencies()?.settingsManager ?? null;
+
+    if (settingsManager === null) {
+      return new Set<string>();
+    }
+
+    const storedValue = settingsManager.getPluginSetting<string[]>(
+      DISABLED_PLUGIN_IDS_SETTING_KEY,
+      [],
+    ) ?? [];
+    const disabledPluginIds = new Set<string>();
+
+    for (const item of storedValue) {
+      const normalizedItem = typeof item === 'string' ? item.trim() : '';
+
+      if (normalizedItem.length > 0) {
+        disabledPluginIds.add(normalizedItem);
+      }
+    }
+
+    return disabledPluginIds;
+  }
+
+  private async persistPluginEnabledState(pluginId: string, enabled: boolean): Promise<void> {
+    const settingsManager = this.getDependencies()?.settingsManager ?? null;
+
+    if (settingsManager === null) {
+      throw new Error('Plugin settings manager is not ready.');
+    }
+
+    const disabledPluginIds = new Set<string>(this.getDisabledPluginIds());
+
+    if (enabled) {
+      disabledPluginIds.delete(pluginId);
+    } else {
+      disabledPluginIds.add(pluginId);
+    }
+
+    await settingsManager.updatePluginSetting(
+      DISABLED_PLUGIN_IDS_SETTING_KEY,
+      [...disabledPluginIds].sort((left, right) => left.localeCompare(right)),
+      'user',
+    );
+  }
+
+  private canUninstallPlugin(descriptor: PluginDescriptor): boolean {
+    const managedPluginRoot = path.resolve(app.getPath('userData'), USER_PLUGIN_DIRECTORY_NAME);
+    const pluginRootDirectory = path.resolve(descriptor.rootDirectory);
+
+    return isPathInsideDirectory(managedPluginRoot, pluginRootDirectory);
   }
 
   private emitPluginUiEntriesChanged(): void {

@@ -26,6 +26,24 @@ function configureUserDataPath() {
 
 configureUserDataPath();
 
+const missingDirectoryWarningKeys = new Set();
+
+function isDirectoryReadNotFoundError(error) {
+  return error instanceof Error
+    && error.code === 'ENOENT'
+    && (error.syscall === 'scandir' || error.syscall === 'lstat' || error.syscall === 'stat');
+}
+
+function warnDirectoryReadNotFoundOnce(channelName, folderPath) {
+  const warningKey = `${channelName}:${folderPath}`;
+  if (missingDirectoryWarningKeys.has(warningKey)) {
+    return;
+  }
+
+  missingDirectoryWarningKeys.add(warningKey);
+  console.warn(`[IPC] ${channelName} target directory does not exist, returning empty result:`, folderPath);
+}
+
 // 闁诲孩顔栭崰鎺楀磻閹剧粯鐓曟繛鍡樺姇閻忥箓鎳氶埡鍐ｅ亾濞堝灝鏋涚紒璇差儑缁參宕ㄩ婊呯効婵炶揪绲块崕銈夊汲韫囨稒鍊甸柣鐔煎亰濡叉悂鏌涘▎蹇曠闁瑰嘲鍟撮弫鍐焵椤掑嫬绠熼柨鐔哄У閺咁剟鏌涢鐘茬仾闁哄懐顭堥湁婵犙呭Т婵厽鎷呴崜鎻掓闂婎偄娲ゅù鐑芥偡閹捐秮褰掑礂闂傜繝瀛╅梺鎼炲€栫划鎾崇暦濠靛惟闁靛绠戦崜濠氭⒑濮瑰洤鐒洪柣鎾愁槺濡?
 // 婵犵數鍋涢ˇ顓㈠礉瀹ュ绀堝ù鐓庣摠閺咁剚鎱ㄥΟ铏癸紞缂佺姷鎳撻埥澶愬箻瀹曞泦锛勭磼閸欐ê宓嗘慨濠呮椤撳ジ宕熼鐘橈綁鏌ｆ惔锝嗗殌妞わ富鍨跺畷锝堢疀濞戞鐣遍悷婊勭箘濡叉劕鈹戠€ｎ亞鍊為梺缁橆焾缁墽绮?CSP 濠电偛顕慨瀵哥矓閸洖绀夌憸鏃堝蓟閸涱収娼╃€规洖娲ㄩ悾?HTTP 闂備礁鎲＄换鍌滅矓鐎垫瓕濮抽柛娆忣槸缁剁偤鏌℃径瀣仸閻?meta 闂備礁鎼粔鏉懨洪妸鈺婃晢濡炲瀛╂刊濂告煕閹炬鎳忛悗?
 // 闂佽崵濮崑鎾绘煥閺囨浜鹃梺纭咁嚋缁绘繂顕ｉ悽鍓叉晢闁告劦鍠氶崣鎰版煟閻樺弶鎼愰柣掳鍔屽嵄?"This warning will not show up once the app is packaged"
@@ -80,6 +98,16 @@ const BOOKMARK_GROUP_PICKER_QUERY = {
 const privilegedSchemes = [
   {
     scheme: 'local-file',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: false
+    }
+  },
+  {
+    scheme: 'local-media',
     privileges: {
       standard: true,
       secure: true,
@@ -866,8 +894,8 @@ app.whenReady().then(async () => {
   // 闂備胶顭堢换瀣归崶顒夋晩闊洦绋掗弲?jsdelivr CDN 闂備礁鎲″缁樻叏閹灐?Monaco Editor 闂備胶鍘ч悺銊у枈瀹ュ拑鑰?
   // frame-src 闂備胶顭堢换瀣归崶顒夋晩闊洦绋戠粈澶愭煟濡厧鍔嬬紒浣峰嵆閹嘲鈻庤箛鏃戞＆濡炪倧绲介悥濂告偘椤曗偓瀹曟﹢骞撻幒妤€褰欓梻浣圭湽閸斿瞼鈧凹鍓涚划濠囨偨缁嬭法顦ч梺闈涱檧闂勫嫮浜搁敓鐘崇厸闁逞屽墴楠炲棜顦抽柣婵勫€濋弻銊モ槈濡崵顔囩紓鍌欑劍濮婂綊鎮烽敐澶婄劦妞ゆ垼娉曢悿鍣妘Tube闂備線娼уΛ鏂款渻閹烘梹顫曟い鎾卞灪閻撯偓闂佸憡鍨崐妤冪矆?
   const cspHeader = process.env.NODE_ENV === 'development'
-    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; worker-src 'self' blob: http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: http: https:; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
-    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: vscode-file: wstudio-extension:; font-src 'self' data: http: https:; media-src 'self' local-file: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: http: https:; object-src 'none'; base-uri 'self'; form-action 'self';";
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; worker-src 'self' blob: http://localhost:* ws://localhost:* https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: local-media: vscode-file: wstudio-extension:; font-src 'self' data: http: https:; media-src 'self' local-file: local-media: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
+    : "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: http: https: file: local-file: local-media: vscode-file: wstudio-extension:; font-src 'self' data: http: https:; media-src 'self' local-file: local-media: file: blob: data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' wstudio-extension: http: https:; object-src 'none'; base-uri 'self'; form-action 'self';";
   
   // 闂備胶鎳撻崵鏍⒔閸曨垰鏄ラ柛娑欐綑缁犮儵鏌嶈閸撶喎顕ｉ崹顐㈢窞濠电姴鍟崕銉╂煙閻撳海鎽犻柡灞诲姂閹崇喖鎮㈤棃鐐叉捣閹风娀骞撻幒婵囧 CSP 闂?
   defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -912,8 +940,11 @@ app.whenReady().then(async () => {
   const toFileUrl = (rawUrl, protocolName) => {
     let normalizedUrl = rawUrl;
 
-    if (protocolName === 'local-file') {
-      normalizedUrl = rawUrl.replace(/^local-file:/i, 'file:');
+    if (protocolName === 'local-file' || protocolName === 'local-media') {
+      const sourceProtocolPattern = protocolName === 'local-media'
+        ? /^local-media:/i
+        : /^local-file:/i;
+      normalizedUrl = rawUrl.replace(sourceProtocolPattern, 'file:');
     } else if (protocolName === 'vscode-file') {
       normalizedUrl = rawUrl.replace(/^vscode-file:\/\/vscode-app/i, 'file://');
     }
@@ -930,8 +961,11 @@ app.whenReady().then(async () => {
 
   const decodePathFromCustomProtocol = (rawUrl, protocolName) => {
     let url = rawUrl;
-    if (protocolName === 'local-file') {
-      url = url.replace(/^local-file:\/\/\/?/, '');
+    if (protocolName === 'local-file' || protocolName === 'local-media') {
+      const sourceProtocolPattern = protocolName === 'local-media'
+        ? /^local-media:\/\/\/?/i
+        : /^local-file:\/\/\/?/i;
+      url = url.replace(sourceProtocolPattern, '');
     } else if (protocolName === 'vscode-file') {
       url = url.replace(/^vscode-file:\/\/vscode-app\/?/, '');
     }
@@ -1084,8 +1118,11 @@ app.whenReady().then(async () => {
       let urlPath = request.url;
       
       // 缂傚倷绀侀ˇ顖炩€﹀畡鎵虫瀺閹兼番鍔岀涵鈧棅顐㈡处閸戝綊宕幘顔界厱闁规儳纾倴缂?(local-file:// 闂?local-file:///)
-      if (protocolName === 'local-file') {
-        urlPath = urlPath.replace(/^local-file:\/\/\/?/, '');
+      if (protocolName === 'local-file' || protocolName === 'local-media') {
+        const sourceProtocolPattern = protocolName === 'local-media'
+          ? /^local-media:\/\/\/?/i
+          : /^local-file:\/\/\/?/i;
+        urlPath = urlPath.replace(sourceProtocolPattern, '');
       } else if (protocolName === 'vscode-file') {
         urlPath = urlPath.replace(/^vscode-file:\/\/vscode-app\/?/, '');
       }
@@ -1179,6 +1216,7 @@ app.whenReady().then(async () => {
   }
 
   protocolModule.registerFileProtocol('local-file', handleFileProtocol('local-file'));
+  protocolModule.registerFileProtocol('local-media', handleFileProtocol('local-media'));
   // console.log('[Electron]  local-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞弾閸熷懘鏌涘▎蹇ｆЧ闁哄棗鐗撻弻?);
   
   // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞?vscode-file:// 闂備礁鎲￠〃鍛崲濡ゅ拋鏁婇柛娑卞枟婵瓨绻濇繛鎯т壕闁荤姵鍔楅崰鎰嚗閸曨垰鐐婇柍鍝勫€瑰▓銏ゆ⒑閹稿海鈽夐柣妤€妫濆畷銉р偓锝庡厴閸嬫挾娑甸崪浣圭秷濠碘槅鍋掗崑濠囧箖瑜斿畷濂告偄鐏忎焦瀵橀梺璇茬箳閸嬬偛煤閳哄啯顫?
@@ -1707,6 +1745,14 @@ ipcMain.handle('folder:read-tree', async (event, folderPath) => {
       data: tree
     };
   } catch (error) {
+    if (isDirectoryReadNotFoundError(error)) {
+      warnDirectoryReadNotFoundOnce('folder:read-tree', folderPath);
+      return {
+        success: true,
+        data: []
+      };
+    }
+
     console.error('[IPC] 闂佽崵濮村ú鈺咁敋瑜戦妵鎰板炊椤掆偓濡﹢鏌涢妷顖炴妞ゆ劘妫勯…璺ㄦ崉閻戞纭€缂備緡鍠撻崝鎴濐嚕閹间礁绀嬫い鎰С閺夘參姊?', error);
     return {
       success: false,
@@ -2007,6 +2053,14 @@ ipcMain.handle('folder:expand', async (event, folderPath, rootPath) => {
       data: children
     };
   } catch (error) {
+    if (isDirectoryReadNotFoundError(error)) {
+      warnDirectoryReadNotFoundOnce('folder:expand', folderPath);
+      return {
+        success: true,
+        data: []
+      };
+    }
+
     console.error('[IPC] 闂佽绻掗崑鐐裁洪弽顐ｎ潟闁硅揪绠戝Λ姗€鏌涢妷顖炴妞ゆ劘妫勯…鍧楀礈娴ｇ懓娈岄梺闈涙处閸ㄥ潡寮?', error);
     return {
       success: false,

@@ -14,19 +14,18 @@
 
   &__header {
     display: flex;
-    align-items: center;
-    gap: 14px;
+    align-items: flex-start;
+    gap: 16px;
     min-width: 0;
   }
 
   &__icon {
-    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 48px;
-    height: 48px;
-    border-radius: 10px;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
     background: var(--ws-editorWidget-background, var(--ws-panel-background));
     color: var(--ws-descriptionForeground, var(--ws-foreground));
     flex-shrink: 0;
@@ -34,25 +33,24 @@
 
   &__icon-image {
     display: block;
-    width: 26px;
-    height: 26px;
+    width: 30px;
+    height: 30px;
     object-fit: contain;
   }
 
-  &__heading {
+  &__summary {
     display: flex;
+    flex: 1;
     flex-direction: column;
-    gap: 2px;
+    gap: 10px;
     min-width: 0;
   }
 
-  &__eyebrow {
-    margin: 0;
-    color: var(--ws-descriptionForeground, var(--ws-foreground));
-    font-size: 12px;
-    letter-spacing: 0.06em;
-    line-height: 1.4;
-    text-transform: uppercase;
+  &__title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
   }
 
   &__title {
@@ -65,12 +63,153 @@
     line-height: 1.3;
   }
 
+  &__status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 10px;
+    border: 1px solid var(--ws-widget-border, var(--ws-contrastBorder));
+    border-radius: 999px;
+    color: var(--ws-descriptionForeground, var(--ws-foreground));
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+
+    &.is-enabled {
+      color: var(--ws-charts-green, var(--ws-foreground));
+    }
+
+    &.is-disabled {
+      color: var(--ws-errorForeground, var(--ws-descriptionForeground, var(--ws-foreground)));
+    }
+
+    &.is-error {
+      border-color: var(--ws-errorForeground, var(--ws-contrastBorder));
+      color: var(--ws-errorForeground, var(--ws-foreground));
+      background: color-mix(in srgb, var(--ws-errorForeground, #f48771) 12%, transparent);
+    }
+  }
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    align-items: center;
+    color: var(--ws-descriptionForeground, var(--ws-foreground));
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  &__meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  &__meta-stat {
+    color: var(--ws-foreground);
+  }
+
+  &__verified {
+    color: var(--ws-charts-green, var(--ws-foreground));
+  }
+
+  &__verified-icon {
+    flex-shrink: 0;
+  }
+
+  &__meta-link,
+  &__verified-link {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
   &__description {
     margin: 0;
-    max-width: 720px;
+    max-width: 760px;
     color: var(--ws-descriptionForeground, var(--ws-foreground));
     font-size: 14px;
     line-height: 1.7;
+  }
+
+  &__alert {
+    margin: 0;
+    max-width: 760px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--ws-errorForeground, #f48771) 54%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--ws-errorForeground, #f48771) 10%, transparent);
+    color: var(--ws-errorForeground, #f48771);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+
+  &__action-button,
+  &__icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    border: 1px solid var(--ws-widget-border, var(--ws-contrastBorder));
+    border-radius: 8px;
+    background: var(--ws-editorWidget-background, var(--ws-panel-background));
+    color: var(--ws-foreground);
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+
+    &:hover:not(:disabled) {
+      background: var(--ws-list-hoverBackground, var(--ws-editorWidget-background));
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+  }
+
+  &__action-button {
+    padding: 0 14px;
+    font-size: 13px;
+    line-height: 1;
+
+    &--danger {
+      color: var(--ws-errorForeground, var(--ws-foreground));
+    }
+  }
+
+  &__icon-button {
+    width: 32px;
+    padding: 0;
+  }
+
+  &__capabilities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  &__capability {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--ws-editorWidget-background, var(--ws-panel-background));
+    color: var(--ws-descriptionForeground, var(--ws-foreground));
+    font-size: 12px;
+    line-height: 1.5;
   }
 
   &__empty {

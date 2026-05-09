@@ -3,6 +3,7 @@
  */
 
 import type { PluginManifest, PluginReleaseChannel } from '@note-studio/plugin';
+import type { PluginUiEntryLocation, PluginUiEntryScope } from '@note-studio/plugin';
 import type { PluginUiRuntimeSurfaceDescriptor } from '@note-studio/shared';
 
 export interface PluginScanFailure {
@@ -27,6 +28,7 @@ export interface PluginDescriptor {
   readonly iconPath: string | null;
   readonly fileIconTheme: PluginResolvedFileIconTheme | null;
   readonly uiEntrypoints: PluginResolvedUiEntrypoints | null;
+  readonly staticUiEntries: readonly PluginResolvedStaticUiEntry[];
 }
 
 export interface PluginResolvedUiEntrypoints {
@@ -52,17 +54,28 @@ export interface PluginResolvedFileIconTheme {
   readonly mappings: readonly PluginResolvedFileIconThemeMapping[];
 }
 
+export interface PluginResolvedStaticUiEntry {
+  readonly id: string;
+  readonly title: string;
+  readonly icon: string | null;
+  readonly iconSvg: string | null;
+  readonly location: PluginUiEntryLocation;
+  readonly scope: PluginUiEntryScope | null;
+}
+
 export interface InstalledPluginSummary {
   readonly id: string;
   readonly name: string;
   readonly version: string;
   readonly publisher: string | null;
+  readonly publisherUrl: string | null;
   readonly description: string | null;
   readonly fundingUrl: string | null;
   readonly iconPath: string | null;
   readonly releaseChannel: PluginReleaseChannel;
   readonly enabled: boolean;
   readonly failureMessage: string | null;
+  readonly canUninstall: boolean;
 }
 
 export interface PluginSettingTabSummary {

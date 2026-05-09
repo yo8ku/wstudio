@@ -68,6 +68,7 @@ export interface AIModelConfig {
 export type SettingsValue = SettingsSchema[keyof SettingsSchema];
 
 type PluginSettingsMap = Record<string, JsonValue>;
+type UserSettingsIssueCategory = 'load-parse' | 'write-candidate' | 'write-verify';
 
 const DEFAULT_SETTINGS: SettingsSchema = {
   'files.autoSave': 'afterDelay',
@@ -84,6 +85,8 @@ export class SettingsManager extends EventEmitter {
   private settingsPath: string = '';
   private userSettingsPath: string = '';
   private workspaceSettingsPath: string | null = null;
+  private pendingUserSettingsSave: Promise<void> = Promise.resolve();
+  private readonly userSettingsIssueSignatures = new Map<UserSettingsIssueCategory, string>();
 
   constructor() {
     super();
@@ -105,6 +108,91 @@ export class SettingsManager extends EventEmitter {
     const userDataPath = this.resolveUserDataPath();
     this.settingsPath = path.join(userDataPath, 'User');
     this.userSettingsPath = path.join(this.settingsPath, 'settings.json');
+  }
+
+  private rememberUserSettingsIssueSignature(
+    category: UserSettingsIssueCategory,
+    signature: string,
+  ): boolean {
+    const previousSignature = this.userSettingsIssueSignatures.get(category);
+    if (previousSignature === signature) {
+      return false;
+    }
+
+    this.userSettingsIssueSignatures.set(category, signature);
+    return true;
+  }
+
+  private clearUserSettingsIssueSignature(category: UserSettingsIssueCategory): void {
+    this.userSettingsIssueSignatures.delete(category);
+  }
+
+  private buildJsoncParseErrorSignature(
+    errors: readonly jsonc.ParseError[],
+    contentLength: number,
+  ): string {
+    return `${contentLength}:${errors.map((error) => `${error.error}@${error.offset}:${error.length}`).join('|')}`;
+  }
+
+  private logUserSettingsParseErrorsOnce(
+    category: UserSettingsIssueCategory,
+    message: string,
+    errors: readonly jsonc.ParseError[],
+    contentLength: number,
+  ): void {
+    const signature = this.buildJsoncParseErrorSignature(errors, contentLength);
+    if (!this.rememberUserSettingsIssueSignature(category, signature)) {
+      return;
+    }
+
+    console.error(message, errors);
+  }
+
+  private buildSerializableSettings(
+    settings: Partial<SettingsSchema>,
+    pluginSettings: PluginSettingsMap,
+  ): Record<string, JsonValue> {
+    const result: Record<string, JsonValue> = {};
+
+    for (const [key, value] of Object.entries(settings)) {
+      if (value !== undefined) {
+        result[key] = value as JsonValue;
+      }
+    }
+
+    for (const [key, value] of Object.entries(pluginSettings)) {
+      result[key] = value;
+    }
+
+    return result;
+  }
+
+  private async writeValidatedUserSettingsContent(
+    content: string,
+    fallbackSettings: Record<string, JsonValue>,
+  ): Promise<void> {
+    const errors: jsonc.ParseError[] = [];
+    const parsed = jsonc.parse(content, errors);
+
+    if (parsed !== null && parsed !== undefined && errors.length === 0) {
+      this.clearUserSettingsIssueSignature('write-candidate');
+      await fs.writeFile(this.userSettingsPath, content, 'utf-8');
+      return;
+    }
+
+    if (errors.length > 0) {
+      this.logUserSettingsParseErrorsOnce(
+        'write-candidate',
+        '[SettingsManager] 生成的用户配置 JSONC 无效，改用纯 JSON 回退:',
+        errors,
+        content.length,
+      );
+    } else if (this.rememberUserSettingsIssueSignature('write-candidate', `invalid:${content.length}`)) {
+      console.warn('[SettingsManager] 生成的用户配置内容无效，改用纯 JSON 回退');
+    }
+
+    const fallbackContent = JSON.stringify(fallbackSettings, null, 2);
+    await fs.writeFile(this.userSettingsPath, fallbackContent, 'utf-8');
   }
 
   /**
@@ -276,10 +364,17 @@ export class SettingsManager extends EventEmitter {
         }
         
         if (errors.length > 0) {
-          console.error('[SettingsManager]  閰嶇疆鏂囦欢 JSONC 瑙ｆ瀽鍑虹幇閿欒:', errors);
+          this.logUserSettingsParseErrorsOnce(
+            'load-parse',
+            '[SettingsManager]  閰嶇疆鏂囦欢 JSONC 瑙ｆ瀽鍑虹幇閿欒:',
+            errors,
+            trimmedContent.length,
+          );
           await this.recoverSettingsFile();
           return {};
         }
+
+        this.clearUserSettingsIssueSignature('load-parse');
       } catch (parseError) {
         console.error('[SettingsManager]  閰嶇疆鏂囦欢瑙ｆ瀽澶辫触锛屾枃浠跺彲鑳藉凡鎹熷潖:', parseError);
         await this.recoverSettingsFile();
@@ -736,6 +831,14 @@ export class SettingsManager extends EventEmitter {
    * 淇濈暀鏂囦欢涓殑娉ㄩ噴鍜屾牸寮?
    */
   private async saveUserSettings(): Promise<void> {
+    const saveOperation = this.pendingUserSettingsSave.then(async () => {
+      await this.saveUserSettingsInternal();
+    });
+    this.pendingUserSettingsSave = saveOperation.then(() => undefined, () => undefined);
+    return saveOperation;
+  }
+
+  private async saveUserSettingsInternal(): Promise<void> {
     try {
       // 璇诲彇鐜版湁鏂囦欢鍐呭
       let existingContent = '';
@@ -774,10 +877,7 @@ export class SettingsManager extends EventEmitter {
       }
       
       // 鍚堝苟鎻掍欢閰嶇疆
-      const allSettings = {
-        ...validSettings,
-        ...this.pluginSettings,
-      };
+      const allSettings = this.buildSerializableSettings(validSettings, this.pluginSettings);
       
       
       // 妫€鏌ユ枃浠舵槸鍚︿负绌烘垨鍙湁 {}
@@ -806,15 +906,9 @@ export class SettingsManager extends EventEmitter {
         const hasNewKeys = Object.keys(allSettings).some(key => !existingKeysSet.has(key));
         
         if (hasNewKeys) {
-          // 濡傛灉鏈夋柊閿紝鐩存帴鍚堝苟骞堕噸鏂板啓鍏ワ紙纭繚鏂伴敭涓€瀹氳鍐欏叆锛?
-          const mergedConfig = {
-            ...existingParsed,
-            ...allSettings
-          };
-          
           // 鐢熸垚甯︽敞閲婄殑 JSON 鍐呭锛堝寘鍚彃浠堕厤缃級
           const newContent = this.generateSettingsWithCommentsAndPlugins(validSettings, this.pluginSettings);
-          await fs.writeFile(this.userSettingsPath, newContent, 'utf-8');
+          await this.writeValidatedUserSettingsContent(newContent, allSettings);
         } else {
           // 娌℃湁鏂伴敭锛屼娇鐢?jsonc-parser 淇濈暀娉ㄩ噴
           let newContent = existingContent;
@@ -839,7 +933,7 @@ export class SettingsManager extends EventEmitter {
             }
           }
           
-          await fs.writeFile(this.userSettingsPath, newContent, 'utf-8');
+          await this.writeValidatedUserSettingsContent(newContent, allSettings);
         }
         
         // 楠岃瘉鍐欏叆鏄惁鎴愬姛
@@ -848,9 +942,17 @@ export class SettingsManager extends EventEmitter {
           try {
             const errors: jsonc.ParseError[] = [];
             const verifyParsed = jsonc.parse(verifyContent, errors);
-            if (verifyParsed && errors.length === 0) {
-            } else {
-              console.warn('[SettingsManager] 楠岃瘉锛氭枃浠惰В鏋愬け璐ワ紝浣嗘枃浠跺凡鍐欏叆');
+            if (verifyParsed !== null && verifyParsed !== undefined && errors.length === 0) {
+              this.clearUserSettingsIssueSignature('write-verify');
+            } else if (errors.length > 0) {
+              this.logUserSettingsParseErrorsOnce(
+                'write-verify',
+                '[SettingsManager] 楠岃瘉锛氱敤鎴烽厤缃啓鍏ュ悗浠嶅瓨鍦?JSONC 瑙ｆ瀽閿欒:',
+                errors,
+                verifyContent.length,
+              );
+            } else if (this.rememberUserSettingsIssueSignature('write-verify', `invalid:${verifyContent.length}`)) {
+              console.warn('[SettingsManager] 楠岃瘉锛氱敤鎴烽厤缃啓鍏ュ悗瑙ｆ瀽缁撴灉涓虹┖');
             }
           } catch (parseError) {
             console.warn('[SettingsManager] 楠岃瘉锛氭枃浠惰В鏋愭椂鍑洪敊锛屼絾鏂囦欢宸插啓鍏?', parseError);
@@ -860,19 +962,8 @@ export class SettingsManager extends EventEmitter {
         }
       } else {
         // 濡傛灉鏂囦欢涓嶅瓨鍦ㄦ垨涓虹┖锛屽垱寤烘柊鐨勫甫娉ㄩ噴鐨勬枃浠?
-        const content = this.generateSettingsWithComments(validSettings);
-        // 灏嗘彃浠堕厤缃坊鍔犲埌鏂囦欢鏈熬
-        let finalContent = content;
-        if (Object.keys(this.pluginSettings).length > 0) {
-          // 绉婚櫎鏈€鍚庣殑 } 鍜屾崲琛?
-          finalContent = content.trim().slice(0, -1);
-          // 娣诲姞鎻掍欢閰嶇疆
-          const pluginConfigStr = Object.entries(this.pluginSettings)
-            .map(([key, value]) => `  "${key}": ${JSON.stringify(value)}`)
-            .join(',\n');
-          finalContent += `,\n${pluginConfigStr}\n}`;
-        }
-        await fs.writeFile(this.userSettingsPath, finalContent, 'utf-8');
+        const finalContent = this.generateSettingsWithCommentsAndPlugins(validSettings, this.pluginSettings);
+        await this.writeValidatedUserSettingsContent(finalContent, allSettings);
       }
     } catch (error) {
       console.error('[SettingsManager] 淇濆瓨璁剧疆澶辫触:', error);
@@ -889,10 +980,7 @@ export class SettingsManager extends EventEmitter {
       }
       
       // 鍚堝苟鎻掍欢閰嶇疆
-      const allSettings = {
-        ...validSettings,
-        ...this.pluginSettings,
-      };
+      const allSettings = this.buildSerializableSettings(validSettings, this.pluginSettings);
       
       const content = JSON.stringify(allSettings, null, 2);
       await fs.writeFile(this.userSettingsPath, content, 'utf-8');
@@ -953,9 +1041,6 @@ export class SettingsManager extends EventEmitter {
     
     // 濡傛灉鏈夋彃浠堕厤缃紝娣诲姞鍒版枃浠舵湯灏?
     if (Object.keys(pluginSettings).length > 0) {
-      // 绉婚櫎鏈€鍚庣殑 }
-      const contentWithoutBrace = standardContent.trim().slice(0, -1);
-      
       // 娣诲姞鎻掍欢閰嶇疆
       const pluginConfigLines: string[] = [];
       for (const [key, value] of Object.entries(pluginSettings)) {
@@ -964,7 +1049,13 @@ export class SettingsManager extends EventEmitter {
         ).join('\n');
         pluginConfigLines.push(`  "${key}": ${valueStr}`);
       }
-      
+
+      if (Object.keys(settings).length === 0) {
+        return `{\n${pluginConfigLines.join(',\n')}\n}`;
+      }
+
+      // 绉婚櫎鏈€鍚庣殑 }
+      const contentWithoutBrace = standardContent.trim().slice(0, -1);
       return contentWithoutBrace + (contentWithoutBrace.trim().endsWith(',') ? '' : ',') + '\n' + pluginConfigLines.join(',\n') + '\n}';
     }
     
@@ -1115,4 +1206,3 @@ export class SettingsManager extends EventEmitter {
     }, null, 2);
   }
 }
-

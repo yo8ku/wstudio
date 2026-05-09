@@ -7,6 +7,7 @@ const electronAppMock = vi.hoisted(() => ({
   getPath: vi.fn(),
   getAppPath: vi.fn(),
 }));
+const BUILTIN_FILE_ICON_THEME_ID = 'wstudio-builtin-MaterialIcon';
 
 vi.mock('electron', () => ({
   app: electronAppMock,
@@ -22,6 +23,19 @@ interface TestPluginDefinition {
     readonly views?: Readonly<Record<string, string>>;
     readonly settings?: string;
     readonly modals?: Readonly<Record<string, string>>;
+  };
+  readonly contributes?: {
+    readonly uiEntries?: readonly {
+      readonly id: string;
+      readonly title: string;
+      readonly icon?: string;
+      readonly iconPath?: string;
+      readonly location?: string;
+      readonly scope?: {
+        readonly viewType?: string;
+        readonly fileExtensions?: readonly string[];
+      };
+    }[];
   };
   readonly extraFiles?: Readonly<Record<string, string>>;
 }
@@ -64,6 +78,7 @@ async function createPluginInRoot(
         wstudio: '>=1.0.0',
       },
       ui: definition.ui,
+      contributes: definition.contributes,
     }, null, 2),
     'utf8',
   );
@@ -191,6 +206,75 @@ describe('PluginDiscoveryService plugin logo validation', () => {
     ]));
   });
 
+  it('resolves declared static plugin ui entries for pre-visible host entry icons', async () => {
+    const pluginDirectory = await createPlugin(tempRoot, {
+      id: 'plugin-static-ui-entries',
+      iconPath: 'assets/logo.png',
+      iconFilePath: 'assets/logo.png',
+      contributes: {
+        uiEntries: [{
+          id: 'launch',
+          title: 'Launch',
+          icon: 'rocket',
+          iconPath: 'assets/launch.svg',
+          location: 'activityBar',
+          scope: {
+            fileExtensions: ['md'],
+          },
+        }],
+      },
+      extraFiles: {
+        'assets/launch.svg': '<svg viewBox="0 0 10 10"></svg>',
+      },
+    });
+    const service = new PluginDiscoveryService();
+
+    const summary = await service.reload();
+    const descriptor = service.getById('plugin-static-ui-entries');
+
+    expect(summary.failures.some((failure) => failure.rootDirectory === pluginDirectory)).toBe(false);
+    expect(descriptor?.staticUiEntries).toEqual([{
+      id: 'launch',
+      title: 'Launch',
+      icon: 'rocket',
+      iconSvg: '<svg viewBox="0 0 10 10"></svg>',
+      location: 'activityBar',
+      scope: {
+        fileExtensions: ['md'],
+      },
+    }]);
+  });
+
+  it('rejects static plugin ui entries whose iconPath is not an svg asset', async () => {
+    const pluginDirectory = await createPlugin(tempRoot, {
+      id: 'plugin-static-ui-entry-invalid-icon',
+      iconPath: 'assets/logo.png',
+      iconFilePath: 'assets/logo.png',
+      contributes: {
+        uiEntries: [{
+          id: 'launch',
+          title: 'Launch',
+          iconPath: 'assets/launch.png',
+        }],
+      },
+      extraFiles: {
+        'assets/launch.png': 'not-an-svg',
+      },
+    });
+    const service = new PluginDiscoveryService();
+
+    const summary = await service.reload();
+
+    expect(service.getById('plugin-static-ui-entry-invalid-icon')).toBeUndefined();
+    expect(summary.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rootDirectory: pluginDirectory,
+        code: 'invalid_ui_entry_contribution',
+        message: 'contributes.uiEntries["launch"].iconPath must point to an SVG asset.',
+      }),
+    ]));
+  });
+
   it('only loads allowlisted development example plugins', async () => {
     process.env.WSTUDIO_DEVELOPMENT_EXAMPLE_PLUGIN_ROOT = path.join(tempRoot, 'examples-plugins');
     process.env.WSTUDIO_DEVELOPMENT_EXAMPLE_PLUGIN_IDS = 'allowed-example-plugin';
@@ -263,5 +347,33 @@ describe('PluginDiscoveryService plugin logo validation', () => {
     expect(service.getById('wstudio-plugin-demo-file-icons-simple')?.rootDirectory).toBe(fileIconsDirectory);
     expect(service.getById('wstudio-plugin-demo-canvas-host')?.rootDirectory).toBe(canvasHostDirectory);
     expect(service.getById('wstudio-plugin-demo-legacy-rich-ui')).toBeUndefined();
+  });
+
+  it('does not scan builtin plugin directories as discovered third-party plugins', async () => {
+    const builtinPluginDirectory = await createPluginInRoot(
+      tempRoot,
+      path.join('packages', 'builtin-plugins'),
+      {
+        id: 'builtin-plugin-should-not-be-discovered',
+        iconPath: 'assets/logo.png',
+        iconFilePath: 'assets/logo.png',
+      },
+    );
+    const service = new PluginDiscoveryService();
+
+    const summary = await service.reload();
+
+    expect(service.getById('builtin-plugin-should-not-be-discovered')).toBeUndefined();
+    expect(summary.roots).not.toContain(path.join(tempRoot, 'packages', 'builtin-plugins'));
+    expect(summary.failures.some((failure) => failure.rootDirectory === builtinPluginDirectory)).toBe(false);
+  });
+
+  it('keeps builtin file icon themes available without exposing builtin plugins in discovery', async () => {
+    const service = new PluginDiscoveryService();
+
+    await service.reload();
+
+    expect(service.getBuiltinFileIconThemes().some((theme) => theme.id === BUILTIN_FILE_ICON_THEME_ID))
+      .toBe(true);
   });
 });

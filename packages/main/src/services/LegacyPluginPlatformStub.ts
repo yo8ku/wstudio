@@ -76,6 +76,8 @@ export interface LegacyPluginHostManager {
   reloadAll(): Promise<void>;
   shutdown(): Promise<void>;
   getInstalledPlugins(): readonly InstalledPluginSummary[];
+  setPluginEnabled(pluginId: string, enabled: boolean): Promise<void>;
+  uninstallPlugin(pluginId: string): Promise<void>;
   getPluginSettingTabs(): readonly PluginSettingTabSummary[];
   getWorkbenchContributionSnapshot(): WorkbenchContributionSnapshot;
   getPluginUiEntries(): readonly PluginUiEntrySnapshot[];

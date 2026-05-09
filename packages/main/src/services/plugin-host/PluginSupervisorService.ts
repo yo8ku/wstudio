@@ -21,7 +21,10 @@ import type {
   WorkbenchResourceExplorerItemContributionEntry,
 } from '@note-studio/shared';
 import type { SettingsManager } from '../../config/SettingsManager';
-import type { MainProcessAppFacade } from './MainProcessAppFacade';
+import {
+  type MainProcessAppFacade,
+  MainProcessWorkspaceLeaf,
+} from './MainProcessAppFacade';
 import type { BasesViewSnapshot } from './MainProcessPluginRuntime';
 import type { PluginDescriptor, PluginSettingTabSummary } from './types';
 import { URL_BROWSER_VIEW_TYPE } from '../UrlBrowserDownloadService';
@@ -33,10 +36,12 @@ import {
   type PluginSupervisorExtensionSnapshot,
   type PluginSupervisorHostResponsePayload,
   type PluginSupervisorPluginRuntimeSnapshot,
+  type PluginSupervisorProtocolSnapshot,
   type PluginSupervisorResourceExplorerItemSnapshot,
   type PluginSupervisorSettingTabSnapshot,
   type PluginSupervisorViewInstanceSnapshot,
   type PluginSupervisorViewSnapshot,
+  type PluginSupervisorWorkspaceEventPayload,
   type PluginSupervisorWorkspaceLeafSnapshot,
   type PluginSupervisorHostRequestMessage,
   type PluginSupervisorHostRequestPayload,
@@ -60,6 +65,7 @@ interface PendingSupervisorRequest {
     | 'protocol-executed'
     | 'bases-view-rendered'
     | 'ui-entry-executed'
+    | 'ui-action-executed'
     | 'view-instance-opened'
     | 'view-instance-updated'
     | 'view-instance-resized'
@@ -73,7 +79,67 @@ const SUPERVISOR_START_TIMEOUT_MS = 30_000;
 const SUPERVISOR_READY_TIMEOUT_MS = 30_000;
 const SUPERVISOR_REQUEST_TIMEOUT_MS = 15_000;
 const SUPERVISOR_HEARTBEAT_INTERVAL_MS = 15_000;
+const SUPERVISOR_SERVICE_NAME = 'Plugin Supervisor';
+const SUPERVISOR_UNEXPECTED_EXIT_NOTICE = '某插件后台服务异常退出，已尝试重启';
+const SUPERVISOR_PLUGIN_FATAL_FAILURE_WINDOW_MS = 60_000;
+const SUPERVISOR_PLUGIN_FATAL_FAILURE_LIMIT = 3;
+const SUPERVISOR_LOG_RATE_WINDOW_MS = 5_000;
+const SUPERVISOR_LOG_RATE_LIMIT = 12;
+const SUPERVISOR_LOG_MESSAGE_MAX_LENGTH = 4_096;
+
+type SupervisorChildProcessGoneType =
+  | 'Utility'
+  | 'Zygote'
+  | 'Sandbox helper'
+  | 'GPU'
+  | 'Pepper Plugin'
+  | 'Pepper Plugin Broker'
+  | 'Unknown';
+
+type SupervisorChildProcessGoneReason =
+  | 'clean-exit'
+  | 'abnormal-exit'
+  | 'killed'
+  | 'crashed'
+  | 'oom'
+  | 'launch-failed'
+  | 'integrity-failure';
+
+interface SupervisorChildProcessGoneDetails {
+  readonly type: SupervisorChildProcessGoneType;
+  readonly reason: SupervisorChildProcessGoneReason;
+  readonly exitCode: number;
+  readonly serviceName?: string;
+  readonly name?: string;
+}
+
+interface TemporarilyDisabledPluginRecord {
+  readonly message: string;
+  readonly disabledAt: number;
+}
+
+type SupervisorLogChannel = 'stdout' | 'stderr' | 'worker-error';
+
+interface SupervisorLogRateState {
+  readonly windowStartedAt: number;
+  readonly forwardedCount: number;
+  readonly suppressedCount: number;
+  readonly suppressionNoticeEmitted: boolean;
+}
+
+const SUPERVISOR_CRASH_REASONS = new Set<SupervisorChildProcessGoneReason>([
+  'abnormal-exit',
+  'crashed',
+  'oom',
+  'launch-failed',
+  'integrity-failure',
+]);
+
 type PluginSupervisorRequestMessage = Exclude<PluginSupervisorParentControlMessage, { readonly type: 'initialize' }>;
+type PluginSupervisorTrackedRequestMessage = Exclude<
+  PluginSupervisorRequestMessage,
+  { readonly type: 'push-workspace-event' }
+>;
 
 interface PendingSupervisorViewWorkspaceLeaf extends WorkspaceLeaf {
   registerPendingSupervisorViewInstanceToken(viewType: string, pendingViewInstanceId: string): void;
@@ -224,6 +290,8 @@ function createWorkspaceLeafSnapshot(leaf: WorkspaceLeaf): PluginSupervisorWorks
 export class PluginSupervisorService {
   private child: UtilityProcess | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private childProcessGoneListenerAttached = false;
+  private childTerminationNoticeEmitted = false;
   private readonly stateListeners = new Set<() => void>();
   private readonly commandContributionListeners = new Set<() => void>();
   private readonly settingTabListeners = new Set<() => void>();
@@ -241,9 +309,20 @@ export class PluginSupervisorService {
   private remoteExtensions: readonly PluginSupervisorExtensionSnapshot[] = [];
   private remoteUiEntries: readonly PluginUiEntrySnapshot[] = [];
   private remotePluginRuntimeStates: readonly PluginSupervisorPluginRuntimeSnapshot[] = [];
+  private readonly knownProtocolOwners = new Map<string, string>();
+  private readonly pluginFatalFailureTimestamps = new Map<string, readonly number[]>();
+  private readonly temporarilyDisabledPlugins = new Map<string, TemporarilyDisabledPluginRecord>();
+  private readonly supervisorLogRateStates = new Map<SupervisorLogChannel, SupervisorLogRateState>();
+  private descriptorRuntimeKeys = new Map<string, string>();
   private recoveryPromise: Promise<void> | null = null;
   private shuttingDown = false;
   private nextRequestId = 0;
+  private readonly handleChildProcessGoneEvent = (
+    _event: object,
+    details: SupervisorChildProcessGoneDetails,
+  ): void => {
+    this.handleChildProcessGone(details);
+  };
   private state: PluginSupervisorStateSnapshot = {
     status: 'stopped',
     pluginCount: 0,
@@ -324,6 +403,32 @@ export class PluginSupervisorService {
     return this.remotePluginRuntimeStates.find((state) => state.pluginId === pluginId) ?? null;
   }
 
+  public isPluginTemporarilyDisabled(pluginId: string): boolean {
+    return this.getTemporarilyDisabledPluginMessage(pluginId) !== null;
+  }
+
+  public getTemporarilyDisabledPluginMessage(pluginId: string): string | null {
+    const normalizedPluginId = pluginId.trim();
+
+    if (normalizedPluginId.length === 0) {
+      return null;
+    }
+
+    return this.temporarilyDisabledPlugins.get(normalizedPluginId)?.message ?? null;
+  }
+
+  public clearTemporarilyDisabledPlugin(pluginId: string): boolean {
+    const normalizedPluginId = pluginId.trim();
+
+    if (normalizedPluginId.length === 0) {
+      return false;
+    }
+
+    const hadTemporaryDisable = this.temporarilyDisabledPlugins.delete(normalizedPluginId);
+    const hadFailureHistory = this.pluginFatalFailureTimestamps.delete(normalizedPluginId);
+    return hadTemporaryDisable || hadFailureHistory;
+  }
+
   public isPluginOwnedBySupervisor(pluginId: string): boolean {
     return this.getPluginRuntimeState(pluginId)?.owner === 'supervisor';
   }
@@ -399,11 +504,25 @@ export class PluginSupervisorService {
     return this.remoteUiEntries;
   }
 
+  public pushWorkspaceEvent(event: PluginSupervisorWorkspaceEventPayload): void {
+    if (this.child === null || this.state.status !== 'ready') {
+      return;
+    }
+
+    this.child.postMessage({
+      type: 'push-workspace-event',
+      data: {
+        event,
+      },
+    });
+  }
+
   public async initialize(descriptors: readonly PluginDescriptor[]): Promise<void> {
     this.shuttingDown = false;
     this.cachedDescriptors = descriptors.map((descriptor) => {
       return descriptorToSupervisorSnapshot(descriptor, resolvePluginRuntimeOwner(descriptor));
     });
+    this.syncTrackedDescriptorRuntimeKeys();
     await this.ensureChildReady();
     const message = await this.syncCachedDescriptors();
 
@@ -424,6 +543,7 @@ export class PluginSupervisorService {
     this.cachedDescriptors = descriptors.map((descriptor) => {
       return descriptorToSupervisorSnapshot(descriptor, resolvePluginRuntimeOwner(descriptor));
     });
+    this.syncTrackedDescriptorRuntimeKeys();
     await this.ensureChildReady();
     const message = await this.syncCachedDescriptors();
 
@@ -454,6 +574,7 @@ export class PluginSupervisorService {
 
   public async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    this.flushSupervisorLogRateStates();
     this.stopHeartbeatLoop();
 
     if (this.recoveryPromise !== null) {
@@ -466,6 +587,7 @@ export class PluginSupervisorService {
       this.updateRemoteViews([]);
       this.updateRemoteResourceExplorerItems([]);
       this.updateRemoteExtensions([]);
+      this.updateRemoteProtocols([]);
       this.updateRemoteUiEntries([]);
       this.updateRemotePluginRuntimeStates([]);
       this.updateState({
@@ -505,6 +627,7 @@ export class PluginSupervisorService {
       this.updateRemoteViews([]);
       this.updateRemoteResourceExplorerItems([]);
       this.updateRemoteExtensions([]);
+      this.updateRemoteProtocols([]);
       this.updateRemoteUiEntries([]);
       this.updateRemotePluginRuntimeStates([]);
     }
@@ -516,6 +639,8 @@ export class PluginSupervisorService {
     if (normalizedPluginId.length === 0) {
       return false;
     }
+
+    this.assertPluginRestartAllowed(normalizedPluginId);
 
     await this.ensureChildReady();
 
@@ -547,6 +672,12 @@ export class PluginSupervisorService {
     readonly result: SharedJsonValue | null;
     readonly fallbackToMain: boolean;
   }> {
+    const blockedPluginId = this.resolvePluginIdForCommand(commandId);
+
+    if (blockedPluginId !== null) {
+      this.assertPluginRestartAllowed(blockedPluginId);
+    }
+
     await this.ensureChildReady();
 
     if (this.child === null) {
@@ -584,6 +715,12 @@ export class PluginSupervisorService {
     readonly handled: boolean;
     readonly fallbackToMain: boolean;
   }> {
+    const blockedPluginId = this.resolvePluginIdForProtocol(protocolData.action);
+
+    if (blockedPluginId !== null) {
+      this.assertPluginRestartAllowed(blockedPluginId);
+    }
+
     await this.ensureChildReady();
 
     if (this.child === null) {
@@ -620,6 +757,7 @@ export class PluginSupervisorService {
       readonly snapshot: BasesViewSnapshot | null;
       readonly fallbackToMain: boolean;
     }> {
+    this.assertPluginRestartAllowed(pluginId);
     await this.ensureChildReady();
 
     if (this.child === null) {
@@ -652,6 +790,12 @@ export class PluginSupervisorService {
   }
 
   public async executeRemoteUiEntry(entryId: string): Promise<boolean> {
+    const blockedPluginId = this.resolvePluginIdForUiEntry(entryId);
+
+    if (blockedPluginId !== null) {
+      this.assertPluginRestartAllowed(blockedPluginId);
+    }
+
     await this.ensureChildReady();
 
     if (this.child === null) {
@@ -674,11 +818,56 @@ export class PluginSupervisorService {
     return response.data.handled;
   }
 
+  public async executeRemoteUiAction(
+    pluginId: string,
+    actionId: string,
+    payload: SharedJsonValue | null,
+  ): Promise<{
+    readonly handled: boolean;
+    readonly result: SharedJsonValue | null;
+  }> {
+    this.assertPluginRestartAllowed(pluginId);
+    await this.ensureChildReady();
+
+    if (this.child === null) {
+      return {
+        handled: false,
+        result: null,
+      };
+    }
+
+    const requestId = this.createRequestId('execute-ui-action');
+    const response = await this.sendRequest({
+      type: 'execute-ui-action',
+      data: {
+        requestId,
+        pluginId,
+        actionId,
+        payload,
+      },
+    }, 'ui-action-executed');
+
+    if (response.type !== 'ui-action-executed') {
+      throw new Error('Plugin supervisor returned an unexpected UI action execution response.');
+    }
+
+    return {
+      handled: response.data.handled,
+      result: response.data.result,
+    };
+  }
+
   public async openRemoteViewInstance(
     leafId: string,
     viewType: string,
     pendingViewInstanceId: string | null = null,
   ): Promise<PluginSupervisorViewInstanceSnapshot | null> {
+    const blockedPluginId = this.resolvePluginIdForViewType(viewType);
+
+    if (blockedPluginId !== null) {
+      this.assertPluginRestartAllowed(blockedPluginId);
+    }
+
     await this.ensureChildReady();
 
     if (this.child === null) {
@@ -708,6 +897,12 @@ export class PluginSupervisorService {
     viewType: string,
     state: SharedJsonValue | null,
   ): Promise<PluginSupervisorViewInstanceSnapshot | null> {
+    const blockedPluginId = this.resolvePluginIdForViewType(viewType);
+
+    if (blockedPluginId !== null) {
+      this.assertPluginRestartAllowed(blockedPluginId);
+    }
+
     await this.ensureChildReady();
 
     if (this.child === null) {
@@ -817,24 +1012,27 @@ export class PluginSupervisorService {
       pid: null,
       lastError: null,
     });
+    this.childTerminationNoticeEmitted = false;
 
     const childPath = this.resolveChildScriptPath();
     const child = utilityProcess.fork(childPath, [], {
+      serviceName: SUPERVISOR_SERVICE_NAME,
       stdio: 'pipe',
     });
     this.child = child;
+    this.attachChildProcessGoneListener();
 
     child.stdout?.on('data', (data) => {
       const message = data.toString().trim();
       if (message.length > 0) {
-        console.log('[PluginSupervisor]', message);
+        this.logSupervisorChannelMessage('stdout', message);
       }
     });
 
     child.stderr?.on('data', (data) => {
       const message = data.toString().trim();
       if (message.length > 0) {
-        console.error('[PluginSupervisor Error]', message);
+        this.logSupervisorChannelMessage('stderr', message);
       }
     });
 
@@ -930,7 +1128,7 @@ export class PluginSupervisorService {
   }
 
   private async sendRequest(
-    message: PluginSupervisorRequestMessage,
+    message: PluginSupervisorTrackedRequestMessage,
     expectedType: PendingSupervisorRequest['type'],
   ): Promise<PluginSupervisorChildMessage> {
     if (this.child === null) {
@@ -1087,6 +1285,11 @@ export class PluginSupervisorService {
       return;
     }
 
+    if (message.type === 'protocols-updated') {
+      this.updateRemoteProtocols(message.data.protocols);
+      return;
+    }
+
     if (message.type === 'ui-entries-updated') {
       this.updateRemoteUiEntries(message.data.entries);
       return;
@@ -1107,7 +1310,7 @@ export class PluginSupervisorService {
         status: message.data.fatal ? 'error' : this.state.status,
         lastError: message.data.message,
       });
-      console.error('[PluginSupervisorService] worker reported error:', message.data.message);
+      this.logSupervisorChannelMessage('worker-error', message.data.message);
 
       if (message.data.fatal) {
         this.scheduleRecovery(`Plugin supervisor worker reported a fatal error: ${message.data.message}`);
@@ -1164,6 +1367,10 @@ export class PluginSupervisorService {
     }
 
     if (message.type === 'ui-entry-executed') {
+      return message.data.requestId;
+    }
+
+    if (message.type === 'ui-action-executed') {
       return message.data.requestId;
     }
 
@@ -1228,6 +1435,7 @@ export class PluginSupervisorService {
       return;
     }
 
+    this.detachChild(child);
     this.stopHeartbeatLoop();
     this.clearPendingRequests('Plugin supervisor utility process exited before the request completed.');
     this.child = null;
@@ -1236,6 +1444,7 @@ export class PluginSupervisorService {
     this.updateRemoteViews([]);
     this.updateRemoteResourceExplorerItems([]);
     this.updateRemoteExtensions([]);
+    this.updateRemoteProtocols([]);
     this.updateRemoteUiEntries([]);
     this.updateRemotePluginRuntimeStates([]);
 
@@ -1255,6 +1464,7 @@ export class PluginSupervisorService {
       lastError: exitMessage,
     });
     console.error('[PluginSupervisorService] worker exited unexpectedly:', exitMessage);
+    this.notifySupervisorUnexpectedTermination();
     this.scheduleRecovery(exitMessage);
   }
 
@@ -1271,11 +1481,333 @@ export class PluginSupervisorService {
     return `plugin-supervisor:${prefix}:${this.nextRequestId}`;
   }
 
+  private createDescriptorRuntimeKey(descriptor: PluginSupervisorDescriptorSnapshot): string {
+    return [
+      descriptor.pluginId,
+      descriptor.version,
+      descriptor.rootDirectory,
+      descriptor.entryPath ?? '',
+      descriptor.manifestPath,
+    ].join('|');
+  }
+
+  private syncTrackedDescriptorRuntimeKeys(): void {
+    const nextDescriptorKeys = new Map<string, string>();
+
+    for (const descriptor of this.cachedDescriptors) {
+      const nextKey = this.createDescriptorRuntimeKey(descriptor);
+      const previousKey = this.descriptorRuntimeKeys.get(descriptor.pluginId) ?? null;
+
+      if (previousKey !== null && previousKey !== nextKey) {
+        this.clearTemporarilyDisabledPlugin(descriptor.pluginId);
+      }
+
+      nextDescriptorKeys.set(descriptor.pluginId, nextKey);
+    }
+
+    for (const pluginId of [...this.descriptorRuntimeKeys.keys()]) {
+      if (!nextDescriptorKeys.has(pluginId)) {
+        this.clearTemporarilyDisabledPlugin(pluginId);
+      }
+    }
+
+    for (const [action, ownerPluginId] of [...this.knownProtocolOwners.entries()]) {
+      if (!nextDescriptorKeys.has(ownerPluginId)) {
+        this.knownProtocolOwners.delete(action);
+      }
+    }
+
+    this.descriptorRuntimeKeys = nextDescriptorKeys;
+  }
+
+  private resolvePluginDisplayName(pluginId: string): string {
+    return this.cachedDescriptors.find((descriptor) => descriptor.pluginId === pluginId)?.displayName ?? pluginId;
+  }
+
+  private buildTemporarilyDisabledPluginMessage(pluginId: string): string {
+    return `插件 [${this.resolvePluginDisplayName(pluginId)}] 连续发生致命错误，为保护系统稳定，已将其暂时禁用。请尝试更新或联系插件作者。`;
+  }
+
+  private resolvePluginIdForCommand(commandId: string): string | null {
+    return this.remoteCommands.find((command) => command.commandId === commandId)?.pluginId ?? null;
+  }
+
+  private resolvePluginIdForProtocol(action: string): string | null {
+    return this.knownProtocolOwners.get(action.trim()) ?? null;
+  }
+
+  private resolvePluginIdForUiEntry(entryId: string): string | null {
+    return this.remoteUiEntries.find((entry) => entry.id === entryId)?.pluginId ?? null;
+  }
+
+  private resolvePluginIdForViewType(viewType: string): string | null {
+    const normalizedViewType = viewType.trim();
+
+    if (normalizedViewType.length === 0) {
+      return null;
+    }
+
+    const remotePluginId = this.remoteViews.find((entry) => entry.viewType === normalizedViewType)?.pluginId ?? null;
+
+    if (remotePluginId !== null) {
+      return remotePluginId;
+    }
+
+    for (const descriptor of this.cachedDescriptors) {
+      if (descriptor.uiEntrypoints?.views[normalizedViewType] !== undefined) {
+        return descriptor.pluginId;
+      }
+    }
+
+    return null;
+  }
+
+  private assertPluginRestartAllowed(pluginId: string): void {
+    const disabledMessage = this.getTemporarilyDisabledPluginMessage(pluginId);
+
+    if (disabledMessage !== null) {
+      throw new Error(disabledMessage);
+    }
+  }
+
+  private recordPluginFatalFailure(pluginId: string, failureMessage: string | null): void {
+    const normalizedPluginId = pluginId.trim();
+
+    if (normalizedPluginId.length === 0 || this.temporarilyDisabledPlugins.has(normalizedPluginId)) {
+      return;
+    }
+
+    const now = Date.now();
+    const nextTimestamps = [
+      ...(this.pluginFatalFailureTimestamps.get(normalizedPluginId) ?? []).filter((timestamp) => {
+        return now - timestamp <= SUPERVISOR_PLUGIN_FATAL_FAILURE_WINDOW_MS;
+      }),
+      now,
+    ];
+
+    this.pluginFatalFailureTimestamps.set(normalizedPluginId, nextTimestamps);
+
+    if (nextTimestamps.length <= SUPERVISOR_PLUGIN_FATAL_FAILURE_LIMIT) {
+      return;
+    }
+
+    const nextMessage = this.buildTemporarilyDisabledPluginMessage(normalizedPluginId);
+    this.temporarilyDisabledPlugins.set(normalizedPluginId, {
+      message: nextMessage,
+      disabledAt: now,
+    });
+    emitPluginRuntimeNotice({
+      message: nextMessage,
+      level: 'error',
+    });
+    console.error('[PluginSupervisorService] plugin temporarily disabled after repeated fatal failures:', {
+      pluginId: normalizedPluginId,
+      failureMessage,
+      failureCount: nextTimestamps.length,
+    });
+  }
+
+  private trackPluginRuntimeFailures(
+    pluginRuntimeStates: readonly PluginSupervisorPluginRuntimeSnapshot[],
+  ): void {
+    const previousStates = new Map<string, PluginSupervisorPluginRuntimeSnapshot>();
+
+    for (const state of this.remotePluginRuntimeStates) {
+      previousStates.set(state.pluginId, state);
+    }
+
+    for (const state of pluginRuntimeStates) {
+      if (state.owner !== 'supervisor' || state.status !== 'failed') {
+        continue;
+      }
+
+      const previousState = previousStates.get(state.pluginId) ?? null;
+
+      if (
+        previousState !== null
+        && previousState.status === 'failed'
+        && previousState.failureMessage === state.failureMessage
+      ) {
+        continue;
+      }
+
+      this.recordPluginFatalFailure(state.pluginId, state.failureMessage);
+    }
+  }
+
+  private attachChildProcessGoneListener(): void {
+    if (this.childProcessGoneListenerAttached) {
+      return;
+    }
+
+    app.on('child-process-gone', this.handleChildProcessGoneEvent);
+    this.childProcessGoneListenerAttached = true;
+  }
+
+  private detachChildProcessGoneListener(): void {
+    if (!this.childProcessGoneListenerAttached) {
+      return;
+    }
+
+    app.removeListener('child-process-gone', this.handleChildProcessGoneEvent);
+    this.childProcessGoneListenerAttached = false;
+  }
+
   private detachChild(child: UtilityProcess): void {
+    this.flushSupervisorLogRateStates();
+    this.detachChildProcessGoneListener();
     child.removeAllListeners('exit');
     child.removeAllListeners('message');
     child.stdout?.removeAllListeners('data');
     child.stderr?.removeAllListeners('data');
+  }
+
+  private logSupervisorChannelMessage(
+    channel: SupervisorLogChannel,
+    rawMessage: string,
+  ): void {
+    const message = this.truncateSupervisorLogMessage(rawMessage);
+
+    if (message.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const existingState = this.supervisorLogRateStates.get(channel);
+    const activeState = existingState === undefined || now - existingState.windowStartedAt >= SUPERVISOR_LOG_RATE_WINDOW_MS
+      ? this.resetSupervisorLogRateState(channel, now, existingState)
+      : existingState;
+
+    if (activeState.forwardedCount < SUPERVISOR_LOG_RATE_LIMIT) {
+      this.writeSupervisorChannelMessage(channel, message);
+      this.supervisorLogRateStates.set(channel, {
+        ...activeState,
+        forwardedCount: activeState.forwardedCount + 1,
+      });
+      return;
+    }
+
+    const nextSuppressedCount = activeState.suppressedCount + 1;
+    this.supervisorLogRateStates.set(channel, {
+      ...activeState,
+      suppressedCount: nextSuppressedCount,
+      suppressionNoticeEmitted: true,
+    });
+
+    if (!activeState.suppressionNoticeEmitted) {
+      console.warn(
+        `[PluginSupervisorService] suppressing further ${this.describeSupervisorLogChannel(channel)} output for ${SUPERVISOR_LOG_RATE_WINDOW_MS}ms.`,
+      );
+    }
+  }
+
+  private resetSupervisorLogRateState(
+    channel: SupervisorLogChannel,
+    now: number,
+    existingState?: SupervisorLogRateState,
+  ): SupervisorLogRateState {
+    if (existingState !== undefined && existingState.suppressedCount > 0) {
+      console.warn(
+        `[PluginSupervisorService] suppressed ${existingState.suppressedCount} ${this.describeSupervisorLogChannel(channel)} messages in the last ${SUPERVISOR_LOG_RATE_WINDOW_MS}ms.`,
+      );
+    }
+
+    const nextState: SupervisorLogRateState = {
+      windowStartedAt: now,
+      forwardedCount: 0,
+      suppressedCount: 0,
+      suppressionNoticeEmitted: false,
+    };
+    this.supervisorLogRateStates.set(channel, nextState);
+    return nextState;
+  }
+
+  private flushSupervisorLogRateStates(): void {
+    for (const [channel, state] of [...this.supervisorLogRateStates.entries()]) {
+      if (state.suppressedCount > 0) {
+        console.warn(
+          `[PluginSupervisorService] suppressed ${state.suppressedCount} ${this.describeSupervisorLogChannel(channel)} messages in the last ${SUPERVISOR_LOG_RATE_WINDOW_MS}ms.`,
+        );
+      }
+    }
+
+    this.supervisorLogRateStates.clear();
+  }
+
+  private writeSupervisorChannelMessage(
+    channel: SupervisorLogChannel,
+    message: string,
+  ): void {
+    if (channel === 'stdout') {
+      console.log('[PluginSupervisor]', message);
+      return;
+    }
+
+    if (channel === 'stderr') {
+      console.error('[PluginSupervisor Error]', message);
+      return;
+    }
+
+    console.error('[PluginSupervisorService] worker reported error:', message);
+  }
+
+  private describeSupervisorLogChannel(channel: SupervisorLogChannel): string {
+    if (channel === 'stdout') {
+      return 'plugin supervisor stdout';
+    }
+
+    if (channel === 'stderr') {
+      return 'plugin supervisor stderr';
+    }
+
+    return 'plugin supervisor worker error';
+  }
+
+  private truncateSupervisorLogMessage(message: string): string {
+    const normalizedMessage = message.trim();
+
+    if (normalizedMessage.length <= SUPERVISOR_LOG_MESSAGE_MAX_LENGTH) {
+      return normalizedMessage;
+    }
+
+    const omittedCharacterCount = normalizedMessage.length - SUPERVISOR_LOG_MESSAGE_MAX_LENGTH;
+    return `${normalizedMessage.slice(0, SUPERVISOR_LOG_MESSAGE_MAX_LENGTH)}… [truncated ${omittedCharacterCount} chars]`;
+  }
+
+  private handleChildProcessGone(details: SupervisorChildProcessGoneDetails): void {
+    if (this.child === null || details.type !== 'Utility') {
+      return;
+    }
+
+    if (
+      details.serviceName !== SUPERVISOR_SERVICE_NAME
+      && details.name !== SUPERVISOR_SERVICE_NAME
+    ) {
+      return;
+    }
+
+    if (!SUPERVISOR_CRASH_REASONS.has(details.reason)) {
+      return;
+    }
+
+    console.error('[PluginSupervisorService] worker crashed:', {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      serviceName: details.serviceName ?? details.name ?? SUPERVISOR_SERVICE_NAME,
+    });
+    this.notifySupervisorUnexpectedTermination();
+  }
+
+  private notifySupervisorUnexpectedTermination(): void {
+    if (this.childTerminationNoticeEmitted) {
+      return;
+    }
+
+    this.childTerminationNoticeEmitted = true;
+    emitPluginRuntimeNotice({
+      message: SUPERVISOR_UNEXPECTED_EXIT_NOTICE,
+      level: 'warning',
+    });
   }
 
   private scheduleRecovery(reason: string): void {
@@ -1408,6 +1940,12 @@ export class PluginSupervisorService {
     this.remoteExtensions = extensions;
   }
 
+  private updateRemoteProtocols(protocols: readonly PluginSupervisorProtocolSnapshot[]): void {
+    for (const protocol of protocols) {
+      this.knownProtocolOwners.set(protocol.action, protocol.pluginId);
+    }
+  }
+
   private updateRemoteUiEntries(entries: readonly PluginUiEntrySnapshot[]): void {
     this.remoteUiEntries = entries;
 
@@ -1419,6 +1957,7 @@ export class PluginSupervisorService {
   private updateRemotePluginRuntimeStates(
     pluginRuntimeStates: readonly PluginSupervisorPluginRuntimeSnapshot[],
   ): void {
+    this.trackPluginRuntimeFailures(pluginRuntimeStates);
     this.remotePluginRuntimeStates = pluginRuntimeStates;
 
     for (const listener of [...this.pluginRuntimeStateListeners]) {
@@ -1614,6 +2153,21 @@ export class PluginSupervisorService {
           kind: 'workspace:leaf-set-view-state',
           leafId: targetLeaf.id,
           snapshot: createWorkspaceSnapshot(hostApp),
+        };
+      }
+      case 'workspace:leaf-refresh-runtime-surface': {
+        if (hostApp === null) {
+          throw new Error('Plugin supervisor host request requires host app runtime, but it is not ready.');
+        }
+
+        const leaf = hostApp.workspace.getLeafById(request.leafId);
+
+        if (leaf instanceof MainProcessWorkspaceLeaf) {
+          leaf.refreshRendererRuntimeSurface(request.state);
+        }
+
+        return {
+          kind: 'workspace:leaf-refresh-runtime-surface',
         };
       }
       case 'workspace:reveal-leaf': {

@@ -338,6 +338,55 @@ function resolveWorkspacePath(baseDir, targetPath) {
   return normalized.length === 0 ? baseDir : path.join(baseDir, normalized);
 }
 
+function decodePathSegment(segment) {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+function toLocalMediaUrl(sourcePath) {
+  const trimmedSourcePath = normalizeString(sourcePath).trim();
+
+  if (trimmedSourcePath.length === 0 || /^local-media:\/\//i.test(trimmedSourcePath)) {
+    return trimmedSourcePath;
+  }
+
+  let normalizedPath = trimmedSourcePath;
+
+  if (/^file:\/\//i.test(normalizedPath)) {
+    try {
+      normalizedPath = new URL(normalizedPath).pathname;
+    } catch {
+      normalizedPath = normalizedPath.replace(/^file:\/\/\/?/i, '/');
+    }
+  } else if (/^local-file:\/\//i.test(normalizedPath)) {
+    normalizedPath = normalizedPath.replace(/^local-file:\/\/\/?/i, '/');
+  }
+
+  normalizedPath = normalizedPath.replace(/\\/g, '/');
+
+  if (/^[A-Za-z]:/.test(normalizedPath)) {
+    normalizedPath = `/${normalizedPath}`;
+  } else if (!normalizedPath.startsWith('/')) {
+    normalizedPath = `/${normalizedPath.replace(/^\/+/, '')}`;
+  }
+
+  const protocolPath = normalizedPath
+    .split('/')
+    .map((segment, index) => {
+      if (segment.length === 0) {
+        return index === 0 ? '' : segment;
+      }
+
+      return /^[A-Za-z]:$/.test(segment) ? segment : encodeURIComponent(decodePathSegment(segment));
+    })
+    .join('/');
+
+  return `local-media://${protocolPath}`;
+}
+
 function getParentVaultPath(targetPath) {
   const normalized = normalizeVaultPath(targetPath);
   const parentPath = path.posix.dirname(normalized);
@@ -498,7 +547,7 @@ function createSupervisorVault(pluginSdk) {
           return 'filesystem';
         },
         getResourcePath(normalizedPath) {
-          return pathToFileURL(resolveWorkspacePath(workspaceDir, normalizedPath)).toString();
+          return toLocalMediaUrl(resolveWorkspacePath(workspaceDir, normalizedPath));
         },
       };
       this.configDir = '.wstudio';
@@ -633,7 +682,7 @@ function createSupervisorVault(pluginSdk) {
     }
 
     getResourcePath(file) {
-      return pathToFileURL(this.resolveAbsolutePath(file.path)).toString();
+      return toLocalMediaUrl(this.resolveAbsolutePath(file.path));
     }
 
     async delete(file, force) {
@@ -925,6 +974,24 @@ function createSupervisorWorkspace(pluginSdk) {
       this.workspace.applySnapshot(response.snapshot);
     }
 
+    async refreshRuntimeSurface(state) {
+      const normalizedLeafId = this.id.trim();
+
+      if (normalizedLeafId.length === 0) {
+        return;
+      }
+
+      const response = await requestHost({
+        kind: 'workspace:leaf-refresh-runtime-surface',
+        leafId: normalizedLeafId,
+        state: state ?? null,
+      });
+
+      if (response.kind !== 'workspace:leaf-refresh-runtime-surface') {
+        throw new Error('Plugin supervisor workspace leaf received an unexpected runtime-surface response.');
+      }
+    }
+
     async loadIfDeferred() {
       return undefined;
     }
@@ -1018,6 +1085,22 @@ function createSupervisorWorkspace(pluginSdk) {
       this.pendingLeafReferences.set(normalizedLeafId, leaf);
     }
 
+    upsertLeafSnapshot(leafSnapshot, activeLeafId) {
+      const leafId = normalizeString(leafSnapshot?.id).trim();
+
+      if (leafId.length === 0) {
+        return null;
+      }
+
+      const existingLeaf = this.leafRegistry.get(leafId)
+        ?? this.pendingLeafReferences.get(leafId)
+        ?? new SupervisorWorkspaceLeaf(this.app, 'default', this);
+      existingLeaf.applySnapshot(leafSnapshot, activeLeafId);
+      this.leafRegistry.set(leafId, existingLeaf);
+      this.pendingLeafReferences.delete(leafId);
+      return existingLeaf;
+    }
+
     applySnapshot(snapshot) {
       const nextLeafRegistry = new Map();
       const activeLeafId = normalizeString(snapshot?.activeLeafId).trim();
@@ -1062,6 +1145,43 @@ function createSupervisorWorkspace(pluginSdk) {
 
       this.applySnapshot(response.snapshot);
       return response.snapshot;
+    }
+
+    applyHostWorkspaceEvent(event) {
+      if (event === null || typeof event !== 'object') {
+        return;
+      }
+
+      if (event.kind === 'active-leaf-change') {
+        const activeLeafId = normalizeString(event.leafId).trim();
+        if (event.leafSnapshot !== null && typeof event.leafSnapshot === 'object') {
+          this.upsertLeafSnapshot(event.leafSnapshot, activeLeafId);
+        }
+
+        this.activeLeaf = activeLeafId.length > 0
+          ? this.leafRegistry.get(activeLeafId) ?? null
+          : null;
+        this.activeFilePath = normalizeString(event.activeFilePath).trim() || null;
+        this.activeEditor = null;
+        this.trigger('active-leaf-change', this.activeLeaf);
+        return;
+      }
+
+      if (event.kind === 'file-open') {
+        const activeLeafId = normalizeString(event.leafId).trim();
+        if (event.leafSnapshot !== null && typeof event.leafSnapshot === 'object') {
+          this.upsertLeafSnapshot(event.leafSnapshot, activeLeafId);
+        }
+
+        this.activeFilePath = normalizeString(event.filePath).trim() || null;
+        this.lastOpenFiles = Array.isArray(event.lastOpenFiles)
+          ? event.lastOpenFiles
+            .map((filePath) => normalizeString(filePath).trim())
+            .filter((filePath) => filePath.length > 0)
+          : [];
+        this.activeEditor = null;
+        this.trigger('file-open', this.getActiveFile());
+      }
     }
 
     onLayoutReady(callback) {
@@ -1528,6 +1648,10 @@ function createUiEntrySnapshot({
   };
 }
 
+function buildPluginUiEntryId(pluginId, entryId) {
+  return `${normalizeString(pluginId).trim()}:ui:${normalizeString(entryId).trim()}`;
+}
+
 function createSyntheticClickEvent() {
   return {
     type: 'click',
@@ -1836,6 +1960,7 @@ function createSupervisorCommandRuntime(profile, pluginSdk) {
   const basesViewRegistry = new Map();
   const commandRegistry = new Map();
   const protocolRegistry = new Map();
+  const uiActionRegistry = new Map();
   const viewCreatorRegistry = new Map();
 
   const isRuntimeOwnedBySupervisor = () => {
@@ -1999,6 +2124,25 @@ function createSupervisorCommandRuntime(profile, pluginSdk) {
     return {
       handled: true,
       fallbackToMain: false,
+    };
+  };
+
+  const invokeRegisteredUiAction = async (pluginId, actionId, payload, executionState) => {
+    const registryKey = `${normalizeString(pluginId).trim()}:${normalizeString(actionId).trim()}`;
+    const entry = uiActionRegistry.get(registryKey) ?? null;
+
+    if (entry === null) {
+      return {
+        handled: false,
+        result: null,
+      };
+    }
+
+    executionState.stage = 'ui-action-callback';
+    const result = await entry.handler(cloneJsonValue(payload));
+    return {
+      handled: true,
+      result: result ?? null,
     };
   };
 
@@ -2198,6 +2342,34 @@ function createSupervisorCommandRuntime(profile, pluginSdk) {
         return createNoopDisposable();
       },
     },
+    logic: {
+      registerUiAction(pluginId, actionId, handler) {
+        const normalizedPluginId = normalizeString(pluginId).trim();
+        const normalizedActionId = normalizeString(actionId).trim();
+
+        if (normalizedPluginId.length === 0 || normalizedActionId.length === 0 || typeof handler !== 'function') {
+          return createNoopDisposable();
+        }
+
+        const registryKey = `${normalizedPluginId}:${normalizedActionId}`;
+        uiActionRegistry.set(registryKey, {
+          pluginId: normalizedPluginId,
+          actionId: normalizedActionId,
+          handler,
+        });
+
+        return createDisposable(() => {
+          const current = uiActionRegistry.get(registryKey) ?? null;
+
+          if (current?.handler === handler) {
+            uiActionRegistry.delete(registryKey);
+          }
+        });
+      },
+      invokeUiAction(pluginId, actionId, payload, executionState) {
+        return invokeRegisteredUiAction(pluginId, actionId, payload, executionState);
+      },
+    },
     markdown: {
       registerPostProcessor() {
         noteSupervisorUnsupportedContribution(profile, SUPERVISOR_UNSUPPORTED_CONTRIBUTION_KIND.MARKDOWN_POST_PROCESSOR);
@@ -2314,9 +2486,11 @@ function createSupervisorCommandRuntime(profile, pluginSdk) {
     },
     ui: {
       addRibbonIcon(pluginId, spec) {
-        profile.nextUiEntryId += 1;
         const normalizedPluginId = normalizeString(pluginId);
-        const entryId = `${normalizedPluginId}:ui:${profile.nextUiEntryId}`;
+        const explicitEntryId = normalizeString(spec?.id).trim();
+        const entryId = explicitEntryId.length > 0
+          ? buildPluginUiEntryId(normalizedPluginId, explicitEntryId)
+          : `${normalizedPluginId}:ui:${++profile.nextUiEntryId}`;
         const snapshot = createUiEntrySnapshot({
           entryId,
           pluginId: normalizedPluginId,
@@ -2342,9 +2516,11 @@ function createSupervisorCommandRuntime(profile, pluginSdk) {
         element.title = snapshot.title;
 
         return Object.assign(element, createDisposable(() => {
-          syncUiEntrySnapshot(entryId, null);
-          syncUiEntryHandler(entryId, null);
-          removeSupervisorSupportedContribution(profile, SUPERVISOR_SUPPORTED_CONTRIBUTION_KIND.UI_ENTRY);
+          if (supervisorOwnedUiEntries.get(entryId) === snapshot) {
+            syncUiEntrySnapshot(entryId, null);
+            syncUiEntryHandler(entryId, null);
+            removeSupervisorSupportedContribution(profile, SUPERVISOR_SUPPORTED_CONTRIBUTION_KIND.UI_ENTRY);
+          }
         }));
       },
       createStatusBarItem(pluginId) {
@@ -2670,10 +2846,17 @@ function removeSupervisorOwnedUiEntrySnapshot(entryId) {
 }
 
 function removeSupervisorOwnedProtocolsForPlugin(pluginId) {
+  let changed = false;
+
   for (const protocolKey of [...supervisorOwnedProtocols.keys()]) {
     if (protocolKey.startsWith(`${pluginId}:`)) {
       supervisorOwnedProtocols.delete(protocolKey);
+      changed = true;
     }
+  }
+
+  if (changed) {
+    publishProtocols();
   }
 }
 
@@ -2834,8 +3017,17 @@ function commitSupervisorOwnedExtensions(record) {
 }
 
 function commitSupervisorOwnedProtocols(record) {
+  let changed = false;
+
   for (const [protocolKey, protocolSnapshot] of record.protocolSnapshots.entries()) {
-    supervisorOwnedProtocols.set(protocolKey, protocolSnapshot);
+    if (supervisorOwnedProtocols.get(protocolKey) !== protocolSnapshot) {
+      supervisorOwnedProtocols.set(protocolKey, protocolSnapshot);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    publishProtocols();
   }
 }
 
@@ -3401,6 +3593,74 @@ async function executePluginUiEntryInSupervisorRuntime(entryId) {
   }
 }
 
+async function executePluginUiActionInSupervisorRuntime(descriptor, pluginId, actionId, payload) {
+  const loadResult = await ensureSupervisorPluginRuntimeLoaded(descriptor);
+
+  if (loadResult.record === null) {
+    return {
+      handled: false,
+      result: null,
+    };
+  }
+
+  try {
+    await refreshLocalStorageCache();
+  } catch (error) {
+    emitNonFatalError(
+      error instanceof Error
+        ? error.message
+        : `Plugin "${descriptor.pluginId}" failed to refresh localStorage cache.`,
+    );
+  }
+
+  try {
+    await loadResult.record.runtime.app.workspace.refreshSnapshot();
+  } catch (error) {
+    emitNonFatalError(
+      error instanceof Error
+        ? error.message
+        : `Plugin "${descriptor.pluginId}" failed to refresh workspace snapshot.`,
+    );
+  }
+
+  const executionState = {
+    stage: 'ui-action-dispatch',
+  };
+
+  try {
+    return await loadResult.record.runtime.logic.invokeUiAction(
+      pluginId,
+      actionId,
+      payload,
+      executionState,
+    );
+  } catch (error) {
+    const normalizedError = error instanceof Error
+      ? error
+      : new Error(`Plugin "${descriptor.pluginId}" failed during supervisor UI action execution.`);
+
+    if (loadResult.record.fail !== null) {
+      try {
+        await loadResult.record.fail.call(loadResult.record.instance, normalizedError);
+      } catch {
+        // Ignore plugin failure handler errors so failed instances can still be torn down.
+      }
+    }
+
+    if (loadResult.record.owner === 'supervisor') {
+      setPluginRuntimeState(descriptor.pluginId, 'failed', normalizedError.message, 'supervisor');
+    }
+
+    emitNonFatalError(normalizedError.message);
+    await unloadLoadedPluginRuntime(loadResult.record, 'ui-action-failure');
+
+    return {
+      handled: false,
+      result: null,
+    };
+  }
+}
+
 function normalizeSupervisorViewState(state) {
   if (state === null || Array.isArray(state) || typeof state !== 'object') {
     return {};
@@ -3601,6 +3861,15 @@ function publishCommands() {
   });
 }
 
+function publishProtocols() {
+  sendMessage({
+    type: 'protocols-updated',
+    data: {
+      protocols: [...supervisorOwnedProtocols.values()],
+    },
+  });
+}
+
 function createHostRequestId(prefix) {
   nextHostRequestId += 1;
   return `plugin-supervisor-host:${prefix}:${nextHostRequestId}`;
@@ -3645,6 +3914,12 @@ function rejectHostResponse(requestId, message) {
 
   pendingHostRequests.delete(requestId);
   pendingRequest.reject(new Error(message));
+}
+
+function pushWorkspaceEventToLoadedRuntimes(event) {
+  for (const runtimeRecord of loadedPluginRuntimes.values()) {
+    runtimeRecord.runtime.app.workspace.applyHostWorkspaceEvent(event);
+  }
 }
 
 function installHostUiBridge() {
@@ -3747,6 +4022,7 @@ async function handleInitialize(message) {
   publishSettingTabs();
   publishViews();
   publishExtensions();
+  publishProtocols();
   publishUiEntries();
   publishRuntimeStates();
 }
@@ -4068,6 +4344,50 @@ async function handleExecuteUiEntry(message) {
   });
 }
 
+async function handleExecuteUiAction(message) {
+  const requestId = normalizeString(message?.data?.requestId);
+  const pluginId = normalizeString(message?.data?.pluginId).trim();
+  const actionId = normalizeString(message?.data?.actionId).trim();
+  const descriptor = pluginId.length === 0
+    ? null
+    : descriptorRegistry.get(pluginId) ?? null;
+
+  let result = {
+    handled: false,
+    result: null,
+  };
+
+  if (descriptor !== null && descriptor.entryPath !== null && actionId.length > 0) {
+    try {
+      result = await executePluginUiActionInSupervisorRuntime(
+        descriptor,
+        pluginId,
+        actionId,
+        message?.data?.payload ?? null,
+      );
+    } catch (error) {
+      emitNonFatalError(
+        error instanceof Error
+          ? error.message
+          : `Plugin UI action "${actionId}" failed during supervisor execution.`,
+      );
+    }
+  }
+
+  sendMessage({
+    type: 'ui-action-executed',
+    data: {
+      requestId,
+      handled: result.handled,
+      result: result.result,
+    },
+  });
+}
+
+function handlePushWorkspaceEvent(message) {
+  pushWorkspaceEventToLoadedRuntimes(message?.data?.event ?? null);
+}
+
 async function handleOpenViewInstance(message) {
   const requestId = normalizeString(message?.data?.requestId);
   const leafId = normalizeString(message?.data?.leafId);
@@ -4256,6 +4576,12 @@ async function handleMessage(message) {
       return;
     case 'execute-ui-entry':
       await handleExecuteUiEntry(message);
+      return;
+    case 'execute-ui-action':
+      await handleExecuteUiAction(message);
+      return;
+    case 'push-workspace-event':
+      handlePushWorkspaceEvent(message);
       return;
     case 'open-view-instance':
       await handleOpenViewInstance(message);

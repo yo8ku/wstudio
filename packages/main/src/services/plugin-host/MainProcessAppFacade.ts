@@ -49,6 +49,7 @@ import {
   type Stat,
   type ViewCreator,
   type ViewState,
+  toLocalMediaUrl,
 } from '@note-studio/plugin';
 import type {
   JsonValue as SharedJsonValue,
@@ -1516,7 +1517,7 @@ class MainProcessDataAdapter implements DataAdapter {
   }
 
   public getResourcePath(normalizedPath: string): string {
-    return `file:///${resolveWorkspacePath(this.baseDir, normalizedPath).replace(/\\/g, '/')}`;
+    return toLocalMediaUrl(resolveWorkspacePath(this.baseDir, normalizedPath));
   }
 
   public async mkdir(normalizedPath: string): Promise<void> {
@@ -2262,6 +2263,7 @@ export class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
   private rendererViewVisible = false;
   private rendererViewRuntimeActive = false;
   private rendererViewMutationUnsubscribe: (() => void) | null = null;
+  private rendererRuntimeSurfaceStateOverride: SharedJsonValue | null | undefined = undefined;
   private readonly pendingSupervisorViewInstanceIds = new Map<string, string>();
 
   public constructor(
@@ -2381,6 +2383,7 @@ export class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
       this.setEphemeralState(ephemeralState);
     }
 
+    this.rendererRuntimeSurfaceStateOverride = undefined;
     this.syncRendererPluginView(viewState.active === true);
   }
 
@@ -2449,6 +2452,7 @@ export class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
   }
 
   public refreshRendererRuntimeSurface(runtimeStateOverride: SharedJsonValue | null): void {
+    this.rendererRuntimeSurfaceStateOverride = runtimeStateOverride;
     const activeLeafId = this.app.workspace.activeLeaf?.id ?? null;
     this.syncRendererPluginView(activeLeafId === this.id, runtimeStateOverride);
   }
@@ -2525,13 +2529,16 @@ export class MainProcessWorkspaceLeaf extends WorkspaceLeaf {
 
     const baseRuntimeSurface = this.resolveViewRuntimeSurface(this.view.getViewType());
     const viewState = this.view.getState() as SharedJsonValue;
+    const effectiveRuntimeStateOverride = runtimeStateOverride === undefined
+      ? this.rendererRuntimeSurfaceStateOverride
+      : runtimeStateOverride;
     const runtimeSurface = baseRuntimeSurface === null
       ? null
       : {
           ...baseRuntimeSurface,
-          state: runtimeStateOverride === undefined
+          state: effectiveRuntimeStateOverride === undefined
             ? mergeRuntimeSurfaceState(baseRuntimeSurface.state, viewState)
-            : runtimeStateOverride,
+            : effectiveRuntimeStateOverride,
         };
     const loading = resolveViewLoadingState(viewState);
     const pageIconUrl = resolveViewPageIconUrl(viewState);

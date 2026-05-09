@@ -9,16 +9,22 @@ interface InstalledPluginSummary {
   readonly name: string;
   readonly version: string;
   readonly publisher: string | null;
+  readonly publisherUrl: string | null;
   readonly description: string | null;
   readonly fundingUrl: string | null;
   readonly iconPath: string | null;
   readonly releaseChannel: 'stable' | 'development';
   readonly enabled: boolean;
   readonly failureMessage: string | null;
+  readonly canUninstall: boolean;
 }
 
 function toExtensionStatus(plugin: InstalledPluginSummary): ExtensionPanelStatus {
-  return plugin.enabled ? 'enabled' : 'disabled';
+  if (plugin.enabled) {
+    return 'enabled';
+  }
+
+  return plugin.failureMessage === null ? 'disabled' : 'error';
 }
 
 function toInstalledAtLabel(releaseChannel: InstalledPluginSummary['releaseChannel']): string {
@@ -29,7 +35,7 @@ function toCapabilities(plugin: InstalledPluginSummary): readonly string[] {
   const result = [
     '第三方插件',
     toInstalledAtLabel(plugin.releaseChannel),
-    plugin.enabled ? '已启用' : '未启用',
+    plugin.enabled ? '已启用' : plugin.failureMessage === null ? '未启用' : '异常停用',
   ];
 
   if (plugin.failureMessage !== null) {
@@ -44,16 +50,23 @@ function toExtensionPanelItem(plugin: InstalledPluginSummary): ExtensionPanelIte
     id: plugin.id,
     displayName: plugin.name,
     downloadCount: `v${plugin.version}`,
+    downloadsLabel: '--',
     description: plugin.description ?? '暂无描述',
     version: plugin.version,
     publisher: plugin.publisher ?? 'Unknown Publisher',
+    publisherUrl: plugin.publisherUrl ?? plugin.fundingUrl ?? undefined,
     isOfficialPublisher: false,
+    rating: '--',
     installedAt: toInstalledAtLabel(plugin.releaseChannel),
     installPath: plugin.id,
     status: toExtensionStatus(plugin),
+    failureMessage: plugin.failureMessage ?? undefined,
     iconPath: plugin.iconPath ?? undefined,
     iconName: plugin.releaseChannel === 'development' ? 'beaker' : 'extensions',
     badgeImagePath: plugin.releaseChannel === 'development' ? betaBadgePath : undefined,
+    canToggleEnabled: true,
+    canUninstall: plugin.canUninstall,
+    hasSettings: true,
     capabilities: toCapabilities(plugin),
   };
 }

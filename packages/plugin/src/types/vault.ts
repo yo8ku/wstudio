@@ -4,6 +4,7 @@
 
 import { Events } from './events';
 import type { EventRef } from './disposable';
+import { toLocalMediaUrl } from './local-media';
 
 export interface DataWriteOptions {
   readonly ctime?: number;
@@ -43,6 +44,10 @@ export interface DataAdapter {
     mutator: (data: string) => string,
     options?: DataWriteOptions,
   ): Promise<string>;
+  /**
+   * Returns a plugin-safe local media URL, typically `local-media://...`,
+   * for the target workspace-relative resource path.
+   */
   getResourcePath(normalizedPath: string): string;
   mkdir(normalizedPath: string): Promise<void>;
   trashSystem(normalizedPath: string): Promise<boolean>;
@@ -251,7 +256,7 @@ abstract class MemoryDataAdapter implements DataAdapter {
 
   public getResourcePath(normalizedPath: string): string {
     const target = normalizeAdapterPath(normalizedPath);
-    return `file:///${this.getFullPath(target).replace(/\\/g, '/')}`;
+    return toLocalMediaUrl(this.getFullPath(target));
   }
 
   public async mkdir(normalizedPath: string): Promise<void> {
@@ -524,6 +529,10 @@ export abstract class Vault extends Events {
 
   public abstract readBinary(file: TFile): Promise<ArrayBuffer>;
 
+  /**
+   * Returns a plugin-safe local media URL, typically `local-media://...`,
+   * for the provided workspace file.
+   */
   public abstract getResourcePath(file: TFile): string;
 
   public abstract delete(file: TAbstractFile, force?: boolean): Promise<void>;

@@ -19,6 +19,8 @@ import type {
 export const PLUGIN_ACTIVITY_BAR_LEFT_CHANNEL = 'plugin-ui:get-activitybar-left-entries';
 export const PLUGIN_ACTIVITY_BAR_LEFT_CHANGED_CHANNEL = 'plugin-ui:activitybar-left-entries-changed';
 export const PLUGIN_INSTALLED_PLUGINS_CHANNEL = 'plugin-ui:get-installed-plugins';
+export const PLUGIN_SET_ENABLED_CHANNEL = 'plugin-ui:set-plugin-enabled';
+export const PLUGIN_UNINSTALL_CHANNEL = 'plugin-ui:uninstall-plugin';
 export const PLUGIN_SETTING_TABS_CHANNEL = 'plugin-ui:get-setting-tabs';
 export const PLUGIN_UI_ENTRIES_CHANNEL = 'plugin-ui:get-entries';
 export const PLUGIN_UI_EXECUTE_ENTRY_CHANNEL = 'plugin-ui:execute-entry';
@@ -31,6 +33,16 @@ interface PluginActivityBarEntry {
   readonly iconPath: string | null;
   readonly iconName: string | null;
 }
+
+interface SetPluginEnabledRequest {
+  readonly pluginId: string;
+  readonly enabled: boolean;
+}
+
+interface UninstallPluginRequest {
+  readonly pluginId: string;
+}
+
 let pluginUiSubscriptionRegistered = false;
 
 function emitPluginUiEntriesChanged(): void {
@@ -85,6 +97,18 @@ export function registerPluginUIHandlers(): void {
   }
 
   try {
+    ipcMain.removeHandler(PLUGIN_SET_ENABLED_CHANNEL);
+  } catch {
+    // Ignore duplicate cleanup during development re-registration.
+  }
+
+  try {
+    ipcMain.removeHandler(PLUGIN_UNINSTALL_CHANNEL);
+  } catch {
+    // Ignore duplicate cleanup during development re-registration.
+  }
+
+  try {
     ipcMain.removeHandler(PLUGIN_SETTING_TABS_CHANNEL);
   } catch {
     // Ignore duplicate cleanup during development re-registration.
@@ -99,6 +123,24 @@ export function registerPluginUIHandlers(): void {
   ipcMain.handle(
     PLUGIN_INSTALLED_PLUGINS_CHANNEL,
     async (): Promise<readonly InstalledPluginSummary[]> => pluginHostManager.getInstalledPlugins(),
+  );
+  ipcMain.handle(
+    PLUGIN_SET_ENABLED_CHANNEL,
+    async (
+      _event,
+      request: SetPluginEnabledRequest,
+    ): Promise<void> => {
+      await pluginHostManager.setPluginEnabled(request.pluginId, request.enabled);
+    },
+  );
+  ipcMain.handle(
+    PLUGIN_UNINSTALL_CHANNEL,
+    async (
+      _event,
+      request: UninstallPluginRequest,
+    ): Promise<void> => {
+      await pluginHostManager.uninstallPlugin(request.pluginId);
+    },
   );
   ipcMain.handle(
     PLUGIN_SETTING_TABS_CHANNEL,

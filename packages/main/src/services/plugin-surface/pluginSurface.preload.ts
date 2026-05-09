@@ -112,6 +112,7 @@ type PluginSurfaceHostRequestMethod =
   | 'editor-get-state'
   | 'editor-apply-text-edits'
   | 'editor-perform-action'
+  | 'invoke-logic-action'
   | 'data-load'
   | 'data-save'
   | 'data-delete'
@@ -185,6 +186,7 @@ const PLUGIN_RUNTIME_READ_ENTRY_SOURCE_CHANNEL = 'plugin-runtime:read-entry-sour
 const PLUGIN_RUNTIME_EDITOR_GET_STATE_CHANNEL = 'plugin-runtime:editor-get-state';
 const PLUGIN_RUNTIME_EDITOR_APPLY_TEXT_EDITS_CHANNEL = 'plugin-runtime:editor-apply-text-edits';
 const PLUGIN_RUNTIME_EDITOR_PERFORM_ACTION_CHANNEL = 'plugin-runtime:editor-perform-action';
+const PLUGIN_RUNTIME_INVOKE_LOGIC_ACTION_CHANNEL = 'plugin-runtime:invoke-logic-action';
 const PLUGIN_RUNTIME_DATA_LOAD_CHANNEL = 'plugin-runtime:data-load';
 const PLUGIN_RUNTIME_DATA_SAVE_CHANNEL = 'plugin-runtime:data-save';
 const PLUGIN_RUNTIME_DATA_DELETE_CHANNEL = 'plugin-runtime:data-delete';
@@ -402,6 +404,27 @@ const pluginSurfaceBridge: PluginSurfacePreloadBridge = {
         },
       );
       return null;
+    }
+
+    if (method === 'invoke-logic-action') {
+      if (
+        pluginSurfaceContext === null
+        || payload === null
+        || typeof payload !== 'object'
+        || !('actionId' in payload)
+        || typeof payload.actionId !== 'string'
+      ) {
+        throw new Error('Plugin surface logic action payload is required.');
+      }
+
+      return await ipcRenderer.invoke(
+        PLUGIN_RUNTIME_INVOKE_LOGIC_ACTION_CHANNEL,
+        {
+          pluginId: pluginSurfaceContext.pluginId,
+          actionId: payload.actionId,
+          payload: 'payload' in payload ? payload.payload ?? null : null,
+        },
+      ) as JsonValue | null;
     }
 
     if (method === 'data-load') {

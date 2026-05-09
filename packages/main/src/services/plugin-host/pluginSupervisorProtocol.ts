@@ -67,6 +67,11 @@ export interface PluginSupervisorExtensionSnapshot {
   readonly viewType: string;
 }
 
+export interface PluginSupervisorProtocolSnapshot {
+  readonly pluginId: string;
+  readonly action: string;
+}
+
 export interface PluginSupervisorWorkspaceLeafSnapshot {
   readonly id: string;
   readonly viewType: string;
@@ -83,6 +88,21 @@ export interface PluginSupervisorWorkspaceSnapshot {
   readonly lastOpenFiles: readonly string[];
   readonly leaves: readonly PluginSupervisorWorkspaceLeafSnapshot[];
 }
+
+export type PluginSupervisorWorkspaceEventPayload =
+  | {
+      readonly kind: 'active-leaf-change';
+      readonly leafId: string | null;
+      readonly leafSnapshot: PluginSupervisorWorkspaceLeafSnapshot | null;
+      readonly activeFilePath: string | null;
+    }
+  | {
+      readonly kind: 'file-open';
+      readonly leafId: string | null;
+      readonly leafSnapshot: PluginSupervisorWorkspaceLeafSnapshot | null;
+      readonly filePath: string | null;
+      readonly lastOpenFiles: readonly string[];
+    };
 
 export type PluginSupervisorPluginRuntimeStatus = 'idle' | 'enabled' | 'failed';
 export type PluginSupervisorPluginRuntimeOwner = 'main' | 'supervisor';
@@ -166,6 +186,16 @@ export interface PluginSupervisorExecuteUiEntryMessage {
   };
 }
 
+export interface PluginSupervisorExecuteUiActionMessage {
+  readonly type: 'execute-ui-action';
+  readonly data: {
+    readonly requestId: string;
+    readonly pluginId: string;
+    readonly actionId: string;
+    readonly payload: SharedJsonValue | null;
+  };
+}
+
 export interface PluginSupervisorOpenViewInstanceMessage {
   readonly type: 'open-view-instance';
   readonly data: {
@@ -207,6 +237,13 @@ export interface PluginSupervisorSyncCommandsMessage {
   readonly data: {
     readonly requestId: string;
     readonly commands: readonly PluginSupervisorCommandSnapshot[];
+  };
+}
+
+export interface PluginSupervisorPushWorkspaceEventMessage {
+  readonly type: 'push-workspace-event';
+  readonly data: {
+    readonly event: PluginSupervisorWorkspaceEventPayload;
   };
 }
 
@@ -272,6 +309,11 @@ export type PluginSupervisorHostRequestPayload =
       readonly pendingViewInstanceId: string | null;
     }
   | {
+      readonly kind: 'workspace:leaf-refresh-runtime-surface';
+      readonly leafId: string;
+      readonly state: SharedJsonValue | null;
+    }
+  | {
       readonly kind: 'workspace:reveal-leaf';
       readonly leafId: string;
     }
@@ -332,6 +374,9 @@ export type PluginSupervisorHostResponsePayload =
       readonly snapshot: PluginSupervisorWorkspaceSnapshot;
     }
   | {
+      readonly kind: 'workspace:leaf-refresh-runtime-surface';
+    }
+  | {
       readonly kind: 'workspace:reveal-leaf';
       readonly snapshot: PluginSupervisorWorkspaceSnapshot;
     }
@@ -369,12 +414,14 @@ export type PluginSupervisorParentControlMessage =
   | PluginSupervisorPingMessage
   | PluginSupervisorSyncDescriptorsMessage
   | PluginSupervisorSyncCommandsMessage
+  | PluginSupervisorPushWorkspaceEventMessage
   | PluginSupervisorShutdownMessage
   | PluginSupervisorStartPluginMessage
   | PluginSupervisorExecuteCommandMessage
   | PluginSupervisorExecuteProtocolMessage
   | PluginSupervisorExecuteBasesViewMessage
   | PluginSupervisorExecuteUiEntryMessage
+  | PluginSupervisorExecuteUiActionMessage
   | PluginSupervisorOpenViewInstanceMessage
   | PluginSupervisorUpdateViewInstanceMessage
   | PluginSupervisorResizeViewInstanceMessage
@@ -471,6 +518,13 @@ export interface PluginSupervisorExtensionsUpdatedMessage {
   };
 }
 
+export interface PluginSupervisorProtocolsUpdatedMessage {
+  readonly type: 'protocols-updated';
+  readonly data: {
+    readonly protocols: readonly PluginSupervisorProtocolSnapshot[];
+  };
+}
+
 export interface PluginSupervisorUiEntriesUpdatedMessage {
   readonly type: 'ui-entries-updated';
   readonly data: {
@@ -512,6 +566,15 @@ export interface PluginSupervisorUiEntryExecutedMessage {
   readonly data: {
     readonly requestId: string;
     readonly handled: boolean;
+  };
+}
+
+export interface PluginSupervisorUiActionExecutedMessage {
+  readonly type: 'ui-action-executed';
+  readonly data: {
+    readonly requestId: string;
+    readonly handled: boolean;
+    readonly result: SharedJsonValue | null;
   };
 }
 
@@ -580,12 +643,14 @@ export type PluginSupervisorChildMessage =
   | PluginSupervisorViewsUpdatedMessage
   | PluginSupervisorResourceExplorerItemsUpdatedMessage
   | PluginSupervisorExtensionsUpdatedMessage
+  | PluginSupervisorProtocolsUpdatedMessage
   | PluginSupervisorUiEntriesUpdatedMessage
   | PluginSupervisorRuntimeStatesUpdatedMessage
   | PluginSupervisorCommandExecutedMessage
   | PluginSupervisorProtocolExecutedMessage
   | PluginSupervisorBasesViewRenderedMessage
   | PluginSupervisorUiEntryExecutedMessage
+  | PluginSupervisorUiActionExecutedMessage
   | PluginSupervisorViewInstanceOpenedMessage
   | PluginSupervisorViewInstanceUpdatedMessage
   | PluginSupervisorViewInstanceResizedMessage

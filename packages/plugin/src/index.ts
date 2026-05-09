@@ -26,6 +26,7 @@ export * from './types/file-manager';
 export * from './types/json';
 export * from './types/keymap';
 export * from './types/lifecycle';
+export * from './types/local-media';
 export * from './types/manifest';
 export * from './types/markdown';
 export * from './types/metadata';

@@ -18,6 +18,7 @@ import {
   type JsonValue as PluginJsonValue,
   type MarkdownCodeBlockProcessor,
   type MarkdownPostProcessor,
+  type PluginUiActionHandler,
   type PluginUiEntryScope,
   type PluginUiEntryLocation,
   type ResourceExplorerItemRegistration,
@@ -54,6 +55,7 @@ import {
   readPersistentResourceExplorerItems,
   rememberPersistentResourceExplorerItem,
 } from './PersistentResourceExplorerItems';
+import { buildPluginUiEntryId } from './pluginStaticUiEntries';
 
 export interface PluginRuntimeHostBridge {
   readonly bases: MainProcessBasesRegistry;
@@ -62,6 +64,7 @@ export interface PluginRuntimeHostBridge {
   readonly editors: MainProcessEditorRegistry;
   readonly extensions: MainProcessExtensionRegistry;
   readonly hover: MainProcessHoverRegistry;
+  readonly logic: MainProcessPluginUiLogicRegistry;
   readonly markdown: MainProcessMarkdownRegistry;
   readonly protocols: MainProcessProtocolRegistry;
   readonly resourceExplorer: MainProcessResourceExplorerItemRegistry;
@@ -442,6 +445,72 @@ export class MainProcessDataStore implements PluginDataStore {
   }
 }
 
+export class MainProcessPluginUiLogicRegistry {
+  private readonly actions = new Map<string, {
+    readonly pluginId: string;
+    readonly handler: PluginUiActionHandler;
+  }>();
+
+  public registerUiAction(
+    pluginId: string,
+    actionId: string,
+    handler: PluginUiActionHandler,
+  ): Disposable {
+    const normalizedPluginId = pluginId.trim();
+    const normalizedActionId = actionId.trim();
+    const registryKey = `${normalizedPluginId}:${normalizedActionId}`;
+
+    this.actions.set(registryKey, {
+      pluginId: normalizedPluginId,
+      handler,
+    });
+
+    return createDisposable(() => {
+      const current = this.actions.get(registryKey);
+
+      if (current?.handler === handler) {
+        this.actions.delete(registryKey);
+      }
+    });
+  }
+
+  public async invokeUiAction(
+    pluginId: string,
+    actionId: string,
+    payload: PluginJsonValue | null,
+  ): Promise<{
+    readonly handled: boolean;
+    readonly result: PluginJsonValue | null;
+  }> {
+    const registryKey = `${pluginId.trim()}:${actionId.trim()}`;
+    const entry = this.actions.get(registryKey) ?? null;
+
+    if (entry === null) {
+      return {
+        handled: false,
+        result: null,
+      };
+    }
+
+    const result = await runWithPluginExecutionContext(entry.pluginId, () => {
+      return entry.handler(payload);
+    });
+
+    return {
+      handled: true,
+      result: result ?? null,
+    };
+  }
+
+  public clearPlugin(pluginId: string): void {
+    for (const [registryKey, entry] of [...this.actions.entries()]) {
+      if (entry.pluginId === pluginId) {
+        this.actions.delete(registryKey);
+      }
+    }
+  }
+}
+
 export class MainProcessSettingsRegistry implements SettingsRegistry {
   private readonly tabs = new Map<string, RegisteredSettingTabEntry[]>();
   private nextTabId = 0;
@@ -538,6 +607,7 @@ export class MainProcessUIRegistry implements UIRegistry {
   public addRibbonIcon(
     pluginId: string,
     spec: {
+      readonly id?: string;
       readonly icon: string;
       readonly title: string;
       readonly onClick: (evt: MouseEvent) => Promise<void> | void;
@@ -545,8 +615,9 @@ export class MainProcessUIRegistry implements UIRegistry {
       readonly scope?: PluginUiEntryScope;
     },
   ): HTMLElement & Disposable {
-    this.nextEntryId += 1;
-    const id = `${pluginId}:ui:${this.nextEntryId}`;
+    const id = typeof spec.id === 'string' && spec.id.trim().length > 0
+      ? buildPluginUiEntryId(pluginId, spec.id)
+      : `${pluginId}:ui:${++this.nextEntryId}`;
     const element = createManagedElement('ns-plugin-ui-entry');
     element.title = spec.title;
     this.entries.set(id, {
@@ -566,8 +637,12 @@ export class MainProcessUIRegistry implements UIRegistry {
     return Object.assign(element, {
       dispose: (): void => {
         element.remove();
-        this.entries.delete(id);
-        this.emitChanged();
+        const currentEntry = this.entries.get(id);
+
+        if (currentEntry?.element === element) {
+          this.entries.delete(id);
+          this.emitChanged();
+        }
       },
     });
   }
@@ -1122,6 +1197,7 @@ export class MainProcessPluginRuntime {
   public readonly hover: MainProcessHoverRegistry;
   public readonly extensions: MainProcessExtensionRegistry;
   public readonly bases: MainProcessBasesRegistry;
+  public readonly logic: MainProcessPluginUiLogicRegistry;
   public readonly markdown: MainProcessMarkdownRegistry;
   public readonly editors: MainProcessEditorRegistry;
   public readonly protocols: MainProcessProtocolRegistry;
@@ -1137,6 +1213,7 @@ export class MainProcessPluginRuntime {
     this.ui = new MainProcessUIRegistry();
     this.hover = new MainProcessHoverRegistry();
     this.bases = new MainProcessBasesRegistry(() => this.app);
+    this.logic = new MainProcessPluginUiLogicRegistry();
     this.markdown = new MainProcessMarkdownRegistry();
     this.editors = new MainProcessEditorRegistry();
     this.protocols = new MainProcessProtocolRegistry();
@@ -1170,6 +1247,7 @@ export class MainProcessPluginRuntime {
       editors: this.editors,
       extensions: this.extensions,
       hover: this.hover,
+      logic: this.logic,
       markdown: this.markdown,
       protocols: this.protocols,
       resourceExplorer: this.resourceExplorer,
@@ -1212,6 +1290,7 @@ export class MainProcessPluginRuntime {
     this.hover.clearPlugin(pluginId);
     this.extensions.clearPlugin(pluginId);
     this.bases.clearPlugin(pluginId);
+    this.logic.clearPlugin(pluginId);
     this.markdown.clearPlugin(pluginId);
     this.editors.clearPlugin(pluginId);
     this.protocols.clearPlugin(pluginId);
