@@ -83,6 +83,7 @@ contextBridge.exposeInMainWorld('electron', {
     getOpenCanvasLayout: () => ipcRenderer.invoke('workspace:get-open-canvas-layout'),
     getLastOpened: () => ipcRenderer.invoke('workspace:get-last-opened'),
     addRecentFile: (filePath) => ipcRenderer.invoke('workspace:add-recent-file', filePath),
+    removeRecentFile: (filePath) => ipcRenderer.invoke('workspace:remove-recent-file', filePath),
     clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files'),
     setOpenCanvasFiles: (filePaths) => ipcRenderer.invoke('workspace:set-open-canvas-files', filePaths),
     setOpenCanvasLayout: (layoutItems) => ipcRenderer.invoke('workspace:set-open-canvas-layout', layoutItems),

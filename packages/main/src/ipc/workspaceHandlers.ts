@@ -39,6 +39,7 @@ const WORKSPACE_CHANNELS = [
   'workspace:get-open-canvas-layout',
   'workspace:get-last-opened',
   'workspace:add-recent-file',
+  'workspace:remove-recent-file',
   'workspace:clear-recent-files',
   'workspace:set-open-canvas-files',
   'workspace:set-open-canvas-layout',
@@ -180,6 +181,19 @@ export const registerWorkspaceHandlers = (workspaceManager: WorkspaceManager): v
       return { success: true };
     } catch (error) {
       console.error('[Workspace IPC] failed to add recent file:', error);
+      return { success: false, error: toErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('workspace:remove-recent-file', async (
+    _event,
+    filePath: string,
+  ): Promise<WorkspaceResponse<void>> => {
+    try {
+      workspaceManager.removeRecentFile(filePath);
+      return { success: true };
+    } catch (error) {
+      console.error('[Workspace IPC] failed to remove recent file:', error);
       return { success: false, error: toErrorMessage(error) };
     }
   });

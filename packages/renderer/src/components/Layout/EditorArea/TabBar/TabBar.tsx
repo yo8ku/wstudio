@@ -15,6 +15,7 @@ import { notification } from '../../../Notification';
 import { GroupedContextMenu } from '../GroupedContextMenu/GroupedContextMenu';
 import type { MenuGroup } from '../GroupedContextMenu/GroupedContextMenu';
 import { CustomScrollbar, type CustomScrollbarRef } from '../../../common/CustomScrollbar';
+import { PressableControl } from '../../../common/PressableControl/PressableControl';
 import { ContextMenu, type ContextMenuItem } from '../../../Explorer/Common/ContextMenu';
 import { useExplorerStore } from '../../../../stores/explorerStore';
 import { useNoteEditorSettingsStore } from '../../../../stores/noteEditorSettingsStore';
@@ -30,6 +31,7 @@ import { FileParser } from '@note-studio/global-rag';
 import './TabBar.scss';
 
 type SplitMoveDirection = 'left' | 'right' | 'up' | 'down';
+const welcomeTabLogoUrl = new URL('../../../../../../../resources/log.ico', import.meta.url).href;
 
 export interface TabBarProps {
   tabs: EditorTab[];
@@ -48,6 +50,7 @@ export interface TabBarProps {
   onOpenTabInExplorer?: (tabId: string) => void;
   onRevealTabInExplorerView?: (tabId: string) => void;
   onOpenInNewWindow?: (tabId: string) => void;
+  onCreateTab?: () => void;
   showSplitEditorAction?: boolean;
 }
 
@@ -134,6 +137,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onOpenTabInExplorer,
   onRevealTabInExplorerView,
   onOpenInNewWindow,
+  onCreateTab,
   showSplitEditorAction = true
 }) => {
   const { t } = useTranslation();
@@ -1012,6 +1016,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         {tabs.map((tab) => {
           const isActive = activeTabId === tab.id;
           const isHovered = hoveredTabId === tab.id;
+          const isWelcomeTab = tab.type === 'welcome';
           const isPluginViewLoading = tab.type === 'plugin-view' && (
             tab.pluginViewData?.loading === true
             || visiblePluginViewLoadingTabIds[tab.id] === true
@@ -1036,15 +1041,15 @@ export const TabBar: React.FC<TabBarProps> = ({
             <div
               key={tab.id}
               data-tab-id={tab.id}
-              className={`tab-item ${isActive ? 'active' : ''} ${isHovered ? 'hovered' : ''} ${tab.isDirty ? 'dirty' : ''} ${tab.isPreview ? 'preview' : ''} ${isPluginViewLoading ? 'loading' : ''}`}
+              className={`tab-item ${isWelcomeTab ? 'tab-item--welcome' : ''} ${isActive ? 'active' : ''} ${isHovered ? 'hovered' : ''} ${tab.isDirty ? 'dirty' : ''} ${tab.isPreview ? 'preview' : ''} ${isPluginViewLoading ? 'loading' : ''}`}
               onClick={() => handleTabClick(tab.id)}
-              draggable={!!dragGroupId}
+              draggable={!!dragGroupId && !isWelcomeTab}
               onDragStart={(event) => handleTabDragStart(event, tab.id)}
               onDragEnd={handleTabDragEnd}
               onMouseEnter={() => setHoveredTabId(tab.id)}
               onMouseLeave={() => setHoveredTabId(null)}
               onContextMenu={(event) => handleTabContextMenu(event, tab.id)}
-              title={tab.path}
+              title={isWelcomeTab ? tab.title : tab.path}
             >
               {/* 娲诲姩鏍囩椤堕儴鎸囩ず渚?/}
               {isActive && <div className="tab-item-border-top" />}
@@ -1059,6 +1064,14 @@ export const TabBar: React.FC<TabBarProps> = ({
                   isDirectory={false}
                   size={14}
                   className="tab-item-icon"
+                />
+              )}
+              {isWelcomeTab && (
+                <img
+                  src={welcomeTabLogoUrl}
+                  alt=""
+                  className="tab-item-logo-icon"
+                  draggable={false}
                 />
               )}
               {tab.type === 'plugin-view' && (
@@ -1107,6 +1120,26 @@ export const TabBar: React.FC<TabBarProps> = ({
             </div>
           );
         })}
+        {onCreateTab && (
+          <PressableControl
+            className="tab-item tab-item--new"
+            onPress={() => onCreateTab()}
+            title={translateText('tabBar.actions.newTab', 'New Tab')}
+            aria-label={translateText('tabBar.actions.newTab', 'New Tab')}
+          >
+            <svg
+              className="tab-item-new-icon"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                fill="currentColor"
+                d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2z"
+              />
+            </svg>
+          </PressableControl>
+        )}
       </CustomScrollbar>
 
       {/* 鎿嶄綔鎸夐挳鍖哄煙 */}

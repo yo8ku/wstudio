@@ -461,6 +461,7 @@ export interface ElectronIPC {
     getOpenCanvasLayout: () => Promise<APIResponse<WorkspaceOpenCanvasLayoutItem[]>>;
     getLastOpened: () => Promise<WorkspaceLastOpenedResult>;
     addRecentFile: (filePath: string) => Promise<APIResponse>;
+    removeRecentFile: (filePath: string) => Promise<APIResponse>;
     clearRecentFiles: () => Promise<APIResponse>;
     setOpenCanvasFiles: (filePaths: string[]) => Promise<APIResponse>;
     setOpenCanvasLayout: (layoutItems: WorkspaceOpenCanvasLayoutItem[]) => Promise<APIResponse>;
@@ -873,4 +874,3 @@ export interface NoteSystemAPI {
     get: (id: string) => Promise<TemplateItem | null>;
   };
 }
-

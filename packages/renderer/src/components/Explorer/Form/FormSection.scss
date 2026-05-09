@@ -21,25 +21,27 @@
   &--collapsed {
     flex: 0 0 auto;
   }
-}
 
-.form-resize-handle {
-  // 布局样式统一定义在 styles/component/ResizeHandle.scss
-}
-
-.form-resize-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9999;
-  cursor: ns-resize;
+  .explorer-section-accordion,
+  .explorer-section-item,
+  .explorer-section-content {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
 }
 
 .form-content {
+  flex: 0 0 auto;
+  display: block;
+  min-height: auto;
+  overflow: visible;
+
   .custom-scrollbar-content {
-    padding: 4px 0 16px 0;
+    display: block;
+    flex: none;
+    min-height: auto;
+    padding: 4px 0 0 0;
   }
 }
 

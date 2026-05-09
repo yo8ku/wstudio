@@ -172,7 +172,15 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   };
 
   const handleNewFile = (): void => {
-    console.log('新建文件');
+    window.dispatchEvent(new CustomEvent('open-file', {
+      detail: {
+        path: '',
+        content: '',
+        name: 'Untitled',
+        language: 'markdown',
+        isPreview: false,
+      },
+    }));
   };
 
   const handleOpenFile = (): void => {

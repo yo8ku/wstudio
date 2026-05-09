@@ -1,6 +1,6 @@
 ﻿/**
  * 琛ㄥ崟Section缁勪欢
- * 鍦ㄨ祫婧愮鐞嗗櫒涓樉绀鸿〃鍗曞拰鍒嗙粍鍒楄〃锛屾敮鎸佹姌鍙犲睍寮€鍜屾嫋鍔ㄨ皟鏁撮珮搴?
+ * 鍦ㄨ祫婧愮鐞嗗櫒涓樉绀鸿〃鍗曞拰鍒嗙粍鍒楄〃锛屾敮鎸佹姌鍙犲睍寮€
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -12,11 +12,8 @@ import { CustomScrollbar } from '../../common/CustomScrollbar';
 import { FormItem, FormGroupItem } from './types';
 import './FormSection.scss';
 
-// 榛樿楂樺害閰嶇疆
-const DEFAULT_HEIGHT = 200;
-const MIN_HEIGHT = 100;
-const MAX_HEIGHT = 500;
-const COLLAPSE_THRESHOLD = 50; // 浣庝簬姝ら珮搴︽椂鑷姩鎶樺彔
+// 榛樿鏈€澶у彲瑙嗛珮搴︼紝鍐呭瓒呭嚭鏃舵粴鍔?
+const DEFAULT_MAX_HEIGHT = 200;
 
 export interface FormSectionProps {
   /** 琛ㄥ崟鍒楄〃 */
@@ -102,12 +99,6 @@ export const FormSection: React.FC<FormSectionProps> = ({
   const [editingType, setEditingType] = useState<'form' | 'group' | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
-
-  // 鎷栧姩璋冩暣楂樺害鐘舵€?
-  const [contentHeight, setContentHeight] = useState(DEFAULT_HEIGHT);
-  const [isResizing, setIsResizing] = useState(false);
-  const startYRef = useRef(0);
-  const startHeightRef = useRef(0);
 
   const buildDefaultGroupName = useCallback((count: number): string => (
     translateText('formSection.defaults.groupName', '分组{{count}}').replace('{{count}}', String(count))
@@ -198,56 +189,6 @@ export const FormSection: React.FC<FormSectionProps> = ({
       editInputRef.current.select();
     }
   }, [editingId]);
-
-  // 鎷栧姩璋冩暣楂樺害鐨勯紶鏍囦簨浠跺鐞?
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsResizing(true);
-    startYRef.current = e.clientY;
-    startHeightRef.current = contentHeight;
-  }, [contentHeight]);
-
-  // 鎷栧姩杩囩▼涓殑榧犳爣绉诲姩鍜岄噴鏀句簨浠?
-  useEffect(() => {
-    if (!isResizing) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      // 鍚戜笂鎷栧姩鏄礋鏁帮紝鍚戜笅鎷栧姩鏄鏁?
-      // 鍥犱负鎵嬫焺鍦ㄩ《閮紝鍚戜笂鎷栧簲璇ュ鍔犻珮搴?
-      const deltaY = startYRef.current - e.clientY;
-      let newHeight = startHeightRef.current + deltaY;
-      
-      // 濡傛灉楂樺害浣庝簬鎶樺彔闃堝€硷紝鑷姩鎶樺彔
-      if (newHeight < COLLAPSE_THRESHOLD) {
-        setIsResizing(false);
-        if (!isControlledExpanded) {
-          setInternalExpanded(false);
-        }
-        onExpandedChange?.(false);
-        return;
-      }
-      
-      newHeight = Math.min(Math.max(newHeight, MIN_HEIGHT), MAX_HEIGHT);
-      setContentHeight(newHeight);
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'ns-resize';
-    document.body.style.userSelect = 'none';
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizing, isControlledExpanded, onExpandedChange]);
 
   // 鏋勫缓鍒嗙粍鍙抽敭鑿滃崟
   const buildGroupContextMenu = useCallback((group: FormGroupItem): ContextMenuItem[] => {
@@ -557,17 +498,6 @@ export const FormSection: React.FC<FormSectionProps> = ({
     <div 
       className={`form-section ${isExpanded ? 'form-section--expanded' : 'form-section--collapsed'}`}
     >
-      {/* 鎷栧姩鏃剁殑鍏ㄥ眬閬僵灞傦紝闃叉榧犳爣鏍峰紡鍒囨崲 */}
-      {isResizing && (
-        <div className="form-resize-overlay" />
-      )}
-      {/* 鎷栧姩鎵嬫焺 - 鍙湪灞曞紑鏃舵樉绀?*/}
-      {isExpanded && (
-        <div 
-          className={`form-resize-handle ${isResizing ? 'resizing' : ''}`}
-          onMouseDown={handleResizeMouseDown}
-        />
-      )}
       <ExplorerSection
         title={translateText('formSection.title', '数据')}
         expanded={isExpanded}
@@ -578,7 +508,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
         <CustomScrollbar
           className="form-content"
           scrollbarWidth={10}
-          style={{ height: `${contentHeight}px` }}
+          style={{ maxHeight: `${DEFAULT_MAX_HEIGHT}px` }}
           onContextMenu={handleBlankAreaContextMenu}
         >
           {!hasContent ? (

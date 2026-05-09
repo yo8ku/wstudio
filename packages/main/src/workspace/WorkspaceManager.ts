@@ -19,6 +19,7 @@ interface WorkspaceConfig {
 }
 
 const WORKSPACE_CANVAS_PANE_IDS = ['left-top', 'left-bottom', 'right-top', 'right-bottom'] as const;
+const MAX_RECENT_FILES = 5;
 
 export type WorkspaceCanvasPaneId = typeof WORKSPACE_CANVAS_PANE_IDS[number];
 
@@ -354,7 +355,7 @@ Note Studio 是一个现代化的笔记应用，支持以下功能：
 
   /**
    * 添加最近打开的文件
-   * 只保留最新的3条记录
+   * 只保留最新的5条记录
    */
   addRecentFile(filePath: string): void {
     const recentFiles = this.getRecentFiles();
@@ -362,10 +363,24 @@ Note Studio 是一个现代化的笔记应用，支持以下功能：
     // 移除重复项
     const filtered = recentFiles.filter(f => f !== filePath);
 
-    // 添加到开头，最多保留 3 个
-    const updated = [filePath, ...filtered].slice(0, 3);
+    // 添加到开头，最多保留 5 个
+    const updated = [filePath, ...filtered].slice(0, MAX_RECENT_FILES);
 
     this.store.set('recentFiles', updated);
+  }
+
+  removeRecentFile(filePath: string): void {
+    const comparableTargetPath = this.normalizeStoredPath(filePath);
+    const updatedRecentFiles = this.getRecentFiles().filter(
+      recentFilePath => this.normalizeStoredPath(recentFilePath) !== comparableTargetPath,
+    );
+
+    this.store.set('recentFiles', updatedRecentFiles);
+
+    const lastOpened = this.getLastOpenedFile();
+    if (typeof lastOpened === 'string' && this.normalizeStoredPath(lastOpened) === comparableTargetPath) {
+      this.store.set('lastOpened', updatedRecentFiles[0] ?? '');
+    }
   }
 
   /**

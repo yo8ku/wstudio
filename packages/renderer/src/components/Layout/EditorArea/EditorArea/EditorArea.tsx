@@ -33,6 +33,7 @@ import {
 import * as jsonc from 'jsonc-parser';
 import { TabBar } from '../TabBar';
 import { Breadcrumb } from '../Breadcrumb';
+import { DefaultEditorTabView } from '../DefaultEditorTabView';
 import { SettingsView } from '../../../Settings/SettingsView';
 import { MarkdownPreview } from '../../../Editor/MarkdownPreview';
 import { KnowledgeBaseView } from '../KnowledgeBaseView';
@@ -95,7 +96,7 @@ export interface EditorTab {
   language?: string;
   content?: string;
   isContentLoading?: boolean;
-  type?: 'file' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat' | 'terminal' | 'extension' | 'plugin-view';
+  type?: 'file' | 'welcome' | 'settings' | 'markdown-preview' | 'knowledge' | 'ai-config' | 'lancedb-view' | 'table-designer' | 'mermaid-designer' | 'skills-market' | 'decomposition-rules' | 'prompt-management' | 'media' | 'ai-chat' | 'terminal' | 'extension' | 'plugin-view';
   isPreview?: boolean;  // 閺傛澘顤冮敍姘Ц閸氾缚璐熸０鍕潔濡€崇础閿涘牆宕熼崙缁樺ⅵ瀵偓閿?
   sourceTabId?: string;  // 閺傛澘顤冮敍姘额暕鐟欏牊鐖ｇ粵楣冦€夐崗瀹犱粓閻ㄥ嫭绨弬鍥︽閺嶅洨顒锋い绀桪
   splitSourceTabId?: string;  // 鍒嗗睆鏍囩鍏宠仈鐨勬簮鏂囦欢鏍囩椤?ID
@@ -162,6 +163,37 @@ const CANVAS_RUNTIME_FILE_EXTENSIONS = ['.canvas', '.canvs'] as const;
 const EDITOR_PANE_IDS: readonly EditorPaneId[] = ['left-top', 'left-bottom', 'right-top', 'right-bottom'];
 const EDITOR_BRIDGE_PANE_ORDER: EditorPaneId[] = ['left-top', 'right-top', 'left-bottom', 'right-bottom'];
 const PLUGIN_VIEW_REACTIVATION_SUPPRESSION_MS = 600;
+const WELCOME_EDITOR_TAB_ID = 'welcome-tab';
+const WELCOME_EDITOR_TAB_PATH = 'welcome:/';
+const WELCOME_EDITOR_TAB_TITLE = '欢迎';
+
+const isWelcomeEditorTab = (tab: EditorTab | null | undefined): boolean => tab?.type === 'welcome';
+
+const isWelcomeEditorTabCollection = (tabs: EditorTab[]): boolean => (
+  tabs.length === 1 && isWelcomeEditorTab(tabs[0])
+);
+
+const appendPrimaryPaneTab = (tabs: EditorTab[], newTab: EditorTab): EditorTab[] => (
+  isWelcomeEditorTabCollection(tabs) ? [newTab] : [...tabs, newTab]
+);
+
+const appendTabToPane = (
+  paneId: EditorPaneId,
+  tabs: EditorTab[],
+  newTab: EditorTab,
+): EditorTab[] => (
+  paneId === 'left-top'
+    ? appendPrimaryPaneTab(tabs, newTab)
+    : [...tabs, newTab]
+);
+
+const createWelcomeEditorTab = (): EditorTab => ({
+  id: WELCOME_EDITOR_TAB_ID,
+  title: WELCOME_EDITOR_TAB_TITLE,
+  path: WELCOME_EDITOR_TAB_PATH,
+  isDirty: false,
+  type: 'welcome',
+});
 
 interface EditorTabsStateItem {
   id: string;
@@ -537,6 +569,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const [rightTopHeight, setRightTopHeight] = useState<number | null>(null);
   const [rightColumnWidths, setRightColumnWidths] = useState<Record<string, number>>({});
   const [hasCustomizedHorizontalSplit, setHasCustomizedHorizontalSplit] = useState(false);
+  const [initialRestoreCompleted, setInitialRestoreCompleted] = useState(false);
 
   // 鐠虹喕閲滈崫顏冪昂闁板秶鐤嗛弽鍥╊劮妞ゅ灚婀侀張顏冪箽鐎涙娈戦弴瀛樻暭
   const [unsavedConfigTabs, setUnsavedConfigTabs] = useState<Set<string>>(new Set());
@@ -568,6 +601,11 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
   const previousHorizontalSplitStructureKeyRef = useRef<string | null>(null);
   const setCurrentNote = useNoteStore(state => state.setCurrentNote);
   const resetLinkState = useLinkStore(state => state.reset);
+
+  const markInitialRestoreCompleted = useCallback((): void => {
+    initialRestoreCompletedRef.current = true;
+    setInitialRestoreCompleted(true);
+  }, []);
 
   const syncFileTabToNoteSystem = useCallback(async (
     tab: EditorTab,
@@ -873,6 +911,38 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       setRightTopHeight(null);
     }
   }, [rightBottomTabs.length]);
+
+  useEffect(() => {
+    if (!initialRestoreCompleted) {
+      return;
+    }
+
+    const totalOpenTabCount = tabs.length + rightTabs.length + leftBottomTabs.length + rightBottomTabs.length;
+    if (totalOpenTabCount > 0) {
+      return;
+    }
+
+    const welcomeTab = createWelcomeEditorTab();
+    setTabs([welcomeTab]);
+    setActiveTabId(welcomeTab.id);
+    setRightActiveTabId(null);
+    setLeftBottomActiveTabId(null);
+    setRightBottomActiveTabId(null);
+    setIsSplitView(false);
+    setLeftVerticalSplit(false);
+    setRightVerticalSplit(false);
+    setLeftWidth(null);
+    setLeftTopHeight(null);
+    setRightTopHeight(null);
+    setRightColumnWidths({});
+    setHasCustomizedHorizontalSplit(false);
+    setExtraRightSplitPanes([]);
+    setFocusedPaneId('left-top');
+    tabActivationHistoryRef.current = [welcomeTab.id];
+    leftBottomTabActivationHistoryRef.current = [];
+    rightTabActivationHistoryRef.current = [];
+    rightBottomTabActivationHistoryRef.current = [];
+  }, [initialRestoreCompleted, leftBottomTabs.length, rightBottomTabs.length, rightTabs.length, tabs.length]);
 
   useEffect(() => {
     const openFilePaths = new Set(
@@ -1333,6 +1403,34 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
     }
   }, []);
 
+  const createUntitledFileTab = useCallback((): EditorTab => ({
+    id: `file-${Date.now()}`,
+    title: 'Untitled',
+    path: '',
+    isDirty: false,
+    language: 'markdown',
+    content: '',
+    isContentLoading: false,
+    type: 'file',
+    isPreview: false,
+  }), []);
+
+  const handleCreateTabInPane = useCallback((paneId: EditorPaneId): void => {
+    tabChangeReasonOverrideRef.current = 'open';
+    ensurePaneVisibleForDrop(paneId);
+    focusedPaneIdRef.current = paneId;
+
+    const newTab = createUntitledFileTab();
+    setPaneTabs(paneId, (currentTabs) => appendTabToPane(paneId, currentTabs, newTab));
+    setPaneActiveTabId(paneId, newTab.id);
+    setFocusedPaneId(paneId);
+  }, [
+    createUntitledFileTab,
+    ensurePaneVisibleForDrop,
+    setPaneActiveTabId,
+    setPaneTabs,
+  ]);
+
   const moveTabToPane = useCallback((tabId: string, targetPaneId: EditorPaneId) => {
     const located = findPaneByTabId(tabId);
     if (!located) {
@@ -1470,7 +1568,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       type: resolvedType
     };
 
-    setTabs(prev => [...prev, newTab]);
+    setTabs(prev => appendPrimaryPaneTab(prev, newTab));
     setActiveTabId(newTab.id);
     setFocusedPaneId('left-top');
   }, [findPaneByPath, findPaneByType, setPaneTabs, setPaneActiveTabId]);
@@ -1515,7 +1613,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       },
     };
 
-    setTabs(prev => [...prev, newTab]);
+    setTabs(prev => appendPrimaryPaneTab(prev, newTab));
     setActiveTabId(newTab.id);
     setFocusedPaneId('left-top');
   }, [findPaneByPath, setPaneTabs, setPaneActiveTabId]);
@@ -1575,9 +1673,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       ? takePendingPluginViewPaneTarget(detail.sourcePath)
       : null;
     const targetPaneId = rememberedPaneId ?? pendingTarget?.paneId ?? (detail.active ? focusedPaneIdRef.current : 'left-top');
+    const targetPaneTabs = getPaneTabs(targetPaneId);
     const shouldActivateNewTab = pendingTarget
-      ? (pendingTarget.active || getPaneTabs(targetPaneId).length === 0)
-      : detail.active;
+      ? (pendingTarget.active || targetPaneTabs.length === 0 || isWelcomeEditorTabCollection(targetPaneTabs))
+      : detail.active || isWelcomeEditorTabCollection(targetPaneTabs);
     const normalizedSourcePath = detail.sourcePath
       ? normalizeComparableFilePath(detail.sourcePath)
       : null;
@@ -1639,7 +1738,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         .map(({ index }) => index);
 
       if (matchingIndices.length === 0) {
-        return [...prev, newTab];
+        return appendTabToPane(targetPaneId, prev, newTab);
       }
 
       const primaryIndex = matchingIndices[0];
@@ -1766,7 +1865,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       try {
         const startupMode = new URLSearchParams(window.location.search).get('startupMode');
         if (startupMode === 'open-note-window') {
-          initialRestoreCompletedRef.current = true;
+          markInitialRestoreCompleted();
           return;
         }
 
@@ -1827,7 +1926,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           }
 
           if (openedCanvasCount > 0) {
-            initialRestoreCompletedRef.current = true;
+            markInitialRestoreCompleted();
             return;
           }
         }
@@ -1856,7 +1955,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           }
 
           if (openedCanvasCount > 0) {
-            initialRestoreCompletedRef.current = true;
+            markInitialRestoreCompleted();
             return;
           }
         }
@@ -1864,13 +1963,13 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         const result = await window.electron?.workspace?.getLastOpened();
         const lastOpenedPath = resolveLastOpenedPath(result as LastOpenedRestoreResult | undefined);
         if (!lastOpenedPath) {
-          initialRestoreCompletedRef.current = true;
+          markInitialRestoreCompleted();
           return;
         }
 
         if (isCanvasRuntimePath(lastOpenedPath)) {
           if (await tryOpenPluginView(lastOpenedPath)) {
-            initialRestoreCompletedRef.current = true;
+            markInitialRestoreCompleted();
             return;
           }
 
@@ -1879,7 +1978,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           });
 
           if (await tryOpenPluginView(lastOpenedPath)) {
-            initialRestoreCompletedRef.current = true;
+            markInitialRestoreCompleted();
             return;
           }
         }
@@ -1887,7 +1986,10 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         const fileResult = await window.electron?.file?.read(lastOpenedPath);
         const restoredFile = fileResult?.success ? fileResult.data : undefined;
         const restoredPath = restoredFile?.path?.trim() || '';
-        if (!restoredPath) return;
+        if (!restoredPath) {
+          markInitialRestoreCompleted();
+          return;
+        }
 
         const restoredTitle = restoredFile?.name?.trim() || getFileNameFromPath(restoredPath);
         const newTab: EditorTab = {
@@ -1901,15 +2003,15 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
         };
         setTabs([newTab]);
         setActiveTabId(newTab.id);
-        initialRestoreCompletedRef.current = true;
+        markInitialRestoreCompleted();
       } catch (error) {
         // 閸旂姾娴囨稉濠冾偧閹垫挸绱戦惃鍕瀮娴犺泛銇戠拹銉礉闂堟瑩绮径鍕倞
-        initialRestoreCompletedRef.current = true;
+        markInitialRestoreCompleted();
       }
     };
 
     loadLastOpened();
-  }, [queuePendingPluginViewPaneTarget]);
+  }, [markInitialRestoreCompleted, queuePendingPluginViewPaneTarget]);
 
   // 閻╂垵鎯夐幍鎾崇磻閺傚洣娆㈡禍瀣╂
   useEffect(() => {
@@ -2012,7 +2114,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           }
 
           const newTab = createFileTab();
-          setPaneTabs(paneId, (currentTabs) => [...currentTabs, newTab]);
+          setPaneTabs(paneId, (currentTabs) => appendTabToPane(paneId, currentTabs, newTab));
           setPaneActiveTabId(paneId, newTab.id);
           setFocusedPaneId(paneId);
         };
@@ -2196,7 +2298,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           });
           
           setTimeout(() => setActiveTabId(newTab.id), 0);
-          return [...currentTabs, newTab];
+          return appendPrimaryPaneTab(currentTabs, newTab);
         });
         
         // 闂団偓鐟曚礁婀悩鑸碘偓浣规纯閺傛澘鎮楅懢宄板絿 existingTab.id 閹?newTab.id 閺夈儴顔曠純顔芥た閸斻劍鐖ｇ粵?
@@ -2266,7 +2368,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                 isPreview: false
               };
               setTimeout(() => setActiveTabId(newTab.id), 0);
-              return [...currentTabs, newTab];
+              return appendPrimaryPaneTab(currentTabs, newTab);
             });
           }
         } catch (error) {
@@ -2371,7 +2473,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           isPreview: false,
           diffPreview: detail.diffPreview,
         };
-        setTabs(prev => [...prev, createdTab]);
+        setTabs(prev => appendPrimaryPaneTab(prev, createdTab));
         setTimeout(() => setActiveTabId(createdTab.id), 0);
       }
     };
@@ -2414,7 +2516,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             setActiveTabId(newTab.id);
             scheduleSettingsNavigation(category);
           }, 0);
-          return [...currentTabs, newTab];
+          return appendPrimaryPaneTab(currentTabs, newTab);
         }
       });
     };
@@ -2435,7 +2537,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             type: 'media'
           };
           setTimeout(() => setActiveTabId(newTab.id), 0);
-          return [...currentTabs, newTab];
+          return appendPrimaryPaneTab(currentTabs, newTab);
         }
       });
     };
@@ -2466,7 +2568,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           content: jsonContent,
           type: 'file'
         };
-        setTabs(prev => [...prev, newTab]);
+        setTabs(prev => appendPrimaryPaneTab(prev, newTab));
         setActiveTabId(newTab.id);
       }
     };
@@ -2526,7 +2628,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             type: 'lancedb-view'
           };
           setTimeout(() => setActiveTabId(newTab.id), 0);
-          return [...currentTabs, newTab];
+          return appendPrimaryPaneTab(currentTabs, newTab);
         }
       });
     };
@@ -2578,7 +2680,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           mermaidData: { code, title }
         };
         setTimeout(() => setActiveTabId(newTab.id), 0);
-        return [...currentTabs, newTab];
+        return appendPrimaryPaneTab(currentTabs, newTab);
       });
     };
 
@@ -2599,7 +2701,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             type: 'skills-market'
           };
           setTimeout(() => setActiveTabId(newTab.id), 0);
-          return [...currentTabs, newTab];
+          return appendPrimaryPaneTab(currentTabs, newTab);
         }
       });
     };
@@ -2649,7 +2751,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             : undefined,
         };
         setTimeout(() => setActiveTabId(newTab.id), 0);
-        return [...currentTabs, newTab];
+        return appendPrimaryPaneTab(currentTabs, newTab);
       });
     };
 
@@ -2670,7 +2772,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           type: 'prompt-management',
         };
         setTimeout(() => setActiveTabId(newTab.id), 0);
-        return [...currentTabs, newTab];
+        return appendPrimaryPaneTab(currentTabs, newTab);
       });
     };
 
@@ -2762,6 +2864,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
       setRightTopHeight(null);
       setRightColumnWidths({});
       setHasCustomizedHorizontalSplit(false);
+      setExtraRightSplitPanes([]);
       setFocusedPaneId('left-top');
     };
     window.addEventListener('close-all-editors', handleCloseAllEditors);
@@ -3282,7 +3385,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           };
           setActiveTabId(newTab.id);
           console.log('[EditorArea] 閸掓稑缂撻惌銉ㄧ槕鎼存挻鐖ｇ粵楣冦€?', tabTitle);
-          return [...prev, newTab];
+          return appendPrimaryPaneTab(prev, newTab);
         }
       });
     };
@@ -3583,7 +3686,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           
           setActiveTabId(newTab.id);
           console.log('[EditorArea] 閸掓稑缂撻弬鎵畱 AI 闁板秶鐤嗛弽鍥╊劮妞ゅ灚鍨氶崝鐕傜礉閺嶅洨顒稩D:', newTab.id);
-          return [...prev, newTab];
+          return appendPrimaryPaneTab(prev, newTab);
         });
         return;
       }
@@ -3632,7 +3735,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
           
           setActiveTabId(newTab.id);
           console.log('[EditorArea] 閸掓稑缂撻弬鎵畱 AI 闁板秶鐤嗛弽鍥╊劮妞ゅ灚鍨氶崝鐕傜礉閺嶅洨顒稩D:', newTab.id);
-          return [...prev, newTab];
+          return appendPrimaryPaneTab(prev, newTab);
         }
       });
     };
@@ -3808,7 +3911,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
 
   // 瑜版挻妞块崝銊︾垼缁涚偓鏁奸崣妯绘閿涘矂鈧氨鐓￠弬鍥︽閺嶆垶娲块弬浼粹偓澶夎厬閻樿埖鈧?
   useEffect(() => {
-    const activeTab = tabs.find(tab => tab.id === activeTabId);
+const activeTab = tabs.find(tab => tab.id === activeTabId);
     const previousTabsLength = previousTabsLengthRef.current;
     const previousActiveTabId = previousActiveTabIdRef.current;
     const overrideReason = tabChangeReasonOverrideRef.current;
@@ -5423,32 +5526,29 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
             onDrop={(event) => handlePaneDrop('left-top', event)}
           >
           {/* 瀹革缚鏅堕弽鍥╊劮閺?- 婵绮撻弰鍓с仛閿涘苯宓嗘担鎸庣梾閺堝鐖ｇ粵?*/}
-          {tabs.length > 0 ? (
-            <TabBar
-              tabs={tabs}
-              activeTabId={activeTabId}
-              onTabClick={handleTabClick}
-              onTabClose={handleTabClose}
-              dragGroupId="left-top"
-              onTabDragStart={handleTabDragStart}
-              onTabDragEnd={handleTabDragEnd}
-              onSplitHorizontal={handleSplitHorizontal}
-              onSplitVertical={handleSplitVertical}
-              onSplitToDirection={splitTabToDirection}
-              onMoveToDirection={moveTabByDirection}
-              onAddTabToChat={addTabToChatContext}
-              onOpenTabInExplorer={openTabInSystemExplorer}
-              onRevealTabInExplorerView={revealTabInExplorerView}
-              onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('left-top', tabIds)}
-              onOpenInNewWindow={handleOpenTabInNewWindow}
-              showSplitEditorAction={!isEditorOnlyWindow}
-            />
-          ) : (
-            <div className="tab-bar-placeholder" />
-          )}
+          <TabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onTabClick={handleTabClick}
+            onTabClose={handleTabClose}
+            dragGroupId="left-top"
+            onTabDragStart={handleTabDragStart}
+            onTabDragEnd={handleTabDragEnd}
+            onSplitHorizontal={handleSplitHorizontal}
+            onSplitVertical={handleSplitVertical}
+            onSplitToDirection={splitTabToDirection}
+            onMoveToDirection={moveTabByDirection}
+            onAddTabToChat={addTabToChatContext}
+            onOpenTabInExplorer={openTabInSystemExplorer}
+            onRevealTabInExplorerView={revealTabInExplorerView}
+            onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('left-top', tabIds)}
+            onOpenInNewWindow={handleOpenTabInNewWindow}
+            onCreateTab={() => handleCreateTabInPane('left-top')}
+            showSplitEditorAction={!isEditorOnlyWindow}
+          />
 
           {/* 瀹革缚鏅堕棃銏犲瘶鐏?*/}
-          {activeTab && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && activeTab.type !== 'prompt-management' && activeTab.type !== 'ai-chat' && activeTab.type !== 'terminal' && activeTab.type !== 'plugin-view' && (
+          {activeTab && activeTab.type !== 'welcome' && activeTab.type !== 'settings' && activeTab.type !== 'markdown-preview' && activeTab.type !== 'knowledge' && activeTab.type !== 'ai-config' && activeTab.type !== 'lancedb-view' && activeTab.type !== 'decomposition-rules' && activeTab.type !== 'prompt-management' && activeTab.type !== 'ai-chat' && activeTab.type !== 'terminal' && activeTab.type !== 'plugin-view' && (
             <Breadcrumb path={activeTab.path} />
           )}
 
@@ -5478,6 +5578,8 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   className="editor-tab-content"
                   style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}
                 >
+                  {tab.type === 'welcome' && <DefaultEditorTabView />}
+
                   {tab.type === 'settings' && <SettingsView />}
                   
                   {tab.type === 'lancedb-view' && <LanceDBView />}
@@ -5606,29 +5708,26 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                 onDragLeave={(event) => handlePaneDragLeave('left-bottom', event)}
                 onDrop={(event) => handlePaneDrop('left-bottom', event)}
               >
-                {leftBottomTabs.length > 0 ? (
-                  <TabBar
-                    tabs={leftBottomTabs}
-                    activeTabId={leftBottomActiveTabId}
-                    onTabClick={handleLeftBottomTabClick}
-                    onTabClose={handleLeftBottomTabClose}
-                    dragGroupId="left-bottom"
-                    onTabDragStart={handleTabDragStart}
-                    onTabDragEnd={handleTabDragEnd}
-                    onSplitHorizontal={handleSplitHorizontal}
-                    onSplitVertical={handleSplitVertical}
-                    onSplitToDirection={splitTabToDirection}
-                    onMoveToDirection={moveTabByDirection}
-                    onAddTabToChat={addTabToChatContext}
-                    onOpenTabInExplorer={openTabInSystemExplorer}
-                    onRevealTabInExplorerView={revealTabInExplorerView}
-                    onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('left-bottom', tabIds)}
-                    onOpenInNewWindow={handleOpenTabInNewWindow}
-                    showSplitEditorAction={!isEditorOnlyWindow}
-                  />
-                ) : (
-                  <div className="tab-bar-placeholder" />
-                )}
+                <TabBar
+                  tabs={leftBottomTabs}
+                  activeTabId={leftBottomActiveTabId}
+                  onTabClick={handleLeftBottomTabClick}
+                  onTabClose={handleLeftBottomTabClose}
+                  dragGroupId="left-bottom"
+                  onTabDragStart={handleTabDragStart}
+                  onTabDragEnd={handleTabDragEnd}
+                  onSplitHorizontal={handleSplitHorizontal}
+                  onSplitVertical={handleSplitVertical}
+                  onSplitToDirection={splitTabToDirection}
+                  onMoveToDirection={moveTabByDirection}
+                  onAddTabToChat={addTabToChatContext}
+                  onOpenTabInExplorer={openTabInSystemExplorer}
+                  onRevealTabInExplorerView={revealTabInExplorerView}
+                  onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('left-bottom', tabIds)}
+                  onOpenInNewWindow={handleOpenTabInNewWindow}
+                  onCreateTab={() => handleCreateTabInPane('left-bottom')}
+                  showSplitEditorAction={!isEditorOnlyWindow}
+                />
 
                 {leftBottomActiveTab && leftBottomActiveTab.type === 'file' && (
                   <Breadcrumb path={leftBottomActiveTab.path} />
@@ -5737,6 +5836,7 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                     onRevealTabInExplorerView={() => revealTabInExplorerView(sourceTab.id)}
                     onCloseMultipleTabs={() => closeExtraRightSplitPane(pane.id)}
                     onOpenInNewWindow={() => handleOpenTabInNewWindow(sourceTab.id)}
+                    onCreateTab={() => handleCreateTabInPane(sourceLocated.paneId)}
                     showSplitEditorAction={!isEditorOnlyWindow}
                   />
 
@@ -5774,27 +5874,26 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
               onDrop={(event) => handlePaneDrop('right-top', event)}
             >
             {/* 閸欏厖鏅堕弽鍥╊劮閺?*/}
-            {rightTabs.length > 0 && (
-              <TabBar
-                tabs={rightTabs}
-                activeTabId={rightActiveTabId}
-                onTabClick={handleRightTabClick}
-                onTabClose={handleRightTabClose}
-                dragGroupId="right-top"
-                onTabDragStart={handleTabDragStart}
-                onTabDragEnd={handleTabDragEnd}
-                onSplitHorizontal={handleSplitHorizontal}
-                onSplitVertical={handleSplitVertical}
-                onSplitToDirection={splitTabToDirection}
-                onMoveToDirection={moveTabByDirection}
-                onAddTabToChat={addTabToChatContext}
-                onOpenTabInExplorer={openTabInSystemExplorer}
-                onRevealTabInExplorerView={revealTabInExplorerView}
-                onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('right-top', tabIds)}
-                onOpenInNewWindow={handleOpenTabInNewWindow}
-                showSplitEditorAction={!isEditorOnlyWindow}
-              />
-            )}
+            <TabBar
+              tabs={rightTabs}
+              activeTabId={rightActiveTabId}
+              onTabClick={handleRightTabClick}
+              onTabClose={handleRightTabClose}
+              dragGroupId="right-top"
+              onTabDragStart={handleTabDragStart}
+              onTabDragEnd={handleTabDragEnd}
+              onSplitHorizontal={handleSplitHorizontal}
+              onSplitVertical={handleSplitVertical}
+              onSplitToDirection={splitTabToDirection}
+              onMoveToDirection={moveTabByDirection}
+              onAddTabToChat={addTabToChatContext}
+              onOpenTabInExplorer={openTabInSystemExplorer}
+              onRevealTabInExplorerView={revealTabInExplorerView}
+              onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('right-top', tabIds)}
+              onOpenInNewWindow={handleOpenTabInNewWindow}
+              onCreateTab={() => handleCreateTabInPane('right-top')}
+              showSplitEditorAction={!isEditorOnlyWindow}
+            />
 
             {/* 閸欏厖鏅堕棃銏犲瘶鐏?*/}
             {rightActiveTab && rightActiveTab.type !== 'settings' && rightActiveTab.type !== 'markdown-preview' && rightActiveTab.type !== 'knowledge' && rightActiveTab.type !== 'ai-config' && rightActiveTab.type !== 'lancedb-view' && rightActiveTab.type !== 'decomposition-rules' && rightActiveTab.type !== 'prompt-management' && rightActiveTab.type !== 'ai-chat' && rightActiveTab.type !== 'terminal' && rightActiveTab.type !== 'plugin-view' && (
@@ -5936,29 +6035,26 @@ export const EditorArea: React.FC<EditorAreaProps> = ({ className = '' }) => {
                   onDragLeave={(event) => handlePaneDragLeave('right-bottom', event)}
                   onDrop={(event) => handlePaneDrop('right-bottom', event)}
                 >
-                  {rightBottomTabs.length > 0 ? (
-                    <TabBar
-                      tabs={rightBottomTabs}
-                      activeTabId={rightBottomActiveTabId}
-                      onTabClick={handleRightBottomTabClick}
-                      onTabClose={handleRightBottomTabClose}
-                      dragGroupId="right-bottom"
-                      onTabDragStart={handleTabDragStart}
-                      onTabDragEnd={handleTabDragEnd}
-                      onSplitHorizontal={handleSplitHorizontal}
-                      onSplitVertical={handleSplitVertical}
-                      onSplitToDirection={splitTabToDirection}
-                      onMoveToDirection={moveTabByDirection}
-                      onAddTabToChat={addTabToChatContext}
-                      onOpenTabInExplorer={openTabInSystemExplorer}
-                      onRevealTabInExplorerView={revealTabInExplorerView}
-                      onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('right-bottom', tabIds)}
-                      onOpenInNewWindow={handleOpenTabInNewWindow}
-                      showSplitEditorAction={!isEditorOnlyWindow}
-                    />
-                  ) : (
-                    <div className="tab-bar-placeholder" />
-                  )}
+                  <TabBar
+                    tabs={rightBottomTabs}
+                    activeTabId={rightBottomActiveTabId}
+                    onTabClick={handleRightBottomTabClick}
+                    onTabClose={handleRightBottomTabClose}
+                    dragGroupId="right-bottom"
+                    onTabDragStart={handleTabDragStart}
+                    onTabDragEnd={handleTabDragEnd}
+                    onSplitHorizontal={handleSplitHorizontal}
+                    onSplitVertical={handleSplitVertical}
+                    onSplitToDirection={splitTabToDirection}
+                    onMoveToDirection={moveTabByDirection}
+                    onAddTabToChat={addTabToChatContext}
+                    onOpenTabInExplorer={openTabInSystemExplorer}
+                    onRevealTabInExplorerView={revealTabInExplorerView}
+                    onCloseMultipleTabs={(tabIds) => closeMultipleTabsByPane('right-bottom', tabIds)}
+                    onOpenInNewWindow={handleOpenTabInNewWindow}
+                    onCreateTab={() => handleCreateTabInPane('right-bottom')}
+                    showSplitEditorAction={!isEditorOnlyWindow}
+                  />
 
                   {rightBottomActiveTab && rightBottomActiveTab.type === 'file' && (
                     <Breadcrumb path={rightBottomActiveTab.path} />

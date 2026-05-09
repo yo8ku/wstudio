@@ -225,6 +225,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
     setIsPanelVisible(true);
   };
 
+  const handleOpenWorkspaceFolder = useCallback(async (): Promise<void> => {
+    try {
+      const result = await window.electron?.folder?.open();
+      if (result?.success && result.data?.path) {
+        window.dispatchEvent(new CustomEvent('folder-opened', {
+          detail: { path: result.data.path },
+        }));
+      }
+    } catch (error) {
+      console.error('[MainLayout] 打开文件夹失败:', error);
+    }
+  }, []);
+
   // 鑾峰彇鍙充晶娲诲姩鏍忕殑鏄剧ず鐘舵€?
   // 鑾峰彇涓讳晶鏍忎綅缃?
   const { sidebarPosition, setSidebarPosition } = useActivityBarStore();
@@ -729,6 +742,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
         return;
       }
 
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        void handleOpenWorkspaceFolder();
+        return;
+      }
+
       // Ctrl+, 鎵撳紑璁剧疆
       if (e.ctrlKey && e.key === ',') {
         e.preventDefault();
@@ -745,7 +764,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ className = '' }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleTerminalPanel, isEditorOnlyWindow, isPanelVisible, openCommandCenter]);
+  }, [handleOpenWorkspaceFolder, handleToggleTerminalPanel, isEditorOnlyWindow, isPanelVisible, openCommandCenter]);
 
   // 浣跨敤 useMemo 浼樺寲鏍峰紡瀵硅薄锛岄伩鍏嶆瘡娆℃覆鏌撻兘鍒涘缓鏂板璞?
   const mainLayoutStyle = useMemo(() => ({

@@ -70,6 +70,30 @@
     font-style: italic;
   }
 
+  &--welcome {
+    min-width: 136px;
+
+    .tab-item-title {
+      font-weight: 500;
+    }
+  }
+
+  &--new {
+    width: 36px;
+    min-width: 36px;
+    max-width: 36px;
+    justify-content: center;
+    padding: 0;
+    gap: 0;
+
+    &:hover,
+    &:focus-visible {
+      background-color: var(--ws-tab-hoverBackground, rgba(255, 255, 255, 0.05));
+      color: var(--ws-tab-activeForeground, var(--tab-active-fg, #ffffff));
+      outline: none;
+    }
+  }
+
   &[draggable='true'] {
     cursor: grab;
   }
@@ -141,6 +165,26 @@
 
   &-icon {
     opacity: 0.9;
+  }
+
+  &-icon--welcome {
+    opacity: 1;
+  }
+
+  &-logo-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    display: block;
+    object-fit: contain;
+    border-radius: 3px;
+  }
+
+  &-new-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: block;
   }
 
   &-plugin-icon-slot {

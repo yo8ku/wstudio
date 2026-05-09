@@ -206,13 +206,6 @@
   }
 }
 
-.tab-bar-placeholder {
-  background-color: var(--ws-editorGroupHeader-tabsBackground, #252526);
-  height: 35px;
-  min-height: 35px;
-  flex-shrink: 0;
-}
-
 body.background-image-enabled {
   .editor-area,
   .editor-area-groups,
